@@ -178,11 +178,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // Job applicants are never in All (the server leaves them out), so they
     // are not one of All's toggles either.
     final sources = _visibleSources.where((s) => s.$1 != 'job_applicant');
+    final every = [for (final s in sources) ..._keysOf(s.$1)];
     final shown = [
       for (final s in sources)
-        if (!_allLeftOut.contains(s.$1)) s.$1,
+        if (!_allLeftOut.contains(s.$1)) ..._keysOf(s.$1),
     ];
-    if (shown.length == sources.length) return null;
+    if (shown.length == every.length) return null;
     return shown.isEmpty ? '-' : shown.join(',');
   }
 
@@ -211,14 +212,34 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // The review link's sad faces, out of Forms (Jose, 2026-10-19).
     ('bad_rating', 'Bad Ratings'),
     ('website_booking', 'Online Booking'),
-    ('facebook', 'Facebook'),
-    ('instagram', 'Instagram'),
+    // Facebook, Instagram and WhatsApp in one tab, each lead keeping its own
+    // tag (Jose, 2026-11-02; design 166). Picked inside it by _metaSources.
+    ('meta', 'Meta'),
     ('workiz', 'Workiz'),
-    ('whatsapp', 'WhatsApp'),
     // Not a source: people asking for a job, by Grok or by hand (Jose,
     // 2026-10-09). Their own tab, out of All.
     ('job_applicant', 'Job applicants'),
   ];
+
+  /// What the Meta tab holds, each its own permission tick and its own chip
+  /// inside the tab (design 166).
+  static const _metaSources = <(String, String)>[
+    ('facebook', 'Facebook'),
+    ('instagram', 'Instagram'),
+    ('whatsapp', 'WhatsApp'),
+  ];
+
+  /// The one Meta source picked inside the tab; null is all three.
+  String? _metaPick;
+
+  List<(String, String)> get _visibleMeta => [
+    for (final m in _metaSources)
+      if (_maySee(m.$1)) m,
+  ];
+
+  /// What a source asks the server for: Meta is its three sources.
+  Iterable<String> _keysOf(String source) =>
+      source == 'meta' ? _visibleMeta.map((m) => m.$1) : [source];
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
   /// here: nothing else in the app draws a per-source mark, so these are the
@@ -240,14 +261,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // Messenger and Instagram have no Material glyph of their own, and a
     // wrong-brand icon reads worse than a generic one. These say "a message"
     // and "a photo account" rather than pretending to be the logos.
-    Icons.forum_outlined,
-    Icons.camera_alt_outlined,
+    Icons.forum_outlined, // Meta: Messenger, Instagram and WhatsApp
     // Workiz is a book of records rather than a channel somebody wrote in,
     // which is the difference this whole source turns on - no thread, no
     // reply, and absent from the Unreplied filter. A ledger, not a message.
     Icons.assignment_outlined,
-    // WhatsApp: no Material logo either; a chat bubble, like Messenger's.
-    Icons.chat_outlined,
     Icons.badge_outlined, // job applicants
   ];
 
@@ -274,6 +292,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   bool _maySee(String source) =>
       source == 'job_applicant' ||
+      (source == 'meta' && _metaSources.any((m) => _maySee(m.$1))) ||
       (widget.session.me?.can(
             'leads.${source.startsWith('ls_') ? 'local_services' : source}.view',
           ) ??
@@ -281,7 +300,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   void _setSource(String? source) {
     if (source == _source) return;
-    setState(() => _source = source);
+    setState(() {
+      _source = source;
+      _metaPick = null;
+    });
     _load();
   }
 
@@ -365,6 +387,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     if (wanted != null && _visibleSources.any((c) => c.$1 == wanted)) {
       _source = wanted;
+    } else if (wanted != null && _visibleMeta.any((m) => m.$1 == wanted)) {
+      _source = 'meta';
+      _metaPick = wanted;
     }
 
     _selectedId = widget.initialLeadId;
@@ -443,8 +468,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
     if (_overdue) 'overdue': '1',
     if (_followUp) 'follow_up': '1',
     if (_starred) 'starred': '1',
-    'source': ?_source,
-    'sources': ?_allSources,
+    'source': ?(_source == 'meta' ? null : _source),
+    'sources': ?(_source == 'meta'
+        ? (_metaPick ?? _keysOf('meta').join(','))
+        : _allSources),
     if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     'charge': ?_charge,
     'ivr': ?_ivr,
@@ -737,8 +764,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       'website_chat': 'Chat',
       'website_form': 'Forms',
       'website_booking': 'Online Booking',
-      'facebook': 'Messenger',
-      'instagram': 'Instagram',
+      'meta': 'Messenger',
       'workiz': 'Workiz',
       'whatsapp': 'WhatsApp',
       'ringcentral': 'RC Calls',
@@ -849,11 +875,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
   );
 
   /// Unread leads behind a source; for All, behind every source it holds.
-  int _unreadIn(String? key) => key != null
+  int _unreadIn(String? key) => key == 'meta'
+      ? _keysOf('meta').fold(0, (sum, k) => sum + (_unreadBySource[k] ?? 0))
+      : key != null
       ? _unreadBySource[key] ?? 0
       : _visibleSources
             .where((s) => s.$1 != 'job_applicant' && !_allLeftOut.contains(s.$1))
-            .fold(0, (sum, s) => sum + (_unreadBySource[s.$1] ?? 0));
+            .fold(0, (sum, s) => sum + _unreadIn(s.$1));
 
   /// A source whose accounts are not delivering: Google refusing on quota,
   /// or a connection broken or revoked.
@@ -1018,6 +1046,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      if (_source == 'meta') _inMeta(theme),
       // Design 162 (option 1 + phone 4): over the list, never the title row.
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
@@ -1158,6 +1187,34 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
   ];
 
+  /// Inside Meta: all three, or one, each with its unread count (design 166,
+  /// worked like the In All row).
+  Widget _inMeta(ThemeData theme) => Padding(
+    key: const ValueKey('meta-sources'),
+    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+    child: Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      children: [
+        for (final m in <(String?, String)>[(null, 'All Meta'), ..._visibleMeta])
+          ChoiceChip(
+            key: ValueKey('meta-source-${m.$1 ?? 'all'}'),
+            showCheckmark: false,
+            visualDensity: VisualDensity.compact,
+            label: Text(
+              '${m.$2} ${_unreadIn(m.$1 ?? 'meta')}',
+              style: theme.textTheme.labelSmall,
+            ),
+            selected: _metaPick == m.$1,
+            onSelected: (_) {
+              setState(() => _metaPick = m.$1);
+              _load();
+            },
+          ),
+      ],
+    ),
+  );
+
   /// Under All: which sources it holds, one toggle each, by the same icons
   /// the sources wear (Jose, 2026-09-29: "on ALL we should have filters for
   /// which leads it's showing ... except for LS Call").
@@ -1278,6 +1335,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ],
         ),
       ),
+      if (_source == 'meta') _inMeta(theme),
       if (_searching || _search.text.isNotEmpty)
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -1723,7 +1781,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ? const <String>[]
         : [
             for (final s in _visibleSources)
-              if (_allLeftOut.contains(s.$1) && (_unreadBySource[s.$1] ?? 0) > 0)
+              if (_allLeftOut.contains(s.$1) && _unreadIn(s.$1) > 0)
                 s.$2,
           ];
     return [

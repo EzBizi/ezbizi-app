@@ -871,18 +871,21 @@ void main() {
     );
 
     // Jose, 2026-09-22: Facebook and Instagram messages belong in Leads rather
-    // than in an inbox of their own. Each is its OWN chip: they arrive in one
-    // webhook envelope and are told apart only by Meta's `object`, so a single
-    // "social" chip would put one of them somewhere nobody can reach.
-    for (final word in ['Facebook', 'Instagram']) {
+    // than in an inbox of their own. Since 2026-11-02 (design 166) they share
+    // one Meta tab, and each is still its OWN chip inside it: they arrive in
+    // one webhook envelope and are told apart only by Meta's `object`, so
+    // without the chips one of them could only be reached by scrolling.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Meta'));
+    await tester.pumpAndSettle();
+    for (final word in ['facebook', 'instagram']) {
       expect(
-        find.widgetWithText(ChoiceChip, word),
+        find.byKey(ValueKey('meta-source-$word')),
         findsOneWidget,
-        reason:
-            '$word has no chip, so that source can only be reached by '
-            'scrolling the whole list.',
+        reason: '$word has no chip inside Meta.',
       );
     }
+    expect(find.byKey(const ValueKey('meta-source-whatsapp')), findsNothing,
+        reason: 'WhatsApp was not granted');
 
     // And the four that were already there still are - a list built by index
     // from two const lists is exactly where an insertion goes wrong silently.
@@ -899,13 +902,45 @@ void main() {
       permissions: const ['leads.view', 'leads.facebook.view'],
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Facebook'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Meta'));
+    await tester.pumpAndSettle();
+    // Meta asks for the Meta sources this person holds, never 'meta' itself.
+    expect(_lastListQuery['source'], isNull);
+    expect(_lastListQuery['sources'], 'facebook');
+
+    await tester.tap(find.byKey(const ValueKey('meta-source-facebook')));
     await tester.pumpAndSettle();
 
     // The chip label and the API value are different strings, and the mapping
     // between them lives in one list. Asserting the drawn label alone would
     // pass with the wrong source wired behind it.
-    expect(_lastListQuery['source'], 'facebook');
+    expect(_lastListQuery['sources'], 'facebook');
+  });
+
+  /// Design 166 (Jose, 2026-11-02): one Meta tab, its three sources picked inside it.
+  testWidgets('Meta holds all three, picks one, and All never asks for "meta"', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view', 'leads.local_services.view', 'leads.facebook.view',
+        'leads.instagram.view', 'leads.whatsapp.view'],
+    );
+    // All leaves LS Call out by default, so it names what it holds: Meta as its three.
+    expect(_lastListQuery['sources']!.split(','), containsAll(['facebook', 'instagram', 'whatsapp']));
+    expect(_lastListQuery['sources']!.split(','), isNot(contains('meta')));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Meta'));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'facebook,instagram,whatsapp');
+
+    await tester.tap(find.byKey(const ValueKey('meta-source-whatsapp')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'whatsapp');
+
+    await tester.tap(find.byKey(const ValueKey('meta-source-all')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'facebook,instagram,whatsapp');
   });
 
   // ── one list across every source (sources layout 1 / 4) ─────────
