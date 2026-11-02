@@ -1,6 +1,6 @@
 # Training: review, 2026-11-02
 
-Measured on production (app box, tenant `Triplex Group` 019fd712…, the organization that holds A1's training; see section 5) and through the API as the MCP key owner.
+Measured on production (app box, tenant `Triplex Group` 019fd712…, A-1 Group renamed) and through the API as the MCP key owner.
 
 ## 1. Working
 
@@ -47,5 +47,5 @@ Measured on production (app box, tenant `Triplex Group` 019fd712…, the organiz
 
 ## 5. Needs Jose
 
-- The A1 training now lives in the organization named **Triplex Group** (renamed from A1-Group), and a new, empty **A-1 Group** organization was created on 11-01. Is the training meant to move to the new A-1 Group, or stay where it is?
+- Jose confirmed 11-02: Triplex Group IS A-1 Group (renamed); the training is where it belongs. Note there is also a separate, newer organization literally named "A-1 Group" (01a1985f…, created 2026-11-01) — not Training's; flagged in case it is a stray.
 - Should Technician and Dispatcher guides be assigned to those roles (it starts due-dates and "overdue" counts), or stay in the library only?
