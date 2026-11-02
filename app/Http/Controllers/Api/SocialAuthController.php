@@ -275,6 +275,12 @@ class SocialAuthController extends Controller
                     // column existed picks it up rather than staying unmatched.
                     $metaUser = $grant->extra['meta_user_id'] ?? null;
 
+                    // Google: the login this grant is (GoogleToken::exchange).
+                    // Kept when a reconnect's consent carried none.
+                    if (is_string($grant->extra['account_email'] ?? null)) {
+                        $connection->forceFill(['account_email' => $grant->extra['account_email']]);
+                    }
+
                     if (is_string($metaUser) && $metaUser !== '') {
                         $connection->forceFill(['meta_user_id' => $metaUser]);
                     }

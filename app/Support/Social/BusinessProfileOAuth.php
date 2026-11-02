@@ -31,6 +31,9 @@ final class BusinessProfileOAuth implements SocialOAuth
     /** @var string[] */
     public const SCOPES = [
         'https://www.googleapis.com/auth/business.manage',
+        // Which Google login this is (Jose, 2026-11-02): GoogleToken::exchange.
+        'openid',
+        'email',
     ];
 
     private const TIMEOUT = 10;
