@@ -18,6 +18,7 @@ use Throwable;
  * do not post hundreds of replies at once (Jose, 2026-11-02: "answer all the
  * unanswered ones, maybe do 50 per day ... each reply must be different").
  *
+ * 4 and 5 stars only; 3 stars or less get a draft and wait for a dispatcher.
  * Only on listings with automatic replies on, never over a person's draft or a
  * published reply, and never a reply word-for-word the same as one already sent.
  */
@@ -41,7 +42,7 @@ class ReviewBacklogReplies extends Command
                 ->map(fn ($b) => self::norm($b))->flip()->all();
 
             $done = 0;
-            Review::query()->where('source', Review::SOURCE_GOOGLE)
+            Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '>=', 4)
                 ->where(fn ($q) => collect($listings)->each(fn ($l) => $q->orWhere('location_name', 'like', '%'.addcslashes($l, '%_'))))
                 ->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED)
                     ->orWhere('drafted_by', '!=', ReviewReply::BY_AUTOMATION))
@@ -70,7 +71,20 @@ class ReviewBacklogReplies extends Command
                         $this->error("Review {$review->id}: {$e->getMessage()}");
                     }
                 });
-            $this->line("{$org->name}: {$done} replies published");
+            // 3 stars or less stay with the dispatchers: AI only leaves a draft for them to read (Jose, 2026-11-02).
+            $drafted = 0;
+            Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '<=', 3)->whereDoesntHave('reply')
+                ->orderByDesc('reviewed_at')->limit($limit)->get()
+                ->each(function (Review $review) use (&$drafted) {
+                    try {
+                        ReviewReply::create(['organization_id' => $review->organization_id, 'review_id' => $review->getKey(),
+                            'body' => ReviewReplyWriter::write($review), 'drafted_by' => ReviewReply::BY_DRAFTING_JOB, 'status' => ReviewReply::STATUS_DRAFT]);
+                        $drafted++;
+                    } catch (Throwable $e) {
+                        report($e);
+                    }
+                });
+            $this->line("{$org->name}: {$done} replies published, {$drafted} low-star drafts left for dispatchers");
         }));
 
         return self::SUCCESS;
