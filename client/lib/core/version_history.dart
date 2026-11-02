@@ -14,6 +14,25 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0515',
+      date: '2 Nov 2026',
+      items: [
+        'GBP Listings: WhatsApp is a column you set per listing or in bulk from the table; phone check and Google connection sit under the menu.',
+        'Google reviews: unanswered 4 and 5 star reviews get an AI reply, 50 a day; lower ones get a draft for dispatchers.',
+        'Scheduled WhatsApp reports arrive again; Profit and Loss opens on the latest week.',
+        'Reports › Performance: a Roles permission lets dispatch supervisors set Handles; changing Handles no longer reloads the page.',
+        'Project Management - 2: the Submitted tab loads instantly and keeps every submitted job; money columns read Paid, Balance, Total.',
+        'Project Management - 1: Overview and Jobs load several times faster.',
+        'Dashboard: the email box shows unread mail again and no longer slows the page.',
+        'Phone: the call tag prompt finds your calls again; transferred complaint calls alert once.',
+        'Inspection reports show the branch phone and email; automations can text a link to the report.',
+        'Field: lost-signal alerts close themselves when the phone recovers.',
+        'Integrations: Meta connections that stop working show Needs attention.',
+        'Work Hours: continuing a shift the clock closed gives one extension, not a new 14 hours.',
+        'Roles: Project Management needs Jobs.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0514',
       date: '2 Nov 2026',
       items: [
