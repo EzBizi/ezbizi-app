@@ -475,6 +475,9 @@ class SocialConnectionsController extends Controller
 
         $rows = SocialConnection::query()
             ->where('provider', $provider->value)
+            // One Google login's rows only (design 167): a string is that
+            // login, null is the rows whose login is unknown.
+            ->when($request->has('account_email'), fn ($q) => $q->where('account_email', $request->input('account_email')))
             ->orderBy('created_at')
             ->get()
             ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
