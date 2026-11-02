@@ -253,6 +253,29 @@ class ReportLayoutTest extends TestCase
         $this->assertStringContainsString('<td>Crown</td><td><span class="b fail">FAIL</span></td><td>Cracked</td>', $html);
     }
 
+    /**
+     * The footer carries the branch phone and email from Web Management, the
+     * location in the client's city first (Jose, 2026-11-02).
+     */
+    public function test_the_footer_names_the_branch_contact_from_web_management(): void
+    {
+        $this->beforeRender = function (array $tenant) {
+            foreach ([['Elsewhere', '(111) 111-1111', 'far@example.test', 0], ['Miami', '(305) 555-0100', 'miami@example.test', 5]] as [$city, $phone, $email, $sort]) {
+                \App\Models\WebLocation::query()->forceCreate([
+                    'organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
+                    'name' => "A1 {$city}", 'city' => $city, 'phone' => $phone, 'email' => $email, 'sort_order' => $sort,
+                ]);
+            }
+        };
+
+        $html = $this->render([['fields' => [['key' => 'n', 'label' => 'Note', 'type' => 'text']]]], ['n' => 'x']);
+
+        $this->assertStringContainsString('(305) 555-0100 | miami@example.test', $html);
+        $this->assertStringNotContainsString('(111) 111-1111', $html);
+    }
+
+    private ?\Closure $beforeRender = null;
+
     /** @param list<array<string, mixed>> $screens */
     private function render(array $screens, array $answers): string
     {
@@ -263,7 +286,12 @@ class ReportLayoutTest extends TestCase
                 'owning_franchise_id' => $tenant['franchise']->id,
                 'number' => 'C-'.bin2hex(random_bytes(3)),
                 'name' => '14 Maple',
+                'city' => 'Miami',
             ]);
+
+            if ($this->beforeRender !== null) {
+                ($this->beforeRender)($tenant);
+            }
 
             $definition = \App\Models\InspectionDefinition::create([
                 'name' => 'Level 1',
