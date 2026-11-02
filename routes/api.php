@@ -447,6 +447,11 @@ Route::get('v1/whatsapp/media/{phone}/{media}', \App\Http\Controllers\Api\WhatsA
     ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
     ->name('whatsapp.media');
 
+Route::get('v1/meta/media/{connection}/{mid}/{index}', \App\Http\Controllers\Api\MetaMediaController::class)
+    ->middleware(['signed', 'throttle:120,1'])
+    ->where(['connection' => '[0-9a-f-]+', 'mid' => '[A-Za-z0-9_-]+', 'index' => '[0-9]+'])
+    ->name('meta.media');
+
 Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
     ->middleware(['signed', 'throttle:30,1'])
     ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
