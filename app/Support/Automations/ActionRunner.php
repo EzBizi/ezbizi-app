@@ -3782,6 +3782,11 @@ class ActionRunner
             try {
                 $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text) ? 1 : 0;
             } catch (RuntimeException $refusal) {
+                // Not sent, so a retry may try again rather than report "nobody has a phone".
+                if ($once !== null) {
+                    Cache::forget("{$once}:{$user->id}");
+                }
+
                 return $refusal->getMessage();
             }
         }
