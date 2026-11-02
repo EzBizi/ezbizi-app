@@ -2969,6 +2969,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 167 · Settings › Integrations: Google connections grouped by login — **sent 2026-11-02 (inline mockup) — Jose: "as u recommend" (1)**
+
+Jose via Leads: group Google connections under the login they were made with (account_email, cc3cc5f2d; null = "Unknown login · reconnect to see"). Recommended 1: one collapsible card per login with count, OK / need-reconnect chips, its own search, Reconnect and Disconnect all; unknown-login card last. 2 = flat list with a Login column and login chips. One login can hold dozens of rows (37 from 3 sign-ins on 10-29).
+
 ### 166 · Leads: Facebook, Instagram and WhatsApp in one Meta tab — **sent 2026-11-02 — Jose: "as you recommend" (1 + phone 4)** (`docs/previews/leads-meta-tab-layouts.html`)
 
 Jose 2026-11-02 via Leads: "combine the Facebook - Instagram and Whatsapp Tabs into a Meta Tab, but still keep their individual tags". Recommended 1 + phone 4: Meta in Facebook's rail slot (badge = sum, shown if any of the three is granted); a sub-chip row above the search (All Meta · Facebook · Instagram · WhatsApp, each counted, each only if granted), like the In All row; rows keep their source tag. Client only (?sources=). Tour reuses Messenger's. 2 = rail tree; 3 = Filters tick only.
