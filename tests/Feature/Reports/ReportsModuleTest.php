@@ -42,6 +42,7 @@ class ReportsModuleTest extends TestCase
             'scoring_weights',
             'settings',
             'correct',
+            'handles',
             'library.view',
             'builder.view',
             'experimental.view',
