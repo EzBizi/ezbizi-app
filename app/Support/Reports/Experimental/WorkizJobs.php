@@ -2,6 +2,7 @@
 
 namespace App\Support\Reports\Experimental;
 
+use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Models\WorkizJob;
@@ -152,18 +153,59 @@ final class WorkizJobs
      * Scoring read all of them whoever holds the tab (Jose, 2026-10-15: people
      * assigned to A-1 Chimney "should be able to see it regardless").
      *
-     * @return list<array{id: string, name: string}>
+     * Each says whether the signed-in reader counts it (their Sources ticks).
+     *
+     * @return list<array{id: string, name: string, place: string, included: bool}>
      */
     public function allAccounts(): array
     {
+        $excluded = self::excluded();
+
         return $this->inView()
-            ->map(fn (SocialConnection $c) => ['id' => (string) $c->getKey(), 'name' => (string) $c->display_name])
+            ->map(fn (SocialConnection $c) => [
+                'id' => (string) $c->getKey(),
+                'name' => (string) $c->display_name,
+                'place' => $this->place($c),
+                'included' => ! in_array((string) $c->getKey(), $excluded, true),
+            ])
             ->values()->all();
     }
 
+    /** The accounts the reader counts: their unticked ones left out. */
     public function storedAll(string $since): array
     {
-        return $this->storedFrom($this->inView(), $since);
+        $excluded = self::excluded();
+
+        return $this->storedFrom($this->inView()->reject(fn (SocialConnection $c) => in_array((string) $c->getKey(), $excluded, true)), $since);
+    }
+
+    /** User preference key: the Workiz accounts this person leaves out of Reports. */
+    public const EXCLUDED = 'reports.workiz_excluded';
+
+    /**
+     * The signed-in person's unticked accounts (2026-10-30, review item 12):
+     * a viewing choice, never another person's. Nobody signed in (a
+     * scheduled run): none.
+     *
+     * @return list<string>
+     */
+    public static function excluded(): array
+    {
+        $user = auth()->user();
+
+        return $user instanceof User ? array_values(array_map('strval', (array) ($user->preferences[self::EXCLUDED] ?? []))) : [];
+    }
+
+    /** "Company · Branch" for a branch's account, else its name. */
+    private function place(SocialConnection $c): string
+    {
+        if ($c->scope_type !== SocialConnection::SCOPE_FRANCHISE) {
+            return (string) $c->display_name;
+        }
+        $branch = Franchise::query()->with('company')->find($c->scope_id);
+
+        return $branch === null ? (string) $c->display_name
+            : implode(' · ', array_filter([$branch->company?->name, $branch->name]));
     }
 
     /**

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/hr/payroll_tab.dart';
@@ -57,6 +58,26 @@ void main() {
         .options
         .map((o) => o.label);
     expect(roles, containsAll(['Any role', 'Technician', 'Office manager']));
+  });
+
+  testWidgets('type filters the list and Export downloads the same filters '
+      'as CSV', (tester) async {
+    final asked = <Map<String, String>>[];
+    String? saved;
+    Files.debugOnDownload = (name, _) => saved = name;
+    addTearDown(() => Files.debugOnDownload = null);
+    await _pump(tester, onPayroll: asked.add);
+
+    await tester.tap(find.byKey(const Key('payroll-type-t1099')));
+    await tester.pumpAndSettle();
+    expect(asked.last, {'type': '1099'});
+
+    await tester.tap(find.byKey(const Key('payroll-export')));
+    await tester.pumpAndSettle();
+    expect(asked.last, {'type': '1099', 'format': 'csv'});
+    expect(saved, 'payroll.csv');
+
+    expect(find.byKey(const Key('payroll-type-of-u-dana')), findsOneWidget);
   });
 
   testWidgets('a salary reads as amount, period and since', (tester) async {

@@ -494,7 +494,7 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
                     avatar: CircleAvatar(
                       backgroundColor: PersonColours.of(context, m.name).fill,
                       child: Text(
-                        _initials(m.name),
+                        initials(m.name),
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w800,
@@ -641,18 +641,6 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
       ),
     );
   }
-}
-
-String _initials(String name) {
-  final parts = name
-      .trim()
-      .split(RegExp(r'\s+'))
-      .where((p) => p.isNotEmpty)
-      .toList();
-  if (parts.isEmpty) return '?';
-  if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-  return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
-      .toUpperCase();
 }
 
 /// The side panel that makes a group: which report, its name, who is in it.

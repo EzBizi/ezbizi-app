@@ -54,7 +54,9 @@ class HiddenLeadsTest extends TestCase
         $this->assertNotNull($next->fresh()->hidden_at, 'filed hidden');
 
         $this->inTenant($t['org'], fn () => app(AutomationEngine::class)->deliver($event));
-        $this->assertSame('Not run: this lead is hidden.', AutomationEvent::withoutGlobalScopes()->find($event->id)->last_error);
+        $done = AutomationEvent::withoutGlobalScopes()->find($event->id);
+        $this->assertSame([true, null, null], [$done->delivered_at !== null, $done->failed_at, $done->last_error], 'skipped quietly');
+        $this->assertSame(0, \App\Models\AuditEvent::withoutGlobalScopes()->where('action', 'automation.cascade_stopped')->count());
 
         $this->signedInAs($keeper)->getJson('/api/v1/leads/hidden')->assertOk()
             ->assertJsonPath('data.numbers.0.digits', '5553334444')->assertJsonPath('data.numbers.0.leads', 2);

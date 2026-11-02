@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 
 /// Scheduling › Overbooking (Jose, 2026-09-29: "a new tab on scheduling that
@@ -35,11 +36,6 @@ class _OverbookingPaneState extends State<OverbookingPane> {
   /// the count, and the count may have moved.
   final Map<String, Future<ApiResponse>> _opened = {};
   static const _spans = [7, 14, 30, 60];
-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
 
   int _days = 30;
 
@@ -107,7 +103,7 @@ class _OverbookingPaneState extends State<OverbookingPane> {
 
   static String _day(String ymd) {
     final d = DateTime.parse(ymd);
-    return '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
+    return '${shortWeekdays[d.weekday - 1]}, ${shortMonths[d.month - 1]} ${d.day}';
   }
 
   @override

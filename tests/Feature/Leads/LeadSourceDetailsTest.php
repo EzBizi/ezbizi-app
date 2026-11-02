@@ -62,6 +62,11 @@ class LeadSourceDetailsTest extends TestCase
             [$lead->address, $lead->city, $lead->service, $lead->postal_code, $lead->referral['campaign_name'] ?? null]);
         $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertOk()
             ->assertJsonPath('data.job_type', 'Chimney sweep')->assertJsonPath('data.city', 'Danbury');
+        // The same phone again joins that lead, and fills only what it lacked.
+        $this->inTenant($t['org'], fn () => $lead->forceFill(['address' => null])->save());
+        $this->postJson('/api/v1/web/form', ['key' => $site->public_key, 'name' => 'Ada', 'phone' => '2035550101',
+            'fields' => ['Street Address' => '12 Oak Ave', 'City' => 'Bethel']])->assertCreated();
+        $this->assertSame(['12 Oak Ave', 'Danbury'], $this->inTenant($t['org'], fn () => [Lead::query()->sole()->address, Lead::query()->sole()->city]));
     }
 
     public function test_a_call_line_is_where_it_came_from_and_a_known_customer_names_the_number(): void
@@ -81,5 +86,24 @@ class LeadSourceDetailsTest extends TestCase
             ->assertJsonPath('data.contact_name', 'Pat Lee')
             ->assertJsonPath('data.referral.campaign_name', 'NY - GMB')
             ->assertJsonPath('data.job_type', null);
+    }
+    /** UI-UX, design 159: "Ad question: …" in muted text when the newest message is an ad's preset question. */
+    public function test_the_list_says_when_the_last_message_is_an_ad_question(): void
+    {
+        $t = $this->provisionTenant();
+        $this->inTenant($t['org'], function () use ($t) {
+            $at = now()->startOfSecond();
+            foreach (['+15550000001' => true, '+15550000002' => false] as $phone => $ad) {
+                $lead = Lead::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'source' => Lead::SOURCE_WEBSITE_CHAT,
+                    'remote_id' => $phone, 'phone' => $phone, 'phone_digits' => Lead::digits($phone), 'contact_name' => $phone,
+                    'status' => 'new', 'received_at' => $at, 'last_contact_at' => $at]);
+                \App\Models\LeadConversation::create(['organization_id' => $t['org']->id, 'lead_id' => $lead->id, 'remote_id' => 'm'.$phone,
+                    'channel' => 'MESSAGE', 'participant' => 'CONSUMER', 'occurred_at' => $at, 'text' => 'Is this available?', 'is_ad_question' => $ad]);
+            }
+        });
+
+        $rows = $this->signedInAs($t['admin'])->getJson('/api/v1/leads')->assertOk()->json('data');
+        $this->assertSame(['+15550000001' => true, '+15550000002' => false],
+            collect($rows)->mapWithKeys(fn ($r) => [$r['contact_name'] => $r['last_contact_ad_question']])->sortKeys()->all());
     }
 }

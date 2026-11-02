@@ -46,6 +46,10 @@ live in `docs/previews/`. Jose answers by number.
 
 ---
 
+## Reports review + Performance counts/handles (2026-10-30)
+- Galleries: docs/previews/performance-counts-handles-layouts.html (912ce12a6), docs/previews/reports-ui-review-2026-10-30.html (b0888d292)
+- APPROVED by Jose 10-30: "As you recommend, improve and make the changes, ui-ux wise as well." = A1 + B1 + phone 4, plus review items 1-15. Built by the Reports session.
+
 ## Settled rules
 
 **No answer in 10 minutes means the recommendation.** Jose, 2026-10-06: *"from now on just always go with ur
@@ -2964,6 +2968,30 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 **Why a counting ratchet beat a rule.** A rule saying "read colours from the theme" had been in
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
+
+### 166 · Leads: Facebook, Instagram and WhatsApp in one Meta tab — **sent 2026-11-02 — Jose: "as you recommend" (1 + phone 4)** (`docs/previews/leads-meta-tab-layouts.html`)
+
+Jose 2026-11-02 via Leads: "combine the Facebook - Instagram and Whatsapp Tabs into a Meta Tab, but still keep their individual tags". Recommended 1 + phone 4: Meta in Facebook's rail slot (badge = sum, shown if any of the three is granted); a sub-chip row above the search (All Meta · Facebook · Instagram · WhatsApp, each counted, each only if granted), like the In All row; rows keep their source tag. Client only (?sources=). Tour reuses Messenger's. 2 = rail tree; 3 = Filters tick only.
+
+### 165 · Customer Experience › eKomi screen — **sent 2026-11-02 — Jose: "as you recommend" (1 + phone 4)** (`docs/previews/ekomi-screen-layouts.html`)
+
+Jose 2026-11-02 via Leads: "a whole screen for Ekomi ... check at what a1tools had". Recommended 1 + phone 4: opened in place from Review links › Sources; tabs Overview (snapshot tiles + SRR funnel, certificate link, shared date bar), Requests (search, status/channel chips, Send review request per job), Reviews (existing list filtered source=ekomi), Settings (credentials, Test, auto-request on/off, delay hours, start date). Seal stays in Web. API per Leads: ekomi/overview, ekomi/requests (GET/POST), ekomi/settings, ekomi/test.
+
+### 164 · GBP Listings: WhatsApp in the table, header actions under ⋯ — **sent 2026-11-02 — Jose: "as you recommend" (1 + phone 4)** (`docs/previews/gbp-listings-whatsapp-inline-layouts.html`)
+
+Jose 2026-11-02 via desk: "this section with all the options can be improved, specially the whatsapp stuff ... integrated instead of it leading to a new whole screen." Recommended 1 + phone 4: a WhatsApp column (state chip, click to set one listing), row ticks + "WhatsApp: Missing" filter chip with one action bar (number chips, Set on N, ✓/✗ per row, Retry failed), and Phone check / Check Google / Google connection in one ⋯ menu. This replaces 163's separate screen. Backend is cff96b475 (link per listing or many). 2 = always-visible second header row; 3 = banner only, no column.
+
+### 163 · Business Profile: WhatsApp links in bulk (url_whatsapp) — **sent 2026-10-30 — Jose: "as u recommend" (1 + phone 4)** (`docs/previews/gbp-whatsapp-links-layouts.html`)
+
+Google/Leads asked; endpoints GET business-profile/whatsapp-links + POST .../apply. Recommended 1 + phone 4: bulk action beside Hours in bulk; state chips (Missing/Different/Same/Can't reach) select their rows; Different rows unticked by default with an amber Replace and a preview warning; Can't reach not tickable; side-panel preview, per-row ✓/✗ with retry.
+
+### 162 · Leads: search, status and filters in the list sidebar — **sent 2026-10-30 — Jose: "That's good" (1 + phone 4)** (`docs/previews/leads-list-filters-layouts.html`)
+
+Jose on 161: likes it, except search/status/filters belong on the list sidebar, not the title row. Recommended 1 + phone 4: search + status + Filters on one row, quick filters one scrolling row below; title row back to title only.
+
+### 161 · Leads: details column folded into the header, tighter list rows — **sent 2026-10-29 — Jose: "as u recommend" (1 + T1 + phone 4)** (`docs/previews/leads-header-facts-layouts.html`)
+
+Jose on 0.0.0507: the CONTACT / JOB column is pointless and duplicates the header (phone twice); list avatars sit at the top and name/chips wrap. Recommended 1 + phone 4: one labelled facts line under the name, each field once, form answers behind a fold that skips repeated answers; rows centre the avatar, name ellipsizes before chips wrap.
 
 ### 160 · Leads threads: WhatsApp phone-echo + media, Hidden tab, merged ad form — **sent 2026-10-29 — Jose: "as u recommend" (A1, B1, C1 + phone 4)** (`docs/previews/leads-whatsapp-hidden-form-layouts.html`)
 

@@ -1009,6 +1009,13 @@ Route::prefix('v1')
         Route::get('reviews', [ReviewsController::class, 'index']);
         Route::post('reviews/replies/draft-batch', [ReviewsController::class, 'draftBatch']);
         Route::get('reviews/sources', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'sources']);
+        // The eKomi screen (Jose, 2026-11-02).
+        Route::get('ekomi', [\App\Http\Controllers\Api\EkomiController::class, 'index']);
+        Route::get('ekomi/{connection}/overview', [\App\Http\Controllers\Api\EkomiController::class, 'overview']);
+        Route::get('ekomi/{connection}/requests', [\App\Http\Controllers\Api\EkomiController::class, 'requests']);
+        Route::post('ekomi/{connection}/requests', [\App\Http\Controllers\Api\EkomiController::class, 'ask']);
+        Route::put('ekomi/{connection}/settings', [\App\Http\Controllers\Api\EkomiController::class, 'updateSettings']);
+        Route::post('ekomi/{connection}/test', [\App\Http\Controllers\Api\EkomiController::class, 'test']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
@@ -1054,6 +1061,8 @@ Route::prefix('v1')
         Route::put('business-profile/locations/{location}/auto-reply', \App\Http\Controllers\Api\BusinessProfileAutoReplyController::class);
         // Media, services, phone check (A1 Leads takeover, design 154). Google writes stay behind the write switch.
         Route::get('business-profile/phone-check', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'phoneCheck']);
+        Route::get('business-profile/whatsapp-links', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'whatsappLinks']);
+        Route::post('business-profile/whatsapp-links/apply', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'applyWhatsappLinks']);
         Route::get('business-profile/locations/{location}/media', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'media']);
         Route::post('business-profile/locations/{location}/media/copy', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'copyMedia']);
         Route::get('business-profile/locations/{location}/services', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'services']);
@@ -1444,6 +1453,7 @@ Route::prefix('v1')
 
             // Hand-set facts the phones cannot say (Jose, 2026-10-05).
             Route::put('reports/experimental/people/tag', [ExperimentalCallReportController::class, 'tag']);
+            Route::put('reports/experimental/sources', [ExperimentalCallReportController::class, 'sources']);
             Route::post('reports/experimental/calls/{call}/convert', [ExperimentalCallReportController::class, 'convert']);
         });
 

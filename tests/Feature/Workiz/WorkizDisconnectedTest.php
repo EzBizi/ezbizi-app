@@ -25,7 +25,7 @@ class WorkizDisconnectedTest extends TestCase
     private const COMMANDS = [
         'ezbizi:sync-workiz', 'ezbizi:sync-workiz-team', 'ezbizi:sync-workiz-records', 'ezbizi:sync-workiz-calls',
         'ezbizi:sync-workiz-client-ids', 'ezbizi:import-workiz-leads', 'ezbizi:project-workiz', 'ezbizi:workiz-fill-creators',
-        'ezbizi:workiz-web-payments', 'ezbizi:workiz-web-estimate-links', 'ezbizi:workiz-web-lists', 'ezbizi:workiz-web-job-companies',
+        'ezbizi:workiz-web-payments', 'ezbizi:workiz-web-estimate-links', 'ezbizi:workiz-web-lists', 'ezbizi:workiz-web-job-companies', 'ezbizi:workiz-web-sales',
     ];
 
     private function runEverything(): void

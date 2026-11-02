@@ -98,8 +98,10 @@ class AutomationEngine
                 $event->forceFill(['attempts' => $event->attempts + 1])->save();
                 $subject = $this->subjectOf($event);
                 // Leads › Manage › Hidden (Jose, 2026-10-29): no rule, alert or text acts on a hidden lead.
+                // A quiet skip: no error, no audit row, nothing that names the lead (Automations' review).
                 if ($subject instanceof \App\Models\Lead && $subject->isHidden()) {
-                    $this->stop($event, 'Not run: this lead is hidden.');
+                    $this->finishPending($event, 'Skipped.');
+                    $event->forceFill(['delivered_at' => now()])->save();
 
                     return 0;
                 }

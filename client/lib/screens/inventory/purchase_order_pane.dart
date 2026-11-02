@@ -5,6 +5,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'item_pane.dart';
 
@@ -211,25 +212,12 @@ class _PurchaseOrderPaneState extends State<PurchaseOrderPane> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(widget.showBack ? 8 : 20, 12, 20, 8),
-          child: Row(
-            children: [
-              if (widget.showBack)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back to the list',
-                  onPressed: _busy ? null : widget.onBack,
-                ),
-              Expanded(
-                child: Text(
-                  _order['number'] as String? ?? 'Purchase order',
-                  style: theme.textTheme.titleMedium,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
+        paneHeader(
+          context,
+          _order['number'] as String? ?? 'Purchase order',
+          showBack: widget.showBack,
+          onBack: _busy ? null : widget.onBack,
+          ellipsis: true,
         ),
         Expanded(
           child: SingleChildScrollView(

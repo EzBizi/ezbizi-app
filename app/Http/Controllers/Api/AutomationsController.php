@@ -2389,6 +2389,12 @@ class AutomationsController extends Controller
             $type('publish_reply', 'Publish a reply on Google', true, [
                 $parameter('ai', 'Let AI write it for this review', 'boolean', false),
                 $parameter('message', 'The reply (when AI is not writing it)', 'rich_text', false, variables: true),
+                // Words per star rating (Jose, 2026-11-02); an empty one falls back to the reply above.
+                $parameter('by_rating_5', 'Reply to a 5-star review', 'rich_text', false, variables: true),
+                $parameter('by_rating_4', 'Reply to a 4-star review', 'rich_text', false, variables: true),
+                $parameter('by_rating_3', 'Reply to a 3-star review', 'rich_text', false, variables: true),
+                $parameter('by_rating_2', 'Reply to a 2-star review', 'rich_text', false, variables: true),
+                $parameter('by_rating_1', 'Reply to a 1-star review', 'rich_text', false, variables: true),
             ]),
             $type('onboarding.start', 'Start the onboarding', true, [
                 $parameter('contract_id', 'Which contract', 'contract'),

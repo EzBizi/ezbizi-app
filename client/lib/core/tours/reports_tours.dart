@@ -52,7 +52,7 @@ const Map<String, Tour> reportsTours = {
     ],
   ),
   'reports/Performance': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'call-report-period',
@@ -77,9 +77,11 @@ const Map<String, Tour> reportsTours = {
         body: 'Calls that ended without a job, and the reasons why.',
       ),
       TourStep(
-        anchor: 'labeller',
-        title: 'Reasons by',
-        body: 'Which AI read the calls for the Reason column.',
+        anchor: 'people-search',
+        title: 'Handles',
+        body:
+            'On People: find a person and set whether they handle New, '
+            'Existing or Both kinds of client.',
       ),
       TourStep(
         anchor: 'calls-search',

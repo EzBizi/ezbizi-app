@@ -313,4 +313,32 @@ class WorkizWebSessionTest extends TestCase
             $this->assertNotNull($own->fresh()->external_company_read_at, 'read once, even with no company');
         });
     }
+
+    /** Takeover row 3, 2026-10-29: Workiz's Sales report gives each job's profit and costs; client contacts are not kept. */
+    public function test_the_sales_report_lands_profit_per_job_on_its_ezbizi_job(): void
+    {
+        $this->connected();
+        $job = $this->inTenant($this->t['org'], function () {
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id]);
+            $job = \App\Models\Job::factory()->create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $customer->id]);
+            \App\Models\WorkizJob::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => SocialConnection::query()->first()->id,
+                'remote_id' => 'EE86QS', 'job_id' => $job->id, 'status' => 'Done', 'payload' => [], 'synced_at' => now()]);
+
+            return $job;
+        });
+        Http::fake([
+            'app.workiz.com/ajaxc/franchise/' => Http::response(['flag' => true, 'data' => []]),
+            'app.workiz.com/ajaxc/sales/reportTableData/' => Http::response(['flag' => true, 'aaData' => [
+                ['job_id' => '45547272', 'job_uuid' => 'EE86QS', 'total_price' => '907.14', 'cost' => '120.00', 'profit' => '787.14', 'status' => 'Done',
+                    'job_date' => '2026-09-12 09:00:00', 'first_name' => 'Pat', 'primary_phone' => '5550100'],
+                ['isTotalsRow' => true, 'profit' => 787.14],
+            ]]),
+        ]);
+
+        $this->artisan('ezbizi:workiz-web-sales', ['--from' => '2026-09-01', '--to' => '2026-09-30'])->expectsOutputToContain('1 Workiz sale row(s) read.')->assertSuccessful();
+
+        $sale = $this->inTenant($this->t['org'], fn () => WorkizRecord::query()->where('type', 'web_sale')->sole());
+        $this->assertSame(['WS-45547272', '787.14', $job->id, '907.14'], [$sale->remote_id, $sale->payload['profit'], $sale->job_id, $sale->amount]);
+        $this->assertArrayNotHasKey('primary_phone', $sale->payload);
+    }
 }

@@ -118,13 +118,18 @@ void main() {
 
   test('colours, and none is a job marker colour', () {
     expect(FieldPersonState.notReported.colour, EzBiziTheme.fieldRed);
-    expect(FieldPersonState.lostSignal.colour, EzBiziTheme.fieldRed);
+    expect(FieldPersonState.lostSignal.colour, EzBiziTheme.fieldYellow);
+    expect(FieldPersonState.lostSignal.tone, Tone.caution);
+    expect(FieldPersonState.notReported.tone, Tone.bad);
     expect(FieldPersonState.offline.colour, EzBiziTheme.fieldSlate);
     expect(FieldPersonState.ongoing.colour, EzBiziTheme.fieldGreen);
     expect(FieldPersonState.stopped.colour, EzBiziTheme.fieldPurple);
+    // Unassigned jobs are colorScheme.outline since 2026-10-30, so yellow
+    // is free for lost signal.
     final jobColours = {
       EzBiziTheme.fieldBlue,
-      EzBiziTheme.fieldYellow,
+      EzBiziTheme.light().colorScheme.outline,
+      EzBiziTheme.dark().colorScheme.outline,
       EzBiziTheme.light().colorScheme.onSurface,
       EzBiziTheme.dark().colorScheme.onSurface,
     };
@@ -133,19 +138,19 @@ void main() {
     }
   });
 
-  test('sort: attention first, then name', () {
+  test('sort: reporting, stopped, lost signal, not reported, then name', () {
     final sorted = fieldSortByAttention([
       _person('a', 'Zed Green'),
       _person('b', 'amy Green'),
       ..._people,
     ]).map((p) => (p['user'] as Map)['name']).toList();
     expect(sorted, [
-      'Ray Never',
-      'Sam Silent',
-      'Pat Parked',
       'amy Green',
       'Gina Green',
       'Zed Green',
+      'Pat Parked',
+      'Sam Silent',
+      'Ray Never',
       'Olly Off',
     ]);
   });

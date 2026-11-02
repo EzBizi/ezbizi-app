@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
-import 'dashboard_chart.dart';
 
 /// The pieces a module's General tab is built from (Inventory and Fleet,
 /// Mia 2026-10-02: "a main tab ... which is basically a dashboard"). The
@@ -165,84 +164,6 @@ class OverviewSection extends StatelessWidget {
   }
 }
 
-/// One thing that needs attention. A null [onTap] is text.
-class OverviewWarning {
-  const OverviewWarning({
-    required this.sentence,
-    this.tone = Tone.caution,
-    this.onTap,
-  });
-
-  final String sentence;
-  final Tone tone;
-  final VoidCallback? onTap;
-}
-
-/// The server's warnings in the server's order; none is a sentence, not an
-/// empty box.
-class OverviewWarnings extends StatelessWidget {
-  const OverviewWarnings({super.key, required this.warnings});
-
-  final List<OverviewWarning> warnings;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    if (warnings.isEmpty) {
-      return Row(
-        children: [
-          Icon(
-            Icons.check_circle_outline,
-            color: ToneColours.of(context, Tone.ok).ink,
-          ),
-          const SizedBox(width: 8),
-          const Expanded(child: Text('Nothing needs attention.')),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final warning in warnings)
-          InkWell(
-            onTap: warning.onTap,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 44),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    Icon(
-                      warning.tone == Tone.bad
-                          ? Icons.error_outline
-                          : Icons.warning_amber_rounded,
-                      size: 20,
-                      color: ToneColours.of(context, warning.tone).ink,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        warning.sentence,
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ),
-                    if (warning.onTap != null)
-                      Icon(
-                        Icons.chevron_right,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 /// Week / month / quarter / year, the Dashboard's own vocabulary.
 class OverviewPeriodPicker extends StatelessWidget {
   const OverviewPeriodPicker({
@@ -271,116 +192,6 @@ class OverviewPeriodPicker extends StatelessWidget {
       ],
       selected: {period},
       onSelectionChanged: (value) => onChanged(value.first),
-    );
-  }
-}
-
-/// Lines over the server's buckets, drawn by the Dashboard's own chart.
-///
-/// [lines] are (label, points) index-aligned with [buckets]. Nothing to draw
-/// is a sentence.
-class OverviewTrend extends StatelessWidget {
-  const OverviewTrend({
-    super.key,
-    required this.buckets,
-    required this.lines,
-    this.emptySentence = 'Nothing happened in this period.',
-  });
-
-  final List<String> buckets;
-  final List<(String, List<num>)> lines;
-  final String emptySentence;
-
-  @override
-  Widget build(BuildContext context) {
-    final anything = lines.any((line) => line.$2.any((v) => v != 0));
-
-    if (buckets.isEmpty || !anything) {
-      return Text(
-        emptySentence,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-      );
-    }
-
-    return DashboardChart(
-      presentation: 'line',
-      series: [
-        for (final (label, points) in lines)
-          {
-            'label': label,
-            'points': [
-              for (var i = 0; i < buckets.length && i < points.length; i++)
-                {'at': buckets[i], 'value': points[i]},
-            ],
-          },
-      ],
-    );
-  }
-}
-
-/// A list of `{label, value}` pairs as label ..... value rows.
-class OverviewBreakdown extends StatelessWidget {
-  const OverviewBreakdown({super.key, required this.rows});
-
-  final List<(String, String)> rows;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      children: [
-        for (final (label, value) in rows)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-                Text(
-                  value,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-/// Two blocks side by side on a desktop, stacked on a phone.
-class OverviewPair extends StatelessWidget {
-  const OverviewPair({super.key, required this.first, required this.second});
-
-  final Widget first;
-  final Widget second;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, box) {
-        if (box.maxWidth < 900) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [first, const SizedBox(height: 16), second],
-          );
-        }
-
-        // Not IntrinsicHeight: the chart lays out with a LayoutBuilder,
-        // which cannot answer an intrinsic size.
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(flex: 3, child: first),
-            const SizedBox(width: 16),
-            Expanded(flex: 2, child: second),
-          ],
-        );
-      },
     );
   }
 }

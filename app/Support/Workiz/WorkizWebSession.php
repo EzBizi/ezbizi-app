@@ -2,9 +2,11 @@
 
 namespace App\Support\Workiz;
 
+use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
-use App\Support\Social\SocialProvider;
+use App\Support\Social\MetaAdInsights;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
@@ -147,7 +149,7 @@ final class WorkizWebSession
         // Another reader holds the login (payments, estimate links and lists share it): this account waits for the next run.
         try {
             return self::locked($connection, $account, $read);
-        } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+        } catch (LockTimeoutException) {
             return ['data' => null, 'refused' => self::BUSY];
         }
     }
@@ -190,12 +192,12 @@ final class WorkizWebSession
 
         $branches = Franchise::query()
             ->when($connection->scope_type === SocialConnection::SCOPE_COMPANY,
-                fn ($q) => $q->whereIn('company_id', \App\Models\Company::find($connection->scope_id)?->subtreeCompanyIds() ?? []))
+                fn ($q) => $q->whereIn('company_id', Company::find($connection->scope_id)?->subtreeCompanyIds() ?? []))
             ->get();
 
         // "A1 Chimney - CT": Workiz names A-1's accounts by state code.
-        $tail = trim((string) strrchr('-'.$name, '-'), "- 	");
-        $names = array_filter([$name, \App\Support\Social\MetaAdInsights::STATES[strtoupper($tail)] ?? null]);
+        $tail = trim((string) strrchr('-'.$name, '-'), '- 	');
+        $names = array_filter([$name, MetaAdInsights::STATES[strtoupper($tail)] ?? null]);
 
         return $branches->filter(fn (Franchise $f) => trim($f->name) !== ''
             && collect($names)->contains(fn (string $n) => stripos($n, trim($f->name)) !== false))
@@ -224,10 +226,5 @@ final class WorkizWebSession
     private static function cookieHeader(array $cookies): string
     {
         return implode('; ', array_map(fn ($k, $v) => $k.'='.$v, array_keys($cookies), $cookies));
-    }
-
-    public static function isConnection(SocialConnection $connection): bool
-    {
-        return $connection->provider === SocialProvider::WorkizWeb->value;
     }
 }

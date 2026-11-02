@@ -86,9 +86,6 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
     );
   }
 
-  static String _day(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
   @override
   void initState() {
     super.initState();
@@ -126,8 +123,8 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
   }
 
   Map<String, String> get _range => {
-    'from': _day(_span.from),
-    'to': _day(_span.to),
+    'from': formatCalendarDay(_span.from),
+    'to': formatCalendarDay(_span.to),
   };
 
   Future<void> _load() async {
@@ -137,7 +134,7 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
     final ApiResponse response;
     if (open.text) {
       response = await widget.api.get('/reports/texts/${open.key}', {
-        'date': _day(_span.to),
+        'date': formatCalendarDay(_span.to),
         'franchise_id': ?_branch,
       });
     } else if (open.key == 'meta') {
@@ -209,7 +206,7 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
       {
         'user_ids': [me.id],
         'franchise_id': ?_branch,
-        'date': _day(_span.to),
+        'date': formatCalendarDay(_span.to),
       },
     );
     if (!mounted) return;

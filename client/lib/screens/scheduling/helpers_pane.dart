@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
@@ -32,13 +33,8 @@ Tone _slotTone(String slot) => switch (slot) {
 /// both halves.
 List<String> _collides(String slot) => slot == 'full' ? _slots : ['full', slot];
 
-String _ymd(DateTime d) =>
-    '${d.year}-${d.month.toString().padLeft(2, '0')}-'
-    '${d.day.toString().padLeft(2, '0')}';
-
 String _first(Object? name) => '${name ?? ''}'.trim().split(' ').first;
 
-const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const _monthNames = [
   'January', 'February', 'March', 'April', 'May', 'June', //
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -46,7 +42,7 @@ const _monthNames = [
 
 String _dayTitle(String ymd) {
   final d = DateTime.parse(ymd);
-  return '${_weekdays[d.weekday - 1]} ${d.day} '
+  return '${shortWeekdays[d.weekday - 1]} ${d.day} '
       '${_monthNames[d.month - 1].substring(0, 3)}';
 }
 
@@ -200,8 +196,8 @@ class _HelpersPaneState extends State<HelpersPane> {
   String get _shownDay =>
       _day ??
       (_today.year == _month.year && _today.month == _month.month
-          ? _ymd(_today)
-          : _ymd(_month));
+          ? formatCalendarDay(_today)
+          : formatCalendarDay(_month));
 
   Map<String, List<_Row>> get _byDay {
     final days = <String, List<_Row>>{};
@@ -525,7 +521,7 @@ class _HelpersPaneState extends State<HelpersPane> {
       children: [
         Row(
           children: [
-            for (final d in _weekdays)
+            for (final d in shortWeekdays)
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -574,7 +570,7 @@ class _HelpersPaneState extends State<HelpersPane> {
   }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final ymd = _ymd(date);
+    final ymd = formatCalendarDay(date);
     final booked = byDay[ymd] ?? const <_Row>[];
     final weekend = date.weekday >= DateTime.saturday;
     final isToday = date == _today;

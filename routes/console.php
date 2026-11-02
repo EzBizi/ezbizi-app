@@ -184,9 +184,11 @@ Schedule::command('ezbizi:sync-workiz-calls')->everyTenMinutes()->withoutOverlap
 Schedule::command('ezbizi:workiz-web-payments')->everyThirtyMinutes()->withoutOverlapping(30);
 // At :15 and :45, beside the payments read at :00 and :30: one login, one switch at a time (measured 2026-10-29: 90 s for 10 accounts).
 Schedule::command('ezbizi:workiz-web-estimate-links')->cron('15,45 * * * *')->withoutOverlapping(30);
-Schedule::command('ezbizi:workiz-web-lists')->hourly()->withoutOverlapping(60);
+Schedule::command('ezbizi:workiz-web-lists')->cron('10 * * * *')->withoutOverlapping(60);
 // Each job's external company, which Workiz's Sources report credits (100 per account per run, :50).
 Schedule::command('ezbizi:workiz-web-job-companies')->cron('50 * * * *')->withoutOverlapping(60);
+// Workiz's Sales report: profit and costs per job, the last 7 days refreshed (:20 and :40).
+Schedule::command('ezbizi:workiz-web-sales')->cron('20,40 * * * *')->withoutOverlapping(30);
 // A newly connected Workiz account's whole history, paced and resumable.
 Schedule::command('ezbizi:backfill-workiz --pending --since=2000-01-01 --pages=20 --pause=5')->everyFiveMinutes()->withoutOverlapping(60);
 
@@ -258,6 +260,8 @@ Schedule::command('scheduling:warn-overbooking')->dailyAt('07:00')->timezone('Am
 Schedule::command('scheduling:warn-underfilled')->hourlyAt(2);
 // job.estimate_aging, once a day (Jose's Project Management rule 2, 2026-10-21).
 Schedule::command('jobs:emit-estimate-aging')->dailyAt('08:10')->timezone('America/New_York')->withoutOverlapping(60);
+// Mirrored jobs keep Workiz's type, sub-status and tags where nobody set them (review 2026-11-02: 2,174 jobs had none).
+Schedule::command('jobs:backfill-workiz-labels')->hourly()->withoutOverlapping(30);
 // The paid-not-started warning (Jose, 2026-10-22): daily, to each company's address.
 Schedule::command('jobs:warn-paid-not-started')->dailyAt('08:20')->timezone('America/New_York')->withoutOverlapping(60);
 
@@ -403,6 +407,8 @@ Schedule::command('ezbizi:leads-link-profiles')->dailyAt('05:40')->timezone('Ame
 // Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
 Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
 Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);
+Schedule::command('ezbizi:ekomi-reviews sync')->cron('50 */6 * * *')->withoutOverlapping(60);
+Schedule::command('ezbizi:ekomi-requests')->everyFifteenMinutes()->withoutOverlapping(30);
 // Complaints from bad reviews, Bad Ratings and complaint calls (2026-10-20).
 Schedule::command('ezbizi:complaints-intake')->everyMinute()->withoutOverlapping(5);
 // Google's daily counts per listing, the last ten days re-read (2026-10-20).

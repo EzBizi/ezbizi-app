@@ -445,11 +445,17 @@ class LeadsController extends Controller
 
         $viewers = LeadPresence::others(array_map(fn (Lead $l) => (string) $l->id, $leads->items()), $user);
 
+        // The preview is an ad's preset question (Meta's is_ad_question): the list says so in muted text.
+        $adAsked = LeadConversation::query()->whereIn('lead_id', array_map(fn (Lead $l) => $l->id, $leads->items()))
+            ->where('is_ad_question', true)->selectRaw('lead_id, MAX(occurred_at) as at')->groupBy('lead_id')->pluck('at', 'lead_id');
+
         return response()->json([
             'data' => array_map(fn (Lead $l) => [
                 ...$this->present($l),
                 // Who else has it open right now (Jose, 2026-09-29).
                 'viewers' => $viewers[(string) $l->id] ?? [],
+                'last_contact_ad_question' => isset($adAsked[$l->id]) && $l->last_contact_at !== null
+                    && Carbon::parse($adAsked[$l->id])->equalTo($l->last_contact_at),
                 'customer' => ($c = $customers[self::tenDigits($l->phone_digits)] ?? null) === null
                     ? null
                     : ['id' => $c->id, 'number' => $c->number, 'name' => $c->name],

@@ -9,6 +9,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/ai_mark.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
+import 'experimental_call_report.dart';
 import 'report_dates.dart';
 import 'scoring_person_calls.dart';
 import '../../widgets/side_panel.dart';
@@ -34,7 +35,12 @@ class ScoringReport extends StatefulWidget {
     required this.formats,
     this.now,
     this.canWeigh = false,
+    this.span,
   });
+
+  /// The range from the Reports screen's shared date bar (review item 14);
+  /// with it, this tab draws no date bar of its own.
+  final DateSpan? span;
 
   final ApiClient api;
   final DisplayFormats formats;
@@ -144,9 +150,18 @@ class _ScoringReportState extends State<ScoringReport> {
 
   // Yesterday by default (Jose, 2026-10-14: "have the default time be
   // yesterday instead of 1 month").
-  late DateSpan _span = DateSpan.single(
-    DateTime(_today.year, _today.month, _today.day - 1),
-  );
+  late DateSpan _span =
+      widget.span ??
+      DateSpan.single(DateTime(_today.year, _today.month, _today.day - 1));
+
+  @override
+  void didUpdateWidget(ScoringReport old) {
+    super.didUpdateWidget(old);
+    if (widget.span != null && widget.span != old.span) {
+      setState(() => _span = widget.span!);
+      _load();
+    }
+  }
 
   bool _loading = true;
   String? _error;
@@ -184,6 +199,26 @@ class _ScoringReportState extends State<ScoringReport> {
     if (saved == true && mounted) _load();
   }
 
+  /// The Workiz accounts its jobs are read from, ticked or not (Sources).
+  List<dynamic> _accounts = const [];
+
+  Map<String, dynamic> get _sources => {
+    'workiz_accounts': _accounts,
+    'workiz_failed': const {},
+    'workiz_unreachable': const [],
+  };
+
+  /// Performance's Sources panel; Scoring reads the same accounts.
+  void _openSources() => showWorkizSources(
+    context,
+    api: widget.api,
+    report: _sources,
+    reload: () async {
+      await _load();
+      return _sources;
+    },
+  );
+
   Future<void> _load() async {
     final ticket = ++_request;
     setState(() {
@@ -212,6 +247,8 @@ class _ScoringReportState extends State<ScoringReport> {
         return;
       }
       final team = _read(now.body);
+      _accounts =
+          ((now.body['data'] as Map?)?['workiz_accounts'] as List?) ?? const [];
       // The dates before only feed the arrows; failing there costs nothing else.
       if (responses[1].ok) {
         final earlier = _read(responses[1].body);
@@ -330,13 +367,15 @@ class _ScoringReportState extends State<ScoringReport> {
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (workizLeftOut(_sources) case final left when left > 0)
+              LeftOutStrip(left: left, onChange: _openSources),
             Wrap(
               spacing: 12,
               runSpacing: 8,
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                dates,
+                if (widget.span == null) dates,
                 if (open == null && team != null && team.people.isNotEmpty)
                   // Standard field height, as tall as Leads search (Jose, 2026-10-27).
                   SizedBox(
@@ -961,14 +1000,9 @@ class _DetailState extends State<_Detail> {
   /// Weekly first: a week of calls says more than one day's.
   bool _weekly = true;
 
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
   static String _day(Object? ymd) {
     final d = ymd is String ? DateTime.tryParse(ymd) : null;
-    return d == null ? '' : '${_months[d.month - 1]} ${d.day}';
+    return d == null ? '' : '${shortMonths[d.month - 1]} ${d.day}';
   }
 
   @override

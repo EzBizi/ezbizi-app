@@ -67,16 +67,7 @@ enum MailboxProvider: string
             self::GmailOAuth => 'Google (recommended)',
             self::GmailWorkspace => 'Google Workspace',
             self::MicrosoftOauth => 'Microsoft 365',
-            self::Imap       => 'IMAP',
-        };
-    }
-
-    /** Does connecting this one mean storing a password rather than a token? */
-    public function storesAPassword(): bool
-    {
-        return match ($this) {
-            self::GmailOAuth, self::GmailWorkspace, self::MicrosoftOauth => false,
-            self::Imap                             => true,
+            self::Imap => 'IMAP',
         };
     }
 
@@ -91,7 +82,7 @@ enum MailboxProvider: string
     {
         return match ($this) {
             self::GmailOAuth, self::GmailWorkspace, self::MicrosoftOauth => false,
-            self::Imap                             => true,
+            self::Imap => true,
         };
     }
 
@@ -112,7 +103,7 @@ enum MailboxProvider: string
             self::MicrosoftOauth => 'Connect a shared Outlook address, not a person\'s own '
                 .'mailbox — this module is for team inboxes. Microsoft 365 has to be set up '
                 .'on this installation first.',
-            self::Imap       => 'Connecting by IMAP means storing the mailbox password here, '
+            self::Imap => 'Connecting by IMAP means storing the mailbox password here, '
                 .'and for most mail services that is the account password — the same one that '
                 .'opens everything else on that account. If this address is on Google, connect '
                 .'it with Google instead: that hands over a key for mail only, and it can be '
@@ -132,10 +123,10 @@ enum MailboxProvider: string
     public function connectsBy(): string
     {
         return match ($this) {
-            self::GmailOAuth      => 'sign_in',
-            self::GmailWorkspace  => 'directory',
-            self::MicrosoftOauth  => 'sign_in',
-            self::Imap            => 'password',
+            self::GmailOAuth => 'sign_in',
+            self::GmailWorkspace => 'directory',
+            self::MicrosoftOauth => 'sign_in',
+            self::Imap => 'password',
         };
     }
 

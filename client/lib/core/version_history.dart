@@ -14,6 +14,85 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0514',
+      date: '2 Nov 2026',
+      items: [
+        'Customer Experience › GBP Listings: switching on auto-reply now answers new Google reviews by itself, with a reply for each star rating; the rule shows in Automations, where one switch turns it off everywhere.',
+        'WhatsApp links: pick which WhatsApp number to use, and set it on one listing or many at once.',
+        'Customer Experience › Review links: eKomi opens its own screen with Overview, Requests, Reviews and Settings, including automatic review requests (off until switched on).',
+        'Human Resources › Payroll: W-2 / 1099 filter, the company and branch of each person, and Export.',
+        'Leads: Unread filter removed, Unreplied and Starred have icons, and the search, status and Filters controls are one height.',
+        'Project Management - 2: a job with no price shows \$0.00 instead of a dash.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0513',
+      date: '30 Oct 2026',
+      items: [
+        'Reports › Performance: counts say what they count (calls in and out, inbound, other line), each person can be set to handle New, Existing or Both, and People, Not booked and Missed have search; Missed includes voicemail.',
+        'Reports: one date bar on every tab, Last 7 days by default and kept as you switch tabs; on phones it shows the dates in full.',
+        'Reports › Sources: each person ticks which Workiz accounts their figures count; nothing is disconnected there any more (manage connections in Settings › Integrations).',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0512',
+      date: '30 Oct 2026',
+      items: [
+        'Phone app: download buttons work; PDFs open the share sheet so you can save or send them.',
+        'Business Profile: the bulk WhatsApp link waits until each company has its own number chosen.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0511',
+      date: '30 Oct 2026',
+      items: [
+        'Leads: status chips are no longer cut off beside short names, and the star stays at the end of each row.',
+        'Behind the scenes: about 7,000 lines of unused code removed.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0510',
+      date: '30 Oct 2026',
+      items: [
+        'Field map: people who are reporting are listed first, lost signal is yellow, and unassigned jobs are grey.',
+        'Business Profile: add the WhatsApp chat link to many listings at once, with a preview before applying.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0509',
+      date: '30 Oct 2026',
+      items: [
+        'Leads: search, status and filters are back at the top of the lead list; quick filters and Mark all read share one scrolling row.',
+        'Dashboard, Automations, Reports, Suggestions and Project management: the page starts right under the title.',
+        'Automations: an answered phone call no longer counts as a customer reply, so it no longer sends the after-hours auto-reply.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0508',
+      date: '29 Oct 2026',
+      items: [
+        'Leads: the conversation gets most of the screen; the lead facts sit in the header, notes are a chip, status and Book are on the name row, and quick replies scroll in one line.',
+        'Every module: the page title row is slimmer; the description moved behind the help icon and the module\'s tools sit on the right.',
+        'Workiz: each job\'s sales (profit, cost, labour, card fees, parts, paid) are read into EzBizi.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0507',
+      date: '29 Oct 2026',
+      items: [
+        'WhatsApp: voice notes, photos, videos and documents play in the lead thread (streamed, never stored), and replies typed on the phone show as "Sent from phone".',
+        'WhatsApp: leads are named from the WhatsApp profile or the name saved in the Business app.',
+        'Leads: a Meta form and the Messenger or Instagram chat it opens are one lead, with the form answers shown in the details.',
+        'Leads: ad and campaign details on WhatsApp, Messenger, Instagram and form leads; Instagram username and picture; website address, city and service; Thumbtack details; caller names on RingCentral calls.',
+        'Leads: Manage → Hidden hides a conversation or a number from everyone without access, including search, counts, automations and AI.',
+        'Business Profile: a newly connected account loads its listings straight away.',
+        'Reviews: eKomi reviews appear in Reviews and Sources.',
+        'Reports: jobs done by an outside company count under that company.',
+        'Automations: job changes reach Workiz through the same mirror as the rest of EzBizi.',
+        'Desktop: screenshots and computer specs work again (the app no longer reports shutting down at launch).',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0506',
       date: '29 Oct 2026',
       items: [

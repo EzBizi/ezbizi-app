@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 
@@ -498,10 +499,6 @@ class _HrOverviewState extends State<HrOverview> {
     );
     final joined = months.fold<int>(0, (s, r) => s + _int(r['joined']));
     final left = months.fold<int>(0, (s, r) => s + _int(r['left']));
-    const names = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
 
     // A share of the room above the month's name, so a taller font takes
     // it from the bars rather than overflowing the card.
@@ -544,7 +541,7 @@ class _HrOverviewState extends State<HrOverview> {
                     );
                     final name = month == null || month < 1 || month > 12
                         ? ''
-                        : names[month - 1];
+                        : shortMonths[month - 1];
                     return Column(
                       children: [
                         Expanded(

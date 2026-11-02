@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/theme.dart';
 import '../core/timestamps.dart';
@@ -120,21 +121,6 @@ class RangePreset {
   }
 }
 
-const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const _months = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
 const _monthNames = [
   'January',
   'February',
@@ -160,10 +146,10 @@ String dayWords(
 }) {
   final dayFirst = formats.dateParts.first == DatePart.day;
   final date = dayFirst
-      ? '${d.day} ${_months[d.month - 1]}'
-      : '${_months[d.month - 1]} ${d.day}';
+      ? '${d.day} ${shortMonths[d.month - 1]}'
+      : '${shortMonths[d.month - 1]} ${d.day}';
   final year = d.year == today.year ? '' : ', ${d.year}';
-  return weekday ? '${_weekdays[d.weekday - 1]}, $date$year' : '$date$year';
+  return weekday ? '${shortWeekdays[d.weekday - 1]}, $date$year' : '$date$year';
 }
 
 /// The dates in words: "Tue, Oct 6", "Mon, Oct 5 – today", "Sep 1 – Sep 30".
@@ -200,7 +186,15 @@ class DateRangeBar extends StatelessWidget {
     this.onPrevious,
     this.onNext,
     this.expand = false,
+    this.phone = false,
   });
+
+  /// Phone width: no period name, the dates in full.
+  final bool phone;
+
+  /// Below this a phone's row has no room for "Custom" beside the dates,
+  /// the arrows and a refresh.
+  static const double _customFits = 430;
 
   final DateSpan span;
   final DateTime today;
@@ -220,6 +214,10 @@ class DateRangeBar extends StatelessWidget {
     final theme = Theme.of(context);
     final title = spanTitle(span, today);
     final unit = span.days == 1 ? 'day' : '${span.days} days';
+    final showTitle =
+        !phone ||
+        (RangePreset.matching(span, today) == null &&
+            MediaQuery.sizeOf(context).width >= _customFits);
 
     final button = OutlinedButton(
       key: const Key('date-range-button'),
@@ -240,13 +238,18 @@ class DateRangeBar extends StatelessWidget {
             color: theme.colorScheme.primary,
           ),
           const SizedBox(width: 8),
-          Text(
-            title,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w800,
+          // A phone leaves the period's name to the quick buttons and shows
+          // the dates whole (UI-UX, 2026-10-30); "Custom" only where it fits.
+          if (showTitle) ...[
+            Text(
+              title,
+              key: const Key('date-range-title'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
+            const SizedBox(width: 8),
+          ],
           // One flexible child only: a second would take half the row
           // whether it needed it or not, and cut the dates short.
           Flexible(
@@ -254,7 +257,8 @@ class DateRangeBar extends StatelessWidget {
             child: Text(
               spanWords(span, today, formats),
               key: const Key('date-range-words'),
-              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              overflow: phone ? TextOverflow.visible : TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -388,8 +392,16 @@ class _DateRangePanelState extends State<DateRangePanel> {
     return null;
   }
 
+  /// Escape closes the picker on every report tab (review 2026-10-30, 14).
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {
+      const SingleActivator(LogicalKeyboardKey.escape): widget.onCancel,
+    },
+    child: Focus(autofocus: true, child: _panel(context)),
+  );
+
+  Widget _panel(BuildContext context) {
     final theme = Theme.of(context);
     final presets = _presets(context);
     final problem = _problem;

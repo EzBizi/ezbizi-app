@@ -359,7 +359,7 @@ class BuildZipMapTest extends TestCase
      * ignores `start_date` and hands back roughly the next hundred upcoming
      * appointments — so A-1's eighteen months of evidence exists only in A1
      * Tools' own store. It comes in as a file, the same way
-     * `fleet:import-a1-tools` and `scheduling:import-a1-areas` do, and lands
+     * `scheduling:import-a1-areas` does, and lands
      * under its own source word so the two derivations stay distinguishable.
      */
     public function test_it_builds_the_map_from_an_a1_tools_export(): void

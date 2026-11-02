@@ -580,6 +580,28 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
+  'leads/Hidden': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'hidden-search',
+        title: 'Hidden conversations',
+        body:
+            'Conversations and numbers kept from everyone without this '
+            'permission. Search by name or number.',
+      ),
+      TourStep(
+        anchor: 'hidden-list',
+        title: 'Who is hidden',
+        body: 'Who hid each one, when and why. Unhide, or stop hiding a number.',
+      ),
+      TourStep(
+        anchor: 'hide-number-open',
+        title: 'Hide a number',
+        body: 'Hide a number before it ever writes in, with a reason.',
+      ),
+    ],
+  ),
   'leads/Dashboard': Tour(
     version: 1,
     steps: [

@@ -68,21 +68,6 @@ DateTime snoozeNextWeek(DateTime now) {
   return DateTime(now.year, now.month, now.day + (days == 0 ? 7 : days), 8);
 }
 
-const _months = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
-
 /// "10:24 AM" today, "Oct 21" this year, the organization's date otherwise.
 String inboxStamp(String? iso, DisplayFormats formats, {DateTime? now}) {
   final at = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
@@ -91,7 +76,7 @@ String inboxStamp(String? iso, DisplayFormats formats, {DateTime? now}) {
   if (at.year == today.year && at.month == today.month && at.day == today.day) {
     return formats.formatTime(at.hour, at.minute);
   }
-  if (at.year == today.year) return '${_months[at.month - 1]} ${at.day}';
+  if (at.year == today.year) return '${shortMonths[at.month - 1]} ${at.day}';
   return formats.formatDate(at);
 }
 

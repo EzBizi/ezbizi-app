@@ -9,11 +9,12 @@ import 'package:flutter_test/flutter_test.dart';
 /// The two are one design with one deliberate difference, and that difference
 /// is the thing worth holding still in a test.
 void main() {
-  testWidgets('a desktop shows the subtitle', (tester) async {
+  // Design 161 T1: the subtitle is the (i) tooltip beside the title.
+  testWidgets('a desktop shows the subtitle as the (i) tooltip', (tester) async {
     await _pump(tester, width: 1200);
 
     expect(find.text('Human Resources'), findsOneWidget);
-    expect(find.text('Everyone on the books.'), findsOneWidget);
+    expect(find.byTooltip('Everyone on the books.'), findsOneWidget);
   });
 
   testWidgets('a phone shows the title and drops the subtitle', (tester) async {

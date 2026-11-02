@@ -10,6 +10,71 @@ import 'package:flutter_test/flutter_test.dart';
 /// Today is Tuesday, October 6, 2026 throughout. Weeks run Monday to Sunday,
 /// as the server counts them.
 void main() {
+  // UI-UX, 2026-10-30: a phone shows the dates whole, without the period's
+  // name; "Custom" only where it fits.
+  Future<void> phoneBar(
+    WidgetTester tester,
+    DateSpan span,
+    double width,
+  ) async {
+    tester.view.physicalSize = Size(width, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: Row(
+            children: [
+              Expanded(
+                child: DateRangeBar(
+                  span: span,
+                  today: DateTime(2026, 10, 30),
+                  formats: DisplayFormats.fallback,
+                  open: false,
+                  onToggle: () {},
+                  expand: true,
+                  phone: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  testWidgets('a phone drops the period name and keeps the dates whole', (
+    tester,
+  ) async {
+    await phoneBar(
+      tester,
+      DateSpan(DateTime(2026, 10, 24), DateTime(2026, 10, 30)),
+      390,
+    );
+    expect(find.byKey(const Key('date-range-title')), findsNothing);
+    final words = tester.widget<Text>(
+      find.byKey(const Key('date-range-words')),
+    );
+    expect(words.overflow, isNot(TextOverflow.ellipsis));
+
+    // A custom range on a narrow phone: the dates alone.
+    await phoneBar(
+      tester,
+      DateSpan(DateTime(2026, 10, 2), DateTime(2026, 10, 9)),
+      390,
+    );
+    expect(find.byKey(const Key('date-range-title')), findsNothing);
+
+    // Room enough: "Custom" comes back.
+    await phoneBar(
+      tester,
+      DateSpan(DateTime(2026, 10, 2), DateTime(2026, 10, 9)),
+      500,
+    );
+    expect(find.text('Custom'), findsOneWidget);
+  });
+
   final today = DateTime(2026, 10, 6, 15, 30);
   const us = DisplayFormats(dateFormat: 'M/D/YYYY', timeFormat: '12h');
   const dayFirst = DisplayFormats(dateFormat: 'D/M/YYYY', timeFormat: '24h');

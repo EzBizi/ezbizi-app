@@ -7,6 +7,7 @@ import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../widgets/ai_mark.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
@@ -191,9 +192,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     super.dispose();
   }
 
-  static String _ymd(DateTime d) =>
-      '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
-
   DateTime? get _from {
     final days = _days;
     if (days == null) return null;
@@ -218,7 +216,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       else if (_rating != 'any')
         'rating': _rating,
       if (_low) 'per_page': '200',
-      if (from != null) 'from': _ymd(from),
+      if (from != null) 'from': formatCalendarDay(from),
       if (_sort != 'newest') 'sort': _sort,
       'location': ?_location,
       if (_matched != 'any') 'matched': _matched,
@@ -271,7 +269,10 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     final lastMonth = DateTime(now.year, now.month - 1);
 
     final responses = await Future.wait([
-      widget.api.get('/reviews', {'from': _ymd(lastMonth), 'per_page': '200'}),
+      widget.api.get('/reviews', {
+        'from': formatCalendarDay(lastMonth),
+        'per_page': '200',
+      }),
       for (final stars in const ['1', '2'])
         widget.api.get('/reviews', {
           'answered': 'no',

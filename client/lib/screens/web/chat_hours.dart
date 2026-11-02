@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/timestamps.dart';
 import '../../widgets/search_picker.dart';
 import 'hours.dart';
 
@@ -20,7 +21,7 @@ import 'hours.dart';
 ///
 /// So this is its own schedule, stored inside the chat's config, and it borrows
 /// only the model and the formatting from `hours.dart` — [DayHours],
-/// [weekdayNames], [formatTime], [defaultWeek].
+/// [shortWeekdays], [formatTime], [defaultWeek].
 ///
 /// ── Empty means always on ─────────────────────────────────────────
 ///
@@ -187,7 +188,7 @@ class ChatHoursField extends StatelessWidget {
         const SizedBox(height: 8),
         for (var day = 0; day < 7; day++)
           _DayRow(
-            name: weekdayNames[day],
+            name: shortWeekdays[day],
             day: week[day],
             enabled: enabled,
             onChanged: (changed) {

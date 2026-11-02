@@ -6,6 +6,7 @@ use App\Models\Newsletter;
 use App\Models\NewsletterUnsubscribe;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
+use Illuminate\Support\Collection;
 
 /**
  * Which providers a newsletter can go out through, and why one cannot.
@@ -57,11 +58,11 @@ use App\Support\Social\SocialProvider;
  */
 final class NewsletterSenders
 {
-    public static function for(?SocialProvider $provider): ?NewsletterSender
+    public static function for(?SocialProvider $provider): ?MailchimpSender
     {
         return match ($provider) {
             SocialProvider::Mailchimp => app(MailchimpSender::class),
-            default                   => null,
+            default => null,
         };
     }
 
@@ -90,9 +91,9 @@ final class NewsletterSenders
      * with no Mailchimp of its own is told that plainly rather than being shown
      * a sibling's.
      *
-     * @param  \Illuminate\Support\Collection<int, SocialConnection>  $connectionsInView
+     * @param  Collection<int, SocialConnection>  $connectionsInView
      */
-    public static function refusalForView(\Illuminate\Support\Collection $connectionsInView): ?string
+    public static function refusalForView(Collection $connectionsInView): ?string
     {
         $sendable = $connectionsInView->first(
             fn (SocialConnection $c) => self::for($c->providerEnum()) !== null

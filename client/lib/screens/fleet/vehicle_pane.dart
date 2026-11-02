@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'vehicle_assignment_card.dart';
 import 'vehicle_card.dart';
@@ -93,25 +94,12 @@ class _VehiclePaneState extends State<VehiclePane> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(widget.showBack ? 8 : 20, 12, 20, 8),
-          child: Row(
-            children: [
-              if (widget.showBack)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back to the list',
-                  onPressed: widget.onBack,
-                ),
-              Expanded(
-                child: Text(
-                  _vehicle['label'] as String? ?? 'Unidentified vehicle',
-                  style: theme.textTheme.titleMedium,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
+        paneHeader(
+          context,
+          _vehicle['label'] as String? ?? 'Unidentified vehicle',
+          showBack: widget.showBack,
+          onBack: widget.onBack,
+          ellipsis: true,
         ),
         Expanded(
           child: SingleChildScrollView(

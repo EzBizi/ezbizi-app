@@ -101,8 +101,13 @@ final class LeadThread
             $callOnACallLead = $lead->source === Lead::SOURCE_LOCAL_SERVICES
                 && $lead->lead_type === 'PHONE_CALL';
 
+            // A call that connected was handled, so it is not a reply waiting
+            // for an answer (Jose, 2026-10-30: the closed-office text went out
+            // after an answered call). A missed call (no duration) still is.
+            $answeredCall = $row->channel === LeadConversation::CHANNEL_PHONE_CALL && (int) $row->duration_ms > 0;
+
             // A second suggested question tapped from the ad is not a reply either.
-            if ($hadConversation && ! $callOnACallLead && ! $row->is_ad_question) {
+            if ($hadConversation && ! $callOnACallLead && ! $answeredCall && ! $row->is_ad_question) {
                 $this->events->emitAfterCommit('lead.customer_replied', $lead, [
                     'after' => [
                         'source' => $lead->source,

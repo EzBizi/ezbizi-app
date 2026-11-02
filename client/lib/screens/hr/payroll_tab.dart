@@ -37,6 +37,16 @@ class PayrollTab extends StatefulWidget {
 
 enum _W2 { everyone, signed, unsigned }
 
+/// Employment type (accountant via Jose, 2026-11-02): `?type=`.
+enum _Type { all, w2, t1099, unknown }
+
+const _typeWords = {
+  _Type.all: 'All types',
+  _Type.w2: 'W-2',
+  _Type.t1099: '1099',
+  _Type.unknown: 'Unknown',
+};
+
 class _PayrollTabState extends State<PayrollTab> {
   bool _loading = true;
   String? _error;
@@ -51,6 +61,7 @@ class _PayrollTabState extends State<PayrollTab> {
   final Map<String, String> _contracts = {};
 
   _W2 _w2 = _W2.everyone;
+  _Type _type = _Type.all;
   String? _roleId;
   String? _contractId;
   bool _showLeft = true;
@@ -83,11 +94,7 @@ class _PayrollTabState extends State<PayrollTab> {
       _error = null;
     });
 
-    final response = await widget.api.get('/hr/payroll', {
-      if (_w2 != _W2.everyone) 'w2': _w2 == _W2.signed ? 'signed' : 'unsigned',
-      'role_id': ?_roleId,
-      'contract_id': ?_contractId,
-    });
+    final response = await widget.api.get('/hr/payroll', _query);
     if (!mounted) return;
 
     setState(() {
@@ -113,6 +120,72 @@ class _PayrollTabState extends State<PayrollTab> {
       }
     });
   }
+
+  Map<String, String> get _query => {
+    if (_w2 != _W2.everyone) 'w2': _w2 == _W2.signed ? 'signed' : 'unsigned',
+    if (_type != _Type.all) 'type': _type == _Type.t1099 ? '1099' : _type.name,
+    'role_id': ?_roleId,
+    'contract_id': ?_contractId,
+  };
+
+  /// The same filters as a spreadsheet, from the server.
+  Future<void> _export() async {
+    setState(() => _notice = null);
+    final response = await widget.api.getBytesResponse('/hr/payroll', {
+      ..._query,
+      'format': 'csv',
+    });
+    if (!mounted) return;
+    final bytes = response.bytes;
+    if (!response.ok || bytes == null) {
+      setState(
+        () => _notice = response.message ?? 'The export could not be made.',
+      );
+      return;
+    }
+    Files.download('payroll.csv', bytes);
+  }
+
+  Widget _exportButton() => OutlinedButton.icon(
+    key: const Key('payroll-export'),
+    icon: const Icon(Icons.download, size: 18),
+    label: const Text('Export'),
+    onPressed: _export,
+  );
+
+  Widget _typeChips() => Wrap(
+    spacing: 6,
+    runSpacing: 6,
+    children: [
+      for (final t in _Type.values)
+        ChoiceChip(
+          key: Key('payroll-type-${t.name}'),
+          label: Text(_typeWords[t]!),
+          selected: _type == t,
+          onSelected: (_) {
+            setState(() => _type = t);
+            _load();
+          },
+        ),
+    ],
+  );
+
+  /// "Company · Branch" for each assignment, one per line.
+  static String _assigned(Map<String, dynamic> row) {
+    final list = row['assigned'] as List? ?? const [];
+    final lines = [
+      for (final a in list)
+        if (a is Map)
+          [
+            a['company'],
+            a['branch'],
+          ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
+    ].where((l) => l.isNotEmpty);
+    return lines.isEmpty ? '—' : lines.join('\n');
+  }
+
+  static String _typeOf(Map<String, dynamic> row) =>
+      '${row['employment_type'] ?? 'Unknown'}';
 
   /// Left: switched off, or a termination date on record.
   static bool _left(Map<String, dynamic> row) =>
@@ -227,7 +300,7 @@ class _PayrollTabState extends State<PayrollTab> {
 
   // ── desktop 1: the table ─────────────────────────────────────────
 
-  static const _flex = [16, 14, 9, 9, 9, 10, 14];
+  static const _flex = [16, 14, 9, 7, 16, 9, 9, 10, 14];
 
   Widget _desktop(BuildContext context) {
     final theme = Theme.of(context);
@@ -244,6 +317,7 @@ class _PayrollTabState extends State<PayrollTab> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _w2Segment(),
+              _typeChips(),
               SizedBox(width: 200, child: _rolePicker()),
               SizedBox(width: 220, child: _contractPicker()),
               SizedBox(width: 220, child: _searchBox()),
@@ -251,6 +325,7 @@ class _PayrollTabState extends State<PayrollTab> {
                 key: const ValueKey('tour-hr-payroll-left'),
                 child: _showLeftChip(),
               ),
+              _exportButton(),
             ],
           ),
         ),
@@ -269,7 +344,7 @@ class _PayrollTabState extends State<PayrollTab> {
               builder: (context, box) {
                 // Seven columns need room; narrower, the table scrolls
                 // sideways rather than squeezing a date onto three lines.
-                final width = box.maxWidth < 980 ? 980.0 : box.maxWidth;
+                final width = box.maxWidth < 1240 ? 1240.0 : box.maxWidth;
                 final rows = _shown;
 
                 return SingleChildScrollView(
@@ -340,11 +415,13 @@ class _PayrollTabState extends State<PayrollTab> {
           _cell(0, label('Employee')),
           _cell(1, label('Salary', const ValueKey('tour-hr-payroll-salary'))),
           _cell(2, label('W2', const ValueKey('tour-hr-payroll-w2'))),
-          _cell(3, label('Start date')),
-          _cell(4, label('Terminated')),
-          _cell(5, label('Role')),
+          _cell(3, label('Type')),
+          _cell(4, label('Assigned')),
+          _cell(5, label('Start date')),
+          _cell(6, label('Terminated')),
+          _cell(7, label('Role')),
           _cell(
-            6,
+            8,
             label('Contract', const ValueKey('tour-hr-payroll-contract')),
           ),
         ],
@@ -374,16 +451,18 @@ class _PayrollTabState extends State<PayrollTab> {
             ),
             _cell(1, _salaryCell(context, row)),
             _cell(2, _w2Cell(context, row)),
-            _cell(3, Text(_date(row['started_on']))),
-            _cell(4, Text(_date(row['terminated_on']))),
+            _cell(3, Text(_typeOf(row), key: Key('payroll-type-of-$id'))),
+            _cell(4, Text(_assigned(row), key: Key('payroll-assigned-$id'))),
+            _cell(5, Text(_date(row['started_on']))),
+            _cell(6, Text(_date(row['terminated_on']))),
             _cell(
-              5,
+              7,
               Text(
                 role == null ? '—' : '$role',
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            _cell(6, _contractCell(context, row)),
+            _cell(8, _contractCell(context, row)),
           ],
         ),
       ),
@@ -564,9 +643,13 @@ class _PayrollTabState extends State<PayrollTab> {
                 ],
               ),
               const SizedBox(height: 10),
+              _typeChips(),
+              const SizedBox(height: 10),
               _rolePicker(),
               const SizedBox(height: 10),
               _searchBox(),
+              const SizedBox(height: 10),
+              _exportButton(),
             ],
           ),
           if (_notice != null) ...[
@@ -594,6 +677,7 @@ class _PayrollTabState extends State<PayrollTab> {
         ? Map<String, dynamic>.from(row['salary'] as Map)
         : null;
     final role = row['role'] is Map ? (row['role'] as Map)['name'] : null;
+    final assigned = _assigned(row);
     final line = [
       if (!_canSee) 'Pay hidden' else if (salary != null) _rate(salary),
       ?role?.toString(),
@@ -623,6 +707,8 @@ class _PayrollTabState extends State<PayrollTab> {
                       ),
                     ),
                     const SizedBox(width: 8),
+                    StatusPill(_typeOf(row)),
+                    const SizedBox(width: 6),
                     _w2Chip(row),
                   ],
                 ),
@@ -630,6 +716,11 @@ class _PayrollTabState extends State<PayrollTab> {
                   const SizedBox(height: 4),
                   Text(line, style: theme.textTheme.bodySmall),
                 ],
+                if (assigned != '—')
+                  Text(
+                    assigned.replaceAll('\n', ', '),
+                    style: theme.textTheme.bodySmall,
+                  ),
                 if (row['terminated_on'] != null)
                   Text(
                     'Left ${_date(row['terminated_on'])}',

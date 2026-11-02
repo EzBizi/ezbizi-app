@@ -36,6 +36,7 @@ class ModulePageHeader extends StatelessWidget {
     this.subtitle,
     this.actions = const [],
     this.beside,
+    this.toolbar,
   });
 
   /// The module's name, as the SERVER spells it. Never a literal.
@@ -49,6 +50,10 @@ class ModulePageHeader extends StatelessWidget {
   /// Drawn right after the title rather than at the far end: the tab's (?)
   /// and ▶ (UI queue 81), which belong to the title, not to the page.
   final Widget? beside;
+
+  /// Design 161 T1: the module's own search and filters, on the right of
+  /// the title row. Null (most modules) leaves the side empty.
+  final Widget? toolbar;
 
   /// Below this the phone layout applies: smaller title, and no subtitle.
   ///
@@ -64,54 +69,62 @@ class ModulePageHeader extends StatelessWidget {
       builder: (context, constraints) {
         final phone = constraints.maxWidth < phoneBelow;
 
-        // Dropped on a phone, and this is the whole difference between the two
-        // approved layouts. "Plan, assign, and finish work in this view" is a
-        // sentence: it costs about a fifth of what a 375px screen shows at
-        // once, and each person reads it once ever. The title above it is read
-        // every single time.
-        final showSubtitle =
-            !phone && subtitle != null && subtitle!.trim().isNotEmpty;
+        // Design 161 T1: the subtitle is the (i) beside the title, at every
+        // width, so the row is one line and the list starts a line higher.
+        final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
+
+        final titleRow = Row(
+          mainAxisSize: toolbar == null ? MainAxisSize.max : MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                title,
+                // headlineMedium is the theme's own, and the only heading
+                // token it defined before this work. On a phone the same
+                // token at 22 rather than a fifth hardcoded size.
+                style: phone
+                    ? theme.textTheme.headlineMedium?.copyWith(
+                        fontSize: 22,
+                        letterSpacing: -0.5,
+                      )
+                    : theme.textTheme.headlineMedium,
+              ),
+            ),
+            if (hasSubtitle) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                key: const ValueKey('module-subtitle-info'),
+                message: subtitle!,
+                child: Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            if (beside != null) ...[const SizedBox(width: 6), beside!],
+          ],
+        );
 
         return Padding(
           padding: EdgeInsets.fromLTRB(phone ? 16 : 20, phone ? 14 : 18, 12, 0),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            title,
-                            // headlineMedium is the theme's own, and the only
-                            // heading token it defined before this work. On a
-                            // phone the same token at 22 rather than a fifth
-                            // hardcoded size.
-                            style: phone
-                                ? theme.textTheme.headlineMedium?.copyWith(
-                                    fontSize: 22,
-                                    letterSpacing: -0.5,
-                                  )
-                                : theme.textTheme.headlineMedium,
-                          ),
-                        ),
-                        if (beside != null) ...[
-                          const SizedBox(width: 6),
-                          beside!,
-                        ],
-                      ],
-                    ),
-                    if (showSubtitle) ...[
-                      const SizedBox(height: 5),
-                      Text(subtitle!, style: theme.textTheme.bodyMedium),
-                    ],
-                  ],
+              if (toolbar == null)
+                Expanded(child: titleRow)
+              else ...[
+                Flexible(child: titleRow),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 3,
+                  child: Align(
+                    key: const ValueKey('module-toolbar'),
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: toolbar,
+                  ),
                 ),
-              ),
+              ],
               if (actions.isNotEmpty) ...[
                 const SizedBox(width: 12),
                 // Wrapped rather than a Row: a long title and three actions do
@@ -130,4 +143,27 @@ class ModulePageHeader extends StatelessWidget {
       },
     );
   }
+}
+
+/// Where a module hands its toolbar to the shell's title row (design 161 T1).
+///
+/// The shell puts one above each module's screen; a screen that has a
+/// toolbar sets [slot] and draws its controls itself when there is no scope
+/// (a test, or a screen opened outside the shell).
+class ModuleToolbarScope extends InheritedWidget {
+  const ModuleToolbarScope({
+    super.key,
+    required this.slot,
+    required super.child,
+  });
+
+  final ValueNotifier<Widget?> slot;
+
+  static ValueNotifier<Widget?>? maybeOf(BuildContext context) => context
+      .getInheritedWidgetOfExactType<ModuleToolbarScope>()
+      ?.slot;
+
+  @override
+  bool updateShouldNotify(ModuleToolbarScope oldWidget) =>
+      oldWidget.slot != slot;
 }

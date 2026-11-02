@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -236,16 +237,8 @@ class _RolesScreenState extends State<RolesScreen> {
     });
   }
 
-  void _snack(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
-        behavior: SnackBarBehavior.floating,
-        width: 420,
-      ),
-    );
-  }
+  void _snack(String message, {bool isError = false}) =>
+      showFloatingSnack(context, message, isError: isError);
 
   Future<void> _create() async {
     final name = await _askForName(
@@ -654,15 +647,6 @@ class _NamePanelState extends State<_NamePanel> {
 }
 
 String _people(int count) => count == 1 ? '1 person' : '$count people';
-
-/// "Dana Reyes" -> "DR"; one name gives one letter.
-String _initials(String name) {
-  final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
-  if (parts.isEmpty) return '?';
-  final first = parts.first[0];
-  final last = parts.length > 1 ? parts.last[0] : '';
-  return '$first$last'.toUpperCase();
-}
 
 class _RoleSection {
   const _RoleSection({
@@ -1216,14 +1200,11 @@ class _RolePageState extends State<_RolePage> {
   /// What "Find a permission" holds, lower-cased.
   String _query = '';
 
-  bool _sameSet(Set<String> a, Set<String> b) =>
-      a.length == b.length && a.containsAll(b);
-
   /// Whether anything differs from the role as it was loaded.
   bool get _dirty =>
       _name != widget.role.name ||
-      !_sameSet(_held, widget.role.permissions) ||
-      !_sameSet(_inboxes, widget.heldInboxes) ||
+      !setEquals(_held, widget.role.permissions) ||
+      !setEquals(_inboxes, widget.heldInboxes) ||
       _invitableChange != null ||
       _hiddenOnLeads != widget.role.hiddenOnLeads;
 
@@ -1986,7 +1967,7 @@ class _RolePageState extends State<_RolePage> {
                       radius: 12,
                       backgroundColor: scheme.primaryContainer,
                       child: Text(
-                        _initials(person.name),
+                        initials(person.name),
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: scheme.onPrimaryContainer,
                         ),

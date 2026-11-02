@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
@@ -79,9 +80,6 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
     super.dispose();
   }
 
-  static String _ymd(DateTime d) =>
-      '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
-
   Future<void> _load() async {
     setState(() {
       _loading = _rows.isEmpty;
@@ -89,7 +87,7 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
     });
     final response = await widget.api.get('/field/recordings', {
       'user_id': ?_person,
-      if (_day != null) 'date': _ymd(_day!),
+      if (_day != null) 'date': formatCalendarDay(_day!),
       if (_query.trim().isNotEmpty) 'q': _query.trim(),
     });
     if (!mounted) return;
@@ -303,7 +301,9 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
                   OutlinedButton.icon(
                     key: const ValueKey('field-recordings-day'),
                     icon: const Icon(Icons.event_outlined, size: 18),
-                    label: Text(_day == null ? 'Any day' : _ymd(_day!)),
+                    label: Text(
+                      _day == null ? 'Any day' : formatCalendarDay(_day!),
+                    ),
                     onPressed: () async {
                       final now = DateTime.now();
                       final picked = await showDatePicker(
