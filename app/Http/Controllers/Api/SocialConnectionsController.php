@@ -101,6 +101,8 @@ class SocialConnectionsController extends Controller
                 'label' => $c->label,
 
                 'handle' => $c->handle,
+                // The Google login it was signed in with; null = unknown, reconnect to see (Jose, 2026-11-02).
+                'account_email' => $c->account_email,
                 'scope_type' => $c->scope_type,
                 'scope_id' => $c->scope_id,
                 'status' => ($telegramError[$c->getKey()] ?? null) !== null ? SocialConnection::STATUS_BROKEN : $c->status,

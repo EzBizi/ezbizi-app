@@ -14,6 +14,25 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0517',
+      date: '2 Nov 2026',
+      items: [
+        'Suggestions: paste a screenshot with Ctrl+V or Cmd+V; on phones, Paste image.',
+        'Reports › Performance: call details are easier to read; the AI score is a chip, Did well and To improve sit on their own lines, and the caller shows the area and ad source.',
+        'WhatsApp leads always belong to the company of the number they arrived on.',
+        'Integrations: Google connections remember which Google account they were made with.',
+        'Leads: the 3-hour follow-up reminder fires again.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0516',
+      date: '2 Nov 2026',
+      items: [
+        'Leads: photos customers send on Messenger and Instagram show in the conversation.',
+        'Marketing: Pinterest posts link to the pin.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0515',
       date: '2 Nov 2026',
       items: [

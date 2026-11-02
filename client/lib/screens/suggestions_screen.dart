@@ -1,5 +1,7 @@
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:pasteboard/pasteboard.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/files.dart';
@@ -52,7 +54,10 @@ class SuggestionsScreen extends StatefulWidget {
     required this.formats,
     this.tabs = const [],
     this.pickFile = Files.pickBytes,
+    this.clipboardImage = _clipboardImage,
   });
+
+  static Future<List<int>?> _clipboardImage() => Pasteboard.image;
 
   final ApiClient api;
 
@@ -63,6 +68,10 @@ class SuggestionsScreen extends StatefulWidget {
 
   /// The file dialog. A parameter so a test can hand back a file.
   final Future<PickedBytes?> Function({String accept}) pickFile;
+
+  /// The picture on the clipboard as PNG bytes, or null (Jose, 2026-11-02:
+  /// "paste images that may be in their clipboard for suggestions").
+  final Future<List<int>?> Function() clipboardImage;
 
   /// The organization's own date and clock, from `/me`'s `display` block.
   ///
@@ -278,6 +287,19 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     final picked = await widget.pickFile(accept: _accept);
     if (picked == null || !mounted) return;
     setState(() => _composeFiles.add(picked));
+  }
+
+  /// A pasted picture attaches as Attach does; pasted text stays text, which
+  /// the text field pastes on its own.
+  Future<void> _pasteImage() async {
+    if (_sending || _composeFiles.length >= _maxFiles) return;
+    final bytes = await widget.clipboardImage();
+    if (bytes == null || bytes.isEmpty || !mounted) return;
+    setState(
+      () => _composeFiles.add(
+        PickedBytes('pasted-${_composeFiles.length + 1}.png', bytes),
+      ),
+    );
   }
 
   /// Unavailable when the list is empty — there is nowhere to cancel back to,
@@ -777,7 +799,8 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Pictures, PDFs, or .md and .txt notes. Up to $_maxFiles.',
+                    'Pictures, PDFs, or .md and .txt notes. Up to $_maxFiles. '
+                    'A copied picture pastes in too.',
                     style: theme.textTheme.bodySmall,
                   ),
                   if (_actionError != null) ...[
@@ -795,7 +818,19 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     // Files dropped anywhere on the pane attach as Attach does (Rodrigo
     // Mena's suggestion, 2026-10-07: "enable drag and drop files inside the
     // suggestion tab"). The pane says so while something is held over it.
-    return DropTarget(
+    final pasteKey = HardwareKeyboard.instance;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (_, event) {
+        if (event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.keyV &&
+            (pasteKey.isControlPressed || pasteKey.isMetaPressed)) {
+          _pasteImage();
+        }
+        return KeyEventResult.ignored;
+      },
+      child: DropTarget(
       enable: !_sending,
       onDragEntered: (_) => setState(() => _dropping = true),
       onDragExited: (_) => setState(() => _dropping = false),
@@ -827,6 +862,7 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
               ),
             ),
         ],
+      ),
       ),
     );
   }
@@ -891,6 +927,23 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
               minLines: 4,
               maxLines: 10,
               maxLength: _maxLength,
+              // A phone has no Ctrl+V: its paste menu offers the picture.
+              contextMenuBuilder: (context, state) =>
+                  AdaptiveTextSelectionToolbar.buttonItems(
+                    anchors: state.contextMenuAnchors,
+                    buttonItems: [
+                      ...state.contextMenuButtonItems,
+                      if (controller == _composeController &&
+                          _composeFiles.length < _maxFiles)
+                        ContextMenuButtonItem(
+                          label: 'Paste image',
+                          onPressed: () {
+                            state.hideToolbar();
+                            _pasteImage();
+                          },
+                        ),
+                    ],
+                  ),
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurface,
               ),

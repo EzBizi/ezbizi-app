@@ -8,6 +8,7 @@ use App\Models\LeadConversation;
 use App\Models\LeadHiddenNumber;
 use App\Models\Organization;
 use App\Models\User;
+use App\Models\SocialConnection;
 use App\Models\WhatsAppContact;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
@@ -192,8 +193,17 @@ final class WhatsAppIntake
             ->oldest()
             ->get();
 
+        // The company of the number it arrived on (Jose, 2026-11-02): without
+        // it A-1's WhatsApp leads showed in every company's Leads.
+        $connection = SocialConnection::withoutGlobalScopes()->find(
+            WhatsAppNumber::withoutGlobalScopes()->where('phone_number_id', $contact->phone_number_id)->value('social_connection_id'));
+
         $lead = Lead::query()->create([
             'organization_id' => $contact->organization_id,
+            'company_id' => $connection?->scope_type === SocialConnection::SCOPE_COMPANY ? $connection->scope_id : null,
+            'franchise_id' => $connection?->leads_franchise_id
+                ?? ($connection?->scope_type === SocialConnection::SCOPE_FRANCHISE ? $connection->scope_id : null),
+            'connection_id' => $connection?->getKey(),
             'source' => Lead::SOURCE_WHATSAPP,
             'remote_id' => $contact->counterparty,
             'phone' => '+'.$contact->counterparty,
