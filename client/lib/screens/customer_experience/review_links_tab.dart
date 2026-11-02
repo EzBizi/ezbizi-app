@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/date_range_picker.dart';
 import '../reports/report_dates.dart';
+import 'ekomi_view.dart';
 import 'review_sources.dart';
 
 /// Review links — what customers did with the link in their review text
@@ -43,6 +44,9 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
   String? _error;
   int _request = 0;
 
+  /// The eKomi screen in this tab's place (UI queue 165).
+  bool _ekomi = false;
+
   @override
   void initState() {
     super.initState();
@@ -71,6 +75,13 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (_ekomi) {
+      return EkomiView(
+        api: widget.api,
+        session: widget.session,
+        onBack: () => setState(() => _ekomi = false),
+      );
+    }
     final theme = Theme.of(context);
     final narrow = MediaQuery.sizeOf(context).width < 600;
     final data = _data;
@@ -102,7 +113,10 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
       padding: const EdgeInsets.all(16),
       children: [
         // Where reviews were written, above the funnel (design 154 #13).
-        ReviewSources(api: widget.api),
+        ReviewSources(
+          api: widget.api,
+          onEkomi: () => setState(() => _ekomi = true),
+        ),
         const SizedBox(height: 20),
         if (narrow) ...[
           dates,
