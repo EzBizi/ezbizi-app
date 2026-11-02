@@ -283,13 +283,15 @@ void main() {
       matching: find.text(text),
     );
 
-    expect(inTab('ls_text', '9'), findsOneWidget);
+    // LS Text is inside SMS Texts, LS Call inside Calls (Jose, 2026-11-02).
+    expect(inTab('sms', '9'), findsOneWidget);
+    expect(inTab('calls', '4'), findsOneWidget);
     expect(inTab('website_chat', '2'), findsOneWidget);
-    // All holds everything but LS Call until it is switched on: 9 + 2.
+    // All holds everything but Calls until it is switched on: 9 + 2.
     expect(inTab('all', '11'), findsOneWidget);
     expect(find.byKey(const ValueKey('source-failing-thumbtack')), findsOneWidget);
     // The control: a connected source is not marked.
-    expect(find.byKey(const ValueKey('source-failing-ls_text')), findsNothing);
+    expect(find.byKey(const ValueKey('source-failing-sms')), findsNothing);
   });
 
   testWidgets('the divider drags the panes, within limits', (tester) async {
@@ -465,7 +467,8 @@ void main() {
     // Folded behind Filters since UI queue 108.
     await tester.tap(find.byKey(const ValueKey('leads-more-filters')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('all-source-ls_call')));
+    // LS Call is one of Calls, switched on together (Jose, 2026-11-02).
+    await tester.tap(find.byKey(const ValueKey('all-source-calls')));
     await tester.pumpAndSettle();
     expect(_lastListQuery['sources'], contains('ls_call'));
     expect(_lastListQuery['sources'], isNot(contains('ls_booking')));
@@ -889,7 +892,7 @@ void main() {
 
     // And the four that were already there still are - a list built by index
     // from two const lists is exactly where an insertion goes wrong silently.
-    for (final word in ['LS Call', 'LS Text', 'Thumbtack', 'Chat', 'Forms']) {
+    for (final word in ['Calls', 'SMS Texts', 'Thumbtack', 'Chat', 'Forms']) {
       expect(find.widgetWithText(ChoiceChip, word), findsOneWidget);
     }
   });
@@ -943,6 +946,58 @@ void main() {
     expect(_lastListQuery['sources'], 'facebook,instagram,whatsapp');
   });
 
+  /// Jose, 2026-11-02: Calls (LS, RC, EZ), SMS Texts (LS, EZ) and Forms +
+  /// Job applicants, each one tab with its sources picked inside it.
+  testWidgets('Calls, SMS Texts and Forms each hold their sources', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view', 'leads.local_services.view', 'leads.ringcentral.view',
+        'leads.ez_calls.view', 'leads.ez_texts.view', 'leads.website_form.view'],
+    );
+    for (final gone in ['LS Call', 'RC Calls', 'EZ Texts', 'Job applicants']) {
+      expect(find.widgetWithText(ChoiceChip, gone), findsNothing, reason: '$gone is inside a tab now');
+    }
+    // All: every call left out by default, no applicant ever.
+    final all = _lastListQuery['sources']!.split(',');
+    expect(all, containsAll(['ls_text', 'ez_texts', 'website_form']));
+    expect(all, isNot(contains('ls_call')));
+    expect(all, isNot(contains('job_applicant')));
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Calls'));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'ls_call,ringcentral,ez_calls');
+    await tester.tap(find.byKey(const ValueKey('calls-source-ringcentral')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'ringcentral');
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'SMS Texts'));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'ls_text,ez_texts');
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Forms'));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'website_form,job_applicant');
+    await tester.tap(find.byKey(const ValueKey('forms-source-job_applicant')));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['sources'], 'job_applicant');
+  });
+
+  testWidgets('a link to a source inside a tab opens the tab with it picked', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view', 'leads.website_chat.view', 'leads.ez_calls.view'],
+      initialSource: 'ez_calls',
+    );
+    expect(_lastListQuery['sources'], 'ez_calls');
+    // Without Forms, the applicants' tab says what it holds.
+    expect(find.widgetWithText(ChoiceChip, 'Job applicants'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Forms'), findsNothing);
+  });
+
   // ── one list across every source (sources layout 1 / 4) ─────────
 
   testWidgets('one list under a source strip: All first, and every source '
@@ -954,7 +1009,7 @@ void main() {
 
     // Every source reachable, Thumbtack included: the rail scrolls when a
     // window is too short for all of them.
-    for (final word in ['LS Call', 'LS Text', 'Thumbtack', 'Chat', 'Forms']) {
+    for (final word in ['Calls', 'SMS Texts', 'Thumbtack', 'Chat', 'Forms']) {
       expect(
         find.widgetWithText(ChoiceChip, word),
         findsOneWidget,
@@ -1020,7 +1075,9 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Forms'));
     await tester.pumpAndSettle();
 
-    expect(_lastListQuery['source'], 'website_form');
+    // Forms holds Job applicants too (Jose, 2026-11-02).
+    expect(_lastListQuery['source'], isNull);
+    expect(_lastListQuery['sources'], 'website_form,job_applicant');
   });
 
   /// A notification for a source this person may not see opens on All.

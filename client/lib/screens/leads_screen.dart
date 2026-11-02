@@ -164,12 +164,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// LS Booking too (Jose, 2026-10-01): Google took the booking itself, so
   /// there is nothing to answer.
   // Nothing to reply to (Jose, 2026-10-15: "like ls calls and LS booking").
-  final Set<String> _allLeftOut = {
-    'ls_call',
-    'ls_booking',
-    'ringcentral',
-    'ez_calls',
-  };
+  // Calls holds LS, RC and EZ calls, all three of which were out (2026-11-02).
+  final Set<String> _allLeftOut = {'calls', 'ls_booking'};
 
   /// What All asks for: every source this person sees, less those left out.
   /// Null when nothing is left out, so the request stays unnarrowed.
@@ -178,10 +174,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // Job applicants are never in All (the server leaves them out), so they
     // are not one of All's toggles either.
     final sources = _visibleSources.where((s) => s.$1 != 'job_applicant');
-    final every = [for (final s in sources) ..._keysOf(s.$1)];
+    final every = [for (final s in sources) ..._allKeysOf(s.$1)];
     final shown = [
       for (final s in sources)
-        if (!_allLeftOut.contains(s.$1)) ..._keysOf(s.$1),
+        if (!_allLeftOut.contains(s.$1)) ..._allKeysOf(s.$1),
     ];
     if (shown.length == every.length) return null;
     return shown.isEmpty ? '-' : shown.join(',');
@@ -196,19 +192,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
   };
 
   static const _sourceChips = <(String, String)>[
-    // Google, split the way A1 Leads splits it (Jose, 2026-09-28). The API
-    // takes these as a source and narrows Local Services by lead type.
-    ('ls_call', 'LS Call'),
-    ('ls_text', 'LS Text'),
+    // LS, RC and EZ calls in one tab, and LS and EZ texts in another, each
+    // lead keeping its own tag (Jose, 2026-11-02). Picked inside by _groups.
+    ('calls', 'Calls'),
+    ('sms', 'SMS Texts'),
     ('ls_booking', 'LS Booking'),
-    // Calls straight to our own lines, not through Google (Jose, 2026-10-15).
-    ('ringcentral', 'RC Calls'),
-    // EzBizi's own lines (Jose, 2026-10-16): calls owe no reply, texts do.
-    ('ez_calls', 'EZ Calls'),
-    ('ez_texts', 'EZ Texts'),
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
-    ('website_form', 'Forms'),
+    // Forms and Job applicants, the same way (Jose, 2026-11-02).
+    ('forms', 'Forms'),
     // The review link's sad faces, out of Forms (Jose, 2026-10-19).
     ('bad_rating', 'Bad Ratings'),
     ('website_booking', 'Online Booking'),
@@ -216,30 +208,46 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // tag (Jose, 2026-11-02; design 166). Picked inside it by _metaSources.
     ('meta', 'Meta'),
     ('workiz', 'Workiz'),
-    // Not a source: people asking for a job, by Grok or by hand (Jose,
-    // 2026-10-09). Their own tab, out of All.
-    ('job_applicant', 'Job applicants'),
   ];
 
-  /// What the Meta tab holds, each its own permission tick and its own chip
-  /// inside the tab (design 166).
-  static const _metaSources = <(String, String)>[
-    ('facebook', 'Facebook'),
-    ('instagram', 'Instagram'),
-    ('whatsapp', 'WhatsApp'),
-  ];
+  /// The rail tabs that hold several sources, each its own permission tick
+  /// and its own chip inside the tab (design 166; Jose, 2026-11-02).
+  static const _groups = <String, List<(String, String)>>{
+    // Google, split the way A1 Leads splits it (Jose, 2026-09-28): the API
+    // narrows Local Services by lead type. RC Calls are calls straight to our
+    // own lines (2026-10-15); EZ are EzBizi's own lines (2026-10-16).
+    'calls': [
+      ('ls_call', 'LS Call'),
+      ('ringcentral', 'RC Calls'),
+      ('ez_calls', 'EZ Calls'),
+    ],
+    'sms': [('ls_text', 'LS Text'), ('ez_texts', 'EZ Texts')],
+    // Job applicants are not a source: people asking for a job, by Grok or by
+    // hand (2026-10-09). Never in All.
+    'forms': [('website_form', 'Forms'), ('job_applicant', 'Job applicants')],
+    'meta': [
+      ('facebook', 'Facebook'),
+      ('instagram', 'Instagram'),
+      ('whatsapp', 'WhatsApp'),
+    ],
+  };
 
-  /// The one Meta source picked inside the tab; null is all three.
-  String? _metaPick;
+  /// The one source picked inside a group's tab; null is all of them.
+  String? _pick;
 
-  List<(String, String)> get _visibleMeta => [
-    for (final m in _metaSources)
+  List<(String, String)> _visibleIn(String group) => [
+    for (final m in _groups[group] ?? const <(String, String)>[])
       if (_maySee(m.$1)) m,
   ];
 
-  /// What a source asks the server for: Meta is its three sources.
-  Iterable<String> _keysOf(String source) =>
-      source == 'meta' ? _visibleMeta.map((m) => m.$1) : [source];
+  /// What a source asks the server for: a group is its sources.
+  Iterable<String> _keysOf(String source) => _groups.containsKey(source)
+      ? _visibleIn(source).map((m) => m.$1)
+      : [source];
+
+  /// The same, for All, which never holds job applicants.
+  Iterable<String> _allKeysOf(String source) =>
+      _keysOf(source).where((k) => k != 'job_applicant');
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
   /// here: nothing else in the app draws a per-source mark, so these are the
@@ -247,12 +255,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// added -- the strip is built from `_sourceChips`, so a source added there
   /// and not here would land with the wrong icon rather than none.
   static const _sourceIcons = <IconData>[
-    Icons.call_outlined, // Google Local Services calls
-    Icons.sms_outlined, // Google Local Services texts
+    Icons.call_outlined, // Calls: LS, RC and EZ
+    Icons.sms_outlined, // SMS Texts: LS and EZ
     Icons.event_available_outlined, // booked through Google directly
-    Icons.phone_callback_outlined, // RingCentral: a call to our own line
-    Icons.phone_in_talk_outlined, // EZ Calls: a call to an EzBizi line
-    Icons.textsms_outlined, // EZ Texts: a text to an EzBizi line
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
@@ -266,7 +271,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // which is the difference this whole source turns on - no thread, no
     // reply, and absent from the Unreplied filter. A ledger, not a message.
     Icons.assignment_outlined,
-    Icons.badge_outlined, // job applicants
   ];
 
   /// The sources this person was granted, with their icons - Jose,
@@ -287,12 +291,19 @@ class _LeadsScreenState extends State<LeadsScreen> {
   List<(String, String, IconData)> get _visibleSources => [
     for (var i = 0; i < _sourceChips.length; i++)
       if (_maySee(_sourceChips[i].$1))
-        (_sourceChips[i].$1, _sourceChips[i].$2, _sourceIcons[i]),
+        (_sourceChips[i].$1, _labelOf(_sourceChips[i]), _sourceIcons[i]),
   ];
+
+  /// A role without Forms sees "Job applicants", not a Forms tab holding
+  /// only applicants (applicants are visible to everybody).
+  String _labelOf((String, String) chip) {
+    final inside = _visibleIn(chip.$1);
+    return chip.$1 == 'forms' && inside.length == 1 ? inside.single.$2 : chip.$2;
+  }
 
   bool _maySee(String source) =>
       source == 'job_applicant' ||
-      (source == 'meta' && _metaSources.any((m) => _maySee(m.$1))) ||
+      (_groups[source]?.any((m) => _maySee(m.$1)) ?? false) ||
       (widget.session.me?.can(
             'leads.${source.startsWith('ls_') ? 'local_services' : source}.view',
           ) ??
@@ -302,7 +313,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     if (source == _source) return;
     setState(() {
       _source = source;
-      _metaPick = null;
+      _pick = null;
     });
     _load();
   }
@@ -387,9 +398,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     if (wanted != null && _visibleSources.any((c) => c.$1 == wanted)) {
       _source = wanted;
-    } else if (wanted != null && _visibleMeta.any((m) => m.$1 == wanted)) {
-      _source = 'meta';
-      _metaPick = wanted;
+    } else if (wanted != null) {
+      // A source inside a group opens the group with it picked.
+      for (final group in _groups.keys) {
+        if (_visibleIn(group).any((m) => m.$1 == wanted)) {
+          _source = group;
+          _pick = wanted;
+        }
+      }
     }
 
     _selectedId = widget.initialLeadId;
@@ -468,9 +484,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
     if (_overdue) 'overdue': '1',
     if (_followUp) 'follow_up': '1',
     if (_starred) 'starred': '1',
-    'source': ?(_source == 'meta' ? null : _source),
-    'sources': ?(_source == 'meta'
-        ? (_metaPick ?? _keysOf('meta').join(','))
+    'source': ?(_groups.containsKey(_source) ? null : _source),
+    'sources': ?(_groups.containsKey(_source)
+        ? (_pick ?? _keysOf(_source!).join(','))
         : _allSources),
     if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     'charge': ?_charge,
@@ -765,13 +781,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
       'website_form': 'Forms',
       'website_booking': 'Online Booking',
       'meta': 'Messenger',
+      'forms': 'Forms',
       'workiz': 'Workiz',
       'whatsapp': 'WhatsApp',
       'ringcentral': 'RC Calls',
       'ez_calls': 'EZ Calls',
       'ez_texts': 'EZ Texts',
       'bad_rating': 'Bad Ratings',
-    }[_source];
+    }[_pick ?? _source];
     return tab == null ? body : OpenTabMark(tab, child: body);
   }
 
@@ -875,17 +892,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
   );
 
   /// Unread leads behind a source; for All, behind every source it holds.
-  int _unreadIn(String? key) => key == 'meta'
-      ? _keysOf('meta').fold(0, (sum, k) => sum + (_unreadBySource[k] ?? 0))
-      : key != null
-      ? _unreadBySource[key] ?? 0
+  int _unreadIn(String? key) => key != null
+      ? _keysOf(key).fold(0, (sum, k) => sum + (_unreadBySource[k] ?? 0))
       : _visibleSources
-            .where((s) => s.$1 != 'job_applicant' && !_allLeftOut.contains(s.$1))
-            .fold(0, (sum, s) => sum + _unreadIn(s.$1));
+            .where((s) => !_allLeftOut.contains(s.$1))
+            .expand((s) => _allKeysOf(s.$1))
+            .fold(0, (sum, k) => sum + (_unreadBySource[k] ?? 0));
 
   /// A source whose accounts are not delivering: Google refusing on quota,
   /// or a connection broken or revoked.
   bool _failing(String key) {
+    if (_groups.containsKey(key)) return _keysOf(key).any(_failing);
     final provider = switch (key) {
       'ls_call' || 'ls_text' => 'google_ads',
       'thumbtack' => 'thumbtack',
@@ -1046,7 +1063,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (_source == 'meta') _inMeta(theme),
+      if (_groups.containsKey(_source)) _inGroup(theme),
       // Design 162 (option 1 + phone 4): over the list, never the title row.
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
@@ -1187,33 +1204,41 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
   ];
 
-  /// Inside Meta: all three, or one, each with its unread count (design 166,
-  /// worked like the In All row).
-  Widget _inMeta(ThemeData theme) => Padding(
-    key: const ValueKey('meta-sources'),
-    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-    child: Wrap(
-      spacing: 4,
-      runSpacing: 4,
-      children: [
-        for (final m in <(String?, String)>[(null, 'All Meta'), ..._visibleMeta])
-          ChoiceChip(
-            key: ValueKey('meta-source-${m.$1 ?? 'all'}'),
-            showCheckmark: false,
-            visualDensity: VisualDensity.compact,
-            label: Text(
-              '${m.$2} ${_unreadIn(m.$1 ?? 'meta')}',
-              style: theme.textTheme.labelSmall,
+  /// Inside a group (Meta, Calls, SMS Texts, Forms): all, or one, each with
+  /// its unread count (design 166, worked like the In All row).
+  Widget _inGroup(ThemeData theme) {
+    final group = _source!;
+    final label = _labelOf(_sourceChips.firstWhere((c) => c.$1 == group));
+
+    return Padding(
+      key: ValueKey('$group-sources'),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          for (final m in <(String?, String)>[
+            (null, 'All $label'),
+            ..._visibleIn(group),
+          ])
+            ChoiceChip(
+              key: ValueKey('$group-source-${m.$1 ?? 'all'}'),
+              showCheckmark: false,
+              visualDensity: VisualDensity.compact,
+              label: Text(
+                '${m.$2} ${_unreadIn(m.$1 ?? group)}',
+                style: theme.textTheme.labelSmall,
+              ),
+              selected: _pick == m.$1,
+              onSelected: (_) {
+                setState(() => _pick = m.$1);
+                _load();
+              },
             ),
-            selected: _metaPick == m.$1,
-            onSelected: (_) {
-              setState(() => _metaPick = m.$1);
-              _load();
-            },
-          ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
   /// Under All: which sources it holds, one toggle each, by the same icons
   /// the sources wear (Jose, 2026-09-29: "on ALL we should have filters for
@@ -1335,7 +1360,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ],
         ),
       ),
-      if (_source == 'meta') _inMeta(theme),
+      if (_groups.containsKey(_source)) _inGroup(theme),
       if (_searching || _search.text.isNotEmpty)
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -1416,6 +1441,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// What stands behind a source, said under its name on the phone's page.
   String? _sourceState(String? key) {
     if (key == null) return 'Every source below';
+    // Calls and SMS Texts say what their Google half stands on.
+    if (key == 'calls' || key == 'sms') {
+      return _sourceState(key == 'calls' ? 'ls_call' : 'ls_text');
+    }
     if (key == 'ls_call' || key == 'ls_text') {
       if (_delayedSince != null) return 'Delayed: Google is refusing requests';
       if (_failing(key)) return 'Not delivering: an account needs reconnecting';
@@ -1431,9 +1460,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ? 'No Thumbtack account connected'
           : '$n Thumbtack ${n == 1 ? 'business' : 'businesses'}';
     }
-    if (key == 'website_chat' || key == 'website_form' || key == 'website_booking') {
+    if (key == 'website_chat' || key == 'website_form' || key == 'website_booking' || key == 'forms') {
       return 'From your websites';
     }
+
     return null;
   }
 
