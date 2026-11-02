@@ -2663,18 +2663,36 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   ) {
     final theme = Theme.of(context);
     final outbound = _isOutbound(call);
+    // Trey Brannan's suggestion (01a19db5, approved 2026-11-02): each number
+    // its own labelled row, the line's area and ad source under the caller.
+    final muted = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final source = '${call['to_name'] ?? ''}'.replaceAll(' - ', ' · ');
     final numbers = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(outbound ? 'Number called' : 'Caller', style: muted),
         SelectableText(
-          '${outbound ? 'Number called' : 'Caller'}: ${call['from'] ?? 'unknown'}',
+          '${call['from'] ?? 'unknown'}',
           style: theme.textTheme.bodySmall,
         ),
-        if (!outbound)
+        if (!outbound) ...[
+          if (source.isNotEmpty)
+            Text(
+              source,
+              key: ValueKey('call-source-${call['id']}'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          const SizedBox(height: 6),
+          Text('Line called', style: muted),
           SelectableText(
-            'Line called: ${line.isEmpty ? 'unknown' : line}',
+            '${call['to_number'] ?? 'unknown'}',
             style: theme.textTheme.bodySmall,
           ),
+        ],
       ],
     );
 
@@ -2719,14 +2737,34 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _labelLine(context, call),
-              if (call['score'] case final Map score)
-                Text(
-                  'AI score ${score['score']}/10'
-                  '${score['strength'] == null ? '' : ' · Did well: ${score['strength']}'}'
-                  '${score['improve'] == null ? '' : ' · To improve: ${score['improve']}'}',
+              if (call['score'] case final Map score) ...[
+                const SizedBox(height: 6),
+                StatusPill(
+                  'AI score ${score['score']}/10',
                   key: ValueKey('score-${call['id']}'),
-                  style: theme.textTheme.bodySmall,
+                  tone: switch (num.tryParse('${score['score']}') ?? 0) {
+                    >= 8 => Tone.ok,
+                    >= 5 => Tone.caution,
+                    _ => Tone.bad,
+                  },
                 ),
+                for (final (label, text, tone) in [
+                  ('Did well', score['strength'], Tone.ok),
+                  ('To improve', score['improve'], Tone.caution),
+                ])
+                  if (text != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      label,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: ToneColours.of(context, tone).ink,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text('$text', style: theme.textTheme.bodySmall),
+                  ],
+              ],
+              const Divider(height: 16),
               numbers,
               if (convertible) ...[
                 const SizedBox(height: 6),
