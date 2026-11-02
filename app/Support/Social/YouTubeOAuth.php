@@ -13,10 +13,15 @@ use Illuminate\Support\Facades\Http;
 final class YouTubeOAuth implements SocialOAuth
 {
     public const SCOPE_UPLOAD = 'https://www.googleapis.com/auth/youtube.upload';
+
     public const SCOPE_READONLY = 'https://www.googleapis.com/auth/youtube.readonly';
 
+    // Deleting a video from EzBizi (Jose, 2026-11-02); upload alone cannot.
+    public const SCOPE_MANAGE = 'https://www.googleapis.com/auth/youtube.force-ssl';
+
     /** @var string[] */
-    public const SCOPES = [self::SCOPE_UPLOAD, self::SCOPE_READONLY];
+    // openid + email: which Google login this is (Jose, 2026-11-02).
+    public const SCOPES = [self::SCOPE_UPLOAD, self::SCOPE_READONLY, self::SCOPE_MANAGE, 'openid', 'email'];
 
     public const CALLBACK_PATH = '/api/v1/social/youtube/callback';
 
@@ -77,14 +82,14 @@ final class YouTubeOAuth implements SocialOAuth
         }
 
         return 'https://accounts.google.com/o/oauth2/v2/auth?'.http_build_query([
-            'client_id'             => (string) config('services.youtube.client_id'),
-            'redirect_uri'          => $this->redirectUri(),
-            'response_type'         => 'code',
-            'scope'                 => implode(' ', self::SCOPES),
-            'access_type'           => 'offline',
-            'prompt'                => 'consent',
-            'state'                 => $state,
-            'code_challenge'        => Pkce::challenge($verifier),
+            'client_id' => (string) config('services.youtube.client_id'),
+            'redirect_uri' => $this->redirectUri(),
+            'response_type' => 'code',
+            'scope' => implode(' ', self::SCOPES),
+            'access_type' => 'offline',
+            'prompt' => 'consent',
+            'state' => $state,
+            'code_challenge' => Pkce::challenge($verifier),
             'code_challenge_method' => 'S256',
         ]);
     }

@@ -47,7 +47,7 @@ use RuntimeException;
  * raises it. A "public" video that shows as private is that channel setting
  * first.
  */
-final class YouTubePublisher implements LinksToPosts, SocialPublisher
+final class YouTubePublisher implements DeletesPosts, LinksToPosts, SocialPublisher
 {
     private const UPLOAD = 'https://www.googleapis.com/upload/youtube/v3/videos';
 
@@ -82,7 +82,7 @@ final class YouTubePublisher implements LinksToPosts, SocialPublisher
                 ->asJson()
                 ->withHeaders([
                     'X-Upload-Content-Length' => (string) strlen($bytes),
-                    'X-Upload-Content-Type'   => $mime,
+                    'X-Upload-Content-Type' => $mime,
                 ])
                 ->post(self::UPLOAD.'?uploadType=resumable&part=snippet,status', $this->metadata($post));
         } catch (ConnectionException) {
@@ -125,6 +125,21 @@ final class YouTubePublisher implements LinksToPosts, SocialPublisher
         return SocialProvider::YouTube->refuses($kind);
     }
 
+    public function deleteRemote(SocialConnection $connection, string $remoteId): void
+    {
+        try {
+            $token = GoogleToken::forConnection($connection, 'youtube');
+            $response = Http::withToken($token)->timeout(self::TIMEOUT)
+                ->delete('https://www.googleapis.com/youtube/v3/videos?id='.rawurlencode($remoteId));
+        } catch (RuntimeException $e) {
+            throw new SocialPublishFailed($e->getMessage());
+        } catch (ConnectionException) {
+            throw SocialPublishFailed::network('YouTube', 'EzBizi could not reach it.');
+        }
+
+        $this->check($response);
+    }
+
     public function permalink(SocialConnection $connection, string $remoteId): ?string
     {
         return 'https://www.youtube.com/watch?v='.rawurlencode($remoteId);
@@ -158,12 +173,12 @@ final class YouTubePublisher implements LinksToPosts, SocialPublisher
 
         return [
             'snippet' => [
-                'title'       => mb_substr($title, 0, 100),
+                'title' => mb_substr($title, 0, 100),
                 'description' => mb_strcut($clean($post->body), 0, 5000),
-                'categoryId'  => self::CATEGORY,
+                'categoryId' => self::CATEGORY,
             ],
             'status' => [
-                'privacyStatus'           => in_array($privacy, self::PRIVACY, true) ? $privacy : 'public',
+                'privacyStatus' => in_array($privacy, self::PRIVACY, true) ? $privacy : 'public',
                 // Required by COPPA for every upload; a business's marketing
                 // video is not made for children. Asked explicitly rather than
                 // left for YouTube to default, because an unanswered question
@@ -189,9 +204,11 @@ final class YouTubePublisher implements LinksToPosts, SocialPublisher
 
         throw SocialPublishFailed::network('YouTube', match ($reason) {
             'youtubeSignupRequired' => 'that Google account has no YouTube channel yet. Create one on YouTube, then send it again.',
-            'uploadLimitExceeded'   => 'this channel has reached its upload limit for today. Try again tomorrow.',
-            'quotaExceeded'         => 'EzBizi has used up its YouTube allowance for today. Try again tomorrow.',
-            default                 => is_string($message) && $message !== '' ? $message : 'HTTP '.$response->status().'.',
+            'uploadLimitExceeded' => 'this channel has reached its upload limit for today. Try again tomorrow.',
+            // Connected before deleting was asked for (2026-11-02).
+            'insufficientPermissions' => 'this channel was connected before EzBizi could delete videos. Reconnect it in Accounts, then try again.',
+            'quotaExceeded' => 'EzBizi has used up its YouTube allowance for today. Try again tomorrow.',
+            default => is_string($message) && $message !== '' ? $message : 'HTTP '.$response->status().'.',
         });
     }
 }
