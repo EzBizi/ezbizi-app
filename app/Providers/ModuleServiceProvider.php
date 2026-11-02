@@ -1456,6 +1456,9 @@ class ModuleServiceProvider extends ServiceProvider
                 // "- 1" beside its rebuild, Project Management - 2 (Jose, 2026-10-26).
                 label: 'Project Management - 1',
                 actions: ['view'],
+                // Jose, 2026-11-02: never without Jobs. It shows every job
+                // waiting on an estimate and who paid, which Jobs guards.
+                actionRequires: ['view' => ['jobs.view']],
                 /*
                  * Overview | Jobs | Assignments | Repair team | Rules | Logs |
                  * Settings (UI queue 127, 139, 141, 143, 144). All are the one grant the
