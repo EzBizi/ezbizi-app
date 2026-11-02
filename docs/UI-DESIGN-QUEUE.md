@@ -2969,6 +2969,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 166 · Leads: Facebook, Instagram and WhatsApp in one Meta tab — **sent 2026-11-02, awaiting Jose** (`docs/previews/leads-meta-tab-layouts.html`)
+
+Jose 2026-11-02 via Leads: "combine the Facebook - Instagram and Whatsapp Tabs into a Meta Tab, but still keep their individual tags". Recommended 1 + phone 4: Meta in Facebook's rail slot (badge = sum, shown if any of the three is granted); a sub-chip row above the search (All Meta · Facebook · Instagram · WhatsApp, each counted, each only if granted), like the In All row; rows keep their source tag. Client only (?sources=). Tour reuses Messenger's. 2 = rail tree; 3 = Filters tick only.
+
 ### 165 · Customer Experience › eKomi screen — **sent 2026-11-02, awaiting Jose** (`docs/previews/ekomi-screen-layouts.html`)
 
 Jose 2026-11-02 via Leads: "a whole screen for Ekomi ... check at what a1tools had". Recommended 1 + phone 4: opened in place from Review links › Sources; tabs Overview (snapshot tiles + SRR funnel, certificate link, shared date bar), Requests (search, status/channel chips, Send review request per job), Reviews (existing list filtered source=ekomi), Settings (credentials, Test, auto-request on/off, delay hours, start date). Seal stays in Web. API per Leads: ekomi/overview, ekomi/requests (GET/POST), ekomi/settings, ekomi/test.
