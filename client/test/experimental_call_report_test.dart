@@ -644,25 +644,24 @@ void main() {
 
     // Closed: no details, no play button on a missed row, and a voicemail
     // icon that says there is a recording inside (UI/UX).
-    expect(find.text('Caller: +15550004444'), findsNothing);
+    expect(find.text('Line called'), findsNothing);
     expect(find.byKey(const ValueKey('listen-rec-4')), findsNothing);
     expect(find.byTooltip('Show details'), findsWidgets);
 
     await tester.tap(find.byKey(const ValueKey('call-details-c4')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Caller: +15550004444'), findsOneWidget);
-    expect(
-      find.text('Line called: +15558887777 · DFW - LS Ads'),
-      findsOneWidget,
-    );
+    expect(find.text('+15550004444'), findsWidgets);
+    expect(find.text('DFW · LS Ads'), findsOneWidget);
+    expect(find.text('Line called'), findsOneWidget);
+    expect(find.text('+15558887777'), findsWidgets);
     expect(find.byKey(const ValueKey('voicemail-rec-4')), findsOneWidget);
 
     // A missed call with no voicemail opens to its numbers, no player.
     await tester.tap(find.byKey(const ValueKey('call-details-c3')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Caller: +15550003333'), findsOneWidget);
+    expect(find.text('Caller'), findsNWidgets(2));
     expect(find.byKey(const ValueKey('voicemail-null')), findsNothing);
   });
 
@@ -670,7 +669,7 @@ void main() {
     // Bar, via Jose, 2026-10-12: a notification opens "the exact thing".
     await _pump(tester, width: 1400, openCall: 'c3');
 
-    expect(find.text('Caller: +15550003333'), findsOneWidget);
+    expect(find.text('Caller'), findsOneWidget);
     expect(find.byTooltip('Hide details'), findsOneWidget);
   });
 
