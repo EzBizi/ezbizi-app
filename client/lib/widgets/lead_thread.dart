@@ -20,6 +20,7 @@ import 'lead_media.dart';
 import 'leads_hidden.dart';
 import '../screens/scheduling/availability_pane.dart';
 import 'ai_mark.dart';
+import 'call_text.dart';
 import 'async_body.dart';
 import 'book_job_panel.dart';
 import 'lead_edit_panel.dart';
@@ -2213,8 +2214,11 @@ class _LeadThreadState extends State<LeadThread> {
     multiLine: true,
   );
 
-  static TextSpan _speakers(String text) {
+  /// The folded preview's speakers, coloured as CallTranscriptText colours
+  /// them: Dispatcher primary, Customer ok ink, IVR menu muted italic.
+  static TextSpan _speakers(BuildContext context, String text) {
     final label = RegExp(r'^(IVR menu|Dispatcher|Customer): ');
+    final theme = Theme.of(context);
     final lines = text.split('\n');
     return TextSpan(
       children: [
@@ -2222,7 +2226,20 @@ class _LeadThreadState extends State<LeadThread> {
           if (label.firstMatch(lines[i]) case final m?) ...[
             TextSpan(
               text: m.group(0),
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: switch (m.group(1)) {
+                'Dispatcher' => TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+                'Customer' => TextStyle(
+                  color: ToneColours.of(context, Tone.ok).ink,
+                  fontWeight: FontWeight.w700,
+                ),
+                _ => TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+              },
             ),
             TextSpan(text: lines[i].substring(m.end)),
           ] else
@@ -2262,27 +2279,20 @@ class _LeadThreadState extends State<LeadThread> {
             ),
           ),
           const SizedBox(height: 2),
-          if (!_bySpeaker.hasMatch(text))
-            open
-                ? SelectableText(text, style: theme.textTheme.bodySmall)
-                : Text(
-                    text,
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall,
-                  )
+          // Open, the app's one transcript: coloured speakers, selectable,
+          // one copy icon (Reports' CallTranscriptText, 2026-11-02). Folded,
+          // four lines with the same colours. A short one is never folded.
+          if (open || text.length <= 240)
+            CallTranscriptText(text, style: theme.textTheme.bodySmall)
           else
-            open
-                ? SelectableText.rich(
-                    _speakers(text),
-                    style: theme.textTheme.bodySmall,
-                  )
-                : Text.rich(
-                    _speakers(text),
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall,
-                  ),
+            Text.rich(
+              _bySpeaker.hasMatch(text)
+                  ? _speakers(context, text)
+                  : TextSpan(text: text),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
           if (text.length > 240)
             Align(
               alignment: Alignment.centerLeft,

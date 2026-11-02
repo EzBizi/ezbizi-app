@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ezbizi_client/widgets/call_text.dart';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -297,11 +298,13 @@ void main() {
       recordingGate: Completer()..complete(),
       callTranscript: long,
     );
-    final text = find.byWidgetPredicate((w) => w is Text && w.data == long);
+    final text = find.byWidgetPredicate((w) => w is Text && w.textSpan?.toPlainText() == long);
     expect(tester.widget<Text>(text).maxLines, 4);
     await tester.tap(find.byKey(const ValueKey('transcript-toggle-c-call')));
     await tester.pumpAndSettle();
-    expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
+    // Open, it is the app's one transcript widget (CallTranscriptText).
+    expect(find.byWidgetPredicate((w) => w is SelectableText && w.textSpan?.toPlainText() == long),
+        findsOneWidget);
   });
 
   /// Jose, 2026-10-12: "summary should show first with the option to see
@@ -350,8 +353,10 @@ void main() {
     expect(find.byKey(const ValueKey('followed-up-c-call')), findsNothing);
   });
 
-  /// Jose, 2026-10-12: "IVR Menu: / Dispatcher: / Customer:", the labels bold.
-  testWidgets('a transcript divided by speaker shows each label in bold', (
+  /// Jose, 2026-10-12: "IVR Menu: / Dispatcher: / Customer:", the labels set
+  /// apart; since 2026-11-02 coloured as everywhere else (CallTranscriptText):
+  /// Dispatcher and Customer bold, the IVR menu muted italic.
+  testWidgets('a transcript divided by speaker sets each label apart', (
     tester,
   ) async {
     const labelled =
@@ -363,19 +368,25 @@ void main() {
       recordingGate: Completer()..complete(),
       callTranscript: labelled,
     );
-    final text = tester.widget<Text>(
+    final text = tester.widget<SelectableText>(
       find.byWidgetPredicate(
-        (w) => w is Text && w.textSpan?.toPlainText() == labelled,
+        (w) => w is SelectableText && w.textSpan?.toPlainText() == labelled,
       ),
     );
     final bold = <String>[];
+    final italic = <String>[];
     text.textSpan!.visitChildren((span) {
       if (span is TextSpan && span.style?.fontWeight == FontWeight.w700) {
         bold.add(span.text!);
       }
+      if (span is TextSpan && span.style?.fontStyle == FontStyle.italic) {
+        italic.add(span.text!);
+      }
       return true;
     });
-    expect(bold, ['IVR menu: ', 'Dispatcher: ', 'Customer: ']);
+    expect(bold, ['Dispatcher: ', 'Customer: ']);
+    expect(italic, ['IVR menu: ']);
+    expect(find.byType(CallTranscriptText), findsOneWidget);
   });
 
   // The dispatchers, via Jose, 2026-09-29: copy and paste.
