@@ -656,7 +656,7 @@ final class ReportDocument
             .'<td style="text-align:right;vertical-align:middle">'.$this->text($top).'</td>'
             .'</tr></table></div>'
             .'<div id="pf"><table style="width:100%"><tr>'
-            .'<td>'.$this->text(implode(' | ', array_filter([$company?->name, $company?->phone]))).'</td>'
+            .'<td>'.$this->text(implode(' | ', array_filter([$company?->name, ...$this->contact($report, $company)]))).'</td>'
             .'<td class="pn" style="text-align:right"></td>'
             .'</tr></table></div>'
             .'<h1>'.$this->text($report->definition_name).'</h1>'
@@ -664,6 +664,38 @@ final class ReportDocument
             .($intro === '' ? '' : '<div class="intro">'.nl2br($this->text($intro)).'</div>')
             .$body
             .'</body></html>';
+    }
+
+    /**
+     * The branch's phone and email for the footer, as A1's reports print them.
+     *
+     * Jose (2026-11-02): they already live in Web Management. The company's
+     * web location in the client's city first, then any of its locations with
+     * a phone, then the branch's Google profile, then the company's own phone.
+     *
+     * @return list<string>
+     */
+    private function contact(InspectionReport $report, ?\App\Models\Company $company): array
+    {
+        if ($company === null) {
+            return [];
+        }
+
+        $city = $report->customer?->city;
+        $place = \App\Models\WebLocation::query()
+            ->where('company_id', $company->getKey())
+            ->where(fn ($q) => $q->whereNotNull('phone')->orWhereNotNull('email'))
+            ->when($city, fn ($q) => $q->orderByRaw('city = ? desc', [$city]))
+            ->orderBy('sort_order')
+            ->first();
+
+        $franchiseId = $report->job?->franchise_id ?? $report->customer?->owning_franchise_id;
+        $phone = $place?->phone
+            ?: ($franchiseId === null ? null : \App\Models\BusinessLocation::query()
+                ->where('franchise_id', $franchiseId)->whereNotNull('phone')->value('phone'))
+            ?: $company->phone;
+
+        return array_values(array_filter([$phone, $place?->email], fn ($v) => filled($v)));
     }
 
     /** The company logo as an inline PNG/JPEG, or nothing. */

@@ -11,14 +11,12 @@ import '../../widgets/status_pill.dart';
 /// wa.me link with Open, Copy and a QR for flyers and vans. Drawn only when
 /// the organization has a WhatsApp number (`whatsapp_link` is null otherwise).
 class WhatsAppRow extends StatelessWidget {
-  const WhatsAppRow({super.key, required this.link, this.onBulk, this.onSet});
+  const WhatsAppRow({super.key, required this.link, this.onSet});
 
   final String link;
 
-  /// Opens WhatsApp links in bulk (UI queue 163); null draws no link.
-  final VoidCallback? onBulk;
-
-  /// Sets this listing's link on Google (one-by-one); null draws no button.
+  /// Ticks this listing for the table's WhatsApp bar (UI queue 164); null
+  /// draws no button.
   final VoidCallback? onSet;
 
   /// Opens a link outside the app. A seam so a test can see the call.
@@ -106,13 +104,6 @@ class WhatsAppRow extends StatelessWidget {
                   icon: const Icon(Icons.check_circle_outline, size: 16),
                   label: const Text('Set on this listing'),
                   onPressed: onSet,
-                ),
-              if (onBulk != null)
-                TextButton.icon(
-                  key: const ValueKey('cx-whatsapp-bulk'),
-                  icon: const Icon(Icons.library_add_check_outlined, size: 16),
-                  label: const Text('Set on many listings'),
-                  onPressed: onBulk,
                 ),
             ],
           ),

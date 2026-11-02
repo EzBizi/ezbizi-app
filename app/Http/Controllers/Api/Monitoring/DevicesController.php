@@ -10,6 +10,7 @@ use App\Support\Monitoring\ScreenMonitoringExemption;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 /**
  * The devices roster — who is signed in, from what, and (with the extra
@@ -71,12 +72,42 @@ class DevicesController extends Controller
             ->get();
 
         return response()->json([
-            'data' => $devices
+            'data' => self::merged($devices)
                 ->map(fn (MonitoredDevice $d) => $this->present(
                     $d, $canSeeSpecs, $canSeeCapture, $exemptEmails, $canSetLighting
                 ))
                 ->all(),
         ]);
+    }
+
+    /**
+     * One row per person per machine (Jose, 2026-11-02: "yes merge"). Rows
+     * arrive newest first. A reinstall makes a new device_key on the same
+     * machine; web and phones get a key per browser or install and carry no
+     * machine name, so they collapse to one row per person per platform. A
+     * machine a person has not used for 7 days is dropped once they have a
+     * newer one on that platform — they moved desks.
+     */
+    public static function merged(Collection $devices): Collection
+    {
+        $newest = [];
+
+        return $devices->filter(function (MonitoredDevice $d) use (&$newest) {
+            $person = $d->user_id.'|'.$d->platform;
+            $machine = $person.'|'.mb_strtolower((string) ($d->specs['computer_name'] ?? ''));
+
+            if (isset($newest[$machine])) {
+                return false;
+            }
+            $newest[$machine] = true;
+
+            if (isset($newest[$person])) {
+                return $d->last_seen_at?->greaterThan(now()->subDays(7)) ?? false;
+            }
+            $newest[$person] = true;
+
+            return true;
+        })->values();
     }
 
     /** @return array<string, mixed> */
@@ -87,8 +118,7 @@ class DevicesController extends Controller
         bool $canSeeCapture,
         array $exemptEmails = [],
         bool $canSetLighting = false,
-    ): array
-    {
+    ): array {
         $row = [
             'id' => $d->id,
             'user' => ['id' => $d->user->id, 'name' => $d->user->name],

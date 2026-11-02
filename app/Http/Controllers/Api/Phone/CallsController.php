@@ -178,7 +178,9 @@ class CallsController extends Controller
         // ask about. Only THIS person's calls: two people hang up at once and
         // otherwise each could be handed the other's.
         if ($request->boolean('untagged')) {
-            $query->whereNull('tag_id')->where('user_id', $request->user()->id);
+            $me = $request->user()->id;
+            // Placed by me, or an inbound call I answered.
+            $query->whereNull('tag_id')->where(fn ($q) => $q->where('user_id', $me)->orWhere('answered_by', $me));
         }
 
         // Voicemails for one box.

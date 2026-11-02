@@ -92,6 +92,8 @@ class ProjectManagement2Test extends TestCase
         $page = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs?per_page=1')->assertOk();
         $this->assertCount(1, $page->json('data'));
         $this->assertSame(['total' => 2, 'per_page' => 1, 'current_page' => 1, 'last_page' => 2, 'counts' => ['pending' => 2, 'ready' => 0, 'submitted' => 0]], $page->json('meta'));
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs?per_page=1&page=2')->assertOk()
+            ->assertJsonMissingPath('meta.counts');
     }
 
     public function test_a_job_opens_with_its_money_and_timeline(): void

@@ -93,7 +93,7 @@ void main() {
       find.descendant(
         of: find.byKey(const ValueKey('gbp-row-loc-2')),
         matching: find.byType(StatusPill),
-      ),
+      ).first, // the Google column; WhatsApp's pill comes after it
     );
     expect(pill.label, 'Suspended');
     expect(pill.tone, Tone.bad);
@@ -236,7 +236,8 @@ void main() {
     expect(find.text('No listings match'), findsOneWidget);
   });
 
-  testWidgets('WhatsApp links in bulk opens in the tab and comes back', (
+  // UI queue 164: WhatsApp is a column with ticks and one bar, no screen.
+  testWidgets('WhatsApp: tick a missing listing, pick a number, set it', (
     tester,
   ) async {
     await _pump(
@@ -245,15 +246,46 @@ void main() {
       notLive: 0,
       connections: connected,
     );
+    expect(find.byKey(const ValueKey('cx-open-wa-bulk')), findsNothing);
+    expect(find.byKey(const ValueKey('gbp-wa-bar')), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('cx-open-wa-bulk')));
+    await tester.tap(find.byKey(const ValueKey('gbp-wa-pick-missing')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('wa-bulk')), findsOneWidget);
+    expect(
+      tester
+          .widget<Checkbox>(find.byKey(const ValueKey('gbp-wa-tick-loc-1')))
+          .value,
+      isTrue,
+    );
+    await tester.tap(find.byKey(const ValueKey('gbp-wa-number-+15550100142')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('gbp-wa-apply')));
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('wa-bulk-back')));
+    final apply = _sent.lastWhere((r) => r.url.path.endsWith('/apply'));
+    expect(jsonDecode(apply.body), {
+      'targets': ['loc-1'],
+      'link': 'https://wa.me/15550100142',
+    });
+    expect(find.byKey(const ValueKey('gbp-wa-result-loc-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gbp-wa-bar')), findsNothing);
+  });
+
+  testWidgets('Phone check and the Google connection sit under more', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      locations: [showing],
+      notLive: 0,
+      connections: connected,
+    );
+    await tester.tap(find.byKey(const ValueKey('gbp-more')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('wa-bulk')), findsNothing);
-    expect(find.byKey(const ValueKey('gbp-row-loc-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gbp-google-connection')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('cx-open-phone-check')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('gbp-more')), findsNothing);
   });
 
   testWidgets('opening a row shows its details in a pane beside the table', (
@@ -611,6 +643,28 @@ Future<void> _pump(
               {'id': 'fr-2', 'name': 'Northgate', 'company_id': 'co-1'},
             ],
           },
+        });
+      }
+
+      if (path.endsWith('/business-profile/whatsapp-links')) {
+        return json({
+          'proposed': 'https://wa.me/15550100100',
+          'numbers': [
+            {'number': '+15550100100', 'link': 'https://wa.me/15550100100'},
+            {'number': '+15550100142', 'link': 'https://wa.me/15550100142'},
+          ],
+          'data': [
+            for (final l in locations)
+              {'id': l['id'], 'current': null, 'state': 'missing'},
+          ],
+        });
+      }
+      if (path.endsWith('/business-profile/whatsapp-links/apply')) {
+        final targets = (jsonDecode(request.body) as Map)['targets'] as List;
+        return json({
+          'data': [
+            for (final t in targets) {'id': t, 'ok': true},
+          ],
         });
       }
 

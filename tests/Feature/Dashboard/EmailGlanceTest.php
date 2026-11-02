@@ -178,6 +178,30 @@ class EmailGlanceTest extends TestCase
         $this->assertSame(9, $unread());
     }
 
+    /**
+     * A failed ask is remembered like a count. On 2026-11-02 every one of
+     * Triplex Group's 54 Workspace inboxes failed, nothing was cached, and
+     * every load re-asked all 54 (8.5 s). The second load names the inbox
+     * again without dialling it.
+     */
+    public function test_a_failed_ask_is_not_repeated_on_the_next_load(): void
+    {
+        $user = $this->userWithPermissions(['email.view']);
+        $dead = $this->grantedInbox($user);
+        $this->withScriptedProvider();
+        ScriptedMailboxReader::$failUnread[(string) $dead->getKey()] = CannotReadMailbox::providerFaulty($dead, 'the mail service did not say how many unread messages there are');
+        $sentences = fn () => app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user), [])->toArray()['data']['sentences'] ?? [];
+
+        $first = $sentences();
+        $asked = ScriptedMailboxReader::$unreadAsked;
+        $this->assertGreaterThan(0, $asked, 'the first load asks');
+        $second = $sentences();
+
+        $this->assertSame($asked, ScriptedMailboxReader::$unreadAsked, 'the second load does not dial again');
+        $this->assertSame($first, $second, 'and says the same thing');
+        $this->assertNotEmpty(array_filter($second, fn ($line) => str_contains($line, $dead->address)));
+    }
+
     public function test_an_unreadable_mailbox_is_named_and_omitted_from_slices(): void
     {
         $user = $this->userWithPermissions(['email.view']);

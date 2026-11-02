@@ -9,6 +9,7 @@ use App\Support\Ai\TranscriptSpeakers;
 use App\Support\Automations\EventEmitter;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 /**
@@ -64,7 +65,10 @@ class LabelCallTranscripts extends Command
                     // who hears is the Automations rule's, so it can change.
                     // Only a fresh call: the first run reads a week of older ones.
                     if ($read['signals']['complaint'] && $row->lead !== null
-                        && $row->occurred_at?->gte(now()->subDay())) {
+                        && $row->occurred_at?->gte(now()->subDay())
+                        // One alert per lead per call: a transferred call is two
+                        // legs, two transcripts (prod 10-28: 1.5 min apart).
+                        && Cache::add('lead.call_complaint:'.$row->lead_id, true, now()->addMinutes(15))) {
                         $events->emit('lead.call_complaint', $row->lead, ['after' => [
                             'summary' => $read['summary'],
                             'caller_name' => $row->lead->contact_name,

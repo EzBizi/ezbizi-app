@@ -1,5 +1,7 @@
 # What the website claims, and on whose authority
 
+> **2026-11-02: www.ezbizi.com is WordPress now** (Jose: "remake it on wordpress then, the entire site"). `www/` edits NO LONGER GO LIVE. Pages live on the websites box, /var/www/vhosts/ezbizi.com/httpdocs (theme ezbizi-site). Body = one HTML block in post_content; <head> = post meta `_ezb_head`. Edit with wp-cli as ezbizi_ftp, `--user=ezbizi_admin` (else kses strips scripts). Imported from main f4cb9327e. The claims register below still holds; the daily check must diff the live page against WordPress, not `www/`. Owner of the WP plumbing: Web Module (local_89561020).
+
 
 The public site says what EzBizi does. This page records **why each claim is
 allowed to be there**, and — more importantly — what must *not* go back on.

@@ -66,9 +66,10 @@ class ProjectManagement2Controller extends Controller
 
         return response()->json([
             'data' => $jobs->map(fn (Job $job) => $this->row($job, $money))->values(),
-            // Each tab's count, for its label, without the search.
-            'meta' => $this->pageMeta($page) + ['counts' => collect(self::TABS)
-                ->mapWithKeys(fn (string $t) => [$t => $this->tab($this->inView($user), $t)->count()])->all()],
+            // Each tab's count, for its label, without the search. First page only:
+            // "Load more" changes no count, and the three cost ~370 ms (2026-11-02).
+            'meta' => $this->pageMeta($page) + ($page->currentPage() > 1 ? [] : ['counts' => collect(self::TABS)
+                ->mapWithKeys(fn (string $t) => [$t => $this->tab($this->inView($user), $t)->count()])->all()]),
         ]);
     }
 
@@ -196,9 +197,13 @@ class ProjectManagement2Controller extends Controller
             // ponytail: any succeeded payment row counts, so a job paid and refunded in full stays; net it here if that turns up.
             'ready' => $dpa($jobs)->whereIn('id', JobMoney::paidJobIds()),
             // ponytail: read off the status-change events, so a job drops off when they age out of retention.
-            'submitted' => $jobs->whereRaw('LOWER(TRIM(status)) = ?', [self::SUBMITTED])
-                ->whereIn('id', $this->submissions()->select('subject_id'))
-                ->orderByDesc($this->submissions()->whereColumn('subject_id', 'jobs.id')->selectRaw('MAX(occurred_at)')),
+            // One grouped pass over the events, joined. A subquery per row read every
+            // status change for each job: 2.1 s for this tab on 2026-11-02.
+            'submitted' => $jobs->whereRaw('LOWER(TRIM(jobs.status)) = ?', [self::SUBMITTED])
+                ->joinSub($this->submissions()->groupBy('subject_id')->selectRaw('subject_id, MAX(occurred_at) AS submitted_at'),
+                    'submitted', 'submitted.subject_id', '=', 'jobs.id')
+                ->select('jobs.*')
+                ->orderByDesc('submitted.submitted_at'),
         };
     }
 
