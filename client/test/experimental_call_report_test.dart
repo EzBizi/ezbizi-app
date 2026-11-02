@@ -478,9 +478,7 @@ void main() {
     expect(find.text('Greeted with the company name 100%'), findsOneWidget);
     expect(find.text('Offered a time 0%'), findsOneWidget);
     expect(find.text('Offer a time.'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const ValueKey('copy-coaching-note-Ada-Offer a time.')),
-    );
+    await tester.tap(find.byTooltip('Copy').last);
     await tester.pumpAndSettle();
     expect(find.text('Copied'), findsOneWidget);
     expect(find.byKey(const ValueKey('coaching-Bo')), findsNothing);

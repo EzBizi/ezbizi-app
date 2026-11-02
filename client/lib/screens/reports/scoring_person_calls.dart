@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme.dart';
+import '../../widgets/call_text.dart';
+import '../../widgets/status_pill.dart';
+
 import '../../core/api_client.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
@@ -173,17 +177,25 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                   Text(_when(c['started_at']), style: muted),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      '${c['caller_number'] ?? 'unknown number'}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Copyable(
+                        '${c['caller_number'] ?? 'unknown number'}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
                     ),
                   ),
-                  Text(
-                    score == null ? '—' : '${score.round()}/10',
-                    key: ValueKey('scoring-call-score-$id'),
-                    style: theme.textTheme.titleSmall,
-                  ),
+                  score == null
+                      ? Text(
+                          '—',
+                          key: ValueKey('scoring-call-score-$id'),
+                          style: theme.textTheme.titleSmall,
+                        )
+                      : StatusPill(
+                          '${score.round()}/10',
+                          key: ValueKey('scoring-call-score-$id'),
+                          tone: scoreTone(score),
+                        ),
                   Icon(open ? Icons.expand_less : Icons.expand_more, size: 18),
                 ],
               ),
@@ -205,15 +217,17 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                       ),
                   ],
                 ),
+              if (open && c['strength'] != null) ...[
+                const SizedBox(height: 6),
+                const ToneHeading('Did well', Tone.ok),
+                Copyable('${c['strength']}'),
+              ],
               if (c['improve'] != null) ...[
-                const SizedBox(height: 4),
-                Text('To improve: ${c['improve']}', style: muted),
+                const SizedBox(height: 6),
+                const ToneHeading('To improve', Tone.caution),
+                Copyable('${c['improve']}'),
               ],
               if (open) ...[
-                if (c['strength'] != null) ...[
-                  const SizedBox(height: 4),
-                  Text('Did well: ${c['strength']}', style: muted),
-                ],
                 if (recording != null) ...[
                   const SizedBox(height: 8),
                   RecordingPlaybackBar(
@@ -229,10 +243,7 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                 ],
                 if (c['transcript'] != null) ...[
                   const SizedBox(height: 8),
-                  SelectableText(
-                    '${c['transcript']}',
-                    style: theme.textTheme.bodySmall,
-                  ),
+                  CallTranscriptText('${c['transcript']}'),
                 ],
               ],
             ],
