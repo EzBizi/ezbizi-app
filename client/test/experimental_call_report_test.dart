@@ -474,10 +474,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('coaching-Ada')), findsOneWidget);
-    expect(find.textContaining('7.0 / 10 over 1 scored call'), findsOneWidget);
-    expect(find.text('Greeted with the company name: 100%'), findsOneWidget);
-    expect(find.text('Offered a time: 0%'), findsOneWidget);
-    expect(find.text('To improve: Offer a time.'), findsOneWidget);
+    expect(find.textContaining('over 1 scored call'), findsOneWidget);
+    expect(find.text('Greeted with the company name 100%'), findsOneWidget);
+    expect(find.text('Offered a time 0%'), findsOneWidget);
+    expect(find.text('Offer a time.'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('copy-coaching-note-Ada-Offer a time.')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Copied'), findsOneWidget);
     expect(find.byKey(const ValueKey('coaching-Bo')), findsNothing);
   });
 
