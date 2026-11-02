@@ -3047,7 +3047,10 @@ class ActionRunner
             }
         }
 
-        return trim($this->interpolate((string) ($action['message'] ?? ''), $event, $review));
+        // Words per star rating (ReviewAutoReplyRule), else the one message.
+        $message = $action['by_rating'][(string) $review->rating] ?? $action['message'] ?? '';
+
+        return trim($this->interpolate((string) $message, $event, $review));
     }
 
     /**
