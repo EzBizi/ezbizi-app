@@ -27,6 +27,9 @@ class ReviewBacklogRepliesTest extends TestCase
             $make = fn (int $i) => Review::create(['organization_id' => $t['org']->id, 'remote_name' => 'accounts/1/locations/9/reviews/'.$i,
                 'location_name' => 'accounts/1/locations/9', 'reviewer_name' => 'Dana', 'rating' => 5, 'reviewed_at' => now()->subDays($i)]);
 
+            Review::create(['organization_id' => $t['org']->id, 'remote_name' => 'accounts/1/locations/9/reviews/bad',
+                'location_name' => 'accounts/1/locations/9', 'reviewer_name' => 'Sam', 'rating' => 2, 'reviewed_at' => now()]);
+
             return [$make(1), $make(2), $make(3)];
         });
         $this->mock(BusinessProfileReviews::class)->shouldReceive('publish')->times(1);
@@ -36,5 +39,8 @@ class ReviewBacklogRepliesTest extends TestCase
 
         $published = ReviewReply::withoutGlobalScopes()->where('status', ReviewReply::STATUS_PUBLISHED)->pluck('review_id')->all();
         $this->assertSame([$a->id], $published, 'newest first; the same words twice are never published');
+        $bad = Review::withoutGlobalScopes()->where('remote_name', 'like', '%/bad')->first();
+        $this->assertSame(ReviewReply::STATUS_DRAFT, ReviewReply::withoutGlobalScopes()->where('review_id', $bad->id)->value('status'),
+            'a 2-star review gets a draft for the dispatchers, never a published reply');
     }
 }
