@@ -433,6 +433,9 @@ refresh "$ROOT/deploy/ezbizi-watch-peer.timer" /etc/systemd/system/ezbizi-watch-
 refresh "$ROOT/deploy/ezbizi-watch-peer-failed.service" /etc/systemd/system/ezbizi-watch-peer-failed.service 0644
 refresh "$ROOT/deploy/ezbizi-transcribe.service" /etc/systemd/system/ezbizi-transcribe.service 0644
 refresh "$ROOT/deploy/ezbizi-transcribe.timer" /etc/systemd/system/ezbizi-transcribe.timer 0644
+refresh "$ROOT/deploy/ezbizi-label.service" /etc/systemd/system/ezbizi-label.service 0644
+refresh "$ROOT/deploy/ezbizi-label.timer" /etc/systemd/system/ezbizi-label.timer 0644
+refresh "$ROOT/deploy/ezbizi-worker-staff.service" /etc/systemd/system/ezbizi-worker-staff.service 0644
 if [ "$updated" -eq 1 ]; then
   sudo systemctl daemon-reload
 else

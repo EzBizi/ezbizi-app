@@ -568,6 +568,9 @@ return [
     // every AI feature shows its calm "not available" state (Jose, 2026-10-27).
     'ai' => [
         'provider' => env('AI_PROVIDER', 'auto'),
+        // Staff questions' queue. 'staff' once deploy/ezbizi-worker-staff.service is
+        // installed (a worker of its own); until then 'default', so nothing waits on a queue nobody serves.
+        'staff_queue' => env('QUEUE_STAFF', 'default'),
         'claude' => [
             'key' => env('AI_CLAUDE_KEY'),   // falls back to ANTHROPIC_API_KEY (Reports' tagger)
             'model' => env('AI_CLAUDE_MODEL', 'claude-opus-5-5'),
