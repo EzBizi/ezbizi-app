@@ -3048,8 +3048,9 @@ class ActionRunner
         }
 
         // Words per star rating (ReviewAutoReplyRule), else the one message.
-        // An empty field saved by the builder falls back to the one message.
-        $message = ($action['by_rating_'.$review->rating] ?? '') ?: ($action['message'] ?? '');
+        // An empty field saved by the builder falls back to the one message; by_rating is
+        // the shape 0.0.0514 wrote before the flat keys (2026-11-02).
+        $message = ($action['by_rating_'.$review->rating] ?? '') ?: ($action['by_rating'][(string) $review->rating] ?? $action['message'] ?? '');
 
         return trim($this->interpolate((string) $message, $event, $review));
     }
