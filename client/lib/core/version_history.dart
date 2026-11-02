@@ -14,6 +14,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0518',
+      date: '2 Nov 2026',
+      items: [
+        'Leads: fewer tabs. Calls (LS, RC, EZ), SMS Texts (LS, EZ), Meta (Facebook, Instagram, WhatsApp) and Forms (Forms, Job applicants) each hold their sources, and every lead keeps its own tag.',
+        'Leads: Not a lead, Completed and Lost never show Awaiting reply or count as unreplied.',
+        'Settings › Integrations: Google connections are grouped by the Google account that made them, with one Reconnect or Disconnect per account.',
+        'Marketing: YouTube posts can be deleted from EzBizi (reconnect YouTube once to allow it).',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0517',
       date: '2 Nov 2026',
       items: [
