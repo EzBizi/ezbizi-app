@@ -67,7 +67,10 @@ BUILT_AT=$(date -u +'%Y-%m-%d %H:%M')
 
 echo "→ building v${VERSION} · ${COMMIT}"
 
-(cd client && flutter build web --release \
+# --wasm (Jose, 2026-11-02): Chrome/Edge run skwasm from main.dart.wasm; every
+# other browser falls back to main.dart.js + CanvasKit, whose wasm aborted 164
+# times 10-16..11-02. Rollback: drop the flag in the next release.
+(cd client && flutter build web --release --wasm \
   --pwa-strategy=none \
   --dart-define=API_BASE= \
   --dart-define=APP_VERSION="${VERSION}" \
