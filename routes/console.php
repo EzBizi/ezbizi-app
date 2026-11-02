@@ -23,6 +23,8 @@ Artisan::command('inspire', function () {
 Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
+// Meta connections Meta no longer lets us reach turn red (Jose, 2026-11-02).
+Schedule::command('ezbizi:meta-access-check')->dailyAt('07:15')->withoutOverlapping(30);
 // Paid time off that opens today or resets in 30 days (Jose, 2026-10-21).
 // Work Hours › Daily approval reminders (2026-10-22); each approver once a day.
 Schedule::command('ezbizi:time-clock-approval-reminders')->everyFifteenMinutes()->withoutOverlapping(10);
