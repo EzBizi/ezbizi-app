@@ -136,7 +136,7 @@ class ProjectManagement2Test extends TestCase
         $this->assertSame(['Payment', 'Refund', 'Tags +DEPOSIT'], array_slice(array_column($job['timeline'], 'what'), 3));
 
         $rows = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs')->json('data'))->keyBy('id');
-        $this->assertSame([null, null, null], [$rows[$bare]['total'], $rows[$bare]['paid'], $rows[$bare]['pending']], 'no price draws no zero');
+        $this->assertSame([0, 0, 0], [$rows[$bare]['total'], $rows[$bare]['paid'], $rows[$bare]['pending']], 'no price reads \$0');
         $this->assertSame(['N-1', 5000, 0, 5000], [$rows[$native]['job_number'], $rows[$native]['total'], $rows[$native]['paid'], $rows[$native]['pending']]);
         $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs/{$native}")->assertOk()
             ->assertJsonPath('data.timeline.0.what', 'Job created');

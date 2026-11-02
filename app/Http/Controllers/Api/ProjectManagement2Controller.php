@@ -233,11 +233,11 @@ class ProjectManagement2Controller extends Controller
             'modified'   => $job->workizJob?->last_status_update?->toDateString()
                 ?? $job->updated_at?->toDateString(),
             // Financials only, and ABSENT without it, so the client draws no zero.
-            // Null where there is no price, so it draws no zero there either.
+            // No price reads $0 (Jose, 2026-11-02: "i'd rather see 0").
             ...($money !== null ? [
-                'pending'  => $m['total'] === null ? null : $m['due'],
-                'paid'     => $m['total'] === null && $m['paid'] === 0 ? null : $m['paid'],
-                'total'    => $m['total'],
+                'pending'  => $m['due'],
+                'paid'     => $m['paid'],
+                'total'    => $m['total'] ?? 0,
                 'currency' => $job->currency,
             ] : []),
         ];
