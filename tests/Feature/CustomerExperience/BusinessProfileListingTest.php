@@ -47,6 +47,13 @@ class BusinessProfileListingTest extends TestCase
         $this->assertSame('match', $status[$good->id]);
         $this->assertSame('mismatch', $status[$bad->id]);
         $this->assertSame('unknown', $status[$none->id], 'no branch, nothing to compare with');
+
+        $this->inTenant($this->t['org'], fn () => PhoneNumber::factory()->create(['organization_id' => $this->t['org']->id,
+            'connection_id' => \App\Models\PhoneConnection::query()->value('id'),
+            'scope_type' => PhoneNumber::SCOPE_COMPANY, 'scope_id' => $this->t['company']->id, 'e164' => '+19375550177']));
+        $company = $this->listing('(937) 555-0177', null);
+        $status = collect($this->getJson('/api/v1/business-profile/phone-check')->json('data'))->pluck('status', 'id');
+        $this->assertSame('match', $status[$company->id], 'a company line counts for every listing of that company');
     }
 
     public function test_review_stats_sources_and_whatsapp_link(): void
