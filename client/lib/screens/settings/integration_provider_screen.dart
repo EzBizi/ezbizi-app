@@ -4,11 +4,13 @@ import '../../widgets/open_destination.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/connect_account.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/social_network_mark.dart';
 import '../../widgets/disconnect_panel.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
 import '../../widgets/workiz_session_login.dart';
 
 /// One provider's connections, grouped by who owns them (Jose, 2026-09-22).
@@ -367,6 +369,157 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     );
   }
 
+  /// One connection, the same under a place heading or a login's card.
+  Widget _row(
+    ThemeData theme,
+    IntegrationConnection row,
+    bool narrow, {
+    String? place,
+  }) => ListTile(
+    key: ValueKey('connection:${row.id}'),
+    contentPadding: EdgeInsets.zero,
+    dense: true,
+    leading: SocialNetworkMark(network: row.provider, size: 24),
+    title: Text(_titleOf(row), maxLines: 1, overflow: TextOverflow.ellipsis),
+    // `appadTMQltMGmGrse` tells nobody anything, so a named
+    // connection leads with its name and still shows the id
+    // underneath — that is what identifies it to the provider
+    // when something is wrong.
+    subtitle: _subtitle(
+      row,
+      Text(
+        [
+          // Under a login's card, where it is (design 167).
+          ?place,
+          if (_legacyWorkizWeb(row)) WorkizSessionLogin.legacyNote,
+          if (row.beneath != null) row.beneath!,
+          if ((row.detail ?? '').isNotEmpty) row.detail!,
+          // When it last synced (UI queue 109).
+          if (row.lastSyncedAt != null) 'synced ${_ago(row.lastSyncedAt!)}',
+          if (!row.connected) row.statusReason ?? 'Not working',
+        ].join(' · '),
+        key: ValueKey('connection-detail:${row.id}'),
+        maxLines: _legacyWorkizWeb(row) ? 4 : 2,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: row.connected
+              ? theme.colorScheme.onSurfaceVariant
+              : theme.colorScheme.error,
+        ),
+      ),
+    ),
+    trailing:
+        widget.canName || widget.onDisconnect != null || widget.onEdit != null
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // The Workiz web login is sent again, not
+              // edited (UI queue 120).
+              if (widget.onEdit != null && row.provider != 'workiz_web')
+                TextButton(
+                  key: ValueKey('edit:${row.id}'),
+                  onPressed: () => widget.onEdit!(row),
+                  child: const Text('Edit'),
+                ),
+              if (widget.canName)
+                IconButton(
+                  tooltip: 'Name this connection',
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  onPressed: () => _rename(row),
+                ),
+              if (widget.onDisconnect != null && narrow)
+                IconButton(
+                  key: ValueKey('disconnect:${row.id}'),
+                  tooltip: 'Disconnect',
+                  color: theme.colorScheme.error,
+                  icon: const Icon(Icons.link_off, size: 20),
+                  onPressed: () => _disconnect(row),
+                )
+              else if (widget.onDisconnect != null)
+                TextButton(
+                  key: ValueKey('disconnect:${row.id}'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.error,
+                  ),
+                  onPressed: () => _disconnect(row),
+                  child: const Text('Disconnect'),
+                ),
+            ],
+          )
+        : null,
+  );
+
+  /// The Google providers, grouped by the login they were signed in with
+  /// rather than by place (design 167, Jose 2026-11-02): one login can hold
+  /// dozens of rows, and the login is what reconnecting needs.
+  static const _byLogin = {'google_business_profile', 'google_ads', 'youtube'};
+
+  /// One card per login, the unknown login last.
+  List<Widget> _logins(ThemeData theme, bool narrow) {
+    final byEmail = <String?, List<IntegrationConnection>>{};
+    for (final row in widget.connections) {
+      byEmail.putIfAbsent(row.accountEmail, () => []).add(row);
+    }
+    final emails = byEmail.keys.whereType<String>().toList()..sort();
+    final places = {
+      for (final (heading, rows) in _groups)
+        for (final row in rows) row.id: heading,
+    };
+
+    return [
+      for (final email in [...emails, if (byEmail.containsKey(null)) null])
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _LoginCard(
+            key: ValueKey('login:${email ?? 'unknown'}'),
+            email: email,
+            rows: byEmail[email]!,
+            row: (r) => _row(theme, r, narrow, place: places[r.id]),
+            reconnect:
+                widget.mayConnect &&
+                    widget.connectsBy == 'sign_in' &&
+                    widget.startPath != null
+                ? ConnectAccount(
+                    key: ValueKey('reconnect:${email ?? 'unknown'}'),
+                    api: widget.api,
+                    label: widget.providerLabel,
+                    action: 'Reconnect',
+                    startPath: widget.startPath!,
+                    onConnected: () async => widget.onChanged?.call(),
+                  )
+                : null,
+            onDisconnectAll: widget.onDisconnect == null
+                ? null
+                : () => _disconnectLogin(email, byEmail[email]!.length),
+          ),
+        ),
+    ];
+  }
+
+  /// Every connection of this provider made by one login, with one code.
+  /// The server revokes the shared grant once, on the last row.
+  Future<void> _disconnectLogin(String? email, int count) async {
+    final done = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect all $count?',
+      subtitle: email ?? 'Unknown login',
+      explanation:
+          'EzBizi stops using every ${widget.providerLabel} connection made by '
+          '${email ?? 'this unknown login'}. To use them again, sign in again.',
+      perform: (code) => widget.api.deleteWithBody(
+        '/social/providers/${widget.provider}/connections',
+        {'code': code, 'account_email': email},
+      ),
+    );
+    if (done == null || !mounted) return;
+    final problems =
+        ((done.body['data'] as Map?)?['problems'] as List<dynamic>?) ??
+        const [];
+    setState(() => _error = problems.isEmpty ? null : problems.join(' '));
+    await widget.onChanged?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -441,102 +594,23 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
             child: const DashboardNote('Nothing connected here yet.'),
           ),
 
-        for (final (heading, rows) in groups) ...[
-          DashboardCard(
-            title: heading,
-            icon: Icons.account_tree_outlined,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final row in rows)
-                  ListTile(
-                    key: ValueKey('connection:${row.id}'),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    leading: SocialNetworkMark(network: row.provider, size: 24),
-                    title: Text(
-                      _titleOf(row),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    // `appadTMQltMGmGrse` tells nobody anything, so a named
-                    // connection leads with its name and still shows the id
-                    // underneath — that is what identifies it to the provider
-                    // when something is wrong.
-                    subtitle: _subtitle(
-                      row,
-                      Text(
-                        [
-                          if (_legacyWorkizWeb(row))
-                            WorkizSessionLogin.legacyNote,
-                          if (row.beneath != null) row.beneath!,
-                          if ((row.detail ?? '').isNotEmpty) row.detail!,
-                          // When it last synced (UI queue 109).
-                          if (row.lastSyncedAt != null)
-                            'synced ${_ago(row.lastSyncedAt!)}',
-                          if (!row.connected) row.statusReason ?? 'Not working',
-                        ].join(' · '),
-                        key: ValueKey('connection-detail:${row.id}'),
-                        maxLines: _legacyWorkizWeb(row) ? 4 : 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: row.connected
-                              ? theme.colorScheme.onSurfaceVariant
-                              : theme.colorScheme.error,
-                        ),
-                      ),
-                    ),
-                    trailing:
-                        widget.canName ||
-                            widget.onDisconnect != null ||
-                            widget.onEdit != null
-                        ? Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // The Workiz web login is sent again, not
-                              // edited (UI queue 120).
-                              if (widget.onEdit != null &&
-                                  row.provider != 'workiz_web')
-                                TextButton(
-                                  key: ValueKey('edit:${row.id}'),
-                                  onPressed: () => widget.onEdit!(row),
-                                  child: const Text('Edit'),
-                                ),
-                              if (widget.canName)
-                                IconButton(
-                                  tooltip: 'Name this connection',
-                                  icon: const Icon(
-                                    Icons.edit_outlined,
-                                    size: 18,
-                                  ),
-                                  onPressed: () => _rename(row),
-                                ),
-                              if (widget.onDisconnect != null && narrow)
-                                IconButton(
-                                  key: ValueKey('disconnect:${row.id}'),
-                                  tooltip: 'Disconnect',
-                                  color: theme.colorScheme.error,
-                                  icon: const Icon(Icons.link_off, size: 20),
-                                  onPressed: () => _disconnect(row),
-                                )
-                              else if (widget.onDisconnect != null)
-                                TextButton(
-                                  key: ValueKey('disconnect:${row.id}'),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: theme.colorScheme.error,
-                                  ),
-                                  onPressed: () => _disconnect(row),
-                                  child: const Text('Disconnect'),
-                                ),
-                            ],
-                          )
-                        : null,
-                  ),
-              ],
+        // By login once any login is known; with none, a single "Unknown
+        // login" card would only hide the places (design 167).
+        if (_byLogin.contains(widget.provider) &&
+            widget.connections.any((c) => c.accountEmail != null))
+          ..._logins(theme, narrow)
+        else
+          for (final (heading, rows) in groups) ...[
+            DashboardCard(
+              title: heading,
+              icon: Icons.account_tree_outlined,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [for (final row in rows) _row(theme, row, narrow)],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-        ],
+            const SizedBox(height: 12),
+          ],
 
         /*
            * CONNECTING HAPPENS HERE (Jose, 2026-09-23).
@@ -633,7 +707,11 @@ class IntegrationConnection {
     this.detail,
     this.method,
     this.lastSyncedAt,
+    this.accountEmail,
   });
+
+  /// The Google login it was signed in with; null when not known (design 167).
+  final String? accountEmail;
 
   final String id;
   final String provider;
@@ -733,5 +811,119 @@ class IntegrationConnection {
         lastSyncedAt: DateTime.tryParse(
           '${(json['workiz'] as Map?)?['last_synced_at'] ?? ''}',
         ),
+        accountEmail: json['account_email'] as String?,
       );
+}
+
+/// One Google login's connections (design 167): the login, how many, how many
+/// work and how many need reconnecting, then its rows behind a search, with
+/// Reconnect and Disconnect all. Starts open only when something is broken.
+class _LoginCard extends StatefulWidget {
+  const _LoginCard({
+    super.key,
+    required this.email,
+    required this.rows,
+    required this.row,
+    this.reconnect,
+    this.onDisconnectAll,
+  });
+
+  /// Null is the rows whose login is not known.
+  final String? email;
+  final List<IntegrationConnection> rows;
+  final Widget Function(IntegrationConnection) row;
+  final Widget? reconnect;
+  final VoidCallback? onDisconnectAll;
+
+  @override
+  State<_LoginCard> createState() => _LoginCardState();
+}
+
+class _LoginCardState extends State<_LoginCard> {
+  late bool _open = widget.rows.any((r) => !r.connected);
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ok = widget.rows.where((r) => r.connected).length;
+    final bad = widget.rows.length - ok;
+    final q = _search.text.trim().toLowerCase();
+    final shown = q.isEmpty
+        ? widget.rows
+        : widget.rows
+              .where(
+                (r) => '${r.title} ${r.displayName}'.toLowerCase().contains(q),
+              )
+              .toList();
+    final key = widget.email ?? 'unknown';
+
+    return DashboardCard(
+      title: widget.email ?? 'Unknown login · reconnect to see',
+      icon: Icons.account_circle_outlined,
+      controls: IconButton(
+        key: ValueKey('login-toggle:$key'),
+        tooltip: _open ? 'Collapse' : 'Expand',
+        icon: Icon(_open ? Icons.expand_less : Icons.expand_more),
+        onPressed: () => setState(() => _open = !_open),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                '${widget.rows.length} '
+                '${widget.rows.length == 1 ? 'connection' : 'connections'}',
+                style: theme.textTheme.bodySmall,
+              ),
+              if (ok > 0) StatusPill('$ok OK', tone: Tone.ok),
+              if (bad > 0) StatusPill('$bad need reconnect', tone: Tone.bad),
+            ],
+          ),
+          if (_open) ...[
+            const SizedBox(height: 8),
+            TextField(
+              key: ValueKey('login-search:$key'),
+              controller: _search,
+              decoration: const InputDecoration(
+                isDense: true,
+                prefixIcon: Icon(Icons.search, size: 18),
+                hintText: 'Search these connections',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            for (final r in shown) widget.row(r),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ?widget.reconnect,
+                if (widget.onDisconnectAll != null)
+                  TextButton(
+                    key: ValueKey('disconnect-login:$key'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: theme.colorScheme.error,
+                    ),
+                    onPressed: widget.onDisconnectAll,
+                    child: const Text('Disconnect all'),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

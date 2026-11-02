@@ -8,12 +8,14 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\GivesAuthenticatorCodes;
 use Tests\TestCase;
 
 /** Jose, 2026-11-02: every Google connection names the Google login it was signed in with. */
 class GoogleConnectionEmailTest extends TestCase
 {
     use BuildsTenants;
+    use GivesAuthenticatorCodes;
     use RefreshDatabase;
 
     private function idToken(string $email): string
@@ -69,5 +71,32 @@ class GoogleConnectionEmailTest extends TestCase
 
         $this->assertSame(['chaim@x.com', 'chaim@x.com', null], SocialConnection::withoutGlobalScopes()->orderBy('remote_id')->pluck('account_email')->all());
         $this->assertCount(2, Http::recorded(fn (Request $r) => str_contains($r->url(), 'tokeninfo')));
+    }
+
+    public function test_disconnect_all_takes_one_logins_rows_and_unknown_is_its_own_set(): void
+    {
+        $t = $this->provisionTenant();
+        foreach ([['1', 'a@x.com'], ['2', 'a@x.com'], ['3', 'b@x.com'], ['4', null]] as [$remote, $email]) {
+            $this->inTenant($t['org'], function () use ($t, $remote, $email) {
+                $c = new SocialConnection;
+                $c->forceFill(['organization_id' => $t['org']->id, 'scope_type' => SocialConnection::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id,
+                    'provider' => 'google_business_profile', 'remote_id' => $remote, 'display_name' => $remote, 'account_email' => $email]);
+                $c->connect(['refresh_token' => 'r']);
+                $c->save();
+            });
+        }
+        Http::fake();
+        $left = fn () => SocialConnection::withoutGlobalScopes()->orderBy('remote_id')->pluck('remote_id')->all();
+
+        $code = $this->authenticatorCode($t['admin']);
+        $this->signedInAs($t['admin'])->deleteJson('/api/v1/social/providers/google_business_profile/connections',
+            $code + ['account_email' => 'a@x.com'])->assertOk()->assertJsonPath('data.disconnected', 2);
+        $this->assertSame(['3', '4'], $left());
+
+        $this->travel(31)->seconds();
+        $code = $this->authenticatorCode($t['admin']);
+        $this->signedInAs($t['admin'])->deleteJson('/api/v1/social/providers/google_business_profile/connections',
+            $code + ['account_email' => null])->assertOk()->assertJsonPath('data.disconnected', 1);
+        $this->assertSame(['3'], $left());
     }
 }
