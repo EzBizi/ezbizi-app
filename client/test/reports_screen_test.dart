@@ -482,7 +482,8 @@ void main() {
     expect(find.byKey(const Key('date-range-button')), findsOneWidget);
     final first = asked.last;
     expect(
-      DateTime.parse(first['to']!).difference(DateTime.parse(first['from']!)),
+      // Calendar days: local midnights are 145h apart across a DST change.
+      _day(first['to']!).difference(_day(first['from']!)),
       const Duration(days: 6),
       reason: 'Last 7 days on first open',
     );
@@ -1141,3 +1142,8 @@ Map<String, dynamic> _callDay({
         'day': '2026-09-14',
         'timezone': 'America/New_York',
       };
+
+DateTime _day(String at) {
+  final d = DateTime.parse(at);
+  return DateTime.utc(d.year, d.month, d.day);
+}
