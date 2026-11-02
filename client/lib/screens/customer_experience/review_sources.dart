@@ -9,9 +9,12 @@ import '../business_profile/phone_check_view.dart' show checkedAgo;
 /// each with its connection, count and average, from GET /reviews/sources.
 /// The funnel below it is the Review links report this sits in.
 class ReviewSources extends StatefulWidget {
-  const ReviewSources({super.key, required this.api});
+  const ReviewSources({super.key, required this.api, this.onEkomi});
 
   final ApiClient api;
+
+  /// Opens the eKomi screen (UI queue 165); null draws the row plain.
+  final VoidCallback? onEkomi;
 
   @override
   State<ReviewSources> createState() => _ReviewSourcesState();
@@ -95,7 +98,8 @@ class _ReviewSourcesState extends State<ReviewSources> {
     final connected = r['connected'] == true;
     final average = (r['average'] as num?)?.toDouble();
     final synced = DateTime.tryParse('${r['last_sync'] ?? ''}');
-    return Container(
+    final open = r['source'] == 'ekomi' && connected ? widget.onEkomi : null;
+    final row = Container(
       key: ValueKey('cx-source-${r['source']}'),
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
@@ -141,8 +145,16 @@ class _ReviewSourcesState extends State<ReviewSources> {
               style: theme.textTheme.bodySmall,
             ),
           ),
+          if (open != null) const Icon(Icons.chevron_right, size: 18),
         ],
       ),
     );
+    return open == null
+        ? row
+        : InkWell(
+            key: const ValueKey('cx-source-open-ekomi'),
+            onTap: open,
+            child: row,
+          );
   }
 }
