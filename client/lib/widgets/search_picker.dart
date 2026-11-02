@@ -83,6 +83,7 @@ class SearchPickerField<T> extends StatelessWidget {
     this.errorText,
     this.border,
     this.isDense = false,
+    this.contentPadding,
     this.allowClear = false,
     this.searchFrom = 8,
     this.create,
@@ -124,6 +125,9 @@ class SearchPickerField<T> extends StatelessWidget {
   final InputBorder? border;
   final bool isDense;
 
+  /// Overrides the theme's padding, e.g. to match a toolbar's height.
+  final EdgeInsetsGeometry? contentPadding;
+
   /// Whether the list offers a way back to nothing chosen. Off by default,
   /// because most of these fields are required and a stray "None" row invites
   /// somebody to empty a thing they were asked to fill.
@@ -163,6 +167,7 @@ class SearchPickerField<T> extends StatelessWidget {
           errorText: errorText,
           border: border,
           isDense: isDense,
+          contentPadding: contentPadding,
           enabled: enabled,
           // A dropdown's arrow, not a magnifier: the field opens a list to
           // pick from, and a magnifier made every one of them read as a

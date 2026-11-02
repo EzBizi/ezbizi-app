@@ -966,6 +966,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   // ── the list's own controls ──────────────────────────────────────
 
+  /// Search, status and Filters share one height (Jose, 2026-11-02: "these 3
+  /// fields have different sizes"): the theme's 16 px padding, less 4.
+  static const _barPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 12);
+  static const _barHeight = 44.0;
+
   Widget _searchField() => TextField(
     key: const ValueKey('tour-leads-search'),
     controller: _search,
@@ -979,6 +984,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     },
     decoration: InputDecoration(
       isDense: true,
+      contentPadding: _barPadding,
       prefixIcon: const Icon(Icons.search, size: 20),
       // Both, because somebody has one or the other in front of them and
       // should not have to know which the box wants.
@@ -1002,6 +1008,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     key: const ValueKey('tour-leads-status'),
     value: _status,
     isDense: true,
+    contentPadding: _barPadding,
     options: [
       for (final entry in _statuses.entries)
         SearchOption(value: entry.key, label: entry.value),
@@ -1024,14 +1031,23 @@ class _LeadsScreenState extends State<LeadsScreen> {
         child: LayoutBuilder(
           builder: (context, box) => Row(
             children: [
-              Expanded(child: _searchField()),
+              Expanded(
+                child: SizedBox(height: _barHeight, child: _searchField()),
+              ),
               const SizedBox(width: 8),
-              SizedBox(width: 140, child: _statusPicker()),
+              SizedBox(
+                width: 140,
+                height: _barHeight,
+                child: _statusPicker(),
+              ),
               const SizedBox(width: 8),
               // Charge, IVR, dispatcher, dates and the sources in All, behind
               // one button with a count (UI queue 108, design 1); the icon
               // alone in a narrow list.
-              _filtersButton(compact: box.maxWidth < 420),
+              SizedBox(
+                height: _barHeight,
+                child: _filtersButton(compact: box.maxWidth < 420),
+              ),
             ],
           ),
         ),
@@ -1098,16 +1114,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
   }
 
   List<Widget> _quickFilters(ThemeData theme, {required bool withStatus}) => [
-        FilterChip(
-          key: const ValueKey('filter-unread'),
-          label: const Text('Unread'),
-          selected: _unread,
-          visualDensity: VisualDensity.compact,
-          onSelected: (on) => _setFilters(unread: on),
-        ),
+        // No Unread chip (Jose, 2026-11-02: "remove the unread filter").
         FilterChip(
           key: const ValueKey('filter-unreplied'),
+          avatar: Icon(
+            Icons.reply,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
           label: const Text('Unreplied'),
+          showCheckmark: false,
           selected: _unreplied,
           visualDensity: VisualDensity.compact,
           onSelected: (on) => _setFilters(unreplied: on),
@@ -1144,7 +1160,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
         FilterChip(
           key: const ValueKey('filter-starred'),
+          avatar: Icon(
+            Icons.star,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
           label: const Text('Starred'),
+          showCheckmark: false,
           selected: _starred,
           visualDensity: VisualDensity.compact,
           onSelected: (on) => _setFilters(starred: on),
