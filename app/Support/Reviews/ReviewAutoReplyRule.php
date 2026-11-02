@@ -55,7 +55,12 @@ final class ReviewAutoReplyRule
             // An hour after the review is found, so a reply from anywhere else lands first and is respected.
             'delay_minutes' => 60,
         ]);
-        $rule->addVersion(null, [['type' => 'publish_reply', 'by_rating' => self::REPLIES]], $by);
+        // Flat keys: the builder edits and keeps by_rating_5..by_rating_1 (Automations, 2026-11-02).
+        $step = ['type' => 'publish_reply'];
+        foreach (self::REPLIES as $stars => $words) {
+            $step['by_rating_'.$stars] = $words;
+        }
+        $rule->addVersion(null, [$step], $by);
 
         return $rule;
     }
