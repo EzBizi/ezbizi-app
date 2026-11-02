@@ -2969,6 +2969,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 165 · Customer Experience › eKomi screen — **sent 2026-11-02, awaiting Jose** (`docs/previews/ekomi-screen-layouts.html`)
+
+Jose 2026-11-02 via Leads: "a whole screen for Ekomi ... check at what a1tools had". Recommended 1 + phone 4: opened in place from Review links › Sources; tabs Overview (snapshot tiles + SRR funnel, certificate link, shared date bar), Requests (search, status/channel chips, Send review request per job), Reviews (existing list filtered source=ekomi), Settings (credentials, Test, auto-request on/off, delay hours, start date). Seal stays in Web. API per Leads: ekomi/overview, ekomi/requests (GET/POST), ekomi/settings, ekomi/test.
+
 ### 164 · GBP Listings: WhatsApp in the table, header actions under ⋯ — **sent 2026-11-02, awaiting Jose** (`docs/previews/gbp-listings-whatsapp-inline-layouts.html`)
 
 Jose 2026-11-02 via desk: "this section with all the options can be improved, specially the whatsapp stuff ... integrated instead of it leading to a new whole screen." Recommended 1 + phone 4: a WhatsApp column (state chip, click to set one listing), row ticks + "WhatsApp: Missing" filter chip with one action bar (number chips, Set on N, ✓/✗ per row, Retry failed), and Phone check / Check Google / Google connection in one ⋯ menu. This replaces 163's separate screen. Backend is cff96b475 (link per listing or many). 2 = always-visible second header row; 3 = banner only, no column.
