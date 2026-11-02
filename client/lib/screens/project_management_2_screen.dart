@@ -167,8 +167,12 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
 
   void _open(Map<String, dynamic> row) => showSidePanel<void>(
     context,
-    builder: (_) =>
-        _JobPanel(api: widget.api, session: widget.session, row: row),
+    builder: (_) => _JobPanel(
+      api: widget.api,
+      session: widget.session,
+      row: row,
+      onChanged: _load,
+    ),
   );
 
   @override
@@ -223,7 +227,11 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
             ],
           ),
           const SizedBox(height: 12),
-          if (rows.isEmpty && _q.isNotEmpty)
+          // A tab switch empties the rows: while its first page loads, no
+          // empty-state sentence that may not be true (2026-11-02 review).
+          if (rows.isEmpty && _fetching)
+            const LinearProgressIndicator()
+          else if (rows.isEmpty && _q.isNotEmpty)
             Text('No job matches "$_q".')
           else if (rows.isEmpty)
             Text(_empty[_tab]!)
@@ -370,11 +378,15 @@ class _JobPanel extends StatefulWidget {
     required this.api,
     required this.session,
     required this.row,
+    required this.onChanged,
   });
 
   final ApiClient api;
   final Session session;
   final Map<String, dynamic> row;
+
+  /// The full job was changed from here: the list behind reloads too.
+  final VoidCallback onChanged;
 
   @override
   State<_JobPanel> createState() => _JobPanelState();
@@ -413,7 +425,10 @@ class _JobPanelState extends State<_JobPanel> {
         id: '${widget.row['id']}',
       ),
     );
-    if (changed == true && mounted) _load();
+    if (changed == true && mounted) {
+      _load();
+      widget.onChanged();
+    }
   }
 
   @override

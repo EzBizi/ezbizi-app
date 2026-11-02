@@ -94,7 +94,7 @@ class WhatsAppGroupsTest extends TestCase
 
         $byTo = collect($this->sent)->keyBy('to');
         $this->assertSame('NJ: 50 jobs', $byTo['13055550101']['text']['body']);
-        $this->assertSame('report_ready', $byTo['13055550102']['template']['name']);
+        $this->assertSame('automation_alert', $byTo['13055550102']['template']['name']);
         $this->assertSame('A1 NJ Same-Day Report', $byTo['13055550102']['template']['components'][0]['parameters'][0]['text']);
         $this->assertCount(2, $this->sent);
 
