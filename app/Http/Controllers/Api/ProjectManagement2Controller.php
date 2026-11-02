@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\AutomationEvent;
 use App\Models\Job;
+use App\Models\ProjectManagementSubmission;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
@@ -100,7 +101,9 @@ class ProjectManagement2Controller extends Controller
             $audit->logChange('job.updated', $job);
             $job->save();
             $events->emit('job.updated', $job, $change);
-            $events->emit('job.status_changed', $job, $change);
+            $moved = $events->emit('job.status_changed', $job, $change);
+            // On the Submitted tab at once, not at the next minute's copy.
+            ProjectManagementSubmission::create(['job_id' => $job->id, 'automation_event_id' => $moved->id, 'submitted_at' => $moved->occurred_at]);
             WorkizMirror::queue($job, 'status', ['status' => 'Submitted']);
         });
 
@@ -196,25 +199,15 @@ class ProjectManagement2Controller extends Controller
             'pending' => $dpa($jobs),
             // ponytail: any succeeded payment row counts, so a job paid and refunded in full stays; net it here if that turns up.
             'ready' => $dpa($jobs)->whereIn('id', JobMoney::paidJobIds()),
-            // ponytail: read off the status-change events, so a job drops off when they age out of retention.
-            // One grouped pass over the events, joined. A subquery per row read every
-            // status change for each job: 2.1 s for this tab on 2026-11-02.
+            // Read from the stored submissions, kept for good (Jose, 2026-11-02), not the
+            // events, which expire in 3 months. One grouped pass, joined: a subquery per
+            // row took 2.1 s for this tab on 2026-11-02.
             'submitted' => $jobs->whereRaw('LOWER(TRIM(jobs.status)) = ?', [self::SUBMITTED])
-                ->joinSub($this->submissions()->groupBy('subject_id')->selectRaw('subject_id, MAX(occurred_at) AS submitted_at'),
-                    'submitted', 'submitted.subject_id', '=', 'jobs.id')
+                ->joinSub(ProjectManagementSubmission::query()->groupBy('job_id')->selectRaw('job_id, MAX(submitted_at) AS submitted_at'),
+                    'submitted', 'submitted.job_id', '=', 'jobs.id')
                 ->select('jobs.*')
                 ->orderByDesc('submitted.submitted_at'),
         };
-    }
-
-    /** Every move from done pending approval to Submitted, wherever it was made. */
-    private function submissions(): Builder
-    {
-        return AutomationEvent::query()
-            ->where('event_key', 'job.status_changed')
-            ->where('subject_type', Job::class)
-            ->whereRaw("LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.before.status')))) = ?", [self::STATUS])
-            ->whereRaw("LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.after.status')))) = ?", [self::SUBMITTED]);
     }
 
     private function row(Job $job, ?array $money): array

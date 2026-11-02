@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Jobs\MirrorToWorkiz;
+use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\SocialConnection;
@@ -170,6 +171,8 @@ class ProjectManagement2Test extends TestCase
 
             return [$unpaid, $paid, $submitted];
         });
+        // The Workiz move reaches the Submitted tab through the every-minute copy.
+        $this->artisan('project-management-2:record-submissions')->expectsOutput('Recorded 1 submissions.')->assertSuccessful();
         $tab = fn (string $t) => $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs?tab={$t}")->assertOk();
         $ids = fn (string $t) => collect($tab($t)->json('data'))->pluck('id')->sort()->values()->all();
         $sorted = fn (array $a) => collect($a)->sort()->values()->all();
@@ -190,6 +193,12 @@ class ProjectManagement2Test extends TestCase
         $this->assertSame($paid, $tab('submitted')->json('data.0.id'), 'latest submitted first');
 
         $submit($paid)->assertStatus(409)->assertJsonPath('message', 'This job is no longer done pending approval.');
+
+        // Kept for good (Jose, 2026-11-02): a re-run records nothing twice, and the
+        // tab outlives the events, which expire in three months.
+        $this->artisan('project-management-2:record-submissions')->expectsOutput('Recorded 0 submissions.')->assertSuccessful();
+        $this->inTenant($alpha['org'], fn () => AutomationEvent::query()->delete());
+        $this->assertSame($sorted([$paid, $submitted]), $ids('submitted'));
     }
 
     private function record(array $tenant, string $job, string $type, string $remote, string $amount, ?string $status, string $day, array $payload = []): void

@@ -266,6 +266,8 @@ Schedule::command('jobs:emit-estimate-aging')->dailyAt('08:10')->timezone('Ameri
 Schedule::command('jobs:backfill-workiz-labels')->hourly()->withoutOverlapping(30);
 // The paid-not-started warning (Jose, 2026-10-22): daily, to each company's address.
 Schedule::command('jobs:warn-paid-not-started')->dailyAt('08:20')->timezone('America/New_York')->withoutOverlapping(60);
+// Project Management - 2's Submitted tab keeps its jobs for good (Jose, 2026-11-02): each move is copied before its event expires.
+Schedule::command('project-management-2:record-submissions')->everyMinute()->withoutOverlapping(5);
 
 // A month before a membership year ends (Customers › Memberships).
 Schedule::command('memberships:remind-renewals')->dailyAt('09:00')->timezone('America/New_York');

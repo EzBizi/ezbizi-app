@@ -347,12 +347,14 @@ const _empty = {
   'submitted': 'No job has gone from done pending approval to Submitted yet.',
 };
 
-/// Jose, 2026-10-27, reordered 2026-10-29: "Paid - Pending - Total". Total is
-/// the price (Workiz's invoice, else its estimate), Paid what came in less
-/// refunds, Pending what is left. None of them where the job has no price.
+/// Jose, 2026-10-27, reordered 2026-10-29: "Paid - Pending - Total"; the
+/// middle one reads Balance since 2026-11-02 (Jose: "sure"), as Pending is
+/// also the first tab and a Workiz status. Total is the price (Workiz's
+/// invoice, else its estimate), Paid what came in less refunds, Balance what
+/// is left. The server's key is still `pending`.
 const _moneyFields = [
   ('Paid', 'paid'),
-  ('Pending', 'pending'),
+  ('Balance', 'pending'),
   ('Total', 'total'),
 ];
 

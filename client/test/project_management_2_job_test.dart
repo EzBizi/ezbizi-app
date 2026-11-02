@@ -106,7 +106,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    for (final heading in ['PENDING', 'PAID', 'TOTAL']) {
+    for (final heading in ['PAID', 'BALANCE', 'TOTAL']) {
       expect(
         find.textContaining(RegExp(heading, caseSensitive: false)),
         findsWidgets,
