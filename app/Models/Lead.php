@@ -673,6 +673,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCES_NO_REPLY_OWED = [self::SOURCE_RINGCENTRAL, self::SOURCE_EZ_CALLS];
 
     /**
+     * Statuses that owe nobody a reply, whoever spoke last: never Awaiting
+     * reply, never Unreplied, never answerable (Jose, 2026-11-02: "stuff marked
+     * as not a lead should not be awaiting reply"). Overdue already needs New.
+     */
+    public const STATUSES_NO_REPLY_OWED = [self::STATUS_COMPLETED, self::STATUS_LOST, self::STATUS_NOT_A_LEAD];
+
+    /**
      * What kind of lead this is, as a rule narrows it: `ls_call`, `ls_text`
      * or `ls_booking` for Google Local Services (by lead_type), otherwise the
      * source itself - thumbtack, website_chat, website_form, facebook...

@@ -2148,8 +2148,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 // answer, whoever spoke last (Jose, 2026-10-01).
                                 // A form has no reply box, but its overdue
                                 // mark means a call back is owed (Jose, 2026-10-14).
+                                // Not a lead and Lost owe nothing either; the
+                                // server says which (Jose, 2026-11-02).
                                 if ((lead['can_reply'] == true ||
                                         lead['reply_overdue'] == true) &&
+                                    lead['reply_owed'] != false &&
                                     lead['status'] != 'completed') ...[
                                   _Badge(
                                     mine ? 'Replied' : 'Awaiting reply',
