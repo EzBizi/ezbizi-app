@@ -324,28 +324,22 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (_numbers.length > 1)
-                    DropdownButton<String>(
-                      key: const ValueKey('wa-bulk-number'),
-                      value: _link,
-                      isDense: true,
-                      onChanged: _busy
-                          ? null
-                          : (v) => setState(() {
-                              _link = v;
-                              _picked.removeWhere(
-                                (id) => !_tickable(
-                                  _rows!.firstWhere((r) => _id(r) == id),
-                                ),
-                              );
-                            }),
-                      items: [
-                        for (final n in _numbers)
-                          DropdownMenuItem(
-                            value: '${n['link']}',
-                            child: Text('Number ${n['number']}'),
-                          ),
-                      ],
-                    ),
+                    for (final n in _numbers)
+                      ChoiceChip(
+                        key: ValueKey('wa-bulk-number-${n['number']}'),
+                        label: Text('${n['number']}'),
+                        selected: _link == '${n['link']}',
+                        onSelected: _busy
+                            ? null
+                            : (_) => setState(() {
+                                _link = '${n['link']}';
+                                _picked.removeWhere(
+                                  (id) => !_tickable(
+                                    _rows!.firstWhere((r) => _id(r) == id),
+                                  ),
+                                );
+                              }),
+                      ),
                   SizedBox(
                     width: cards ? double.infinity : 260,
                     child: TextField(

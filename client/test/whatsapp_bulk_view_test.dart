@@ -256,8 +256,10 @@ void main() {
         {'number': '+15550002222', 'link': 'https://wa.me/15550002222'},
       ],
     );
-    await tap(tester, find.byKey(const ValueKey('wa-bulk-number')));
-    await tap(tester, find.text('Number +15550002222').last);
+    await tap(
+      tester,
+      find.byKey(const ValueKey('wa-bulk-number-+15550002222')),
+    );
     // Delta held the first link, so it now differs and can be ticked.
     await tap(tester, find.byKey(const ValueKey('wa-bulk-tick-s1')));
     await tap(tester, find.byKey(const ValueKey('wa-bulk-review')));
@@ -273,6 +275,6 @@ void main() {
     expect(find.byKey(const ValueKey('wa-bulk-row-d1')), findsOneWidget);
     expect(find.byKey(const ValueKey('wa-bulk-row-m1')), findsNothing);
     expect(ticked(tester, 'd1'), isTrue);
-    expect(find.byKey(const ValueKey('wa-bulk-number')), findsNothing);
+    expect(find.byType(ChoiceChip), findsNothing);
   });
 }
