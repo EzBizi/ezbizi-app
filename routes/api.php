@@ -1009,6 +1009,13 @@ Route::prefix('v1')
         Route::get('reviews', [ReviewsController::class, 'index']);
         Route::post('reviews/replies/draft-batch', [ReviewsController::class, 'draftBatch']);
         Route::get('reviews/sources', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'sources']);
+        // The eKomi screen (Jose, 2026-11-02).
+        Route::get('ekomi', [\App\Http\Controllers\Api\EkomiController::class, 'index']);
+        Route::get('ekomi/{connection}/overview', [\App\Http\Controllers\Api\EkomiController::class, 'overview']);
+        Route::get('ekomi/{connection}/requests', [\App\Http\Controllers\Api\EkomiController::class, 'requests']);
+        Route::post('ekomi/{connection}/requests', [\App\Http\Controllers\Api\EkomiController::class, 'ask']);
+        Route::put('ekomi/{connection}/settings', [\App\Http\Controllers\Api\EkomiController::class, 'updateSettings']);
+        Route::post('ekomi/{connection}/test', [\App\Http\Controllers\Api\EkomiController::class, 'test']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
