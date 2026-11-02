@@ -2969,6 +2969,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 168 · Development tab brought up to date — **sent 2026-11-02 — Jose: "go ahead with ur recommendations" (1 + phone 4)** (`docs/previews/development-tab-layouts.html`)
+
+Jose: "the Development Tab, it's a bit outdated". Recommended 1 + phone 4: 103 first-level tabs (Health with a red problem count); one thin red control-plane bar, walkthrough offer only via the title (▶); Organizations / Modules / Client versions as one-row-per-item tables with search, counts pluralised and the branch label; Modules' permissions on expand; Health problems first in red, healthy checks green on one line, repeated app issues merged with a count. 2 = tighter two-column cards; 3 = overview tiles first.
+
 ### 167 · Settings › Integrations: Google connections grouped by login — **sent 2026-11-02 (inline mockup) — Jose: "as u recommend" (1)**
 
 Jose via Leads: group Google connections under the login they were made with (account_email, cc3cc5f2d; null = "Unknown login · reconnect to see"). Recommended 1: one collapsible card per login with count, OK / need-reconnect chips, its own search, Reconnect and Disconnect all; unknown-login card last. 2 = flat list with a Login column and login chips. One login can hold dozens of rows (37 from 3 sign-ins on 10-29).
