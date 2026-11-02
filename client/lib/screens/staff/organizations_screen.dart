@@ -128,11 +128,15 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   )
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount: _shown.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => _row(context, _shown[i]),
+                : LayoutBuilder(
+                    builder: (context, box) => box.maxWidth < 600
+                        ? ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            itemCount: _shown.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 8),
+                            itemBuilder: (context, i) => _row(context, _shown[i]),
+                          )
+                        : _table(context),
                   ),
           ),
         ),
@@ -140,44 +144,107 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
     );
   }
 
-  Widget _row(BuildContext context, Map<String, dynamic> org) {
-    final counts = org['counts'] as Map<String, dynamic>;
-    final readOnly = org['is_read_only'] as bool? ?? false;
-    final demo = org['is_demo'] as bool? ?? false;
+  /// One row per organization (UI queue 168): 13 cards filled the screen.
+  Widget _table(BuildContext context) {
+    final theme = Theme.of(context);
+    final head = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.bold,
+    );
+    Widget line(List<Widget> cells, {Key? key}) => Padding(
+      key: key,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(flex: 4, child: cells[0]),
+          Expanded(child: cells[1]),
+          Expanded(child: cells[2]),
+          Expanded(child: cells[3]),
+          SizedBox(width: 110, child: Align(alignment: Alignment.centerRight, child: cells[4])),
+        ],
+      ),
+    );
 
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: 10,
-        ),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                org['name'] as String,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            if (demo) const Tag('Demo'),
-            // Stated up front (§13) rather than discovered on a failed write.
-            if (readOnly) const Tag('Read only', warn: true),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            '${counts['users']} users · ${counts['companies']} companies · '
-            '${counts['franchises']} ${org['franchise_label'] ?? 'franchises'}',
-            style: Theme.of(context).textTheme.bodyMedium,
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+      children: [
+        Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              line([
+                Text('ORGANIZATION', style: head),
+                Text('USERS', style: head),
+                Text('COMPANIES', style: head),
+                Text('BRANCHES', style: head),
+                const SizedBox.shrink(),
+              ]),
+              for (final org in _shown) ...[
+                const Divider(height: 1),
+                line(key: ValueKey('organization-row-${org['id']}'), [
+                  _name(context, org),
+                  Text('${(org['counts'] as Map)['users']}'),
+                  Text('${(org['counts'] as Map)['companies']}'),
+                  Text('${(org['counts'] as Map)['franchises']}'),
+                  _enter(org),
+                ]),
+              ],
+            ],
           ),
         ),
-        trailing: OutlinedButton.icon(
-          onPressed: () => _impersonate(org),
-          icon: const Icon(Icons.login, size: 18),
-          label: const Text('Enter'),
+      ],
+    );
+  }
+
+  Widget _name(BuildContext context, Map<String, dynamic> org) => Row(
+    children: [
+      Flexible(
+        child: Text(
+          org['name'] as String,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleSmall,
         ),
+      ),
+      if (org['is_demo'] as bool? ?? false) const Tag('Demo'),
+      // Stated up front (§13) rather than discovered on a failed write.
+      if (org['is_read_only'] as bool? ?? false) const Tag('Read only', warn: true),
+    ],
+  );
+
+  Widget _enter(Map<String, dynamic> org) => OutlinedButton.icon(
+    onPressed: () => _impersonate(org),
+    icon: const Icon(Icons.login, size: 18),
+    label: const Text('Enter'),
+  );
+
+  /// "1 user", "4 branches": the count and the word agree.
+  static String counted(Object? n, String one) {
+    final many = RegExp(r'[^aeiou]y$').hasMatch(one)
+        ? '${one.substring(0, one.length - 1)}ies'
+        : RegExp(r'(s|x|ch|sh)$').hasMatch(one)
+        ? '${one}es'
+        : '${one}s';
+    return '$n ${n == 1 ? one : many}';
+  }
+
+  /// A phone: one compact card per organization.
+  Widget _row(BuildContext context, Map<String, dynamic> org) {
+    final counts = org['counts'] as Map<String, dynamic>;
+    final branch = ((org['franchise_label'] as String?) ?? 'branch').toLowerCase();
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        key: ValueKey('organization-row-${org['id']}'),
+        dense: true,
+        title: _name(context, org),
+        subtitle: Text(
+          '${counted(counts['users'], 'user')} · '
+          '${counted(counts['companies'], 'company')} · '
+          '${counted(counts['franchises'], branch)}',
+        ),
+        trailing: _enter(org),
       ),
     );
   }
