@@ -482,6 +482,12 @@ class SocialPublishingTest extends TestCase
         );
     }
 
+    public function test_a_pin_links_to_its_page(): void
+    {
+        $this->assertSame('https://www.pinterest.com/pin/1234567/',
+            (new PinterestPublisher)->permalink($this->connection(SocialProvider::Pinterest), '1234567'));
+    }
+
     public function test_a_slow_instagram_video_is_handed_on_not_failed(): void
     {
         $this->reachable();
