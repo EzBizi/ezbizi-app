@@ -5,6 +5,8 @@ namespace Tests\Feature\WhatsApp;
 use App\Http\Controllers\Api\WhatsAppMediaController;
 use App\Models\AutomationEvent;
 use App\Models\Lead;
+use App\Support\Social\SocialProvider;
+use App\Models\SocialConnection;
 use App\Models\LeadConversation;
 use App\Support\Leads\LeadReplies;
 use App\Support\Settings\SettingsResolver;
@@ -140,6 +142,24 @@ class WhatsAppIntakeTest extends TestCase
             ['Do you sweep chimneys in Miami?', 'hello?'],
             LeadConversation::query()->withoutGlobalScopes()->where('lead_id', $lead->id)->orderBy('created_at')->pluck('text')->all(),
         );
+    }
+
+    /** Jose, 2026-11-02: A-1's WhatsApp leads showed under EverDoors. */
+    public function test_a_lead_takes_the_company_and_connection_of_the_number_it_arrived_on(): void
+    {
+        $connection = $this->inTenant($this->t['org'], fn () => SocialConnection::create([
+            'organization_id' => $this->t['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY,
+            'scope_id' => $this->t['company']->id, 'provider' => SocialProvider::WhatsApp->value,
+            'remote_id' => self::BOT, 'display_name' => 'A1 Chimney',
+        ]));
+        DB::table('whatsapp_numbers')->where('phone_number_id', self::BOT)
+            ->update(['auto_reply' => false, 'social_connection_id' => $connection->id]);
+
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'Chimney sweep?']], 'wamid.IN1')->assertOk();
+
+        $lead = Lead::query()->withoutGlobalScopes()->sole();
+        $this->assertSame($this->t['company']->id, $lead->company_id);
+        $this->assertSame($connection->id, $lead->connection_id);
     }
 
     /** A-1, 2026-10-29: Jose's own test text went to the staff bot, not Leads. */
