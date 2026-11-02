@@ -108,6 +108,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   /// WhatsApp links in bulk in the tab's place (UI queue 163).
   bool _waBulk = false;
 
+  /// With [_waBulk]: the one listing being set, or null for every listing.
+  String? _waOnly;
+
   /// Every listing but [id], as "Company · Branch", for copying to.
   List<ListingTarget> _othersThan(String id) => [
     for (final l in _locations)
@@ -386,7 +389,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         if (_waBulk) {
           return WhatsAppBulkView(
             api: widget.api,
-            onBack: () => setState(() => _waBulk = false),
+            only: _waOnly,
+            onBack: () => setState(() {
+              _waBulk = false;
+              _waOnly = null;
+            }),
           );
         }
 
@@ -1087,9 +1094,14 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       fact('Address', l['address'] as String? ?? ''),
       fact('Phone', formatPhoneNumber(l['phone'] as String?)),
       fact('Website', l['website'] as String? ?? ''),
-      if (whatsapp != null && whatsapp.isNotEmpty) WhatsAppRow(
+      if (whatsapp != null && whatsapp.isNotEmpty)
+        WhatsAppRow(
           link: whatsapp,
           onBulk: () => setState(() => _waBulk = true),
+          onSet: () => setState(() {
+            _waBulk = true;
+            _waOnly = '${l['id']}';
+          }),
         ),
       fact(
         'Category',

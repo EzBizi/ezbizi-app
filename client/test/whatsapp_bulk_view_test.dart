@@ -61,12 +61,14 @@ void main() {
     Size size = const Size(1200, 900),
     String? proposed = link,
     http.Response Function(List<dynamic> targets)? apply,
+    List<Map<String, String>> numbers = const [],
+    String? only,
   }) async {
     final posted = <Map<String, dynamic>>[];
     final client = MockClient((request) async {
       final path = request.url.path.replaceFirst('/api/v1', '');
       if (path == '/business-profile/whatsapp-links') {
-        return json({'proposed': proposed, 'data': rows});
+        return json({'proposed': proposed, 'numbers': numbers, 'data': rows});
       }
       if (path == '/business-profile/whatsapp-links/apply') {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
@@ -90,7 +92,10 @@ void main() {
       MaterialApp(
         theme: EzBiziTheme.light(),
         home: Scaffold(
-          body: WhatsAppBulkView(api: ApiClient(client: client)),
+          body: WhatsAppBulkView(
+            api: ApiClient(client: client),
+            only: only,
+          ),
         ),
       ),
     );
@@ -239,5 +244,35 @@ void main() {
     await tap(tester, find.byKey(const ValueKey('wa-bulk-review')));
     expect(find.text('Set on 2 listings'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a second number can be chosen and its link is applied', (
+    tester,
+  ) async {
+    final posted = await pump(
+      tester,
+      numbers: const [
+        {'number': '+15550001111', 'link': link},
+        {'number': '+15550002222', 'link': 'https://wa.me/15550002222'},
+      ],
+    );
+    await tap(tester, find.byKey(const ValueKey('wa-bulk-number')));
+    await tap(tester, find.text('Number +15550002222').last);
+    // Delta held the first link, so it now differs and can be ticked.
+    await tap(tester, find.byKey(const ValueKey('wa-bulk-tick-s1')));
+    await tap(tester, find.byKey(const ValueKey('wa-bulk-review')));
+    await tap(tester, find.byKey(const ValueKey('wa-bulk-apply')));
+    expect(posted.single['targets'], ['s1']);
+    expect(posted.single['link'], 'https://wa.me/15550002222');
+  });
+
+  testWidgets('one listing: only it is shown and it starts ticked', (
+    tester,
+  ) async {
+    await pump(tester, only: 'd1');
+    expect(find.byKey(const ValueKey('wa-bulk-row-d1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('wa-bulk-row-m1')), findsNothing);
+    expect(ticked(tester, 'd1'), isTrue);
+    expect(find.byKey(const ValueKey('wa-bulk-number')), findsNothing);
   });
 }
