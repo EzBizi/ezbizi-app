@@ -1496,7 +1496,9 @@ void _triageTests() {
       connections: _connected,
     );
 
-    await tester.tap(find.byKey(const ValueKey('filter-unread')));
+    // No Unread chip since 2026-11-02 (Jose); Unreplied stands in.
+    expect(find.byKey(const ValueKey('filter-unread')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('filter-unreplied')));
     await tester.pumpAndSettle();
     // Design 162: the quick filters are one sideways-scrolling row, so the
     // later chips start off screen in a narrow list.
@@ -1504,7 +1506,7 @@ void _triageTests() {
     await tester.tap(find.byKey(const ValueKey('filter-starred')));
     await tester.pumpAndSettle();
 
-    expect(_lastListQuery['unread'], '1');
+    expect(_lastListQuery['unreplied'], '1');
     expect(_lastListQuery['starred'], '1', reason: 'both, not either');
 
     await tester.ensureVisible(find.byKey(const ValueKey('mark-all-read')));
@@ -1517,6 +1519,43 @@ void _triageTests() {
       tester.widget<Text>(find.text('Dana').first).style?.fontWeight,
       isNot(FontWeight.w700),
     );
+  });
+
+  // Jose, 2026-11-02: "these 3 fields have different sizes".
+  testWidgets('search, status and Filters are one height', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+    );
+    final heights = [
+      for (final k in [
+        'tour-leads-search',
+        'tour-leads-status',
+        'leads-more-filters',
+      ])
+        tester.getSize(find.byKey(ValueKey(k))).height,
+    ];
+    expect(heights.toSet(), hasLength(1), reason: '$heights');
+    for (final (k, t) in [
+      ('tour-leads-search', 'Search name, phone or message'),
+      ('tour-leads-status', 'Any status'),
+      ('leads-more-filters', 'Filters'),
+    ]) {
+      final box = tester.getCenter(find.byKey(ValueKey(k))).dy;
+      final text = tester
+          .getCenter(
+            find
+                .descendant(
+                  of: find.byKey(ValueKey(k)),
+                  // Narrow, Filters is its icon alone.
+                  matching: t == 'Filters' ? find.byType(Icon) : find.text(t),
+                )
+                .first,
+          )
+          .dy;
+      expect((box - text).abs(), lessThan(2), reason: '$k off centre');
+    }
   });
 }
 
