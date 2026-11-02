@@ -406,6 +406,7 @@ Schedule::command('ezbizi:leads-link-profiles')->dailyAt('05:40')->timezone('Ame
 Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
 Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);
 Schedule::command('ezbizi:ekomi-reviews sync')->cron('50 */6 * * *')->withoutOverlapping(60);
+Schedule::command('ezbizi:ekomi-requests')->everyFifteenMinutes()->withoutOverlapping(30);
 // Complaints from bad reviews, Bad Ratings and complaint calls (2026-10-20).
 Schedule::command('ezbizi:complaints-intake')->everyMinute()->withoutOverlapping(5);
 // Google's daily counts per listing, the last ten days re-read (2026-10-20).
