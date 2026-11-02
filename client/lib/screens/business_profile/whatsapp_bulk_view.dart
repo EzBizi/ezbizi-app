@@ -16,10 +16,18 @@ import '../../widgets/status_pill.dart';
 /// Drawn in the tab's place with a back control, like Phone check: the
 /// containment rule, no pushed screen.
 class WhatsAppBulkView extends StatefulWidget {
-  const WhatsAppBulkView({super.key, required this.api, this.onBack});
+  const WhatsAppBulkView({
+    super.key,
+    required this.api,
+    this.onBack,
+    this.only,
+  });
 
   final ApiClient api;
   final VoidCallback? onBack;
+
+  /// One listing's id: shows and ticks just that listing (one-by-one).
+  final String? only;
 
   @override
   State<WhatsAppBulkView> createState() => _WhatsAppBulkViewState();
@@ -36,6 +44,12 @@ const _states = <String, (String, Tone)>{
 class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
   List<Map<String, dynamic>>? _rows;
   String? _proposed;
+
+  /// The organization's WhatsApp numbers as {number, link}, oldest first.
+  List<Map<String, dynamic>> _numbers = const [];
+
+  /// The link being written; starts as the server's proposed one.
+  String? _link;
   String? _error;
   String _q = '';
   bool _busy = false;
@@ -64,17 +78,38 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
         return;
       }
       _proposed = response.body['proposed'] as String?;
-      _rows = (response.body['data'] as List? ?? const [])
+      _link ??= _proposed;
+      _numbers = (response.body['numbers'] as List? ?? const [])
           .whereType<Map<String, dynamic>>()
           .toList();
+      _rows = (response.body['data'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .where((r) => widget.only == null || _id(r) == widget.only)
+          .toList();
+      if (widget.only != null) {
+        _picked
+          ..clear()
+          ..addAll([
+            for (final r in _rows!)
+              if (_tickable(r)) _id(r),
+          ]);
+      }
     });
   }
 
   String _id(Map<String, dynamic> r) => '${r['id']}';
 
+  /// The server's state compares against proposed; recomputed here against
+  /// the chosen link. Only "unreachable" is taken as sent.
+  String _state(Map<String, dynamic> r) {
+    if (r['state'] == 'unreachable') return 'unreachable';
+    final current = r['current'] as String?;
+    if (current == null || current.isEmpty) return 'missing';
+    return current == _link ? 'same' : 'different';
+  }
+
   bool _tickable(Map<String, dynamic> r) =>
-      _proposed != null &&
-      (r['state'] == 'missing' || r['state'] == 'different');
+      _link != null && (_state(r) == 'missing' || _state(r) == 'different');
 
   List<Map<String, dynamic>> get _shown {
     final q = _q.trim().toLowerCase();
@@ -93,7 +128,7 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
   ];
 
   int _count(String state) =>
-      (_rows ?? const []).where((r) => r['state'] == state).length;
+      (_rows ?? const []).where((r) => _state(r) == state).length;
 
   /// A chip selects exactly the rows in that state (that can be ticked).
   void _selectState(String state) => setState(() {
@@ -101,7 +136,7 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
       ..clear()
       ..addAll([
         for (final r in _rows ?? const <Map<String, dynamic>>[])
-          if (r['state'] == state && _tickable(r)) _id(r),
+          if (_state(r) == state && _tickable(r)) _id(r),
       ]);
   });
 
@@ -117,7 +152,7 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
     });
     final response = await widget.api.post(
       '/business-profile/whatsapp-links/apply',
-      {'targets': ids},
+      {'targets': ids, 'link': ?_link},
     );
     if (!mounted) return;
     setState(() {
@@ -144,7 +179,7 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
   Future<void> _preview() async {
     final picked = _selected;
     if (picked.isEmpty) return;
-    final replacing = picked.where((r) => r['state'] == 'different').length;
+    final replacing = picked.where((r) => _state(r) == 'different').length;
     final go = await showSidePanel<bool>(
       context,
       builder: (context) {
@@ -156,7 +191,7 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
           actions: [
             FilledButton(
               key: const ValueKey('wa-bulk-apply'),
-              onPressed: _proposed == null
+              onPressed: _link == null
                   ? null
                   : () => Navigator.of(context).pop(true),
               child: Text(
@@ -188,7 +223,7 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
                     children: [
                       Text(_label(r), style: theme.textTheme.titleSmall),
                       Text(
-                        '${r['current'] ?? '—'} → ${_proposed ?? '—'}',
+                        '${r['current'] ?? '—'} → ${_link ?? '—'}',
                         style: theme.textTheme.bodySmall,
                       ),
                     ],
@@ -239,7 +274,9 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
                     ),
                   Expanded(
                     child: Text(
-                      'WhatsApp links in bulk',
+                      widget.only == null
+                          ? 'WhatsApp links in bulk'
+                          : 'WhatsApp link',
                       style: theme.textTheme.titleMedium,
                     ),
                   ),
@@ -261,7 +298,7 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
                 ],
               ),
             ),
-            if (rows != null && _proposed == null && _error == null)
+            if (rows != null && _link == null && _error == null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Text(
@@ -286,6 +323,23 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
                 runSpacing: 6,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
+                  if (_numbers.length > 1)
+                    for (final n in _numbers)
+                      ChoiceChip(
+                        key: ValueKey('wa-bulk-number-${n['number']}'),
+                        label: Text('${n['number']}'),
+                        selected: _link == '${n['link']}',
+                        onSelected: _busy
+                            ? null
+                            : (_) => setState(() {
+                                _link = '${n['link']}';
+                                _picked.removeWhere(
+                                  (id) => !_tickable(
+                                    _rows!.firstWhere((r) => _id(r) == id),
+                                  ),
+                                );
+                              }),
+                      ),
                   SizedBox(
                     width: cards ? double.infinity : 260,
                     child: TextField(
@@ -367,7 +421,7 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
   }
 
   Widget _stateChip(Map<String, dynamic> r) {
-    final state = '${r['state']}';
+    final state = _state(r);
     final (word, tone) = _states[state] ?? (state, Tone.neutral);
     return StatusPill(
       state == 'different' ? 'Different · Replace' : word,
@@ -375,10 +429,10 @@ class _WhatsAppBulkViewState extends State<WhatsAppBulkView> {
     );
   }
 
-  String _willBe(Map<String, dynamic> r) => switch (r['state']) {
+  String _willBe(Map<String, dynamic> r) => switch (_state(r)) {
     'same' => 'no change',
     'unreachable' => '—',
-    _ => _proposed ?? '—',
+    _ => _link ?? '—',
   };
 
   Widget? _result(ThemeData theme, Map<String, dynamic> r) {
