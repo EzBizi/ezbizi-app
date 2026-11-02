@@ -1456,6 +1456,9 @@ class ModuleServiceProvider extends ServiceProvider
                 // "- 1" beside its rebuild, Project Management - 2 (Jose, 2026-10-26).
                 label: 'Project Management - 1',
                 actions: ['view'],
+                // Jose, 2026-11-02: never without Jobs. It shows every job
+                // waiting on an estimate and who paid, which Jobs guards.
+                actionRequires: ['view' => ['jobs.view']],
                 /*
                  * Overview | Jobs | Assignments | Repair team | Rules | Logs |
                  * Settings (UI queue 127, 139, 141, 143, 144). All are the one grant the
@@ -4338,7 +4341,7 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'reports',
                 label: 'Reports',
                 auditActionPrefixes: ['report'],
-                actions: ['view', 'build', 'export', 'scoring_weights', 'settings', 'correct'],
+                actions: ['view', 'build', 'export', 'scoring_weights', 'settings', 'correct', 'handles'],
 
                 /*
                  * ── THE TABS, and what a tab grant MEANS here ───────
@@ -4451,8 +4454,11 @@ class ModuleServiceProvider extends ServiceProvider
                     'settings' => ['reports.view'],
                     // Correcting a report draft before it is approved (2026-10-20).
                     'correct' => ['reports.view'],
+                    // Performance's Handles and Convert to booked (Jose, 2026-11-02: a
+                    // Dispatch Supervisor was refused with no tick to grant).
+                    'handles' => ['reports.experimental.view'],
                 ],
-                actionLabels: ['scoring_weights' => "Set Scoring's weights", 'settings' => "Set the reports' goals", 'correct' => 'Correct a report before it is approved'],
+                actionLabels: ['scoring_weights' => "Set Scoring's weights", 'settings' => "Set the reports' goals", 'correct' => 'Correct a report before it is approved', 'handles' => 'Set who handles New or Existing clients, and mark calls booked, on Performance'],
                 automationActions: [
                     new ActionDefinition(
                         key: 'report.send',

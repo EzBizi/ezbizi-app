@@ -99,9 +99,11 @@ void main() {
     tester,
   ) async {
     final put = <String>[];
+    var gets = 0;
     final api = ApiClient(
       client: MockClient((request) async {
         if (request.url.path.endsWith('/reports/experimental/calls')) {
+          gets++;
           return _json(_report, 200);
         }
         if (request.method == 'PUT') {
@@ -133,6 +135,16 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(put.single, contains('"tag":"existing"'));
+    // Jose, 2026-11-02: only the row changes; the report is not read again.
+    expect(gets, 1);
+    expect(
+      tester
+          .widget<SegmentedButton<String>>(
+            find.byKey(const ValueKey('handles-Ada')),
+          )
+          .selected,
+      {'existing'},
+    );
   });
 
   testWidgets('Handles is read-only without edit rights', (tester) async {

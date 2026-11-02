@@ -656,7 +656,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           // The same clock as the shared range, so "Last 7 days" names it.
           now: widget.now,
           api: widget.api,
-          canEdit: canExperiment,
+          // Handles and Convert to booked: their own tick (2026-11-02).
+          canEdit: widget.session.me?.can('reports.handles') ?? false,
           formats: widget.session.me?.display ?? DisplayFormats.fallback,
         );
 

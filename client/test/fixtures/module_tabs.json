@@ -586,6 +586,7 @@
         "reports.correct",
         "reports.experimental.view",
         "reports.export",
+        "reports.handles",
         "reports.library.view",
         "reports.marketing.view",
         "reports.meta.view",

@@ -7,7 +7,6 @@ use App\Models\CallReportDispatcherTag;
 use App\Models\CallReportLabel;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
-use App\Models\SavedReport;
 use App\Models\WorkizCall;
 use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Experimental\CallReconciliation;
@@ -343,8 +342,7 @@ class ExperimentalCallReportController extends Controller
      */
     public function tag(Request $request): JsonResponse
     {
-        // Writes stay organization-wide (reports.build); reading needs only the tab.
-        $this->authorize('createOnOrganization', SavedReport::class);
+        // Its own tick, reports.handles, on the route (2026-11-02); reading needs only the tab.
 
         $data = $request->validate([
             'person' => ['required', 'string', 'max:191'],
@@ -372,8 +370,7 @@ class ExperimentalCallReportController extends Controller
      */
     public function convert(Request $request, string $call): JsonResponse
     {
-        // Writes stay organization-wide (reports.build); reading needs only the tab.
-        $this->authorize('createOnOrganization', SavedReport::class);
+        // Its own tick, reports.handles, on the route (2026-11-02); reading needs only the tab.
 
         $data = $request->validate([
             'started_at' => ['nullable', 'date'],

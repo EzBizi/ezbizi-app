@@ -535,6 +535,11 @@ class ProjectWorkizRecords extends Command
                     // needs no mapping table.
                     'status' => $mirrored->status,
 
+                    // Workiz's labels, through Job's setters, which tidy the words.
+                    'job_type' => $this->label($mirrored, 'JobType'),
+                    'sub_status' => $this->label($mirrored, 'SubStatus'),
+                    'tags' => is_array($mirrored->payload['Tags'] ?? null) ? $mirrored->payload['Tags'] : null,
+
                     // The naive 'Y-m-d H:i:s' string, handed straight to
                     // FranchiseWallTime's cast. Workiz sends no zone — `Timezone`
                     // is absent from every real payload — so building a Carbon
@@ -606,7 +611,10 @@ class ProjectWorkizRecords extends Command
      * invoiced — most imported jobs read USD 0.00 because A1 Tools last saw
      * them before they were priced.
      */
-    private const FOLLOWED = ['status', 'scheduled_for', 'amount_minor', 'performed_by_user_id'];
+    private const FOLLOWED = ['status', 'scheduled_for', 'amount_minor', 'performed_by_user_id', 'job_type', 'sub_status', 'tags'];
+
+    /** Followed since 2026-11-02 (Jobs); a row projected before has none recorded. */
+    private const LABELS = ['job_type', 'sub_status', 'tags'];
 
     /**
      * Keep projected jobs following Workiz — per field, and only where nobody
@@ -662,6 +670,10 @@ class ProjectWorkizRecords extends Command
                     // to agree with PHP's strict test, null against '' included.
                     ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.area_inputs') <=> JSON_ARRAY(workiz_jobs.service_area, workiz_jobs.postal_code))")
                     ->orWhereRaw('NOT (workiz_team_members.user_id <=> jobs.performed_by_user_id)')
+                    // ponytail: untidy Workiz words (stray spaces) re-load each run; the decision below is tidy.
+                    ->orWhereRaw("NOT (JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobType')) <=> jobs.job_type)")
+                    ->orWhereRaw("NOT (JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.SubStatus')) <=> jobs.sub_status)")
+                    ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.payload, '$.Tags') <=> CAST(jobs.tags AS JSON))")
                     // Workiz's team moved since it was handed to Scheduling: team() below.
                     ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.team') <=> JSON_EXTRACT(workiz_jobs.payload, '$.Team[*].id'))");
             })
@@ -685,7 +697,16 @@ class ProjectWorkizRecords extends Command
                         'scheduled_for' => $row->scheduled_for?->format('Y-m-d H:i:s'),
                         'amount_minor' => $this->minor($row->payload['JobTotalPrice'] ?? null),
                         'performed_by_user_id' => $this->performer($row),
-                    ];
+                    ] + $this->labels($row);
+
+                    // No label recorded as ours yet: the job's own is ours only
+                    // when it already agrees with Workiz (the labels backfill);
+                    // otherwise a person's, or free to fill when empty.
+                    foreach (self::LABELS as $field) {
+                        if (! array_key_exists($field, $last)) {
+                            $last[$field] = $this->same($now[$field], $workiz[$field]) ? $now[$field] : null;
+                        }
+                    }
 
                     $changes = [];
 
@@ -735,7 +756,8 @@ class ProjectWorkizRecords extends Command
                         }
 
                         if ($changes !== []) {
-                            $job->forceFill($changes);
+                            $job->forceFill(array_key_exists('tags', $changes)
+                                ? ['tags' => $changes['tags'] === null ? null : json_decode($changes['tags'], true)] + $changes : $changes);
 
                             /*
                              * WORKIZ-COMPLETED WORK MUST REACH REVENUE.
@@ -982,7 +1004,28 @@ class ProjectWorkizRecords extends Command
             'scheduled_for' => $job->getRawOriginal('scheduled_for'),
             'amount_minor' => $job->amount_minor,
             'performed_by_user_id' => $job->performed_by_user_id,
+            'job_type' => $job->job_type,
+            'sub_status' => $job->sub_status,
+            // One JSON spelling, so same() compares it as a string (MySQL re-spaces a JSON column).
+            'tags' => $job->tags === null ? null : json_encode($job->tags, JSON_UNESCAPED_UNICODE),
         ];
+    }
+
+    /** Workiz's labels as Job's setters would store them. */
+    private function labels(WorkizJob $row): array
+    {
+        $tidy = new Job;
+        $tidy->tags = is_array($row->payload['Tags'] ?? null) ? $row->payload['Tags'] : null;
+
+        return ['job_type' => $this->label($row, 'JobType'), 'sub_status' => $this->label($row, 'SubStatus'),
+            'tags' => $tidy->tags === null ? null : json_encode($tidy->tags, JSON_UNESCAPED_UNICODE)];
+    }
+
+    private function label(WorkizJob $row, string $key): ?string
+    {
+        $value = $row->payload[$key] ?? null;
+
+        return is_string($value) ? (new Job(['job_type' => $value]))->job_type : null;
     }
 
     /**

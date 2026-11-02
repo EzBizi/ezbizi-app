@@ -345,21 +345,30 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     _load();
   }
 
-  /// A dispatcher's New / Existing tag, set by hand; null clears it.
+  /// A dispatcher's New / Existing tag, set by hand; null clears it. Only
+  /// that row changes, at once, and goes back if the server refuses (Jose,
+  /// 2026-11-02: each change reloaded the whole page).
   Future<void> _setTag(String person, String? tag) async {
+    final row = [
+      for (final p in (_report?['people'] as List? ?? const []))
+        if (p is Map && p['person'] == person) p,
+    ].firstOrNull;
+    final before = row?['tag'];
+    setState(() {
+      _error = null;
+      row?['tag'] = tag;
+    });
+
     final response = await widget.api.put('/reports/experimental/people/tag', {
       'person': person,
       'tag': tag,
     });
 
-    if (!mounted) return;
-
-    if (!response.ok) {
-      setState(() => _error = response.message);
-      return;
-    }
-
-    _load();
+    if (!mounted || response.ok) return;
+    setState(() {
+      row?['tag'] = before;
+      _error = response.message;
+    });
   }
 
   @override
