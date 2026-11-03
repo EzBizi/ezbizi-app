@@ -770,6 +770,7 @@ class ActionRunner
                 $this->audit->log(action: 'job.updated_by_automation', target: $job, changes: $payload,
                     metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key]);
                 $this->emitter->emit(eventKey: $this->updateEventFor($job), subject: $job, payload: $payload, causedBy: $event);
+                $this->emitter->emit(eventKey: 'job.tags_changed', subject: $job, payload: $payload, causedBy: $event);
             }
             $done[] = 'tags '.implode(', ', $tags);
         }
