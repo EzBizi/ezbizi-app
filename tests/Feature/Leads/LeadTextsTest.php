@@ -72,7 +72,10 @@ class LeadTextsTest extends TestCase
             $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/messages", ['text' => 'Still need that sweep?'])->assertSuccessful();
 
             $row = $this->inTenant($t['org'], fn () => LeadConversation::query()->where('lead_id', $lead->id)->sole());
-            $this->assertSame([LeadTexts::CHANNEL, 'ADVERTISER', 'Still need that sweep?'], [$row->channel, $row->participant, $row->text], $source);
+            $this->assertSame([LeadTexts::CHANNEL, 'ADVERTISER', $source === Lead::SOURCE_RINGCENTRAL
+                // Only the company's first text to a number carries the opt-out line (SmsConsent).
+                ? "Still need that sweep?\n".\App\Support\Phone\SmsConsent::FOOTER
+                : 'Still need that sweep?'], [$row->channel, $row->participant, $row->text], $source);
         }
 
         /** @var FakeTwilioGateway $gateway */
