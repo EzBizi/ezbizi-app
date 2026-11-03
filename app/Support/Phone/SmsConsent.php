@@ -59,15 +59,19 @@ final class SmsConsent
 
     /**
      * The body to send, or null when the number opted out of this company.
+     *
+     * Automated texts (automations, invoices, reviews, membership) always carry
+     * the opt-out line; a person's 1:1 text carries it only on the first text
+     * (desk for Jose, 2026-11-03).
      */
-    public static function prepare(PhoneConnection $connection, string $to, string $body): ?string
+    public static function prepare(PhoneConnection $connection, string $to, string $body, bool $automated = false): ?string
     {
         $org = (string) $connection->organization_id;
         if (self::optedOut($org, $to)) {
             return null;
         }
 
-        $texted = DB::table('phone_messages')
+        $texted = ! $automated && DB::table('phone_messages')
             ->where('organization_id', $org)
             ->where('direction', 'outbound')
             ->where('to_e164', $to)

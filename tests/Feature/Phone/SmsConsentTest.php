@@ -54,9 +54,16 @@ class SmsConsentTest extends TestCase
             }
             $this->assertCount(2, $bodies());
 
+            // Automated texts carry it every time.
+            $texts->send($number, '+13057242198', 'Hi', automated: true);
+            $texts->send($number, '+13057242198', 'Hi again', automated: true);
+            $this->assertSame(["Hi
+".SmsConsent::FOOTER, "Hi again
+".SmsConsent::FOOTER], array_slice($bodies(), 2));
+
             SmsConsent::absorb($t['org']->id, $to, 'START');
             $texts->send($number, $to, 'Back');
-            $this->assertSame('Back', $bodies()[2]);
+            $this->assertSame('Back', $bodies()[4]);
         });
     }
 }

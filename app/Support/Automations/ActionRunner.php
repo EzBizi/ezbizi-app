@@ -2038,7 +2038,7 @@ class ActionRunner
             ];
         }
 
-        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body);
+        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true);
         if ($body === null) {
             return ['type' => $type, 'ok' => false, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
         }
