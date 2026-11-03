@@ -6,6 +6,7 @@ import '../../core/api_client.dart';
 import '../../core/field_tracker.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../phone/phone_search.dart';
 import 'record_card.dart';
 
 /// Field › Dashboard: who is out, what needs a manager, and, for somebody
@@ -37,6 +38,9 @@ const fieldAlertLabels = {
 
 class _FieldDashboardTabState extends State<FieldDashboardTab> {
   bool _loading = true;
+
+  /// The alert list's search (every list has one; UI/UX review 2026-11-02).
+  String _query = '';
   String? _error;
   String? _actionError;
   Map<String, dynamic> _data = const {};
@@ -264,8 +268,23 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
               },
             ),
             const SizedBox(height: 16),
-            Text(key: const ValueKey('tour-field-alerts'), 'Alerts', style: theme.textTheme.titleMedium),
+            Text(
+              key: const ValueKey('tour-field-alerts'),
+              'Alerts',
+              style: theme.textTheme.titleMedium,
+            ),
             const SizedBox(height: 4),
+            if (alerts.isNotEmpty) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: phoneSearchBox(
+                  key: const ValueKey('field-alerts-search'),
+                  hint: 'Search alerts',
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             if (alerts.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -277,36 +296,40 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                 ),
               ),
             for (final a in alerts)
-              Card(
-                key: a['id'] == widget.focusAlertId ? _focused : null,
-                color: a['id'] == widget.focusAlertId
-                    ? theme.colorScheme.secondaryContainer
-                    : null,
-                child: ListTile(
-                  selected: a['id'] == widget.focusAlertId,
-                  leading: Icon(
-                    a['kind'] == 'sos' ? Icons.sos : Icons.warning_amber,
-                    color: a['acknowledged_at'] == null
-                        ? theme.colorScheme.error
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                  title: Text(
-                    '${fieldAlertLabels[a['kind']] ?? a['kind']} · '
-                    '${(a['user'] as Map?)?['name'] ?? ''}',
-                  ),
-                  subtitle: Text(
-                    '${_when(a['created_at'] as String?)}'
-                    '${a['acknowledged_at'] != null ? ' · acknowledged' : ''}',
-                  ),
-                  trailing:
-                      widget.canAcknowledge && a['acknowledged_at'] == null
-                      ? TextButton(
-                          onPressed: () => _acknowledge(a['id'] as String),
-                          child: const Text('Acknowledge'),
-                        )
+              if (phoneSearchHit(_query, [
+                fieldAlertLabels[a['kind']] ?? a['kind'] as String?,
+                (a['user'] as Map?)?['name'] as String?,
+              ]))
+                Card(
+                  key: a['id'] == widget.focusAlertId ? _focused : null,
+                  color: a['id'] == widget.focusAlertId
+                      ? theme.colorScheme.secondaryContainer
                       : null,
+                  child: ListTile(
+                    selected: a['id'] == widget.focusAlertId,
+                    leading: Icon(
+                      a['kind'] == 'sos' ? Icons.sos : Icons.warning_amber,
+                      color: a['acknowledged_at'] == null
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                    title: Text(
+                      '${fieldAlertLabels[a['kind']] ?? a['kind']} · '
+                      '${(a['user'] as Map?)?['name'] ?? ''}',
+                    ),
+                    subtitle: Text(
+                      '${_when(a['created_at'] as String?)}'
+                      '${a['acknowledged_at'] != null ? ' · acknowledged' : ''}',
+                    ),
+                    trailing:
+                        widget.canAcknowledge && a['acknowledged_at'] == null
+                        ? TextButton(
+                            onPressed: () => _acknowledge(a['id'] as String),
+                            child: const Text('Acknowledge'),
+                          )
+                        : null,
+                  ),
                 ),
-              ),
           ],
         ),
       ),

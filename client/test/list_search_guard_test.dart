@@ -375,11 +375,6 @@ const Map<String, _Exemption> _exempt = {
     owner: 'EZ Leads',
     host: null,
   ),
-  'lib/screens/phone/call_tab.dart': (
-    why: 'the Team face of the call desk: filter tiles over the roster',
-    owner: 'Phone',
-    host: null,
-  ),
   // Seeded 2026-10-27 when ListTable joined the scan.
   'lib/screens/customers/memberships_settings.dart': (
     why: "the organization's membership plans, a handful of settings rows",

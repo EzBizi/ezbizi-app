@@ -132,7 +132,10 @@ class _FleetScreenState extends State<FleetScreen> {
 
       final meta = response.body['meta'] as Map<String, dynamic>?;
       final places = meta?['places'];
-      if (places is List) {
+      // A filter with no matches answers no places; keeping the last row stops
+      // the chips vanishing and the next click landing on a different chip
+      // (deep dive 2026-11-02 #8).
+      if (places is List && places.isNotEmpty) {
         _places = [
           for (final p in places)
             if (p is Map) Map<String, dynamic>.from(p),
@@ -176,9 +179,7 @@ class _FleetScreenState extends State<FleetScreen> {
       _search.clear();
       _statuses
         ..clear()
-        ..addAll(
-          (query['status'] ?? '').split(',').where((s) => s.isNotEmpty),
-        );
+        ..addAll((query['status'] ?? '').split(',').where((s) => s.isNotEmpty));
       _owned = query['ownership'] == 'owned';
       _rented = query['ownership'] == 'rented';
       _unassigned = query['unassigned'] == '1';
@@ -232,7 +233,9 @@ class _FleetScreenState extends State<FleetScreen> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('No Fleet Management tabs have been granted to your role.'),
+          child: Text(
+            'No Fleet Management tabs have been granted to your role.',
+          ),
         ),
       );
     }

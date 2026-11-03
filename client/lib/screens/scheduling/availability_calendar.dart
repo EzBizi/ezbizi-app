@@ -345,96 +345,106 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
           : Tone.ok,
     );
 
-    return Opacity(
-      opacity: past ? 0.55 : 1,
-      child: Container(
-        key: ValueKey('calendar-day-$date'),
-        padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
-        decoration: BoxDecoration(
-          color: isToday
-              ? theme.colorScheme.primary.withValues(alpha: 0.08)
-              : theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: 0.35,
-                ),
-          border: Border.all(
-            color: isToday ? theme.colorScheme.primary : Colors.transparent,
+    // A tile looked selectable and a tap did nothing (deep dive 2026-11-02
+    // #9). A tap (or hover) now says the day in words.
+    return Tooltip(
+      key: ValueKey('calendar-day-tip-$date'),
+      triggerMode: TooltipTriggerMode.tap,
+      message: closed
+          ? (over > 0 ? 'Closed · $over booked' : 'Closed')
+          : '$remaining of $capacity spots left'
+                '${over > 0 ? ' · $over over' : ''}',
+      child: Opacity(
+        opacity: past ? 0.55 : 1,
+        child: Container(
+          key: ValueKey('calendar-day-$date'),
+          padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+          decoration: BoxDecoration(
+            color: isToday
+                ? theme.colorScheme.primary.withValues(alpha: 0.08)
+                : theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.35,
+                  ),
+            border: Border.all(
+              color: isToday ? theme.colorScheme.primary : Colors.transparent,
+            ),
+            borderRadius: BorderRadius.circular(8),
           ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '${int.parse(date.substring(8))}',
-              style: theme.textTheme.labelSmall?.copyWith(color: muted),
-            ),
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: closed
-                    ? Column(
-                        children: [
-                          Text(
-                            'Closed',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: muted,
-                            ),
-                          ),
-                          if (over > 0)
-                            Text(
-                              '$over booked',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: bad.ink,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                        ],
-                      )
-                    : Column(
-                        children: [
-                          Text(
-                            '$remaining',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              color: tone.ink,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          Text(
-                            'of $capacity',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: muted,
-                            ),
-                          ),
-                          if (over > 0)
-                            Text(
-                              '$over over',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: bad.ink,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                        ],
-                      ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${int.parse(date.substring(8))}',
+                style: theme.textTheme.labelSmall?.copyWith(color: muted),
               ),
-            ),
-            if (!closed)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(
-                  // Filled by what is TAKEN of what the day takes, so it agrees
-                  // with the number above it. Not booked / capacity: jobs piled
-                  // into one slot over its limit leave another slot open, and
-                  // "3 of 8" beside a full bar read as a contradiction (Oct 2,
-                  // Connecticut: 8 booked, 3 still offered at 11–2).
-                  value: capacity == 0
-                      ? 1
-                      : (1 - remaining / capacity).clamp(0, 1),
-                  minHeight: 4,
-                  color: tone.ink,
-                  backgroundColor: tone.fill,
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: closed
+                      ? Column(
+                          children: [
+                            Text(
+                              'Closed',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: muted,
+                              ),
+                            ),
+                            if (over > 0)
+                              Text(
+                                '$over booked',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: bad.ink,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            Text(
+                              '$remaining',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                color: tone.ink,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              'of $capacity',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: muted,
+                              ),
+                            ),
+                            if (over > 0)
+                              Text(
+                                '$over over',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: bad.ink,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                          ],
+                        ),
                 ),
               ),
-          ],
+              if (!closed)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    // Filled by what is TAKEN of what the day takes, so it agrees
+                    // with the number above it. Not booked / capacity: jobs piled
+                    // into one slot over its limit leave another slot open, and
+                    // "3 of 8" beside a full bar read as a contradiction (Oct 2,
+                    // Connecticut: 8 booked, 3 still offered at 11–2).
+                    value: capacity == 0
+                        ? 1
+                        : (1 - remaining / capacity).clamp(0, 1),
+                    minHeight: 4,
+                    color: tone.ink,
+                    backgroundColor: tone.fill,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

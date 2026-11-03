@@ -88,9 +88,13 @@ class _DashboardChartState extends State<DashboardChart> {
     final allSlices = _readSlices(widget.slices);
     final parsedSlices = _foldTail(allSlices);
     final parsedSeries = _readSeries(widget.series);
-    final colors = _colorsFor(
+    final colors = _statusColours(
       scheme,
-      slots: math.max(parsedSlices.length, parsedSeries.length),
+      _colorsFor(
+        scheme,
+        slots: math.max(parsedSlices.length, parsedSeries.length),
+      ),
+      [for (final slice in parsedSlices) slice.label],
     );
     final painter = _DashboardChartPainter(
       presentation: presentation,
@@ -484,6 +488,49 @@ List<Color> _colorsFor(ColorScheme scheme, {required int slots}) {
   final neutral = Color.lerp(scheme.onSurface, scheme.surface, 0.55)!;
 
   return [...palette, for (var i = palette.length; i < slots; i++) neutral];
+}
+
+/// A job status keeps its meaning whatever position it lands in: Done green,
+/// Canceled red (deep dive 2026-11-02 #6 had Canceled green and Done pink).
+/// Still drawn from [_palette], so the validated set is unchanged; only which
+/// slot a status takes is fixed.
+List<Color> _statusColours(
+  ColorScheme scheme,
+  List<Color> colors,
+  List<String> labels,
+) {
+  int? slotOf(String label) {
+    final word = label.toLowerCase();
+    if (word.contains('cancel')) return 7;
+    if (word.contains('pending approval')) return 2;
+    if (word.startsWith('done') || word.startsWith('completed')) return 5;
+    if (word.contains('progress')) return 0;
+    if (word.startsWith('pending')) return 3;
+    return null;
+  }
+
+  final fixed = [for (final l in labels) slotOf(l)];
+  if (fixed.every((s) => s == null)) return colors;
+
+  // Statuses take their slot; every other slice takes the next slot nobody
+  // took, so no two slices share a hue.
+  final palette = _palette(scheme);
+  final taken = fixed.whereType<int>().toSet();
+  final free = [
+    for (var i = 0; i < palette.length; i++)
+      if (!taken.contains(i)) i,
+  ];
+  final out = [...colors];
+  var next = 0;
+  for (var i = 0; i < labels.length && i < out.length; i++) {
+    final slot = fixed[i];
+    if (slot != null) {
+      out[i] = palette[slot];
+    } else if (next < free.length) {
+      out[i] = palette[free[next++]];
+    }
+  }
+  return out;
 }
 
 /// Eight categorical hues in a fixed order, per mode. NOT theme roles.
