@@ -274,6 +274,15 @@ class ReportLayoutTest extends TestCase
         $this->assertStringNotContainsString('(111) 111-1111', $html);
     }
 
+    public function test_one_shared_terms_text_names_each_reports_own_company(): void
+    {
+        $html = $this->render([['fields' => [['key' => 't', 'type' => 'alert', 'title' => 'Terms and conditions', 'body' => "Provided by {{company_name}}.\nSecond line."]]]], []);
+
+        $this->assertStringContainsString('Provided by Alpha', $html);
+        $this->assertStringNotContainsString('{{company_name}}', $html);
+        $this->assertStringContainsString('<br', $html);
+    }
+
     private ?\Closure $beforeRender = null;
 
     /** @param list<array<string, mixed>> $screens */

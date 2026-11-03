@@ -508,7 +508,7 @@ final class ReportDocument
 
         return '<div class="note">'
             .($title === '' ? '' : '<span class="ct">'.$this->text($title).'</span>')
-            .($bodyText === '' ? '' : ' '.$this->text($bodyText))
+            .($bodyText === '' ? '' : ' '.nl2br($this->text($bodyText)))
             .'</div>';
     }
 
@@ -609,6 +609,8 @@ final class ReportDocument
         // — heads and foots every page with its logo and phone, as A1's own
         // report does. Nothing found prints the page without them.
         $company = $report->job?->franchise?->company ?? $report->customer?->owningFranchise?->company;
+        // One shared terms text for every branch (Jose 11-03) names each branch's own company.
+        $body = str_replace('{{company_name}}', $this->text($company?->name ?? 'the company'), $body);
         $logo = $this->logo($company?->logo_path);
         $when = $report->job?->scheduled_for ?? $report->submitted_at;
         $top = implode(' | ', array_filter([
