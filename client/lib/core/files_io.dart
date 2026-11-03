@@ -1,4 +1,3 @@
-import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'dart:io';
 import 'dart:async';
@@ -156,13 +155,14 @@ Future<void> Function(Uint8List bytes, String filename) sharePdf =
 
 Future<void> _share(String filename, List<int> content) async {
   try {
-    if (filename.toLowerCase().endsWith('.pdf')) {
-      await sharePdf(Uint8List.fromList(content), filename);
-      return;
-    }
-    // Anything else lands in the app's documents, where Files can reach it.
-    final dir = await getApplicationDocumentsDirectory();
-    await File('${dir.path}/$filename').writeAsBytes(content, flush: true);
+    // Every file goes to the share sheet. Writing non-PDFs silently into
+    // the app's documents showed nothing, so an email attachment "did
+    // nothing" on iPhone (Jose, 2026-11-03). iOS shares the file by its name
+    // and extension, so any type opens or saves there.
+    // ponytail: Android's intent is typed application/pdf by printing; Save
+    // to Files/Drive keeps the name, but a viewer may refuse a non-PDF. Swap
+    // to share_plus if that bites.
+    await sharePdf(Uint8List.fromList(content), filename);
   } catch (_) {
     // As below: the caller has moved on.
   }
