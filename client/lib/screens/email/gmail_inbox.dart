@@ -1381,8 +1381,10 @@ class _GmailInboxState extends State<GmailInbox> {
     final notice = _notConnectedNotice(context);
     final quiet = _quietLine(context);
     final open = _openRow != null;
+    // Too narrow for side by side: the open message takes the whole pane,
+    // not a half below the list (Jose, 2026-11-03).
     final pane = _pane == ReadingPane.right && width < _rightPaneNeeds
-        ? ReadingPane.below
+        ? ReadingPane.off
         : _pane;
 
     final Widget body = switch (pane) {
