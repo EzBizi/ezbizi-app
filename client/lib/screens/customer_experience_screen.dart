@@ -5,6 +5,7 @@ import '../core/deep_links.dart';
 import '../core/module_screens.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'business_profile/post_queue_view.dart';
 import 'business_profile_screen.dart';
 import 'customer_experience/complaints_tab.dart';
 import 'customer_experience/review_links_tab.dart';
@@ -26,7 +27,7 @@ import 'customer_experience/review_links_tab.dart';
 /// same reason: drawn on Reviews' grant, so it is that module, not a tab of
 /// this one.
 const customerExperienceChildChips = {
-  'business_profile': ['GBP Listings', 'GBP Performance'],
+  'business_profile': ['GBP Listings', 'GBP Performance', 'Posts to approve'],
   'reviews': ['Reviews', 'Review links'],
 };
 
@@ -101,6 +102,13 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
                 session: widget.session,
                 performance: true,
               ),
+            ),
+          // Weekly AI Google posts waiting for Approve (design 176, Jose 2026-11-03).
+          if (module.key == 'business_profile')
+            (
+              customerExperienceChildChips['business_profile']![2],
+              Icons.fact_check_outlined,
+              () => PostQueueView(api: widget.api),
             ),
         ],
     // What customers did with their review links (Jose, 2026-10-15). Reviews'

@@ -914,6 +914,32 @@ const Map<String, Tour> leadsTours = {
   ),
   // Its own chip since 2026-10-20 (Jose: "Reviews - GBP Listings - GBP
   // Performance - Review Links").
+  // Design 176 (Jose, 2026-11-03).
+  'customer_experience/Posts to approve': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'gbp-post-preview',
+        title: 'How it will look',
+        body: 'The weekly post for this listing, as Google shows it.',
+      ),
+      TourStep(
+        anchor: 'gbp-post-approve',
+        title: 'Approve',
+        body: 'Sends it to Google. Edit first if a word is wrong.',
+      ),
+      TourStep(
+        anchor: 'gbp-post-disapprove',
+        title: 'Disapprove',
+        body: 'Drops it. You can say why.',
+      ),
+      TourStep(
+        anchor: 'gbp-post-auto',
+        title: 'Publish without approval',
+        body: 'Off: every post waits here. On: this listing posts by itself.',
+      ),
+    ],
+  ),
   'customer_experience/GBP Performance': Tour(
     version: 1,
     steps: [
