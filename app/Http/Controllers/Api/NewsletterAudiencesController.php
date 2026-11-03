@@ -49,6 +49,7 @@ class NewsletterAudiencesController extends Controller
                 'name' => $a->name,
                 'kind' => $a->kind,
                 'mailchimp_list_id' => $a->mailchimp_list_id,
+                'tag' => $a->tag,
             ])->all(),
         ]);
     }
@@ -76,6 +77,8 @@ class NewsletterAudiencesController extends Controller
              * An audience without one would save happily and refuse at send.
              */
             'mailchimp_list_id' => ['required', 'string', 'max:64'],
+            // Optional: a Mailchimp tag, or (customers) a tag on the customer's jobs.
+            'tag' => ['nullable', 'string', 'max:100'],
         ], [
             'mailchimp_list_id.required' => 'Choose which Mailchimp list this sends to. '
                 .'Even a list built from your customers needs somewhere at Mailchimp to go.',

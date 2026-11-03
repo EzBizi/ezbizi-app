@@ -147,7 +147,10 @@ final class SendNewsletter implements ShouldQueue
 
         $gone = NewsletterSenders::unsubscribedIn($newsletter);
 
+        $tag = trim((string) $audience->tag);
+
         return Customer::query()
+            ->when($tag !== '', fn ($q) => $q->whereHas('jobs', fn ($j) => $j->whereJsonContains('tags', $tag)))
             ->whereNotNull('email')
             ->where('email', '!=', '')
             ->get()

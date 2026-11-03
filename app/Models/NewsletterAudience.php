@@ -7,6 +7,7 @@ use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Who a mailing goes to.
@@ -23,6 +24,7 @@ class NewsletterAudience extends Model implements StatesRetention
     use HasUuids;
 
     public const KIND_CUSTOMERS = 'customers';
+
     public const KIND_MAILCHIMP = 'mailchimp';
 
     public static function retention(): RetentionPolicy
@@ -35,9 +37,9 @@ class NewsletterAudience extends Model implements StatesRetention
         );
     }
 
-    protected $fillable = ['name', 'kind', 'mailchimp_list_id', 'scope_type', 'scope_id'];
+    protected $fillable = ['name', 'kind', 'mailchimp_list_id', 'tag', 'scope_type', 'scope_id'];
 
-    public function newsletters(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function newsletters(): HasMany
     {
         return $this->hasMany(Newsletter::class);
     }
