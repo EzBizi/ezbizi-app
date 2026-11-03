@@ -5279,3 +5279,7 @@ Marketing asked for this (server 2b9173a4: POST newsletter/audiences takes an op
 ### 174 · Customer tags: edit, show, filter — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend"; UI/UX builds) (`docs/previews/customer-tags-layouts.html`)
 
 Customers asked for this (server 8975174c: tags on every customer, PATCH the whole list, GET ?tag=). Jose wants newsletters and automations "by tag". Recommended: 1 + phone 4. Neutral chips with × under the name in the panel, an inline "+ Tag" field that suggests existing tags and saves at once, up to 2 chips then "+N" on each row, and a Tag search picker in the filter bar. Alternatives: 2, a Tags field in Info with Save; 3, quick-filter chips for the most-used tags.
+
+### 175 · Ownership chart, process map, KPI report — **sent 2026-11-03** (`docs/previews/ownership-process-kpi-layouts.html`)
+
+Jose's Monday list; Jose 11-03: "B, everything we do is for ezbizi" (a screen, not a document). Recommended: 1 (a Company module with Ownership | Processes | KPIs tabs) + phone 4. Data gaps: no reports-to field (HR); no area or step owner record (new); no answer, booking or close rate goals and no tech KPI goals (Reports). HR and Reports were asked.
