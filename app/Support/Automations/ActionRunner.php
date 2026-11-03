@@ -2038,6 +2038,11 @@ class ActionRunner
             ];
         }
 
+        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body);
+        if ($body === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
+        }
+
         try {
             $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body, $number->account_sid);
         } catch (Throwable $e) {

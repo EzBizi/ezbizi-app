@@ -47,6 +47,8 @@ final class LeadTexts
         $number = $this->line($lead) ?? throw new RuntimeException('No texting line is cleared to send for this lead\'s company.');
         $connection = $number->connection ?? throw new RuntimeException('That texting line has no phone account behind it.');
 
+        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body) ?? throw new RuntimeException(\App\Support\Phone\SmsConsent::REFUSAL);
+
         try {
             $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body, $number->account_sid);
         } catch (Throwable $e) {

@@ -66,6 +66,9 @@ class SmsWebhookController extends Controller
 
             $this->events->emit('phone.sms.received', $message, $this->payload($message));
 
+            // STOP / START, for every sender of this company (Jose, 2026-11-03).
+            \App\Support\Phone\SmsConsent::absorb((string) $connection->organization_id, $from, $body);
+
             // An answer to a text we sent about a lead goes on that lead's thread (Leads, 2026-10-13).
             // Never at the cost of the text itself: a failure here must not roll back
             // the PhoneMessage above (desk, 2026-10-13).

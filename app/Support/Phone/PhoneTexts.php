@@ -40,6 +40,7 @@ final class PhoneTexts
         }
 
         $from = (string) $number->e164;
+        $body = SmsConsent::prepare($connection, $to, $body) ?? throw new TextRefused(SmsConsent::REFUSAL, 422);
 
         try {
             $sent = $this->twilio->sendMessage($connection, $from, $to, $body, $number->account_sid);

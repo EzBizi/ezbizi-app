@@ -260,7 +260,8 @@ class PhoneAutomationsTest extends TestCase
         $this->assertNotNull($sent, 'the text was sent but never recorded');
         $this->assertSame('+12035553110', $sent->from_e164);
         $this->assertSame('+13057242199', $sent->to_e164);
-        $this->assertSame('A new email arrived.', $sent->body);
+        // The first text to a number carries the opt-out line (SmsConsent).
+        $this->assertSame("A new email arrived.\n".\App\Support\Phone\SmsConsent::FOOTER, $sent->body);
     }
 
     public function test_phone_actions_are_marked_implemented_in_the_catalogue(): void

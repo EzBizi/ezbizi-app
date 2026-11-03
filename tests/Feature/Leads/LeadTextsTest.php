@@ -32,7 +32,7 @@ class LeadTextsTest extends TestCase
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
         $send = collect($gateway->calls)->firstWhere('method', 'sendMessage');
-        $this->assertSame(['+12035551004', '+15553334444', 'Your visit is confirmed.'], array_slice($send['args'], 1, 3));
+        $this->assertSame(['+12035551004', '+15553334444', "Your visit is confirmed.\n".\App\Support\Phone\SmsConsent::FOOTER], array_slice($send['args'], 1, 3));
 
         // The answer, and a text from a stranger that is not filed anywhere.
         $url = url('/api/v1/phone/sms/'.$t['org']->id.'/'.$connection->id);
@@ -40,7 +40,7 @@ class LeadTextsTest extends TestCase
         $this->signed($url, ['MessageSid' => 'SM2', 'AccountSid' => 'AC'.str_repeat('a', 32), 'From' => '+15559990000', 'To' => '+12035551004', 'Body' => 'Who is this', 'SmsStatus' => 'received'], $token)->assertOk();
 
         $thread = $this->inTenant($t['org'], fn () => LeadConversation::query()->where('lead_id', $lead->id)->orderBy('occurred_at')->get());
-        $this->assertSame([[LeadTexts::CHANNEL, 'ADVERTISER', 'Your visit is confirmed.', true], [LeadTexts::CHANNEL, 'CONSUMER', 'Thanks, see you then', false]],
+        $this->assertSame([[LeadTexts::CHANNEL, 'ADVERTISER', "Your visit is confirmed.\n".\App\Support\Phone\SmsConsent::FOOTER, true], [LeadTexts::CHANNEL, 'CONSUMER', 'Thanks, see you then', false]],
             $thread->map(fn ($c) => [$c->channel, $c->participant, $c->text, (bool) $c->is_automatic])->all());
     }
 
