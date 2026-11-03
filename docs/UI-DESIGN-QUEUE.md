@@ -5276,6 +5276,6 @@ Alternatives: 2, Archived hidden behind a "Show archived" chip; 3, a separate Es
 
 Marketing asked for this (server 2b9173a4: POST newsletter/audiences takes an optional tag). The client has no create-list form. Recommended: 1 + phone 4, a "+ New list" button that opens a SidePanel (name, kind, Mailchimp list, "Only people tagged"), with the chip showing "· tag".
 
-### 174 · Customer tags: edit, show, filter — **sent 2026-11-03** (`docs/previews/customer-tags-layouts.html`)
+### 174 · Customer tags: edit, show, filter — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend"; UI/UX builds) (`docs/previews/customer-tags-layouts.html`)
 
 Customers asked for this (server 8975174c: tags on every customer, PATCH the whole list, GET ?tag=). Jose wants newsletters and automations "by tag". Recommended: 1 + phone 4. Neutral chips with × under the name in the panel, an inline "+ Tag" field that suggests existing tags and saves at once, up to 2 chips then "+N" on each row, and a Tag search picker in the filter bar. Alternatives: 2, a Tags field in Info with Save; 3, quick-filter chips for the most-used tags.
