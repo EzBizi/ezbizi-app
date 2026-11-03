@@ -5283,3 +5283,7 @@ Customers asked for this (server 8975174c: tags on every customer, PATCH the who
 ### 175 · Ownership chart, process map, KPI report — **sent 2026-11-03** (`docs/previews/ownership-process-kpi-layouts.html`)
 
 Jose's Monday list; Jose 11-03: "B, everything we do is for ezbizi" (a screen, not a document). Recommended: 1 (a Company module with Ownership | Processes | KPIs tabs) + phone 4. Data gaps: no reports-to field (HR); no area or step owner record (new); no answer, booking or close rate goals and no tech KPI goals (Reports). HR and Reports were asked.
+
+### 176 · Business Profile: Google posts to approve — **sent 2026-11-03** (`docs/previews/gbp-post-approval-layouts.html`)
+
+For CX (ba397315f). Recommended 1 + phone 4: a Posts to approve (N) tab, list + Google preview, Approve / Edit / Disapprove, per-listing Publish without approval switch (off).
