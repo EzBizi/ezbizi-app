@@ -51,4 +51,18 @@ class CustomerTagsTest extends TestCase
         $this->assertSame(['tags' => []], $events[0]->payload['before']);
         $this->assertSame(['tags' => ['VIP']], $events[0]->payload['after']);
     }
+
+    public function test_the_tags_in_use_come_most_used_first_one_per_spelling(): void
+    {
+        $t = $this->provisionTenant('Alpha', 'a@alpha.test');
+        $as = $this->signedInAs($t['admin']);
+        foreach ([['VIP', 'Gas'], ['vip'], ['Gas', 'vip']] as $i => $tags) {
+            $as->postJson('/api/v1/customers', ['owning_franchise_id' => $t['franchise']->id, 'name' => "C{$i}", 'tags' => $tags])->assertCreated();
+        }
+
+        $this->assertSame(
+            [['tag' => 'VIP', 'customers' => 3], ['tag' => 'Gas', 'customers' => 2]],
+            $as->getJson('/api/v1/customers/tags')->assertOk()->json('data'),
+        );
+    }
 }

@@ -164,6 +164,28 @@ class CustomersController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/v1/customers/tags -- every tag in use, with how many customers
+     * carry it, most used first: the suggestions and the filter picker
+     * (design 174). Organization-wide, as customers are (§5.2).
+     */
+    public function tags(): JsonResponse
+    {
+        $this->authorize('viewAny', Customer::class);
+
+        $tags = [];
+        Customer::query()->whereNotNull('tags')->select('tags')->each(function (Customer $c) use (&$tags) {
+            foreach ($c->tags ?? [] as $tag) {
+                $key = mb_strtolower($tag);
+                $tags[$key] ??= ['tag' => $tag, 'customers' => 0];
+                $tags[$key]['customers']++;
+            }
+        });
+
+        // ponytail: reads every tagged row; a JSON_TABLE GROUP BY when tags reach tens of thousands.
+        return response()->json(['data' => collect($tags)->sortByDesc('customers')->values()]);
+    }
+
     /** GET /api/v1/customers/{customer}?today=Y-m-d */
     public function show(Request $request, Customer $customer): JsonResponse
     {

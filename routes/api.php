@@ -898,6 +898,7 @@ Route::prefix('v1')
         // id, and the failure is a 404 about a customer rather than a route
         // that was never reached.
         Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
+        Route::get('customers/tags', [CustomersController::class, 'tags']);
         Route::apiResource('customers', CustomersController::class);
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
         // Each branch's Workiz notes on the customer, read live, never copied.
