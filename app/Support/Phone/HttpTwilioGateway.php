@@ -445,6 +445,33 @@ final class HttpTwilioGateway implements TwilioGateway
         ], (array) $response->json('incoming_phone_numbers', []));
     }
 
+    public function platformCall(string $accountSid, string $from, string $to, string $twiml): string
+    {
+        $response = $this->platformHttp()->asForm()
+            ->post("https://api.twilio.com/2010-04-01/Accounts/{$accountSid}/Calls.json", ['From' => $from, 'To' => $to, 'Twiml' => $twiml]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException("Twilio refused the test call ({$response->status()}): ".$response->json('message', ''));
+        }
+
+        return (string) $response->json('sid');
+    }
+
+    public function platformCallStatus(string $accountSid, string $callSid): array
+    {
+        $response = $this->platformHttp()->get("https://api.twilio.com/2010-04-01/Accounts/{$accountSid}/Calls/{$callSid}.json");
+
+        return ['status' => (string) $response->json('status', 'unknown'), 'duration' => (int) $response->json('duration', 0)];
+    }
+
+    private function platformHttp(): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::withBasicAuth(
+            (string) config('services.twilio.platform_account_sid'),
+            (string) config('services.twilio.platform_auth_token'),
+        )->timeout(15);
+    }
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array
     {
         $created = $this->connectionClient($connection)->incomingPhoneNumbers->create([

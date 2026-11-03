@@ -128,6 +128,15 @@ interface TwilioGateway
      */
     public function listAccountIncoming(string $accountSid): array;
 
+    /**
+     * A test call from an account the platform credentials reach, running the
+     * given TwiML. Only the line answer test uses it: it dials our own lines.
+     */
+    public function platformCall(string $accountSid, string $from, string $to, string $twiml): string;
+
+    /** @return array{status: string, duration: int} */
+    public function platformCallStatus(string $accountSid, string $callSid): array;
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array;
 
     /**

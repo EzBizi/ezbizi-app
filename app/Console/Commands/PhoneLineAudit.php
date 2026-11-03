@@ -19,7 +19,7 @@ use Throwable;
  * and the Calls screen just goes quiet. This compares Twilio's list with ours
  * and with last night's snapshot, and logs every difference as a warning.
  *
- * ponytail: log-only alert; send it to a person when Jose picks who.
+ * Findings also go to the people in services.twilio.audit_alert_user_ids.
  */
 class PhoneLineAudit extends Command
 {
@@ -64,6 +64,7 @@ class PhoneLineAudit extends Command
             Log::warning('phone-line-audit: '.$issue);
             $this->warn($issue);
         }
+        \App\Support\Phone\PhoneAuditAlert::send('nightly line audit', $issues);
         $this->info(count($connections).' accounts, '.count($issues).' issues.');
 
         return self::SUCCESS;
