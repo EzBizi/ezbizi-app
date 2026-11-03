@@ -5287,3 +5287,7 @@ Jose's Monday list; Jose 11-03: "B, everything we do is for ezbizi" (a screen, n
 ### 176 · Business Profile: Google posts to approve — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as you recommend with everything") (`docs/previews/gbp-post-approval-layouts.html`)
 
 For CX (ba397315f). Recommended 1 + phone 4: a Posts to approve (N) tab, list + Google preview, Approve / Edit / Disapprove, per-listing Publish without approval switch (off).
+
+### 177 · Field recordings: summary + transcript, Record on the job — **sent 2026-11-03** (`docs/previews/field-recording-transcript-layouts.html`)
+
+For Field (c60be2fc) and Jobs. Jose's "AI Tech Recorder & Summary". Recommended 1 + phone 4: labelled summary sections with copy, transcript with clock times; Record pill in the job header (red ● 00:12 · Stop while recording), first start asks "I told the customer" in a SidePanel.
