@@ -29,6 +29,7 @@ class VersionHistory {
         'Email: an All tab, first and default, shows the whole inbox newest first; on a phone an open email fills the screen with a compact toolbar.',
         'Reports: switch a call between New and Existing, or Booked and Not booked, from its details; it shows who set it, with one tap back to automatic.',
         'Task Board: Calendar and Timeline views, and formula and currency columns.',
+        'Email on a phone: tapping an attachment opens the share sheet to open or save it.',
         'Customer Experience › Posts to approve: approve, edit or disapprove each listing weekly AI Google post.',
         'Local Services texts: the assistant offers a real open time and holds it for a one-tap approval in Online Booking.',
         'Call and form leads can be texted back from the lead thread.',
