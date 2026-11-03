@@ -63,6 +63,13 @@ class PhoneLineAuditTest extends TestCase
             ->doesntExpectOutput('+12035550001: gone from Twilio')
             ->assertSuccessful();
 
+        // The known exception stays quiet about voice, and only about voice.
+        $twilio->accountIncoming['ACparent'] = [$line('PN5', '+18559553322', 'https://elsewhere.example/voice')];
+        $this->inTenant($t['org'], fn () => PhoneNumber::query()->where('twilio_sid', 'PN4')->update(['twilio_sid' => 'PN5', 'e164' => '+18559553322']));
+        $this->artisan('ezbizi:phone-line-audit')
+            ->doesntExpectOutput('+18559553322: voice goes to https://elsewhere.example/voice')
+            ->assertSuccessful();
+
         $twilio->incoming[] = $line('PN9', '+12035550009', $host.'/api/v1/phone/voice');
 
         $this->artisan('ezbizi:phone-line-audit')

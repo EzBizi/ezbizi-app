@@ -25,6 +25,14 @@ class PhoneLineAudit extends Command
 {
     protected $signature = 'ezbizi:phone-line-audit';
 
+    /**
+     * Lines whose voice is known to point away from us, and why. Remove the
+     * entry when the reason is gone, or the audit stays blind to that line.
+     */
+    private const VOICE_ELSEWHERE_EXPECTED = [
+        '+18559553322' => 'main profile, waiting on Twilio re-parent (ticket #29486941)',
+    ];
+
     protected $description = 'Check every Twilio line still routes to EzBizi and report changes';
 
     public function handle(TwilioGateway $twilio): int
@@ -76,7 +84,7 @@ class PhoneLineAudit extends Command
             $line = $live->get($sid);
             if ($line === null) {
                 $issues[] = "{$e164}: gone from Twilio";
-            } elseif (! str_starts_with($line['voice_url'], $host.'/')) {
+            } elseif (! str_starts_with($line['voice_url'], $host.'/') && ! isset(self::VOICE_ELSEWHERE_EXPECTED[$e164])) {
                 $issues[] = "{$e164}: voice goes to ".($line['voice_url'] ?: 'nothing');
             } elseif (! str_starts_with($line['sms_url'], $host.'/')) {
                 $issues[] = "{$e164}: texts go to ".($line['sms_url'] ?: 'nothing');
