@@ -1119,6 +1119,12 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A new customer was added to the books.',
                     ),
                     new TriggerDefinition(
+                        key: 'customer.tagged',
+                        label: 'Tags changed',
+                        description: 'A customer\'s tags changed. It carries the tags before and after, '
+                            .'so "Tags got the tag X" fires only when X was added.',
+                    ),
+                    new TriggerDefinition(
                         key: 'customer.updated',
                         label: 'Updated',
                         // The distinction somebody will get wrong. Reassignment
@@ -1295,6 +1301,13 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Created',
                         description: 'A job was booked. If it was given a date at the same time, '
                             .'"Date set or changed" fires as well.',
+                    ),
+                    // Jose, 2026-11-03: texts and emails "by tag". Pair with "Tags got the tag".
+                    new TriggerDefinition(
+                        key: 'job.tags_changed',
+                        label: 'Tags changed',
+                        description: 'A job\'s tags changed, in EzBizi or in Workiz. It carries the tags '
+                            .'before and after, so "Tags got the tag X" fires only when X was added.',
                     ),
                     new TriggerDefinition(
                         key: 'job.updated',
