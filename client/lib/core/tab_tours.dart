@@ -432,7 +432,8 @@ const Map<String, Tour> tabTours = {
   ),
   'email': Tour(
     // 2: the inbox laid out like Gmail (design 137).
-    version: 2,
+    // 3: the All tab, the full-screen reader and attachments (2026-11-03).
+    version: 3,
     steps: [
       TourStep(
         anchor: 'tour-email-tabs',
@@ -459,9 +460,11 @@ const Map<String, Tour> tabTours = {
       ),
       TourStep(
         anchor: 'tour-email-categories',
-        title: 'Primary, Leads & customers, Notifications',
-        body: 'Mail from your customers and leads has its own tab.',
-        since: 2,
+        title: 'All, Primary, Leads & customers, Notifications',
+        body:
+            'All is every message, newest first. The others narrow it; mail '
+            'from your customers and leads has its own tab.',
+        since: 3,
       ),
       TourStep(
         anchor: 'tour-email-toolbar',
@@ -474,7 +477,9 @@ const Map<String, Tour> tabTours = {
         title: 'The messages',
         body:
             'One line per conversation, tagged with the inboxes it reached. '
-            'Click one to read it; Older › pages back.',
+            'Click one to read it (on a phone it fills the screen); Older › '
+            'pages back. An attachment opens or saves from its icon.',
+        since: 3,
       ),
     ],
   ),
