@@ -1070,6 +1070,18 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                       : theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (!none) ...[
+                const SizedBox(height: 2),
+                Text(
+                  _lastChecked(rows),
+                  key: ValueKey('last-checked:$provider'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
               if (none) ...[const Spacer(), _offer(context, provider)],
             ],
           ),
@@ -1122,6 +1134,16 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                           : theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  if (!none)
+                    Text(
+                      _lastChecked(rows),
+                      key: ValueKey('last-checked:$provider'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1143,6 +1165,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       final row = rows.first;
       final from = row.label;
 
+      // A broken server never reads "Connected" (Jose, 2026-11-03).
+      if (!row.connected) {
+        return 'Needs reconnecting · ${row.statusReason ?? row.displayName}';
+      }
+
       return from == null || from.isEmpty
           ? 'Connected · ${row.displayName}'
           : 'Connected · $from\n${row.displayName}';
@@ -1150,6 +1177,25 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
     return _beneath(rows);
   }
+
+  /// "Last checked …" from the daily token check: the latest verdict among
+  /// these rows, or that none has been checked yet (Jose, 2026-11-03).
+  static String _lastChecked(List<IntegrationConnection> rows) {
+    final checked = rows.map((r) => r.lastCheckedAt).whereType<DateTime>();
+    if (checked.isEmpty) return 'Not checked yet';
+    final at = checked.reduce((a, b) => a.isAfter(b) ? a : b).toLocal();
+    final d = DateTime.now().difference(at);
+    final when = d.inMinutes < 1
+        ? 'just now'
+        : d.inHours < 1
+        ? '${d.inMinutes} min ago'
+        : d.inDays < 1
+        ? '${d.inHours} h ago'
+        : '${at.year}-${_two(at.month)}-${_two(at.day)}';
+    return 'Last checked $when';
+  }
+
+  static String _two(int n) => n.toString().padLeft(2, '0');
 
   String _beneath(List<IntegrationConnection> rows) {
     if (rows.isEmpty) return 'Nothing connected here yet.';

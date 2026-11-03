@@ -121,6 +121,8 @@ class SocialConnectionsController extends Controller
                     'history' => BackfillWorkizJobs::state($c),
                 ] : null,
                 'last_reached_at' => $c->last_reached_at?->toIso8601String(),
+                // When ezbizi:check-connection-health last had a verdict (Jose, 2026-11-03).
+                'last_checked_at' => $c->last_checked_at?->toIso8601String(),
 
                 /*
                  * Connected is not the same as postable: four of the nine
