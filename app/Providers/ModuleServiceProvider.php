@@ -3127,6 +3127,15 @@ class ModuleServiceProvider extends ServiceProvider
                             .'about, and whether it looks like a real enquiry at all. It fires '
                             .'after "Lead received", once any recording has been transcribed.',
                     ),
+                    // Jose's project list, 2026-11-03: "Not booked recovery automatic msg".
+                    new TriggerDefinition(
+                        key: 'lead.call_not_booked',
+                        label: 'A call ended without a booking',
+                        description: 'AI read a call transcript: the caller did not book and did not '
+                            .'complain. Use a wait and a "Status" condition so a lead booked, lost or '
+                            .'closed meanwhile is skipped. It carries the AI summary, caller name and phone.',
+                        composedFields: ['summary'],
+                    ),
                     new TriggerDefinition(
                         key: 'lead.call_complaint',
                         label: 'A call sounded like a complaint',
