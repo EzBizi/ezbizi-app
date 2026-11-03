@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\CallReportLabel;
+use App\Models\CallReportOverride;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
 use App\Models\WorkizCall;
@@ -391,5 +392,42 @@ class ExperimentalCallReportController extends Controller
             'converted_at' => $row->created_at?->toIso8601String(),
             'converted_by' => $row->converter?->name,
         ]]);
+    }
+
+    /**
+     * PUT /api/v1/reports/experimental/calls/{call}/override {field, value}:
+     * sets a call's client (new | existing) or booking (booked | not_booked)
+     * by hand (Jose, 2026-11-03, for Trey). reports.handles, on the route.
+     */
+    public function override(Request $request, string $call): JsonResponse
+    {
+        $data = $request->validate([
+            'field' => ['required', 'in:client,booking'],
+            'value' => ['required', 'string'],
+        ]);
+        if (! in_array($data['value'], CallReportOverride::VALUES[$data['field']], true)) {
+            abort(Status::HTTP_UNPROCESSABLE_ENTITY, 'Choose '.implode(' or ', CallReportOverride::VALUES[$data['field']]).'.');
+        }
+
+        $row = CallReportOverride::query()->updateOrCreate(
+            ['organization_id' => $request->user()->organization_id, 'call_id' => $call, 'field' => $data['field']],
+            ['value' => $data['value'], 'set_by' => $request->user()->getKey()],
+        );
+        $this->audit->log('call_report.overridden', $row, metadata: ['call_id' => $call, 'field' => $data['field'], 'value' => $data['value']]);
+
+        return response()->json(['data' => ['call_id' => $call, 'field' => $row->field, 'value' => $row->value, 'set_by' => $request->user()->name]]);
+    }
+
+    /** DELETE .../calls/{call}/override?field=: back to what the phones and Workiz say. */
+    public function revert(Request $request, string $call): JsonResponse
+    {
+        $field = $request->validate(['field' => ['required', 'in:client,booking']])['field'];
+        $row = CallReportOverride::query()->where('call_id', $call)->where('field', $field)->first();
+        if ($row !== null) {
+            $this->audit->log('call_report.override_reverted', $row, metadata: ['call_id' => $call, 'field' => $field, 'was' => $row->value]);
+            $row->delete();
+        }
+
+        return response()->json(['data' => ['call_id' => $call, 'field' => $field, 'value' => null]]);
     }
 }
