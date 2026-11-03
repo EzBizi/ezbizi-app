@@ -3,8 +3,8 @@
 # Its own unit, not a line in routes/console.php: a transcription run takes
 # minutes, and schedule:run runs a minute's commands one after another, so it
 # would hold the every-minute lead sync behind it (see the scheduler unit).
-# Lowest CPU priority and at most four cores: the box has sixteen and uses about
-# two, and the app must never wait for a transcript.
+# Lowest CPU priority and at most six cores: the box has sixteen and uses about
+# four, and the app must never wait for a transcript.
 #
 # Install (once; deploy.sh refreshes it after that):
 #   sudo cp deploy/ezbizi-transcribe.* /etc/systemd/system/
@@ -22,12 +22,12 @@ Group=www-data
 WorkingDirectory=/var/www/ezbizi-current
 ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:transcribe-lead-calls --minutes=4
 # Then the Experimental call report's calls - after Leads, never beside it:
-# both run Whisper on the same four cores.
+# both run Whisper on the same six cores.
 ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:transcribe-report-calls --minutes=3
 # The AI steps (labels, speaker split) run beside this, in ezbizi-label.service,
 # so Whisper keeps its minutes and Grok's never wait for it (Jose, 2026-11-02).
 Nice=19
-CPUQuota=400%
+CPUQuota=600%
 TimeoutStartSec=900
 PrivateTmp=true
 NoNewPrivileges=true
