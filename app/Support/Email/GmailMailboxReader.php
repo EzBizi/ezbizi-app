@@ -145,6 +145,16 @@ final class GmailMailboxReader implements LabelsThreads, MailboxReader, RepliesW
     }
 
     /** The installation's answer, said once and asked from two places. */
+    /**
+     * Personal Google sign-in (gmail_oauth) is retired, Jose 2026-11-03: its
+     * restricted gmail.modify scope needs a paid yearly CASA assessment for a
+     * path three mailboxes used. No new sign-in starts and no new gmail_oauth
+     * inbox is added; Workspace (domain-wide delegation) and IMAP remain.
+     */
+    public const RETIRED = 'EzBizi no longer offers signing in to a personal Google account. '
+        .'Connect a company address through Google Workspace, or a personal @gmail.com '
+        .'address through IMAP with a Google app password.';
+
     public function notReadyBecause(): ?string
     {
         return $this->platformIsRegistered() ? null

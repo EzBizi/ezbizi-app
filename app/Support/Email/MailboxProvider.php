@@ -64,7 +64,7 @@ enum MailboxProvider: string
     public function label(): string
     {
         return match ($this) {
-            self::GmailOAuth => 'Google (recommended)',
+            self::GmailOAuth => 'Google sign-in (retired)',
             self::GmailWorkspace => 'Google Workspace',
             self::MicrosoftOauth => 'Microsoft 365',
             self::Imap => 'IMAP',
