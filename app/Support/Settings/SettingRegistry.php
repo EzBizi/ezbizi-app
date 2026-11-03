@@ -1310,6 +1310,11 @@ class SettingRegistry
                 fn ($v) => "{$v} miles",
                 'A move is suggested only when it puts the job this close to other booked work.'),
             new SettingDefinition(
+                key: 'scheduling.underfilled_include', label: 'Include in the empty-spots report',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                help: 'Off leaves this branch out of the empty-spots email and its totals. Set it on the branch.',
+            ),
+            new SettingDefinition(
                 key: 'scheduling.offer_today', label: 'Offer today in online booking',
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 help: 'When on, the booking widget offers the windows today that have not started and still have room. Off books from tomorrow.',

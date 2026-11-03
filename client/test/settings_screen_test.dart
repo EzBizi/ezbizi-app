@@ -304,7 +304,7 @@ void main() {
     final number = find.byWidgetPredicate(
       (w) => w is TextField && w.controller?.text == '8.5',
     );
-    expect(tester.getSize(sentence).width, 320);
+    expect(tester.getSize(sentence).width, 440);
     expect(tester.widget<TextField>(sentence).textAlign, TextAlign.start);
     expect(tester.getSize(number).width, 150);
     expect(tester.widget<TextField>(number).textAlign, TextAlign.right);

@@ -17,6 +17,7 @@ use App\Models\ServiceArea;
 use App\Models\ServiceAreaSlot;
 use App\Support\Phone\FakeTwilioGateway;
 use App\Support\Phone\TwilioGateway;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -95,6 +96,14 @@ class RescheduleOffersTest extends TestCase
         $as->postJson("/api/v1/scheduling/reschedule-offers/{$offer['id']}/move")->assertOk()
             ->assertJsonPath('data.scheduled_for', '2026-10-27 08:00:00');
         $as->postJson("/api/v1/scheduling/reschedule-offers/{$offer['id']}/move")->assertStatus(409);
+        // A passed opening is not offered as a move (Charles O'Neil's sat past its day on prod, 2026-11-02).
+        app(TenantContext::class)->set($t['org']);
+        SchedulingRescheduleOffer::withoutGlobalScopes()->update(['moved_at' => null]);
+        $this->travelTo(CarbonImmutable::parse('2026-10-28 10:00:00', 'America/New_York'));
+        $as->getJson('/api/v1/scheduling/reschedule-offers?lead_id='.$lead->id)->assertJsonPath('data.can_move', false);
+        $as->postJson("/api/v1/scheduling/reschedule-offers/{$offer['id']}/move")->assertStatus(409);
+        $this->travelTo(CarbonImmutable::parse('2026-10-26 10:00:00', 'America/New_York'));
+        SchedulingRescheduleOffer::withoutGlobalScopes()->update(['moved_at' => now()]);
         app(TenantContext::class)->set($t['org']);
         $this->assertSame('2026-10-27 08:00:00', $later->fresh()->getRawOriginal('scheduled_for'));
         $this->assertNotNull(SchedulingRescheduleOffer::query()->sole()->moved_at);
@@ -145,6 +154,12 @@ class RescheduleOffersTest extends TestCase
         $this->assertStringContainsString('Bravo Co', $events[$other->id]->payload['after']['summary']);
         $this->assertStringNotContainsString('Dallas', $events[$other->id]->payload['after']['summary']);
         $this->assertStringNotContainsString('Hartford', $events[$t['company']->id]->payload['after']['summary']);
+
+        // A branch switched off leaves the report (Shoval, 2026-11-03: Nationwide).
+        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set(SchedulingWarnUnderfilled::INCLUDE, $theirs, false));
+        AutomationEvent::query()->delete();
+        $this->artisan('scheduling:warn-underfilled', ['--now' => true])->assertSuccessful();
+        $this->assertSame([$t['company']->id], AutomationEvent::query()->get()->map(fn ($e) => $e->scope_snapshot['id'])->all());
 
         $summary = SchedulingWarnUnderfilled::summary([['franchise_name' => 'DFW', 'name' => 'Dallas', 'booked' => 1, 'capacity' => 4, 'gap' => 3]], CarbonImmutable::parse('2026-10-27'));
         $this->assertStringContainsString('### DFW: 3 empty (1 of 4 booked)', $summary);

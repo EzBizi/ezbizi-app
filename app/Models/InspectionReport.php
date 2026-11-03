@@ -256,6 +256,16 @@ class InspectionReport extends Model implements CarriesAutomationScope, HoldsPer
         return \Illuminate\Support\Facades\URL::signedRoute('inspection.report.shared', ['report' => $this->getKey()]);
     }
 
+    /**
+     * `{{report_link}}` in an automation's text or email: the same no-login
+     * link the Workiz step writes. Computed, never stored, so the signed URL
+     * is not copied into event payloads or audit rows.
+     */
+    public function getReportLinkAttribute(): string
+    {
+        return $this->exists ? $this->shareUrl() : '';
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class)->withTrashed();

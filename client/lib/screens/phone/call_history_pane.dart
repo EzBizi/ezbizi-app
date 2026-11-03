@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import '../../core/phone_numbers.dart';
@@ -197,17 +198,10 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
           child: SizedBox(
-            child: TextField(
+            child: ListSearch(
               key: const ValueKey('comm-call-history-search'),
+              hint: 'Search name or number',
               onChanged: _search,
-              textAlignVertical: TextAlignVertical.center,
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: 'Search name or number',
-                prefixIcon: Icon(Icons.search, size: 18),
-                prefixIconConstraints: BoxConstraints(minWidth: 36),
-                border: OutlineInputBorder(),
-              ),
             ),
           ),
         ),

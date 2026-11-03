@@ -611,6 +611,10 @@ if wants android; then
       exit 1
     fi
     cp "$AAB" "$DIST_ANDROID/EzBizi-${VERSION}-${COMMIT}.aab"
+    # Upload to Play, like iOS goes to TestFlight. Play still reviews it.
+    # A failure warns and does not fail the release: the AAB is in dist/.
+    ./scripts/play-upload.sh "$DIST_ANDROID/EzBizi-${VERSION}-${COMMIT}.aab" production "$VERSION" \
+      || echo "   ⚠ Play upload failed — the AAB is in $DIST_ANDROID; upload it by hand"
   fi
 else
   FAILED+=("android")

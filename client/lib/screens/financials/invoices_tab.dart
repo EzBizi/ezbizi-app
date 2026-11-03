@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
 import '../../core/session.dart';
@@ -321,21 +323,11 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
       children: [
         SizedBox(
           width: phone ? double.infinity : 240,
-          child: TextField(
+          child: ListSearch(
             key: const Key('invoices-search'),
             controller: _search,
+            hint: 'Number or customer',
             onChanged: _searched,
-            // bodyMedium for the text and the hint, as the dense pickers draw:
-            // 53 points tall, as they are; the theme's 16-point hint makes 56.
-            style: Theme.of(context).textTheme.bodyMedium,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: 'Number or customer',
-              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-              ),
-            ),
           ),
         ),
         for (final (value, label) in _statuses)

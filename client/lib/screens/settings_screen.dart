@@ -1670,7 +1670,7 @@ class _SettingRow extends StatelessWidget {
     // needs (UI audit, 2026-10-08) — so it gets the width of one, and on a
     // phone the Flexible around the control keeps it on the screen.
     return SizedBox(
-      width: type == 'string' ? 320 : 150,
+      width: type == 'string' ? 440 : 150,
       child: _InlineField(
         // Keyed by value, so a save elsewhere or a scope switch rebuilds the
         // field instead of leaving the old text sitting in it.

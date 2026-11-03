@@ -78,7 +78,7 @@ void main() {
     // the month, day and year focus nodes (calendar_day_field.dart, initState).
     // Blurring the minute box triggers nothing, so a test aimed there passed
     // against the defect it was written to catch.
-    await tester.tap(find.widgetWithText(TextField, '23'));
+    await tester.tap(find.byKey(const Key('calendar-day-text')));
     await tester.pumpAndSettle();
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
@@ -142,7 +142,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.widgetWithText(TextField, '23'), '24');
+    // One date-and-time field (Jose, 2026-11-03), in the fallback YYYY-MM-DD.
+    await tester.enterText(
+      find.byKey(const Key('calendar-day-text')),
+      '2026-09-24 09:43',
+    );
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
 

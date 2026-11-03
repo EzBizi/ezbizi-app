@@ -242,6 +242,24 @@ class FieldTest extends TestCase
         $this->assertCount(1, $this->events('field.signal_lost'));
     }
 
+    public function test_a_lost_signal_alert_closes_itself_when_the_phone_reports_again(): void
+    {
+        $this->mode('always');
+        $this->send($this->point(40.0, -75.0, '2026-09-25 13:59:00'));
+        $this->travelTo('2026-09-25 14:20:00');
+        $this->artisan('ezbizi:field-sweep')->assertSuccessful();
+        // Only lost signal: standing still 21 minutes there also raised "stopped", which stays open.
+        $open = fn () => $this->inTenant($this->t['org'], fn () => FieldAlert::query()
+            ->where('kind', FieldAlert::SIGNAL_LOST)->whereNull('acknowledged_at')->count());
+        $this->assertSame(1, $open());
+
+        $this->send($this->point(40.0, -75.0, '2026-09-25 14:20:00'));
+
+        $this->assertSame(0, $open());
+        $this->assertNull($this->inTenant($this->t['org'], fn () => FieldAlert::query()
+            ->where('kind', FieldAlert::SIGNAL_LOST)->value('acknowledged_by')));
+    }
+
     public function test_sos_alerts_notifies_the_managers_who_can_see_the_person_and_is_audited(): void
     {
         $bystander = $this->userWithRole($this->t, 'Office', ['field.view']);

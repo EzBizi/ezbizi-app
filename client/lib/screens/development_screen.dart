@@ -263,11 +263,10 @@ class _Banner extends StatelessWidget {
           Expanded(
             child: Text(
               isLead
-                  ? 'Platform control plane — every organization, not just this one. '
-                        'Your ordinary activity here is not written to the business audit '
-                        'trail; sign-ins, staff changes and client access always are.'
-                  : 'Platform control plane — every organization, not just this one. '
-                        'Everything you do here is recorded.',
+                  ? 'Platform control plane: every organization. Sign-ins, staff '
+                        'changes and client access are audited; other activity is not.'
+                  : 'Platform control plane: every organization. Everything you do '
+                        'here is recorded.',
               style: TextStyle(fontSize: 12, color: scheme.error),
             ),
           ),

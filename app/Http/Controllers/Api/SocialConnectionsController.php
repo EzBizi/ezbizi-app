@@ -101,6 +101,8 @@ class SocialConnectionsController extends Controller
                 'label' => $c->label,
 
                 'handle' => $c->handle,
+                // The Google login it was signed in with; null = unknown, reconnect to see (Jose, 2026-11-02).
+                'account_email' => $c->account_email,
                 'scope_type' => $c->scope_type,
                 'scope_id' => $c->scope_id,
                 'status' => ($telegramError[$c->getKey()] ?? null) !== null ? SocialConnection::STATUS_BROKEN : $c->status,
@@ -473,6 +475,9 @@ class SocialConnectionsController extends Controller
 
         $rows = SocialConnection::query()
             ->where('provider', $provider->value)
+            // One Google login's rows only (design 167): a string is that
+            // login, null is the rows whose login is unknown.
+            ->when($request->has('account_email'), fn ($q) => $q->where('account_email', $request->input('account_email')))
             ->orderBy('created_at')
             ->get()
             ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))

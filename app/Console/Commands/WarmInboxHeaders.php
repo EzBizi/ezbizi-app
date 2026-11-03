@@ -8,6 +8,7 @@ use App\Support\Email\HeaderCache;
 use App\Support\Email\MailboxReaders;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -17,6 +18,8 @@ use Throwable;
  */
 class WarmInboxHeaders extends Command
 {
+    private const NEXT_KEY = 'email.headers.warm-next';
+
     protected $signature = 'ezbizi:warm-inbox-headers {--budget=50 : seconds to spend before stopping}';
 
     protected $description = 'Keep connected inboxes\' first pages cached, re-reading only inboxes that changed';
@@ -29,35 +32,47 @@ class WarmInboxHeaders extends Command
 
         $mailboxes = $tenant->runWithoutTenant(fn () => Mailbox::query()
             ->where('status', Mailbox::STATUS_CONNECTED)
-            ->orderBy('organization_id')
+            ->orderBy('organization_id')->orderBy('id')
             ->get());
 
-        foreach ($mailboxes->groupBy('organization_id') as $organizationId => $rows) {
-            $organization = $tenant->runWithoutTenant(fn () => Organization::query()->find($organizationId));
+        // Start where the last run ran out of budget. A fixed order re-read the
+        // same ~24 busy inboxes every minute and the rest went cold (11-02:
+        // All inboxes 20s with 28 of 66 first pages live).
+        $count = $mailboxes->count();
+        $start = $count > 0 ? ((int) Cache::get(self::NEXT_KEY, 0)) % $count : 0;
+        $organizations = [];
+        $done = 0;
+
+        foreach ($mailboxes->slice($start)->concat($mailboxes->take($start)) as $mailbox) {
+            if (microtime(true) - $started > $budget) {
+                break;   // the rest next minute
+            }
+
+            $organization = $organizations[$mailbox->organization_id] ??= $tenant->runWithoutTenant(
+                fn () => Organization::query()->find($mailbox->organization_id),
+            );
+            $done++;
 
             if ($organization === null) {
                 continue;
             }
 
-            $tenant->run($organization, function () use ($rows, $readers, $cache, $started, $budget, &$warmed) {
-                foreach ($rows as $mailbox) {
-                    if (microtime(true) - $started > $budget) {
-                        return;   // the rest next minute
-                    }
+            try {
+                $warmed += (int) $tenant->run($organization, function () use ($mailbox, $readers, $cache) {
+                    $reader = $readers->for($mailbox);
 
-                    try {
-                        $reader = $readers->for($mailbox);
-                        $warmed += (int) $cache->warm(
-                            $mailbox,
-                            $reader->currentMark($mailbox),
-                            fn (int $size) => $reader->list($mailbox, null, $size, 'INBOX'),
-                        );
-                    } catch (Throwable) {
-                        // A broken inbox says so on its own card; the screen reads it live.
-                    }
-                }
-            });
+                    return $cache->warm(
+                        $mailbox,
+                        $reader->currentMark($mailbox),
+                        fn (int $size) => $reader->list($mailbox, null, $size, 'INBOX'),
+                    );
+                });
+            } catch (Throwable) {
+                // A broken inbox says so on its own card; the screen reads it live.
+            }
         }
+
+        Cache::forever(self::NEXT_KEY, $count > 0 ? ($start + $done) % $count : 0);
 
         $this->info("Re-read {$warmed} of {$mailboxes->count()} inboxes.");
 

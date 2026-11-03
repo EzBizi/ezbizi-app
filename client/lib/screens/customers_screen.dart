@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:async';
 
 import '../core/phone_numbers.dart';
@@ -390,25 +391,16 @@ class _CustomersScreenState extends State<CustomersScreen> {
             children: [
               SizedBox(
                 width: wide ? 360 : constraints.maxWidth,
-                child: TextField(
+                child: ListSearch(
                   key: const ValueKey('tour-customers-search'),
                   controller: _search,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search),
-                    hintText: 'Name, email, phone or number',
-                    suffixIcon: _search.text.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.clear),
-                            tooltip: 'Clear the search',
-                            onPressed: () {
-                              _search.clear();
-                              _load();
-                            },
-                          ),
-                  ),
-                  onSubmitted: (_) => _load(),
+                  hint: 'Name, email, phone or number',
                   onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _load(),
+                  onClear: () {
+                                _search.clear();
+                                _load();
+                              },
                 ),
               ),
               // The chips' choice, as a picker where three chips would wrap.
@@ -1337,16 +1329,9 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
           // Standard field height, as tall as Leads search (Jose, 2026-10-27).
           SizedBox(
             width: 240,
-            child: TextField(
+            child: ListSearch(
               key: const Key('customers-duplicates-search'),
-              textAlignVertical: TextAlignVertical.center,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIconConstraints: BoxConstraints(minWidth: 36),
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a duplicate',
-                border: OutlineInputBorder(),
-              ),
+              hint: 'Find a duplicate',
               onChanged: _search,
             ),
           ),

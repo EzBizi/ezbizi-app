@@ -1,0 +1,27 @@
+# The AI steps on transcribed calls: labels, then each call split by speaker.
+# Beside ezbizi-transcribe.service, not after it (Jose, 2026-11-02: "optimize
+# it"): Whisper runs on this box's CPU, these wait on Grok, so they need not
+# take turns. A call transcribed now is labelled on the next run of this unit.
+#
+# Install (once; deploy.sh refreshes it after that):
+#   sudo cp deploy/ezbizi-label.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ezbizi-label.timer
+
+[Unit]
+Description=EzBizi call labels and speaker split (AI)
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/ezbizi-current
+ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:label-report-calls --minutes=3
+ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:label-report-calls --split-only --minutes=4
+Nice=10
+TimeoutStartSec=900
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true

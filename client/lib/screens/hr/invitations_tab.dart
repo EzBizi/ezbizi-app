@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -126,21 +127,16 @@ class _InvitationsTabState extends State<InvitationsTab> {
     alignment: Alignment.centerLeft,
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 320),
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('tour-hr-invitations-search'),
-        decoration: const InputDecoration(
-          hintText: 'Search by name or email',
-          prefixIcon: Icon(Icons.search),
-          isDense: true,
-          border: OutlineInputBorder(),
-        ),
+        hint: 'Search by name or email',
         onChanged: (value) {
-          _searchDelay?.cancel();
-          _searchDelay = Timer(const Duration(milliseconds: 300), () {
-            _search = value.trim();
-            _load();
-          });
-        },
+            _searchDelay?.cancel();
+            _searchDelay = Timer(const Duration(milliseconds: 300), () {
+              _search = value.trim();
+              _load();
+            });
+          },
       ),
     ),
   );
@@ -395,7 +391,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
     final role = invitation['role'] as Map<String, dynamic>?;
     final scope = invitation['scope'] as Map<String, dynamic>?;
     final invitedBy = invitation['invited_by'] as Map<String, dynamic>?;
-    final email = invitation['email'] as String? ?? '';
+    // An erased person's stand-in address ("removed-…@invalid") is not a
+    // name anybody can read (deep dive 2026-11-02 #4).
+    final rawEmail = invitation['email'] as String? ?? '';
+    final email = rawEmail.endsWith('@invalid') ? 'Removed person' : rawEmail;
 
     final name = [
       invitation['first_name'],
@@ -416,7 +415,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
     );
 
     return [
-      PersonCell(name: name.isEmpty ? email : name, sub: name.isEmpty ? null : email),
+      PersonCell(
+        name: name.isEmpty ? email : name,
+        sub: name.isEmpty ? null : email,
+      ),
       Text(role?['name'] as String? ?? '—', overflow: TextOverflow.ellipsis),
       Text(scope?['name'] as String? ?? '—', overflow: TextOverflow.ellipsis),
       Tag(
@@ -441,11 +443,11 @@ class _InvitationsTabState extends State<InvitationsTab> {
                       'hr.create',
                       'resend invitations',
                     ),
-                  child: TextButton(
-                    onPressed: mayAct ? () => _resend(invitation) : null,
-                    child: const Text('Resend'),
+                    child: TextButton(
+                      onPressed: mayAct ? () => _resend(invitation) : null,
+                      child: const Text('Resend'),
+                    ),
                   ),
-                ),
                 Refused(
                   reason: widget.session.me?.refusal(
                     'hr.create',
@@ -1050,9 +1052,13 @@ class _InvitePanelState extends State<_InvitePanel> {
             border: OutlineInputBorder(),
             options: [
               for (final role in widget.options.roles)
-                SearchOption(value: role.id, label: role.assignable
-                        ? role.name
-                        : '${role.name} — not yours to give', enabled: role.assignable),
+                SearchOption(
+                  value: role.id,
+                  label: role.assignable
+                      ? role.name
+                      : '${role.name} — not yours to give',
+                  enabled: role.assignable,
+                ),
             ],
             onChanged: _busy ? null : (v) => setState(() => _roleId = v),
           ),
@@ -1060,15 +1066,20 @@ class _InvitePanelState extends State<_InvitePanel> {
           SearchPickerField<String>(
             value: _scope,
             label: 'Where they are assigned',
-            helperText: 'Everything beneath it comes with it. This list holds only '
-                  'places you can reach yourself.',
+            helperText:
+                'Everything beneath it comes with it. This list holds only '
+                'places you can reach yourself.',
             helperMaxLines: 3,
             border: OutlineInputBorder(),
             options: [
               for (final scope in widget.options.scopes)
-                SearchOption(value: scope.value, label: scope.isActive
-                        ? scope.pathLabel
-                        : '${scope.pathLabel} — deactivated', enabled: scope.isActive),
+                SearchOption(
+                  value: scope.value,
+                  label: scope.isActive
+                      ? scope.pathLabel
+                      : '${scope.pathLabel} — deactivated',
+                  enabled: scope.isActive,
+                ),
             ],
             onChanged: _busy ? null : (v) => setState(() => _scope = v),
           ),
@@ -1107,9 +1118,7 @@ class _InvitePanelState extends State<_InvitePanel> {
                       label: contract['name'] as String? ?? '',
                     ),
               ],
-              onChanged: _busy
-                  ? null
-                  : (v) => setState(() => _contractId = v),
+              onChanged: _busy ? null : (v) => setState(() => _contractId = v),
             ),
           if (_error != null) ...[
             const SizedBox(height: 18),

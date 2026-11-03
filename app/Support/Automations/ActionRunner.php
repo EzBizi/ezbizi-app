@@ -3047,7 +3047,12 @@ class ActionRunner
             }
         }
 
-        return trim($this->interpolate((string) ($action['message'] ?? ''), $event, $review));
+        // Words per star rating (ReviewAutoReplyRule), else the one message.
+        // An empty field saved by the builder falls back to the one message; by_rating is
+        // the shape 0.0.0514 wrote before the flat keys (2026-11-02).
+        $message = ($action['by_rating_'.$review->rating] ?? '') ?: ($action['by_rating'][(string) $review->rating] ?? $action['message'] ?? '');
+
+        return trim($this->interpolate((string) $message, $event, $review));
     }
 
     /**
@@ -3637,6 +3642,17 @@ class ActionRunner
         }
 
         $about = $subject ? array_search($subject::class, Task::ABOUT, true) : false;
+
+        // One task per rule per record per 10 minutes (review 2026-11-02): one
+        // phone call read as two transcripts raised two complaints 3 seconds
+        // apart, and one payment twice, each a second identical task.
+        if ($about !== false && $automation !== null && Task::query()
+            ->where('created_by_automation_id', $automation->getKey())
+            ->where('about_type', $about)->where('about_id', $subject->getKey())
+            ->where('created_at', '>=', now()->subMinutes(10))->exists()) {
+            return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => 'This rule already added a task about this record in the last 10 minutes.'];
+        }
+
         $board = app(TaskBoards::class)->ensureFor($owner);
 
         // The board's own columns by name, and its group by name (Task Board, 60f643812).
@@ -3777,6 +3793,11 @@ class ActionRunner
             try {
                 $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text) ? 1 : 0;
             } catch (RuntimeException $refusal) {
+                // Not sent, so a retry may try again rather than report "nobody has a phone".
+                if ($once !== null) {
+                    Cache::forget("{$once}:{$user->id}");
+                }
+
                 return $refusal->getMessage();
             }
         }

@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -199,14 +200,9 @@ class _MembershipsMembersState extends State<MembershipsMembers> {
         Row(
           children: [
             Expanded(
-              child: TextField(
+              child: ListSearch(
                 key: const Key('members-search'),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: 'Search members',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
+                hint: 'Search members',
                 onChanged: (value) => setState(() => _search = value),
               ),
             ),

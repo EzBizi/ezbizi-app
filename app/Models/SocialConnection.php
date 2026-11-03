@@ -37,7 +37,7 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
     {
         return RetentionPolicy::forever(
             'The connection to a social page or profile — which network it is on, the name '
-            .'shown on screen, and the key that posts as it. One row per connected account '
+            .'shown on screen, the Google login it was signed in with, and the key that posts as it. One row per connected account '
             .'the organization has, held for as long as it is connected and deleted when '
             .'somebody disconnects it. EzBizi does not store a copy of the remote feed. Who '
             .'connected it and when is in the audit log, which does expire.'

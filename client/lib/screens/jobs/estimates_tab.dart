@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -356,25 +357,16 @@ class _EstimatesTabState extends State<EstimatesTab> {
         children: [
           SizedBox(
             width: 320,
-            child: TextField(
+            child: ListSearch(
               key: const ValueKey('estimate-search'),
               controller: _search,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
-                hintText: 'Number or customer',
-                suffixIcon: _search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear),
-                        tooltip: 'Clear the search',
-                        onPressed: () {
-                          _search.clear();
-                          _load();
-                        },
-                      ),
-              ),
-              onSubmitted: (_) => _load(),
+              hint: 'Number or customer',
               onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _load(),
+              onClear: () {
+                            _search.clear();
+                            _load();
+                          },
             ),
           ),
           for (final MapEntry(key: currency, value: t) in _totals.entries) ...[

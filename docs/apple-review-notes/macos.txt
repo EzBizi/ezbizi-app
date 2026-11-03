@@ -26,9 +26,9 @@ A person deletes their own account from the account screen. It requires their pa
 
 EXTERNAL SERVICES
 Infrastructure: Amazon Web Services (hosting, database), Amazon SES (transactional email), WhatsApp Business by Meta (messaging).
-Optional per-tenant integrations, none required and none configured in the demo organization, each connected by the customer with their own account and disconnectable at any time: Twilio (phone, SMS); Google and Microsoft 365 (company mailbox); Meta, TikTok, Pinterest, LinkedIn, X, YouTube (publishing the customer's own posts to their own accounts); Google Ads, Google Business Profile, Thumbtack (lead sources).
+Optional integrations, none in the demo, each connected by the customer with their own account and removable any time: Twilio (phone, SMS); Google and Microsoft 365 (company mailbox); Meta, TikTok, Pinterest, LinkedIn, X, YouTube (publishing the customer's own posts to their own accounts); Google Ads, Google Business Profile, Thumbtack (lead sources).
 No payment processor and no advertising, analytics, attribution or crash-reporting SDK.
-The Assistant tab answers questions by searching the organization's own help entries. It uses no outside AI or machine-learning service and sends no data to one.
+AI: call summaries, lead notes, review-reply drafts and the staff Assistant send the organization's own business records to xAI (Grok) to write that text. Results are shown only inside that organization; xAI is not used for advertising or tracking.
 
 REGIONS
 Identical in every region. English (United States) only, no region-gated features, no regional pricing, no content varying by territory.

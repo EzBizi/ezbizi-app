@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -173,16 +174,9 @@ class _WidgetsTabState extends State<WidgetsTab> {
               alignment: Alignment.centerLeft,
               child: SizedBox(
                 width: math.min(240, box.maxWidth),
-                child: TextField(
+                child: ListSearch(
                   key: const Key('web-widgets-sites-search'),
-                  textAlignVertical: TextAlignVertical.center,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIconConstraints: BoxConstraints(minWidth: 36),
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Find a website',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Find a website',
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),

@@ -91,8 +91,10 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   bool get _mayReadPosts =>
       _mayOpen('dashboard') || _mayOpen('compose') || _mayOpen('calendar');
 
-  List<(String, String, IconData)> get _shownPanes =>
-      [for (final pane in _panes) if (_mayOpen(pane.$1)) pane];
+  List<(String, String, IconData)> get _shownPanes => [
+    for (final pane in _panes)
+      if (_mayOpen(pane.$1)) pane,
+  ];
 
   List<_SocialNetwork> _providers = const [];
   List<_SocialConnection> _connections = const [];
@@ -1288,8 +1290,7 @@ class _PostsDashboard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         for (final post in rows)
-                          if (column(post) == key)
-                            _row(post, phone: true),
+                          if (column(post) == key) _row(post, phone: true),
                         if (!rows.any((p) => column(p) == key))
                           Text('None', style: theme.textTheme.bodySmall),
                       ],
@@ -1540,7 +1541,8 @@ class _TimelineRow extends StatelessWidget {
       for (final t in post.targets)
         if (t.status == 'failed') t,
     ];
-    String name(_SentTarget t) => t.account.isEmpty ? t.providerLabel : t.account;
+    String name(_SentTarget t) =>
+        t.account.isEmpty ? t.providerLabel : t.account;
 
     Widget dot(Tone tone) => Container(
       width: 8,
@@ -1638,9 +1640,9 @@ class _TimelineRow extends StatelessWidget {
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  // The failure sentence is the server's. A status word on
-                  // its own says something is wrong and nothing about what to
-                  // do; Open shows the rest of a long one.
+                  // The failure sentence is the server's when it is a plain
+                  // one. A network's raw text (a URL, a snake_case code) is
+                  // one line here and whole in the post's pane, its Details.
                   for (final target in failed)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
@@ -1656,7 +1658,7 @@ class _TimelineRow extends StatelessWidget {
                             child: Text(
                               target.failure == null
                                   ? '${name(target)} · refused it'
-                                  : '${name(target)} · ${target.failure}',
+                                  : '${name(target)} · ${plainFailure(target.failure!)}',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.bodySmall?.copyWith(
@@ -1769,8 +1771,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   /// visit: a refused save must not fold the list shut under the person.
   bool? _expandedNow;
   bool get _expanded =>
-      _expandedNow ??
-      widget.session.me?.preferences[_listingsExpanded] == true;
+      _expandedNow ?? widget.session.me?.preferences[_listingsExpanded] == true;
 
   /// The listing's button: none, or BOOK / ORDER / SHOP / LEARN_MORE /
   /// SIGN_UP / CALL. Only asked while a listing is ticked.
@@ -1925,10 +1926,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     for (final account in widget.connections) {
       final choice = _tiktok[account.id];
       if (choice == null || !_picked.contains(account.id)) continue;
-      final why = choice.refusal(
-        account.displayName,
-        _player?.value.duration,
-      );
+      final why = choice.refusal(account.displayName, _player?.value.duration);
       if (why != null) return why;
     }
     if (_sending) return 'Sending.';
@@ -1944,7 +1942,9 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   String get _sendLabel {
     if (_sending) return 'Sending…';
 
-    return _scheduling && _when.text.trim().isNotEmpty ? 'Schedule' : 'Publish now';
+    return _scheduling && _when.text.trim().isNotEmpty
+        ? 'Schedule'
+        : 'Publish now';
   }
 
   Widget _scheduleRow(BuildContext context) {
@@ -2058,7 +2058,9 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     final choice = TikTokChoice();
     _tiktok[id] = choice;
 
-    final response = await widget.api.get('/social/connections/$id/tiktok-creator');
+    final response = await widget.api.get(
+      '/social/connections/$id/tiktok-creator',
+    );
     if (!mounted || _tiktok[id] != choice) return;
 
     setState(() {
@@ -2363,7 +2365,8 @@ class _ComposeColumnState extends State<_ComposeColumn> {
           label('Picture or video'),
           _attachment(context),
           for (final account in widget.connections)
-            if (_picked.contains(account.id) && _tiktok[account.id] != null) ...[
+            if (_picked.contains(account.id) &&
+                _tiktok[account.id] != null) ...[
               const SizedBox(height: 14),
               TikTokPostChoices(
                 account: account.displayName,
@@ -2577,7 +2580,9 @@ class _ComposeColumnState extends State<_ComposeColumn> {
             size: 18,
           ),
           const SizedBox(width: 8),
-          Expanded(child: Text('From the library: ${fromLibrary['name'] ?? ''}')),
+          Expanded(
+            child: Text('From the library: ${fromLibrary['name'] ?? ''}'),
+          ),
           TextButton(
             onPressed: _sending
                 ? null
@@ -2734,9 +2739,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
           onPressed: () => setState(() {
             player.value.isPlaying ? player.pause() : player.play();
           }),
-          icon: Icon(
-            player.value.isPlaying ? Icons.pause : Icons.play_arrow,
-          ),
+          icon: Icon(player.value.isPlaying ? Icons.pause : Icons.play_arrow),
           tooltip: player.value.isPlaying ? 'Pause' : 'Play',
         ),
       ],
@@ -2785,8 +2788,15 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 
   static bool _looksLikeImage(String name) {
     final ext = name.toLowerCase().split('.').last;
-    return const ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif']
-        .contains(ext);
+    return const [
+      'jpg',
+      'jpeg',
+      'png',
+      'webp',
+      'gif',
+      'heic',
+      'heif',
+    ].contains(ext);
   }
 
   static String _sizeOf(int bytes) => bytes >= 1048576
@@ -2816,12 +2826,8 @@ class _PreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget likeness(_SocialConnection network) => _PostLikeness(
-      account: network,
-      body: body,
-      media: media,
-      when: when,
-    );
+    Widget likeness(_SocialConnection network) =>
+        _PostLikeness(account: network, body: body, media: media, when: when);
 
     return DashboardCard(
       key: const ValueKey('tour-marketing-compose-preview'),
@@ -3527,8 +3533,8 @@ class _DayCell extends StatelessWidget {
         color: empty
             ? theme.colorScheme.surface
             : highlight
-                ? theme.colorScheme.primary.withValues(alpha: 0.12)
-                : theme.colorScheme.surfaceContainerLowest,
+            ? theme.colorScheme.primary.withValues(alpha: 0.12)
+            : theme.colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: highlight ? theme.colorScheme.primary : theme.dividerColor,
@@ -3647,7 +3653,14 @@ class _AccountsPane extends StatelessWidget {
                             onPressed: () => onComments(page),
                             child: const Text('Instagram comments'),
                           ),
+                        // Muted, not the accent: a destructive link styled as
+                        // the main action (deep dive 2026-11-02 #11).
                         TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
                           onPressed: () => onDisconnect(page),
                           child: const Text('Disconnect'),
                         ),
@@ -4023,10 +4036,10 @@ class _ConnectPanelState extends State<_ConnectPanel> {
                   _busy == network.value
                       ? 'Waiting for ${network.label}…'
                       : widget.connected.contains(network.value)
-                          ? 'Already connected. Signing in again refreshes it.'
-                          : network.usable
-                              ? 'Opens the network sign-in.'
-                              : network.unusableBecause ?? 'Not ready',
+                      ? 'Already connected. Signing in again refreshes it.'
+                      : network.usable
+                      ? 'Opens the network sign-in.'
+                      : network.unusableBecause ?? 'Not ready',
                 ),
                 trailing: FilledButton(
                   onPressed: network.usable && _busy == null
@@ -4093,7 +4106,10 @@ class _ConnectPanelState extends State<_ConnectPanel> {
             children: [
               SocialNetworkMark(network: network.value, size: 24),
               const SizedBox(width: 8),
-              Text(network.label, style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                network.label,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -4119,7 +4135,9 @@ class _ConnectPanelState extends State<_ConnectPanel> {
           Row(
             children: [
               FilledButton(
-                onPressed: _busy == null ? () => _connectBluesky(network) : null,
+                onPressed: _busy == null
+                    ? () => _connectBluesky(network)
+                    : null,
                 child: Text(_replacing ? 'Replace' : 'Connect'),
               ),
               // A way back out. Reconnect is one tap from a tile that was
@@ -4660,7 +4678,11 @@ class _TargetLine extends StatelessWidget {
     final (word, tone, icon) = switch (target.status) {
       'queued' => ('Posting…', Tone.neutral, Icons.hourglass_top),
       'scheduled' => ('Scheduled', Tone.info, Icons.schedule),
-      'removed' => ('Deleted from $network', Tone.neutral, Icons.delete_outline),
+      'removed' => (
+        'Deleted from $network',
+        Tone.neutral,
+        Icons.delete_outline,
+      ),
       // The network's sentence, whole: "failed" says something is wrong and
       // nothing about what to do.
       'failed' => (
@@ -5168,4 +5190,16 @@ String _stamp(_SentPost post, DisplayFormats formats) {
 
   return '${day[0].toUpperCase()}${day.substring(1)} '
       '${formats.formatTime(when.hour, when.minute)} · ${_postWord(post)}';
+}
+
+/// A failure for the post list: the network's sentence when it reads as one,
+/// otherwise one plain line, because the raw text lives in the post's pane
+/// (deep dive 2026-11-02 #3: "unaudited_client_can_only_post_to_private_accounts").
+@visibleForTesting
+String plainFailure(String failure) {
+  final raw =
+      failure.contains('http') ||
+      RegExp(r'\b[a-z]+(_[a-z]+){2,}\b').hasMatch(failure) ||
+      failure.length > 90;
+  return raw ? "Didn't post. Open it for the details." : failure;
 }

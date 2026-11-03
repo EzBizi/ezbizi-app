@@ -229,4 +229,36 @@ class TaskStepsTest extends TestCase
             $this->assertSame(TaskBoard::query()->where('kind', 'company')->where('company_id', $t['company']->id)->value('id'), $task->board_id);
         });
     }
+
+    public function test_one_rule_adds_one_task_per_record_in_ten_minutes(): void
+    {
+        // Review 2026-11-02: one call read as two transcripts made two
+        // identical complaint tasks 3 seconds apart; one payment made two.
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $customer = \App\Models\Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-1', 'name' => 'Ann Client']);
+            $job = \App\Models\Job::create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id, 'number' => 'J-7',
+                'title' => 'Chimney Sweep', 'status' => 'scheduled', 'currency' => 'USD']);
+            $other = \App\Models\Job::create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id, 'number' => 'J-8',
+                'title' => 'Chimney Sweep', 'status' => 'scheduled', 'currency' => 'USD']);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'job.payment_received', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $second = Automation::create(['name' => 'S', 'trigger_key' => 'job.payment_received', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = new AutomationEvent(['event_key' => 'job.payment_received', 'payload' => [],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+            $run = fn ($job, $rule) => app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Paid: {{number}}'], $event, $job, automation: $rule);
+
+            $this->assertTrue($run($job, $rule)['ok']);
+            $again = $run($job, $rule);
+            $this->assertTrue($again['ok']);
+            $this->assertTrue($again['skipped'] ?? false, 'the same rule, the same job, seconds later');
+            $this->assertArrayNotHasKey('skipped', $run($other, $rule), 'another job is its own task');
+            $this->assertArrayNotHasKey('skipped', $run($job, $second), 'another rule is its own task');
+            $this->assertSame(3, Task::query()->count());
+
+            $this->travel(11)->minutes();
+            $this->assertArrayNotHasKey('skipped', $run($job, $rule), 'after the window, a new event is a new task');
+            $this->assertSame(4, Task::query()->count());
+        });
+    }
 }

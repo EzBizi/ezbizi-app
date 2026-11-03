@@ -56,9 +56,13 @@ class BusinessProfileWhatsAppLinkTest extends TestCase
             && $r['attributes'][0]['uriValues'][0]['uri'] === 'https://wa.me/19375550100');
         $this->assertCount(1, Http::recorded(fn (Request $r) => $r->method() === 'PATCH'), 'the other listings are left alone');
 
-        // A second number makes "the organization's link" a guess at another brand's: refused, nothing written.
+        // Several numbers: the sheet lists them and the chosen one is written, one listing at a time too (Jose, 2026-11-02).
         $this->inTenant($t['org'], fn () => WhatsAppNumber::create(['organization_id' => $t['org']->id, 'phone_number_id' => '3', 'waba_id' => '2', 'display_number' => '+1 (877) 555-0199']));
-        $this->postJson('/api/v1/business-profile/whatsapp-links/apply', ['targets' => [$orphan->id]])->assertConflict();
-        $this->assertCount(1, Http::recorded(fn (Request $r) => $r->method() === 'PATCH'));
+        $this->getJson('/api/v1/business-profile/whatsapp-links')->assertOk()->assertJsonPath('numbers.1.link', 'https://wa.me/18775550199');
+        $this->postJson('/api/v1/business-profile/whatsapp-links/apply', ['targets' => [$other->id], 'link' => 'https://wa.me/18775550199'])
+            ->assertOk()->assertJsonPath('data.0.ok', true);
+        Http::assertSent(fn (Request $r) => $r->method() === 'PATCH' && str_contains($r->url(), 'locations/3/attributes')
+            && $r['attributes'][0]['uriValues'][0]['uri'] === 'https://wa.me/18775550199');
+        $this->postJson('/api/v1/business-profile/whatsapp-links/apply', ['targets' => [$other->id], 'link' => 'https://evil.example/x'])->assertUnprocessable();
     }
 }

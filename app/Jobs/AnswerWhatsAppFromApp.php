@@ -21,7 +21,10 @@ class AnswerWhatsAppFromApp implements ShouldQueue
 
     public int $timeout = 85;   // under the queue's 90 s retry_after
 
-    public function __construct(public string $numberId, public string $to, public string $viewerId, public string $query) {}
+    public function __construct(public string $numberId, public string $to, public string $viewerId, public string $query)
+    {
+        $this->onQueue(config('services.ai.staff_queue', 'default'));   // a person is waiting: never behind call processing
+    }
 
     public function handle(WhatsAppStaffBot $bot, TenantContext $tenant): void
     {

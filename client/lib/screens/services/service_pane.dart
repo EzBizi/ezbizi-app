@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
@@ -247,34 +246,40 @@ class _ServicePaneState extends State<ServicePane> {
                 ),
                 const SizedBox(height: 12),
                 if (_taxonomyReady)
-                SearchPickerField<String?>(
-                  key: ValueKey('group-$_groupId'),
-                  value: _groupId,
-                  label: 'Group',
-                  options: [
-                    const SearchOption(value: null, label: 'No group'),
-                    for (final row in _groups)
-                      SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
-                  ],
-                  onChanged: !_canEdit || _busy
-                      ? null
-                      : (v) => setState(() => _groupId = v),
-                ),
+                  SearchPickerField<String?>(
+                    key: ValueKey('group-$_groupId'),
+                    value: _groupId,
+                    label: 'Group',
+                    options: [
+                      const SearchOption(value: null, label: 'No group'),
+                      for (final row in _groups)
+                        SearchOption(
+                          value: row['id'] as String?,
+                          label: row['name'] as String? ?? '',
+                        ),
+                    ],
+                    onChanged: !_canEdit || _busy
+                        ? null
+                        : (v) => setState(() => _groupId = v),
+                  ),
                 const SizedBox(height: 12),
                 if (_taxonomyReady)
-                SearchPickerField<String?>(
-                  key: ValueKey('label-$_labelId'),
-                  value: _labelId,
-                  label: 'Label',
-                  options: [
-                    const SearchOption(value: null, label: 'No label'),
-                    for (final row in _labels)
-                      SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
-                  ],
-                  onChanged: !_canEdit || _busy
-                      ? null
-                      : (v) => setState(() => _labelId = v),
-                ),
+                  SearchPickerField<String?>(
+                    key: ValueKey('label-$_labelId'),
+                    value: _labelId,
+                    label: 'Label',
+                    options: [
+                      const SearchOption(value: null, label: 'No label'),
+                      for (final row in _labels)
+                        SearchOption(
+                          value: row['id'] as String?,
+                          label: row['name'] as String? ?? '',
+                        ),
+                    ],
+                    onChanged: !_canEdit || _busy
+                        ? null
+                        : (v) => setState(() => _labelId = v),
+                  ),
                 if (_canEdit) ...[
                   const SizedBox(height: 16),
                   Align(
@@ -285,13 +290,21 @@ class _ServicePaneState extends State<ServicePane> {
                     ),
                   ),
                 ],
+                // Set apart from Save and in the error colour, so it is not
+                // read as the next step (deep dive 2026-11-02 #11).
                 if (_canDelete) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 32),
+                  const Divider(),
+                  const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: OutlinedButton(
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.delete_outline),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.error,
+                      ),
                       onPressed: _busy ? null : _delete,
-                      child: const Text('Delete service'),
+                      label: const Text('Delete service'),
                     ),
                   ),
                 ],

@@ -121,7 +121,25 @@ final class AirtablePnl
             }
         }
 
+        // Oldest first by start day: Airtable hands rows in its own order, and the
+        // screen opens on the last complete week (2026-11-02: it opened on 6 Jul).
+        usort($weeks, fn ($x, $y) => self::startOf($x) <=> self::startOf($y));
+
         return $weeks;
+    }
+
+    /** "28 Sep - 4 Oct" as a sortable day; a start after next week is last year's. */
+    private static function startOf(string $week): string
+    {
+        $start = strtotime(trim(explode('-', $week)[0]));
+        if ($start === false) {
+            return '';
+        }
+        if ($start > strtotime('+7 days')) {
+            $start = strtotime('-1 year', $start);
+        }
+
+        return date('Y-m-d', $start);
     }
 
     /**

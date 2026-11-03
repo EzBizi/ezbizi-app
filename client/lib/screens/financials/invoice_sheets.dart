@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -388,21 +390,11 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
       children: [
         SizedBox(
           width: phone ? double.infinity : 240,
-          child: TextField(
+          child: ListSearch(
             key: const Key('charge-sheets-search'),
             controller: _search,
+            hint: 'Sheet title or period',
             onChanged: _searched,
-            // bodyMedium for the text and the hint, as the dense pickers draw:
-            // 53 points tall, as they are; the theme's 16-point hint makes 56.
-            style: Theme.of(context).textTheme.bodyMedium,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: 'Sheet title or period',
-              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-              ),
-            ),
           ),
         ),
         if (sheets.isNotEmpty)

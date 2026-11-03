@@ -66,4 +66,24 @@ class AiOptionalTest extends TestCase
 
         Process::assertNothingRan();
     }
+
+    /** Jose, 2026-11-02: staff questions get a worker of their own once QUEUE_STAFF=staff. */
+    public function test_staff_question_jobs_go_to_the_staff_queue_when_set(): void
+    {
+        $this->assertSame('default', (new \App\Jobs\AnswerWhatsAppWithAi('n', 't', null, 'q'))->queue ?? 'default', 'until the worker exists');
+
+        config(['services.ai.staff_queue' => 'staff']);
+        foreach ([
+            new \App\Jobs\AnswerWhatsAppWithAi('n', 't', null, 'q'),
+            new \App\Jobs\AnswerWhatsAppFromApp('n', 't', 'v', 'q'),
+            new \App\Jobs\PlanWhatsAppCommand('n', 't', 'v', 'q'),
+            new \App\Jobs\PlanReportCorrection('n', 't', 'v', 'q'),
+            new \App\Jobs\SendCallRecordings('n', 't', 'q'),
+            new \App\Jobs\AnswerWhatsAppWithTech('n', 't', 'v', 'q'),
+            new \App\Jobs\AnswerTelegramWithTech('u', 1, 'q'),
+        ] as $job) {
+            $this->assertSame('staff', $job->queue, $job::class);
+        }
+        $this->assertSame('long', (new \App\Jobs\AnswerWhatsAppWithTech('n', 't', 'v', 'q', 'media'))->queue, 'a photo stays on the long worker');
+    }
 }

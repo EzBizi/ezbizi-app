@@ -81,11 +81,15 @@ class LeadDashboardTest extends TestCase
                 'organization_id' => $t['org']->id, 'lead_id' => $form->id, 'remote_id' => 'form-1',
                 'channel' => 'FORM', 'participant' => $C, 'occurred_at' => Carbon::parse('2026-09-30T15:30:00Z'), 'text' => 'Name: x',
             ]);
+
+            // Not a lead: owes nobody an answer, so not answerable (Jose, 2026-11-02).
+            [$junk] = $lead('d', 'MESSAGE', [[$C, '2026-09-30T15:50:00Z', false, 'MESSAGE']]);
+            $junk->forceFill(['status' => Lead::STATUS_NOT_A_LEAD])->save();
         });
 
         $d = $this->signedInAs($t['admin'])->getJson('/api/v1/leads/dashboard?period=today')->assertOk()->json('data');
 
-        $this->assertSame(4, $d['totals']['leads']);
+        $this->assertSame(5, $d['totals']['leads']);
         $this->assertSame(2, $d['totals']['answerable']);
         $this->assertSame(2, $d['totals']['answered']);
         $this->assertSame(1020, $d['totals']['first_reply_median_seconds']);
