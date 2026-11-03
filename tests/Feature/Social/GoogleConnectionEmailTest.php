@@ -99,4 +99,33 @@ class GoogleConnectionEmailTest extends TestCase
             $code + ['account_email' => null])->assertOk()->assertJsonPath('data.disconnected', 1);
         $this->assertSame(['3'], $left());
     }
+
+    /** 2026-11-03: info@a-1chimney.com reaches 35 accounts; only the first page of 20 was connected. */
+    public function test_connecting_takes_every_page_of_accounts(): void
+    {
+        Bus::fake();
+        config([
+            'services.business_profile.client_id' => 'gbp-id',
+            'services.business_profile.client_secret' => 'gbp-secret',
+            'services.business_profile.redirect' => 'https://app.ezbizi.test/api/v1/social/business-profile/callback',
+        ]);
+        $t = $this->provisionTenant('A1-Group');
+        Http::fake(function (Request $r) {
+            if (str_contains($r->url(), 'oauth2.googleapis.com')) {
+                return Http::response(['access_token' => 'a', 'refresh_token' => 'r']);
+            }
+
+            return str_contains($r->url(), 'pageToken=p2')
+                ? Http::response(['accounts' => [['name' => 'accounts/21', 'accountName' => 'A1 Chimney - Pittsburgh']]])
+                : Http::response(['accounts' => array_map(fn ($i) => ['name' => "accounts/$i", 'accountName' => "A1 $i"], range(1, 20)), 'nextPageToken' => 'p2']);
+        });
+
+        $url = $this->signedInAs($t['admin'])->postJson('/api/v1/social/business-profile/start')->assertOk()->json('data.authorization_url');
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $q);
+        auth()->forgetGuards();
+        $this->get('/api/v1/social/business-profile/callback?code=c&state='.$q['state'])->assertOk();
+
+        $this->assertSame(21, SocialConnection::withoutGlobalScopes()->where('provider', 'google_business_profile')->count());
+        $this->assertTrue(SocialConnection::withoutGlobalScopes()->where('remote_id', '21')->exists());
+    }
 }

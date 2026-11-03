@@ -29,7 +29,24 @@ final class SyncBusinessProfileConnection implements ShouldQueue
 
     public int $backoff = 60;
 
-    public function __construct(public readonly string $connectionId) {}
+    /** Null: the worker's own limit (60 s). The reviews half sets its own. */
+    public ?int $timeout = null;
+
+    /**
+     * $reviews: the second half, every review of every listing. Its own job on
+     * the long worker (2026-11-02: DFW's 3,018 reviews are 61 pages and about
+     * 25 ms a stored row, past the default worker's 60 s; TimeoutExceeded).
+     * ponytail: 190 s is under database-long's 200 s retry_after and holds
+     * ~3,000 reviews a listing; past that, the 6-hourly gbp-sync --reviews
+     * finishes what a connect could not.
+     */
+    public function __construct(public readonly string $connectionId, public readonly bool $reviews = false)
+    {
+        if ($reviews) {
+            $this->timeout = 190;
+            $this->onConnection('database-long')->onQueue('long');
+        }
+    }
 
     /** Queue it and raise the screen's "Syncing…" flag; the job lowers it. */
     public static function start(SocialConnection $connection): void
@@ -50,13 +67,18 @@ final class SyncBusinessProfileConnection implements ShouldQueue
 
             $tenant->run($organization, function () use ($connection, $locations, $reviews) {
                 $connection = SocialConnection::query()->findOrFail($connection->getKey());
-                $locations->sync($connection);
-                try {
-                    $reviews->sync($connection);
-                } catch (Throwable $e) {
-                    // Listings stand on their own; reviews wait for Google's v4 (403 until released).
-                    report($e);
+                if ($this->reviews) {
+                    try {
+                        $reviews->sync($connection);
+                    } catch (Throwable $e) {
+                        report($e); // As before: the 6-hourly read tries again.
+                    }
+
+                    return;
                 }
+                $locations->sync($connection);
+                // Listings stand on their own; their reviews follow on the long worker.
+                self::dispatch((string) $connection->getKey(), true);
             });
         } finally {
             Cache::forget(self::SYNCING_KEY.$this->connectionId);

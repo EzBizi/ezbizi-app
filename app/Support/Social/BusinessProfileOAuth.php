@@ -102,14 +102,14 @@ final class BusinessProfileOAuth implements SocialOAuth
     public function authorizeUrl(string $state, ?string $verifier = null): string
     {
         return 'https://accounts.google.com/o/oauth2/v2/auth?'.http_build_query([
-            'client_id'     => (string) config('services.business_profile.client_id'),
-            'redirect_uri'  => $this->redirectUri(),
+            'client_id' => (string) config('services.business_profile.client_id'),
+            'redirect_uri' => $this->redirectUri(),
             'response_type' => 'code',
-            'scope'         => implode(' ', self::SCOPES),
-            'access_type'   => 'offline',
-            'prompt'        => 'consent',
+            'scope' => implode(' ', self::SCOPES),
+            'access_type' => 'offline',
+            'prompt' => 'consent',
             'include_granted_scopes' => 'true',
-            'state'         => $state,
+            'state' => $state,
         ]);
     }
 
@@ -131,21 +131,30 @@ final class BusinessProfileOAuth implements SocialOAuth
      */
     public function identify(SocialOAuthGrant $grant): array
     {
-        try {
-            $response = Http::withToken($grant->accessToken)
-                ->timeout(self::TIMEOUT)
-                ->get(self::ACCOUNTS_ENDPOINT, ['pageSize' => 20]);
-        } catch (ConnectionException) {
-            throw GoogleApiRefusal::unreachable('Google Business Profile');
-        }
+        // Every page (2026-11-03): info@a-1chimney.com reaches 35 accounts and
+        // only the first 20 were connected, leaving 15 listings unread.
+        $listed = [];
+        $next = null;
+        do {
+            try {
+                $response = Http::withToken($grant->accessToken)
+                    ->timeout(self::TIMEOUT)
+                    ->get(self::ACCOUNTS_ENDPOINT, array_filter(['pageSize' => 20, 'pageToken' => $next]));
+            } catch (ConnectionException) {
+                throw GoogleApiRefusal::unreachable('Google Business Profile');
+            }
 
-        if ($response->failed()) {
-            throw GoogleApiRefusal::from('Google Business Profile', $response);
-        }
+            if ($response->failed()) {
+                throw GoogleApiRefusal::from('Google Business Profile', $response);
+            }
+
+            array_push($listed, ...(array) $response->json('accounts', []));
+            $next = $response->json('nextPageToken');
+        } while (is_string($next) && $next !== '');
 
         $accounts = [];
 
-        foreach ((array) $response->json('accounts', []) as $account) {
+        foreach ($listed as $account) {
             $name = trim(str_replace('accounts/', '', (string) ($account['name'] ?? '')));
 
             if ($name === '') {
