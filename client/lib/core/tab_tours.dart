@@ -47,22 +47,28 @@ class Tour {
 const Map<String, Tour> tabTours = {
   'tasks': Tour(
     // 2: Task Board v2 (UI queue 84) - the picker, columns, statuses.
-    version: 2,
+    // 3: design 178 - Calendar, Timeline, Formula, number formats, footers,
+    // pinned headings, branch tasks on the company board.
+    version: 3,
     steps: [
       TourStep(
         anchor: 'tasks-boards',
         title: 'Your boards',
+        since: 3,
         body:
             "Pick a board here. My board is yours alone; each company's "
             "board and its franchises' sit under the company, with how many "
-            'open tasks are yours.',
+            "open tasks are yours. A company's board also shows its "
+            "branches' tasks, each marked with its branch.",
       ),
       TourStep(
         anchor: 'tasks-view',
-        title: 'Table or Kanban',
+        title: 'Table, Kanban, Calendar or Timeline',
+        since: 3,
         body:
-            'The same tasks, as a table by group or as a column for each '
-            'status.',
+            'The same tasks four ways: a table by group, a column for each '
+            'status, a calendar by due date (drag a task to another day), or '
+            'a timeline of bars you can drag to move or stretch.',
       ),
       TourStep(
         anchor: 'tasks-search',
@@ -73,19 +79,23 @@ const Map<String, Tour> tabTours = {
       TourStep(
         anchor: 'tasks-groups',
         title: 'Groups and tasks',
+        since: 3,
         body:
             'Click a group to fold it, and Add task at its foot to add one '
             "there. Click a status to change it, ▸ for a task's subtasks, or "
-            'a task to open it.',
+            "a task to open it. A group's name and column headings stay at "
+            'the top while you scroll, and its footer totals number columns.',
       ),
       TourStep(
         anchor: 'column-add',
         title: 'Your own columns',
-        since: 2,
+        since: 3,
         body:
             'Add a column of text, numbers, a status, a date, a person, a '
-            "dropdown or a checkbox. Click a column's name to rename it, "
-            'change its options, move or hide it.',
+            'dropdown, a checkbox, a timeline (from one date to another) or a '
+            "formula worked out from other columns. Click a column's name to "
+            'change it: show numbers as money or %, and pick a sum or average '
+            'for the footer.',
       ),
       TourStep(
         anchor: 'tasks-statuses',
