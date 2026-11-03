@@ -19,6 +19,7 @@ import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 import 'customers/customer_detail_panel.dart';
+import 'customers/customer_tags.dart';
 
 /// Customers (plan §5.2).
 ///
@@ -111,6 +112,31 @@ class _CustomersScreenState extends State<CustomersScreen> {
   String? _segment;
   String? _franchiseId;
 
+  /// One tag to show (GET /customers?tag=, UI queue 174), and the tags in
+  /// use, most used first, for the picker and the panel's suggestions: from
+  /// GET /customers/tags, plus any seen on a loaded row since.
+  String? _tag;
+  final _knownTags = <String>{};
+
+  Future<void> _loadTags() async {
+    final response = await widget.api.get('/customers/tags');
+    if (!mounted || !response.ok) return;
+    final rows = (response.data as List? ?? const []).whereType<Map>();
+    setState(() {
+      final seen = _knownTags.toList();
+      _knownTags
+        ..clear()
+        ..addAll([for (final r in rows) '${r['tag']}']);
+      seen.forEach(_remember);
+    });
+  }
+
+  void _remember(String t) {
+    if (!_knownTags.any((k) => k.toLowerCase() == t.toLowerCase())) {
+      _knownTags.add(t);
+    }
+  }
+
   /// What each chip would show, from the server's first page; empty from a
   /// server that does not count, and the chips then carry no numbers.
   Map<String, int> _segmentCounts = const {};
@@ -123,6 +149,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadTags();
   }
 
   @override
@@ -158,6 +185,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
       'segment': ?_segment,
       'franchise_id': ?_franchiseId,
+      'tag': ?_tag,
       'sort': _sort,
       'direction': _ascending ? 'asc' : 'desc',
     });
@@ -186,6 +214,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
       final rows = List<Map<String, dynamic>>.from(response.data as List);
       _customers = page == 1 ? rows : [..._customers, ...rows];
+      for (final c in rows) {
+        customerTags(c).forEach(_remember);
+      }
       if (page == 1) {
         _leads = (response.body['leads'] as List? ?? const [])
             .whereType<Map<String, dynamic>>()
@@ -453,6 +484,24 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     },
                   ),
                 ),
+              if (_knownTags.isNotEmpty || _tag != null)
+                SizedBox(
+                  width: half,
+                  child: SearchPickerField<String?>(
+                    key: const ValueKey('customers-tag-filter'),
+                    value: _tag,
+                    label: 'Tag',
+                    options: [
+                      const SearchOption<String?>(value: null, label: 'Any tag'),
+                      for (final t in _knownTags)
+                        SearchOption<String?>(value: t, label: t),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _tag = value);
+                      _load();
+                    },
+                  ),
+                ),
               // Wherever the list is drawn WITHOUT column headers, the same
               // sort is offered here in words (UI/UX, 2026-09-28). The rule is
               // "no headers -> this picker", not a width: below the table's
@@ -675,6 +724,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
               id: _openId!,
               onDone: _undock,
               dirty: _openDirty,
+              knownTags: _knownTags,
             ),
           ),
         ],
@@ -761,6 +811,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
           ],
         ),
       ),
+      if (_customers.any((c) => customerTags(c).isNotEmpty))
+        TableColumn(
+          'Tags',
+          flex: 2,
+          cell: (_, c) => CustomerTagChips(customerTags(c)),
+        ),
       TableColumn(
         'Phone',
         width: 140,
@@ -850,7 +906,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
       title: '${customer['name'] ?? ''}',
       badge: customer['is_active'] == false
           ? const Tag('Inactive', warn: true)
-          : null,
+          : customerTags(customer).isEmpty
+          ? null
+          : CustomerTagChips(customerTags(customer)),
       topRight: jobs == 0
           ? 'No jobs yet'
           : '$jobs ${jobs == 1 ? 'job' : 'jobs'}',
@@ -1039,6 +1097,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         api: widget.api,
         session: widget.session,
         id: customer['id'] as String,
+        knownTags: _knownTags,
       ),
     );
 
