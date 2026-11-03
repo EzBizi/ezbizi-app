@@ -11,6 +11,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
+import 'job_record_pill.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
@@ -531,6 +532,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
               franchise?['name'],
             ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
       width: 520,
+      headerActions: [if (row != null) JobRecordPill(jobId: '${row['id']}')],
       docked: widget.onDone != null,
       onClose: widget.onDone == null ? null : () => _done(null),
       // Save and Cancel belong to the Job tab's fields; Money, Photos and
