@@ -1101,7 +1101,8 @@ const Map<String, Tour> operationsTours = {
   'jobs/Jobs/Photos & files': _jobPanelFiles,
   'jobs/Photos & files': _jobPanelFiles,
   'jobs/Estimates': Tour(
-    version: 1,
+    // 2: List | Board (design 172).
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-jobs-estimates-list',
@@ -1114,6 +1115,14 @@ const Map<String, Tour> operationsTours = {
         anchor: 'estimate-new',
         title: 'New estimate',
         body: 'Starts a draft for a customer.',
+      ),
+      TourStep(
+        anchor: 'estimate-view',
+        title: 'List or Board',
+        body:
+            'Board shows a column per status: drag an estimate to move it on. '
+            'Columns it cannot go to fade. On a phone, use Move to.',
+        since: 2,
       ),
       TourStep(
         anchor: 'tour-jobs-estimates-chips',
@@ -1259,8 +1268,17 @@ const _jobTabs = TourStep(
 );
 
 const _jobPanelJob = Tour(
-  version: 1,
+  // 2: the Record pill (design 177).
+  version: 2,
   steps: [
+    TourStep(
+      anchor: 'job-record-start',
+      title: 'Record',
+      body:
+          'Records the visit for safety, after you confirm what it records. '
+          'While it runs it turns red with a timer; tap Stop to end it.',
+      since: 2,
+    ),
     TourStep(
       anchor: 'tour-jobs-job-work',
       title: 'The work',
@@ -1317,8 +1335,17 @@ const _jobPanelMoney = Tour(
 );
 
 const _jobPanelFiles = Tour(
-  version: 1,
+  // 2: Before and After on the photos (inspection pairs).
+  version: 2,
   steps: [
+    TourStep(
+      anchor: 'job-own-files',
+      title: 'Added in EzBizi',
+      body:
+          'Photos and files added here, and the before and after photos from '
+          'its inspections, marked Before or After.',
+      since: 2,
+    ),
     TourStep(
       anchor: 'job-workiz-files',
       title: 'Photos and files',
