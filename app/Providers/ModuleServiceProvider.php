@@ -1139,6 +1139,14 @@ class ModuleServiceProvider extends ServiceProvider
                     // smiled — by the customer's own review link, or by the
                     // phone or email the faces asked for. A happy one is when
                     // to offer the membership: {{ membership_join_url }}.
+                    // Memberships: raised by memberships:offer-prior-clients for
+                    // each prior client chosen; the rule on it sends the offer.
+                    new TriggerDefinition(
+                        key: 'customer.membership_offer',
+                        label: 'Membership offer to a prior client',
+                        description: 'Raised by a deliberate run offering the membership to past customers, '
+                            .'paced and never twice in a year. {{ membership_link }} is the sign-up link.',
+                    ),
                     new TriggerDefinition(
                         key: 'customer.reviewed',
                         label: 'Left a review on the website',
