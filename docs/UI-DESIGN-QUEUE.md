@@ -2978,7 +2978,7 @@ A staff message, via Jose: the reply box is too small, the top should scroll awa
 
 2 = Messages | Details tabs in the thread, with all chips in one sideways row. 3 = today's header scrolls away and folds when the keyboard opens, with a stacked composer. Phone only; desktop unchanged.
 
-### 170 · Reports › Performance › People: answer and booking in separate columns — **sent 2026-11-03** (`docs/previews/reports-people-answer-booking-layouts.html`)
+### 170 · Reports › Performance › People: answer and booking in separate columns — **APPROVED 2026-11-03, option 8 + phone** (Jose: "as u recommend"; Reports builds) (`docs/previews/reports-people-answer-booking-layouts.html`)
 
 Jose 11-03: "a column for not answered and answered, missed call, separate from the booked, not booked". Recommended 1 + phone 4. The People table becomes Rang · Answered · Not answered · Missed · Booked · Booking rate (booked out of answered). A person's calls get an Answer pill (Answered / Not answered · who took it / Missed) and a Booking pill (Booked / Not booked / Existing job, "—" when not answered), with two filter chip groups. Red only for Missed. 2 = one column with stacked pills; 3 = separate Answering and Booking tables. Reports builds it.
 
