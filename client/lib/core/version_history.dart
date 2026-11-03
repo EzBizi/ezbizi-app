@@ -23,6 +23,8 @@ class VersionHistory {
         'Report texts with nothing to report are not sent; weekly losses say when a week cannot be judged yet.',
         'Email: personal Google sign-in is retired; connect through Google Workspace, or IMAP with an app password.',
         'Automations: new trigger for a call that ended without a booking.',
+        'Financial reports: key figures, a cancellation breakdown by reason, and tech-caused cancels with each tech share of sales.',
+        'Inspection reports email the PDF reliably, and files can be attached to the Workiz job.',
       ],
     ),
     VersionRelease(
