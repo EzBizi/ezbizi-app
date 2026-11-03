@@ -378,13 +378,23 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
               fontWeight: FontWeight.w800,
             ),
           ),
-          for (final p in unset)
-            ActionChip(
-              key: ValueKey('whatsapp-unset-${p.key}'),
-              // An ellipsis rather than a cut mid-word on a phone.
-              label: Text(p.label, overflow: TextOverflow.ellipsis),
-              onPressed: () => _create(p.key),
+          // One searchable picker, not a chip per report: about 60 of them
+          // wrapped eight rows (deep dive 2026-11-02).
+          SizedBox(
+            width: narrow ? double.infinity : 360,
+            child: SearchPickerField<String>(
+              key: const Key('whatsapp-unset-picker'),
+              value: null,
+              isDense: true,
+              hint: 'Choose a report · ${unset.length}',
+              options: [
+                for (final p in unset) SearchOption(value: p.key, label: p.label),
+              ],
+              onChanged: (key) {
+                if (key != null) _create(key);
+              },
             ),
+          ),
           Text(
             'Each needs a group before it can be sent.',
             style: theme.textTheme.bodySmall,
