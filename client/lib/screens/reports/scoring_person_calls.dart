@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
+import '../../widgets/call_correction.dart';
 import '../../widgets/call_text.dart';
 import '../../widgets/status_pill.dart';
 
@@ -25,11 +26,15 @@ class ScoringPersonCalls extends StatefulWidget {
     required this.api,
     required this.person,
     required this.span,
+    this.canCorrect = false,
   });
 
   final ApiClient api;
   final String person;
   final DateSpan span;
+
+  /// May set a call's client and booking by hand (reports.handles, design 179).
+  final bool canCorrect;
 
   @override
   State<ScoringPersonCalls> createState() => _ScoringPersonCallsState();
@@ -249,6 +254,26 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                   const SizedBox(height: 8),
                   CallTranscriptText('${c['transcript']}'),
                 ],
+                // The same controls as Performance (design 179). Only a value
+                // set by hand is selected: Scoring does not read the phones'.
+                if (widget.canCorrect)
+                  for (final (field, label, values) in [
+                    ('client', 'Client', CallCorrection.client),
+                    ('booking', 'Booking', CallCorrection.booking),
+                  ]) ...[
+                    const SizedBox(height: 6),
+                    CallCorrection(
+                      api: widget.api,
+                      callId: id,
+                      field: field,
+                      label: label,
+                      values: values,
+                      current: (c['set'] as Map?)?[field]?['value'] as String?,
+                      setBy: (c['set'] as Map?)?[field]?['by'],
+                      onSaved: _load,
+                      onError: (m) => setState(() => _error = m),
+                    ),
+                  ],
               ],
             ],
           ),

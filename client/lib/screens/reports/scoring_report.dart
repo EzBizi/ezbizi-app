@@ -36,6 +36,7 @@ class ScoringReport extends StatefulWidget {
     required this.formats,
     this.now,
     this.canWeigh = false,
+    this.canCorrect = false,
     this.span,
   });
 
@@ -49,6 +50,9 @@ class ScoringReport extends StatefulWidget {
 
   /// May change what the score weighs (reports.scoring_weights).
   final bool canWeigh;
+
+  /// May set a call's client and booking by hand (reports.handles).
+  final bool canCorrect;
 
   @override
   State<ScoringReport> createState() => _ScoringReportState();
@@ -338,6 +342,7 @@ class _ScoringReportState extends State<ScoringReport> {
               api: widget.api,
               person: open.name,
               span: _span,
+              canCorrect: widget.canCorrect,
             ),
             ranking: phone
                 ? null

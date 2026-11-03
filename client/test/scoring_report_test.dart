@@ -87,6 +87,7 @@ void main() {
     List<Map<String, dynamic>>? data,
     double width = 1440,
     bool canWeigh = false,
+    bool canCorrect = false,
   }) async {
     tester.view.physicalSize = Size(width, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -124,6 +125,14 @@ void main() {
                     'improve': 'Price first',
                     'transcript': 'words',
                     'tags': q == null ? tags : ['match'],
+                    'set': id == 'c4'
+                        ? {
+                            'booking': {
+                              'value': 'booked',
+                              'by': 'Trey Brannan',
+                            },
+                          }
+                        : null,
                   },
             ],
           });
@@ -162,6 +171,7 @@ void main() {
             formats: DisplayFormats.fallback,
             now: () => DateTime(2026, 10, 13, 12),
             canWeigh: canWeigh,
+            canCorrect: canCorrect,
           ),
         ),
       ),
@@ -366,6 +376,35 @@ void main() {
     await tester.pumpAndSettle();
     final week = asked.lastWhere((q) => q['to'] == '2026-10-13');
     expect(week['from'], '2026-10-07');
+  });
+
+  // Design 179 (Jose, 2026-11-03, for Trey): Scoring's calls get the same
+  // Client and Booking controls, only for reports.handles.
+  testWidgets('a scored call can be corrected by hand, with who set it', (
+    tester,
+  ) async {
+    await pump(tester, canCorrect: true);
+    await tester.tap(find.byKey(const ValueKey('scoring-card-Maya Ortiz')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('scoring-call-c4')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('set-client-c4')), findsOneWidget);
+    expect(find.byKey(const ValueKey('set-booking-c4')), findsOneWidget);
+    expect(find.text('Set by Trey ·'), findsOneWidget);
+    expect(find.byKey(const ValueKey('automatic-booking-c4')), findsOneWidget);
+  });
+
+  testWidgets('without reports.handles, no correction controls', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(find.byKey(const ValueKey('scoring-card-Maya Ortiz')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('scoring-call-c4')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('set-client-c4')), findsNothing);
   });
 
   testWidgets('no scored calls says so', (tester) async {

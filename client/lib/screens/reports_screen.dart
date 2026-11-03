@@ -436,6 +436,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
             canWeigh:
                 widget.session.me?.can('reports.scoring_weights') ?? false,
+            canCorrect: widget.session.me?.can('reports.handles') ?? false,
           ),
         ),
       // Ad cost against jobs and profit (Jose, 2026-10-12). Its profit is the

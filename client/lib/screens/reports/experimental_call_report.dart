@@ -8,6 +8,7 @@ import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/ai_mark.dart';
+import '../../widgets/call_correction.dart';
 import '../../widgets/call_text.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
@@ -3011,23 +3012,33 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               numbers,
               if (correctable) ...[
                 const SizedBox(height: 10),
-                _correction(
-                  context,
-                  call,
-                  'client',
-                  'Client',
-                  [('new', 'New'), ('existing', 'Existing')],
-                  call['queue'] == _newQueue ? 'new' : 'existing',
-                ),
-                const SizedBox(height: 6),
-                _correction(
-                  context,
-                  call,
-                  'booking',
-                  'Booking',
-                  [('booked', 'Booked'), ('not_booked', 'Not booked')],
-                  call['booked'] == true ? 'booked' : 'not_booked',
-                ),
+                for (final (field, label, values, current) in [
+                  (
+                    'client',
+                    'Client',
+                    CallCorrection.client,
+                    call['queue'] == _newQueue ? 'new' : 'existing',
+                  ),
+                  (
+                    'booking',
+                    'Booking',
+                    CallCorrection.booking,
+                    call['booked'] == true ? 'booked' : 'not_booked',
+                  ),
+                ]) ...[
+                  CallCorrection(
+                    api: widget.api,
+                    callId: '${call['id']}',
+                    field: field,
+                    label: label,
+                    values: values,
+                    current: current,
+                    setBy: (call['set_by'] as Map?)?[field],
+                    onSaved: _load,
+                    onError: (m) => setState(() => _error = m),
+                  ),
+                  const SizedBox(height: 6),
+                ],
               ],
             ],
           ),
@@ -3039,82 +3050,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// A pill set by hand, with who set it on hover (design 179).
   Widget _setMark(Object? by, Widget pill) =>
       by == null ? pill : Tooltip(message: 'Set by $by', child: pill);
-
-  /// One field of a call set by hand (design 179, Jose 2026-11-03, for
-  /// Trey): a segment per value, and "Set by X · Automatic ↺" to undo.
-  Widget _correction(
-    BuildContext context,
-    Map<String, dynamic> call,
-    String field,
-    String label,
-    List<(String, String)> values,
-    String current,
-  ) {
-    final theme = Theme.of(context);
-    final id = '${call['id']}';
-    final by = (call['set_by'] as Map?)?[field];
-    final busy = _converting.contains('$id-$field');
-    return Wrap(
-      spacing: 8,
-      runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        SizedBox(
-          width: 64,
-          child: Text(label, style: theme.textTheme.labelMedium),
-        ),
-        SegmentedButton<String>(
-          key: ValueKey('set-$field-$id'),
-          showSelectedIcon: true,
-          style: const ButtonStyle(visualDensity: VisualDensity.compact),
-          segments: [
-            for (final (value, text) in values)
-              ButtonSegment(value: value, label: Text(text)),
-          ],
-          selected: {current},
-          onSelectionChanged: busy
-              ? null
-              : (picked) => _override(call, field, picked.first),
-        ),
-        if (by != null) ...[
-          Text(
-            'Set by ${'$by'.split(' ').first} ·',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          TextButton(
-            key: ValueKey('automatic-$field-$id'),
-            onPressed: busy ? null : () => _override(call, field, null),
-            child: const Text('Automatic ↺'),
-          ),
-        ],
-      ],
-    );
-  }
-
-  /// Sets a call's client or booking by hand; null goes back to automatic.
-  /// Then reloads so every count agrees.
-  Future<void> _override(
-    Map<String, dynamic> call,
-    String field,
-    String? value,
-  ) async {
-    final key = '${call['id']}-$field';
-    if (!_converting.add(key)) return;
-    setState(() {});
-    final path = '/reports/experimental/calls/${call['id']}/override';
-    final response = value == null
-        ? await widget.api.delete(path, {'field': field})
-        : await widget.api.put(path, {'field': field, 'value': value});
-    if (!mounted) return;
-    _converting.remove(key);
-    if (!response.ok) {
-      setState(() => _error = response.message);
-      return;
-    }
-    _load();
-  }
 
   /// A reason's words, from either AI's list.
   String? _labelName(String? label) => label == null
