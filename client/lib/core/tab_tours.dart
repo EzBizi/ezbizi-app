@@ -220,7 +220,7 @@ const Map<String, Tour> tabTours = {
     ],
   ),
   'customers': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-customers-tabs',
@@ -252,7 +252,10 @@ const Map<String, Tour> tabTours = {
       TourStep(
         anchor: 'tour-customers-search',
         title: 'Find a customer',
-        body: 'By name, email, phone or number.',
+        body:
+            'By name, email, phone or number. People who are still only '
+            'leads show up too, on rows of their own.',
+        since: 2,
       ),
       TourStep(
         anchor: 'tour-customers-franchise',
@@ -260,11 +263,21 @@ const Map<String, Tour> tabTours = {
         body: 'Narrows the list to one franchise.',
       ),
       TourStep(
+        anchor: 'customers-tag-filter',
+        title: 'Tag',
+        body: 'Only the customers with one tag. Appears once a customer is tagged.',
+        since: 2,
+      ),
+      TourStep(
         anchor: 'tour-customers-list',
         title: 'The customers',
         body:
             'Click a heading to sort, or a customer to open them beside the '
-            'list. Each row says whose customer they are.',
+            'list. Each row says whose customer they are and shows their '
+            'tags. Open one to add or remove tags, see their Money (what '
+            'was invoiced, is due and was paid; \$0 when nothing has been '
+            'billed yet) and the notes on their jobs.',
+        since: 2,
       ),
     ],
   ),
