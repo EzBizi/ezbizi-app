@@ -513,7 +513,7 @@ class _PtoTabState extends State<PtoTab> {
         constraints: const BoxConstraints(maxWidth: 150),
         child: from == null
             ? const StatusPill('Start date unknown')
-            : StatusPill('From ${_date(from)}', tone: Tone.caution),
+            : StatusPill('From ${_date(from)}'),
       );
     }
 
@@ -3018,10 +3018,12 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
     }
     return Row(
       children: [
-        Expanded(flex: 3, child: search),
+        // Fixed widths: stretched to 45 % each they read as two empty bars.
+        SizedBox(width: 280, child: search),
         const SizedBox(width: 12),
-        Expanded(flex: 2, child: status),
-        if (ask != null) ...[const SizedBox(width: 12), ask],
+        SizedBox(width: 200, child: status),
+        const Spacer(),
+        ?ask,
       ],
     );
   }

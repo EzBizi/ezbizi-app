@@ -550,6 +550,19 @@ class _ManualsTabState extends State<ManualsTab> {
                   '${manuals.fold<int>(0, (n, m) => n + ((m['page_count'] as int?) ?? 0))}',
               note: 'searched by model',
             ),
+            // Four tiles, like the other AI tabs.
+            FactTile(
+              label: 'Brands',
+              value:
+                  '${manuals.map((m) => _s(m['brand']).toLowerCase()).where((b) => b.isNotEmpty).toSet().length}',
+              note: 'with a manual',
+            ),
+            FactTile(
+              label: 'Without pages',
+              value:
+                  '${manuals.where((m) => ((m['page_count'] as int?) ?? 0) == 0).length}',
+              note: 'not readable yet',
+            ),
           ],
         ),
         const SizedBox(height: 14),
