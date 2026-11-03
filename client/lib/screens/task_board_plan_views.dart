@@ -504,6 +504,11 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
       var to = r.$2.add(Duration(days: (d?.move ?? 0) + (d?.grow ?? 0)));
       if (to.isBefore(from)) to = from;
       final colour = widget.colourOf(t);
+      // A board picks its own status colours: dark ink on a light bar.
+      final ink =
+          ThemeData.estimateBrightnessForColor(colour) == Brightness.dark
+          ? Colors.white
+          : const Color(0xFF1F2328);
       final drag = widget.canEdit && !widget.compact;
       void commit() {
         final cur = _drag;
@@ -557,7 +562,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
                           maxLines: 1,
                           overflow: TextOverflow.clip,
                           style: theme.textTheme.labelSmall?.copyWith(
-                            color: Colors.white,
+                            color: ink,
                           ),
                         ),
                       ),
@@ -576,7 +581,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
                             );
                           }),
                           onHorizontalDragEnd: (_) => commit(),
-                          child: const MouseRegion(
+                          child: MouseRegion(
                             cursor: SystemMouseCursors.resizeLeftRight,
                             child: SizedBox(
                               width: 10,
@@ -584,7 +589,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
                               child: Icon(
                                 Icons.drag_indicator,
                                 size: 12,
-                                color: Colors.white,
+                                color: ink,
                               ),
                             ),
                           ),
