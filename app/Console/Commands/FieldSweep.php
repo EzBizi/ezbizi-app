@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\FieldPresence;
 use App\Models\FieldRecording;
+use App\Models\FieldRecordingChunk;
 use App\Models\Job;
 use App\Models\Organization;
 use App\Support\Field\FieldEvaluator;
@@ -105,6 +106,16 @@ class FieldSweep extends Command
             foreach ($old as $recording) {
                 $disk->deleteDirectory($files->directoryFor('field-audio', $recording->organization_id).'/'.$recording->getKey());
                 $recording->delete();
+            }
+
+            // Audio is never kept (Jose, 2026-10-27): a minute Whisper has not
+            // turned into words within a day (no Whisper here, or it kept
+            // failing) is deleted anyway.
+            $stale = FieldRecordingChunk::query()->whereNotNull('path')
+                ->where('created_at', '<', now()->subDay())->limit(500)->get();
+            foreach ($stale as $chunk) {
+                $disk->delete($chunk->path);
+                $chunk->forceFill(['path' => null])->save();
             }
 
             if (now()->minute === 0) {

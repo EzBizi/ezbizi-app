@@ -1755,6 +1755,7 @@ Route::prefix('v1')
         });
         Route::get('field/recordings', [FieldRecordingsController::class, 'index']);
         Route::get('field/recordings/{recording}/audio/{seq}', [FieldRecordingsController::class, 'audio'])->whereNumber('seq');
+        Route::get('field/recordings/{recording}/transcript', [FieldRecordingsController::class, 'transcript']);
         Route::post('field/recordings/{recording}/flag', [FieldRecordingsController::class, 'flag']);
 
         // Training — guides people read, the tests they take, and (later
