@@ -688,6 +688,9 @@ class HrPeopleController extends Controller
             // Until this, nothing could record a start date that had already
             // happened: both writers of that event stamp today.
             'started_on' => ['sometimes', 'required', 'date', 'after:1900-01-01'],
+            // Who they answer to (Jose, 2026-11-03); null clears it.
+            'reports_to_user_id' => ['sometimes', 'nullable', 'uuid',
+                Rule::exists('users', 'id')->where('organization_id', $user->organization_id)],
 
             // Where they work (Mia, 2026-10-02: "assigning andy to A1-Group
             // instead so she has full access"). The invitation's pair, and the
@@ -698,6 +701,18 @@ class HrPeopleController extends Controller
 
         $startedOn = $input['started_on'] ?? null;
         unset($input['started_on']);
+
+        // Nobody answers to themselves, or to someone who answers to them.
+        if (! empty($input['reports_to_user_id'])) {
+            $seen = [$user->getKey()];
+            for ($at = $input['reports_to_user_id']; $at !== null; $at = User::query()->whereKey($at)->value('reports_to_user_id')) {
+                if (in_array($at, $seen, true)) {
+                    throw ValidationException::withMessages(['reports_to_user_id' => 'That would make a circle: they already answer, '
+                        .'through others, to this person.']);
+                }
+                $seen[] = $at;
+            }
+        }
 
         $place = isset($input['scope_type']) ? [$input['scope_type'], $input['scope_id']] : null;
         unset($input['scope_type'], $input['scope_id']);
@@ -1242,6 +1257,7 @@ class HrPeopleController extends Controller
                 'id' => $person->role_id,
                 'name' => $person->role?->name,
             ],
+            'reports_to_user_id' => $person->reports_to_user_id,
             'assignments' => $person->assignments
                 ->filter(fn (Assignment $a) => $this->reach->coversAssignment($actor, $a))
                 ->map(fn (Assignment $a) => [

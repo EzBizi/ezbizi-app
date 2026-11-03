@@ -2122,6 +2122,9 @@ Route::prefix('v1')
         // is what adds everybody else's. The controller makes that split —
         // see HrPeopleController::pto.
         Route::get('hr/pto', [HrPeopleController::class, 'pto']);
+        // The ownership chart (Jose, 2026-11-03, design 175). OwnershipController.
+        Route::get('hr/ownership', [\App\Http\Controllers\Api\OwnershipController::class, 'index']);
+        Route::put('hr/ownership', [\App\Http\Controllers\Api\OwnershipController::class, 'update']);
         // The Payroll tab (Jose, 2026-10-22). Salary itself rides on hr.pay.view
         // and is changed through the pay-rate history (details/pay-rates).
         Route::get('hr/payroll', [HrPeopleController::class, 'payroll'])->middleware('permission:hr.payroll.view');
