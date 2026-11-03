@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\Api;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Support\Settings\SettingsResolver;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -104,13 +104,13 @@ class JobListWindowTest extends TestCase
         $this->signedInAs($beta['admin']);
         $outsider = $this->postJson('/api/v1/customers', [
             'owning_franchise_id' => $beta['franchise']->id,
-            'name'                => 'Somebody Else',
+            'name' => 'Somebody Else',
         ])->assertCreated()->json('data.id');
         $this->postJson('/api/v1/jobs', [
-            'franchise_id'  => $beta['franchise']->id,
-            'customer_id'   => $outsider,
-            'title'         => 'Their job',
-            'status'        => 'scheduled',
+            'franchise_id' => $beta['franchise']->id,
+            'customer_id' => $outsider,
+            'title' => 'Their job',
+            'status' => 'scheduled',
             'scheduled_for' => self::TODAY.' 09:00',
         ])->assertCreated();
 
@@ -213,6 +213,21 @@ class JobListWindowTest extends TestCase
      * Yesterday, today at 8am, tomorrow, and one with no date — one of them
      * completed, the rest scheduled. Returns the tenant, signed in as its admin.
      */
+    /** Jose, 2026-11-03, on WhatsApp: "how many jobs has been created yesterday in ace". */
+    public function test_created_days_are_the_askers_and_company_narrows_to_its_branches(): void
+    {
+        $alpha = $this->fourJobs();   // all four created at 2026-09-24 12:00 UTC = 08:00 New York
+
+        $on = fn (string $q) => $this->getJson('/api/v1/jobs?'.$q)->assertOk()->json('meta.total');
+
+        $this->assertSame(4, $on('created_from=2026-09-24&created_to=2026-09-24&timezone=America/New_York'));
+        $this->assertSame(0, $on('created_from=2026-09-23&created_to=2026-09-23&timezone=America/New_York'));
+        // 12:00 UTC is already 02:00 on the 25th in Kiritimati (UTC+14).
+        $this->assertSame(0, $on('created_from=2026-09-24&created_to=2026-09-24&timezone=Pacific/Kiritimati'));
+        $this->assertSame(4, $on('company_id='.$alpha['franchise']->company_id));
+        $this->assertSame(0, $on('company_id=not-a-company'));
+    }
+
     private function fourJobs(): array
     {
         /*
@@ -230,7 +245,7 @@ class JobListWindowTest extends TestCase
         $this->franchiseId = $alpha['franchise']->id;
         $this->customerId = $this->postJson('/api/v1/customers', [
             'owning_franchise_id' => $alpha['franchise']->id,
-            'name'                => 'Alice Roofing',
+            'name' => 'Alice Roofing',
         ])->assertCreated()->json('data.id');
 
         $this->job('Yesterday', '2026-09-23 10:00');
@@ -248,10 +263,10 @@ class JobListWindowTest extends TestCase
     private function job(string $title, ?string $at, string $status = 'scheduled'): void
     {
         $this->postJson('/api/v1/jobs', [
-            'franchise_id'  => $this->franchiseId,
-            'customer_id'   => $this->customerId,
-            'title'         => $title,
-            'status'        => $status,
+            'franchise_id' => $this->franchiseId,
+            'customer_id' => $this->customerId,
+            'title' => $title,
+            'status' => $status,
             'scheduled_for' => $at,
         ])->assertCreated();
     }

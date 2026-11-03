@@ -30,11 +30,12 @@ final class GrokCli
      * 2026-10-13: "use emojis, line breaks ... better ui-ux experience").
      * WhatsApp renders *bold* and _italic_, not Markdown headings or tables.
      */
-    public const WHATSAPP_STYLE = 'FORMAT FOR WHATSAPP: start with a short *bold* title line with one fitting emoji. '
-        ."Then one fact per line, each line starting with a fitting emoji (for example \u{1F4B0} money, "
-        ."\u{1F4C5} dates, \u{1F527} jobs, \u{1F464} people, \u{2705} done, \u{274C} canceled, \u{1F4CD} places, "
-        ."\u{1F4DE} phone). Put a blank line between groups. Use *bold* for names and key numbers. No "
-        .'Markdown headings (#), no tables, no ** double asterisks. Keep it short.';
+    // Less rigid since 2026-11-03 (Jose: "it should just answer, like you would
+    // like an AI agent would"): a direct answer first, the layout only when it helps.
+    public const WHATSAPP_STYLE = 'FORMAT FOR WHATSAPP: answer like a helpful colleague texting back: the direct '
+        .'answer first, in plain words. For a list or several figures, one per line with a fitting emoji '
+        ."(for example \u{1F4B0} money, \u{1F4C5} dates, \u{1F527} jobs, \u{1F464} people, \u{1F4CD} places). "
+        .'Use *bold* for names and key numbers. No Markdown headings (#), no tables, no ** double asterisks. Keep it short.';
 
     /** A long call's speaker split can take minutes; 120 s timed out on prod. */
     private const TIMEOUT = 300;
