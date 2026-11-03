@@ -14,6 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0520',
+      date: '2 Nov 2026',
+      items: [
+        'Automations, Guidelines and Services share one search box.',
+        'Availability: one Company and Branch picker replaces the separate chips.',
+        'Job and Customer panes hide Save and Cancel on read-only tabs; the sidebar shows a scroll bar.',
+        'Leads with no name or phone are titled by their email.',
+        'Dashboard: long empty-box notes show three, then a link for the rest.',
+        'Communication: an alert sent to nobody says Sent to nobody.',
+        'Wording: sentence case in Scheduling and Project Management, Voicemail shows Every line (default).',
+        'Loading placeholders in Email Settings and Profit and Loss; Inventory empty lists explain what to add.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0519',
       date: '2 Nov 2026',
       items: [
