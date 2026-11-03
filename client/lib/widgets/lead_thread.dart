@@ -74,6 +74,7 @@ class LeadThread extends StatefulWidget {
     this.session,
     this.onBooked,
     this.onHidden,
+    this.onBack,
   });
 
   final ApiClient api;
@@ -121,6 +122,10 @@ class LeadThread extends StatefulWidget {
 
   /// After this lead was hidden (design 160): it leaves the list.
   final Future<void> Function()? onHidden;
+
+  /// A phone's way back to the list, drawn at the start of the thread's one
+  /// bar (design 171) rather than as a row of its own above it.
+  final VoidCallback? onBack;
 
   @override
   State<LeadThread> createState() => _LeadThreadState();
@@ -207,6 +212,26 @@ class _LeadThreadState extends State<LeadThread> {
   /// emoji picker on the left of send"). Inline, not a popup.
   bool _emoji = false;
 
+  /// Design 171: a phone's composer is + / the box / Send; + opens Suggest,
+  /// emoji and the quick replies. The quick replies also show by themselves
+  /// while the box is focused and empty.
+  bool _tools = false;
+  final _composeFocus = FocusNode(debugLabel: 'Reply');
+  bool _composeEmpty = true;
+  bool _composeFocused = false;
+
+  void _composerState() {
+    final empty = _compose.text.isEmpty;
+    final focused = _composeFocus.hasFocus;
+    if (!mounted || (empty == _composeEmpty && focused == _composeFocused)) {
+      return;
+    }
+    setState(() {
+      _composeEmpty = empty;
+      _composeFocused = focused;
+    });
+  }
+
   /// A draft is offered only where a reply can go and the model is on.
   bool _canSuggest = false;
 
@@ -269,6 +294,8 @@ class _LeadThreadState extends State<LeadThread> {
       (_) => _load(quiet: true),
     );
     _compose.addListener(_typing);
+    _compose.addListener(_composerState);
+    _composeFocus.addListener(_composerState);
     // After the first frame: the parent answers by rebuilding its list, and
     // a setState during this widget's own build is an exception, not a mark.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -311,6 +338,7 @@ class _LeadThreadState extends State<LeadThread> {
     unawaited(widget.api.post('/leads/${widget.lead['id']}/leave', const {}));
     _note.dispose();
     _compose.dispose();
+    _composeFocus.dispose();
     _player.stop();
     if (_ownsPlayer) _player.dispose();
     super.dispose();
@@ -629,6 +657,7 @@ class _LeadThreadState extends State<LeadThread> {
     LeadSourceFields src, {
     required bool narrow,
     required double width,
+    bool withName = true,
   }) {
     final starred = lead['starred'] == true;
     final note = ((lead['note'] as String?) ?? '').trim();
@@ -639,28 +668,35 @@ class _LeadThreadState extends State<LeadThread> {
       runSpacing: 4,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: width * (narrow ? 0.6 : 0.4)),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  leadTitle(lead),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium,
+        if (!withName)
+          _copyButton(
+            leadTitle(lead),
+            key: const ValueKey('copy-name'),
+            what: 'Name',
+          )
+        else
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: width * (narrow ? 0.6 : 0.4)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    leadTitle(lead),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium,
+                  ),
                 ),
-              ),
-              // Jose, 2026-10-19: "Leads - copy name".
-              _copyButton(
-                leadTitle(lead),
-                key: const ValueKey('copy-name'),
-                what: 'Name',
-              ),
-            ],
+                // Jose, 2026-10-19: "Leads - copy name".
+                _copyButton(
+                  leadTitle(lead),
+                  key: const ValueKey('copy-name'),
+                  what: 'Name',
+                ),
+              ],
+            ),
           ),
-        ),
         if (leadNameIsAi(lead))
           const AiMark(key: ValueKey('thread-ai-name'), tooltip: aiNameTooltip),
         if (src.sourceKey != null)
@@ -712,6 +748,8 @@ class _LeadThreadState extends State<LeadThread> {
       ],
     );
 
+    if (!withName) return marks;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -737,6 +775,62 @@ class _LeadThreadState extends State<LeadThread> {
       ],
     );
   }
+
+  /// Design 171: a phone's one bar - back, the avatar and name, where the
+  /// lead stands, Book, and ... for everything else in the header.
+  Widget _phoneBar(
+    ThemeData theme,
+    Map<String, dynamic> lead,
+    LeadSourceFields src,
+  ) => Row(
+    children: [
+      if (widget.onBack != null)
+        IconButton(
+          key: const ValueKey('thread-back'),
+          tooltip: 'All leads',
+          visualDensity: VisualDensity.compact,
+          onPressed: widget.onBack,
+          icon: const Icon(Icons.arrow_back),
+        ),
+      LeadAvatar(
+        key: const ValueKey('thread-avatar'),
+        name: leadTitle(lead),
+        url: src.avatarUrl,
+        radius: 16,
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          leadTitle(lead),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleMedium,
+        ),
+      ),
+      if (widget.onStatusChanged != null) ...[
+        const SizedBox(width: 6),
+        SizedBox(width: 118, child: _moves(lead, fill: true)),
+      ],
+      if (_canBook) ...[
+        const SizedBox(width: 6),
+        FilledButton(
+          key: const ValueKey('book-open'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+          ),
+          onPressed: _openBooking,
+          child: const Text('Book'),
+        ),
+      ],
+      IconButton(
+        key: const ValueKey('thread-details-toggle'),
+        tooltip: _showDetails ? 'Hide details' : 'Details',
+        visualDensity: VisualDensity.compact,
+        onPressed: () => setState(() => _showDetails = !_showDetails),
+        icon: Icon(_showDetails ? Icons.expand_less : Icons.more_horiz),
+      ),
+    ],
+  );
 
   /// A small rounded chip in the header: the note, the viewers.
   Widget _headerChip(
@@ -955,14 +1049,6 @@ class _LeadThreadState extends State<LeadThread> {
           open: _formOpen,
           onTap: () => setState(() => _formOpen = !_formOpen),
         ),
-      if (narrow)
-        _foldLink(
-          theme,
-          key: const ValueKey('thread-details-toggle'),
-          label: _showDetails ? 'Less' : 'More',
-          open: _showDetails,
-          onTap: () => setState(() => _showDetails = !_showDetails),
-        ),
     ];
 
     return Wrap(
@@ -1090,17 +1176,43 @@ class _LeadThreadState extends State<LeadThread> {
       children: [
         Padding(
           key: const ValueKey('thread-header'),
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+          padding: narrow
+              ? const EdgeInsets.fromLTRB(8, 4, 4, 4)
+              : const EdgeInsets.fromLTRB(16, 10, 16, 8),
           child: LayoutBuilder(
             builder: (context, box) {
-              // Design 161: scrolled back, only the name row stays.
-              final folded = _collapsed && !_editingNote;
+              // Design 161: scrolled back, only the name row stays. A phone
+              // (design 171) keeps one bar, its details behind the bar's ...
+              // and never open while the keyboard is up.
+              final folded = narrow
+                  ? !_showDetails || MediaQuery.viewInsetsOf(context).bottom > 0
+                  : _collapsed && !_editingNote;
+              final working = [
+                if (_noteOpen || _editingNote) _noteBlock(theme, lead),
+                if (_booking != null) _bookingBlock(theme),
+                if (_offer != null) _offerBlock(theme),
+              ];
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _nameRow(theme, lead, src, narrow: narrow, width: box.maxWidth),
+                  if (narrow)
+                    _phoneBar(theme, lead, src)
+                  else
+                    _nameRow(theme, lead, src, narrow: narrow, width: box.maxWidth),
                   if (!folded) ...[
+                    if (narrow)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: _nameRow(
+                          theme,
+                          lead,
+                          src,
+                          narrow: true,
+                          width: box.maxWidth,
+                          withName: false,
+                        ),
+                      ),
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: _facts(
@@ -1124,8 +1236,7 @@ class _LeadThreadState extends State<LeadThread> {
                       ),
                     // What it looks like, read by a model, beside what
                     // somebody decided. Only when a reading exists.
-                    if (lead['classification'] is String &&
-                        (!narrow || _showDetails))
+                    if (lead['classification'] is String)
                       Text(
                         [
                           'Looks like ${classificationWord(lead['classification'] as String)}',
@@ -1140,38 +1251,18 @@ class _LeadThreadState extends State<LeadThread> {
                       ),
                     if (lead['credit'] is Map)
                       _creditLine(theme, lead['credit'] as Map),
-                    if (_noteOpen || _editingNote) _noteBlock(theme, lead),
-                    if (_booking != null) _bookingBlock(theme),
-                    if (_offer != null) _offerBlock(theme),
-                    if (_customer != null && (!narrow || _showDetails))
-                      _customerCard(theme, _customer!),
+                    if (!narrow) ...working,
+                    if (_customer != null) _customerCard(theme, _customer!),
                     if (lead['job'] is Map)
                       _bookedLine(
                         theme,
                         lead['job'] as Map,
                         matched: lead['job_matched_by'] == 'phone',
                       ),
-                    // One line on a phone: where the lead stands, then
-                    // Book. They were two full-width rows.
-                    if (narrow && (_canBook || widget.onStatusChanged != null))
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Row(
-                          children: [
-                            if (widget.onStatusChanged != null)
-                              Expanded(child: _moves(lead, fill: true)),
-                            if (_canBook) ...[
-                              const SizedBox(width: 8),
-                              FilledButton(
-                                key: const ValueKey('book-open'),
-                                onPressed: _openBooking,
-                                child: const Text('Book'),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
                   ],
+                  // What somebody is in the middle of stays on a phone
+                  // whether the details are open or not.
+                  if (narrow) ...working,
                 ],
               );
             },
@@ -1234,8 +1325,12 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
+  bool get _narrow => MediaQuery.sizeOf(context).width < 600;
+
   Widget _composer(ThemeData theme) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+    padding: _narrow
+        ? const EdgeInsets.fromLTRB(4, 6, 8, 6)
+        : const EdgeInsets.fromLTRB(12, 8, 12, 12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -1307,7 +1402,8 @@ class _LeadThreadState extends State<LeadThread> {
               ),
             ),
           ),
-        if (_templates.isNotEmpty)
+        if (_templates.isNotEmpty &&
+            (!_narrow || _tools || (_composeFocused && _composeEmpty)))
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Builder(
@@ -1395,7 +1491,8 @@ class _LeadThreadState extends State<LeadThread> {
               ),
             ),
           ),
-        Row(
+        if (_narrow && _tools) _phoneTools(theme),
+        if (_narrow) _phoneComposerRow(theme) else Row(
           // Bottom-aligned, and every control is a one-line box tall, so
           // they line up with the box and stay by its last line as it grows
           // (Jose, 2026-10-01: "the same size as the field").
@@ -1482,6 +1579,107 @@ class _LeadThreadState extends State<LeadThread> {
               label: Text(_sending ? 'Sending…' : 'Send'),
             ),
           ],
+        ),
+      ],
+    ),
+  );
+
+  /// The reply box itself: the phone's and the desktop's are one field.
+  Widget _replyBox({required bool narrow}) => TextField(
+    key: const ValueKey('reply-box'),
+    controller: _compose,
+    focusNode: _composeFocus,
+    // Redrawn only while a draft is marked: the mark goes the moment the
+    // words change.
+    onChanged: _aiDraft == null ? null : (_) => setState(() {}),
+    // The phone's own spell check and suggestions (Jose, 2026-09-30: "hellu"
+    // was not corrected). Windows and the web build have no native checker
+    // Flutter can call.
+    spellCheckConfiguration:
+        WidgetsBinding
+            .instance
+            .platformDispatcher
+            .nativeSpellCheckServiceDefined
+        ? const SpellCheckConfiguration()
+        : null,
+    minLines: 1,
+    maxLines: narrow ? 5 : 4,
+    textInputAction: TextInputAction.newline,
+    enabled: !_sending,
+    decoration: InputDecoration(
+      isDense: true,
+      hintText: narrow ? 'Message' : 'Reply to the customer',
+      border: narrow
+          ? OutlineInputBorder(borderRadius: BorderRadius.circular(24))
+          : const OutlineInputBorder(),
+      // 12 + a 24 line + 12 is the 48 the buttons beside it are.
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    ),
+  );
+
+  bool get _sendHeld => _sending || (_replyingOther != null && !_replyAnyway);
+
+  /// Design 171: + / the box, the full width / a round Send.
+  Widget _phoneComposerRow(ThemeData theme) => Row(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      SizedBox.square(
+        dimension: _controlHeight,
+        child: IconButton(
+          key: const ValueKey('reply-tools'),
+          tooltip: _tools ? 'Close' : 'Suggest, emoji and quick replies',
+          onPressed: () => setState(() {
+            _tools = !_tools;
+            if (!_tools) _emoji = false;
+          }),
+          icon: Icon(_tools ? Icons.close : Icons.add),
+        ),
+      ),
+      Expanded(child: _replyBox(narrow: true)),
+      const SizedBox(width: 6),
+      SizedBox.square(
+        dimension: _controlHeight,
+        child: IconButton.filled(
+          key: const ValueKey('reply-send'),
+          tooltip: _sending ? 'Sending…' : 'Send',
+          onPressed: _sendHeld ? null : _send,
+          icon: _sending
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.send, size: 20),
+        ),
+      ),
+    ],
+  );
+
+  /// What + opens on a phone, above the quick replies: Suggest and emoji.
+  Widget _phoneTools(ThemeData theme) => Padding(
+    key: const ValueKey('reply-tools-row'),
+    padding: const EdgeInsets.only(left: 8, bottom: 6),
+    child: Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        if (_canSuggest)
+          OutlinedButton.icon(
+            key: const ValueKey('reply-suggest'),
+            onPressed: _sending || _suggesting ? null : _suggest,
+            icon: const Icon(Icons.auto_awesome, size: 18),
+            label: Text(_suggesting ? 'Drafting…' : 'Suggest'),
+          ),
+        OutlinedButton.icon(
+          key: const ValueKey('reply-emoji'),
+          style: OutlinedButton.styleFrom(
+            backgroundColor: _emoji
+                ? theme.colorScheme.secondaryContainer
+                : null,
+          ),
+          onPressed: _sending ? null : () => setState(() => _emoji = !_emoji),
+          icon: const Icon(Icons.emoji_emotions_outlined, size: 18),
+          label: Text(_emoji ? 'Hide emoji' : 'Emoji'),
         ),
       ],
     ),

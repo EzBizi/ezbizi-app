@@ -2969,7 +2969,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 171 · Leads on a phone: cleaner thread and list — **sent 2026-11-03** (`docs/previews/leads-mobile-clean-layouts.html`)
+### 171 · Leads on a phone: cleaner thread and list — **sent 2026-11-03 — Jose: "looks good" (1) — built** (`docs/previews/leads-mobile-clean-layouts.html`)
 
 A staff message, via Jose: the reply box is too small, the top should scroll away so the messages show. Jose: "mobile is a mess, we need something cleaner and simpler". Recommended 1, messenger style:
 - **Thread:** one app-bar row (back, avatar, name, a status chip opening a sheet, Book, ⋯), with job, phone, notes and More moved into ⋯. Messages fill the rest of the screen, even with the keyboard up.
@@ -2977,6 +2977,12 @@ A staff message, via Jose: the reply box is too small, the top should scroll awa
 - **List:** search plus one "Filters (n)" button opening a sheet (show only / sources / channels, "Show N leads"). Only the picked quick chips stay visible, as one row. Rows are two lines.
 
 2 = Messages | Details tabs in the thread, with all chips in one sideways row. 3 = today's header scrolls away and folds when the keyboard opens, with a stacked composer. Phone only; desktop unchanged.
+
+**Built (phone, under 600 wide):**
+- The thread's one bar is back, avatar, name, a Status picker, Book and ... (`thread-details-toggle`, which opens the star, note, copy, facts and customer card). Details stay folded while the keyboard is up. The note being edited, a booking and an offer show either way.
+- The composer is + (`reply-tools`: Suggest, emoji and the quick replies), a box of 1–5 lines, and a round Send. The quick replies show by themselves while the box is focused and empty.
+- The list is search, Filters (n) and Fetch, then a chip for the source and the quick chips that are on. The Filters page, in place of the list like the sources page, holds the source, the quick chips with status and Mark all read, the takeover filters and In All.
+- There was no attach in the composer before; none was added.
 
 ### 170 · Reports › Performance › People: answer and booking in separate columns — **APPROVED 2026-11-03, option 8 + phone** (Jose: "as u recommend"; Reports builds) (`docs/previews/reports-people-answer-booking-layouts.html`)
 
