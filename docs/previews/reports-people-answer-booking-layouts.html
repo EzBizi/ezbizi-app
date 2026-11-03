@@ -195,7 +195,7 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
 <h1>Reports › Performance › People: answer and booking, apart</h1>
 <p class="subt">Jose (11-03): "a column for not answered and answered, missed call, separate from the booked, not booked". What's wrong today: one Result pill mixes Answered, Booked, Not booked and Missed call, and the People table has four answer columns (Rang, Answered, Teammate took, Nobody answered) and no booking figures. Every name here is invented.</p>
 
-<h2><span class="n">1</span> Two columns: Answer, then Booking <span class="rec">RECOMMENDED</span></h2>
+<h2><span class="n">1</span> Two columns: Answer, then Booking <span class="rec">2ND</span></h2>
 <ul class="cap">
  <li><b>People table:</b> Rang · Answered · Not answered · Missed · Booked · Booking rate. "Not answered" means a teammate took the call; "Missed" means nobody did. Booking rate is booked out of answered.</li>
  <li><b>A person's calls:</b> an <b>Answer</b> pill (Answered / Not answered · who took it / Missed) and a <b>Booking</b> pill (Booked / Not booked / Existing job). Booking is "—" when the call wasn't answered, so it never counts against them.</li>
@@ -209,14 +209,14 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
   <div class="rp-tr" style="grid-template-columns:2.2fr repeat(6,1fr);background:var(--pric)"><b>Milo Harbor ▾</b><span>41</span><span>30</span><span>8</span><span class="rp-miss">3</span><span>14</span><span>47%</span></div>
   <div class="rp-tr" style="grid-template-columns:2.2fr repeat(6,1fr)"><b>Ruth Northline</b><span>22</span><span>19</span><span>3</span><span>0</span><span>12</span><span>63%</span></div>
  </div>
- <div class="rp-row"><b>Milo Harbor's calls</b><span style="flex:1"></span><span class="rp-m">Answer</span><span class="rp-chip on">All 41</span><span class="rp-chip">Answered 30</span><span class="rp-chip">Not answered 8</span><span class="rp-chip">Missed 3</span><span class="rp-m">Booking</span><span class="rp-chip on">All</span><span class="rp-chip">Booked 14</span><span class="rp-chip">Not booked 12</span><span class="rp-chip">Existing job 4</span></div>
+ <div class="rp-row"><b>Milo Harbor's calls</b></div><div class="rp-row"><span class="rp-m">Answer</span><span class="rp-chip on">All 41</span><span class="rp-chip">Answered 30</span><span class="rp-chip">Not answered 8</span><span class="rp-chip">Missed 3</span></div><div class="rp-row"><span class="rp-m">Booking</span><span class="rp-chip on">All</span><span class="rp-chip">Booked 14</span><span class="rp-chip">Not booked 12</span><span class="rp-chip">Existing job 4</span></div>
  <div class="rp-tbl">
-  <div class="rp-tr" style="grid-template-columns:90px 2fr 1.6fr 1fr 60px"><span>WHEN</span><span>CALLER</span><span>ANSWER</span><span>BOOKING</span><span>SCORE</span></div>
-  <div class="rp-tr" style="grid-template-columns:90px 2fr 1.6fr 1fr 60px"><span>9:12 am</span><span>(555) 010-0142 · Ava Stone</span><span class="rp-p rp-ok">Answered</span><span class="rp-p rp-pri">Booked</span><span>86</span></div>
-  <div class="rp-tr" style="grid-template-columns:90px 2fr 1.6fr 1fr 60px"><span>9:40 am</span><span>(555) 010-0177</span><span class="rp-p rp-neu">Not answered · Dana took it</span><span class="rp-m">—</span><span class="rp-m">—</span></div>
-  <div class="rp-tr" style="grid-template-columns:90px 2fr 1.6fr 1fr 60px"><span>10:05 am</span><span>(555) 010-0103 · Leo Park</span><span class="rp-p rp-ok">Answered</span><span class="rp-p rp-cau">Not booked</span><span>61</span></div>
-  <div class="rp-tr" style="grid-template-columns:90px 2fr 1.6fr 1fr 60px"><span>10:31 am</span><span>(555) 010-0119</span><span class="rp-p rp-bad">Missed</span><span class="rp-m">—</span><span class="rp-m">—</span></div>
-  <div class="rp-tr" style="grid-template-columns:90px 2fr 1.6fr 1fr 60px"><span>11:02 am</span><span>(555) 010-0150 · Ivy Lane</span><span class="rp-p rp-ok">Answered</span><span class="rp-p rp-neu">Existing job</span><span>74</span></div>
+  <div class="rp-tr" style="grid-template-columns:64px minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1fr) 40px"><span>WHEN</span><span>CALLER</span><span>ANSWER</span><span>BOOKING</span><span>SCORE</span></div>
+  <div class="rp-tr" style="grid-template-columns:64px minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1fr) 40px"><span>9:12 am</span><span>(555) 010-0142 · Ava Stone</span><span class="rp-p rp-ok">Answered</span><span class="rp-p rp-pri">Booked</span><span>86</span></div>
+  <div class="rp-tr" style="grid-template-columns:64px minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1fr) 40px"><span>9:40 am</span><span>(555) 010-0177</span><span class="rp-p rp-neu">Not answered · Dana took it</span><span class="rp-m">—</span><span class="rp-m">—</span></div>
+  <div class="rp-tr" style="grid-template-columns:64px minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1fr) 40px"><span>10:05 am</span><span>(555) 010-0103 · Leo Park</span><span class="rp-p rp-ok">Answered</span><span class="rp-p rp-cau">Not booked</span><span>61</span></div>
+  <div class="rp-tr" style="grid-template-columns:64px minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1fr) 40px"><span>10:31 am</span><span>(555) 010-0119</span><span class="rp-p rp-bad">Missed</span><span class="rp-m">—</span><span class="rp-m">—</span></div>
+  <div class="rp-tr" style="grid-template-columns:64px minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,1fr) 40px"><span>11:02 am</span><span>(555) 010-0150 · Ivy Lane</span><span class="rp-p rp-ok">Answered</span><span class="rp-p rp-neu">Existing job</span><span>74</span></div>
  </div>
 </div></div>
 
@@ -251,7 +251,7 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
 
 <h2><span class="n">4</span>–<span class="n">6</span> On a phone</h2>
 <div class="phones">
- <div class="pcol"><span class="pl">4 · goes with 1 (recommended)</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">People</span></div><div class="pb">
+ <div class="pcol"><span class="pl">4 · goes with 1</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">People</span></div><div class="pb">
   <div class="rp-card"><b>Milo Harbor</b><span class="rp-m">41 rang · 30 answered · 8 not answered · <span class="rp-miss">3 missed</span></span><span class="rp-m">14 booked · 47%</span></div>
   <div class="rp-card"><div class="rp-row"><b>9:12 am</b><span class="rp-m">Ava Stone</span></div><div class="rp-row"><span class="rp-p rp-ok">Answered</span><span class="rp-p rp-pri">Booked</span><span class="rp-m">86</span></div></div>
   <div class="rp-card"><div class="rp-row"><b>9:40 am</b><span class="rp-m">(555) 010-0177</span></div><div class="rp-row"><span class="rp-p rp-neu">Not answered · Dana took it</span></div></div>
@@ -266,4 +266,100 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
  </div></div></div>
 </div>
 <p class="cap" style="margin-top:10px">No purple. Red only for Missed. "Not answered" is neutral grey, because a teammate took the call.</p>
+</div>
+<style>
+.rp-fn{display:flex;align-items:center;gap:2px;font-size:10px;font-weight:800;flex:1}
+.rp-fn span{padding:3px 6px;border-radius:4px;white-space:nowrap}
+.rp-ring{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800}
+.rp-gh{display:grid;padding:4px 10px;font-size:10px;font-weight:800;color:var(--muted);gap:8px}
+.rp-gh span{border-bottom:2px solid var(--line);padding-bottom:2px}
+.rp-tabs{display:flex;gap:16px;border-bottom:1px solid var(--line);font-size:12px;font-weight:700;color:var(--muted)}.rp-tabs span{padding:6px 0}.rp-tabs .on{color:var(--pri);border-bottom:2px solid var(--pri)}
+</style>
+<div class="wrap">
+<h1>More options (Jose: "hmm can u come up with more")</h1>
+<p class="cap"><b>New ranking:</b> 8 (two-part table) is now recommended. It shows both questions in one row per person, under two headers, and the drill-down uses option 1's Answer and Booking columns. 1 is second. 7 and 9 look good but take longer to compare across people. 10 brings the mixed pill back. 11 hides half of a person's calls behind a tab.</p>
+
+<h2><span class="n">7</span> Funnel bar per person</h2>
+<p class="cap">Each person gets one bar: Rang → Answered → Booked. Grey Not answered and red Missed stubs come off the first step, and tapping a segment filters that person's calls.</p>
+<div class="win" style="height:230px"><div class="top"><span class="logo">EzBizi</span><span class="org">Reports › Performance › People</span></div>
+<div class="page">
+ <div class="rp-card"><div class="rp-row"><b style="width:120px">Dana Brightside</b><div class="rp-fn"><span class="rp-neu" style="width:120px">Rang 48</span>→<span class="rp-ok" style="width:90px">Answered 36</span>→<span class="rp-pri" style="width:60px">Booked 21</span><span style="flex:1"></span><span class="rp-neu">Not answered 9</span><span class="rp-bad">Missed 3</span></div></div></div>
+ <div class="rp-card"><div class="rp-row"><b style="width:120px">Milo Harbor</b><div class="rp-fn"><span class="rp-neu" style="width:104px">Rang 41</span>→<span class="rp-ok" style="width:76px">Answered 30</span>→<span class="rp-pri" style="width:42px">Booked 14</span><span style="flex:1"></span><span class="rp-neu">Not answered 8</span><span class="rp-bad">Missed 3</span></div></div></div>
+ <div class="rp-card"><div class="rp-row"><b style="width:120px">Ruth Northline</b><div class="rp-fn"><span class="rp-neu" style="width:56px">Rang 22</span>→<span class="rp-ok" style="width:48px">Answered 19</span>→<span class="rp-pri" style="width:36px">Booked 12</span><span style="flex:1"></span><span class="rp-neu">Not answered 3</span></div></div></div>
+</div></div>
+
+<h2><span class="n">8</span> Two-part table: Phone and Sales <span class="rec">RECOMMENDED</span></h2>
+<ul class="cap">
+ <li><b>Grouped headers:</b> "Phone" covers Rang · Answered · Not answered · Missed · Answer rate. "Sales" covers New · Booked · Booking rate · Avg score.</li>
+ <li><b>Tooltip on the Sales header (ⓘ):</b> "Rates count answered calls only."</li>
+ <li><b>Drill-down:</b> click a person to open option 1's call list (an Answer column and a Booking column, plus two filter chip groups).</li>
+</ul>
+<div class="win" style="height:250px"><div class="top"><span class="logo">EzBizi</span><span class="org">Reports › Performance › People</span></div>
+<div class="page">
+ <div class="rp-tbl">
+  <div class="rp-gh" style="grid-template-columns:1.6fr 5fr 4fr"><span style="border:0"></span><span>PHONE</span><span>SALES ⓘ</span></div>
+  <div class="rp-tr" style="grid-template-columns:1.6fr repeat(9,1fr)"><span>PERSON</span><span>RANG</span><span>ANS.</span><span>NOT ANS.</span><span>MISSED</span><span>ANS. RATE</span><span>NEW</span><span>BOOKED</span><span>BOOK RATE</span><span>SCORE</span></div>
+  <div class="rp-tr" style="grid-template-columns:1.6fr repeat(9,1fr)"><b>Dana Brightside</b><span>48</span><span>36</span><span>9</span><span class="rp-miss">3</span><span>75%</span><span>24</span><span>21</span><span>58%</span><span>81</span></div>
+  <div class="rp-tr" style="grid-template-columns:1.6fr repeat(9,1fr)"><b>Milo Harbor</b><span>41</span><span>30</span><span>8</span><span class="rp-miss">3</span><span>73%</span><span>18</span><span>14</span><span>47%</span><span>72</span></div>
+  <div class="rp-tr" style="grid-template-columns:1.6fr repeat(9,1fr)"><b>Ruth Northline</b><span>22</span><span>19</span><span>3</span><span>0</span><span>86%</span><span>13</span><span>12</span><span>63%</span><span>88</span></div>
+ </div>
+</div></div>
+
+<h2><span class="n">9</span> Person card grid</h2>
+<p class="cap">Each card has two rings (Answer rate and Booking rate) and chips for the rest. Tapping a card opens that person's calls.</p>
+<div class="win" style="height:200px"><div class="top"><span class="logo">EzBizi</span><span class="org">Reports › Performance › People</span></div>
+<div class="page">
+ <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+  <div class="rp-card"><b>Dana Brightside</b><div class="rp-row"><span class="rp-ring rp-ok">75%</span><span class="rp-m">answer</span><span class="rp-ring rp-pri">58%</span><span class="rp-m">booking</span></div><span class="rp-m"><span class="rp-miss">3 missed</span> · 9 teammate took · 4 existing job</span></div>
+  <div class="rp-card"><b>Milo Harbor</b><div class="rp-row"><span class="rp-ring rp-ok">73%</span><span class="rp-m">answer</span><span class="rp-ring rp-pri">47%</span><span class="rp-m">booking</span></div><span class="rp-m"><span class="rp-miss">3 missed</span> · 8 teammate took · 4 existing job</span></div>
+  <div class="rp-card"><b>Ruth Northline</b><div class="rp-row"><span class="rp-ring rp-ok">86%</span><span class="rp-m">answer</span><span class="rp-ring rp-pri">63%</span><span class="rp-m">booking</span></div><span class="rp-m">3 teammate took · 1 existing job</span></div>
+ </div>
+</div></div>
+
+<h2><span class="n">10</span> One status pill per call</h2>
+<p class="cap">Each call gets one pill that says both things: Answered · Booked / Answered · Not booked / Not answered · X took it / Missed. Filter chips are grouped by the first word. This is the shortest table, but answering and booking are mixed in one pill again.</p>
+<div class="win" style="height:220px"><div class="top"><span class="logo">EzBizi</span><span class="org">Milo Harbor's calls</span></div>
+<div class="page">
+ <div class="rp-row"><span class="rp-m">Answered</span><span class="rp-chip">· Booked 14</span><span class="rp-chip">· Not booked 12</span><span class="rp-chip">· Existing job 4</span><span class="rp-chip">Not answered 8</span><span class="rp-chip">Missed 3</span></div>
+ <div class="rp-tbl">
+  <div class="rp-tr" style="grid-template-columns:70px 1.6fr 1.6fr 44px"><span>WHEN</span><span>CALLER</span><span>STATUS</span><span>SCORE</span></div>
+  <div class="rp-tr" style="grid-template-columns:70px 1.6fr 1.6fr 44px"><span>9:12 am</span><span>Ava Stone</span><span class="rp-p rp-pri">Answered · Booked</span><span>86</span></div>
+  <div class="rp-tr" style="grid-template-columns:70px 1.6fr 1.6fr 44px"><span>9:40 am</span><span>(555) 010-0177</span><span class="rp-p rp-neu">Not answered · Dana took it</span><span class="rp-m">—</span></div>
+  <div class="rp-tr" style="grid-template-columns:70px 1.6fr 1.6fr 44px"><span>10:31 am</span><span>(555) 010-0119</span><span class="rp-p rp-bad">Missed</span><span class="rp-m">—</span></div>
+ </div>
+</div></div>
+
+<h2><span class="n">11</span> Drill-down in two tabs</h2>
+<p class="cap">A person's calls are split into two tabs. "Took" has the answered calls, with booking and score. "Rang, didn't take" has the calls a teammate took and the missed ones.</p>
+<div class="win" style="height:220px"><div class="top"><span class="logo">EzBizi</span><span class="org">Milo Harbor's calls</span></div>
+<div class="page">
+ <div class="rp-tabs"><span class="on">Took 30</span><span>Rang, didn't take 11</span></div>
+ <div class="rp-tbl">
+  <div class="rp-tr" style="grid-template-columns:70px 1.6fr 1fr 44px"><span>WHEN</span><span>CALLER</span><span>BOOKING</span><span>SCORE</span></div>
+  <div class="rp-tr" style="grid-template-columns:70px 1.6fr 1fr 44px"><span>9:12 am</span><span>Ava Stone</span><span class="rp-p rp-pri">Booked</span><span>86</span></div>
+  <div class="rp-tr" style="grid-template-columns:70px 1.6fr 1fr 44px"><span>10:05 am</span><span>Leo Park</span><span class="rp-p rp-cau">Not booked</span><span>61</span></div>
+ </div>
+</div></div>
+
+<h2>7–11 on a phone</h2>
+<div class="phones">
+ <div class="pcol"><span class="pl">7 · funnel</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">People</span></div><div class="pb">
+  <div class="rp-card"><b>Milo Harbor</b><div class="rp-fn"><span class="rp-neu">41</span>→<span class="rp-ok">30</span>→<span class="rp-pri">14</span></div><span class="rp-m">8 not answered · <span class="rp-miss">3 missed</span></span></div>
+ </div></div></div>
+ <div class="pcol"><span class="pl">8 · two-part (recommended)</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">People</span></div><div class="pb">
+  <div class="rp-card"><b>Milo Harbor</b><span class="rp-m"><b>Phone</b> 41 rang · 30 answered · 8 not · <span class="rp-miss">3 missed</span> · 73%</span><span class="rp-m"><b>Sales</b> 18 new · 14 booked · 47% · score 72</span></div>
+  <div class="rp-card"><b>Dana Brightside</b><span class="rp-m"><b>Phone</b> 48 rang · 36 answered · 9 not · <span class="rp-miss">3 missed</span> · 75%</span><span class="rp-m"><b>Sales</b> 24 new · 21 booked · 58% · score 81</span></div>
+ </div></div></div>
+ <div class="pcol"><span class="pl">9 · cards</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">People</span></div><div class="pb">
+  <div class="rp-card"><b>Milo Harbor</b><div class="rp-row"><span class="rp-ring rp-ok">73%</span><span class="rp-ring rp-pri">47%</span></div><span class="rp-m"><span class="rp-miss">3 missed</span> · 8 teammate took</span></div>
+ </div></div></div>
+ <div class="pcol"><span class="pl">10 · one pill</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Calls</span></div><div class="pb">
+  <div class="rp-card"><b>9:12 am · Ava Stone</b><span class="rp-p rp-pri">Answered · Booked</span></div>
+  <div class="rp-card"><b>10:31 am</b><span class="rp-p rp-bad">Missed</span></div>
+ </div></div></div>
+ <div class="pcol"><span class="pl">11 · two tabs</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Calls</span></div><div class="pb">
+  <div class="rp-tabs" style="gap:10px"><span class="on">Took 30</span><span>Didn't take 11</span></div>
+  <div class="rp-card"><b>9:12 am · Ava Stone</b><span class="rp-p rp-pri">Booked</span></div>
+ </div></div></div>
+</div>
 </div>
