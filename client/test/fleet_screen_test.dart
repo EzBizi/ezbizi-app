@@ -218,10 +218,11 @@ void main() {
             matching: find.byType(TextField),
           ),
         )
-        .map((f) => f.decoration?.labelText)
+        .map((f) => f.decoration?.hintText)
         .toList();
 
-    expect(order.take(3), ['Day', 'Month', 'Year']);
+    // One date field whose pattern is the org's order (Jose, 2026-11-03).
+    expect(order, ['DD/MM/YYYY']);
   });
 
   testWidgets('a failed load is the request failed, not an empty list', (
