@@ -37,6 +37,7 @@ IconData dashboardPanelIcon(String key) {
     'fleet_management': Icons.local_shipping_outlined,
     'inventory': Icons.inventory_2_outlined,
     'financials': Icons.table_chart_outlined,
+    'company': Icons.account_tree_outlined,
     'tasks': Icons.view_kanban_outlined,
     'services': Icons.handyman_outlined,
     'email': Icons.inbox_outlined,

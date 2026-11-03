@@ -488,7 +488,8 @@ const Map<String, Tour> tabTours = {
       TourStep(
         anchor: 'tour-financials-bills',
         title: 'Bills',
-        body: "Read a photo of a period's bills into lines. It saves once they add up to the photo's total.",
+        body:
+            "Read a photo of a period's bills into lines. It saves once they add up to the photo's total.",
       ),
     ],
   ),
@@ -581,7 +582,8 @@ const Map<String, Tour> tabTours = {
       TourStep(
         anchor: 'tour-invoices-sentences',
         title: 'Sending, due days, numbers',
-        body: 'How invoices are emailed, when they are due, and how their numbers start.',
+        body:
+            'How invoices are emailed, when they are due, and how their numbers start.',
       ),
     ],
   ),
@@ -825,6 +827,43 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  // Company (design 175): each tab has its own short walkthrough.
+  'company/Ownership': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-company-tabs',
+        title: 'Company',
+        body: 'Who owns what, who owns each step, and the figures.',
+      ),
+      TourStep(
+        anchor: 'company-ownership-search',
+        title: 'Find a person',
+        body: 'People are drawn under who they report to. Set it from the row.',
+      ),
+    ],
+  ),
+  'company/Processes': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'company-steps',
+        title: 'Step owners',
+        body:
+            'Lead to review, with who owns each. Tap a step to set its owner.',
+      ),
+    ],
+  ),
+  'company/KPIs': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'company-kpi-search',
+        title: 'Figures',
+        body: 'Each person over the last 30 days, then the branch goals.',
+      ),
+    ],
+  ),
   'training': Tour(
     version: 1,
     steps: [
@@ -861,7 +900,8 @@ const Map<String, Tour> tabTours = {
       TourStep(
         anchor: 'tour-guidelines-tabs',
         title: 'Guidelines',
-        body: 'Guidelines to read and, if you can edit, Settings to write them.',
+        body:
+            'Guidelines to read and, if you can edit, Settings to write them.',
       ),
     ],
   ),

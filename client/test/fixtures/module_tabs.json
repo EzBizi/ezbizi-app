@@ -47,6 +47,15 @@
             "parent": null,
             "tabs": []
         },
+        "company": {
+            "label": "Company",
+            "parent": null,
+            "tabs": [
+                "Ownership",
+                "Processes",
+                "KPIs"
+            ]
+        },
         "customer_experience": {
             "label": "Customer Experience",
             "parent": null,
@@ -403,6 +412,10 @@
         "companies.delete",
         "companies.edit",
         "companies.view",
+        "company.kpis.view",
+        "company.ownership.view",
+        "company.processes.view",
+        "company.view",
         "customer_experience.complaints.manage",
         "customer_experience.complaints.view",
         "customer_experience.view",
