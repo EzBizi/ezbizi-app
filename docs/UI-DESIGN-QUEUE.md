@@ -5288,10 +5288,10 @@ Jose's Monday list; Jose 11-03: "B, everything we do is for ezbizi" (a screen, n
 
 For CX (ba397315f). Recommended 1 + phone 4: a Posts to approve (N) tab, list + Google preview, Approve / Edit / Disapprove, per-listing Publish without approval switch (off).
 
-### 177 · Field recordings: summary + transcript, Record on the job — **sent 2026-11-03** (`docs/previews/field-recording-transcript-layouts.html`)
+### 177 · Field recordings: summary + transcript, Record on the job — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend for everything as usual") (`docs/previews/field-recording-transcript-layouts.html`)
 
 For Field (c60be2fc) and Jobs. Jose's "AI Tech Recorder & Summary". Recommended 1 + phone 4: labelled summary sections with copy, transcript with clock times; Record pill in the job header (red ● 00:12 · Stop while recording), first start asks "I told the customer" in a SidePanel.
 
-### 178 · Task Board: Calendar, Timeline, Number and Formula columns — **sent 2026-11-03** (`docs/previews/task-board-calendar-timeline-layouts.html`)
+### 178 · Task Board: Calendar, Timeline, Number and Formula columns — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend for everything as usual") (`docs/previews/task-board-calendar-timeline-layouts.html`)
 
 For Task Board (Monday survey 131037c3a; A-1 off Monday by Nov 10). Recommended 1 + phone 4: Calendar (Month|Week, drag to re-date, no-date tray) and Timeline (range column + Gantt, drag/resize, today line, Week|Month|Quarter) join the existing Table|Kanban|Cards switcher; Number gets Plain|Currency|% and a Formula column is built in the column settings SidePanel, with group-footer sums. Phone: Calendar is an agenda list, Timeline scrolls sideways.
