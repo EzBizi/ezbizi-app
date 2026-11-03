@@ -28,4 +28,9 @@ segments, _ = model.transcribe(
     initial_prompt="Thank you for calling A-1 Chimney. Chimney sweep, fireplace, flue, "
     "chimney inspection, level 2 inspection, liner, crown, damper.",
 )
-print(" ".join(s.text.strip() for s in segments).strip())
+if "--json" in sys.argv:
+    # Segments with times, for Field's one-minute chunks (2026-11-03).
+    import json
+    print(json.dumps([{"start_s": round(s.start, 2), "end_s": round(s.end, 2), "text": s.text.strip()} for s in segments if s.text.strip()]))
+else:
+    print(" ".join(s.text.strip() for s in segments).strip())
