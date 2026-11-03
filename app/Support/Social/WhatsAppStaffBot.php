@@ -159,7 +159,7 @@ final class WhatsAppStaffBot
             return;
         }
 
-        $techMode = $viewer !== null && GrokCli::configured()
+        $techMode = $viewer !== null && GrokCli::configured() && $viewer->hasPermission(StaffAnswer::PARTS)
             && app(TechAssistant::class)->enabled(Organization::findOrFail($number->organization_id));
 
         // A photo captioned results or ACE: a lead source's results (WhatsAppResults).
@@ -643,7 +643,7 @@ final class WhatsAppStaffBot
             // the webhook must answer Meta at once (Jose, 2026-10-12).
             // Staff only: strangers have the intake, and each ask is an xAI call.
             if ($viewer !== null && GrokCli::configured() && mb_strlen($query) > 3) {
-            $this->typing($number, $to);
+                $this->typing($number, $to);
                 AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer?->getKey(), $query);
 
                 return;

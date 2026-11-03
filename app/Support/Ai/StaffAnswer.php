@@ -28,6 +28,8 @@ final class StaffAnswer
 
     public const APP = 'app';
 
+    public const PARTS = 'ai_assistance.parts.view';
+
     /** A parts or manuals question, and not a question about the business's own data. */
     public static function isPartsQuestion(string $text): bool
     {
@@ -59,7 +61,9 @@ final class StaffAnswer
         $failed = null;
 
         $tech = app(TechAssistant::class);
-        if (GrokCli::configured() && $tech->enabled($organization) && ($files !== [] || self::isPartsQuestion($question))) {
+        // Parts answers for whoever holds the Parts tab (Jose, 2026-11-03: "Yes only
+        // Technicians" - which roles is each organization's own tick).
+        if (GrokCli::configured() && $tech->enabled($organization) && $user->hasPermission(self::PARTS) && ($files !== [] || self::isPartsQuestion($question))) {
             try {
                 $result = $tech->answer($user, $organization, $question, $channel, $files, min($files === [] ? 60 : 120, max(10, $left() - 5)));
                 if ($result !== null) {
