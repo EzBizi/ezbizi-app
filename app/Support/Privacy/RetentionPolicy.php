@@ -80,7 +80,7 @@ final class RetentionPolicy
      * (created_at), `a1leads_reviews` (updated_at), `ai_eval_cases` (created_at), `ai_traces` (created_at),
      * `airtable_record_versions` (seen_at), `airtable_records`
      * (fetched_at), `alerts` (created_at), `assistant_answers` (created_at), `assistant_jobs` (updated_at), `automation_events` (occurred_at), `call_log_days` (created_at),
-     * `call_report_conversions` (created_at), `call_report_labels` (created_at),
+     * `call_report_conversions` (created_at), `call_report_labels` (created_at), `call_report_overrides` (created_at),
      * `call_report_person_reviews` (created_at),
      * `call_report_scores` (created_at),
      * `call_report_transcripts` (created_at), `call_type_corrections` (created_at), `client_issues` (created_at),

@@ -1467,6 +1467,8 @@ Route::prefix('v1')
             Route::put('reports/experimental/people/tag', [ExperimentalCallReportController::class, 'tag'])->middleware('permission:reports.handles');
             Route::put('reports/experimental/sources', [ExperimentalCallReportController::class, 'sources']);
             Route::post('reports/experimental/calls/{call}/convert', [ExperimentalCallReportController::class, 'convert'])->middleware('permission:reports.handles');
+            Route::put('reports/experimental/calls/{call}/override', [ExperimentalCallReportController::class, 'override'])->middleware('permission:reports.handles');
+            Route::delete('reports/experimental/calls/{call}/override', [ExperimentalCallReportController::class, 'revert'])->middleware('permission:reports.handles');
         });
 
         /*

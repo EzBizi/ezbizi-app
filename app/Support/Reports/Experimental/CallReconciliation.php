@@ -2,6 +2,7 @@
 
 namespace App\Support\Reports\Experimental;
 
+use App\Models\CallReportOverride;
 use App\Support\Leads\CallTypeCorrections;
 use App\Support\Phone\NumberNames;
 use App\Support\Tenancy\TenantContext;
@@ -77,6 +78,9 @@ final class CallReconciliation
         // Jose, 2026-11-03, asked whether these are one person: "yes they are the same person".
         'Jay Ticoit' => 'Dieuve Ticoit',
     ];
+
+    /** @var array<string, array<string, array{value: string, by: ?string}>> call id => field => override */
+    private array $overrides = [];
 
     private function canonical(?string $name): ?string
     {
@@ -392,6 +396,8 @@ final class CallReconciliation
                 'booked' => $this->isBooked($call, $bookedPhones, $converted),
                 'existing_job' => $this->isBooked($call, $bookedPhones, $converted) ? null : $existingJob($call),
                 'converted' => isset($converted[(string) ($call['id'] ?? '')]),
+                // Who set the client or the booking by hand, per field.
+                'set_by' => array_map(fn ($o) => $o['by'], $this->overrides[(string) ($call['id'] ?? '')] ?? []) ?: null,
                 'talk_seconds' => $call['talk_seconds'] ?? null,
                 'recording_id' => $call['recording_id'] ?? null,
                 'answered_by' => $this->canonical($call['answered_by'] ?? null),
@@ -504,6 +510,10 @@ final class CallReconciliation
      */
     private function isBooked(array $call, array $bookedPhones, array $converted): bool
     {
+        if (($set = $this->overrides[(string) ($call['id'] ?? '')]['booking'] ?? null) !== null) {
+            return $set['value'] === 'booked';
+        }
+
         if (isset($converted[(string) ($call['id'] ?? '')])) {
             return true;
         }
@@ -527,10 +537,16 @@ final class CallReconciliation
             return $calls;
         }
 
-        $fixes = CallTypeCorrections::forCalls(array_values(array_filter(array_map(fn ($c) => isset($c['id']) ? (string) $c['id'] : null, $calls))));
+        $ids = array_values(array_filter(array_map(fn ($c) => isset($c['id']) ? (string) $c['id'] : null, $calls)));
+        $fixes = CallTypeCorrections::forCalls($ids);
+        // Set by hand on the report (Jose, 2026-11-03, for Trey): wins over
+        // Leads' read and Workiz, for the client and for the booking.
+        $this->overrides = CallReportOverride::forCalls($ids);
 
         return array_map(function (array $call) use ($fixes) {
-            $fix = $fixes[(string) ($call['id'] ?? '')] ?? null;
+            $set = $this->overrides[(string) ($call['id'] ?? '')]['client'] ?? null;
+            $fix = $set === null ? ($fixes[(string) ($call['id'] ?? '')] ?? null)
+                : ['corrected_type' => $set['value'], 'reason' => 'Set by '.($set['by'] ?? 'someone'), 'evidence' => null, 'decided_by' => $set['by'] ?? 'someone'];
             $queue = match ($fix['corrected_type'] ?? null) {
                 'new' => RingCentralCallLog::NEW_CLIENT_QUEUE,
                 'existing' => RingCentralCallLog::EXISTING_CLIENT_QUEUE,
