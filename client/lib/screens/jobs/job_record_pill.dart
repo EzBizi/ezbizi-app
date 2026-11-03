@@ -172,9 +172,7 @@ class _ConsentPanelState extends State<_ConsentPanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'This records the sound around your phone: you, and anyone '
-            'near you. Field managers can listen to it. It is deleted '
-            'after 90 days unless somebody keeps it.',
+            fieldRecordingDisclosure,
             key: const ValueKey('job-record-disclosure'),
             style: small,
           ),
