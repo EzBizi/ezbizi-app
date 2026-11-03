@@ -782,8 +782,19 @@ class _GlanceBody extends StatelessWidget {
         // not know what the box holds.
         if (notes.isEmpty)
           const DashboardNote('Nothing to show.')
-        else
-          for (final note in notes) DashboardNote(note),
+        else ...[
+          // 54 near-identical sentences buried the box: show three, keep the
+          // rest one tap away so none is dropped.
+          for (final note in notes.take(3)) DashboardNote(note),
+          if (notes.length > 3)
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text('${notes.length - 3} more'),
+              children: [
+                for (final note in notes.skip(3)) DashboardNote(note),
+              ],
+            ),
+        ],
       ];
     }
 

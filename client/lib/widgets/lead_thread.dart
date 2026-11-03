@@ -2966,6 +2966,8 @@ String leadTitle(Map<String, dynamic> lead) {
   if (customer != null && customer.isNotEmpty) return customer;
   final phone = lead['phone'] as String?;
   if (phone != null && phone.isNotEmpty) return formatPhoneNumber(phone);
+  final email = (lead['email'] as String?)?.trim();
+  if (email != null && email.isNotEmpty) return email;
 
   /*
    * A booking is not a nameless enquiry, it is an appointment.
