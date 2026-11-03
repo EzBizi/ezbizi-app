@@ -3,6 +3,7 @@
 namespace Tests\Feature\Reports;
 
 use App\Console\Commands\ScoreReportCalls;
+use App\Models\CallReportOverride;
 use App\Models\CallReportPersonReview;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
@@ -49,6 +50,9 @@ class ScoringReportTest extends TestCase
         });
 
         $user = $this->userWithRole($t, 'Lead Manager', ['reports.scoring.view']);
+        // Design 179: what was set by hand on a call rides along.
+        $this->inTenant($t['org'], fn () => CallReportOverride::query()->create(['organization_id' => $t['org']->id,
+            'call_id' => 'c4', 'field' => 'booking', 'value' => 'booked', 'set_by' => $user->id]));
         $get = fn (string $q) => $this->signedInAs($user)
             ->getJson('/api/v1/reports/scoring/calls?person=Ada&from=2026-10-13&to=2026-10-14'.$q)->assertOk()->json('data');
 
@@ -58,6 +62,8 @@ class ScoringReportTest extends TestCase
         $this->assertSame([9, 7, 6, 3], array_column($latest, 'score'));
         $this->assertSame([['latest', 'best'], ['latest'], ['latest'], ['worst']], array_column($latest, 'tags'));
         $this->assertSame('rec-c4', $latest[0]['recording_id']);
+        $this->assertSame(['booking' => ['value' => 'booked', 'by' => $user->name]], $latest[0]['set']);
+        $this->assertNull($latest[1]['set']);
 
         $this->assertSame(['c1'], array_column($get('&q=214-555-0001'), 'call_id'), 'by number, only Ada\'s');
         $this->assertSame(['c3'], array_column($get('&q=gas'), 'call_id'), 'by words');

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Console\Commands\LabelReportCalls;
 use App\Console\Commands\ScoreReportCalls;
+use App\Models\CallReportOverride;
 use App\Models\CallReportPersonReview;
 use App\Models\ReportScoringWeight;
 use App\Models\WorkizCall;
@@ -101,7 +102,9 @@ class ScoringReportController extends Controller
                 $calls[$r->call_id]['tags'][] = $tag;
             }
         }
-        $calls = array_values($calls);
+        // What was set by hand on the call (design 179): call id => field => value, by.
+        $set = CallReportOverride::forCalls(array_keys($calls));
+        $calls = array_map(fn ($c) => $c + ['set' => $set[$c['call_id']] ?? null], array_values($calls));
 
         return response()->json(['data' => $calls]);
     }

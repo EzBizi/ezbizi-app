@@ -9,6 +9,7 @@ import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/ai_mark.dart';
+import '../../widgets/call_correction.dart';
 import '../../widgets/call_text.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
@@ -2586,7 +2587,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     // A caller who pressed the other key is shown as what they were, marked
     // ↺ with what was pressed and why (Leads' correction, 2026-10-16).
     final fix = (call['reclassified'] as Map?)?.cast<String, dynamic>();
-    final mark = fix == null ? '' : ' ↺';
+    // Design 179 (Jose, 2026-11-03): a value set by hand carries ✎ and says
+    // who set it; Leads' own reclassification keeps ↺.
+    final setBy = (call['set_by'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final mark = setBy['client'] != null
+        ? ' ✎'
+        : fix == null
+        ? ''
+        : ' ↺';
     final pill = call['queue'] == _newQueue
         ? StatusPill('New$mark', tone: Tone.info)
         : call['queue'] == _existingQueue
@@ -2596,10 +2604,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? pill
         : Tooltip(
             key: ValueKey('reclassified-$callId'),
-            message:
-                'Re-classified: pressed '
-                '${fix['pressed'] == _newQueue ? 'new' : 'existing'}'
-                '${fix['reason'] == null ? '' : ' · ${fix['reason']}'}',
+            message: setBy['client'] != null
+                ? 'Set by ${setBy['client']}'
+                : 'Re-classified: pressed '
+                      '${fix['pressed'] == _newQueue ? 'new' : 'existing'}'
+                      '${fix['reason'] == null ? '' : ' · ${fix['reason']}'}',
             child: pill,
           );
     final result = missed
@@ -2611,7 +2620,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           )
         : call['queue'] == _newQueue
         ? call['booked'] == true
-              ? const StatusPill('Booked', tone: Tone.ok)
+              ? _setMark(
+                  setBy['booking'],
+                  StatusPill(
+                    setBy['booking'] == null ? 'Booked' : 'Booked ✎',
+                    tone: Tone.ok,
+                  ),
+                )
               // The caller already had an open job (Jose, 2026-10-13): a
               // reschedule or a question, not a lost booking.
               : call['existing_job'] is Map
@@ -2624,7 +2639,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                         : 'Existing job',
                   ),
                 )
-              : const StatusPill('Not booked', tone: Tone.caution)
+              : _setMark(
+                  setBy['booking'],
+                  StatusPill(
+                    setBy['booking'] == null ? 'Not booked' : 'Not booked ✎',
+                    tone: Tone.caution,
+                  ),
+                )
         : StatusPill(outbound ? 'Connected' : 'Answered');
 
     final small = theme.textTheme.bodySmall?.copyWith(color: muted);
@@ -2940,7 +2961,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       );
     }
 
-    final convertible = widget.canEdit && _unbooked([call]).isNotEmpty;
+    final correctable = widget.canEdit && !outbound;
 
     return Wrap(
       spacing: 32,
@@ -2975,15 +2996,35 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               ],
               const Divider(height: 16),
               numbers,
-              if (convertible) ...[
-                const SizedBox(height: 6),
-                OutlinedButton(
-                  key: ValueKey('convert-${call['id']}'),
-                  onPressed: _converting.contains('${call['id']}')
-                      ? null
-                      : () => _convert(call),
-                  child: const Text('Convert to booked'),
-                ),
+              if (correctable) ...[
+                const SizedBox(height: 10),
+                for (final (field, label, values, current) in [
+                  (
+                    'client',
+                    'Client',
+                    CallCorrection.client,
+                    call['queue'] == _newQueue ? 'new' : 'existing',
+                  ),
+                  (
+                    'booking',
+                    'Booking',
+                    CallCorrection.booking,
+                    call['booked'] == true ? 'booked' : 'not_booked',
+                  ),
+                ]) ...[
+                  CallCorrection(
+                    api: widget.api,
+                    callId: '${call['id']}',
+                    field: field,
+                    label: label,
+                    values: values,
+                    current: current,
+                    setBy: (call['set_by'] as Map?)?[field],
+                    onSaved: _load,
+                    onError: (m) => setState(() => _error = m),
+                  ),
+                  const SizedBox(height: 6),
+                ],
               ],
             ],
           ),
@@ -2991,6 +3032,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ],
     );
   }
+
+  /// A pill set by hand, with who set it on hover (design 179).
+  Widget _setMark(Object? by, Widget pill) =>
+      by == null ? pill : Tooltip(message: 'Set by $by', child: pill);
 
   /// A reason's words, from either AI's list.
   String? _labelName(String? label) => label == null

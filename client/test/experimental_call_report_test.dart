@@ -750,10 +750,55 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('How much is a sweep?'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('convert-c1')));
+    // Design 179 (Jose, 2026-11-03, for Trey): the details set the booking
+    // and the client by hand.
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('set-booking-c1')),
+        matching: find.text('Booked'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('set-client-c1')),
+        matching: find.text('Existing'),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(posted, ['/api/v1/reports/experimental/calls/c1/convert']);
+    expect(posted, [
+      'PUT /api/v1/reports/experimental/calls/c1/override '
+          '{"field":"booking","value":"booked"}',
+      'PUT /api/v1/reports/experimental/calls/c1/override '
+          '{"field":"client","value":"existing"}',
+    ]);
+  });
+
+  testWidgets('a value set by hand says who, and goes back to automatic', (
+    tester,
+  ) async {
+    final set = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    final call = (set['calls'] as List).firstWhere((c) => c['id'] == 'c1');
+    call['set_by'] = {'booking': 'Trey Brannan'};
+    call['booked'] = true;
+    final posted = <String>[];
+    await _pump(tester, width: 1400, posted: posted, report: () => set);
+
+    await tester.tap(find.textContaining('Calls').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Booked ✎'), findsWidgets);
+    expect(find.byTooltip('Set by Trey Brannan'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('call-details-c1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Set by Trey ·'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('automatic-booking-c1')));
+    await tester.pumpAndSettle();
+
+    expect(posted, [
+      'DELETE /api/v1/reports/experimental/calls/c1/override field=booking',
+    ]);
   });
 
   testWidgets('Not booked counts reasons per AI, and shows both on a call', (
@@ -1360,6 +1405,13 @@ Future<void> _pump(
       if (request.url.path.endsWith('/reports/experimental/calls')) {
         asked?.add(request.url.queryParameters);
         return _json(report?.call() ?? _report, 200);
+      }
+      if (request.url.path.endsWith('/override')) {
+        posted?.add(
+          '${request.method} ${request.url.path} '
+          '${request.method == 'DELETE' ? request.url.query : request.body}',
+        );
+        return _json({'data': {}}, 200);
       }
       if (request.method == 'POST' &&
           (request.url.path.endsWith('/convert') ||
