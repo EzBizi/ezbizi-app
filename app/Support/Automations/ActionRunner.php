@@ -3753,6 +3753,9 @@ class ActionRunner
         $branches = $automation->scope_type === null ? null
             : ViewScope::forStoredAutomationScope($creator, $automation->scope_type, $automation->scope_id)->franchiseIds();
         $text = app(DailyTexts::class)->render($kind, $org, $day, $branches);
+        if (trim($text) === '') {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nothing to report today, so nothing was sent.'];
+        }
         $title = DailyTexts::KINDS[$kind].' · '.$day->format('M j');
 
         // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
