@@ -256,14 +256,18 @@ const Map<String, Tour> assistTours = {
     ],
   ),
   'email/Settings': Tour(
-    version: 1,
+    // 2: personal Google sign-in retired (2026-11-03).
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-email-add-inbox',
         title: 'Add an inbox',
         body:
             'It belongs to the company you are looking at when you add it. '
+            'A company Google address connects through Google Workspace; a '
+            'personal @gmail.com through IMAP with a Google app password. '
             'Each role is then given the ones it should read.',
+        since: 2,
       ),
       TourStep(
         anchor: 'email-settings-list',
