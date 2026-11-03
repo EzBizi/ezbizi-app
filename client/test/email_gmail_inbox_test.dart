@@ -144,7 +144,8 @@ void main() {
     final server = _Server();
     await _pump(tester, server);
 
-    expect(server.lists.first.queryParameters['category'], 'primary');
+    // All is the default tab: the whole inbox, no category (Jose, 2026-11-03).
+    expect(server.lists.first.queryParameters.containsKey('category'), isFalse);
     expect(server.lists.first.queryParameters['folder'], 'inbox');
     expect(
       find.byKey(const ValueKey('email-category-count-people')),

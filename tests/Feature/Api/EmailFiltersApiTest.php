@@ -109,8 +109,12 @@ class EmailFiltersApiTest extends TestCase
         FakeMailboxReader::$page     = new MessagePage([$this->mail('wz', 'notifications@mg.workiz.com'), $this->mail('bob', 'bob@example.com')]);
         FakeMailboxReader::$searches = [];
 
-        $inbox = collect($this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox')->assertOk()->json('data'))->pluck('subject');
-        $this->assertSame(['bob'], $inbox->all());
+        $primary = collect($this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox?category=primary')->assertOk()->json('data'))->pluck('subject');
+        $this->assertSame(['bob'], $primary->all());
+
+        // The All tab (no category) is the whole inbox, folder mail included (Jose, 11-03).
+        $all = collect($this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox')->assertOk()->json('data'))->pluck('subject');
+        $this->assertEqualsCanonicalizing(['wz', 'bob'], $all->all());
 
         $folder = collect($this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox?filter='.$id)->assertOk()->json('data'))->pluck('subject');
         $this->assertContains('wz', $folder->all());
