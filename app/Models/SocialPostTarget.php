@@ -39,6 +39,12 @@ class SocialPostTarget extends Model implements StatesRetention
     /** Published, then taken down from the network from EzBizi. */
     public const STATUS_REMOVED = 'removed';
 
+    /** A weekly AI post on a Business Profile listing, waiting for a person's Approve (Jose, 2026-11-03). */
+    public const STATUS_AWAITING_APPROVAL = 'awaiting_approval';
+
+    /** Turned down in the approval queue; never sent. */
+    public const STATUS_DISAPPROVED = 'disapproved';
+
     public static function retention(): RetentionPolicy
     {
         return RetentionPolicy::withParent(

@@ -1064,6 +1064,11 @@ Route::prefix('v1')
         Route::get('business-profile/locations/{location}/search-terms', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'searchTerms']);
         // Lets a rule publish review replies on this listing (A1 Leads takeover, 2026-10-20). Off by default.
         Route::put('business-profile/locations/{location}/auto-reply', \App\Http\Controllers\Api\BusinessProfileAutoReplyController::class);
+        // Weekly AI posts waiting for Approve / Disapprove (Jose, 2026-11-03).
+        Route::get('business-profile/post-queue', [\App\Http\Controllers\Api\BusinessProfilePostQueueController::class, 'index']);
+        Route::post('business-profile/post-queue/{target}/approve', [\App\Http\Controllers\Api\BusinessProfilePostQueueController::class, 'approve']);
+        Route::post('business-profile/post-queue/{target}/disapprove', [\App\Http\Controllers\Api\BusinessProfilePostQueueController::class, 'disapprove']);
+        Route::put('business-profile/locations/{location}/auto-post', [\App\Http\Controllers\Api\BusinessProfilePostQueueController::class, 'autoPost']);
         // Media, services, phone check (A1 Leads takeover, design 154). Google writes stay behind the write switch.
         Route::get('business-profile/phone-check', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'phoneCheck']);
         Route::get('business-profile/whatsapp-links', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'whatsappLinks']);
