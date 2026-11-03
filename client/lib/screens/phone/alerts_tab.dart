@@ -175,12 +175,16 @@ class _AlertsTabState extends State<AlertsTab> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                StatusPill(
-                  done == people.length
-                      ? 'Dismissed by all ${people.length}'
-                      : 'Dismissed by $done of ${people.length}',
-                  tone: done == people.length ? Tone.ok : Tone.caution,
-                ),
+                // Sent to nobody: "Dismissed by all 0" in green read as done.
+                if (people.isEmpty)
+                  const StatusPill('Sent to nobody', tone: Tone.neutral)
+                else
+                  StatusPill(
+                    done == people.length
+                        ? 'Dismissed by all ${people.length}'
+                        : 'Dismissed by $done of ${people.length}',
+                    tone: done == people.length ? Tone.ok : Tone.caution,
+                  ),
               ],
             ),
             Text(
