@@ -98,6 +98,9 @@ class CustomersController extends Controller
             // everything here is already readable. A filter that looked like a
             // permission would be the more dangerous kind of confusion.
             ->when($request->query('franchise_id'), fn ($q, $id) => $q->where('owning_franchise_id', $id))
+            // One tag, any spelling of its case (Jose, 2026-11-03).
+            ->when($request->query('tag'), fn ($q, $tag) => $q->whereRaw(
+                "JSON_SEARCH(LOWER(customers.tags), 'one', ?) IS NOT NULL", [addcslashes(mb_strtolower(trim((string) $tag)), '%_\\')]))
             ->when($request->query('search'), function ($q, $term) {
                 $q->where(function ($inner) use ($term) {
                     $inner->where('name', 'like', "%{$term}%")
@@ -524,6 +527,9 @@ class CustomersController extends Controller
             'postal_code'   => ['nullable', 'string', 'max:12'],
             'notes'         => ['nullable', 'string', 'max:5000'],
             'is_active'     => ['boolean'],
+            // Newsletters and automations pick people by these (Jose, 2026-11-03).
+            'tags'          => ['nullable', 'array', 'max:20'],
+            'tags.*'        => ['nullable', 'string', 'max:40'],
         ];
     }
 
@@ -572,6 +578,7 @@ class CustomersController extends Controller
             // 2026-09-23, the day of the import. Named for what it is so the
             // column heading cannot claim more than the value knows.
             'created_at' => $customer->created_at?->toIso8601String(),
+            'tags' => $customer->tags ?? [],
         ];
 
         if (! $detailed) {

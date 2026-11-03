@@ -335,6 +335,15 @@ class PreferenceRegistry
                 'help' => 'Drag the line beside the list of people to change it.',
             ],
 
+            // Jobs › Estimates as a list or a board (design 172, Jose 2026-11-03).
+            'jobs.estimates.view' => [
+                'label' => 'Estimates view',
+                'type' => 'enum',
+                'default' => 'list',
+                'options' => ['list', 'board'],
+                'help' => 'Switch with List | Board on the Estimates tab.',
+            ],
+
             /*
              * Which part of the business you are looking at (§3 roll-ups).
              *

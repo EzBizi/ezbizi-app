@@ -44,7 +44,10 @@ class SyncWorkizRecords extends Command
 
     public function handle(TenantContext $tenant): int
     {
-        $types = $this->option('type') ?: WorkizRecords::TYPES;
+        // Account lists rarely change: read them once an hour, not every ten
+        // minutes (they were most of the rate-limit refusals, 11-03).
+        $types = $this->option('type') ?: (now()->minute < 10 ? WorkizRecords::TYPES
+            : array_values(array_diff(WorkizRecords::TYPES, WorkizRecords::LISTS)));
 
         if ($unknown = array_diff($types, WorkizRecords::TYPES)) {
             $this->error('Unknown type: '.implode(', ', $unknown).'.');

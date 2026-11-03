@@ -97,10 +97,27 @@ class SyncWorkizRecordsTest extends TestCase
         return $this->inTenant($tenant['org'], fn () => WorkizRecord::query()->where('type', $type)->first());
     }
 
+    /** 11-03: the account lists are read in the first ten minutes of the hour only, to stay under Workiz's rate limit. */
+    public function test_the_account_lists_are_read_once_an_hour(): void
+    {
+        $this->branch();
+        $this->fake();
+        $lists = fn () => Http::recorded(fn ($r) => preg_match('#/(jobTypes|adgroups|adGroups|tags|jobSubStatus|customfields|customFields)#', $r->url()))->count();
+
+        $this->travelTo(now()->setTime(9, 25));
+        $this->artisan('ezbizi:sync-workiz-records')->assertSuccessful();
+        $this->assertSame(0, $lists(), 'not at :25');
+
+        $this->travelTo(now()->setTime(10, 5));
+        $this->artisan('ezbizi:sync-workiz-records')->assertSuccessful();
+        $this->assertGreaterThan(0, $lists(), 'at :05');
+    }
+
     public function test_each_type_lands_with_the_columns_readers_filter_on_and_without_the_free_text(): void
     {
         [$tenant] = $this->branch();
         $this->fake();
+        $this->travelTo(now()->setTime(9, 5));
 
         $this->artisan('ezbizi:sync-workiz-records')->assertSuccessful();
 

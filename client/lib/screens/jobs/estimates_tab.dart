@@ -16,6 +16,7 @@ import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
+import 'estimate_board.dart';
 
 /// The word and tone of an estimate's status, as the chips, rows and panel
 /// say it.
@@ -55,6 +56,10 @@ class _EstimatesTabState extends State<EstimatesTab> {
   List<Map<String, dynamic>> _rows = const [];
   Map<String, int> _counts = const {};
   Map<String, Map<String, int>> _totals = const {};
+  Transitions _transitions = const {};
+
+  /// Bumped on every first-page load, so the board reloads with the list.
+  int _generation = 0;
 
   bool _loading = true;
   bool _fetching = false;
@@ -74,6 +79,22 @@ class _EstimatesTabState extends State<EstimatesTab> {
   final _openDirty = ValueNotifier<bool>(false);
 
   Me get _me => widget.session.me!;
+
+  /// List or Board, remembered for each person (design 172).
+  bool get _board => _me.preferences['jobs.estimates.view'] == 'board';
+
+  void _setBoard(bool board, {required bool wide}) {
+    widget.session.setPreference(
+      'jobs.estimates.view',
+      board ? 'board' : 'list',
+    );
+    // A phone's board shows one status at a time, never all of them.
+    if (board && !wide && _status == null) {
+      _setStatus('draft');
+    } else {
+      setState(() {});
+    }
+  }
 
   @override
   void initState() {
@@ -130,8 +151,11 @@ class _EstimatesTabState extends State<EstimatesTab> {
       _lastPage = meta?['last_page'] as int? ?? 1;
       _page = page;
 
+      _transitions = readTransitions(meta?['transitions']);
+
       // The header's figures come with the first page only.
       if (page == 1) {
+        _generation++;
         final counts = meta?['status_counts'];
         _counts = counts is Map
             ? {
@@ -232,7 +256,7 @@ class _EstimatesTabState extends State<EstimatesTab> {
                   ),
                 ),
               ),
-              _chips(context, wide: wide),
+              if (!(_board && wide)) _chips(context, wide: wide),
               _searchAndTotals(context, wide: wide),
             ],
           ),
@@ -287,11 +311,12 @@ class _EstimatesTabState extends State<EstimatesTab> {
 
     final counted = _counts.isNotEmpty;
     final chips = [
-      chip(
-        null,
-        'All',
-        count: counted ? _counts.values.fold<int>(0, (a, b) => a + b) : null,
-      ),
+      if (!_board)
+        chip(
+          null,
+          'All',
+          count: counted ? _counts.values.fold<int>(0, (a, b) => a + b) : null,
+        ),
       for (final s in _statuses)
         chip(
           s,
@@ -364,15 +389,33 @@ class _EstimatesTabState extends State<EstimatesTab> {
               onChanged: (_) => setState(() {}),
               onSubmitted: (_) => _load(),
               onClear: () {
-                            _search.clear();
-                            _load();
-                          },
+                _search.clear();
+                _load();
+              },
             ),
           ),
           for (final MapEntry(key: currency, value: t) in _totals.entries) ...[
             figure('Quoted', t['quoted'] ?? 0, currency),
             figure('Accepted', t['accepted'] ?? 0, currency, tone: Tone.ok),
           ],
+          SegmentedButton<bool>(
+            key: const ValueKey('estimate-view'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(
+                value: false,
+                icon: Icon(Icons.view_list, size: 18),
+                label: Text('List'),
+              ),
+              ButtonSegment(
+                value: true,
+                icon: Icon(Icons.view_kanban_outlined, size: 18),
+                label: Text('Board'),
+              ),
+            ],
+            selected: {_board},
+            onSelectionChanged: (v) => _setBoard(v.first, wide: wide),
+          ),
         ],
       ),
     );
@@ -380,6 +423,28 @@ class _EstimatesTabState extends State<EstimatesTab> {
 
   Widget _body(BuildContext context, {required bool wide}) {
     final open = _openId;
+
+    if (_board && wide) {
+      final board = EstimateBoard(
+        api: widget.api,
+        me: _me,
+        search: _term,
+        counts: _counts,
+        transitions: _transitions,
+        generation: _generation,
+        selectedId: open,
+        onOpen: _open,
+        onMoved: _load,
+      );
+      if (open == null) return board;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: board),
+          SizedBox(width: 440, child: _panel(open, inPlace: false)),
+        ],
+      );
+    }
 
     if (_rows.isEmpty && open == null) {
       // The first one starts here too, not only from the header (UI review,
@@ -422,6 +487,30 @@ class _EstimatesTabState extends State<EstimatesTab> {
     // no day or letter they are honestly divided by.
     final groups = [RowGroup(heading: '', rows: _rows)];
     final footer = _page < _lastPage ? _loadMore() : null;
+
+    if (!wide && _board) {
+      return ListView(
+        key: const ValueKey('estimate-board-phone'),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          for (final row in _rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: EstimateCard(
+                row: row,
+                me: _me,
+                onTap: () => _open(_id(row)),
+                trailing: TextButton(
+                  key: ValueKey('estimate-move-to-${_id(row)}'),
+                  onPressed: () => _moveTo(row),
+                  child: const Text('Move to ▾'),
+                ),
+              ),
+            ),
+          ?footer,
+        ],
+      );
+    }
 
     if (!wide) {
       return GroupedList<Map<String, dynamic>>(
@@ -472,6 +561,24 @@ class _EstimatesTabState extends State<EstimatesTab> {
         ],
       ),
     );
+  }
+
+  Future<void> _moveTo(Map<String, dynamic> row) async {
+    final to = await moveSheet(
+      context,
+      _customer(row),
+      _transitions['${row['status']}'] ?? const [],
+    );
+    if (to == null || !mounted) return;
+    final reason = await moveEstimate(widget.api, _id(row), to);
+    if (!mounted) return;
+    if (reason != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(reason)));
+      return;
+    }
+    _load();
   }
 
   Widget _loadMore() => Padding(

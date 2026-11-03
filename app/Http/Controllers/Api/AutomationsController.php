@@ -599,6 +599,9 @@ class AutomationsController extends Controller
                     ['key' => 'changed', 'label' => 'changed'],
                     ['key' => 'changed_to', 'label' => 'changed to'],
                     ['key' => 'changed_from', 'label' => 'changed from'],
+                    ['key' => 'has_tag', 'label' => 'has the tag'],
+                    ['key' => 'not_has_tag', 'label' => 'does not have the tag'],
+                    ['key' => 'tag_added', 'label' => 'got the tag'],
                 ],
                 // The vocabulary POST /automations accepts. Anything not here is
                 // declared intent, not a usable action.

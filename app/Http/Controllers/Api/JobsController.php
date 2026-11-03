@@ -8,6 +8,7 @@ use App\Models\InspectionReport;
 use App\Models\InventoryIssueLine;
 use App\Models\Job;
 use App\Models\JobLine;
+use App\Models\JobNote;
 use App\Models\ServiceArea;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
@@ -16,11 +17,15 @@ use App\Support\Jobs\EarnedStatuses;
 use App\Support\Jobs\WorkizExtras;
 use App\Support\Jobs\WorkizMoney;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -49,7 +54,7 @@ class JobsController extends Controller
      * Two different answers for two different ids is an existence oracle — it
      * tells a caller which ids are real somewhere else on the platform.
      */
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    private function existsInTenant(string $table): Exists
     {
         return Rule::exists($table, 'id')
             ->where('organization_id', $this->tenant->idOrFail());
@@ -60,16 +65,18 @@ class JobsController extends Controller
 
     // Workiz's money in its mirror row: dollars as JSON numbers, and the due
     // date as a naive 'Y-m-d 00:00:00' wall date. See WorkizMoney.
-    private const DUE    = "CAST(JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobAmountDue')) AS DECIMAL(12,2))";
-    private const TOTAL  = "CAST(JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobTotalPrice')) AS DECIMAL(12,2))";
+    private const DUE = "CAST(JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobAmountDue')) AS DECIMAL(12,2))";
+
+    private const TOTAL = "CAST(JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobTotalPrice')) AS DECIMAL(12,2))";
+
     private const DUE_ON = "LEFT(JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.PaymentDueDate')), 10)";
 
     /** WorkizMoney::state(), in SQL, plus `overdue`, which takes the reader's today. */
     private const MONEY_STATES = [
-        'credit'  => self::DUE.' < 0',
-        'paid'    => self::TOTAL.' > 0 AND '.self::DUE.' = 0',
+        'credit' => self::DUE.' < 0',
+        'paid' => self::TOTAL.' > 0 AND '.self::DUE.' = 0',
         'partial' => self::DUE.' > 0 AND '.self::DUE.' < '.self::TOTAL,
-        'unpaid'  => self::DUE.' > 0 AND '.self::DUE.' >= '.self::TOTAL,
+        'unpaid' => self::DUE.' > 0 AND '.self::DUE.' >= '.self::TOTAL,
         'overdue' => self::DUE.' > 0 AND '.self::DUE_ON.' < ?',
     ];
 
@@ -91,7 +98,7 @@ class JobsController extends Controller
         $money = $this->seesMoney($request);
 
         $request->validate([
-            'when'  => ['nullable', Rule::in(['upcoming', 'past', 'all'])],
+            'when' => ['nullable', Rule::in(['upcoming', 'past', 'all'])],
             // REQUIRED with a window, never defaulted. The server's own date is
             // UTC, and from about 8pm Eastern that is already tomorrow — a job
             // at 10pm tonight would file as Past while it is still ahead.
@@ -107,12 +114,18 @@ class JobsController extends Controller
             'review_reason.*' => ['string', 'max:100'],
             'external' => ['nullable', 'boolean'],
             'needs_second_visit' => ['nullable', 'boolean'],
+            // "How many jobs were created yesterday at Ace" (Jose, 2026-11-03, on
+            // WhatsApp): days in the asker's `timezone`, and one company's branches.
+            'created_from' => ['nullable', 'date_format:Y-m-d'],
+            'created_to' => ['nullable', 'date_format:Y-m-d'],
+            'company_id' => ['nullable', 'string', 'max:36'],
+            'timezone' => ['nullable', 'timezone:all'],
         ]);
 
         abort_if($request->filled('money') && ! $money, Response::HTTP_FORBIDDEN, self::MONEY_HIDDEN);
 
         // The current view, already narrowed to what §4 allows.
-        $reachable = collect(\App\Support\Scoping\ViewScope::forUser($request->user())->franchiseIds());
+        $reachable = collect(ViewScope::forUser($request->user())->franchiseIds());
 
         $when = $request->query('when', 'all');
 
@@ -173,6 +186,9 @@ class JobsController extends Controller
                 ->whereIn('franchise_id', $reachable)
                 ->when($where ? $request->query('franchise_id') : null, fn ($q, $id) => $q->where('franchise_id', $id))
                 ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
+                ->when($request->query('company_id'), fn ($q, $id) => $q->whereIn('franchise_id', Franchise::query()->where('company_id', $id)->select('id')))
+                ->when($request->query('created_from'), fn ($q, $d) => $q->where('created_at', '>=', CarbonImmutable::parse($d, self::zone($request))->startOfDay()->utc()))
+                ->when($request->query('created_to'), fn ($q, $d) => $q->where('created_at', '<', CarbonImmutable::parse($d, self::zone($request))->addDay()->startOfDay()->utc()))
                 ->when($status, fn ($q, $s) => $q->where('status', $s))
                 ->when((array) $request->query('tag', []), fn ($q, $tags) => $q->where(function ($any) use ($tags) {
                     foreach ($tags as $t) {
@@ -274,7 +290,7 @@ class JobsController extends Controller
             if ($midnight !== null) {
                 $meta['when_counts'] = [
                     'upcoming' => $filtered($status, 'upcoming')->count(),
-                    'past'     => $filtered($status, 'past')->count(),
+                    'past' => $filtered($status, 'past')->count(),
                 ];
             }
 
@@ -374,8 +390,8 @@ class JobsController extends Controller
         $meta['day_counts'] = (object) $dayCounts;
         // The statuses where the viewer is looking (branch, company, organization), so a branch-only
         // person gets them without reading organization settings (Jose's scope review, 2026-10-27).
-        $meta['statuses'] = array_values((array) app(\App\Support\Settings\SettingsResolver::class)
-            ->get('jobs.statuses', \App\Support\Scoping\ViewScope::forUser($request->user())->settingsScope()));
+        $meta['statuses'] = array_values((array) app(SettingsResolver::class)
+            ->get('jobs.statuses', ViewScope::forUser($request->user())->settingsScope()));
 
         return response()->json([
             'data' => collect($jobs->items())->map(fn (Job $j) => $this->present($j, money: $money)),
@@ -392,7 +408,7 @@ class JobsController extends Controller
             'data' => $this->present($job, detailed: true, money: $this->seesMoney($request)),
             // The pickers' words wherever a job is opened from, not only the list
             // (Project Management, a customer's jobs).
-            'meta' => ['labels' => $this->labelsIn(\App\Support\Scoping\ViewScope::forUser($request->user())->franchiseIds())],
+            'meta' => ['labels' => $this->labelsIn(ViewScope::forUser($request->user())->franchiseIds())],
         ]);
     }
 
@@ -411,7 +427,7 @@ class JobsController extends Controller
         abort_if(! $money && array_key_exists('amount_minor', $input), Response::HTTP_FORBIDDEN, self::MONEY_HIDDEN);
 
         $franchise = Franchise::findOrFail($input['franchise_id']);
-        $customer  = Customer::findOrFail($input['customer_id']);
+        $customer = Customer::findOrFail($input['customer_id']);
 
         $this->authorize('create', [Job::class, $franchise]);
 
@@ -432,13 +448,12 @@ class JobsController extends Controller
 
             $this->audit->log('job.created', $job, metadata: [
                 'franchise' => $franchise->name,
-                'customer'  => $customer->name,
-                'number'    => $job->number,
+                'customer' => $customer->name,
+                'number' => $job->number,
                 // Worth recording explicitly: this is the moment a franchise
                 // joins someone else's customer's "served by" list, and the
                 // derived list itself keeps no history of when.
-                'customer_owned_by_other_franchise' =>
-                    $customer->owning_franchise_id !== $franchise->getKey(),
+                'customer_owned_by_other_franchise' => $customer->owning_franchise_id !== $franchise->getKey(),
             ]);
 
             // Same transaction as the change (5.5 transactional outbox): roll
@@ -528,7 +543,7 @@ class JobsController extends Controller
             }
 
             $changed = $job->getDirty();
-            $before  = array_intersect_key($job->getOriginal(), $changed);
+            $before = array_intersect_key($job->getOriginal(), $changed);
 
             $this->audit->logChange('job.updated', $job);
 
@@ -546,21 +561,21 @@ class JobsController extends Controller
             if (array_key_exists('status', $changed)) {
                 $this->events->emit('job.status_changed', $job, [
                     'before' => ['status' => $before['status'] ?? null],
-                    'after'  => ['status' => $changed['status']],
+                    'after' => ['status' => $changed['status']],
                 ]);
             }
 
             if (array_key_exists('scheduled_for', $changed)) {
                 $this->events->emit('job.scheduled', $job, [
                     'before' => ['scheduled_for' => $before['scheduled_for'] ?? null],
-                    'after'  => ['scheduled_for' => $changed['scheduled_for']],
+                    'after' => ['scheduled_for' => $changed['scheduled_for']],
                 ]);
             }
 
             if (array_key_exists('assigned_role_id', $changed)) {
                 $this->events->emit('job.assigned', $job, [
                     'before' => ['assigned_role_id' => $before['assigned_role_id'] ?? null],
-                    'after'  => ['assigned_role_id' => $changed['assigned_role_id']],
+                    'after' => ['assigned_role_id' => $changed['assigned_role_id']],
                 ]);
             }
 
@@ -572,7 +587,7 @@ class JobsController extends Controller
                 && ! EarnedStatuses::isEarned((string) ($before['status'] ?? ''), $job->franchise)) {
                 $this->events->emit('job.completed', $job, [
                     'before' => ['status' => $before['status'] ?? null],
-                    'after'  => ['status' => $job->status],
+                    'after' => ['status' => $job->status],
                 ]);
             }
         });
@@ -674,24 +689,24 @@ class JobsController extends Controller
             'franchise_id' => $forUpdate
                 ? ['missing']
                 : ['required', 'uuid', $this->existsInTenant('franchises')],
-            'customer_id'  => $forUpdate
+            'customer_id' => $forUpdate
                 ? ['missing']
                 : ['required', 'uuid', $this->existsInTenant('customers')],
 
-            'title'            => [$required, 'string', 'max:200'],
-            'status'           => [$required, 'string', 'max:60'],
-            'description'      => ['nullable', 'string', 'max:10000'],
-            'scheduled_for'    => ['nullable', 'date'],
+            'title' => [$required, 'string', 'max:200'],
+            'status' => [$required, 'string', 'max:60'],
+            'description' => ['nullable', 'string', 'max:10000'],
+            'scheduled_for' => ['nullable', 'date'],
             'duration_minutes' => ['nullable', 'integer', 'min:1', 'max:100000'],
             // Minor units, integer (§7). Accepting a decimal here is how floats
             // get into money — the client sends cents or nothing.
-            'amount_minor'     => ['nullable', 'integer', 'min:0'],
+            'amount_minor' => ['nullable', 'integer', 'min:0'],
             // Currency is NOT accepted from the client. The column is NOT NULL
             // and v1 is single-currency (§7), so the only thing a caller could
             // send is either 'USD' or a mistake — and `nullable` against a NOT
             // NULL column turned an explicit null into a 500 rather than a 422.
             // It comes from the franchise below instead.
-            'currency'         => ['missing'],
+            'currency' => ['missing'],
 
             // Whose trade this is. Roles are organization-global (§4), so this
             // is scoped to the tenant, not the franchise.
@@ -706,15 +721,15 @@ class JobsController extends Controller
             'service_area_id' => ['nullable', 'uuid'],
 
             // The organization's own words (2026-10-20); Job tidies them.
-            'job_type'   => ['nullable', 'string', 'max:100'],
+            'job_type' => ['nullable', 'string', 'max:100'],
             'sub_status' => ['nullable', 'string', 'max:100'],
-            'tags'       => ['nullable', 'array', 'max:30'],
-            'tags.*'     => ['nullable', 'string', 'max:100'],
+            'tags' => ['nullable', 'array', 'max:30'],
+            'tags.*' => ['nullable', 'string', 'max:100'],
 
             // Project Management (Jose, 2026-10-22). A reason from the
             // organization's own list; the outside company's name, null for us.
             'review_reason' => ['nullable', 'string', Rule::in(array_column(
-                (array) app(\App\Support\Settings\SettingsResolver::class)->get('jobs.review_reasons', \App\Support\Scoping\ViewScope::forUser(request()->user())->settingsScope()), 'value'))],
+                (array) app(SettingsResolver::class)->get('jobs.review_reasons', ViewScope::forUser(request()->user())->settingsScope()), 'value'))],
             'external_company' => ['nullable', 'string', 'max:150'],
             'needs_second_visit' => ['sometimes', 'boolean'],
         ];
@@ -765,35 +780,34 @@ class JobsController extends Controller
         ]);
 
         $base = [
-            'id'     => $job->id,
+            'id' => $job->id,
             'number' => $job->number,
             // Workiz's own job number, its "Job #", beside EzBizi's (Jose,
             // 2026-09-29). Null for a job Workiz does not have.
             'workiz_job_number' => $job->workizJob?->serial_id,
-            'title'  => $job->title,
+            'title' => $job->title,
             'status' => $job->status,
             'status_label' => $job->franchise
                 ? Job::labelFor($job->status, $job->franchise)
                 : Job::humanizeStatus($job->status),
             'scheduled_for' => $job->scheduled_for?->toIso8601String(),
             'franchise' => [
-                'id'   => $job->franchise_id,
+                'id' => $job->franchise_id,
                 'name' => $job->franchise?->name,
             ],
             // Through the franchise: the list's Company column at organization
             // level (Jose, 2026-10-19).
             'company' => [
-                'id'   => $job->franchise?->company_id,
+                'id' => $job->franchise?->company_id,
                 'name' => $job->franchise?->company?->name,
             ],
             'customer' => [
-                'id'     => $job->customer_id,
-                'name'   => $job->customer?->name,
+                'id' => $job->customer_id,
+                'name' => $job->customer?->name,
                 'number' => $job->customer?->number,
                 // So a technician can see at a glance that this job is for
                 // another franchise's customer, before they change anything.
-                'owned_by_this_franchise' =>
-                    $job->customer?->owning_franchise_id === $job->franchise_id,
+                'owned_by_this_franchise' => $job->customer?->owning_franchise_id === $job->franchise_id,
             ],
             // A list row's view of Workiz's money; the detail carries all of it
             // below. Not on the detail: `$base + [...]` would keep this one.
@@ -801,9 +815,9 @@ class JobsController extends Controller
             // Only with the Financials toggle: ABSENT without it, never null,
             // so the client draws nothing rather than a zero.
             ...($money ? ['amount' => [
-                'minor'    => $job->amount_minor,
+                'minor' => $job->amount_minor,
                 'currency' => $job->currency,
-                'display'  => $job->amountForDisplay(),
+                'display' => $job->amountForDisplay(),
             ]] : []),
             // In the base payload too, not just detailed — the list needs it
             // for its own column.
@@ -814,9 +828,9 @@ class JobsController extends Controller
             'service_area' => $job->serviceArea
                 ? ['id' => $job->service_area_id, 'name' => $job->serviceArea->name]
                 : null,
-            'job_type'   => $job->job_type,
+            'job_type' => $job->job_type,
             'sub_status' => $job->sub_status,
-            'tags'       => $job->tags ?? [],
+            'tags' => $job->tags ?? [],
             // Who opened it and when (Jose, 2026-10-27): native, Workiz's for a mirrored job (backfilled).
             'created_at' => $job->created_at?->toIso8601String(),
             'created_by' => $job->created_by_label === null ? null : ['user_id' => $job->created_by_user_id, 'name' => $job->created_by_label],
@@ -832,7 +846,7 @@ class JobsController extends Controller
         $job->loadMissing(['lines', 'performedBy:id,name', 'workizJob']);
 
         return $base + [
-            'description'      => $job->description,
+            'description' => $job->description,
             'duration_minutes' => $job->duration_minutes,
             'allowed_statuses' => $job->franchise
                 ? Job::statusEntries($job->franchise)
@@ -855,20 +869,20 @@ class JobsController extends Controller
             'workiz' => WorkizExtras::for($job, $money),
             // Newest first, with who wrote each (step c, 2026-10-20).
             'notes' => $job->notes()->with('user:id,name')->latest('created_at')->latest('id')->get()
-                ->map(fn (\App\Models\JobNote $n) => JobNotesController::present($n))->all(),
+                ->map(fn (JobNote $n) => JobNotesController::present($n))->all(),
             // The lines ARE the money breakdown: Financials only.
             ...($money ? ['lines' => $job->lines->map(fn (JobLine $line) => [
-                'id'               => $line->id,
-                'service_id'       => $line->service_id,
-                'name'             => $line->name,
+                'id' => $line->id,
+                'service_id' => $line->service_id,
+                'name' => $line->name,
                 'unit_price_minor' => $line->unit_price_minor,
-                'qty'              => $line->qty,
-                'amount_minor'     => $line->amount_minor,
+                'qty' => $line->qty,
+                'amount_minor' => $line->amount_minor,
             ])->all()] : []),
             'performed_by' => $job->performedBy
                 ? ['id' => $job->performed_by_user_id, 'name' => $job->performedBy->name]
                 : null,
-            'earned_at'  => $job->earned_at?->toIso8601String(),
+            'earned_at' => $job->earned_at?->toIso8601String(),
             'created_at' => $job->created_at->toIso8601String(),
         ] + $this->materialsFor($job) + $this->inspectionsFor($job);
     }
@@ -910,8 +924,8 @@ class JobsController extends Controller
                 ->orderBy('submitted_at')
                 ->get(['id', 'definition_name', 'submitted_at'])
                 ->map(fn (InspectionReport $report) => [
-                    'id'           => $report->id,
-                    'name'         => $report->definition_name,
+                    'id' => $report->id,
+                    'name' => $report->definition_name,
                     'submitted_at' => $report->submitted_at?->toIso8601String(),
                 ])->all(),
         ];
@@ -955,10 +969,15 @@ class JobsController extends Controller
                 ->with(['item:id,name', 'issue:id,issued_on'])
                 ->get()
                 ->map(fn (InventoryIssueLine $line) => [
-                    'item'      => $line->item?->name,
-                    'qty'       => (float) $line->qty,
+                    'item' => $line->item?->name,
+                    'qty' => (float) $line->qty,
                     'issued_on' => $line->issue?->issued_on?->toDateString(),
                 ])->all(),
         ];
+    }
+
+    private static function zone(Request $request): string
+    {
+        return (string) ($request->query('timezone') ?: config('app.timezone'));
     }
 }
