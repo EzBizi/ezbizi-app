@@ -2208,6 +2208,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
+            key: const ValueKey('tour-people-groups'),
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
             child: Row(
               children: [
@@ -2511,6 +2512,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           _coaching(context, name),
           const SizedBox(height: 8),
           Wrap(
+            key: const ValueKey('tour-person-filters'),
             spacing: 20,
             runSpacing: 8,
             children: [
@@ -3027,6 +3029,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ),
                 ]) ...[
                   CallCorrection(
+                    key: field == 'client'
+                        ? const ValueKey('tour-call-corrections')
+                        : null,
                     api: widget.api,
                     callId: '${call['id']}',
                     field: field,
