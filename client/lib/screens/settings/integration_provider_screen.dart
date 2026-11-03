@@ -397,6 +397,8 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
           if ((row.detail ?? '').isNotEmpty) row.detail!,
           // When it last synced (UI queue 109).
           if (row.lastSyncedAt != null) 'synced ${_ago(row.lastSyncedAt!)}',
+          // The daily token check (Jose, 2026-11-03).
+          if (row.lastCheckedAt != null) 'checked ${_ago(row.lastCheckedAt!)}',
           if (!row.connected) row.statusReason ?? 'Not working',
         ].join(' · '),
         key: ValueKey('connection-detail:${row.id}'),
@@ -709,7 +711,14 @@ class IntegrationConnection {
     this.method,
     this.lastSyncedAt,
     this.accountEmail,
+    this.lastCheckedAt,
+    this.lastReachedAt,
   });
+
+  /// When the daily health check last had a verdict on this token, and when
+  /// the provider last answered for it (Jose, 2026-11-03).
+  final DateTime? lastCheckedAt;
+  final DateTime? lastReachedAt;
 
   /// The Google login it was signed in with; null when not known (design 167).
   final String? accountEmail;
@@ -813,6 +822,8 @@ class IntegrationConnection {
           '${(json['workiz'] as Map?)?['last_synced_at'] ?? ''}',
         ),
         accountEmail: json['account_email'] as String?,
+        lastCheckedAt: DateTime.tryParse('${json['last_checked_at'] ?? ''}'),
+        lastReachedAt: DateTime.tryParse('${json['last_reached_at'] ?? ''}'),
       );
 }
 
