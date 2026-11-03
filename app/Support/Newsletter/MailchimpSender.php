@@ -55,8 +55,11 @@ final class MailchimpSender
 
         $gone = NewsletterSenders::unsubscribedIn($newsletter);
         $segmentId = null;
-        if ($audience->kind === NewsletterAudience::KIND_CUSTOMERS || $gone !== []) {
-            $emails = $this->mailchimp->subscribedMembers($key, $listId);
+        $tag = $audience->isMailchimp() ? trim((string) $audience->tag) : '';
+        if ($audience->kind === NewsletterAudience::KIND_CUSTOMERS || $gone !== [] || $tag !== '') {
+            $emails = $tag !== ''
+                ? $this->mailchimp->taggedMembers($key, $listId, $tag)
+                : $this->mailchimp->subscribedMembers($key, $listId);
             if ($audience->kind === NewsletterAudience::KIND_CUSTOMERS) {
                 $wanted = array_map(fn (array $p) => mb_strtolower(trim($p['email'])), $people);
                 $emails = array_intersect($emails, $wanted);
