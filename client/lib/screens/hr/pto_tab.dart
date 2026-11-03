@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -390,15 +391,11 @@ class _PtoTabState extends State<PtoTab> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-                child: TextField(
+                child: ListSearch(
                   key: const Key('pto-search'),
                   controller: _search,
+                  hint: 'Search people',
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    hintText: 'Search people',
-                    prefixIcon: Icon(Icons.search),
-                    isDense: true,
-                  ),
                 ),
               ),
               Padding(
@@ -484,7 +481,16 @@ class _PtoTabState extends State<PtoTab> {
         // fact, as it was before; with one, the Left on the right says it.
         subtitle: _hasBalance(person)
             ? null
-            : Text(_allowance(person), style: theme.textTheme.bodySmall),
+            // One line; the whole allowance on hover (UI/UX, 2026-11-02).
+            : Tooltip(
+                message: _allowance(person),
+                child: Text(
+                  _allowance(person),
+                  style: theme.textTheme.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
         trailing: _rowEnd(context, person),
         onTap: () => setState(() {
           // A half-picked set of days belongs to the person it was for.
@@ -513,7 +519,7 @@ class _PtoTabState extends State<PtoTab> {
         constraints: const BoxConstraints(maxWidth: 150),
         child: from == null
             ? const StatusPill('Start date unknown')
-            : StatusPill('From ${_date(from)}', tone: Tone.caution),
+            : StatusPill('From ${_date(from)}'),
       );
     }
 
@@ -642,9 +648,14 @@ class _PtoTabState extends State<PtoTab> {
               ),
               subtitle: _hasBalance(person)
                   ? null
-                  : Text(
-                      _allowance(person),
-                      style: Theme.of(context).textTheme.bodySmall,
+                  : Tooltip(
+                      message: _allowance(person),
+                      child: Text(
+                        _allowance(person),
+                        style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
               trailing: _rowEnd(context, person),
               onTap: () =>
@@ -2966,18 +2977,14 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
   }
 
   Widget _toolbar(BuildContext context) {
-    final search = TextField(
+    final search = ListSearch(
       key: const Key('pto-req-search'),
       controller: _search,
-      onSubmitted: (_) => _load(),
+      hint: 'Search people',
       onChanged: (v) {
-        if (v.isEmpty) _load();
-      },
-      decoration: const InputDecoration(
-        hintText: 'Search people',
-        prefixIcon: Icon(Icons.search),
-        isDense: true,
-      ),
+          if (v.isEmpty) _load();
+        },
+      onSubmitted: (_) => _load(),
     );
     final status = SearchPickerField<String>(
       key: const Key('pto-req-status'),
@@ -3018,10 +3025,12 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
     }
     return Row(
       children: [
-        Expanded(flex: 3, child: search),
+        // Fixed widths: stretched to 45 % each they read as two empty bars.
+        SizedBox(width: 280, child: search),
         const SizedBox(width: 12),
-        Expanded(flex: 2, child: status),
-        if (ask != null) ...[const SizedBox(width: 12), ask],
+        SizedBox(width: 200, child: status),
+        const Spacer(),
+        ?ask,
       ],
     );
   }

@@ -20,13 +20,17 @@ use Throwable;
  * API, and gets one message. That needs an Official Business Account (the
  * earliest A-1's number can ask is ~2026-10-15), so until then the same call
  * sends the report to each MEMBER one to one: as text when they wrote to the
- * line in the last 24 hours, otherwise as the approved `report_ready` template
- * with the report held until they tap "Show report" (WhatsApp allows free text
- * only inside that window). The sender never knows which happened.
+ * line in the last 24 hours, otherwise as the approved `automation_alert`
+ * template with the report held until they write back (WhatsApp allows free
+ * text only inside that window). The sender never knows which happened.
  */
 final class WhatsAppGroups
 {
-    public const READY_TEMPLATE = 'report_ready';
+    // report_ready was never approved on the Reports WABA (Meta #132001 on every
+    // send, 2026-10-30..11-02); automation_alert is, with {{1}} title, {{2}} what happened.
+    public const READY_TEMPLATE = 'automation_alert';
+
+    private const READY_LINE = 'Your report is ready. Reply to this message and it arrives here.';
 
     private const WINDOW_HOURS = 24;
 
@@ -98,7 +102,7 @@ final class WhatsAppGroups
         }
 
         if (! $open) {
-            $this->cloud->send(self::READY_TEMPLATE, $e164, [$title], from: (string) $number->display_number);
+            $this->cloud->send(self::READY_TEMPLATE, $e164, [$title, self::READY_LINE], from: (string) $number->display_number);
         }
 
         return count($documents);
@@ -245,6 +249,8 @@ final class WhatsAppGroups
             return true;
         }
 
+        // Held only once Meta took the notice: a refused one leaves nothing to flush later.
+        $this->cloud->send(self::READY_TEMPLATE, $e164, [$title, self::READY_LINE], from: (string) $number->display_number);
         WhatsAppPendingReport::create([
             'organization_id' => $number->organization_id,
             'phone_number_id' => $number->phone_number_id,
@@ -253,8 +259,6 @@ final class WhatsAppGroups
             'media_id' => $mediaId,
             'filename' => $filename,
         ]);
-
-        $this->cloud->send(self::READY_TEMPLATE, $e164, [$title], from: (string) $number->display_number);
 
         return true;
     }

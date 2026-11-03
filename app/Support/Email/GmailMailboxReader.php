@@ -549,7 +549,9 @@ final class GmailMailboxReader implements LabelsThreads, MailboxReader, RepliesW
      */
     public function unreadCount(Mailbox $mailbox): int
     {
-        $profile = $this->get($mailbox, self::API.'/profile', []);
+        // The INBOX label, not /profile: a profile has no unread count, so every
+        // Gmail inbox failed here (Dashboard, 11-02).
+        $profile = $this->get($mailbox, self::API.'/labels/INBOX', []);
 
         if (! array_key_exists('messagesUnread', $profile) || ! is_numeric($profile['messagesUnread'])) {
             throw CannotReadMailbox::providerFaulty(

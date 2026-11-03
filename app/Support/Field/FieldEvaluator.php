@@ -11,6 +11,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Notifications\NotificationDispatcher;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -87,6 +88,21 @@ final class FieldEvaluator
 
         $lat = $point['latitude'];
         $lng = $point['longitude'];
+
+        // Recovered by itself: the alert it raised closes, so the dashboard's
+        // open alerts are the ones still true (review 2026-11-02: 270 alerts
+        // in 30 days on prod, not one acknowledged). acknowledged_by stays
+        // null, which is how a row says nobody had to.
+        $moved = ! $presence->exists
+            || FieldMaps::metres($presence->anchor_latitude, $presence->anchor_longitude, $point['latitude'], $point['longitude']) > self::STILL_METRES;
+        $recovered = array_merge(
+            $presence->signal_lost_alerted ? [FieldAlert::SIGNAL_LOST] : [],
+            $presence->stopped_alerted && $moved ? [FieldAlert::STOPPED] : [],
+        );
+        if ($presence->exists && $recovered !== []) {
+            FieldAlert::query()->where('user_id', $user->getKey())->whereIn('kind', $recovered)
+                ->whereNull('acknowledged_at')->update(['acknowledged_at' => now()]);
+        }
 
         if (! $presence->exists
             || FieldMaps::metres($presence->anchor_latitude, $presence->anchor_longitude, $lat, $lng) > self::STILL_METRES) {
@@ -201,7 +217,7 @@ final class FieldEvaluator
         return true;
     }
 
-    /** @return \Illuminate\Support\Collection<int, User> ponytail: one query per active user; fine at tens of managers. */
+    /** @return Collection<int, User> ponytail: one query per active user; fine at tens of managers. */
     public function watchers(User $about)
     {
         return User::query()

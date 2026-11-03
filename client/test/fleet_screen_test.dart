@@ -15,7 +15,6 @@ import 'package:http/testing.dart';
 
 /// Fleet is a register, not a placeholder: list, 25/75 add, no modal.
 void main() {
-
   // General (Mia, 2026-10-02): the module opens on it, its figures are the
   // server's, and a figure opens the register filtered to it.
   Map<String, dynamic> fleetSummary({bool money = true}) => {
@@ -52,7 +51,11 @@ void main() {
         'currency': 'USD',
         'total_minor': 125000,
         'categories': [
-          {'key': 'maintenance', 'label': 'Maintenance', 'amount_minor': 125000},
+          {
+            'key': 'maintenance',
+            'label': 'Maintenance',
+            'amount_minor': 125000,
+          },
         ],
         'buckets': ['2026-09-28'],
         'points': [125000],
@@ -218,10 +221,11 @@ void main() {
             matching: find.byType(TextField),
           ),
         )
-        .map((f) => f.decoration?.labelText)
+        .map((f) => f.decoration?.hintText)
         .toList();
 
-    expect(order.take(3), ['Day', 'Month', 'Year']);
+    // One date field whose pattern is the org's order (Jose, 2026-11-03).
+    expect(order, ['DD/MM/YYYY']);
   });
 
   testWidgets('a failed load is the request failed, not an empty list', (
@@ -250,11 +254,14 @@ void main() {
   });
 
   testWidgets('Add is not drawn without create', (tester) async {
-    await _pumpScreen(tester, permissions: const [
-      'fleet_management.view',
-      'fleet_management.general.view',
-      'fleet_management.vehicles.view',
-    ]);
+    await _pumpScreen(
+      tester,
+      permissions: const [
+        'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
+      ],
+    );
 
     expect(find.text('Add vehicle'), findsNothing);
     expect(find.text('Assign'), findsNothing);
@@ -326,8 +333,7 @@ void main() {
       tester,
       size: const Size(411, 800),
       vehicles: [
-        for (var i = 0; i < 20; i++)
-          {..._van, 'id': 'v-$i', 'label': 'Van $i'},
+        for (var i = 0; i < 20; i++) {..._van, 'id': 'v-$i', 'label': 'Van $i'},
       ],
     );
 
@@ -346,76 +352,77 @@ void main() {
 
   // Records and forms are drawn inside the screen, each with its own arrow,
   // and Android's Back used to ignore the arrow and close the app.
-  testWidgets('on a phone Back closes the page inside the screen, not the app', (
-    tester,
-  ) async {
-    final exits = <String>[];
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'SystemNavigator.pop') exits.add(call.method);
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+  testWidgets(
+    'on a phone Back closes the page inside the screen, not the app',
+    (tester) async {
+      final exits = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         SystemChannels.platform,
-        null,
-      ),
-    );
-
-    tester.view.physicalSize = const Size(375, 800);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    final api = ApiClient(client: MockClient(_handler()));
-    final session = Session(api);
-    await tester.runAsync(() => session.adopt('tok'));
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: EzBiziTheme.light(),
-        home: ListenableBuilder(
-          listenable: session,
-          builder: (_, _) => HomeShell(api: api, session: session),
+        (call) async {
+          if (call.method == 'SystemNavigator.pop') exits.add(call.method);
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Open navigation menu'));
-    await tester.pumpAndSettle();
+      );
 
-    // Back with the drawer open closes the drawer.
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(find.byType(Drawer), findsNothing);
-    expect(exits, isEmpty);
+      tester.view.physicalSize = const Size(375, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final api = ApiClient(client: MockClient(_handler()));
+      final session = Session(api);
+      await tester.runAsync(() => session.adopt('tok'));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: ListenableBuilder(
+            listenable: session,
+            builder: (_, _) => HomeShell(api: api, session: session),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Open navigation menu'));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byType(Drawer),
-        matching: find.text('Fleet Management'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Vehicles'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Add vehicle'));
-    await tester.pumpAndSettle();
-    expect(find.byTooltip('Back to the list'), findsOneWidget);
+      // Back with the drawer open closes the drawer.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(Drawer), findsNothing);
+      expect(exits, isEmpty);
 
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(Drawer),
+          matching: find.text('Fleet Management'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Vehicles'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add vehicle'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Back to the list'), findsOneWidget);
 
-    expect(find.byTooltip('Back to the list'), findsNothing);
-    expect(find.text('Add vehicle'), findsOneWidget);
-    expect(exits, isEmpty);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
 
-    // Nothing left to go back from: now it leaves.
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(exits, ['SystemNavigator.pop']);
-  });
+      expect(find.byTooltip('Back to the list'), findsNothing);
+      expect(find.text('Add vehicle'), findsOneWidget);
+      expect(exits, isEmpty);
+
+      // Nothing left to go back from: now it leaves.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(exits, ['SystemNavigator.pop']);
+    },
+  );
 
   testWidgets('Cancel leaves nothing', (tester) async {
     await _pumpScreen(tester);
@@ -747,7 +754,6 @@ void main() {
     expect(field.enabled, isTrue);
   });
 
-
   // ── Missing-field highlights and counters (Analorena, 2026-10-01) ──────
   //
   // The look HR's record and Web Management's SEO already use: an expected
@@ -845,12 +851,24 @@ void main() {
     expect(find.byTooltip('1 field not filled in'), findsNothing);
   });
 
-  // ── One state at a time (Eve, 2026-10-12) ───────────────────────────────
+  // ── Every state, in sections (Jose, 2026-11-03) ───────────────────────
 
-  testWidgets('the list opens on the first state and its chips switch state', (
+  testWidgets('the list opens on every state in sections; chips switch state', (
     tester,
   ) async {
     final asked = <String?>[];
+    final ct = {
+      ..._van,
+      'id': 'v-ct',
+      'label': 'Connecticut van',
+      'franchise': {'id': 'fr-ct', 'name': 'Connecticut'},
+    };
+    final nj = {
+      ..._van,
+      'id': 'v-nj',
+      'label': 'New Jersey van',
+      'franchise': {'id': 'fr-nj', 'name': 'New Jersey'},
+    };
 
     await _pumpScreen(
       tester,
@@ -860,16 +878,9 @@ void main() {
         asked.add(place);
 
         final rows = switch (place) {
-          'fr-ct' => [
-            {..._van, 'id': 'v-ct', 'label': 'Connecticut van'},
-          ],
-          'fr-nj' => [
-            {..._van, 'id': 'v-nj', 'label': 'New Jersey van'},
-          ],
-          _ => [
-            {..._van, 'id': 'v-ct', 'label': 'Connecticut van'},
-            {..._van, 'id': 'v-nj', 'label': 'New Jersey van'},
-          ],
+          'fr-ct' => [ct],
+          'fr-nj' => [nj],
+          _ => [ct, nj],
         };
 
         return _json({
@@ -886,11 +897,12 @@ void main() {
       },
     );
 
-    // First answer names the states; the screen then opens the first one
-    // and never draws the mixed list.
-    expect(asked, [null, 'fr-ct']);
+    // One request, every state, a header per branch with its count.
+    expect(asked, [null]);
     expect(find.text('Connecticut van'), findsOneWidget);
-    expect(find.text('New Jersey van'), findsNothing);
+    expect(find.text('New Jersey van'), findsOneWidget);
+    expect(find.text('Everdoors · Connecticut  1'), findsOneWidget);
+    expect(find.text('Everdoors · New Jersey  1'), findsOneWidget);
     expect(find.text('Connecticut  1'), findsOneWidget);
     expect(find.text('All states  2'), findsOneWidget);
 
@@ -900,6 +912,8 @@ void main() {
     expect(asked.last, 'fr-nj');
     expect(find.text('New Jersey van'), findsOneWidget);
     expect(find.text('Connecticut van'), findsNothing);
+    // One state open: no section headers.
+    expect(find.text('Everdoors · New Jersey  1'), findsNothing);
 
     await tester.tap(find.text('All states  2'));
     await tester.pumpAndSettle();
@@ -932,7 +946,6 @@ void main() {
     // Control: the list itself drew.
     expect(find.text(_van['label']! as String), findsOneWidget);
   });
-
 }
 
 const _van = {

@@ -117,19 +117,23 @@ class BusinessProfileListingController extends Controller
         Places::scope($query, $request->user());
 
         return response()->json(['checked_at' => now()->toIso8601String(), 'data' => $query->get()->map(function (BusinessLocation $l) use ($digits) {
-            $lines = $l->franchise_id === null ? [] : PhoneNumber::query()->where('scope_type', PhoneNumber::SCOPE_FRANCHISE)
-                ->where('scope_id', $l->franchise_id)->pluck('e164')->all();
+            // Lines may sit on the branch or on the company (A1 keeps all 14 on the company).
+            $lines = PhoneNumber::query()->where(fn ($q) => $q
+                ->where(fn ($q) => $q->where('scope_type', PhoneNumber::SCOPE_FRANCHISE)->where('scope_id', $l->franchise_id))
+                ->orWhere(fn ($q) => $q->where('scope_type', PhoneNumber::SCOPE_COMPANY)->where('scope_id', $l->company_id)))
+                ->pluck('e164')->all();
             $website = $l->franchise ? CustomerLinks::branchPhone($l->franchise) : null;
             $listing = $digits($l->phone);
             $ours = array_map($digits, $lines);
 
+            // The website often shows one central number for every branch, so it only decides when EzBizi has no lines.
             return ['id' => $l->id, 'name' => $l->label(), 'branch' => $l->franchise?->name,
                 'listing_phone' => $l->phone, 'ezbizi_lines' => $lines, 'website_phone' => $website,
                 'status' => match (true) {
                     $listing === null => 'missing',
-                    $ours === [] && $website === null => 'unknown',
-                    ($ours === [] || in_array($listing, $ours, true)) && ($website === null || $digits($website) === $listing) => 'match',
-                    default => 'mismatch',
+                    $ours !== [] => in_array($listing, $ours, true) ? 'match' : 'mismatch',
+                    $website === null => 'unknown',
+                    default => $digits($website) === $listing ? 'match' : 'mismatch',
                 }];
         })->values()->all()]);
     }
@@ -174,7 +178,11 @@ class BusinessProfileListingController extends Controller
         Places::scope($query, $request->user());
 
         // ponytail: one Google read per listing, in sequence; pool them if a tenant passes a few hundred listings.
-        return response()->json(['proposed' => $proposed, 'data' => $query->get()->map(function (BusinessLocation $l) use ($proposed) {
+        // Every number the organization has, so the sheet can pick one per company (Jose, 2026-11-02).
+        $numbers = WhatsAppNumber::query()->orderBy('created_at')->pluck('display_number')
+            ->map(fn ($n) => ['number' => $n, 'link' => 'https://wa.me/'.preg_replace('/\D/', '', (string) $n)])->values()->all();
+
+        return response()->json(['proposed' => $proposed, 'numbers' => $numbers, 'data' => $query->get()->map(function (BusinessLocation $l) use ($proposed) {
             try {
                 $current = $this->api->whatsappLink($l);
                 $state = match (true) {
@@ -190,20 +198,19 @@ class BusinessProfileListingController extends Controller
         })->values()->all()]);
     }
 
-    /** POST /business-profile/whatsapp-links/apply {targets: [id]}: puts the organization's link on each. */
+    /**
+     * POST /business-profile/whatsapp-links/apply {targets: [id], link?: "https://wa.me/<digits>"}:
+     * puts the chosen link (one listing or many) on each; without one, the organization's.
+     */
     public function applyWhatsappLinks(Request $request): JsonResponse
     {
-        $input = $request->validate(['targets' => ['required', 'array', 'min:1'], 'targets.*' => ['uuid']]);
+        $input = $request->validate(['targets' => ['required', 'array', 'min:1'], 'targets.*' => ['uuid'],
+            'link' => ['nullable', 'string', 'regex:#^https://wa\.me/\d{8,15}$#']]);
         if ($refused = $this->refused()) {
             return $refused;
         }
-        if (($link = self::whatsappLink()) === null) {
+        if (($link = $input['link'] ?? self::whatsappLink()) === null) {
             return response()->json(['message' => 'Connect a WhatsApp number first.'], Response::HTTP_UNPROCESSABLE_ENTITY);
-        }
-        // ponytail: with several numbers the link is the oldest one, likely another brand's (desk, 2026-10-30);
-        // refuse until each company has its own number.
-        if (WhatsAppNumber::query()->count() > 1) {
-            return response()->json(['message' => 'This organization has several WhatsApp numbers. Choose which one each company uses first.'], Response::HTTP_CONFLICT);
         }
 
         return $this->eachTarget($input['targets'], fn (BusinessLocation $t) => $this->api->setWhatsappLink($t, $link));

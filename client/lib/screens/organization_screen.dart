@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
@@ -241,17 +242,10 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                     // Standard field height, as tall as Leads search (Jose, 2026-10-27).
                     SizedBox(
                       width: 240,
-                      child: TextField(
+                      child: ListSearch(
                         key: const ValueKey('org-search'),
                         controller: _search,
-                        textAlignVertical: TextAlignVertical.center,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          prefixIconConstraints: BoxConstraints(minWidth: 36),
-                          prefixIcon: Icon(Icons.search, size: 18),
-                          hintText: 'Find a company or branch',
-                          border: OutlineInputBorder(),
-                        ),
+                        hint: 'Find a company or branch',
                       ),
                     ),
                   Refused(

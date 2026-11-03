@@ -253,6 +253,26 @@ class EmailFoldersTest extends TestCase
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'gmail.googleapis.com'));
     }
 
+    /** 11-02: unread was read from /profile, which has no such field. */
+    public function test_gmail_unread_is_the_inbox_labels_count(): void
+    {
+        config([
+            'services.google_mail.client_id'     => 'a-google-client-id',
+            'services.google_mail.client_secret' => 'a-google-client-secret',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/*'                => Http::response(['access_token' => 'a-token', 'expires_in' => 3599]),
+            'gmail.googleapis.com/*/labels/INBOX*'   => Http::response(['id' => 'INBOX', 'messagesUnread' => 7]),
+            'gmail.googleapis.com/*'                 => Http::response(['emailAddress' => 'x', 'messagesTotal' => 9]),
+        ]);
+
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->mailbox($t, 'gmail_oauth');
+
+        $this->assertSame(7, $this->inTenant($t['org'], fn () => app(GmailMailboxReader::class)->unreadCount($mailbox)));
+    }
+
     public function test_the_folders_gmail_does_have_still_work(): void
     {
         config([

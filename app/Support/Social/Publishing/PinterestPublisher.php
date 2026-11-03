@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Http;
  * An account with no boards at all is refused with the reason, because the fix
  * is on Pinterest's side and nothing EzBizi does will help.
  */
-final class PinterestPublisher implements DeletesPosts, SocialPublisher
+final class PinterestPublisher implements DeletesPosts, LinksToPosts, SocialPublisher
 {
     private const API = 'https://api.pinterest.com/v5';
 
@@ -115,6 +115,12 @@ final class PinterestPublisher implements DeletesPosts, SocialPublisher
         }
 
         return (array) $response->json();
+    }
+
+    /** A pin's page is its id: no call, so nothing to fail after the post is out. */
+    public function permalink(SocialConnection $connection, string $remoteId): ?string
+    {
+        return 'https://www.pinterest.com/pin/'.rawurlencode($remoteId).'/';
     }
 
     public function deleteRemote(SocialConnection $connection, string $remoteId): void

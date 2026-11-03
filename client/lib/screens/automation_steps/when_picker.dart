@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/tag.dart';
@@ -172,20 +173,10 @@ class _WhenPickerState extends State<WhenPicker> {
         ? const <WhenEvent>[]
         : _ordered(showing.events.where(_matches).toList());
 
-    final search = TextField(
+    final search = ListSearch(
       controller: _search,
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: 'Search every event: “invitation”, “paid”, “review”…',
-        prefixIcon: const Icon(Icons.search, size: 18),
-        suffixIcon: _search.text.isEmpty
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.clear, size: 18),
-                tooltip: 'Clear',
-                onPressed: _search.clear,
-              ),
-      ),
+      hint: 'Search every event: “invitation”, “paid”, “review”…',
+      onClear: _search.clear,
     );
 
     if (widget.narrow) {

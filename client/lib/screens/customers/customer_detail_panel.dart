@@ -313,17 +313,21 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
             icon: const Icon(Icons.event_available_outlined, size: 18),
             label: const Text('Book a job'),
           ),
-        TextButton(
-          onPressed: _busy ? null : () => _done(null),
-          child: const Text('Cancel'),
-        ),
-        Refused(
-          reason: _editRefusal,
-          child: FilledButton(
-            onPressed: editable ? () => _save() : null,
-            child: const Text('Save'),
+        // Save and Cancel belong to the Customer tab's fields; Money and the
+        // Workiz notes are read only (deep dive 2026-11-02).
+        if (_tab != 'money' && _tab != 'notes') ...[
+          TextButton(
+            onPressed: _busy ? null : () => _done(null),
+            child: const Text('Cancel'),
           ),
-        ),
+          Refused(
+            reason: _editRefusal,
+            child: FilledButton(
+              onPressed: editable ? () => _save() : null,
+              child: const Text('Save'),
+            ),
+          ),
+        ],
       ],
       child: _loading
           ? const Padding(

@@ -342,7 +342,7 @@ void main() {
     expect(find.text('Zip'), findsOneWidget);
     expect(find.text('Area'), findsOneWidget);
     expect(find.text('Calendar'), findsOneWidget);
-    expect(find.text('Search by Zip Code'), findsNothing);
+    expect(find.text('Search by zip code'), findsNothing);
   });
 
   /// Search by Area: one chip per franchise that HAS areas — the server's
@@ -374,11 +374,14 @@ void main() {
       await tester.tap(find.text('Search by Area'));
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(ChoiceChip, 'Illinois'), findsOneWidget);
+      // One picker, not a chip per branch (deep dive 2026-11-02).
+      await tester.tap(find.byKey(const ValueKey('availability-area-picker')));
+      await tester.pumpAndSettle();
+      expect(find.text('Illinois'), findsOneWidget);
 
       // Named with its company from /me (branch_options.dart); Illinois is
       // outside /me, so it keeps the server's name.
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Everdoors · Texas'));
+      await tester.tap(find.text('Everdoors · Texas'));
       await tester.pumpAndSettle();
 
       expect(asked, 'fr-tx');
@@ -412,7 +415,9 @@ void main() {
 
     await tester.tap(find.text('Search by Area'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'All areas'));
+    await tester.tap(find.byKey(const ValueKey('availability-area-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('All areas'));
     await tester.pumpAndSettle();
 
     expect(asked, {'all': '1'});

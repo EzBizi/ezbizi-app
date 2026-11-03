@@ -1832,6 +1832,18 @@ class HrOnboardingTest extends TestCase
         $this->assertSame([$employee->id], $rows('?contract_id='.$contractId)->pluck('id')->all());
         $this->assertNotContains($employee->id, $rows('?w2=unsigned')->pluck('id')->all());
 
+        // W-2 or 1099, and where they are assigned (the accountant via Jose,
+        // 2026-11-02), filterable and exportable.
+        $this->assertSame('W-2', $row['employment_type']);
+        $this->assertNotEmpty($row['assigned']);
+        $this->assertSame([$employee->id], $rows('?type=w2')->pluck('id')->all());
+        $this->assertSame([], $rows('?type=1099')->pluck('id')->all());
+        $this->assertNotContains($employee->id, $rows('?type=unknown')->pluck('id')->all());
+        $this->assertContains($alpha['admin']->id, $rows('?type=unknown')->pluck('id')->all());
+        $csv = $this->as($alpha['admin'])->get('/api/v1/hr/payroll?format=csv&type=w2')->assertOk();
+        $this->assertStringContainsString('Employee,Type,Company,Branch', $csv->getContent());
+        $this->assertStringContainsString(',W-2,', $csv->getContent());
+
         // The tab is its own grant, and salary is pay's.
         $hr = $this->userWithRole($alpha, 'HR', ['hr.view', 'hr.edit']);
         $this->as($hr)->getJson('/api/v1/hr/payroll')->assertForbidden();

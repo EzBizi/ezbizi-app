@@ -17,8 +17,8 @@ enum FieldPersonState {
   /// (Jose, 2026-10-30), so it no longer reads as not reported.
   lostSignal('Lost signal', EzBiziTheme.fieldYellow, Tone.caution),
 
-  /// Stopped too long (`stopped`). Purple.
-  stopped('Stopped too long', EzBiziTheme.fieldPurple, Tone.review),
+  /// Stopped too long (`stopped`). Teal.
+  stopped('Stopped too long', EzBiziTheme.fieldTeal, Tone.review),
 
   /// Reporting: a fix in the last 30 minutes (`fresh`). Green.
   ongoing('Reporting', EzBiziTheme.fieldGreen, Tone.ok),

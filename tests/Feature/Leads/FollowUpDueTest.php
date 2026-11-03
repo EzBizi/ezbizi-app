@@ -66,6 +66,18 @@ class FollowUpDueTest extends TestCase
         return AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.follow_up_due')->get()->all();
     }
 
+    /** Production's state (desk, 2026-11-02): after an automatic reply LeadThread leaves last_contact_from on the customer. */
+    public function test_a_lead_whose_last_human_word_was_the_customers_is_followed_up(): void
+    {
+        $quiet = $this->lead('Dana Whitfield', [[LeadConversation::FROM_CONSUMER, '2026-09-30T14:00:00Z'],
+            [LeadConversation::FROM_ADVERTISER, '2026-09-30T14:00:30Z', true]]);
+        $this->inTenant($this->t['org'], fn () => $quiet->forceFill(['last_contact_from' => LeadConversation::FROM_CONSUMER])->save());
+
+        $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
+
+        $this->assertSame([$quiet->id], array_map(fn ($e) => $e->subject_id, $this->raised()));
+    }
+
     public function test_a_quiet_customer_is_followed_up_once(): void
     {
         $C = LeadConversation::FROM_CONSUMER;

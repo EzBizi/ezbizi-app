@@ -10,6 +10,7 @@ use App\Models\PhoneConnection;
 use App\Models\PhoneExtension;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
+use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Phone\Attestation;
 use App\Support\Phone\ClientIdentity;
@@ -208,6 +209,10 @@ class VoiceWebhookController extends Controller
                     'direction' => $outbound ? PhoneCall::DIRECTION_OUTBOUND : PhoneCall::DIRECTION_INBOUND,
                     'from_e164' => $from,
                     'to_e164' => $to,
+
+                    // Who placed it, so the hang-up "what was this call about?"
+                    // can find the call. Without it no call was ever taggable.
+                    'user_id' => $outbound ? $this->callerUserId($request) : null,
                     'status' => $blocked
                         ? PhoneCall::STATUS_BLOCKED
                         : PhoneCall::STATUS_RINGING,
@@ -235,6 +240,19 @@ class VoiceWebhookController extends Controller
                 $this->markMissed($call, voicemail: $voicemail);
             }
         });
+    }
+
+    /** The person behind a `client:<identity>` caller, when one exists. */
+    private function callerUserId(Request $request): ?string
+    {
+        $from = (string) $request->input('From', '');
+        if (! str_starts_with($from, 'client:')) {
+            return null;
+        }
+
+        $id = ClientIdentity::uuidOf(substr($from, strlen('client:')));
+
+        return $id !== null && User::query()->whereKey($id)->exists() ? $id : null;
     }
 
     private function markMissed(PhoneCall $call, bool $voicemail = false): void

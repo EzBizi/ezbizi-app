@@ -459,7 +459,8 @@ Future<void> _search(WidgetTester tester, String key, String term) async {
   expect(box, findsOneWidget);
   expect(
     tester.getSize(box).height,
-    56,
+    44,
+    // Leads went to 44 on 2026-11-02 (6af32366a) and ListSearch with it.
     reason: 'the standard field height, as Leads (Jose, 2026-10-27)',
   );
 

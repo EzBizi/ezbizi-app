@@ -88,17 +88,13 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('Was 16:05 (Auto)'), findsOneWidget);
 
-    final hour = find.descendant(
-      of: find.byKey(const ValueKey('approval-adjust-out-s-2')),
-      matching: find.byKey(const Key('calendar-day-hour')),
-    );
-    await tester.enterText(hour, '17');
+    // One date-and-time field (Jose, 2026-11-03), in the org's YYYY-MM-DD.
     await tester.enterText(
       find.descendant(
         of: find.byKey(const ValueKey('approval-adjust-out-s-2')),
-        matching: find.byKey(const Key('calendar-day-minute')),
+        matching: find.byKey(const Key('calendar-day-text')),
       ),
-      '00',
+      '2026-10-21 17:00',
     );
     await tester.pumpAndSettle();
 

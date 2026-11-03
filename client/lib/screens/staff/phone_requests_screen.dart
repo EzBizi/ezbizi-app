@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -216,22 +217,15 @@ class _PhoneRequestsScreenState extends State<PhoneRequestsScreen> {
             alignment: Alignment.centerLeft,
             child: SizedBox(
               width: 240,
-              child: TextField(
+              child: ListSearch(
                 key: const Key('phone-requests-search'),
                 controller: _search,
-                textAlignVertical: TextAlignVertical.center,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIconConstraints: BoxConstraints(minWidth: 36),
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Find a request',
-                  border: OutlineInputBorder(),
-                ),
+                hint: 'Find a request',
                 onChanged: (v) {
-                  setState(() => _query = v);
-                  _debounce?.cancel();
-                  _debounce = Timer(const Duration(milliseconds: 400), _load);
-                },
+                    setState(() => _query = v);
+                    _debounce?.cancel();
+                    _debounce = Timer(const Duration(milliseconds: 400), _load);
+                  },
               ),
             ),
           ),

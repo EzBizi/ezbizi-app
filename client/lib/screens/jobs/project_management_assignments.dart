@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -381,15 +382,11 @@ class _ProjectManagementAssignmentsState
   }
 
   /// The cards are searched by their title, or by their job's own search.
-  Widget _searchField() => TextField(
+  Widget _searchField() => ListSearch(
     key: const ValueKey('pm-assign-search'),
     controller: _search,
+    hint: 'Card title, or its job, customer, address or phone',
     onChanged: _typed,
-    decoration: const InputDecoration(
-      isDense: true,
-      prefixIcon: Icon(Icons.search, size: 18),
-      hintText: 'Card title, or its job, customer, address or phone',
-    ),
   );
 
   Widget _sentence(BuildContext context, String text, Key key) {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\AutomationEvent;
 use App\Models\Job;
+use App\Models\ProjectManagementSubmission;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
@@ -66,9 +67,10 @@ class ProjectManagement2Controller extends Controller
 
         return response()->json([
             'data' => $jobs->map(fn (Job $job) => $this->row($job, $money))->values(),
-            // Each tab's count, for its label, without the search.
-            'meta' => $this->pageMeta($page) + ['counts' => collect(self::TABS)
-                ->mapWithKeys(fn (string $t) => [$t => $this->tab($this->inView($user), $t)->count()])->all()],
+            // Each tab's count, for its label, without the search. First page only:
+            // "Load more" changes no count, and the three cost ~370 ms (2026-11-02).
+            'meta' => $this->pageMeta($page) + ($page->currentPage() > 1 ? [] : ['counts' => collect(self::TABS)
+                ->mapWithKeys(fn (string $t) => [$t => $this->tab($this->inView($user), $t)->count()])->all()]),
         ]);
     }
 
@@ -99,7 +101,9 @@ class ProjectManagement2Controller extends Controller
             $audit->logChange('job.updated', $job);
             $job->save();
             $events->emit('job.updated', $job, $change);
-            $events->emit('job.status_changed', $job, $change);
+            $moved = $events->emit('job.status_changed', $job, $change);
+            // On the Submitted tab at once, not at the next minute's copy.
+            ProjectManagementSubmission::create(['job_id' => $job->id, 'automation_event_id' => $moved->id, 'submitted_at' => $moved->occurred_at]);
             WorkizMirror::queue($job, 'status', ['status' => 'Submitted']);
         });
 
@@ -195,21 +199,15 @@ class ProjectManagement2Controller extends Controller
             'pending' => $dpa($jobs),
             // ponytail: any succeeded payment row counts, so a job paid and refunded in full stays; net it here if that turns up.
             'ready' => $dpa($jobs)->whereIn('id', JobMoney::paidJobIds()),
-            // ponytail: read off the status-change events, so a job drops off when they age out of retention.
-            'submitted' => $jobs->whereRaw('LOWER(TRIM(status)) = ?', [self::SUBMITTED])
-                ->whereIn('id', $this->submissions()->select('subject_id'))
-                ->orderByDesc($this->submissions()->whereColumn('subject_id', 'jobs.id')->selectRaw('MAX(occurred_at)')),
+            // Read from the stored submissions, kept for good (Jose, 2026-11-02), not the
+            // events, which expire in 3 months. One grouped pass, joined: a subquery per
+            // row took 2.1 s for this tab on 2026-11-02.
+            'submitted' => $jobs->whereRaw('LOWER(TRIM(jobs.status)) = ?', [self::SUBMITTED])
+                ->joinSub(ProjectManagementSubmission::query()->groupBy('job_id')->selectRaw('job_id, MAX(submitted_at) AS submitted_at'),
+                    'submitted', 'submitted.job_id', '=', 'jobs.id')
+                ->select('jobs.*')
+                ->orderByDesc('submitted.submitted_at'),
         };
-    }
-
-    /** Every move from done pending approval to Submitted, wherever it was made. */
-    private function submissions(): Builder
-    {
-        return AutomationEvent::query()
-            ->where('event_key', 'job.status_changed')
-            ->where('subject_type', Job::class)
-            ->whereRaw("LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.before.status')))) = ?", [self::STATUS])
-            ->whereRaw("LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.after.status')))) = ?", [self::SUBMITTED]);
     }
 
     private function row(Job $job, ?array $money): array
@@ -233,11 +231,11 @@ class ProjectManagement2Controller extends Controller
             'modified'   => $job->workizJob?->last_status_update?->toDateString()
                 ?? $job->updated_at?->toDateString(),
             // Financials only, and ABSENT without it, so the client draws no zero.
-            // Null where there is no price, so it draws no zero there either.
+            // No price reads $0 (Jose, 2026-11-02: "i'd rather see 0").
             ...($money !== null ? [
-                'pending'  => $m['total'] === null ? null : $m['due'],
-                'paid'     => $m['total'] === null && $m['paid'] === 0 ? null : $m['paid'],
-                'total'    => $m['total'],
+                'pending'  => $m['due'],
+                'paid'     => $m['paid'],
+                'total'    => $m['total'] ?? 0,
                 'currency' => $job->currency,
             ] : []),
         ];

@@ -38,8 +38,12 @@ void main() {
       },
     ]);
 
-    expect(find.text('Dana Lead'), findsOneWidget);
-    expect(find.text('+1 (561) 476-1114'), findsOneWidget);
+    // One meta line: name · number · time.
+    expect(find.textContaining('Dana Lead', findRichText: true), findsOneWidget);
+    expect(
+      find.textContaining('+1 (561) 476-1114', findRichText: true),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('voicemail-transcript-note')), findsOneWidget);
     expect(find.textContaining('Write down voicemail'), findsOneWidget);
     expect(find.text('No transcript'), findsNWidgets(2));

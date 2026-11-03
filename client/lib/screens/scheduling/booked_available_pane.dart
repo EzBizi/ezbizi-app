@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -96,7 +97,7 @@ class _ReschedulingTabState extends State<ReschedulingTab> {
           level: TabLevel.secondary,
           labels: const [
             ('Rescheduling Availability', Icons.stacked_bar_chart),
-            ('AI Rescheduling Suggestion', Icons.auto_awesome_outlined),
+            ('AI rescheduling suggestions', Icons.auto_awesome_outlined),
           ],
           selected: _tab,
           onSelected: (i) => setState(() => _select(i)),
@@ -457,15 +458,11 @@ class _BookedAvailablePaneState extends State<BookedAvailablePane> {
             ),
             SizedBox(
               width: phone ? double.infinity : 260,
-              child: TextField(
+              child: ListSearch(
                 key: const ValueKey('booked-available-search'),
                 controller: _search,
+                hint: 'Area or branch',
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(Icons.search),
-                  hintText: 'Area or branch',
-                ),
               ),
             ),
           ],

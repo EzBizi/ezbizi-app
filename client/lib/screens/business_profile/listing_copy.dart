@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -60,13 +61,9 @@ class ListingTargets extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
+        ListSearch(
           key: const ValueKey('cx-targets-search'),
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search, size: 18),
-            hintText: 'Search locations',
-            isDense: true,
-          ),
+          hint: 'Search locations',
           onChanged: onQuery,
         ),
         const SizedBox(height: 8),

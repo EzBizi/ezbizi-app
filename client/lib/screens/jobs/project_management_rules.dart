@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/branch_options.dart';
@@ -330,15 +331,11 @@ class _ProjectManagementRulesState extends State<ProjectManagementRules> {
           'rules. Nothing here is edited; each part links to where it is '
           'changed.',
       scope: widget.scope,
-      search: TextField(
+      search: ListSearch(
         key: const ValueKey('pm-rules-search'),
         controller: _search,
+        hint: 'Find a rule, stage or number',
         onChanged: (t) => setState(() => _q = t.trim().toLowerCase()),
-        decoration: const InputDecoration(
-          isDense: true,
-          prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'Find a rule, stage or number',
-        ),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {

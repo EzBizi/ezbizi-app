@@ -66,12 +66,8 @@ class _TrainingCardState extends State<TrainingCard> {
     // card is not, and the strip would be drawn into a column that cannot
     // hold it (UI/UX, 2026-09-09).
     return LayoutBuilder(
-      builder: (context, constraints) => _card(
-        context,
-        theme,
-        response,
-        narrow: constraints.maxWidth < 600,
-      ),
+      builder: (context, constraints) =>
+          _card(context, theme, response, narrow: constraints.maxWidth < 600),
     );
   }
 
@@ -126,9 +122,9 @@ class _TrainingCardState extends State<TrainingCard> {
             // The server's, verbatim: it says which of the two remedies —
             // a permission on a role, or an assignment widened — this is.
             sentence,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: scheme.outline,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: scheme.outline),
           ),
         ),
       ],
@@ -204,7 +200,13 @@ class _TrainingCardState extends State<TrainingCard> {
     return Row(
       key: TrainingCard.countsKey,
       children: [
-        cell(of({_State.lapsed, _State.notPassed}), 'Needs a pass', bad: true),
+        // Red only when somebody actually needs a pass: "Needs a pass 0" in red
+        // read as a problem (deep dive 2026-11-02 #7).
+        cell(
+          of({_State.lapsed, _State.notPassed}),
+          'Needs a pass',
+          bad: of({_State.lapsed, _State.notPassed}) > 0,
+        ),
         const SizedBox(width: 8),
         cell(of({_State.notStarted, _State.inProgress}), 'Outstanding'),
         const SizedBox(width: 8),
@@ -345,7 +347,11 @@ class _TrainingCardState extends State<TrainingCard> {
       final expires = _date(json['expires_on']);
 
       if (json['due_for_retaking'] == true) {
-        return _Row(title, _State.lapsed, expires == null ? '' : 'lapsed $expires');
+        return _Row(
+          title,
+          _State.lapsed,
+          expires == null ? '' : 'lapsed $expires',
+        );
       }
       if (json['passed'] == true) {
         return _Row(

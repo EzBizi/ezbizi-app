@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -314,15 +315,11 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
             ? 'this branch only'
             : 'its branches use these unless they set their own',
       ].join(' · '),
-      search: TextField(
+      search: ListSearch(
         key: const ValueKey('pm-set-search'),
         controller: _search,
+        hint: 'Find a setting',
         onChanged: (t) => setState(() => _q = t.trim().toLowerCase()),
-        decoration: const InputDecoration(
-          isDense: true,
-          prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'Find a setting',
-        ),
       ),
       child: _content(context),
     );

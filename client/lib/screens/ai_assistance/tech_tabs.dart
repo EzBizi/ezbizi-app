@@ -6,6 +6,7 @@
 /// correction becomes a Library entry the assistant reads from then on.
 library;
 
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -42,16 +43,9 @@ List<String> _list(Object? v) =>
 Widget _search(Key key, String hint, ValueChanged<String> onChanged) =>
     SizedBox(
       width: 260,
-      child: TextField(
+      child: ListSearch(
         key: key,
-        textAlignVertical: TextAlignVertical.center,
-        decoration: InputDecoration(
-          isDense: true,
-          prefixIconConstraints: const BoxConstraints(minWidth: 36),
-          prefixIcon: const Icon(Icons.search, size: 18),
-          hintText: hint,
-          border: const OutlineInputBorder(),
-        ),
+        hint: hint,
         onChanged: onChanged,
       ),
     );
@@ -549,6 +543,19 @@ class _ManualsTabState extends State<ManualsTab> {
               value:
                   '${manuals.fold<int>(0, (n, m) => n + ((m['page_count'] as int?) ?? 0))}',
               note: 'searched by model',
+            ),
+            // Four tiles, like the other AI tabs.
+            FactTile(
+              label: 'Brands',
+              value:
+                  '${manuals.map((m) => _s(m['brand']).toLowerCase()).where((b) => b.isNotEmpty).toSet().length}',
+              note: 'with a manual',
+            ),
+            FactTile(
+              label: 'Without pages',
+              value:
+                  '${manuals.where((m) => ((m['page_count'] as int?) ?? 0) == 0).length}',
+              note: 'not readable yet',
             ),
           ],
         ),

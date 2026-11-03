@@ -28,6 +28,7 @@
 // cannot see is stated and cannot be changed; and Disconnect all is one
 // question and one call.
 
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -993,15 +994,11 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
           // Only where there are enough to lose one in.
           if (total > 6) ...[
             const SizedBox(height: 10),
-            TextField(
+            ListSearch(
               key: const ValueKey('accounts-search'),
               controller: _search,
+              hint: 'Find an account',
               onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: 'Find an account',
-                prefixIcon: Icon(Icons.search, size: 18),
-              ),
             ),
           ],
         ],

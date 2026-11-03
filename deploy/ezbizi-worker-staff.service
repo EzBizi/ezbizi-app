@@ -1,0 +1,25 @@
+# A queue worker of its own for staff questions (WhatsApp, Telegram AI answers,
+# chat commands, report corrections, call recordings): a person is waiting, so
+# they never queue behind call processing on the main worker (Jose, 2026-11-02).
+#
+# Install (once), then set QUEUE_STAFF=staff in /var/www/ezbizi/.env and re-cache config:
+#   sudo cp deploy/ezbizi-worker-staff.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ezbizi-worker-staff
+# Until QUEUE_STAFF=staff the jobs stay on 'default', so installing it first is safe.
+
+[Unit]
+Description=EzBizi queue worker for staff questions
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/ezbizi-current
+ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan queue:work --queue=staff --timeout=88 --sleep=1 --tries=1 --max-time=3600 --max-jobs=300
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

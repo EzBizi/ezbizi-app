@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -98,13 +99,41 @@ List<_Status> _statuses(_Json? board) => [
 String? _statusOf(_Json task) =>
     (task['status_id'] ?? task['status'])?.toString();
 
-/// What a write sends: `status_id` to a board with its own statuses.
-_Json _statusBody(_Json board, String id) =>
-    (board['statuses'] as List? ?? const []).any(
-      (s) => s is Map && s.containsKey('id'),
-    )
+/// What a write sends: `status_id` to a board with its own statuses. A
+/// rolled-up row lives on another board, so it goes by the status's name.
+_Json _statusBody(_Json board, String id, [_Json? task]) =>
+    task?['rolled_up_from'] != null && _statusFor(board, id) != null
+    ? {'status': _statusFor(board, id)!.name}
+    : (board['statuses'] as List? ?? const []).any(
+        (s) => s is Map && s.containsKey('id'),
+      )
     ? {'status_id': id}
     : {'status': id};
+
+/// A rolled-up row carries its own board's status id; this board's status of
+/// the same name stands in for it, so the cell shows a chip, not an id.
+_Json _adopt(_Json board, _Json task) {
+  if (task['rolled_up_from'] == null ||
+      _statusFor(board, _statusOf(task)) != null) {
+    return task;
+  }
+  final name = (task['status_name'] as String?)?.trim().toLowerCase();
+  for (final s in _statuses(board)) {
+    if (s.name.trim().toLowerCase() == name) {
+      return {...task, 'status_id': s.id};
+    }
+  }
+  return task;
+}
+
+/// Every rolled-up row on [board], adopted.
+_Json _adoptAll(_Json board) => {
+  ...board,
+  'tasks': [
+    for (final t in (board['tasks'] as List? ?? const []).cast<_Json>())
+      _adopt(board, t),
+  ],
+};
 
 _Status? _statusFor(_Json? board, Object? id) {
   for (final s in _statuses(board)) {
@@ -362,7 +391,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         return;
       }
       final first = _board == null;
-      _board = res.body['data'] as _Json;
+      _board = _adoptAll(res.body['data'] as _Json);
       // A group that is all done opens folded, as Monday's Done group does.
       if (first) {
         for (final g in _groups(_board!)) {
@@ -667,6 +696,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   void _replace(_Json task) => setState(() {
     final tasks = _tasks.toList();
     final at = tasks.indexWhere((t) => t['id'] == task['id']);
+    // A write's reply does not say the row is rolled up; the old row does.
+    final from = at < 0 ? null : tasks[at]['rolled_up_from'];
+    if (from != null) task = _adopt(_board!, {...task, 'rolled_up_from': from});
     at < 0 ? tasks.add(task) : tasks[at] = task;
     _board = {..._board!, 'tasks': tasks};
   });
@@ -1030,7 +1062,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Future<void> _setStatus(_Json task, String status) async {
     final res = await widget.api.patch(
       '/tasks/${task['id']}',
-      _statusBody(_board!, status),
+      _statusBody(_board!, status, task),
     );
     if (!mounted) return;
     if (res.ok) {
@@ -1319,14 +1351,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           ),
           SizedBox(
             width: phone ? 200 : 240,
-            child: TextField(
+            child: ListSearch(
               key: const Key('tasks-search'),
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a task',
-                border: OutlineInputBorder(),
-              ),
+              hint: 'Find a task',
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
@@ -1447,33 +1474,42 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   Widget _tableList(BuildContext context, {required bool cards}) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-      children: [
-        if (_picked.isNotEmpty && !cards) _bulkBar(context),
-        for (final (i, g) in _groups(_board!).indexed)
-          // The walkthrough's last step points at the first group.
-          i == 0
-              ? KeyedSubtree(
-                  key: const ValueKey('tasks-groups'),
-                  child: _group(context, g, cards: cards),
-                )
-              : _group(context, g, cards: cards),
-        if (_canEdit)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: _naming == 'new'
-                ? _groupNameField(null)
-                : TextButton.icon(
-                    key: const Key('group-add'),
-                    onPressed: () => setState(() {
-                      _naming = 'new';
-                      _groupName.clear();
-                    }),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add group'),
+    Widget box(Widget w) => SliverToBoxAdapter(child: w);
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+          sliver: SliverMainAxisGroup(
+            slivers: [
+              if (_picked.isNotEmpty && !cards) box(_bulkBar(context)),
+              for (final (i, g) in _groups(_board!).indexed)
+                // The walkthrough's last step points at the first group.
+                i == 0
+                    ? KeyedSubtree(
+                        key: const ValueKey('tasks-groups'),
+                        child: _group(context, g, cards: cards),
+                      )
+                    : _group(context, g, cards: cards),
+              if (_canEdit)
+                box(
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _naming == 'new'
+                        ? _groupNameField(null)
+                        : TextButton.icon(
+                            key: const Key('group-add'),
+                            onPressed: () => setState(() {
+                              _naming = 'new';
+                              _groupName.clear();
+                            }),
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add group'),
+                          ),
                   ),
+                ),
+            ],
           ),
+        ),
       ],
     );
   }
@@ -1537,100 +1573,132 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       ),
     );
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: cards
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                header,
-                if (!folded) ...[
-                  for (final t in shown) ...[
-                    _card(context, t),
-                    if (_expanded.contains(t['id'])) ...[
-                      for (final sub in _subtasksOf(t))
-                        Padding(
-                          padding: const EdgeInsets.only(left: 20),
-                          child: _card(context, sub, sub: true),
-                        ),
-                      if (_canEdit && id != null)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 20),
-                          child: _addRow(
-                            context,
-                            id,
-                            parent: t['id'] as String,
-                          ),
-                        ),
-                    ],
+    if (cards) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              header,
+              if (!folded) ...[
+                for (final t in shown) ...[
+                  _card(context, t),
+                  if (_expanded.contains(t['id'])) ...[
+                    for (final sub in _subtasksOf(t))
+                      Padding(
+                        padding: const EdgeInsets.only(left: 20),
+                        child: _card(context, sub, sub: true),
+                      ),
+                    if (_canEdit && id != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 20),
+                        child: _addRow(context, id, parent: t['id'] as String),
+                      ),
                   ],
-                  if (_canEdit && id != null) _addRow(context, id),
                 ],
+                if (_canEdit && id != null) _addRow(context, id),
               ],
-            )
-          : DecoratedBox(
+            ],
+          ),
+        ),
+      );
+    }
+
+    // The group's name and column headings stay pinned while its rows scroll
+    // under them (Jose, 2026-11-02: 347 rows and no telling the columns apart).
+    final edge = BorderSide(color: theme.dividerColor);
+    return SliverPadding(
+      padding: const EdgeInsets.only(bottom: 14),
+      sliver: SliverMainAxisGroup(
+        slivers: [
+          PinnedHeaderSliver(
+            child: Container(
+              key: ValueKey('task-group-top-$id'),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
-                border: Border.all(color: theme.dividerColor),
-                borderRadius: BorderRadius.circular(12),
+                border: folded
+                    ? Border.fromBorderSide(edge)
+                    : Border(top: edge, left: edge, right: edge),
+                borderRadius: folded
+                    ? BorderRadius.circular(12)
+                    : const BorderRadius.vertical(top: Radius.circular(12)),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  header,
+                  if (!folded) ...[
+                    // An empty group drew a full column-header row for nothing.
+                    if (shown.isNotEmpty) _headings(context, id),
+                    if (_renaming case final r? when r.group == id)
+                      _columnNameField(r.key),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (!folded)
+            SliverToBoxAdapter(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  border: Border(left: edge, right: edge, bottom: edge),
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(12),
+                  ),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    header,
-                    if (!folded) ...[
-                      _headings(context, id),
-                      if (_renaming case final r? when r.group == id)
-                        _columnNameField(r.key),
-                      for (final (at, t) in shown.indexed) ...[
-                        _dropOn(id, at, _row(context, t, colour)),
-                        if (_expanded.contains(t['id'])) ...[
-                          for (final sub in _subtasksOf(t))
-                            _row(context, sub, colour, sub: true),
-                          if (_canEdit && id != null)
-                            _cellBorder(
-                              context,
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 6,
-                                    height: 38,
-                                    color: colour.withValues(alpha: 0.3),
+                    for (final (at, t) in shown.indexed) ...[
+                      _dropOn(id, at, _row(context, t, colour)),
+                      if (_expanded.contains(t['id'])) ...[
+                        for (final sub in _subtasksOf(t))
+                          _row(context, sub, colour, sub: true),
+                        if (_canEdit && id != null)
+                          _cellBorder(
+                            context,
+                            Row(
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 38,
+                                  color: colour.withValues(alpha: 0.3),
+                                ),
+                                const SizedBox(width: 28),
+                                Expanded(
+                                  child: _addRow(
+                                    context,
+                                    id,
+                                    parent: t['id'] as String,
                                   ),
-                                  const SizedBox(width: 28),
-                                  Expanded(
-                                    child: _addRow(
-                                      context,
-                                      id,
-                                      parent: t['id'] as String,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                        ],
-                      ],
-                      if (_canEdit && id != null)
-                        _cellBorder(
-                          context,
-                          Row(
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 38,
-                                color: colour.withValues(alpha: 0.3),
-                              ),
-                              Expanded(child: _addRow(context, id)),
-                            ],
                           ),
-                        ),
+                      ],
                     ],
+                    if (_canEdit && id != null)
+                      _cellBorder(
+                        context,
+                        Row(
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 38,
+                              color: colour.withValues(alpha: 0.3),
+                            ),
+                            Expanded(child: _addRow(context, id)),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
             ),
+        ],
+      ),
     );
   }
 
@@ -2775,7 +2843,7 @@ class _TaskPanelState extends State<_TaskPanel> {
                   onSelected: _canEdit
                       ? (_) {
                           if (_statusOf(task) != s.id) {
-                            _patch(_statusBody(widget.board, s.id));
+                            _patch(_statusBody(widget.board, s.id, task));
                           }
                         }
                       : null,

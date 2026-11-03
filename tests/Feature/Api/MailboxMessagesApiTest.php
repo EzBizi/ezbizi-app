@@ -27,6 +27,7 @@ use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use ReflectionMethod;
@@ -1339,6 +1340,25 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame([null, null], FakeMailboxReader::$listedCursors);
     }
 
+    /** 11-02: a fixed order starved the inboxes the budget never reached. */
+    public function test_the_warmer_starts_where_the_last_run_stopped(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $boxes = collect(['a@a-1chimney.com', 'b@a-1chimney.com', 'c@a-1chimney.com'])
+            ->map(fn ($a) => $this->inbox($t, $a));
+        $this->inTenant($t['org'], fn () => $boxes->each(fn ($m) => $m->forceFill(['status' => Mailbox::STATUS_CONNECTED])->save()));
+        $order = $boxes->sortBy('id')->pluck('address')->values()->all();
+        FakeMailboxReader::$page = new MessagePage([$this->summary('m-1')]);
+        FakeMailboxReader::$marked = [];
+        Cache::forever('email.headers.warm-next', 1);
+
+        $this->artisan('ezbizi:warm-inbox-headers')->assertSuccessful();
+
+        $this->assertSame([$order[1], $order[2], $order[0]], FakeMailboxReader::$marked);
+        $this->assertSame(1, Cache::get('email.headers.warm-next'), 'A full pass ends where it began.');
+    }
+
     public function test_inbox_actions_star_and_refuse_an_inbox_the_person_cannot_open(): void
     {
         $this->withFakeProvider();
@@ -2380,6 +2400,9 @@ class FakeMailboxReader implements \App\Support\Email\LabelsThreads, MailboxRead
     /** @var string[] */
     public static array $searches = [];
 
+    /** @var list<string> addresses asked for their mark, in order */
+    public static array $marked = [];
+
     /** @var list<?string> cursors list() was asked for */
     public static array $listedCursors = [];
 
@@ -2509,6 +2532,8 @@ class FakeMailboxReader implements \App\Support\Email\LabelsThreads, MailboxRead
 
     public function currentMark(Mailbox $mailbox): string
     {
+        self::$marked[] = $mailbox->address;
+
         return self::$mark;
     }
 
