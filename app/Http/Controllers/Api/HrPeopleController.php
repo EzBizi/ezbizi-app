@@ -139,6 +139,12 @@ class HrPeopleController extends Controller
             // One role (Jose, 2026-10-01: "on record i should be able to
             // filter by role too"). Here, not on the screen: the list pages.
             ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
+            // The two gaps Eve fills by hand (Jose, 2026-11-03): no start date
+            // (no PTO balance), no contract (payroll type Unknown).
+            ->when($request->query('missing') === 'start_date', fn ($q) => $q->whereNotIn('id',
+                EmploymentEvent::query()->where('kind', EmploymentEvent::STARTED)->select('user_id')))
+            ->when($request->query('missing') === 'contract', fn ($q) => $q->whereNotIn('id',
+                Onboarding::query()->where('status', '!=', Onboarding::CANCELLED)->whereNotNull('user_id')->select('user_id')))
             // One company, with its sub-companies and their franchises, or one
             // franchise (Jose, 2026-10-01: "adding division by company too
             // aside from role"). Somebody placed only at organization level
