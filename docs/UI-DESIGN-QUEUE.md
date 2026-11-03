@@ -5272,7 +5272,7 @@ From Jose's Monday list ("New Estimate Board"), via the desk. Server ready (GET 
 - **Phone:** one column at a time with swipeable status tabs, and "Move to" as a bottom sheet listing only the allowed moves.
 Alternatives: 2, Archived hidden behind a "Show archived" chip; 3, a separate Estimate board tab.
 
-### 173 · Newsletter: new mailing list with a tag — **sent 2026-11-03** (`docs/previews/newsletter-new-list-layouts.html`)
+### 173 · Newsletter: new mailing list with a tag — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend") (`docs/previews/newsletter-new-list-layouts.html`)
 
 Marketing asked for this (server 2b9173a4: POST newsletter/audiences takes an optional tag). The client has no create-list form. Recommended: 1 + phone 4, a "+ New list" button that opens a SidePanel (name, kind, Mailchimp list, "Only people tagged"), with the chip showing "· tag".
 
