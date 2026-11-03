@@ -507,7 +507,8 @@ class LeadsController extends Controller
             ]);
 
         // The day and window a website booking asked for, and where it stands (Jose, 2026-10-08).
-        $booking = WebBooking::query()->where('lead_id', $lead->getKey())->first();
+        // A window only offered in a chat is not a booking yet (BookingBot).
+        $booking = WebBooking::query()->where('lead_id', $lead->getKey())->where('status', '!=', WebBooking::OFFERED)->first();
         $data['booking'] = $booking === null ? null : $this->presentBooking($booking, $lead);
 
         $conversations = $lead->conversations;
@@ -671,6 +672,9 @@ class LeadsController extends Controller
             // Forms, without the Bad Ratings that have their own tab now.
             Lead::SOURCE_WEBSITE_FORM => $query->where('leads.source', Lead::SOURCE_WEBSITE_FORM)
                 ->where(fn ($q) => $q->whereNull('leads.lead_type')->orWhere('leads.lead_type', '!=', 'BAD_RATING')),
+            // With the windows the booking bot held in a chat (Jose, 2026-11-03).
+            Lead::SOURCE_WEBSITE_BOOKING => $query->where(fn ($q) => $q->where('leads.source', $key)
+                ->orWhereIn('leads.id', WebBooking::query()->whereNull('site_id')->whereIn('status', WebBooking::HOLDING)->select('lead_id'))),
             default => $query->where('leads.source', $key),
         };
     }
@@ -756,6 +760,13 @@ class LeadsController extends Controller
             return response()->json(['message' => 'This customer already has a job booked. Nothing was sent.'], 409);
         }
 
+        // A window the booking bot held in a chat (Jose, 2026-11-03: "one tap
+        // approvals"): approving books the job, into Workiz too, before the
+        // confirmation goes. A refusal leaves it pending, for Book by hand.
+        if ($decision === 'approve' && ! $wasApproved && $booking->site_id === null) {
+            $this->book($this->holdAsBooking($request, $lead, $booking), $lead);
+        }
+
         $booking->forceFill([
             'status' => $decision === 'approve' ? WebBooking::APPROVED : WebBooking::DECLINED,
             'decided_by' => $request->user()->getKey(),
@@ -779,6 +790,37 @@ class LeadsController extends Controller
         }
 
         return response()->json(['data' => $this->presentBooking($booking, $lead)]);
+    }
+
+    /** What the Book panel would have sent for a chat hold, filled from the chat. */
+    private function holdAsBooking(Request $request, Lead $lead, WebBooking $booking): Request
+    {
+        $franchiseId = $lead->franchise_id ?? $booking->serviceArea?->franchise_id;
+        $franchise = $franchiseId === null ? null : Franchise::query()->find($franchiseId);
+        $choices = $franchiseId === null ? null : app(WorkizJobWriter::class)->choices($franchiseId, $lead->postal_code);
+        $existing = $this->customersByNumber([$lead->phone_digits])[self::tenDigits($lead->phone_digits)] ?? null;
+
+        $sub = Request::create('/', 'POST', array_filter([
+            'franchise_id' => $franchiseId,
+            'customer_id' => $existing?->getKey(),
+            'customer' => $existing !== null ? null : array_filter([
+                'name' => $lead->contact_name, 'phone' => $lead->phone, 'email' => $lead->email,
+                'address_line1' => $lead->address, 'city' => $lead->city,
+                'state' => strlen((string) $lead->service_state) === 2 ? $lead->service_state : null,
+                'postal_code' => $lead->postal_code,
+            ]),
+            'title' => $lead->service ?: 'Service visit',
+            'status' => $franchise === null ? null : (Job::allowedStatuses($franchise)[0] ?? null),
+            'description' => 'Booked from the chat for '.self::bookingWhen($booking).'.',
+            // Wall clock in the branch's zone, as a job holds it (FranchiseWallTime).
+            'scheduled_for' => $booking->date->toDateString().' '.substr((string) $booking->start_time, 0, 5),
+            'workiz_job_type' => $booking->job_type,
+            'workiz_job_source' => collect($choices['job_sources'] ?? [])->first(fn ($s) => preg_match('/local services|lsa|google/i', $s) === 1),
+            'workiz_service_area' => $choices['zip_areas'][0] ?? null,
+        ], fn ($v) => $v !== null));
+        $sub->setUserResolver(fn () => $request->user());
+
+        return $sub;
     }
 
     /** "Thursday, October 16, between 8:00 AM and 11:00 AM" */

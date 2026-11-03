@@ -56,6 +56,7 @@ use App\Support\Hr\InvitationActions;
 use App\Support\Inspection\ReportPdf;
 use App\Support\Inventory\InventoryItemStatus;
 use App\Support\Inventory\InventoryUnit;
+use App\Support\Leads\BookingBot;
 use App\Support\Leads\LeadReplies;
 use App\Support\Leads\LeadTexts;
 use App\Support\Mail\CannotSendMail;
@@ -508,6 +509,7 @@ class ActionRunner
             'resend' => $this->resendInvitation($subject),
             'revoke' => $this->revokeInvitation($subject),
             'reply' => $this->replyToLead($action, $event, $subject),
+            'book_by_chat' => $this->bookByChat($action, $event, $subject),
             'report.send' => $this->sendReport($action, $event, $automation),
             'email.send' => $this->sendEmail($action, $event, $automation, $subject),
             'whatsapp.send' => $this->sendWhatsApp($action, $event, $subject),
@@ -1249,6 +1251,23 @@ class ActionRunner
             'detail' => 'Replied in the chat. It is recorded as automatic, so the enquiry still '
                 .'shows as awaiting a reply.',
         ];
+    }
+
+    /** The booking bot's next line, sent as an automatic reply (BookingBot). */
+    private function bookByChat(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        if (! $subject instanceof Lead) {
+            return ['type' => 'book_by_chat', 'ok' => false, 'detail' => 'This step can only answer an enquiry.'];
+        }
+
+        $next = app(BookingBot::class)->next($subject);
+        if ($next['reply'] === null) {
+            return ['type' => 'book_by_chat', 'ok' => true, 'skipped' => true, 'detail' => $next['why']];
+        }
+
+        $sent = $this->replyToLead(['message' => $next['reply']] + $action, $event, $subject);
+
+        return ['type' => 'book_by_chat'] + ($sent['ok'] ? ['detail' => $next['why']] : []) + $sent;
     }
 
     /**
