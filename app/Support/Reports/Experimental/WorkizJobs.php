@@ -834,6 +834,9 @@ final class WorkizJobs
                 // first 900 live rows, so "nobody recorded" is a real bucket
                 // and not an impossible case to skip.
                 'phone' => $job['Phone'] ?? null,
+                // A client's other number: 10 of 43 "AI heard a booking, no job"
+                // calls (Oct 27 - Nov 2) came from it (Trey, 2026-11-03).
+                'second_phone' => $job['SecondPhone'] ?? null,
                 'created_by' => $job['CreatedBy'] ?? null,
 
                 // CreatedDate is when the job was BOOKED; JobDateTime is when

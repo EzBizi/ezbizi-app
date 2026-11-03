@@ -12,7 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 /// Scheduling › Re-Scheduling holds Rescheduling Availability (Booked vs
-/// available) and AI Rescheduling Suggestion; Overbooking is overbooked days
+/// available) and AI rescheduling suggestions; Overbooking is overbooked days
 /// only (Jose, 2026-10-26).
 void main() {
   const both = [
@@ -31,11 +31,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Rescheduling Availability'), findsOneWidget);
-    expect(find.text('AI Rescheduling Suggestion'), findsOneWidget);
+    expect(find.text('AI rescheduling suggestions'), findsOneWidget);
     expect(find.byKey(const ValueKey('tour-booked-day')), findsOneWidget);
     expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isTrue);
 
-    await tester.tap(find.text('AI Rescheduling Suggestion'));
+    await tester.tap(find.text('AI rescheduling suggestions'));
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('tour-booked-day')).hitTestable(),
@@ -96,7 +96,7 @@ void main() {
 
       expect(find.text('Overbooking'), findsNothing);
       expect(find.text('Rescheduling Availability'), findsOneWidget);
-      expect(find.text('AI Rescheduling Suggestion'), findsOneWidget);
+      expect(find.text('AI rescheduling suggestions'), findsOneWidget);
       expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isTrue);
     },
   );
@@ -130,9 +130,9 @@ void main() {
     );
     await _pump(tester, both, size: const Size(390, 844));
     expect(find.text('Rescheduling Availability'), findsOneWidget);
-    await tester.ensureVisible(find.text('AI Rescheduling Suggestion'));
+    await tester.ensureVisible(find.text('AI rescheduling suggestions'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('AI Rescheduling Suggestion'));
+    await tester.tap(find.text('AI rescheduling suggestions'));
     await tester.pumpAndSettle();
     expect(
       errors,

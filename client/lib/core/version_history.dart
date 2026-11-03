@@ -14,6 +14,137 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0524',
+      date: '3 Nov 2026',
+      items: [
+        'Reports › People: Phone and Sales columns, bookings credited to whoever answered, and a call booked under a client second number now counts.',
+        'Leads on a phone: one header bar, a simpler reply box and one Filters page.',
+        'Google Business Profile: connecting now reaches every account the Google login manages.',
+        'Report texts with nothing to report are not sent; weekly losses say when a week cannot be judged yet.',
+        'Email: personal Google sign-in is retired; connect through Google Workspace, or IMAP with an app password.',
+        'Automations: new trigger for a call that ended without a booking.',
+        'Financial reports: key figures, a cancellation breakdown by reason, and tech-caused cancels with each tech share of sales.',
+        'Inspection reports email the PDF reliably, and files can be attached to the Workiz job.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0523',
+      date: '3 Nov 2026',
+      items: [
+        'Dates are one field: type it in your organization format or pick it from the calendar.',
+        'Reports: a call a teammate answered no longer shows as your booking or your score; phone numbers are formatted.',
+        'Scheduling: each branch can be left out of the empty-spots report; a passed opening can no longer be moved.',
+        'Call transcripts arrive sooner.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0522',
+      date: '3 Nov 2026',
+      items: [
+        'Fleet: Vehicles opens on all states, grouped by company and branch.',
+        'Customers: the Money card shows \$0 again instead of hiding when nothing is owed.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0521',
+      date: '2 Nov 2026',
+      items: [
+        'Every list search is the same size, so filter rows line up across the app; Team, Alerts and Field alerts gained search.',
+        'Calmer colours: normal states are no longer red, and purple is gone.',
+        'Automations: switching a rule on or off offers Undo.',
+        'Dashboard: job-status colours stay fixed, and tiles fill their row.',
+        'Voicemail: compact cards with one line of details.',
+        'Payroll, Time off, PTO, Helpers and Task Board: clearer labels, steadier widths and quieter empty states.',
+        'WhatsApp groups: one picker instead of a wall of chips; Review links table fills the width.',
+        'Failed posts show one plain line; Reviews shows the Google chip.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0520',
+      date: '2 Nov 2026',
+      items: [
+        'Automations, Guidelines and Services share one search box.',
+        'Availability: one Company and Branch picker replaces the separate chips.',
+        'Job and Customer panes hide Save and Cancel on read-only tabs; the sidebar shows a scroll bar.',
+        'Leads with no name or phone are titled by their email.',
+        'Dashboard: long empty-box notes show three, then a link for the rest.',
+        'Communication: an alert sent to nobody says Sent to nobody.',
+        'Wording: sentence case in Scheduling and Project Management, Voicemail shows Every line (default).',
+        'Loading placeholders in Email Settings and Profit and Loss; Inventory empty lists explain what to add.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0519',
+      date: '2 Nov 2026',
+      items: [
+        'Web: faster engine on Chrome and Edge, and the app reloads itself once if the graphics engine stops.',
+        'Reports › Scoring: score and checks as coloured chips, Did well and To improve listed one per line, with copy buttons.',
+        'Call transcripts in Reports and Leads colour each speaker (Dispatcher, Customer, IVR menu), are selectable and have one copy button.',
+        'Task Board: branch rows show their status by name, and headings stay pinned while scrolling.',
+        'Development tab brought up to date.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0518',
+      date: '2 Nov 2026',
+      items: [
+        'Leads: fewer tabs. Calls (LS, RC, EZ), SMS Texts (LS, EZ), Meta (Facebook, Instagram, WhatsApp) and Forms (Forms, Job applicants) each hold their sources, and every lead keeps its own tag.',
+        'Leads: Not a lead, Completed and Lost never show Awaiting reply or count as unreplied.',
+        'Settings › Integrations: Google connections are grouped by the Google account that made them, with one Reconnect or Disconnect per account.',
+        'Marketing: YouTube posts can be deleted from EzBizi (reconnect YouTube once to allow it).',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0517',
+      date: '2 Nov 2026',
+      items: [
+        'Suggestions: paste a screenshot with Ctrl+V or Cmd+V; on phones, Paste image.',
+        'Reports › Performance: call details are easier to read; the AI score is a chip, Did well and To improve sit on their own lines, and the caller shows the area and ad source.',
+        'WhatsApp leads always belong to the company of the number they arrived on.',
+        'Integrations: Google connections remember which Google account they were made with.',
+        'Leads: the 3-hour follow-up reminder fires again.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0516',
+      date: '2 Nov 2026',
+      items: [
+        'Leads: photos customers send on Messenger and Instagram show in the conversation.',
+        'Marketing: Pinterest posts link to the pin.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0515',
+      date: '2 Nov 2026',
+      items: [
+        'GBP Listings: WhatsApp is a column you set per listing or in bulk from the table; phone check and Google connection sit under the menu.',
+        'Google reviews: unanswered 4 and 5 star reviews get an AI reply, 50 a day; lower ones get a draft for dispatchers.',
+        'Scheduled WhatsApp reports arrive again; Profit and Loss opens on the latest week.',
+        'Reports › Performance: a Roles permission lets dispatch supervisors set Handles; changing Handles no longer reloads the page.',
+        'Project Management - 2: the Submitted tab loads instantly and keeps every submitted job; money columns read Paid, Balance, Total.',
+        'Project Management - 1: Overview and Jobs load several times faster.',
+        'Dashboard: the email box shows unread mail again and no longer slows the page.',
+        'Phone: the call tag prompt finds your calls again; transferred complaint calls alert once.',
+        'Inspection reports show the branch phone and email; automations can text a link to the report.',
+        'Field: lost-signal alerts close themselves when the phone recovers.',
+        'Integrations: Meta connections that stop working show Needs attention.',
+        'Work Hours: continuing a shift the clock closed gives one extension, not a new 14 hours.',
+        'Roles: Project Management needs Jobs.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0514',
+      date: '2 Nov 2026',
+      items: [
+        'Customer Experience › GBP Listings: switching on auto-reply now answers new Google reviews by itself, with a reply for each star rating; the rule shows in Automations, where one switch turns it off everywhere.',
+        'WhatsApp links: pick which WhatsApp number to use, and set it on one listing or many at once.',
+        'Customer Experience › Review links: eKomi opens its own screen with Overview, Requests, Reviews and Settings, including automatic review requests (off until switched on).',
+        'Human Resources › Payroll: W-2 / 1099 filter, the company and branch of each person, and Export.',
+        'Leads: Unread filter removed, Unreplied and Starred have icons, and the search, status and Filters controls are one height.',
+        'Project Management - 2: a job with no price shows \$0.00 instead of a dash.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0513',
       date: '30 Oct 2026',
       items: [

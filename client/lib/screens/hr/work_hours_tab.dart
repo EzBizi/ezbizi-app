@@ -47,6 +47,7 @@
 /// average, and none of them can be worked out here.
 library;
 
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -638,13 +639,9 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-          child: TextField(
+          child: ListSearch(
             key: const ValueKey('tour-work_hours-search'),
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: UiStrings.t('time_clock.search_people'),
-            ),
+            hint: UiStrings.t('time_clock.search_people'),
             onChanged: (value) => setState(() => _search = value),
           ),
         ),
@@ -1278,7 +1275,9 @@ class _ShiftRow extends StatelessWidget {
                     ),
                   )
                 else ...[
-                  _Pip(colour: scheme.error),
+                  // Muted: clocking out is normal, not a problem (deep dive
+                  // 2026-11-02 #7).
+                  _Pip(colour: scheme.outline),
                   const SizedBox(width: 6),
                   Text(shift.clockedOut, style: theme.textTheme.bodySmall),
                 ],

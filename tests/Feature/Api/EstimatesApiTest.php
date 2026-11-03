@@ -88,6 +88,8 @@ class EstimatesApiTest extends TestCase
             ->assertOk()->json('meta');
 
         $this->assertSame(['draft' => 2, 'sent' => 1, 'accepted' => 1, 'declined' => 0, 'archived' => 0], $meta['status_counts']);
+        $this->assertSame(['accepted', 'declined', 'archived'], $meta['transitions']['sent']);
+        $this->assertSame([], $meta['transitions']['archived']);
         $this->assertSame(['USD' => ['quoted' => 100000, 'accepted' => 40000]], $meta['totals']);
     }
 

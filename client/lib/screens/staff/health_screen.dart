@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
+import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 
 /// The subsystems that fail silently (plan §4.2, §18 Phase 0).
@@ -121,7 +122,7 @@ class _HealthScreenState extends State<HealthScreen> {
               Expanded(
                 child: Text(
                   'Health',
-                  style: Theme.of(context).textTheme.headlineSmall,
+                  style: Theme.of(context).textTheme.headlineMedium,
                 ),
               ),
               IconButton(
@@ -138,14 +139,24 @@ class _HealthScreenState extends State<HealthScreen> {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 20),
-          if (_health != null) ...[
-            _backups(_health!['backups'] as Map<String, dynamic>),
-            _peer(_health!['peer'] as Map<String, dynamic>?),
-            _certificate(_health!['certificate'] as Map<String, dynamic>?),
-            _mail(_health!['mail'] as Map<String, dynamic>),
-            _outbox(_health!['outbox'] as Map<String, dynamic>),
-          ],
-          if (_issues != null) _appIssues(_issues!),
+          // What needs attention first, the healthy checks after (UI queue
+          // 168); each group keeps its own order.
+          ...() {
+            final checks = [
+              if (_health != null) ...[
+                _backups(_health!['backups'] as Map<String, dynamic>),
+                _peer(_health!['peer'] as Map<String, dynamic>?),
+                _certificate(_health!['certificate'] as Map<String, dynamic>?),
+                _mail(_health!['mail'] as Map<String, dynamic>),
+                _outbox(_health!['outbox'] as Map<String, dynamic>),
+              ],
+              if (_issues != null) _appIssues(_issues!),
+            ].whereType<_Check>();
+            return [
+              ...checks.where((c) => !c.ok),
+              ...checks.where((c) => c.ok),
+            ];
+          }(),
         ],
       ),
     );
@@ -158,9 +169,11 @@ class _HealthScreenState extends State<HealthScreen> {
     required String headline,
     List<Widget> children = const [],
   }) {
-    final scheme = Theme.of(context).colorScheme;
+    final tone = ToneColours.of(context, ok ? Tone.ok : Tone.bad);
 
-    return Card(
+    return _Check(
+      ok: ok,
+      child: Card(
       key: key,
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -170,7 +183,7 @@ class _HealthScreenState extends State<HealthScreen> {
           children: [
             Icon(
               ok ? Icons.check_circle_outline : Icons.error_outline,
-              color: ok ? scheme.primary : scheme.error,
+              color: tone.ink,
               semanticLabel: ok ? 'Healthy' : 'Needs attention',
             ),
             const SizedBox(width: 12),
@@ -187,6 +200,7 @@ class _HealthScreenState extends State<HealthScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -325,8 +339,25 @@ class _HealthScreenState extends State<HealthScreen> {
 
   /// The apps' own error reports, grouped into problems, newest first.
   Widget _appIssues(Map<String, dynamic> issues) {
-    final problems = (issues['problems'] as List? ?? const [])
-        .cast<Map<String, dynamic>>();
+    // The same error from several builds or places is one row with the
+    // reports added up (UI queue 168: "RenderBox was not laid out" ×5).
+    final merged = <String, Map<String, dynamic>>{};
+    for (final p in (issues['problems'] as List? ?? const []).cast<Map<String, dynamic>>()) {
+      // A web build names the same class differently in each place
+      // ("minified:axf", "minified:a3o"), so that part is not the message.
+      final message = '${p['message']}'.replaceAll(RegExp(r'minified:\w+'), 'minified');
+      final key = '${p['kind']}·$message';
+      final seen = merged[key];
+      if (seen == null) {
+        merged[key] = {...p, 'message': message};
+        continue;
+      }
+      seen['total'] = ((seen['total'] as num?) ?? 0) + ((p['total'] as num?) ?? 0);
+      for (final list in ['modules', 'platforms', 'versions']) {
+        seen[list] = {...?(seen[list] as List?), ...?(p[list] as List?)}.toList();
+      }
+    }
+    final problems = merged.values.toList();
     final days = issues['days'] ?? 7;
     final total = problems.fold<int>(0, (n, p) => n + ((p['total'] as num?)?.toInt() ?? 0));
 
@@ -396,4 +427,15 @@ class _HealthScreenState extends State<HealthScreen> {
       ],
     );
   }
+}
+
+/// A check and whether it is healthy, so the screen can put problems first.
+class _Check extends StatelessWidget {
+  const _Check({required this.ok, required this.child});
+
+  final bool ok;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => child;
 }

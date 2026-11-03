@@ -54,9 +54,15 @@ class InspectionReportMail extends Mailable implements ShouldQueue
     public function __construct(
         private readonly InspectionReport $report,
         private readonly string $companyName,
-        private readonly string $pdf,
+        string $pdf,
         private readonly string $note = '',
-    ) {}
+    ) {
+        // Base64 because the queue JSON-encodes this object: raw PDF bytes are
+        // not UTF-8 and the dispatch threw "Malformed UTF-8" on the first real send.
+        $this->pdf = base64_encode($pdf);
+    }
+
+    private readonly string $pdf;
 
     public function envelope(): Envelope
     {
@@ -99,7 +105,7 @@ class InspectionReportMail extends Mailable implements ShouldQueue
     public function attachments(): array
     {
         return [
-            Attachment::fromData(fn (): string => $this->pdf, $this->filename())
+            Attachment::fromData(fn (): string => base64_decode($this->pdf), $this->filename())
                 ->withMime('application/pdf'),
         ];
     }

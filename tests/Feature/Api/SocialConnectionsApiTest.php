@@ -179,7 +179,7 @@ class SocialConnectionsApiTest extends TestCase
         // connection, which nothing listed before, so naming one had no
         // visible effect anywhere.
         $this->assertSame([
-            'id', 'provider', 'provider_label', 'display_name', 'label', 'handle',
+            'id', 'provider', 'provider_label', 'display_name', 'label', 'handle', 'account_email',
             'scope_type', 'scope_id', 'status', 'status_reason', 'detail', 'workiz', 'last_reached_at',
             'can_publish', 'cannot_publish_because', 'posting_note', 'asks_tiktok_choices',
         ], array_keys($row));

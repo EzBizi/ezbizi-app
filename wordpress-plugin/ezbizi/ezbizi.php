@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.26.23
+ * Version:           1.26.24
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.26.23';
+const EZBIZI_VERSION = '1.26.24';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -161,7 +161,9 @@ function ezbizi_payload($force = false) {
 
     $cached = get_transient(EZBIZI_CACHE_KEY);
 
-    if (is_array($cached)) {
+    // A transient whose timeout row went missing never expires (angisweep.com
+    // served 10-23's payload until 11-02), so its own stamp has the last word.
+    if (is_array($cached) && time() - (int) (isset($cached['fetched_at']) ? $cached['fetched_at'] : time()) <= EZBIZI_CACHE_TTL * 2) {
         return $cached;
     }
 

@@ -30,7 +30,12 @@ class ConnectAccount extends StatefulWidget {
     required this.startPath,
     required this.onConnected,
     this.openConsent = openConsentWindow,
+    this.action,
   });
+
+  /// The button's words in place of "Connect [label]": "Reconnect" on a
+  /// Google login's card (design 167).
+  final String? action;
 
   final ApiClient api;
 
@@ -108,7 +113,7 @@ class _ConnectAccountState extends State<ConnectAccount> {
                   width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.link, size: 18),
-          label: Text(_busy ? 'Waiting for the sign-in…' : 'Connect ${widget.label}'),
+          label: Text(_busy ? 'Waiting for the sign-in…' : widget.action ?? 'Connect ${widget.label}'),
         ),
         if (_busy && _url != null && !kIsWeb)
           TextButton.icon(

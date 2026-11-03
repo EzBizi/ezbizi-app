@@ -48,6 +48,24 @@ class AlertStepTest extends TestCase
         });
     }
 
+    public function test_a_long_alert_is_cut_in_the_title_and_whole_in_the_body(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $one = $this->userWithRole($t, 'Viewer', ['tasks.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $one) {
+            $rule = Automation::create(['name' => 'Sad review', 'trigger_key' => 'lead.received', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $long = str_repeat('Bad visit. ', 60);
+
+            $sent = app(ActionRunner::class)->run(['type' => 'alert.send', 'user_ids' => [$one->id], 'message' => $long], new AutomationEvent(['event_key' => 'lead.received', 'payload' => []]), null, automation: $rule);
+
+            $this->assertTrue($sent['ok'], $sent['detail']);
+            $note = Notification::query()->where('source', 'alert')->sole();
+            $this->assertLessThanOrEqual(255, mb_strlen($note->title));
+            $this->assertStringContainsString(Alert::query()->sole()->message, $note->body);
+        });
+    }
+
     public function test_the_booking_line_is_dropped_when_the_branch_has_no_booking_page(): void
     {
         $t = $this->provisionTenant('Alpha');

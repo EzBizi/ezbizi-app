@@ -108,7 +108,8 @@ final class DailyTexts
         $head = "\u{1F4CA} *Marketing PPC · Daily update*\nReport: ".$day->format('D, M j, Y');
 
         if ($rows->isEmpty()) {
-            return $head."\n\nNo entries in the mapped marketing tables for the last two weeks.";
+            // Nothing to report is no text: a rule sends none (desk, 2026-11-03).
+            return '';
         }
 
         $latest = $rows->max('date');
@@ -265,6 +266,15 @@ final class DailyTexts
 
         usort($losses, fn ($a, $b) => $a[1]['net'] <=> $b[1]['net']);
         $lines = ["\u{1F4C9} *Weekly Net Loss Report*", '_'.$from->format('M j').' - '.$to->format('M j, Y').'_', ''];
+        // No all-clear on missing data (desk, 2026-11-03): a branch whose week
+        // is not complete cannot be judged, and the text says so first.
+        $judged = $branches->count() - count($pending);
+        if ($judged === 0) {
+            return implode("\n", [...$lines, "\u{26A0}\u{FE0F} Can't be judged yet: no branch has a complete P&L for the week.", 'Not complete yet: '.implode(', ', $pending)]);
+        }
+        if ($pending !== []) {
+            $lines[] = "\u{26A0}\u{FE0F} Only {$judged} of {$branches->count()} branches have a complete P&L for the week; the rest can't be judged yet.";
+        }
         $lines[] = '• *'.count($losses).' '.(count($losses) === 1 ? 'branch' : 'branches').' with negative net profit*';
         $lines[] = '• *Combined losses: '.self::money((int) round(array_sum(array_map(fn ($l) => $l[1]['net'], $losses)) * 100)).'*';
         foreach ($losses as [$name, $pnl]) {

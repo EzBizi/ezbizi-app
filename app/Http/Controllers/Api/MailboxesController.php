@@ -14,6 +14,7 @@ use App\Support\Email\CannotReachHost;
 use App\Support\Email\GoogleWorkspace;
 use App\Support\Email\GoogleWorkspaceRefused;
 use App\Support\Email\MailboxAccess;
+use App\Support\Email\GmailMailboxReader;
 use App\Support\Email\MailboxProvider;
 use App\Support\Email\MailboxReaders;
 use App\Support\Email\ReadState;
@@ -174,8 +175,8 @@ class MailboxesController extends Controller
                     'label'    => $p->label(),
                     'needs_host' => $p->needsHost(),
                     'connects_by' => $p->connectsBy(),
-                    'usable'   => $this->readers->forProvider($p)->notReadyBecause() === null,
-                    'unusable_because' => $this->readers->forProvider($p)->notReadyBecause(),
+                    'usable'   => $this->notReady($p) === null,
+                    'unusable_because' => $this->notReady($p),
                     // The IMAP warning, published by the server so every client
                     // shows the same words. See MailboxProvider::caution.
                     'caution'  => $p->caution(),
@@ -289,6 +290,8 @@ class MailboxesController extends Controller
             'mail_server'  => ['sometimes', 'array'],
         ]);
 
+        // Retired 2026-11-03; see GmailMailboxReader::RETIRED.
+        abort_if($input['provider'] === MailboxProvider::GmailOAuth->value, 422, GmailMailboxReader::RETIRED);
         $scope = $this->resolveScope($input['scope_type'], $input['scope_id']);
 
         $this->assertReaches($user, $scope, $input['scope_type'], 'add a shared inbox here');
@@ -1114,5 +1117,11 @@ class MailboxesController extends Controller
         }
 
         return $out;
+    }
+
+    private function notReady(MailboxProvider $p): ?string
+    {
+        return $p === MailboxProvider::GmailOAuth ? GmailMailboxReader::RETIRED
+            : $this->readers->forProvider($p)->notReadyBecause();
     }
 }

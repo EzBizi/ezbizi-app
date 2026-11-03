@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -159,13 +160,9 @@ class _ListingMediaState extends State<ListingMedia> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
+        ListSearch(
           key: const ValueKey('cx-media-search'),
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search, size: 18),
-            hintText: 'Search media',
-            isDense: true,
-          ),
+          hint: 'Search media',
           onChanged: (v) => setState(() => _q = v),
         ),
         const SizedBox(height: 8),

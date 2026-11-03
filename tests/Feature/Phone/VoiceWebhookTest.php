@@ -144,6 +144,13 @@ class VoiceWebhookTest extends TestCase
 
         // Not the account's first line, which is what it used to fall to.
         $this->assertStringNotContainsString('callerId="+12035551020"', $xml);
+
+        // The row names who placed it: without that the hang-up "what was this
+        // call about?" found no call, and no call was ever tagged (2026-11-02).
+        $this->inTenant($t['org'], fn () => $this->assertSame(
+            ClientIdentity::uuidOf($identity),
+            PhoneCall::query()->where('twilio_sid', 'CA55555555555555555555555555555555')->value('user_id'),
+        ));
     }
 
     /**

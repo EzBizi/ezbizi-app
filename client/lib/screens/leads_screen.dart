@@ -149,9 +149,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// arrow (UI queue 34, Jose's 1 + 4 of 2026-09-30).
   bool _managing = false;
 
-  /// A phone's search box, opened from its icon.
-  bool _searching = false;
-
   /// The lead a phone has open in place of the list, with its own back
   /// arrow: containment, never a page pushed over the app.
   String? _phoneLeadId;
@@ -164,12 +161,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// LS Booking too (Jose, 2026-10-01): Google took the booking itself, so
   /// there is nothing to answer.
   // Nothing to reply to (Jose, 2026-10-15: "like ls calls and LS booking").
-  final Set<String> _allLeftOut = {
-    'ls_call',
-    'ls_booking',
-    'ringcentral',
-    'ez_calls',
-  };
+  // Calls holds LS, RC and EZ calls, all three of which were out (2026-11-02).
+  final Set<String> _allLeftOut = {'calls', 'ls_booking'};
 
   /// What All asks for: every source this person sees, less those left out.
   /// Null when nothing is left out, so the request stays unnarrowed.
@@ -178,11 +171,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // Job applicants are never in All (the server leaves them out), so they
     // are not one of All's toggles either.
     final sources = _visibleSources.where((s) => s.$1 != 'job_applicant');
+    final every = [for (final s in sources) ..._allKeysOf(s.$1)];
     final shown = [
       for (final s in sources)
-        if (!_allLeftOut.contains(s.$1)) s.$1,
+        if (!_allLeftOut.contains(s.$1)) ..._allKeysOf(s.$1),
     ];
-    if (shown.length == sources.length) return null;
+    if (shown.length == every.length) return null;
     return shown.isEmpty ? '-' : shown.join(',');
   }
 
@@ -195,30 +189,62 @@ class _LeadsScreenState extends State<LeadsScreen> {
   };
 
   static const _sourceChips = <(String, String)>[
-    // Google, split the way A1 Leads splits it (Jose, 2026-09-28). The API
-    // takes these as a source and narrows Local Services by lead type.
-    ('ls_call', 'LS Call'),
-    ('ls_text', 'LS Text'),
+    // LS, RC and EZ calls in one tab, and LS and EZ texts in another, each
+    // lead keeping its own tag (Jose, 2026-11-02). Picked inside by _groups.
+    ('calls', 'Calls'),
+    ('sms', 'SMS Texts'),
     ('ls_booking', 'LS Booking'),
-    // Calls straight to our own lines, not through Google (Jose, 2026-10-15).
-    ('ringcentral', 'RC Calls'),
-    // EzBizi's own lines (Jose, 2026-10-16): calls owe no reply, texts do.
-    ('ez_calls', 'EZ Calls'),
-    ('ez_texts', 'EZ Texts'),
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
-    ('website_form', 'Forms'),
+    // Forms and Job applicants, the same way (Jose, 2026-11-02).
+    ('forms', 'Forms'),
     // The review link's sad faces, out of Forms (Jose, 2026-10-19).
     ('bad_rating', 'Bad Ratings'),
     ('website_booking', 'Online Booking'),
-    ('facebook', 'Facebook'),
-    ('instagram', 'Instagram'),
+    // Facebook, Instagram and WhatsApp in one tab, each lead keeping its own
+    // tag (Jose, 2026-11-02; design 166). Picked inside it by _metaSources.
+    ('meta', 'Meta'),
     ('workiz', 'Workiz'),
-    ('whatsapp', 'WhatsApp'),
-    // Not a source: people asking for a job, by Grok or by hand (Jose,
-    // 2026-10-09). Their own tab, out of All.
-    ('job_applicant', 'Job applicants'),
   ];
+
+  /// The rail tabs that hold several sources, each its own permission tick
+  /// and its own chip inside the tab (design 166; Jose, 2026-11-02).
+  static const _groups = <String, List<(String, String)>>{
+    // Google, split the way A1 Leads splits it (Jose, 2026-09-28): the API
+    // narrows Local Services by lead type. RC Calls are calls straight to our
+    // own lines (2026-10-15); EZ are EzBizi's own lines (2026-10-16).
+    'calls': [
+      ('ls_call', 'LS Call'),
+      ('ringcentral', 'RC Calls'),
+      ('ez_calls', 'EZ Calls'),
+    ],
+    'sms': [('ls_text', 'LS Text'), ('ez_texts', 'EZ Texts')],
+    // Job applicants are not a source: people asking for a job, by Grok or by
+    // hand (2026-10-09). Never in All.
+    'forms': [('website_form', 'Forms'), ('job_applicant', 'Job applicants')],
+    'meta': [
+      ('facebook', 'Facebook'),
+      ('instagram', 'Instagram'),
+      ('whatsapp', 'WhatsApp'),
+    ],
+  };
+
+  /// The one source picked inside a group's tab; null is all of them.
+  String? _pick;
+
+  List<(String, String)> _visibleIn(String group) => [
+    for (final m in _groups[group] ?? const <(String, String)>[])
+      if (_maySee(m.$1)) m,
+  ];
+
+  /// What a source asks the server for: a group is its sources.
+  Iterable<String> _keysOf(String source) => _groups.containsKey(source)
+      ? _visibleIn(source).map((m) => m.$1)
+      : [source];
+
+  /// The same, for All, which never holds job applicants.
+  Iterable<String> _allKeysOf(String source) =>
+      _keysOf(source).where((k) => k != 'job_applicant');
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
   /// here: nothing else in the app draws a per-source mark, so these are the
@@ -226,12 +252,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// added -- the strip is built from `_sourceChips`, so a source added there
   /// and not here would land with the wrong icon rather than none.
   static const _sourceIcons = <IconData>[
-    Icons.call_outlined, // Google Local Services calls
-    Icons.sms_outlined, // Google Local Services texts
+    Icons.call_outlined, // Calls: LS, RC and EZ
+    Icons.sms_outlined, // SMS Texts: LS and EZ
     Icons.event_available_outlined, // booked through Google directly
-    Icons.phone_callback_outlined, // RingCentral: a call to our own line
-    Icons.phone_in_talk_outlined, // EZ Calls: a call to an EzBizi line
-    Icons.textsms_outlined, // EZ Texts: a text to an EzBizi line
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
@@ -240,15 +263,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // Messenger and Instagram have no Material glyph of their own, and a
     // wrong-brand icon reads worse than a generic one. These say "a message"
     // and "a photo account" rather than pretending to be the logos.
-    Icons.forum_outlined,
-    Icons.camera_alt_outlined,
+    Icons.forum_outlined, // Meta: Messenger, Instagram and WhatsApp
     // Workiz is a book of records rather than a channel somebody wrote in,
     // which is the difference this whole source turns on - no thread, no
     // reply, and absent from the Unreplied filter. A ledger, not a message.
     Icons.assignment_outlined,
-    // WhatsApp: no Material logo either; a chat bubble, like Messenger's.
-    Icons.chat_outlined,
-    Icons.badge_outlined, // job applicants
   ];
 
   /// The sources this person was granted, with their icons - Jose,
@@ -269,11 +288,19 @@ class _LeadsScreenState extends State<LeadsScreen> {
   List<(String, String, IconData)> get _visibleSources => [
     for (var i = 0; i < _sourceChips.length; i++)
       if (_maySee(_sourceChips[i].$1))
-        (_sourceChips[i].$1, _sourceChips[i].$2, _sourceIcons[i]),
+        (_sourceChips[i].$1, _labelOf(_sourceChips[i]), _sourceIcons[i]),
   ];
+
+  /// A role without Forms sees "Job applicants", not a Forms tab holding
+  /// only applicants (applicants are visible to everybody).
+  String _labelOf((String, String) chip) {
+    final inside = _visibleIn(chip.$1);
+    return chip.$1 == 'forms' && inside.length == 1 ? inside.single.$2 : chip.$2;
+  }
 
   bool _maySee(String source) =>
       source == 'job_applicant' ||
+      (_groups[source]?.any((m) => _maySee(m.$1)) ?? false) ||
       (widget.session.me?.can(
             'leads.${source.startsWith('ls_') ? 'local_services' : source}.view',
           ) ??
@@ -281,7 +308,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   void _setSource(String? source) {
     if (source == _source) return;
-    setState(() => _source = source);
+    setState(() {
+      _source = source;
+      _pick = null;
+    });
     _load();
   }
 
@@ -365,6 +395,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     if (wanted != null && _visibleSources.any((c) => c.$1 == wanted)) {
       _source = wanted;
+    } else if (wanted != null) {
+      // A source inside a group opens the group with it picked.
+      for (final group in _groups.keys) {
+        if (_visibleIn(group).any((m) => m.$1 == wanted)) {
+          _source = group;
+          _pick = wanted;
+        }
+      }
     }
 
     _selectedId = widget.initialLeadId;
@@ -443,8 +481,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
     if (_overdue) 'overdue': '1',
     if (_followUp) 'follow_up': '1',
     if (_starred) 'starred': '1',
-    'source': ?_source,
-    'sources': ?_allSources,
+    'source': ?(_groups.containsKey(_source) ? null : _source),
+    'sources': ?(_groups.containsKey(_source)
+        ? (_pick ?? _keysOf(_source!).join(','))
+        : _allSources),
     if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
     'charge': ?_charge,
     'ivr': ?_ivr,
@@ -737,15 +777,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
       'website_chat': 'Chat',
       'website_form': 'Forms',
       'website_booking': 'Online Booking',
-      'facebook': 'Messenger',
-      'instagram': 'Instagram',
+      'meta': 'Messenger',
+      'forms': 'Forms',
       'workiz': 'Workiz',
       'whatsapp': 'WhatsApp',
       'ringcentral': 'RC Calls',
       'ez_calls': 'EZ Calls',
       'ez_texts': 'EZ Texts',
       'bad_rating': 'Bad Ratings',
-    }[_source];
+    }[_pick ?? _source];
     return tab == null ? body : OpenTabMark(tab, child: body);
   }
 
@@ -771,6 +811,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   Widget _phone(ThemeData theme) {
     if (_choosingSource) return _sourcesPage(theme);
+    if (_moreFilters) return _phoneFilters(theme);
 
     final id = _phoneLeadId;
     if (id != null) {
@@ -850,14 +891,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// Unread leads behind a source; for All, behind every source it holds.
   int _unreadIn(String? key) => key != null
-      ? _unreadBySource[key] ?? 0
+      ? _keysOf(key).fold(0, (sum, k) => sum + (_unreadBySource[k] ?? 0))
       : _visibleSources
-            .where((s) => s.$1 != 'job_applicant' && !_allLeftOut.contains(s.$1))
-            .fold(0, (sum, s) => sum + (_unreadBySource[s.$1] ?? 0));
+            .where((s) => !_allLeftOut.contains(s.$1))
+            .expand((s) => _allKeysOf(s.$1))
+            .fold(0, (sum, k) => sum + (_unreadBySource[k] ?? 0));
 
   /// A source whose accounts are not delivering: Google refusing on quota,
   /// or a connection broken or revoked.
   bool _failing(String key) {
+    if (_groups.containsKey(key)) return _keysOf(key).any(_failing);
     final provider = switch (key) {
       'ls_call' || 'ls_text' => 'google_ads',
       'thumbtack' => 'thumbtack',
@@ -966,6 +1009,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   // ── the list's own controls ──────────────────────────────────────
 
+  /// Search, status and Filters share one height (Jose, 2026-11-02: "these 3
+  /// fields have different sizes"): the theme's 16 px padding, less 4.
+  static const _barPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 12);
+  static const _barHeight = 44.0;
+
   Widget _searchField() => TextField(
     key: const ValueKey('tour-leads-search'),
     controller: _search,
@@ -979,6 +1027,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     },
     decoration: InputDecoration(
       isDense: true,
+      contentPadding: _barPadding,
       prefixIcon: const Icon(Icons.search, size: 20),
       // Both, because somebody has one or the other in front of them and
       // should not have to know which the box wants.
@@ -1002,6 +1051,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     key: const ValueKey('tour-leads-status'),
     value: _status,
     isDense: true,
+    contentPadding: _barPadding,
     options: [
       for (final entry in _statuses.entries)
         SearchOption(value: entry.key, label: entry.value),
@@ -1018,20 +1068,30 @@ class _LeadsScreenState extends State<LeadsScreen> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      if (_groups.containsKey(_source)) _inGroup(theme),
       // Design 162 (option 1 + phone 4): over the list, never the title row.
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
         child: LayoutBuilder(
           builder: (context, box) => Row(
             children: [
-              Expanded(child: _searchField()),
+              Expanded(
+                child: SizedBox(height: _barHeight, child: _searchField()),
+              ),
               const SizedBox(width: 8),
-              SizedBox(width: 140, child: _statusPicker()),
+              SizedBox(
+                width: 140,
+                height: _barHeight,
+                child: _statusPicker(),
+              ),
               const SizedBox(width: 8),
               // Charge, IVR, dispatcher, dates and the sources in All, behind
               // one button with a count (UI queue 108, design 1); the icon
               // alone in a narrow list.
-              _filtersButton(compact: box.maxWidth < 420),
+              SizedBox(
+                height: _barHeight,
+                child: _filtersButton(compact: box.maxWidth < 420),
+              ),
             ],
           ),
         ),
@@ -1098,16 +1158,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
   }
 
   List<Widget> _quickFilters(ThemeData theme, {required bool withStatus}) => [
-        FilterChip(
-          key: const ValueKey('filter-unread'),
-          label: const Text('Unread'),
-          selected: _unread,
-          visualDensity: VisualDensity.compact,
-          onSelected: (on) => _setFilters(unread: on),
-        ),
+        // No Unread chip (Jose, 2026-11-02: "remove the unread filter").
         FilterChip(
           key: const ValueKey('filter-unreplied'),
+          avatar: Icon(
+            Icons.reply,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
           label: const Text('Unreplied'),
+          showCheckmark: false,
           selected: _unreplied,
           visualDensity: VisualDensity.compact,
           onSelected: (on) => _setFilters(unreplied: on),
@@ -1144,7 +1204,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
         FilterChip(
           key: const ValueKey('filter-starred'),
+          avatar: Icon(
+            Icons.star,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
           label: const Text('Starred'),
+          showCheckmark: false,
           selected: _starred,
           visualDensity: VisualDensity.compact,
           onSelected: (on) => _setFilters(starred: on),
@@ -1157,6 +1223,42 @@ class _LeadsScreenState extends State<LeadsScreen> {
           icon: const Icon(Icons.done_all, size: 20),
         ),
   ];
+
+  /// Inside a group (Meta, Calls, SMS Texts, Forms): all, or one, each with
+  /// its unread count (design 166, worked like the In All row).
+  Widget _inGroup(ThemeData theme) {
+    final group = _source!;
+    final label = _labelOf(_sourceChips.firstWhere((c) => c.$1 == group));
+
+    return Padding(
+      key: ValueKey('$group-sources'),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          for (final m in <(String?, String)>[
+            (null, 'All $label'),
+            ..._visibleIn(group),
+          ])
+            ChoiceChip(
+              key: ValueKey('$group-source-${m.$1 ?? 'all'}'),
+              showCheckmark: false,
+              visualDensity: VisualDensity.compact,
+              label: Text(
+                '${m.$2} ${_unreadIn(m.$1 ?? group)}',
+                style: theme.textTheme.labelSmall,
+              ),
+              selected: _pick == m.$1,
+              onSelected: (_) {
+                setState(() => _pick = m.$1);
+                _load();
+              },
+            ),
+        ],
+      ),
+    );
+  }
 
   /// Under All: which sources it holds, one toggle each, by the same icons
   /// the sources wear (Jose, 2026-09-29: "on ALL we should have filters for
@@ -1242,70 +1344,175 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   // ── the phone (mobile 5) ─────────────────────────────────────────
 
-  Widget _phoneHeader(ThemeData theme) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
-        child: Row(
-          children: [
-            Expanded(child: _sourceButton(theme)),
-            IconButton(
-              key: const ValueKey('search-open'),
-              tooltip: _searching ? 'Close search' : 'Search',
-              icon: Icon(_searching ? Icons.search_off : Icons.search),
-              onPressed: () {
-                if (_searching && _search.text.isNotEmpty) {
-                  _search.clear();
-                  _load();
-                }
-                setState(() => _searching = !_searching);
-              },
-            ),
-            IconButton(
-              key: const ValueKey('leads-fetch'),
-              tooltip: 'Fetch new leads now',
-              onPressed: _syncing ? null : _sync,
-              icon: _syncing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.sync),
-            ),
-          ],
+  /// What the phone's one Filters button counts: everything its page sets.
+  int get _phoneFiltersSet =>
+      [
+        _source != null,
+        _unreplied,
+        _overdue,
+        _followUp,
+        _starred,
+        _status.isNotEmpty,
+        _allLeftOut.isNotEmpty,
+      ].where((on) => on).length +
+      _foldedSet;
+
+  /// Design 171 (option 1): search, one Filters button and Fetch, then only
+  /// the quick chips that are on. The sources, the chips, status, the
+  /// takeover filters and In All live on the Filters page: as rows they took
+  /// half the screen before the first lead (Jose, 2026-11-03: "mobile is a
+  /// mess").
+  Widget _phoneHeader(ThemeData theme) {
+    final current = _visibleSources.where((s) => s.$1 == _source).firstOrNull;
+    final on = [
+      if (current != null)
+        ActionChip(
+          key: const ValueKey('leads-source-chip'),
+          avatar: Icon(current.$3, size: 16),
+          label: Text(current.$2),
+          visualDensity: VisualDensity.compact,
+          onPressed: () => setState(() => _moreFilters = true),
         ),
-      ),
-      if (_searching || _search.text.isNotEmpty)
+      for (final c in _quickFilters(theme, withStatus: false))
+        if (c is FilterChip && c.selected) c,
+    ];
+    final n = _phoneFiltersSet;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: _searchField(),
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(height: _barHeight, child: _searchField()),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: _barHeight,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('leads-more-filters'),
+                  onPressed: () => setState(() => _moreFilters = true),
+                  icon: const Icon(Icons.tune, size: 18),
+                  label: Text(n > 0 ? 'Filters ($n)' : 'Filters'),
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('leads-fetch'),
+                tooltip: 'Fetch new leads now',
+                onPressed: _syncing ? null : _sync,
+                icon: _syncing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync),
+              ),
+            ],
+          ),
         ),
-      _filterRow(theme, withStatus: true),
-      // Phone (UI queue 103, 4): the four takeover filters behind one button.
-      Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 6),
-          child: TextButton.icon(
-            key: const ValueKey('leads-more-filters'),
-            onPressed: () => setState(() => _moreFilters = !_moreFilters),
-            icon: Icon(_moreFilters ? Icons.expand_less : Icons.tune, size: 18),
-            label: Text(
-              [_charge, _ivr, _dispatcher, _dates].any((v) => v != null)
-                  ? 'More filters (${[_charge, _ivr, _dispatcher, _dates].where((v) => v != null).length})'
-                  : 'More filters',
+        if (_groups.containsKey(_source)) _inGroup(theme),
+        if (on.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: SingleChildScrollView(
+              key: const ValueKey('tour-leads-filters'),
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  for (final (i, c) in on.indexed) ...[
+                    if (i > 0) const SizedBox(width: 6),
+                    c,
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ..._alerts(theme),
+      ],
+    );
+  }
+
+  /// The phone's Filters page, in place of the list like the sources page.
+  Widget _phoneFilters(ThemeData theme) {
+    void close() => setState(() => _moreFilters = false);
+    final label = theme.textTheme.labelMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w700,
+    );
+    Widget heading(String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 6),
+      child: Text(text, style: label),
+    );
+
+    return Column(
+      key: const ValueKey('leads-filters-page'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+          child: Row(
+            children: [
+              IconButton(
+                key: const ValueKey('filters-back'),
+                tooltip: 'Back to the leads',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: close,
+              ),
+              Expanded(
+                child: Text('Filters', style: theme.textTheme.titleMedium),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 12),
+            children: [
+              heading('Source'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(
+                  height: _barHeight,
+                  child: _sourceButton(theme),
+                ),
+              ),
+              if (_groups.containsKey(_source)) _inGroup(theme),
+              heading('Show only'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: _quickFilters(theme, withStatus: true),
+                ),
+              ),
+              heading('More'),
+              _takeoverFilters(),
+              if (_source == null && _visibleSources.length > 1) _inAll(theme),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: FilledButton(
+              key: const ValueKey('filters-done'),
+              onPressed: close,
+              child: const Text('Show leads'),
             ),
           ),
         ),
-      ),
-      if (_moreFilters) _takeoverFilters(),
-      if (_source == null && _visibleSources.length > 1) _inAll(theme),
-      ..._alerts(theme),
-    ],
-  );
+      ],
+    );
+  }
 
   /// Which source is showing and how many are unread; it opens the sources.
   Widget _sourceButton(ThemeData theme) {
@@ -1358,6 +1565,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// What stands behind a source, said under its name on the phone's page.
   String? _sourceState(String? key) {
     if (key == null) return 'Every source below';
+    // Calls and SMS Texts say what their Google half stands on.
+    if (key == 'calls' || key == 'sms') {
+      return _sourceState(key == 'calls' ? 'ls_call' : 'ls_text');
+    }
     if (key == 'ls_call' || key == 'ls_text') {
       if (_delayedSince != null) return 'Delayed: Google is refusing requests';
       if (_failing(key)) return 'Not delivering: an account needs reconnecting';
@@ -1373,9 +1584,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ? 'No Thumbtack account connected'
           : '$n Thumbtack ${n == 1 ? 'business' : 'businesses'}';
     }
-    if (key == 'website_chat' || key == 'website_form' || key == 'website_booking') {
+    if (key == 'website_chat' || key == 'website_form' || key == 'website_booking' || key == 'forms') {
       return 'From your websites';
     }
+
     return null;
   }
 
@@ -1462,26 +1674,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget _phoneThread(ThemeData theme, Map<String, dynamic> lead) {
     void close() => setState(() => _phoneLeadId = null);
 
+    // Design 171: the way back is the start of the thread's own bar.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-          child: Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(
-              key: const ValueKey('thread-back'),
-              onPressed: close,
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('All leads'),
-            ),
-          ),
-        ),
         Expanded(
           child: LeadThread(
             key: ValueKey('thread-${lead['id']}'),
             api: widget.api,
             lead: lead,
+            onBack: close,
             // Deciding what a lead is ends the visit: back to the list, which
             // reloads with the new status, rather than a stale control on a
             // screen holding the row as it was.
@@ -1723,7 +1925,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ? const <String>[]
         : [
             for (final s in _visibleSources)
-              if (_allLeftOut.contains(s.$1) && (_unreadBySource[s.$1] ?? 0) > 0)
+              if (_allLeftOut.contains(s.$1) && _unreadIn(s.$1) > 0)
                 s.$2,
           ];
     return [
@@ -2090,8 +2292,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 // answer, whoever spoke last (Jose, 2026-10-01).
                                 // A form has no reply box, but its overdue
                                 // mark means a call back is owed (Jose, 2026-10-14).
+                                // Not a lead and Lost owe nothing either; the
+                                // server says which (Jose, 2026-11-02).
                                 if ((lead['can_reply'] == true ||
                                         lead['reply_overdue'] == true) &&
+                                    lead['reply_owed'] != false &&
                                     lead['status'] != 'completed') ...[
                                   _Badge(
                                     mine ? 'Replied' : 'Awaiting reply',

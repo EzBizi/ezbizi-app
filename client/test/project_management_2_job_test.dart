@@ -106,7 +106,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    for (final heading in ['PENDING', 'PAID', 'TOTAL']) {
+    for (final heading in ['PAID', 'BALANCE', 'TOTAL']) {
       expect(
         find.textContaining(RegExp(heading, caseSensitive: false)),
         findsWidgets,
@@ -218,7 +218,7 @@ void submitTest() {
     expect(find.text('Unpaid Una'), findsOneWidget);
     expect(find.byKey(const Key('pm2-submit:j-2')), findsNothing);
 
-    await tester.tap(find.text('Ready for Submission · 1'));
+    await tester.tap(find.text('Ready for submission · 1'));
     await tester.pumpAndSettle();
     expect(find.text('Unpaid Una'), findsNothing);
     expect(find.text('Paid Pat'), findsOneWidget);

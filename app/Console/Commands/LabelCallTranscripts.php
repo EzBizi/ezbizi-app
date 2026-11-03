@@ -9,6 +9,7 @@ use App\Support\Ai\TranscriptSpeakers;
 use App\Support\Automations\EventEmitter;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 /**
@@ -60,11 +61,27 @@ class LabelCallTranscripts extends Command
                         'call_signals' => $read['signals'],
                     ])->save();
 
+                    // Neither booked nor a complaint: a recovery text may follow (2026-11-03).
+                    if (! $read['signals']['complaint'] && ! $read['signals']['booked'] && $row->lead !== null
+                        && $row->occurred_at?->gte(now()->subDay())
+                        // Once a day per lead: one call can be stored as two transcripts.
+                        && ! \App\Models\AutomationEvent::query()->where('event_key', 'lead.call_not_booked')
+                            ->where('subject_id', $row->lead->getKey())->where('occurred_at', '>=', now()->subDay())->exists()) {
+                        $events->emit('lead.call_not_booked', $row->lead, ['after' => [
+                            'summary' => $read['summary'],
+                            'caller_name' => $row->lead->contact_name,
+                            'phone' => $row->lead->phone,
+                        ]]);
+                    }
+
                     // Jose, 2026-10-12: "notify lead manager and administrator" -
                     // who hears is the Automations rule's, so it can change.
                     // Only a fresh call: the first run reads a week of older ones.
                     if ($read['signals']['complaint'] && $row->lead !== null
-                        && $row->occurred_at?->gte(now()->subDay())) {
+                        && $row->occurred_at?->gte(now()->subDay())
+                        // One alert per lead per call: a transferred call is two
+                        // legs, two transcripts (prod 10-28: 1.5 min apart).
+                        && Cache::add('lead.call_complaint:'.$row->lead_id, true, now()->addMinutes(15))) {
                         $events->emit('lead.call_complaint', $row->lead, ['after' => [
                             'summary' => $read['summary'],
                             'caller_name' => $row->lead->contact_name,

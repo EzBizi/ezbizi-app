@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -139,18 +140,14 @@ class _SiteContentListState extends State<SiteContentList> {
           child: Row(
             children: [
               Expanded(
-                child: TextField(
+                child: ListSearch(
                   key: const ValueKey('tour-seo-content-search'),
-                  decoration: InputDecoration(
-                    labelText: 'Search ${widget.host}',
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                  ),
+                  hint: 'Search ${widget.host}',
                   onSubmitted: (value) {
-                    _search = value;
-                    _page = 1;
-                    _load();
-                  },
+                      _search = value;
+                      _page = 1;
+                      _load();
+                    },
                 ),
               ),
               const SizedBox(width: 12),

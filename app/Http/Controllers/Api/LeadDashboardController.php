@@ -179,7 +179,9 @@ class LeadDashboardController extends Controller
             // A website form is answered by calling, never in the thread, so
             // it is not counted against anybody (136 forms, 0 "answered", in
             // the first week measured - 2026-09-30).
-            if ($firstCustomer === null || $lead->source === Lead::SOURCE_WEBSITE_FORM) {
+            // Nor one that owes nobody a reply: Not a lead, Lost, Completed (Jose, 2026-11-02).
+            if ($firstCustomer === null || $lead->source === Lead::SOURCE_WEBSITE_FORM
+                || in_array($lead->status, Lead::STATUSES_NO_REPLY_OWED, true)) {
                 continue;
             }
             $totals['answerable']++;

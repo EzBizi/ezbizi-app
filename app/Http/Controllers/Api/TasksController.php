@@ -311,6 +311,8 @@ class TasksController extends Controller
             'title' => $task->title,
             'status' => $task->status,
             'status_id' => $task->status_id,
+            // A roll-up shows a branch's task on its company board, whose statuses differ: matched by name.
+            'status_name' => $task->statusRow?->name,
             'values' => (object) $task->values->mapWithKeys(fn (TaskColumnValue $v) => [$v->column_id => self::valueOf($v)])->all(),
             'subtasks_count' => (int) ($task->subtasks_count ?? 0),
             'subtasks_done' => (int) ($task->subtasks_done ?? 0),

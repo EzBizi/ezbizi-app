@@ -482,7 +482,8 @@ void main() {
     expect(find.byKey(const Key('date-range-button')), findsOneWidget);
     final first = asked.last;
     expect(
-      DateTime.parse(first['to']!).difference(DateTime.parse(first['from']!)),
+      // Calendar days: local midnights are 145h apart across a DST change.
+      _day(first['to']!).difference(_day(first['from']!)),
       const Duration(days: 6),
       reason: 'Last 7 days on first open',
     );
@@ -530,7 +531,9 @@ void main() {
     );
   });
 
-  testWidgets('average talk time shows, and a dash when there is none', (
+  // Design 170, option 8 (Jose, 2026-11-03): People is Phone and Sales;
+  // average talk left the table. An absent value is still a dash, never 0.
+  testWidgets('People has no talk average, and no 0:00 for an absent one', (
     tester,
   ) async {
     await _pumpReports(
@@ -546,22 +549,8 @@ void main() {
 
     await _performanceTab(tester, 'People');
 
-    // The day's average card left the figures (Jose's order, 2026-10-05);
-    // each person's average is still in the table.
-    expect(find.text('2:28'), findsNothing);
-    expect(find.text('3:05'), findsOneWidget); // 185s, Trey Brannan
-
-    // Ranya Lara answered nothing. No average is a different fact from an
-    // average of zero, and "0:00" would read as a real short call.
-    //
-    // findsWidgets rather than findsOneWidget since 2026-09-17: she now shows
-    // a dash in TWO columns, avg talk and conversion, and both are right. The
-    // rule this test protects is that an absent value is never rendered as a
-    // zero — counting dashes was a proxy for it that a new column invalidates
-    // without anything being wrong.
-    expect(find.text('—'), findsWidgets);
+    expect(find.text('3:05'), findsNothing); // Trey Brannan's 185s
     expect(find.text('0:00'), findsNothing);
-    expect(find.text('0%'), findsNothing);
   });
 
   testWidgets('a refused Workiz account is named, not folded away', (
@@ -1141,3 +1130,8 @@ Map<String, dynamic> _callDay({
         'day': '2026-09-14',
         'timezone': 'America/New_York',
       };
+
+DateTime _day(String at) {
+  final d = DateTime.parse(at);
+  return DateTime.utc(d.year, d.month, d.day);
+}

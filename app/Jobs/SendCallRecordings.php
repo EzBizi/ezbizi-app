@@ -35,7 +35,10 @@ class SendCallRecordings implements ShouldQueue
 
     public int $timeout = 85; // under the single worker's 90 s retry_after
 
-    public function __construct(public string $numberId, public string $to, public string $text) {}
+    public function __construct(public string $numberId, public string $to, public string $text)
+    {
+        $this->onQueue(config('services.ai.staff_queue', 'default'));   // a person is waiting: never behind call processing
+    }
 
     public function handle(TenantContext $tenant, RingCentralCallLog $log, WhatsAppCloud $cloud): void
     {

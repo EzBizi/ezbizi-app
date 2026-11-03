@@ -1139,6 +1139,14 @@ class ModuleServiceProvider extends ServiceProvider
                     // smiled — by the customer's own review link, or by the
                     // phone or email the faces asked for. A happy one is when
                     // to offer the membership: {{ membership_join_url }}.
+                    // Memberships: raised by memberships:offer-prior-clients for
+                    // each prior client chosen; the rule on it sends the offer.
+                    new TriggerDefinition(
+                        key: 'customer.membership_offer',
+                        label: 'Membership offer to a prior client',
+                        description: 'Raised by a deliberate run offering the membership to past customers, '
+                            .'paced and never twice in a year. {{ membership_link }} is the sign-up link.',
+                    ),
                     new TriggerDefinition(
                         key: 'customer.reviewed',
                         label: 'Left a review on the website',
@@ -1456,6 +1464,9 @@ class ModuleServiceProvider extends ServiceProvider
                 // "- 1" beside its rebuild, Project Management - 2 (Jose, 2026-10-26).
                 label: 'Project Management - 1',
                 actions: ['view'],
+                // Jose, 2026-11-02: never without Jobs. It shows every job
+                // waiting on an estimate and who paid, which Jobs guards.
+                actionRequires: ['view' => ['jobs.view']],
                 /*
                  * Overview | Jobs | Assignments | Repair team | Rules | Logs |
                  * Settings (UI queue 127, 139, 141, 143, 144). All are the one grant the
@@ -3116,6 +3127,15 @@ class ModuleServiceProvider extends ServiceProvider
                             .'about, and whether it looks like a real enquiry at all. It fires '
                             .'after "Lead received", once any recording has been transcribed.',
                     ),
+                    // Jose's project list, 2026-11-03: "Not booked recovery automatic msg".
+                    new TriggerDefinition(
+                        key: 'lead.call_not_booked',
+                        label: 'A call ended without a booking',
+                        description: 'AI read a call transcript: the caller did not book and did not '
+                            .'complain. Use a wait and a "Status" condition so a lead booked, lost or '
+                            .'closed meanwhile is skipped. It carries the AI summary, caller name and phone.',
+                        composedFields: ['summary'],
+                    ),
                     new TriggerDefinition(
                         key: 'lead.call_complaint',
                         label: 'A call sounded like a complaint',
@@ -4338,7 +4358,7 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'reports',
                 label: 'Reports',
                 auditActionPrefixes: ['report'],
-                actions: ['view', 'build', 'export', 'scoring_weights', 'settings', 'correct'],
+                actions: ['view', 'build', 'export', 'scoring_weights', 'settings', 'correct', 'handles'],
 
                 /*
                  * ── THE TABS, and what a tab grant MEANS here ───────
@@ -4451,8 +4471,11 @@ class ModuleServiceProvider extends ServiceProvider
                     'settings' => ['reports.view'],
                     // Correcting a report draft before it is approved (2026-10-20).
                     'correct' => ['reports.view'],
+                    // Performance's Handles and Convert to booked (Jose, 2026-11-02: a
+                    // Dispatch Supervisor was refused with no tick to grant).
+                    'handles' => ['reports.experimental.view'],
                 ],
-                actionLabels: ['scoring_weights' => "Set Scoring's weights", 'settings' => "Set the reports' goals", 'correct' => 'Correct a report before it is approved'],
+                actionLabels: ['scoring_weights' => "Set Scoring's weights", 'settings' => "Set the reports' goals", 'correct' => 'Correct a report before it is approved', 'handles' => 'Set who handles New or Existing clients, and mark calls booked, on Performance'],
                 automationActions: [
                     new ActionDefinition(
                         key: 'report.send',

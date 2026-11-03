@@ -88,6 +88,10 @@ class ReviewsController extends Controller
         if (is_string($location = $request->query('location')) && $location !== '') {
             $query->where('location_name', 'like', '%/'.addcslashes($location, '%_'));
         }
+        // Where it was written: the eKomi screen's Reviews tab (design 165).
+        if (is_string($source = $request->query('source')) && $source !== '') {
+            $query->where('source', $source);
+        }
 
         match ($request->query('matched')) {
             'yes'   => $query->whereNotNull('customer_id'),

@@ -16,7 +16,7 @@ model = WhisperModel(
     "distil-large-v3",
     device="cpu",
     compute_type="int8",
-    cpu_threads=4,
+    cpu_threads=6,
     download_root="/opt/whisper/models",
     local_files_only=True,
 )

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:ezbizi_client/widgets/call_text.dart';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -116,6 +117,28 @@ void main() {
 
     expect(find.byKey(const ValueKey('lead-address')), findsOneWidget);
     expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
+    // Design 171: copy and the note are in the details, not lost with the
+    // old header.
+    expect(find.byKey(const ValueKey('copy-name')), findsOneWidget);
+  });
+
+  /// Design 171: a phone's header is one bar - name, status, Book, ... - and
+  /// the messages get the rest.
+  testWidgets('on a phone the thread header is one bar', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(390, 844),
+    );
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('thread-header'))).height,
+      lessThan(64),
+    );
+    expect(find.byKey(const ValueKey('thread-details-toggle')), findsOneWidget);
+    expect(find.byKey(const ValueKey('copy-name')), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   /// Jose, 2026-10-08: a website booking waits for a dispatcher's answer.
@@ -297,11 +320,13 @@ void main() {
       recordingGate: Completer()..complete(),
       callTranscript: long,
     );
-    final text = find.byWidgetPredicate((w) => w is Text && w.data == long);
+    final text = find.byWidgetPredicate((w) => w is Text && w.textSpan?.toPlainText() == long);
     expect(tester.widget<Text>(text).maxLines, 4);
     await tester.tap(find.byKey(const ValueKey('transcript-toggle-c-call')));
     await tester.pumpAndSettle();
-    expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
+    // Open, it is the app's one transcript widget (CallTranscriptText).
+    expect(find.byWidgetPredicate((w) => w is SelectableText && w.textSpan?.toPlainText() == long),
+        findsOneWidget);
   });
 
   /// Jose, 2026-10-12: "summary should show first with the option to see
@@ -350,8 +375,10 @@ void main() {
     expect(find.byKey(const ValueKey('followed-up-c-call')), findsNothing);
   });
 
-  /// Jose, 2026-10-12: "IVR Menu: / Dispatcher: / Customer:", the labels bold.
-  testWidgets('a transcript divided by speaker shows each label in bold', (
+  /// Jose, 2026-10-12: "IVR Menu: / Dispatcher: / Customer:", the labels set
+  /// apart; since 2026-11-02 coloured as everywhere else (CallTranscriptText):
+  /// Dispatcher and Customer bold, the IVR menu muted italic.
+  testWidgets('a transcript divided by speaker sets each label apart', (
     tester,
   ) async {
     const labelled =
@@ -363,19 +390,25 @@ void main() {
       recordingGate: Completer()..complete(),
       callTranscript: labelled,
     );
-    final text = tester.widget<Text>(
+    final text = tester.widget<SelectableText>(
       find.byWidgetPredicate(
-        (w) => w is Text && w.textSpan?.toPlainText() == labelled,
+        (w) => w is SelectableText && w.textSpan?.toPlainText() == labelled,
       ),
     );
     final bold = <String>[];
+    final italic = <String>[];
     text.textSpan!.visitChildren((span) {
       if (span is TextSpan && span.style?.fontWeight == FontWeight.w700) {
         bold.add(span.text!);
       }
+      if (span is TextSpan && span.style?.fontStyle == FontStyle.italic) {
+        italic.add(span.text!);
+      }
       return true;
     });
-    expect(bold, ['IVR menu: ', 'Dispatcher: ', 'Customer: ']);
+    expect(bold, ['Dispatcher: ', 'Customer: ']);
+    expect(italic, ['IVR menu: ']);
+    expect(find.byType(CallTranscriptText), findsOneWidget);
   });
 
   // The dispatchers, via Jose, 2026-09-29: copy and paste.
@@ -1058,6 +1091,11 @@ void main() {
       ],
     );
 
+    // Design 171: behind + on a phone, until the box is focused and empty.
+    expect(find.byKey(const ValueKey('reply-templates')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('reply-tools')));
+    await tester.pumpAndSettle();
+
     final first = tester.getTopLeft(find.byKey(const ValueKey('reply-template-Thank you')));
     final second = tester.getTopLeft(find.byKey(const ValueKey('reply-template-Inspection prices')));
     expect(second.dy, first.dy);
@@ -1076,6 +1114,45 @@ void main() {
       tester.widget<TextField>(find.byKey(const ValueKey('reply-box'))).controller!.text,
       'Text for We service your area.',
     );
+  });
+
+  /// Design 171: a phone's composer is + / the box / Send. The quick replies
+  /// show by themselves while the box is focused and empty; Suggest and
+  /// emoji are behind +.
+  testWidgets('on a phone the quick replies show on focus and go once typing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(390, 900),
+      templates: [
+        {'name': 'Thank you', 'text': 'Thanks!'},
+      ],
+    );
+
+    expect(find.byKey(const ValueKey('reply-templates')), findsNothing);
+    expect(find.byKey(const ValueKey('reply-emoji')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('reply-box')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reply-templates')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('reply-box')), 'Hi');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reply-templates')), findsNothing);
+
+    // The box takes the row: wider than half the screen.
+    expect(
+      tester.getSize(find.byKey(const ValueKey('reply-box'))).width,
+      greaterThan(390 / 2),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('reply-tools')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reply-emoji')), findsOneWidget);
+    expect(find.byKey(const ValueKey('reply-templates')), findsOneWidget);
   });
 
   // Jose, 2026-10-01: "see the time of the messages as well like 11:48 13:23".

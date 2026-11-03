@@ -2969,6 +2969,51 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 171 · Leads on a phone: cleaner thread and list — **sent 2026-11-03 — Jose: "looks good" (1) — built** (`docs/previews/leads-mobile-clean-layouts.html`)
+
+A staff message, via Jose: the reply box is too small, the top should scroll away so the messages show. Jose: "mobile is a mess, we need something cleaner and simpler". Recommended 1, messenger style:
+- **Thread:** one app-bar row (back, avatar, name, a status chip opening a sheet, Book, ⋯), with job, phone, notes and More moved into ⋯. Messages fill the rest of the screen, even with the keyboard up.
+- **Composer:** full width, pinned above the keyboard, 1–5 lines. + opens a sheet (Suggest, quick replies with search, emoji, attach); round Send on the right. Quick replies show as one chip row only while the box is focused and empty.
+- **List:** search plus one "Filters (n)" button opening a sheet (show only / sources / channels, "Show N leads"). Only the picked quick chips stay visible, as one row. Rows are two lines.
+
+2 = Messages | Details tabs in the thread, with all chips in one sideways row. 3 = today's header scrolls away and folds when the keyboard opens, with a stacked composer. Phone only; desktop unchanged.
+
+**Built (phone, under 600 wide):**
+- The thread's one bar is back, avatar, name, a Status picker, Book and ... (`thread-details-toggle`, which opens the star, note, copy, facts and customer card). Details stay folded while the keyboard is up. The note being edited, a booking and an offer show either way.
+- The composer is + (`reply-tools`: Suggest, emoji and the quick replies), a box of 1–5 lines, and a round Send. The quick replies show by themselves while the box is focused and empty.
+- The list is search, Filters (n) and Fetch, then a chip for the source and the quick chips that are on. The Filters page, in place of the list like the sources page, holds the source, the quick chips with status and Mark all read, the takeover filters and In All.
+- There was no attach in the composer before; none was added.
+
+### 170 · Reports › Performance › People: answer and booking in separate columns — **APPROVED 2026-11-03, option 8 + phone** (Jose: "as u recommend"; Reports builds) (`docs/previews/reports-people-answer-booking-layouts.html`)
+
+Jose 11-03: "a column for not answered and answered, missed call, separate from the booked, not booked". Recommended 1 + phone 4. The People table becomes Rang · Answered · Not answered · Missed · Booked · Booking rate (booked out of answered). A person's calls get an Answer pill (Answered / Not answered · who took it / Missed) and a Booking pill (Booked / Not booked / Existing job, "—" when not answered), with two filter chip groups. Red only for Missed. 2 = one column with stacked pills; 3 = separate Answering and Booking tables. Reports builds it.
+
+**Round 2, 11-03:** Jose said "hmm can u come up with more". Added 7 (a funnel bar per person), 8 (a two-part table with Phone and Sales header groups), 9 (person cards with rings), 10 (one status pill per call) and 11 (a drill-down in two tabs). Each has a phone version. The recommendation is now 8, with option 1's call list as the drill-down; 1 is second. The call list no longer overflows at 800 px.
+
+### 169 · Deep-dive patterns (filter bar, search, pickers, skeletons) — **no gallery — Jose 2026-11-02: implement all recommendations** (`docs/reviews/2026-11-02/ui-ux-deep-dive.md` §2, `ui-ux.md` #3/#4/#7/#10)
+
+These were built from the review straight away, with no gallery. `ListSearch` (`client/lib/widgets/list_search.dart`) is the one list search box: outlined, 44 high, about 280 wide on a desktop and the full width on a phone. It is used in Automations, Guidelines and Services so far. Availability's Area and Calendar branch chips are now one "Company · Branch" `SearchPickerField`. `AsyncBody(skeleton: true)` and `LoadingSkeleton` show grey rows in place of a long spinner (Email › Settings, Profit & Loss). Job and Customer panes drop Save/Cancel on their read-only tabs. The sidebar shows a scroll thumb. Inventory's empty lists use `EmptyState`. **Kept:** Training's search stays 56 high (Jose 2026-10-27), and the three-box `CalendarDayField` stays, because it was the owner's own ask.
+
+### 168 · Development tab brought up to date — **sent 2026-11-02 — Jose: "go ahead with ur recommendations" (1 + phone 4)** (`docs/previews/development-tab-layouts.html`)
+
+Jose: "the Development Tab, it's a bit outdated". Recommended 1 + phone 4: 103 first-level tabs (Health with a red problem count); one thin red control-plane bar, walkthrough offer only via the title (▶); Organizations / Modules / Client versions as one-row-per-item tables with search, counts pluralised and the branch label; Modules' permissions on expand; Health problems first in red, healthy checks green on one line, repeated app issues merged with a count. 2 = tighter two-column cards; 3 = overview tiles first.
+
+### 167 · Settings › Integrations: Google connections grouped by login — **sent 2026-11-02 (inline mockup) — Jose: "as u recommend" (1)**
+
+Jose via Leads: group Google connections under the login they were made with (account_email, cc3cc5f2d; null = "Unknown login · reconnect to see"). Recommended 1: one collapsible card per login with count, OK / need-reconnect chips, its own search, Reconnect and Disconnect all; unknown-login card last. 2 = flat list with a Login column and login chips. One login can hold dozens of rows (37 from 3 sign-ins on 10-29).
+
+### 166 · Leads: Facebook, Instagram and WhatsApp in one Meta tab — **sent 2026-11-02 — Jose: "as you recommend" (1 + phone 4)** (`docs/previews/leads-meta-tab-layouts.html`)
+
+Jose 2026-11-02 via Leads: "combine the Facebook - Instagram and Whatsapp Tabs into a Meta Tab, but still keep their individual tags". Recommended 1 + phone 4: Meta in Facebook's rail slot (badge = sum, shown if any of the three is granted); a sub-chip row above the search (All Meta · Facebook · Instagram · WhatsApp, each counted, each only if granted), like the In All row; rows keep their source tag. Client only (?sources=). Tour reuses Messenger's. 2 = rail tree; 3 = Filters tick only.
+
+### 165 · Customer Experience › eKomi screen — **sent 2026-11-02 — Jose: "as you recommend" (1 + phone 4)** (`docs/previews/ekomi-screen-layouts.html`)
+
+Jose 2026-11-02 via Leads: "a whole screen for Ekomi ... check at what a1tools had". Recommended 1 + phone 4: opened in place from Review links › Sources; tabs Overview (snapshot tiles + SRR funnel, certificate link, shared date bar), Requests (search, status/channel chips, Send review request per job), Reviews (existing list filtered source=ekomi), Settings (credentials, Test, auto-request on/off, delay hours, start date). Seal stays in Web. API per Leads: ekomi/overview, ekomi/requests (GET/POST), ekomi/settings, ekomi/test.
+
+### 164 · GBP Listings: WhatsApp in the table, header actions under ⋯ — **sent 2026-11-02 — Jose: "as you recommend" (1 + phone 4)** (`docs/previews/gbp-listings-whatsapp-inline-layouts.html`)
+
+Jose 2026-11-02 via desk: "this section with all the options can be improved, specially the whatsapp stuff ... integrated instead of it leading to a new whole screen." Recommended 1 + phone 4: a WhatsApp column (state chip, click to set one listing), row ticks + "WhatsApp: Missing" filter chip with one action bar (number chips, Set on N, ✓/✗ per row, Retry failed), and Phone check / Check Google / Google connection in one ⋯ menu. This replaces 163's separate screen. Backend is cff96b475 (link per listing or many). 2 = always-visible second header row; 3 = banner only, no column.
+
 ### 163 · Business Profile: WhatsApp links in bulk (url_whatsapp) — **sent 2026-10-30 — Jose: "as u recommend" (1 + phone 4)** (`docs/previews/gbp-whatsapp-links-layouts.html`)
 
 Google/Leads asked; endpoints GET business-profile/whatsapp-links + POST .../apply. Recommended 1 + phone 4: bulk action beside Hours in bulk; state chips (Missing/Different/Same/Can't reach) select their rows; Different rows unticked by default with an amber Replace and a preview warning; Can't reach not tickable; side-panel preview, per-row ✓/✗ with retry.
@@ -5217,3 +5262,12 @@ nobody closes is now auto-closed at `time_clock.max_hours` (org setting, default
 this shipped for were closed at 16h each when nobody knows when those people
 actually went home. Correcting them is the first real use of this screen, and
 Jose will be the one doing it.
+
+### 172 · Estimate Board — **sent 2026-11-03** (`docs/previews/estimate-board-layouts.html`)
+
+From Jose's Monday list ("New Estimate Board"), via the desk. Server ready (GET /estimates status filters + status_counts; PATCH status refuses illegal moves), so client only; Jobs builds. Recommended **1 + phone 4**:
+- **Where:** a List | Board toggle on Jobs › Estimates that keeps the search, "Company · Branch" and date filters, with column counts from status_counts.
+- **Archived (1,846 of 2,231):** a collapsed amber column at the right that expands on click and accepts drops while shut.
+- **Drag:** columns the card can't go to fade, allowed ones are outlined, and a refused drop springs back with the server's reason. A card opens in the SidePanel. 25 cards per column, then "Show 25 more".
+- **Phone:** one column at a time with swipeable status tabs, and "Move to" as a bottom sheet listing only the allowed moves.
+Alternatives: 2, Archived hidden behind a "Show archived" chip; 3, a separate Estimate board tab.

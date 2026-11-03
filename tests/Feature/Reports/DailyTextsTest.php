@@ -146,6 +146,21 @@ class DailyTextsTest extends TestCase
         $this->assertStringContainsString('• Net profit: -$500.00', $text);
     }
 
+    /** Desk, 2026-11-03: no data is no text, never an empty report. */
+    public function test_marketing_ppc_with_no_entries_is_no_text(): void
+    {
+        $this->assertSame('', $this->text('marketing_ppc'));
+    }
+
+    /** Desk, 2026-11-03: a week with no complete P&L is not an all-clear. */
+    public function test_weekly_losses_without_a_complete_week_says_it_cannot_be_judged(): void
+    {
+        $text = $this->text('weekly_losses');
+
+        $this->assertStringContainsString("Can't be judged yet", $text);
+        $this->assertStringNotContainsString('negative net profit', $text);
+    }
+
     public function test_weekly_reviews_split_positive_and_negative(): void
     {
         foreach ([5, 4, 2, 5] as $i => $rating) {

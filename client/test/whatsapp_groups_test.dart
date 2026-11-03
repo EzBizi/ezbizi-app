@@ -23,19 +23,22 @@ void main() {
   ) async {
     await _pump(tester, _Server());
 
-    final strip = find.byKey(const Key('whatsapp-unset'));
+    // One picker (deep dive 2026-11-02); its list names the reports.
+    await tester.tap(find.byKey(const Key('whatsapp-unset-picker')));
+    await tester.pumpAndSettle();
+    final list = find.byType(Dialog);
     expect(
-      find.descendant(of: strip, matching: find.text('Dispatch')),
+      find.descendant(of: list, matching: find.text('Dispatch')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: strip, matching: find.text('Ohio - Same-Day Report')),
+      find.descendant(of: list, matching: find.text('Ohio - Same-Day Report')),
       findsOneWidget,
     );
     // A report that has its group is not listed again.
     expect(
       find.descendant(
-        of: strip,
+        of: list,
         matching: find.text('New leads and customer messages'),
       ),
       findsNothing,
@@ -175,7 +178,9 @@ void main() {
     await _pump(tester, server);
 
     // Not the first report listed, so the panel cannot just default to it.
-    await tester.tap(find.byKey(const ValueKey('whatsapp-unset-daily:fr-oh')));
+    await tester.tap(find.byKey(const Key('whatsapp-unset-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ohio - Same-Day Report').last);
     await tester.pumpAndSettle();
 
     // The report chosen from the strip, and its name offered.

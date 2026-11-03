@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'error_note.dart';
+import 'loading_skeleton.dart';
 
 /// Loading / failed / loaded, in one place.
 ///
@@ -31,6 +32,7 @@ class AsyncBody extends StatelessWidget {
     required this.error,
     required this.onRetry,
     required this.child,
+    this.skeleton = false,
   });
 
   final bool loading;
@@ -38,9 +40,13 @@ class AsyncBody extends StatelessWidget {
   final VoidCallback onRetry;
   final Widget child;
 
+  /// Grey rows instead of the spinner, for a load that takes seconds.
+  final bool skeleton;
+
   @override
   Widget build(BuildContext context) {
     if (loading) {
+      if (skeleton) return const LoadingSkeleton();
       return const Center(child: CircularProgressIndicator());
     }
 

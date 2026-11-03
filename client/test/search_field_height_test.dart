@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/monitoring/ownership_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ezbizi_client/widgets/list_search.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -87,7 +88,9 @@ void main() {
     final leads = decoratorHeight('leads-reference');
     expect(find.text('Marco Reyes'), findsOneWidget);
     expect(leads, greaterThanOrEqualTo(40));
-    expect(decoratorHeight('ownership-search'), leads);
+    // Leads itself went to 44 on 2026-11-02 (6af32366a); every list search is
+    // now ListSearch at that height.
+    expect(decoratorHeight('ownership-search'), ListSearch.height);
   });
 
   test('no search box drops its vertical padding again', () {

@@ -21,16 +21,17 @@ import 'package:http/testing.dart';
 void main() {
   // ── the conversion column ──────────────────────────────────────
 
-  testWidgets('conversion is jobs over new-client calls, as a percent', (
+  // Design 170, option 8 (Jose, 2026-11-03): a booking is credited to who
+  // answered the call, never to everyone it rang.
+  testWidgets('booking rate is booked calls out of answered ones', (
     tester,
   ) async {
     await _pump(tester, width: 1400, view: 'People');
 
-    // Ada: 4 new-client calls, 1 job.
-    expect(find.text('25%'), findsOneWidget);
-
-    // Bo: 2 new-client calls, 2 jobs (the Overview's rate is also 100%).
-    expect(find.text('100%'), findsWidgets);
+    // Bo answered 9 and booked the one call that rang Ada too: 1 of 9.
+    expect(find.text('11%'), findsOneWidget);
+    // Ada answered 6 and booked none of them, Bo's booking included.
+    expect(find.text('0%'), findsOneWidget);
   });
 
   // Jose, 2026-10-30 (design A1): the counts say what they count and add up.
@@ -99,9 +100,11 @@ void main() {
     tester,
   ) async {
     final put = <String>[];
+    var gets = 0;
     final api = ApiClient(
       client: MockClient((request) async {
         if (request.url.path.endsWith('/reports/experimental/calls')) {
+          gets++;
           return _json(_report, 200);
         }
         if (request.method == 'PUT') {
@@ -133,6 +136,16 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(put.single, contains('"tag":"existing"'));
+    // Jose, 2026-11-02: only the row changes; the report is not read again.
+    expect(gets, 1);
+    expect(
+      tester
+          .widget<SegmentedButton<String>>(
+            find.byKey(const ValueKey('handles-Ada')),
+          )
+          .selected,
+      {'existing'},
+    );
   });
 
   testWidgets('Handles is read-only without edit rights', (tester) async {
@@ -204,8 +217,14 @@ void main() {
     await _pump(tester, width: 1400, view: 'People');
 
     // Review 2026-10-30, item 6: a call a teammate took is not one missed.
-    expect(find.text('Teammate took'), findsOneWidget);
-    expect(find.text('Nobody answered'), findsOneWidget);
+    final header = find.byType(PinnedHeaderSliver);
+    for (final label in ['PHONE', 'SALES', 'Not answered', 'Missed']) {
+      expect(
+        find.descendant(of: header, matching: find.text(label)),
+        findsOneWidget,
+      );
+    }
+    expect(find.byTooltip('Rates count answered calls only.'), findsOneWidget);
   });
 
   // UI queue 78: Calls is a table, and a search narrows it.
@@ -362,7 +381,7 @@ void main() {
 
     // Cy answered nothing and booked nothing. 0% would read as a verdict on
     // somebody who was never given the chance, and 0/0 is not zero.
-    expect(find.text('0%'), findsNothing);
+    expect(find.text('0%'), findsOneWidget); // Ada, who answered 6
     expect(find.text('—'), findsWidgets);
   });
 
@@ -372,7 +391,7 @@ void main() {
     // The word "Conversion" beside a name will be read as a verdict, so the
     // narrower true reading is on the screen rather than in a docblock.
     expect(
-      find.textContaining('It is not the share of a person\'s calls'),
+      find.textContaining('Sales counts only the calls a person answered'),
       findsOneWidget,
     );
   });
@@ -391,13 +410,13 @@ void main() {
   ) async {
     await _pump(tester, width: 1400, view: 'People');
 
-    await tester.tap(_header('Jobs'));
+    await tester.tap(_header('Rang'));
     await tester.pumpAndSettle();
 
-    // Bo 2, Ada 1, Cy 0.
+    // Bo 10, Ada 7, Cy 0.
     expect(_names(tester), ['Bo', 'Ada', 'Cy']);
 
-    await tester.tap(_header('Jobs'));
+    await tester.tap(_header('Rang'));
     await tester.pumpAndSettle();
 
     expect(_names(tester), ['Cy', 'Ada', 'Bo']);
@@ -408,13 +427,13 @@ void main() {
   ) async {
     await _pump(tester, width: 1400, view: 'People');
 
-    await tester.tap(_header('Avg talk'));
+    await tester.tap(_header('Booking rate'));
     await tester.pumpAndSettle();
     expect(_names(tester).last, 'Cy');
 
     // The interesting half: reversing must not float the person with NO value
     // to the top, where a dash would read as the longest call of the day.
-    await tester.tap(_header('Avg talk'));
+    await tester.tap(_header('Booking rate'));
     await tester.pumpAndSettle();
     expect(_names(tester).last, 'Cy');
   });
@@ -455,17 +474,20 @@ void main() {
     };
     await _pump(tester, width: 1400, view: 'People', report: () => scored);
 
-    expect(find.text('Call score'), findsOneWidget);
+    expect(find.text('Avg score'), findsOneWidget);
     expect(find.text('7.0 / 10'), findsOneWidget);
 
     await tester.tap(find.text('Ada'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('coaching-Ada')), findsOneWidget);
-    expect(find.textContaining('7.0 / 10 over 1 scored call'), findsOneWidget);
-    expect(find.text('Greeted with the company name: 100%'), findsOneWidget);
-    expect(find.text('Offered a time: 0%'), findsOneWidget);
-    expect(find.text('To improve: Offer a time.'), findsOneWidget);
+    expect(find.textContaining('over 1 scored call'), findsOneWidget);
+    expect(find.text('Greeted with the company name 100%'), findsOneWidget);
+    expect(find.text('Offered a time 0%'), findsOneWidget);
+    expect(find.text('Offer a time.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Copy').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Copied'), findsOneWidget);
     expect(find.byKey(const ValueKey('coaching-Bo')), findsNothing);
   });
 
@@ -499,7 +521,7 @@ void main() {
   testWidgets('no Call score column while no call is scored', (tester) async {
     await _pump(tester, width: 1400, view: 'People');
 
-    expect(find.text('Call score'), findsNothing);
+    expect(find.text('Avg score'), findsNothing);
   });
 
   testWidgets('a call that rang somebody but was taken by another says so', (
@@ -519,7 +541,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Blocked drain'), findsOneWidget);
-    expect(find.text('Rang · Bo answered'), findsOneWidget);
+    expect(find.text('Not answered · Bo took it'), findsOneWidget);
+    // Design 170: Answer and Booking narrow the person's calls apart.
+    await tester.tap(find.byKey(const ValueKey('person-Answer-answered')));
+    await tester.pumpAndSettle();
+    expect(find.text('Not answered · Bo took it'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('person-Answer-not_answered')));
+    await tester.pumpAndSettle();
+    expect(find.text('Not answered · Bo took it'), findsOneWidget);
     expect(find.text('5:00'), findsNWidgets(before + 1));
   });
 
@@ -632,25 +661,24 @@ void main() {
 
     // Closed: no details, no play button on a missed row, and a voicemail
     // icon that says there is a recording inside (UI/UX).
-    expect(find.text('Caller: +15550004444'), findsNothing);
+    expect(find.text('Line called'), findsNothing);
     expect(find.byKey(const ValueKey('listen-rec-4')), findsNothing);
     expect(find.byTooltip('Show details'), findsWidgets);
 
     await tester.tap(find.byKey(const ValueKey('call-details-c4')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Caller: +15550004444'), findsOneWidget);
-    expect(
-      find.text('Line called: +15558887777 · DFW - LS Ads'),
-      findsOneWidget,
-    );
+    expect(find.text('+15550004444'), findsWidgets);
+    expect(find.text('DFW · LS Ads'), findsOneWidget);
+    expect(find.text('Line called'), findsOneWidget);
+    expect(find.text('+1 (555) 888-7777'), findsWidgets);
     expect(find.byKey(const ValueKey('voicemail-rec-4')), findsOneWidget);
 
     // A missed call with no voicemail opens to its numbers, no player.
     await tester.tap(find.byKey(const ValueKey('call-details-c3')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Caller: +15550003333'), findsOneWidget);
+    expect(find.text('Caller'), findsNWidgets(2));
     expect(find.byKey(const ValueKey('voicemail-null')), findsNothing);
   });
 
@@ -658,7 +686,7 @@ void main() {
     // Bar, via Jose, 2026-10-12: a notification opens "the exact thing".
     await _pump(tester, width: 1400, openCall: 'c3');
 
-    expect(find.text('Caller: +15550003333'), findsOneWidget);
+    expect(find.text('Caller'), findsOneWidget);
     expect(find.byTooltip('Hide details'), findsOneWidget);
   });
 
