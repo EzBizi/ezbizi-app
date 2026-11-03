@@ -2969,6 +2969,25 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 171 · Leads on a phone: cleaner thread and list — **sent 2026-11-03** (`docs/previews/leads-mobile-clean-layouts.html`)
+
+A staff message, via Jose: the reply box is too small, the top should scroll away so the messages show. Jose: "mobile is a mess, we need something cleaner and simpler". Recommended 1, messenger style:
+- **Thread:** one app-bar row (back, avatar, name, a status chip opening a sheet, Book, ⋯), with job, phone, notes and More moved into ⋯. Messages fill the rest of the screen, even with the keyboard up.
+- **Composer:** full width, pinned above the keyboard, 1–5 lines. + opens a sheet (Suggest, quick replies with search, emoji, attach); round Send on the right. Quick replies show as one chip row only while the box is focused and empty.
+- **List:** search plus one "Filters (n)" button opening a sheet (show only / sources / channels, "Show N leads"). Only the picked quick chips stay visible, as one row. Rows are two lines.
+
+2 = Messages | Details tabs in the thread, with all chips in one sideways row. 3 = today's header scrolls away and folds when the keyboard opens, with a stacked composer. Phone only; desktop unchanged.
+
+### 170 · Reports › Performance › People: answer and booking in separate columns — **APPROVED 2026-11-03, option 8 + phone** (Jose: "as u recommend"; Reports builds) (`docs/previews/reports-people-answer-booking-layouts.html`)
+
+Jose 11-03: "a column for not answered and answered, missed call, separate from the booked, not booked". Recommended 1 + phone 4. The People table becomes Rang · Answered · Not answered · Missed · Booked · Booking rate (booked out of answered). A person's calls get an Answer pill (Answered / Not answered · who took it / Missed) and a Booking pill (Booked / Not booked / Existing job, "—" when not answered), with two filter chip groups. Red only for Missed. 2 = one column with stacked pills; 3 = separate Answering and Booking tables. Reports builds it.
+
+**Round 2, 11-03:** Jose said "hmm can u come up with more". Added 7 (a funnel bar per person), 8 (a two-part table with Phone and Sales header groups), 9 (person cards with rings), 10 (one status pill per call) and 11 (a drill-down in two tabs). Each has a phone version. The recommendation is now 8, with option 1's call list as the drill-down; 1 is second. The call list no longer overflows at 800 px.
+
+### 169 · Deep-dive patterns (filter bar, search, pickers, skeletons) — **no gallery — Jose 2026-11-02: implement all recommendations** (`docs/reviews/2026-11-02/ui-ux-deep-dive.md` §2, `ui-ux.md` #3/#4/#7/#10)
+
+These were built from the review straight away, with no gallery. `ListSearch` (`client/lib/widgets/list_search.dart`) is the one list search box: outlined, 44 high, about 280 wide on a desktop and the full width on a phone. It is used in Automations, Guidelines and Services so far. Availability's Area and Calendar branch chips are now one "Company · Branch" `SearchPickerField`. `AsyncBody(skeleton: true)` and `LoadingSkeleton` show grey rows in place of a long spinner (Email › Settings, Profit & Loss). Job and Customer panes drop Save/Cancel on their read-only tabs. The sidebar shows a scroll thumb. Inventory's empty lists use `EmptyState`. **Kept:** Training's search stays 56 high (Jose 2026-10-27), and the three-box `CalendarDayField` stays, because it was the owner's own ask.
+
 ### 168 · Development tab brought up to date — **sent 2026-11-02 — Jose: "go ahead with ur recommendations" (1 + phone 4)** (`docs/previews/development-tab-layouts.html`)
 
 Jose: "the Development Tab, it's a bit outdated". Recommended 1 + phone 4: 103 first-level tabs (Health with a red problem count); one thin red control-plane bar, walkthrough offer only via the title (▶); Organizations / Modules / Client versions as one-row-per-item tables with search, counts pluralised and the branch label; Modules' permissions on expand; Health problems first in red, healthy checks green on one line, repeated app issues merged with a count. 2 = tighter two-column cards; 3 = overview tiles first.

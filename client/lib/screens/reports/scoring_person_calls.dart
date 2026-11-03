@@ -1,7 +1,9 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
 import '../../widgets/call_text.dart';
 import '../../widgets/status_pill.dart';
@@ -116,15 +118,10 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
+        ListSearch(
           key: const ValueKey('scoring-calls-search'),
+          hint: 'Search their calls by number or words',
           onChanged: _search,
-          decoration: const InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Search their calls by number or words',
-            border: OutlineInputBorder(),
-          ),
         ),
         const SizedBox(height: 8),
         if (_error != null)
@@ -180,7 +177,10 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Copyable(
-                        '${c['caller_number'] ?? 'unknown number'}',
+                        c['caller_number'] == null
+                            ? 'unknown number'
+                            : formatPhoneNumber('${c['caller_number']}'),
+                        copy: '${c['caller_number'] ?? ''}',
                         style: theme.textTheme.bodyMedium,
                       ),
                     ),

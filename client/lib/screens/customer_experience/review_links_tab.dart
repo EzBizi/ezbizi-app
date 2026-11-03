@@ -309,9 +309,14 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
       ],
     );
 
-    return SingleChildScrollView(
+    // At least the full width: shrunk to its columns the table sat in the
+    // left 40% of the screen (deep dive 2026-11-02).
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: DataTable(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: box.maxWidth),
+        child: DataTable(
         key: const Key('review-links-table'),
         columns: [
           DataColumn(label: Text(_byPerson ? 'Person' : 'Branch')),
@@ -329,6 +334,8 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
           for (final r in rows) row(r, name(r)),
           row(totals ?? const {}, 'Total', total: true),
         ],
+      ),
+      ),
       ),
     );
   }

@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -318,15 +319,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
         ),
         SizedBox(
           width: 280,
-          child: TextField(
+          child: ListSearch(
             key: const ValueKey('activity-search'),
             controller: _search,
+            hint: 'A customer, lead or setting',
             onChanged: _typed,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'A customer, lead or setting',
-            ),
           ),
         ),
       ],

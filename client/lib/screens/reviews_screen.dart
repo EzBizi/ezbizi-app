@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
 import '../widgets/search_picker.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/open_destination.dart';
 import '../widgets/status_pill.dart';
 import 'customer_experience/review_stats_band.dart';
@@ -987,19 +989,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     final left = <Widget>[
       SizedBox(
         width: width < 600 ? width - 32 : 260,
-        child: TextField(
+        child: ListSearch(
           key: const Key('reviews-search'),
           controller: _search,
+          hint: 'Name or what they said',
           onChanged: _searched,
-          style: theme.textTheme.bodyMedium,
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: const Icon(Icons.search, size: 18),
-            hintText: 'Name or what they said',
-            hintStyle: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.inputDecorationTheme.hintStyle?.color,
-            ),
-          ),
         ),
       ),
       FilterChip(
@@ -1035,11 +1029,27 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
     final right = <Widget>[
       if (_profile != null && width >= 1200)
-        SizedBox(
-          width: 230,
-          child: ConnectedAccount(
+        // Design 164's chip, as GBP Listings draws it: a 230 px line cut
+        // both halves to "Google Busi…  Change it in …" (UI/UX review
+        // 2026-11-02 #2). Who it is opens in a panel.
+        Tooltip(
+          message: '${_profile!['display_name'] ?? ''}',
+          child: InkWell(
             key: const ValueKey('tour-reviews-profile'),
-            connection: _profile!,
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => showSidePanel<void>(
+              context,
+              builder: (context) => SidePanel(
+                title: 'Google connection',
+                child: ConnectedAccount(connection: _profile!),
+              ),
+            ),
+            child: StatusPill(
+              _profile!['status'] == 'disconnected' ? 'Google' : 'Google ✓',
+              tone: _profile!['status'] == 'disconnected'
+                  ? Tone.caution
+                  : Tone.ok,
+            ),
           ),
         ),
       FilledButton.tonalIcon(

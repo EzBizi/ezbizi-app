@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -627,13 +628,9 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
             alignment: AlignmentDirectional.centerStart,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 360),
-              child: TextField(
+              child: ListSearch(
                 key: const Key('hours-bulk-find'),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Find a website',
-                ),
+                hint: 'Find a website',
                 onChanged: (value) => setState(() => _find = value),
               ),
             ),

@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -567,14 +568,10 @@ class _LearnShelvesState extends State<LearnShelves> {
 
     final search = SizedBox(
       width: wide ? 260 : double.infinity,
-      child: TextField(
+      child: ListSearch(
         key: const Key('learn-search'),
         controller: _search,
-        decoration: const InputDecoration(
-          hintText: 'Find a guide or test',
-          prefixIcon: Icon(Icons.search, size: 20),
-          isDense: true,
-        ),
+        hint: 'Find a guide or test',
         onChanged: (_) => setState(() {}),
       ),
     );

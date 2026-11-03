@@ -14,6 +14,63 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0523',
+      date: '3 Nov 2026',
+      items: [
+        'Dates are one field: type it in your organization format or pick it from the calendar.',
+        'Reports: a call a teammate answered no longer shows as your booking or your score; phone numbers are formatted.',
+        'Scheduling: each branch can be left out of the empty-spots report; a passed opening can no longer be moved.',
+        'Call transcripts arrive sooner.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0522',
+      date: '3 Nov 2026',
+      items: [
+        'Fleet: Vehicles opens on all states, grouped by company and branch.',
+        'Customers: the Money card shows \$0 again instead of hiding when nothing is owed.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0521',
+      date: '2 Nov 2026',
+      items: [
+        'Every list search is the same size, so filter rows line up across the app; Team, Alerts and Field alerts gained search.',
+        'Calmer colours: normal states are no longer red, and purple is gone.',
+        'Automations: switching a rule on or off offers Undo.',
+        'Dashboard: job-status colours stay fixed, and tiles fill their row.',
+        'Voicemail: compact cards with one line of details.',
+        'Payroll, Time off, PTO, Helpers and Task Board: clearer labels, steadier widths and quieter empty states.',
+        'WhatsApp groups: one picker instead of a wall of chips; Review links table fills the width.',
+        'Failed posts show one plain line; Reviews shows the Google chip.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0520',
+      date: '2 Nov 2026',
+      items: [
+        'Automations, Guidelines and Services share one search box.',
+        'Availability: one Company and Branch picker replaces the separate chips.',
+        'Job and Customer panes hide Save and Cancel on read-only tabs; the sidebar shows a scroll bar.',
+        'Leads with no name or phone are titled by their email.',
+        'Dashboard: long empty-box notes show three, then a link for the rest.',
+        'Communication: an alert sent to nobody says Sent to nobody.',
+        'Wording: sentence case in Scheduling and Project Management, Voicemail shows Every line (default).',
+        'Loading placeholders in Email Settings and Profit and Loss; Inventory empty lists explain what to add.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0519',
+      date: '2 Nov 2026',
+      items: [
+        'Web: faster engine on Chrome and Edge, and the app reloads itself once if the graphics engine stops.',
+        'Reports › Scoring: score and checks as coloured chips, Did well and To improve listed one per line, with copy buttons.',
+        'Call transcripts in Reports and Leads colour each speaker (Dispatcher, Customer, IVR menu), are selectable and have one copy button.',
+        'Task Board: branch rows show their status by name, and headings stay pinned while scrolling.',
+        'Development tab brought up to date.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0518',
       date: '2 Nov 2026',
       items: [

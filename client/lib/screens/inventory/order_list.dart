@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -433,13 +434,17 @@ class _OrderListState extends State<OrderList> {
         ),
         Expanded(
           child: rows.isEmpty
-              ? Center(
-                  child: Text(
-                    _q.isEmpty
-                        ? 'There are no orders or sales.'
-                        : 'No order, sale or issue matches "$_q".',
-                  ),
-                )
+              ? _q.isEmpty
+                    ? const EmptyState(
+                        icon: Icons.receipt_long_outlined,
+                        title: 'No orders yet',
+                        message: 'There are no orders or sales.',
+                      )
+                    : EmptyState(
+                        icon: Icons.search_off,
+                        title: 'No matches',
+                        message: 'No order, sale or issue matches "$_q".',
+                      )
               : LayoutBuilder(
                   builder: (context, box) => box.maxWidth >= 760 && !_hasPane
                       ? _table(context, rows)

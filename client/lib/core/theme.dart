@@ -30,10 +30,10 @@ class EzBiziTheme {
   static const fieldYellow = Color(0xFFFACC15);
   static const fieldBlue = Color(0xFF3B82F6);
 
-  /// People-only states (Jose, 2026-10-26): purple is stopped too long and
+  /// People-only states (Jose, 2026-10-26): teal is stopped too long (was purple; no-purple rule, 2026-11-02) and
   /// slate is offline, so no person colour equals a job marker's
   /// (blue, yellow, onSurface). Mid-tone, so both read on light and dark tiles.
-  static const fieldPurple = Color(0xFFA855F7);
+  static const fieldTeal = Color(0xFF14B8A6);
   static const fieldSlate = Color(0xFF64748B);
 
   /// Ink on a coloured pin: near-black on yellow and on the light "opened"
@@ -514,7 +514,7 @@ class EzBiziTheme {
     Color(0xFFD93025),
     Color(0xFF188038),
     Color(0xFFF9AB00),
-    Color(0xFF9334E6),
+    Color(0xFF00897B),
     Color(0xFF1967D2),
     Color(0xFFE37400),
     Color(0xFF12B5CB),
@@ -674,7 +674,8 @@ enum Tone {
   /// Needs somebody soon. Jobs: Pending. Availability: 2 spots left.
   caution,
 
-  /// Finished, and waiting for sign-off. Jobs: Done pending approval.
+  /// Finished, and waiting for sign-off. Jobs: Done pending approval. Teal,
+  /// not purple (the no-purple rule, UI/UX review 2026-11-02).
   review,
 
   /// All is well. Jobs: Done. Availability: 3 or more left, and the first
@@ -704,7 +705,7 @@ class ToneColours {
     Tone.neutral: ToneColours(Color(0xFFE8ECF0), Color(0xFF33404A)),
     Tone.info: ToneColours(Color(0xFFD9EFF8), Color(0xFF00566E)),
     Tone.caution: ToneColours(Color(0xFFFFF0D2), Color(0xFF734600)),
-    Tone.review: ToneColours(Color(0xFFEEE5FA), Color(0xFF5A3290)),
+    Tone.review: ToneColours(Color(0xFFDDF3EE), Color(0xFF0B5E54)),
     Tone.ok: ToneColours(Color(0xFFE1F2E5), Color(0xFF16662D)),
     Tone.bad: ToneColours(Color(0xFFFDECEC), Color(0xFF9F1D1D)),
   };
@@ -713,7 +714,7 @@ class ToneColours {
     Tone.neutral: ToneColours(Color(0xFF2C333B), Color(0xFFD3DAE0)),
     Tone.info: ToneColours(Color(0xFF0E3A48), Color(0xFF8FD6EE)),
     Tone.caution: ToneColours(Color(0xFF3D2E0C), Color(0xFFF1C56A)),
-    Tone.review: ToneColours(Color(0xFF33264A), Color(0xFFCDB6F2)),
+    Tone.review: ToneColours(Color(0xFF0F3B36), Color(0xFF86DCCB)),
     Tone.ok: ToneColours(Color(0xFF163A22), Color(0xFF8FDBA4)),
     Tone.bad: ToneColours(Color(0xFF4A1C1C), Color(0xFFFF8A8A)),
   };

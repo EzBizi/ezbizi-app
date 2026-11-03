@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+
+import 'list_search.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
@@ -244,21 +246,11 @@ class _ApiActivityState extends State<ApiActivity> {
       children: [
         SizedBox(
           width: 240,
-          child: TextField(
+          child: ListSearch(
             key: const Key('api-activity-search'),
             controller: _search,
+            hint: 'Path, person or key',
             onChanged: _searched,
-            // bodyMedium for the text and the hint, as the dense pickers draw:
-            // 53 points tall, as they are; the theme's 16-point hint makes 56.
-            style: Theme.of(context).textTheme.bodyMedium,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: 'Path, person or key',
-              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-              ),
-            ),
           ),
         ),
         if (widget.everyone)

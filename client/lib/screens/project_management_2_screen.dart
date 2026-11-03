@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -212,16 +213,11 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
               ),
               SizedBox(
                 width: 320,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('pm2-search'),
                   controller: _search,
+                  hint: 'Customer, job ID or address',
                   onChanged: _searched,
-                  style: theme.textTheme.bodyMedium,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Customer, job ID or address',
-                  ),
                 ),
               ),
             ],
@@ -331,7 +327,7 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
 /// Jose's three tabs (2026-10-28): the server's key, the label, the icon.
 const _tabs = [
   ('pending', 'Pending', Icons.hourglass_empty),
-  ('ready', 'Ready for Submission', Icons.task_alt),
+  ('ready', 'Ready for submission', Icons.task_alt),
   ('submitted', 'Submitted', Icons.send_outlined),
 ];
 

@@ -60,12 +60,14 @@ class CopyIcon extends StatelessWidget {
   );
 }
 
-/// Selectable text with a copy icon beside it.
+/// Selectable text with a copy icon beside it; [copy] when what is copied
+/// differs from what is shown (a formatted number copies the dialable one).
 class Copyable extends StatelessWidget {
-  const Copyable(this.text, {super.key, this.style});
+  const Copyable(this.text, {super.key, this.style, this.copy});
 
   final String text;
   final TextStyle? style;
+  final String? copy;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -77,7 +79,7 @@ class Copyable extends StatelessWidget {
           style: style ?? Theme.of(context).textTheme.bodySmall,
         ),
       ),
-      CopyIcon(text),
+      CopyIcon(copy ?? text),
     ],
   );
 }

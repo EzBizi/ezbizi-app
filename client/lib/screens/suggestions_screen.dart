@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -434,16 +435,9 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
           // Standard field height, as tall as Leads search (Jose, 2026-10-27).
           action: SizedBox(
             width: 240,
-            child: TextField(
+            child: ListSearch(
               key: const Key('suggestions-search'),
-              textAlignVertical: TextAlignVertical.center,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIconConstraints: BoxConstraints(minWidth: 36),
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a suggestion',
-                border: OutlineInputBorder(),
-              ),
+              hint: 'Find a suggestion',
               onChanged: (v) => setState(() => _query = v),
             ),
           ),

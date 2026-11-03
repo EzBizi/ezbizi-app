@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -653,14 +654,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
     final search = SizedBox(
       width: narrow ? double.infinity : 240,
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('gbp-search'),
         controller: _searchController,
-        decoration: const InputDecoration(
-          isDense: true,
-          prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'City or address',
-        ),
+        hint: 'City or address',
         onChanged: (v) => setState(() => _search = v),
       ),
     );

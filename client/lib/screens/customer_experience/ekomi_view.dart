@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -414,17 +415,13 @@ class _EkomiViewState extends State<EkomiView> {
             children: [
               SizedBox(
                 width: 240,
-                child: TextField(
+                child: ListSearch(
                   key: const ValueKey('ekomi-requests-search'),
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Name, email or job',
-                    isDense: true,
-                  ),
+                  hint: 'Name, email or job',
                   onSubmitted: (v) {
-                    _q = v;
-                    _loadTab();
-                  },
+                      _q = v;
+                      _loadTab();
+                    },
                 ),
               ),
               for (final e in _statuses.entries)
@@ -614,15 +611,11 @@ class _JobChooserState extends State<_JobChooser> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
+        ListSearch(
           key: const ValueKey('ekomi-ask-search'),
-          autofocus: true,
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search, size: 18),
-            hintText: 'Job number, customer or address',
-            isDense: true,
-          ),
+          hint: 'Job number, customer or address',
           onChanged: _search,
+          autofocus: true,
         ),
         const SizedBox(height: 8),
         for (final j in _rows)

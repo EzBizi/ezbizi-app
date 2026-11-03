@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -1350,14 +1351,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           ),
           SizedBox(
             width: phone ? 200 : 240,
-            child: TextField(
+            child: ListSearch(
               key: const Key('tasks-search'),
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a task',
-                border: OutlineInputBorder(),
-              ),
+              hint: 'Find a task',
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
@@ -1633,7 +1629,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 children: [
                   header,
                   if (!folded) ...[
-                    _headings(context, id),
+                    // An empty group drew a full column-header row for nothing.
+                    if (shown.isNotEmpty) _headings(context, id),
                     if (_renaming case final r? when r.group == id)
                       _columnNameField(r.key),
                   ],

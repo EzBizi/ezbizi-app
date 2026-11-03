@@ -218,7 +218,7 @@ void submitTest() {
     expect(find.text('Unpaid Una'), findsOneWidget);
     expect(find.byKey(const Key('pm2-submit:j-2')), findsNothing);
 
-    await tester.tap(find.text('Ready for Submission · 1'));
+    await tester.tap(find.text('Ready for submission · 1'));
     await tester.pumpAndSettle();
     expect(find.text('Unpaid Una'), findsNothing);
     expect(find.text('Paid Pat'), findsOneWidget);

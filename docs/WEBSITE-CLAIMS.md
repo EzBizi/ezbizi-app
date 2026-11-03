@@ -3245,3 +3245,38 @@ still held, not re-measured (nothing shipped to move it).
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502. No `www/`
 edit, so nothing to publish.
+
+## 2026-11-02: 0.0.0514-0.0.0519 live, and three sentences went false on the first WordPress day
+
+Production `/download/windows.json` 0.0.0519 at `3848d575f`. First run against WordPress:
+edits went to the WP pages (wp-cli, `--user=ezbizi_admin`), not `www/`. Pre-edit copies of
+post_content / `_ezb_head` for pages 4, 8, 9 and `sitemap.xml` are in `~/ezb-wp-bak-20261102/`
+on the websites box. **`www/` was NOT updated** — it still carries all three false sentences, so
+rolling back to the static copy re-publishes them.
+
+- **Business Profile works on production.** `ezbizi:review-backlog` (`0541f7b07`, daily 15:00)
+  PUT a reply to Google v4 at 20:36 UTC (`review_replies` automation/published); 610 Google
+  reviews with a `connection_id` were created today. So the homepage "reading and answering its
+  reviews is waiting on Google to grant Business Profile API access" (×3: two in the body, one in
+  the FAQ JSON-LD) was false. **Pulled, not replaced**: now "A Google Business Profile can be
+  connected too." / "Ads brings its Local Services enquiries in as leads." Re-adding "read and
+  answer reviews" is allowed (the row-100 test passed) but was not done on one day's evidence.
+  The `BusinessProfileReviews` docblock still says 0 QPM — stale. **Owed:** the `/privacy/`
+  Google user data section names no Business Profile purpose, and review text read through our
+  Business Profile OAuth now reaches xAI — Google API module's call, not edited here.
+- **`/privacy/` "only to a review less than 30 days old"** was false: the backlog job posts AI
+  replies by itself to up to 50 four- and five-star reviews a day of any age (auto-reply listings,
+  60 on), and drafts ≤3-star ones on every listing — xAI triggered with nobody pressing anything.
+  Rewrote the paragraph and the xAI list item; Last updated / `dateModified` / sitemap 11-02.
+- **`/social-media/` "We do not: Read or reply to direct messages, or use Messenger"** was false:
+  `leads` source facebook 77, instagram 14, `is_test = 0`, newest today. Line removed; date
+  bumped. The Messenger/Instagram do-not row's count test now passes; the Growth card was NOT
+  extended (Meta app status not checked this run).
+- Messenger/Instagram photos streamed not stored, YouTube delete (`youtube.force-ssl`), Google
+  login recorded on connections, Leads rail, Scoring, Task Board, Development tab, web `--wasm`:
+  no other sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy); forbidden-terms (LINE-split)
+over the 8 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1,
+0.0.0502. WP pages 5, 6, 7, 10, 11 unmodified since the 11-02 import. Desk not asked: there is
+no publish step left for it.

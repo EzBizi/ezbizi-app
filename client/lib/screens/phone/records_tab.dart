@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
@@ -508,23 +509,16 @@ class _RecordsTabState extends State<RecordsTab> {
   /// tell which list it searches. Standard field height (Jose, 2026-10-27).
   Widget _searchField() => SizedBox(
     width: 280,
-    child: TextField(
+    child: ListSearch(
       key: ValueKey(switch (_filter) {
-        RecordsFilter.calls => 'comm-records-calls-search',
-        RecordsFilter.voicemail => 'comm-records-voicemail-search',
-        RecordsFilter.sms => 'comm-records-messages-search',
-      }),
+          RecordsFilter.calls => 'comm-records-calls-search',
+          RecordsFilter.voicemail => 'comm-records-voicemail-search',
+          RecordsFilter.sms => 'comm-records-messages-search',
+        }),
+      hint: _filter == RecordsFilter.sms
+              ? 'Search name, number or text'
+              : 'Search name, number or tag',
       onChanged: (value) => setState(() => _query = value),
-      textAlignVertical: TextAlignVertical.center,
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: _filter == RecordsFilter.sms
-            ? 'Search name, number or text'
-            : 'Search name, number or tag',
-        prefixIcon: const Icon(Icons.search, size: 18),
-        prefixIconConstraints: const BoxConstraints(minWidth: 36),
-        border: const OutlineInputBorder(),
-      ),
     ),
   );
 

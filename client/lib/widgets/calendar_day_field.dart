@@ -1,27 +1,32 @@
+/// A calendar day — or a day and a time — in ONE field that takes typing and
+/// opens a calendar.
+///
+/// Jose, 2026-11-03, "1 - yes", to "Should the 3-box date fields become one
+/// date picker?". The three Month/Day/Year boxes (and Hour/Minute/AM beside
+/// them) took five tabs to fill in and read as five fields.
+///
+/// ── What keeps one box from inventing a format ───────────────────
+///
+/// The reason there were boxes was that a bare box made people guess a format.
+/// So the hint is the organization's own pattern (`MM/DD/YYYY`, `DD/MM/YYYY`
+/// or `YYYY-MM-DD`, from `date_format`), numbers are read in THAT order, and
+/// on leaving the field it is rewritten the way the organization writes a
+/// date — so 3/8 still cannot be two different days.
+///
+/// ── Why the calendar is not `showDatePicker` ─────────────────────
+///
+/// That is a modal dialog, and this app does not use those. The calendar
+/// opens under the field, and the form around it stays on screen. The stored
+/// value is still `YYYY-MM-DD` (or `YYYY-MM-DD HH:MM` when [withTime] is set),
+/// so every caller keeps the controller it already had.
+library;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 import 'not_filled_in.dart';
 
-/// A calendar day, typed as three number boxes, with a calendar beside them.
-///
-/// ── Why this is not a single text field ──────────────────────────
-///
-/// A box that asked for `2026-09-01` (or `A calendar day — 2026-09-01` as a
-/// hint) made the reader invent a format, and the one they invented was never
-/// the one the server stored. Three boxes named Month, Day and Year are the
-/// order the owner asked for; the organization setting still decides which
-/// box is first, so 3/8 cannot be two different days.
-///
-/// ── Why the calendar is not `showDatePicker` ─────────────────────
-///
-/// That is a modal dialog, and this app does not use those. The calendar
-/// opens under the boxes, the way a menu does, and the form around it stays
-/// on screen. The stored value is still `YYYY-MM-DD` (or `YYYY-MM-DD HH:MM`
-/// when [withTime] is set), so every caller keeps the same controller it
-/// already had.
 class CalendarDayField extends StatefulWidget {
   const CalendarDayField({
     super.key,
@@ -38,9 +43,7 @@ class CalendarDayField extends StatefulWidget {
     this.flagEmpty = false,
   });
 
-  /// ISO day, or wall clock `YYYY-MM-DD HH:MM` when [withTime] is set. Empty
-  /// means no day. Callers already posted this spelling; this widget does not
-  /// change it.
+  /// Holds `YYYY-MM-DD`, or `YYYY-MM-DD HH:MM` with [withTime]; empty for none.
   final TextEditingController controller;
 
   final DisplayFormats formats;
@@ -53,8 +56,7 @@ class CalendarDayField extends StatefulWidget {
   final DateTime? lastDate;
   final ValueChanged<String>? onChanged;
 
-  /// Amber while there is no day, the look `notFilledIn` gives a box: for a
-  /// day somebody is expected to fill in, such as a profile's date of birth.
+  /// Marks an empty field "Not filled in" (an optional answer left blank).
   final bool flagEmpty;
 
   @override
@@ -65,20 +67,10 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
   static final _first = DateTime(1900, 1, 1);
   static final _last = DateTime(2100, 12, 31);
 
-  final _month = TextEditingController();
-  final _day = TextEditingController();
-  final _year = TextEditingController();
-  final _hour = TextEditingController();
-  final _minute = TextEditingController();
-
-  final _monthFocus = FocusNode();
-  final _dayFocus = FocusNode();
-  final _yearFocus = FocusNode();
-  final _hourFocus = FocusNode();
-  final _minuteFocus = FocusNode();
+  final _text = TextEditingController();
+  final _focus = FocusNode();
 
   bool _open = false;
-  bool _pm = false;
   bool _writing = false;
   String? _invalid;
 
@@ -88,11 +80,9 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
   @override
   void initState() {
     super.initState();
-    _fromController();
+    _text.text = _shown();
     widget.controller.addListener(_onController);
-    for (final node in [_monthFocus, _dayFocus, _yearFocus]) {
-      node.addListener(_onBlur);
-    }
+    _focus.addListener(_onBlur);
   }
 
   @override
@@ -101,204 +91,149 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
     if (old.controller != widget.controller) {
       old.controller.removeListener(_onController);
       widget.controller.addListener(_onController);
-      _fromController();
+      _text.text = _shown();
     } else if (old.formats != widget.formats) {
-      // Same day, new order (or 12h vs 24h). Re-read so the boxes keep the
-      // month in the month box when Day moves first.
-      _fromController();
+      _text.text = _shown();
     }
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onController);
-    for (final c in [_month, _day, _year, _hour, _minute]) {
-      c.dispose();
-    }
-    for (final n in [
-      _monthFocus,
-      _dayFocus,
-      _yearFocus,
-      _hourFocus,
-      _minuteFocus,
-    ]) {
-      n.dispose();
-    }
+    _text.dispose();
+    _focus.dispose();
     super.dispose();
+  }
+
+  /// The stored value, written the organization's way.
+  String _shown() {
+    final held = parseWallDateTime(widget.controller.text);
+    if (held == null) return '';
+    final day = widget.formats.formatDate(held.day);
+    if (!widget.withTime) return day;
+    return '$day ${widget.formats.formatTime(held.hour, held.minute)}';
+  }
+
+  /// The pattern a person types, in the organization's order.
+  String get _pattern {
+    final parts = widget.formats.dateParts;
+    final sep = widget.formats.dateFormat == 'YYYY-MM-DD' ? '-' : '/';
+    final day = parts
+        .map(
+          (p) => switch (p) {
+            DatePart.month => 'MM',
+            DatePart.day => 'DD',
+            DatePart.year => 'YYYY',
+          },
+        )
+        .join(sep);
+    if (!widget.withTime) return day;
+    return widget.formats.timeFormat == '12h'
+        ? '$day 9:00 AM'
+        : '$day 09:00';
   }
 
   void _onController() {
     if (_writing) return;
-    _fromController();
+    final shown = _shown();
+    if (widget.controller.text.trim().isEmpty || shown.isNotEmpty) {
+      _text.text = shown;
+      _invalid = null;
+    }
     if (mounted) setState(() {});
   }
 
   void _onBlur() {
-    if (_monthFocus.hasFocus || _dayFocus.hasFocus || _yearFocus.hasFocus) {
-      return;
-    }
-    _pad(_month, 2);
-    _pad(_day, 2);
-    _commit();
+    if (_focus.hasFocus) return;
+    _commit(final_: true);
   }
 
-  void _fromController() {
-    final parsed = parseWallDateTime(widget.controller.text);
-    if (parsed == null) {
-      if (widget.controller.text.trim().isEmpty) {
-        _month.clear();
-        _day.clear();
-        _year.clear();
-        _hour.clear();
-        _minute.clear();
-        _pm = false;
-        _invalid = null;
+  /// What was typed, read in the organization's order, or why not.
+  ({DateTime day, int hour, int minute})? _read(String raw) {
+    final numbers = [
+      for (final m in RegExp(r'\d+').allMatches(raw)) m.group(0)!,
+    ];
+    if (numbers.length < 3) return null;
+
+    final parts = widget.formats.dateParts;
+    int? month, day, year;
+    String? yearText;
+    for (var i = 0; i < 3; i++) {
+      final n = int.tryParse(numbers[i]);
+      switch (parts[i]) {
+        case DatePart.month:
+          month = n;
+        case DatePart.day:
+          day = n;
+        case DatePart.year:
+          year = n;
+          yearText = numbers[i];
       }
-      return;
     }
-
-    _month.text = parsed.day.month.toString().padLeft(2, '0');
-    _day.text = parsed.day.day.toString().padLeft(2, '0');
-    _year.text = '${parsed.day.year}';
-    if (widget.withTime) {
-      final hour = parsed.hour;
-      if (widget.formats.timeFormat == '12h') {
-        final twelve = hour % 12 == 0 ? 12 : hour % 12;
-        _hour.text = '$twelve';
-        _pm = hour >= 12;
-      } else {
-        _hour.text = hour.toString().padLeft(2, '0');
-        _pm = false;
-      }
-      _minute.text = parsed.minute.toString().padLeft(2, '0');
-    }
-    _invalid = null;
-  }
-
-  void _pad(TextEditingController box, int width) {
-    final text = box.text.trim();
-    if (text.isEmpty) return;
-    final n = int.tryParse(text);
-    if (n == null) return;
-    final padded = n.toString().padLeft(width, '0');
-    if (padded != box.text) box.value = box.value.copyWith(text: padded);
-  }
-
-  DateTime? _typedDay() {
-    final month = int.tryParse(_month.text.trim());
-    final day = int.tryParse(_day.text.trim());
-    final year = int.tryParse(_year.text.trim());
     if (month == null || day == null || year == null) return null;
-    if (_year.text.trim().length < 4) return null;
-    return parseCalendarDay(
+    if ((yearText ?? '').length != 4) return null;
+    final date = parseCalendarDay(
       '${year.toString().padLeft(4, '0')}-'
       '${month.toString().padLeft(2, '0')}-'
       '${day.toString().padLeft(2, '0')}',
     );
-  }
+    if (date == null) return null;
+    if (!widget.withTime) return (day: date, hour: 0, minute: 0);
 
-  (int, int)? _typedClock() {
-    if (!widget.withTime) return (0, 0);
-
-    final minute = int.tryParse(_minute.text.trim());
-    final rawHour = int.tryParse(_hour.text.trim());
-    if (minute == null || rawHour == null) return null;
-    if (minute > 59) return null;
-
-    if (widget.formats.timeFormat == '12h') {
-      if (rawHour < 1 || rawHour > 12) return null;
-      var hour = rawHour % 12;
-      if (_pm) hour += 12;
-      return (hour, minute);
+    if (numbers.length < 4) return null;
+    var hour = int.tryParse(numbers[3]) ?? -1;
+    final minute = numbers.length > 4 ? int.tryParse(numbers[4]) ?? -1 : 0;
+    final lower = raw.toLowerCase();
+    final pm = RegExp(r'\dp|\sp').hasMatch(lower);
+    final am = RegExp(r'\da|\sa').hasMatch(lower);
+    if (pm || am) {
+      if (hour < 1 || hour > 12) return null;
+      hour = hour % 12 + (pm ? 12 : 0);
     }
-
-    if (rawHour > 23) return null;
-    return (rawHour, minute);
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return (day: date, hour: hour, minute: minute);
   }
 
-  /// Why the typed time cannot be kept, or null while it is fine or still
-  /// being typed. Without it the boxes could read 25 PM and store nothing,
-  /// with no word said.
-  String? _clockProblem() {
-    if (!widget.withTime) return null;
-    final hourText = _hour.text.trim();
-    final hour = int.tryParse(hourText);
-    final minute = int.tryParse(_minute.text.trim());
-    final twelve = widget.formats.timeFormat == '12h';
-
-    // A lone 0 may be the start of 09; it is a problem once the minute is in.
-    final hourDone = hourText.length == 2 || _minute.text.trim().isNotEmpty;
-    if (hour != null &&
-        hourDone &&
-        (twelve ? hour < 1 || hour > 12 : hour > 23)) {
-      return twelve ? 'Hours go from 1 to 12.' : 'Hours go from 00 to 23.';
-    }
-    if (minute != null && minute > 59) return 'Minutes go from 00 to 59.';
-    return null;
-  }
-
-  void _commit() {
-    final emptyDate =
-        _month.text.trim().isEmpty &&
-        _day.text.trim().isEmpty &&
-        _year.text.trim().isEmpty;
-
-    if (emptyDate &&
-        (!widget.withTime ||
-            (_hour.text.trim().isEmpty && _minute.text.trim().isEmpty))) {
+  /// Stores what was typed; [final_] (leaving the field) also rewrites the
+  /// text the organization's way and names a problem.
+  void _commit({bool final_ = false}) {
+    final raw = _text.text.trim();
+    if (raw.isEmpty) {
       _setIso('');
       setState(() => _invalid = null);
       return;
     }
 
-    final day = _typedDay();
-    if (day == null) {
-      setState(
-        () => _invalid =
-            _year.text.trim().length == 4 &&
-                _month.text.trim().isNotEmpty &&
-                _day.text.trim().isNotEmpty
-            ? 'That day is not on the calendar.'
-            : null,
-      );
+    final read = _read(raw);
+    if (read == null) {
+      if (final_) {
+        setState(() => _invalid = 'Type it as $_pattern, or pick a day.');
+      }
       return;
     }
-
-    if (day.isBefore(_firstDate) || day.isAfter(_lastDate)) {
+    if (read.day.isBefore(_firstDate) || read.day.isAfter(_lastDate)) {
       setState(() => _invalid = 'That day is out of range.');
       return;
     }
 
-    if (!widget.withTime) {
-      _setIso(formatCalendarDay(day));
-      setState(() => _invalid = null);
-      return;
-    }
-
-    final clock = _typedClock();
-    if (clock == null) {
-      setState(() => _invalid = _clockProblem());
-      return;
-    }
-
-    // The minute already held is not a change, whatever its text. A value
-    // loaded with seconds — a job booked at 09:43:33 — used to be rewritten as
-    // 09:43 on every click in and out of a box: the seconds were dropped on
-    // the next save, and anything comparing text read an edit nobody made
-    // (Jobs, 83533a1c, which fixed it in the job panel; this is the root).
     final held = parseWallDateTime(widget.controller.text);
-    if (held != null &&
-        held.day.year == day.year &&
-        held.day.month == day.month &&
-        held.day.day == day.day &&
-        held.hour == clock.$1 &&
-        held.minute == clock.$2) {
+    final same =
+        held != null &&
+        DateUtils.isSameDay(held.day, read.day) &&
+        (!widget.withTime ||
+            (held.hour == read.hour && held.minute == read.minute));
+    if (same) {
+      // Unchanged to the minute: hand back exactly what was loaded (a job's
+      // seconds would otherwise be dropped and read as a person's edit).
       widget.onChanged?.call(widget.controller.text);
-      setState(() => _invalid = null);
-      return;
+    } else {
+      _setIso(
+        widget.withTime
+            ? formatWallDateTime(read.day, read.hour, read.minute)
+            : formatCalendarDay(read.day),
+      );
     }
-
-    _setIso(formatWallDateTime(day, clock.$1, clock.$2));
+    if (final_) _text.text = _shown();
     setState(() => _invalid = null);
   }
 
@@ -313,195 +248,83 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
     widget.onChanged?.call(value);
   }
 
-  void _onPart(DatePart part, String raw) {
-    final box = switch (part) {
-      DatePart.month => _month,
-      DatePart.day => _day,
-      DatePart.year => _year,
-    };
-    final max = part == DatePart.year ? 4 : 2;
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    final clipped = digits.length > max ? digits.substring(0, max) : digits;
-    if (clipped != box.text) {
-      box.value = TextEditingValue(
-        text: clipped,
-        selection: TextSelection.collapsed(offset: clipped.length),
-      );
-    }
-
-    if (part != DatePart.year && clipped.length == 2) {
-      _focusAfter(part);
-    } else if (part == DatePart.month &&
-        clipped.length == 1 &&
-        (int.tryParse(clipped) ?? 0) >= 2) {
-      _pad(_month, 2);
-      _focusAfter(part);
-    } else if (part == DatePart.day &&
-        clipped.length == 1 &&
-        (int.tryParse(clipped) ?? 0) >= 4) {
-      _pad(_day, 2);
-      _focusAfter(part);
-    }
-
-    _commit();
-  }
-
-  void _focusAfter(DatePart part) {
-    final order = widget.formats.dateParts;
-    final i = order.indexOf(part);
-    if (i < 0 || i == order.length - 1) {
-      if (widget.withTime) {
-        _hourFocus.requestFocus();
-      }
-      return;
-    }
-    switch (order[i + 1]) {
-      case DatePart.month:
-        _monthFocus.requestFocus();
-      case DatePart.day:
-        _dayFocus.requestFocus();
-      case DatePart.year:
-        _yearFocus.requestFocus();
-    }
-  }
-
-  void _onHour(String raw) {
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    final typed = digits.length > 2 ? digits.substring(0, 2) : digits;
-    var clipped = typed;
-
-    // A 24-hour time in a 12-hour box means what it says: 16 is 4 PM and 00 is
-    // 12 AM. The box used to keep 16, beside PM, and store no time at all -
-    // Jose booked a lead that way on 2026-09-30.
-    final hour = int.tryParse(typed);
-    if (widget.formats.timeFormat == '12h' &&
-        typed.length == 2 &&
-        hour != null) {
-      if (hour >= 13 && hour <= 23) {
-        clipped = '${hour - 12}';
-        _pm = true;
-      } else if (hour == 0) {
-        clipped = '12';
-        _pm = false;
-      }
-    }
-
-    _hour.value = TextEditingValue(
-      text: clipped,
-      selection: TextSelection.collapsed(offset: clipped.length),
-    );
-    if (typed.length == 2) _minuteFocus.requestFocus();
-    _commit();
-  }
-
-  void _onMinute(String raw) {
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    final clipped = digits.length > 2 ? digits.substring(0, 2) : digits;
-    _minute.value = TextEditingValue(
-      text: clipped,
-      selection: TextSelection.collapsed(offset: clipped.length),
-    );
-    _commit();
-  }
-
   void _pick(DateTime day) {
-    _month.text = day.month.toString().padLeft(2, '0');
-    _day.text = day.day.toString().padLeft(2, '0');
-    _year.text = '${day.year}';
-    if (widget.withTime && _hour.text.trim().isEmpty) {
-      if (widget.formats.timeFormat == '12h') {
-        _hour.text = '9';
-        _minute.text = '00';
-        _pm = false;
-      } else {
-        _hour.text = '09';
-        _minute.text = '00';
-      }
-    }
-    setState(() => _open = false);
-    _commit();
+    final held = parseWallDateTime(widget.controller.text);
+    _setIso(
+      widget.withTime
+          // A day picked for a field that had no time yet starts at 9.
+          ? formatWallDateTime(day, held?.hour ?? 9, held?.minute ?? 0)
+          : formatCalendarDay(day),
+    );
+    _text.text = _shown();
+    setState(() {
+      _open = false;
+      _invalid = null;
+    });
   }
 
-  void _toggleCalendar() {
-    setState(() => _open = !_open);
+  DateTime _initialPickerDate() {
+    var at = parseWallDateTime(widget.controller.text)?.day ?? DateTime.now();
+    if (at.isBefore(_firstDate)) at = _firstDate;
+    if (at.isAfter(_lastDate)) at = _lastDate;
+    return at;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final label = widget.label?.trim();
-    final unfilled =
-        widget.flagEmpty && widget.controller.text.trim().isEmpty;
+    final unfilled = widget.flagEmpty && widget.controller.text.trim().isEmpty;
     final note =
         _invalid ?? widget.helper ?? (unfilled ? 'Not filled in' : null);
+
+    var decoration = InputDecoration(
+      labelText: label == null || label.isEmpty ? null : label,
+      hintText: _pattern,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+      isDense: true,
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: widget.dense ? 10 : 12,
+      ),
+      suffixIcon: IconButton(
+        key: const Key('calendar-day-pick'),
+        tooltip: _open ? 'Hide the calendar' : 'Pick a day on the calendar',
+        onPressed: widget.enabled
+            ? () => setState(() => _open = !_open)
+            : null,
+        icon: Icon(
+          _open ? Icons.calendar_month : Icons.calendar_today_outlined,
+          size: 20,
+        ),
+      ),
+    );
+    if (unfilled) {
+      decoration = notFilledIn(
+        context,
+        decoration,
+        empty: true,
+      ).copyWith(hintText: _pattern);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (label != null && label.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: widget.withTime ? 280 : 220),
+            child: TextField(
+              key: const Key('calendar-day-text'),
+              controller: _text,
+              focusNode: _focus,
+              enabled: widget.enabled,
+              keyboardType: TextInputType.datetime,
+              decoration: decoration,
+              onChanged: (_) => _commit(),
+              onSubmitted: (_) => _commit(final_: true),
             ),
           ),
-        // The date and the time are each one piece that wraps whole: on a
-        // phone the hour used to end one line and the minute start the next.
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            _group([
-              for (final part in widget.formats.dateParts) _partBox(part),
-            ]),
-            if (widget.withTime)
-              _group([
-                _timeBox(
-                  controller: _hour,
-                  focus: _hourFocus,
-                  hint: widget.formats.timeFormat == '12h' ? 'H' : 'HH',
-                  label: 'Hour',
-                  keyName: 'hour',
-                  onChanged: _onHour,
-                  width: 64,
-                ),
-                Text(':', style: theme.textTheme.titleMedium),
-                _timeBox(
-                  controller: _minute,
-                  focus: _minuteFocus,
-                  hint: 'MM',
-                  label: 'Minute',
-                  keyName: 'minute',
-                  onChanged: _onMinute,
-                  width: 76,
-                ),
-                if (widget.formats.timeFormat == '12h')
-                  OutlinedButton(
-                    onPressed: widget.enabled
-                        ? () {
-                            setState(() => _pm = !_pm);
-                            _commit();
-                          }
-                        : null,
-                    child: Text(_pm ? 'PM' : 'AM'),
-                  ),
-              ]),
-            IconButton(
-              key: const Key('calendar-day-pick'),
-              tooltip: _open
-                  ? 'Hide the calendar'
-                  : 'Pick a day on the calendar',
-              onPressed: widget.enabled ? _toggleCalendar : null,
-              icon: Icon(
-                _open ? Icons.calendar_month : Icons.calendar_today_outlined,
-                size: 20,
-              ),
-            ),
-          ],
         ),
         if (note != null)
           Padding(
@@ -528,7 +351,9 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
                 side: BorderSide(color: theme.colorScheme.outlineVariant),
               ),
               child: CalendarDatePicker(
-                key: ValueKey(_typedDay() ?? 'open'),
+                key: ValueKey(
+                  parseWallDateTime(widget.controller.text)?.day ?? 'open',
+                ),
                 initialDate: _initialPickerDate(),
                 firstDate: _firstDate,
                 lastDate: _lastDate,
@@ -537,123 +362,6 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
             ),
           ),
       ],
-    );
-  }
-
-  /// Boxes that stay on one line together, 8 apart.
-  Widget _group(List<Widget> children) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      for (var i = 0; i < children.length; i++) ...[
-        if (i > 0) const SizedBox(width: 8),
-        children[i],
-      ],
-    ],
-  );
-
-  DateTime _initialPickerDate() {
-    var at = _typedDay() ?? DateTime.now();
-    if (at.isBefore(_firstDate)) at = _firstDate;
-    if (at.isAfter(_lastDate)) at = _lastDate;
-    return at;
-  }
-
-  Widget _partBox(DatePart part) {
-    final (controller, focus, hint, label, max, keyName, width) = switch (part) {
-      DatePart.month => (
-        _month,
-        _monthFocus,
-        'MM',
-        'Month',
-        2,
-        'month',
-        // Wide enough for the label itself: at 64 the theme's 16px label
-        // read "Mo…", and Hour and Minute read "H…" and "M…".
-        72.0,
-      ),
-      DatePart.day => (_day, _dayFocus, 'DD', 'Day', 2, 'day', 64.0),
-      DatePart.year => (_year, _yearFocus, 'YYYY', 'Year', 4, 'year', 88.0),
-    };
-
-    return SizedBox(
-      width: width,
-      child: TextField(
-        key: Key('calendar-day-$keyName'),
-        controller: controller,
-        focusNode: focus,
-        enabled: widget.enabled,
-        keyboardType: TextInputType.number,
-        textInputAction: TextInputAction.next,
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-          LengthLimitingTextInputFormatter(max),
-        ],
-        decoration: _flagged(
-          InputDecoration(
-            hintText: hint,
-            labelText: label,
-            // Above the box, small, with the format inside: resting in a box
-            // this narrow the label read "Mo…", "Ho…" and "Min…" on a phone.
-            floatingLabelBehavior: FloatingLabelBehavior.always,
-            isDense: true,
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: widget.dense ? 10 : 12,
-            ),
-          ),
-        ),
-        onChanged: (value) => _onPart(part, value),
-      ),
-    );
-  }
-
-  /// Amber with [CalendarDayField.flagEmpty] and no day. The box keeps its
-  /// MM / DD / YYYY: "Not filled in" does not fit in one, so it goes under
-  /// the boxes instead.
-  InputDecoration _flagged(InputDecoration decoration) =>
-      widget.flagEmpty && widget.controller.text.trim().isEmpty
-      ? notFilledIn(
-          context,
-          decoration,
-          empty: true,
-        ).copyWith(hintText: decoration.hintText)
-      : decoration;
-
-  Widget _timeBox({
-    required TextEditingController controller,
-    required FocusNode focus,
-    required String hint,
-    required String label,
-    required String keyName,
-    required ValueChanged<String> onChanged,
-    required double width,
-  }) {
-    return SizedBox(
-      width: width,
-      child: TextField(
-        key: Key('calendar-day-$keyName'),
-        controller: controller,
-        focusNode: focus,
-        enabled: widget.enabled,
-        keyboardType: TextInputType.number,
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-          LengthLimitingTextInputFormatter(2),
-        ],
-        decoration: InputDecoration(
-          hintText: hint,
-          labelText: label,
-          // Above the box, small, with the format inside: resting in a box
-          // this narrow the label read "Mo…", "Ho…" and "Min…" on a phone.
-          floatingLabelBehavior: FloatingLabelBehavior.always,
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 12,
-          ),
-        ),
-        onChanged: onChanged,
-      ),
     );
   }
 }

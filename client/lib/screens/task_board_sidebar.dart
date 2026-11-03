@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/device_key_store_io.dart'
@@ -128,15 +129,10 @@ class _BoardTreeState extends State<BoardTree> {
           child: Row(
             children: [
               Expanded(
-                child: TextField(
+                child: ListSearch(
                   key: const ValueKey('tasks-boards-search'),
                   controller: _search,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Find a board',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Find a board',
                   onChanged: (_) => setState(() {}),
                 ),
               ),

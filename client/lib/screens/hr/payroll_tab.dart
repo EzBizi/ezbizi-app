@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -280,15 +281,11 @@ class _PayrollTabState extends State<PayrollTab> {
     },
   );
 
-  Widget _searchBox() => TextField(
+  Widget _searchBox() => ListSearch(
     key: const Key('payroll-search'),
     controller: _search,
+    hint: 'Search people',
     onChanged: (_) => setState(() {}),
-    decoration: const InputDecoration(
-      hintText: 'Search people',
-      prefixIcon: Icon(Icons.search),
-      isDense: true,
-    ),
   );
 
   Widget _showLeftChip() => FilterChip(
@@ -317,6 +314,8 @@ class _PayrollTabState extends State<PayrollTab> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _w2Segment(),
+              Text('Type', style: Theme.of(context).textTheme.labelMedium),
+              const SizedBox(height: 4),
               _typeChips(),
               SizedBox(width: 200, child: _rolePicker()),
               SizedBox(width: 220, child: _contractPicker()),
@@ -618,6 +617,9 @@ class _PayrollTabState extends State<PayrollTab> {
             key: const ValueKey('tour-hr-payroll-filters'),
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Two chip rows both said W-2; a label names each question.
+              Text('W-2 form', style: Theme.of(context).textTheme.labelMedium),
+              const SizedBox(height: 4),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,

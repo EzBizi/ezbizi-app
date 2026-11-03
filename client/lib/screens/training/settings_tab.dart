@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -250,16 +251,9 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
           // Standard field height, as tall as Leads search (Jose, 2026-10-27).
           action: SizedBox(
             width: 240,
-            child: TextField(
+            child: ListSearch(
               key: const Key('training-settings-search'),
-              textAlignVertical: TextAlignVertical.center,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIconConstraints: BoxConstraints(minWidth: 36),
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a guide or test',
-                border: OutlineInputBorder(),
-              ),
+              hint: 'Find a guide or test',
               onChanged: _search,
             ),
           ),
