@@ -105,7 +105,9 @@ const _folders = [
   _Folder('all', 'All mail', Icons.all_inbox_outlined),
 ];
 
+// All first and the default: the whole inbox, newest first (Jose, 2026-11-03).
 const _categories = [
+  ('all', 'All', Icons.all_inbox_outlined),
   ('primary', 'Primary', Icons.inbox_outlined),
   ('people', 'Leads & customers', Icons.people_outline),
   ('notifications', 'Notifications', Icons.notifications_none),
@@ -163,7 +165,7 @@ class _GmailInboxState extends State<GmailInbox> {
     (f) => f.id == _folder,
     orElse: () => _folders.first,
   );
-  String _category = 'primary';
+  String _category = 'all';
   final TextEditingController _search = TextEditingController();
   String _submittedSearch = '';
   Timer? _debounce;
@@ -290,7 +292,7 @@ class _GmailInboxState extends State<GmailInbox> {
     final query = <String, String>{
       if (filterId == null) 'folder': _folder,
       'filter': ?filterId,
-      if (_folder == 'inbox') 'category': _category,
+      if (_folder == 'inbox' && _category != 'all') 'category': _category,
       'mailbox': ?_mailboxFilter,
       if (_submittedSearch.isNotEmpty) 'search': _submittedSearch,
       'cursor': ?cursor,
