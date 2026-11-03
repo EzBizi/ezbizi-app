@@ -398,11 +398,10 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
       children: [
         Center(
           child: ConstrainedBox(
-            // The calendar needs seven readable columns; the searches read
-            // best narrow.
-            constraints: BoxConstraints(
-              maxWidth: _mode == _Mode.calendar ? 1000 : 680,
-            ),
+            // One width for every mode: at 680 the searches' slot chips
+            // truncated to "13 Spots L…" with half the screen empty (deep
+            // dive 2026-11-02).
+            constraints: const BoxConstraints(maxWidth: 1000),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

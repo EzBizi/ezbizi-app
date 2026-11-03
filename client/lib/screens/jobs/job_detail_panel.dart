@@ -596,8 +596,11 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
         if (tabs.length > 1)
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
+            // A row inside the Jobs tab: design 103's second level, the
+            // way HR records and Memberships draw theirs (deep dive 2026-11-02).
             child: TabBarLike(
               key: const Key('job-tabs'),
+              level: TabLevel.secondary,
               labels: [for (final t in tabs) (t.$2, t.$3)],
               selected: tabs.indexWhere((t) => t.$1 == current),
               onSelected: (i) => setState(() => _tab = tabs[i].$1),
