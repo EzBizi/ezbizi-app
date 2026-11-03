@@ -200,20 +200,21 @@ class NewsletterApiTest extends TestCase
         $audience = $this->audience($t, 'organization', $t['org']->id);
         $this->inTenant($t['org'], function () use ($t, $audience) {
             $audience->forceFill(['kind' => NewsletterAudience::KIND_CUSTOMERS, 'tag' => 'Annual'])->save();
+            Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-own', 'name' => 'Own', 'email' => 'own@example.com', 'tags' => ['annual']]);
             foreach (['yes@example.com' => ['Annual'], 'no@example.com' => ['Other']] as $email => $tags) {
                 $c = Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-'.$email, 'name' => $email, 'email' => $email]);
                 Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $c->id, 'tags' => $tags]);
             }
         });
         Http::fake([
-            '*/members*' => Http::response(['members' => [['email_address' => 'yes@example.com'], ['email_address' => 'no@example.com']], 'total_items' => 2]),
+            '*/members*' => Http::response(['members' => [['email_address' => 'yes@example.com'], ['email_address' => 'no@example.com'], ['email_address' => 'own@example.com']], 'total_items' => 3]),
             '*/segments' => Http::response(['id' => 123]),
             '*/campaigns' => Http::response(['id' => 'jt', 'recipients' => ['recipient_count' => 1]]),
             '*' => Http::response([]),
         ]);
         $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, ['subject' => 'Annual', 'audience_id' => $audience->id])->assertCreated()->json('data.id');
         $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
-        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['yes@example.com']);
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['yes@example.com', 'own@example.com']);
     }
 
     public function test_a_send_reaches_mailchimp_and_raises_the_event(): void
