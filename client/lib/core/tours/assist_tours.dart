@@ -339,8 +339,13 @@ const Map<String, Tour> assistTours = {
     ],
   ),
   'training/Dashboard': Tour(
-    version: 1,
+    version: 2,
     steps: [
+      TourStep(
+        anchor: 'training-dashboard-list-search',
+        title: 'Find a guide or test',
+        body: 'Narrows the rows below as you type.',
+      ),
       TourStep(
         anchor: 'inventory-list',
         title: 'Guides and tests',
