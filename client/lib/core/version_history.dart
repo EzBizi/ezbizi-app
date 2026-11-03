@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0522',
+      date: '3 Nov 2026',
+      items: [
+        'Customers: the Money card shows \$0 again instead of hiding when nothing is owed.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0521',
       date: '2 Nov 2026',
       items: [
