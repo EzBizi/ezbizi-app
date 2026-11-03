@@ -174,6 +174,19 @@ class TechAssistantWhatsAppTest extends TestCase
         $this->assertSame('interactive', $this->sent[0]['type']);
     }
 
+    /** Jose, 2026-11-03: parts answers "only Technicians" - whoever holds the Parts tab. */
+    public function test_staff_without_the_parts_tab_get_no_parts_answer(): void
+    {
+        $this->grok('CONFIDENCE: POSSIBLE');
+        $this->inTenant($this->t['org'], fn () => $this->t['admin']->forceFill(['phone' => null])->save());
+        $dispatcher = $this->userWithRole($this->t, 'Dispatcher', ['customers.view']);
+        $this->inTenant($this->t['org'], fn () => $dispatcher->forceFill(['phone' => '(786) 776-2666', 'is_active' => true])->save());
+
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'valve for majestic insert, LP i think']]);
+
+        $this->assertSame(0, AssistantAnswer::query()->withoutGlobalScopes()->count());
+    }
+
     public function test_a_stranger_never_reaches_the_tech_assistant(): void
     {
         Process::fake();
