@@ -855,10 +855,18 @@ class ActionRunner
             $link,
         );
 
+        // The PDF too, once per report: only when the link was newly written,
+        // so a re-run does not attach a second copy. Queued; never blocks this.
+        if ($result['written'] && $result['refused'] === null && ($job = \App\Models\Job::withTrashed()->find($subject->job_id)) !== null) {
+            $path = 'inspection-reports/'.$subject->organization_id.'/'.$subject->id.'.pdf';
+            \Illuminate\Support\Facades\Storage::disk('local')->put($path, $this->reportPdf->render($subject));
+            \App\Jobs\AttachFileToWorkiz::for($job, 'local', $path, 'Inspection report '.($subject->submitted_at ?? now())->format('Y-m-d').'.pdf');
+        }
+
         return match (true) {
             $result['refused'] !== null => ['type' => $type, 'ok' => false, 'detail' => 'Workiz did not take it: '.$result['refused']],
             ! $result['written'] => ['type' => $type, 'ok' => true, 'detail' => 'The report was already on the Workiz job.'],
-            default => ['type' => $type, 'ok' => true, 'detail' => 'The report link was added to the Workiz job.'],
+            default => ['type' => $type, 'ok' => true, 'detail' => 'The report link was added to the Workiz job, and the PDF is being attached.'],
         };
     }
 
