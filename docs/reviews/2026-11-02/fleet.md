@@ -48,5 +48,5 @@ Fix SHAs this pass: none needed. Fleet work since the last review: `081b7e9a` (o
 
 ## 5. Needs Jose
 
-- Who should enter drivers, service dates and plates for Eve's 24 vehicles: Eve in EzBizi, or should we import them from somewhere else?
+- ~~Who enters drivers, service dates and plates?~~ **Jose, 2026-11-03: "eve should do it"** — Eve enters them in EzBizi.
 - Should the state buttons count only the vehicles that match the active filter (suggestion 4)?
