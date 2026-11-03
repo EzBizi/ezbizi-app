@@ -1219,6 +1219,34 @@ class ProjectWorkizRecordsTest extends TestCase
      * NONE rather than a subset — a partial flood is worse than none, because
      * nobody can tell which customers were texted.
      */
+    /** Automations, 2026-11-03: a recent Workiz tag move announces job.tags_changed; an old one or a burst over the limit (a backfill) does not. */
+    public function test_a_workiz_tag_move_is_announced_only_when_recent_and_not_a_backfill(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $rows = array_map(fn ($u) => $this->mirror($tenant, [], ['UUID' => $u, 'Tags' => ['Old']]), ['JOB001', 'JOB002', 'JOB003']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $tagEvents = fn () => $this->inTenant($tenant['org'], fn () => AutomationEvent::query()->where('event_key', 'job.tags_changed')->get());
+        $move = function (WorkizJob $row, array $tags, string $when) use ($tenant) {
+            $this->inTenant($tenant['org'], fn () => $row->fresh()->forceFill(['payload' => ['Tags' => $tags] + $row->fresh()->payload, 'last_status_update' => $when])->save());
+        };
+        $recent = now('America/New_York')->subMinutes(5)->format('Y-m-d H:i:s');
+
+        $move($rows[0], ['Old', 'VIP'], '2026-08-28 11:00:13');
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertCount(0, $tagEvents(), 'an old move is followed silently');
+
+        $move($rows[1], ['Old', 'VIP'], $recent);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertEquals(['before' => ['tags' => ['Old']], 'after' => ['tags' => ['Old', 'VIP']]], $tagEvents()->sole()->payload);
+
+        $move($rows[0], ['New'], $recent);
+        $move($rows[1], ['New'], $recent);
+        $move($rows[2], ['New'], $recent);
+        $this->artisan('ezbizi:project-workiz', ['--announce-limit' => 2])->assertSuccessful();
+        $this->assertCount(1, $tagEvents(), 'three at once over a limit of two is a backfill');
+    }
+
     public function test_a_burst_of_recent_moves_beyond_the_limit_announces_nothing(): void
     {
         $tenant = $this->provisionTenant('Alpha');

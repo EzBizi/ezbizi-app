@@ -651,6 +651,7 @@ class ProjectWorkizRecords extends Command
     {
         $followed = 0;
         $announce = [];
+        $tagged = [];
 
         WorkizJob::query()
             ->select('workiz_jobs.*')
@@ -677,7 +678,7 @@ class ProjectWorkizRecords extends Command
                     // Workiz's team moved since it was handed to Scheduling: team() below.
                     ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.team') <=> JSON_EXTRACT(workiz_jobs.payload, '$.Team[*].id'))");
             })
-            ->chunkById(500, function ($mirrored) use (&$followed, &$announce, $dryRun) {
+            ->chunkById(500, function ($mirrored) use (&$followed, &$announce, &$tagged, $dryRun) {
                 $jobs = Job::query()->whereIn('id', $mirrored->pluck('job_id'))->get()->keyBy('id');
 
                 foreach ($mirrored as $row) {
@@ -750,7 +751,7 @@ class ProjectWorkizRecords extends Command
                         continue;
                     }
 
-                    DB::transaction(function () use ($row, $job, $changes, $moveArea, $inputs, $last, $now, &$announce) {
+                    DB::transaction(function () use ($row, $job, $changes, $moveArea, $inputs, $last, $now, &$announce, &$tagged) {
                         if ($moveArea) {
                             $job->service_area_id = JobServiceArea::resolve($job->franchise, $row->service_area, $row->postal_code);
                         }
@@ -786,6 +787,12 @@ class ProjectWorkizRecords extends Command
                             $announce[] = [$job, $now['status'], $changes['status']];
                         }
 
+                        // Automations, 2026-11-03: the same guard as status, so a backfill texts nobody.
+                        if (array_key_exists('tags', $changes)
+                            && $this->happenedRecently($row, $job->franchise?->timezone)) {
+                            $tagged[] = [$job, json_decode((string) ($now['tags'] ?? 'null'), true) ?? [], json_decode((string) ($changes['tags'] ?? 'null'), true) ?? []];
+                        }
+
                         // What we have written, field by field. A field a
                         // person changed is NOT recorded as ours: `last` keeps
                         // our old write, so their value goes on not matching and
@@ -805,6 +812,7 @@ class ProjectWorkizRecords extends Command
         }
 
         $this->announce($events, $announce);
+        $this->announceTags($events, $tagged);
 
         return $followed;
     }
@@ -892,6 +900,24 @@ class ProjectWorkizRecords extends Command
                     'after' => ['status' => $after],
                 ]);
             }
+        }
+    }
+
+    /**
+     * `job.tags_changed` for Workiz's tag moves, under announce()'s rules: only
+     * recent moves reach here, and more than the limit in one pass is a
+     * backfill that announces none.
+     *
+     * @param  list<array{0: Job, 1: list<string>, 2: list<string>}>  $moves
+     */
+    private function announceTags(EventEmitter $events, array $moves): void
+    {
+        if ($moves === [] || count($moves) > max(0, (int) $this->option('announce-limit'))) {
+            return;
+        }
+
+        foreach ($moves as [$job, $before, $after]) {
+            $events->emit('job.tags_changed', $job, ['before' => ['tags' => $before], 'after' => ['tags' => $after]]);
         }
     }
 
