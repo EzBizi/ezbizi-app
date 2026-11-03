@@ -120,15 +120,39 @@ final class PeriodReport
 
         $airtable = app(AirtableSections::class);
 
-        return '<h2>Ad sources - created</h2>'
+        // Jose's list, 2026-11-03: "ADD KPI's".
+        $created = ['all' => array_sum(array_column($f['created'], 'all')), 'done' => array_sum(array_column($f['created'], 'done'))];
+        $done = array_sum(array_column($f['closed'], 'done'));
+        $canceled = array_sum(array_column($f['closed'], 'canceled'));
+        $gross = array_sum(array_column($f['closed'], 'gross'));
+        $kpis = '<h2>Key figures</h2>'.self::table(
+            ['Jobs created', 'Close rate', 'Done', 'Canceled', 'Canc%', 'Gross', 'Avg sale', 'Deposits', 'Net margin'],
+            [[(string) $created['all'], e(self::share($created['done'], $created['all'])), (string) $done, (string) $canceled,
+                $cancel($canceled, $done + $canceled), e(self::money($gross)), $avg($gross, $done),
+                e(self::money(array_sum(array_column($f['techs'], 'deposits')))),
+                $pnl['income'] ? e(self::percent($pnl['net'] / $pnl['income'])) : '—']],
+            raw: true,
+        ).'<p class="na">Close rate: jobs created in the dates that are done. Canc%: of the jobs closed in the dates.</p>';
+        $reasons = $f['reasons'] ?? [];
+        $breakdown = '<h2>Cancellation breakdown</h2>'.($reasons === [] ? '<p class="na">No jobs were canceled.</p>' : self::table(
+            ['Reason', 'Canceled', 'Share'],
+            array_map(fn ($why, $n) => [e($why), (string) $n, e(self::share($n, $canceled))], array_keys($reasons), $reasons),
+            raw: true,
+        ));
+
+        return $kpis.'<h2>Ad sources - created</h2>'
             .self::table(['Source', 'All', 'Done', 'Open', 'Canc', 'Canc%', 'Gross', 'Avg sale'], $sourceRows($f['created'], true), raw: true)
             .'<h2>Ad sources - closed</h2>'
             .self::table(['Source', 'Done', 'Canc', 'Canc%', 'Gross', 'Avg sale'], $sourceRows($f['closed'], false), raw: true)
+            .$breakdown
+            // Jose's list, 2026-11-03: "Add Tech KPI's breakdown".
             .'<h2>Field performance (by tech)</h2>'
-            .self::table(['Technician', 'Done', 'Canc', 'Canc%', 'Gross', 'Avg sale', 'Deposits'], array_map(fn ($t) => [
+            .self::table(['Technician', 'Done', 'Canc', 'Canc%', 'Tech-caused canc', 'Gross', 'Share of gross', 'Avg sale', 'Deposits'], array_map(fn ($t) => [
                 e($t['name']), (string) $t['done'], (string) $t['canceled'],
                 $cancel($t['canceled'], $t['done'] + $t['canceled']),
-                e(self::money($t['gross'])), $avg($t['gross'], $t['done']), e(self::money($t['deposits'])),
+                (string) ($t['tech_canceled'] ?? 0),
+                e(self::money($t['gross'])), e($gross > 0 ? self::percent($t['gross'] / $gross) : '—'),
+                $avg($t['gross'], $t['done']), e(self::money($t['deposits'])),
             ], $f['techs']), raw: true)
             .($branchId === null ? '' : '<h2>Repair teams</h2>'.$airtable->repairTeams($org, $branchId, $from, $to, $this->options['goals'] ?? [])
                 .'<h2>Refunds, disputes and returned checks</h2>'.$airtable->refunds($org, $branchId, $from, $to))
@@ -222,6 +246,7 @@ final class PeriodReport
         // "completed at".
         $closed = [];
         $techs = [];
+        $reasons = [];
         foreach ($jobs()->whereBetween('j.last_status_update', $range)->whereIn('j.status', ['Done', 'Canceled'])->get()->filter($kept) as $job) {
             $s = $source($job->job_source);
             $kind = self::kind($job->status);
@@ -229,12 +254,21 @@ final class PeriodReport
             $closed[$s] ??= $row();
             $closed[$s][$kind]++;
             $closed[$s]['gross'] += $price;
+            // Jose's list, 2026-11-03: "Add Cancellation Breakdown". Workiz's
+            // sub-status is the reason; most cancels carry none.
+            $techFault = false;
+            if ($kind === 'canceled') {
+                $why = trim((string) ($job->sub_status ?? '')) ?: 'No reason given';
+                $reasons[$why] = ($reasons[$why] ?? 0) + 1;
+                $techFault = self::techFault($why);
+            }
 
             $team = ReportJobs::team($job);
             foreach ($team as $tech) {
                 $id = (string) ($tech['id'] ?? $tech['Name'] ?? 'none');
-                $techs[$id] ??= ['name' => trim((string) ($tech['Name'] ?? 'Unassigned')), 'done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
+                $techs[$id] ??= ['name' => trim((string) ($tech['Name'] ?? 'Unassigned')), 'done' => 0, 'canceled' => 0, 'tech_canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
                 $techs[$id][$kind]++;
+                $techs[$id]['tech_canceled'] += (int) $techFault;
                 // A job worked by two shares its price, so totals stay the job's.
                 $techs[$id]['gross'] += $price / count($team);
             }
@@ -243,7 +277,7 @@ final class PeriodReport
         $names = ReportJobs::people((string) $branch->getKey());
         foreach (ReportJobs::paidBy((string) $branch->getKey(), ...$range) as $id => $amount) {
             $id = (string) $id;
-            $techs[$id] ??= ['name' => self::collector($names[$id] ?? null, $id), 'done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
+            $techs[$id] ??= ['name' => self::collector($names[$id] ?? null, $id), 'done' => 0, 'canceled' => 0, 'tech_canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
             $techs[$id]['deposits'] += $amount;
         }
 
@@ -251,8 +285,9 @@ final class PeriodReport
         uasort($created, $byAll);
         uasort($closed, $byAll);
         usort($techs, fn ($a, $b) => [$b['gross'], $b['deposits']] <=> [$a['gross'], $a['deposits']]);
+        arsort($reasons);
 
-        return ['created' => $created, 'closed' => $closed, 'techs' => $techs];
+        return ['created' => $created, 'closed' => $closed, 'techs' => $techs, 'reasons' => $reasons];
     }
 
     /**
@@ -348,6 +383,12 @@ final class PeriodReport
     public static function collector(?string $name, string $id): string
     {
         return trim((string) $name) ?: "Not in Workiz's API ({$id})";
+    }
+
+    /** A cancel the technician caused, by Workiz's reason ("Tech No Call No Show", "Technician Fault"). */
+    private static function techFault(string $reason): bool
+    {
+        return (bool) preg_match('/\btech(nician)?\b/i', $reason);
     }
 
     private static function kind(?string $status): string
