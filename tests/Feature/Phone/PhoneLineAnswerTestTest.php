@@ -39,9 +39,15 @@ class PhoneLineAnswerTestTest extends TestCase
                 ]);
             }
         });
+        // Off its hour (a Tuesday noon), nothing is dialled.
+        \Illuminate\Support\Carbon::setTestNow('2026-11-03 12:00:00');
+        $this->artisan('ezbizi:phone-line-answer-test', ['--wait' => 0])->assertSuccessful();
+        $this->assertSame([], collect($twilio->calls)->where('method', 'platformCall')->all());
+        \Illuminate\Support\Carbon::setTestNow();
+
         $twilio->platformCallResults['+12035550002'] = ['status' => 'no-answer', 'duration' => 0];
 
-        $this->artisan('ezbizi:phone-line-answer-test', ['--wait' => 0])
+        $this->artisan('ezbizi:phone-line-answer-test', ['--wait' => 0, '--all' => true])
             ->expectsOutput('+12035550002: did not answer (no-answer)')
             ->assertSuccessful();
 

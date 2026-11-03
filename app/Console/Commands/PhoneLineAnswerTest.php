@@ -10,14 +10,22 @@ use Illuminate\Console\Command;
 use Throwable;
 
 /**
- * Every two weeks: ring each of our lines once and check it answered (Jose,
+ * Every two weeks, after hours: ring each of our lines once and check it answered (Jose,
  * 2026-11-03). From the platform account, to our own numbers only: it never
  * dials anything that is not a row in phone_numbers. Each call lands in that
  * company's Calls through the normal voice webhook. Failures alert.
  */
 class PhoneLineAnswerTest extends Command
 {
-    protected $signature = 'ezbizi:phone-line-answer-test {--wait=60 : Seconds before reading each call\'s result}';
+    protected $signature = 'ezbizi:phone-line-answer-test
+        {--wait=60 : Seconds before reading each call\'s result}
+        {--all : Ring every line now, whatever its local hour}';
+
+    /**
+     * After hours, so it reaches voicemail and rings nobody (Jose, 2026-11-03).
+     * Run hourly; each line is rung in the hour this is, in its company's zone.
+     */
+    private const LOCAL_HOUR = 21;
 
     protected $description = 'Ring every phone line once and alert on the ones that did not answer';
 
@@ -31,6 +39,8 @@ class PhoneLineAnswerTest extends Command
         $lines = PhoneNumber::query()->withoutGlobalScopes()
             ->whereIn('connection_id', PhoneConnection::query()->withoutGlobalScopes()->where('status', PhoneConnection::STATUS_CONNECTED)->select('id'))
             ->where('e164', '!=', $from)
+            ->get(['e164', 'organization_id'])
+            ->filter(fn ($n) => $this->option('all') || self::due(now(self::zone((string) $n->organization_id))))
             ->pluck('e164')->unique()->values();
 
         $calls = [];
@@ -61,5 +71,20 @@ class PhoneLineAnswerTest extends Command
         $this->info(count($lines).' lines rung, '.count($issues).' failed.');
 
         return self::SUCCESS;
+    }
+
+    /** An even-week Monday at 21:xx, in the line's own zone. */
+    private static function due(\Illuminate\Support\Carbon $local): bool
+    {
+        return $local->isMonday() && $local->isoWeek() % 2 === 0 && (int) $local->format('G') === self::LOCAL_HOUR;
+    }
+
+    private static function zone(string $organizationId): string
+    {
+        static $zones = [];
+
+        return $zones[$organizationId] ??= (string) (($organization = \App\Models\Organization::query()->find($organizationId)) === null
+            ? config('app.timezone')
+            : app(\App\Support\Tenancy\TenantContext::class)->run($organization, fn () => app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $organization)));
     }
 }

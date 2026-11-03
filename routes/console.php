@@ -375,8 +375,8 @@ Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30
 
 // Every Twilio line still routes to us; numbers added, removed or repointed.
 Schedule::command('ezbizi:phone-line-audit')->dailyAt('04:30')->withoutOverlapping(30);
-// Every other Monday mid-morning, so the lines are open: ring each once.
-Schedule::command('ezbizi:phone-line-answer-test')->weeklyOn(1, '10:15')->when(fn () => now()->weekOfYear % 2 === 0)->withoutOverlapping(30);
+// Hourly at :30; the command rings each line only at 21:30 on an even-week Monday in its own zone (after hours: voicemail, nobody rung).
+Schedule::command('ezbizi:phone-line-answer-test')->hourlyAt(30)->withoutOverlapping(30);
 
 // Field: lost-signal alerts (the one fact no incoming point can announce) and
 // geocoding the next days' job addresses, so arrival checks never wait on Google.
