@@ -407,6 +407,29 @@ void main() {
     expect(queries.last.containsKey('franchise_id'), isFalse);
   });
 
+  // Jose, 2026-11-03: Eve fills the HR gaps by hand, so Records can show who
+  // has no start date or no contract. One at a time, combined with the role.
+  testWidgets('the records list filters by a missing start date or contract', (
+    tester,
+  ) async {
+    final queries = <Map<String, String>>[];
+
+    await _pump(tester, _handler(onPeopleQuery: queries.add));
+    await _tap(tester, _tab('Records'));
+    expect(queries.last.containsKey('missing'), isFalse);
+
+    await _choose(tester, 'Filter by role', 'Technician');
+    await _tap(tester, find.widgetWithText(FilterChip, 'No start date'));
+    expect(queries.last['missing'], 'start_date');
+    expect(queries.last['role_id'], 'role-2');
+
+    await _tap(tester, find.widgetWithText(FilterChip, 'No contract'));
+    expect(queries.last['missing'], 'contract');
+
+    await _tap(tester, find.widgetWithText(FilterChip, 'No contract'));
+    expect(queries.last.containsKey('missing'), isFalse);
+  });
+
   // Jose, 2026-09-30: the invite can start the paperwork, "but toggable, some
   // people dont need contracts". Off sends no contract; on needs one chosen.
   testWidgets('an invitation can start the paperwork with a contract', (

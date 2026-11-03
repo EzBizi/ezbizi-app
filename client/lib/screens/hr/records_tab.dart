@@ -113,6 +113,10 @@ class _RecordsTabState extends State<RecordsTab> {
   /// role"): `company:<id>` or `franchise:<id>`. Asked of the server too.
   String? _place;
 
+  /// Who is missing a start date or a contract (Jose, 2026-11-03: Eve fills
+  /// the gaps by hand). One at a time: the server takes one `missing` value.
+  String? _missing;
+
   /// What a role may be changed TO, and which of those this person may hand
   /// out. The same answer the invite form uses, from the same endpoint: §4's
   /// escalation bound is one rule and it should have one source.
@@ -201,6 +205,7 @@ class _RecordsTabState extends State<RecordsTab> {
         if (_search.isNotEmpty) 'search': _search,
         'role_id': ?_roleId,
         if (_place?.split(':') case [final kind, final id]) '${kind}_id': id,
+        'missing': ?_missing,
       }),
       widget.api.get('/hr/people/scope-options'),
     ]);
@@ -385,10 +390,7 @@ class _RecordsTabState extends State<RecordsTab> {
         Padding(
           key: const ValueKey('tour-hr-records-search'),
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-          child: ListSearch(
-            hint: 'Search people',
-            onChanged: _typed,
-          ),
+          child: ListSearch(hint: 'Search people', onChanged: _typed),
         ),
         Padding(
           key: const ValueKey('tour-hr-records-showing'),
@@ -447,6 +449,28 @@ class _RecordsTabState extends State<RecordsTab> {
               },
             ),
           ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final (value, label) in const [
+                ('start_date', 'No start date'),
+                ('contract', 'No contract'),
+              ])
+                FilterChip(
+                  label: Text(label),
+                  selected: _missing == value,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (on) {
+                    setState(() => _missing = on ? value : null);
+                    _load();
+                  },
+                ),
+            ],
+          ),
+        ),
         const Divider(height: 1),
         Expanded(
           child: AsyncBody(
