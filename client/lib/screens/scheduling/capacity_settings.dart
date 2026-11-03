@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -952,15 +953,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           child: Row(
             children: [
               Expanded(
-                child: TextField(
+                child: ListSearch(
                   controller: _search,
+                  hint: 'Search areas',
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Search areas',
-                    border: OutlineInputBorder(),
-                  ),
                 ),
               ),
               IconButton(
@@ -2561,16 +2557,11 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           if (_zipList.length > 8)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: TextField(
+              child: ListSearch(
                 key: const Key('scheduling-zip-search'),
                 controller: _zipSearch,
+                hint: 'Find a zip or city in this area',
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Find a zip or city in this area',
-                  border: OutlineInputBorder(),
-                ),
               ),
             ),
           if (_zipList.isEmpty)

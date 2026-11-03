@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/timestamps.dart';
@@ -656,7 +657,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           // The same clock as the shared range, so "Last 7 days" names it.
           now: widget.now,
           api: widget.api,
-          canEdit: canExperiment,
+          // Handles and Convert to booked: their own tick (2026-11-02).
+          canEdit: widget.session.me?.can('reports.handles') ?? false,
           formats: widget.session.me?.display ?? DisplayFormats.fallback,
         );
 
@@ -775,17 +777,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
               // Standard field height, as tall as Leads search (Jose, 2026-10-27).
               SizedBox(
                 width: 240,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('reports-library-search'),
                   controller: _search,
-                  textAlignVertical: TextAlignVertical.center,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIconConstraints: BoxConstraints(minWidth: 36),
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Find a report',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Find a report',
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),

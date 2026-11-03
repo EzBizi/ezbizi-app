@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/staff_session.dart';
@@ -116,16 +117,9 @@ class _HelpVideosScreenState extends State<HelpVideosScreen> {
               // Standard field height, as tall as Leads search (Jose, 2026-10-27).
               SizedBox(
                 width: 240,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('help-videos-search'),
-                  textAlignVertical: TextAlignVertical.center,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIconConstraints: BoxConstraints(minWidth: 36),
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Find a tab',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Find a tab',
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),

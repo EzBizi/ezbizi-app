@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
 import '../../widgets/async_body.dart';
@@ -236,16 +237,9 @@ class _ModulesScreenState extends State<ModulesScreen> {
               // Standard field height, as tall as Leads search (Jose, 2026-10-27).
               SizedBox(
                 width: 240,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('modules-search'),
-                  textAlignVertical: TextAlignVertical.center,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIconConstraints: BoxConstraints(minWidth: 36),
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Find a module',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Find a module',
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),
@@ -284,7 +278,7 @@ class _ModulesScreenState extends State<ModulesScreen> {
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     itemCount: _shown.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
                     itemBuilder: (context, i) => _row(context, _shown[i]),
                   ),
           ),
@@ -293,34 +287,60 @@ class _ModulesScreenState extends State<ModulesScreen> {
     );
   }
 
+  /// The modules whose permissions are open (UI queue 168: one line each,
+  /// permissions on expand).
+  final Set<String> _open = {};
+
   Widget _row(BuildContext context, Map<String, dynamic> module) {
+    final theme = Theme.of(context);
+    final key = module['key'] as String;
     final state = module['state'] as String;
     final permissions = List<String>.from(module['permissions'] as List? ?? []);
+    final open = _open.contains(key);
 
     return Card(
+      margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        module['label'] as String,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        module['key'] as String,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
+                Flexible(
+                  child: Text(
+                    module['label'] as String,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
                   ),
                 ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    // No flag set: available by default, because a module
+                    // exists in code and nobody has restricted it.
+                    (module['is_default'] as bool? ?? false)
+                        ? '$key · on by default'
+                        : key,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                if (permissions.isNotEmpty)
+                  TextButton.icon(
+                    key: ValueKey('module-permissions-$key'),
+                    onPressed: () => setState(
+                      () => open ? _open.remove(key) : _open.add(key),
+                    ),
+                    iconAlignment: IconAlignment.end,
+                    icon: Icon(open ? Icons.expand_less : Icons.chevron_right, size: 18),
+                    label: Text(
+                      '${permissions.length} permission${permissions.length == 1 ? '' : 's'}',
+                    ),
+                  ),
+                const SizedBox(width: 8),
                 SegmentedButton<String>(
                   segments: const [
                     ButtonSegment(value: 'enabled', label: Text('On')),
@@ -332,24 +352,15 @@ class _ModulesScreenState extends State<ModulesScreen> {
                 ),
               ],
             ),
-            if (module['is_default'] as bool? ?? false)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Text(
-                  'No flag set — available by default. A module exists in code, '
-                  'so nobody having restricted it means it is on.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
             if ((module['reason'] as String?)?.isNotEmpty ?? false) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               ErrorNote(
                 '${module['reason']}'
                 '${module['changed_by'] != null ? ' — ${module['changed_by']}' : ''}',
               ),
             ],
-            if (permissions.isNotEmpty) ...[
-              const SizedBox(height: 12),
+            if (open) ...[
+              const SizedBox(height: 8),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,

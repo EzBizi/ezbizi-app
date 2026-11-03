@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import '../../core/branch_options.dart';
 import 'package:flutter/material.dart';
 
@@ -468,15 +469,10 @@ class _SchedulePaneState extends State<SchedulePane> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: TextField(
+          child: ListSearch(
             key: const Key('schedule-unassigned-search'),
             controller: _unassignedSearch,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Customer, job #, address',
-              border: OutlineInputBorder(),
-            ),
+            hint: 'Customer, job #, address',
             onChanged: (_) => setState(() {}),
           ),
         ),
@@ -484,8 +480,8 @@ class _SchedulePaneState extends State<SchedulePane> {
           padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
           child: Text(
             board['can_dispatch'] == true
-                ? 'Tap a job to assign, unassign or move it. Changes go '
-                      'straight to Workiz.'
+                ? 'Tap a job to assign, unassign or move it. Changes are '
+                      'saved here and copied to Workiz.'
                 : 'Jobs are assigned in Workiz; this board shows what is '
                       'booked.',
             style: theme.textTheme.bodySmall?.copyWith(

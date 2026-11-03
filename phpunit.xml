@@ -22,6 +22,9 @@
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
+        <!-- Never the box's live go2rtc: the gate runs on the box, and unfaked camera tests
+             registered 100 streams there with the test relay password (2026-11-02). Port 9 refuses. -->
+        <env name="CAMERA_BOX_GO2RTC" value="http://127.0.0.1:9"/>
         <env name="CACHE_STORE" value="array"/>
         <env name="DB_CONNECTION" value="mysql"/>
         <env name="DB_DATABASE" value="ezbizi_testing"/>

@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/ai_mark.dart';
+import '../../widgets/call_text.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
 import 'experimental_call_report.dart';
@@ -380,17 +382,10 @@ class _ScoringReportState extends State<ScoringReport> {
                   // Standard field height, as tall as Leads search (Jose, 2026-10-27).
                   SizedBox(
                     width: 240,
-                    child: TextField(
+                    child: ListSearch(
                       key: const Key('scoring-report-search'),
                       controller: _search,
-                      textAlignVertical: TextAlignVertical.center,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        prefixIconConstraints: BoxConstraints(minWidth: 36),
-                        prefixIcon: Icon(Icons.search, size: 18),
-                        hintText: 'Find a person',
-                        border: OutlineInputBorder(),
-                      ),
+                      hint: 'Find a person',
                       onChanged: (v) => setState(() => _query = v),
                     ),
                   ),
@@ -1184,18 +1179,29 @@ class _DetailState extends State<_Detail> {
       trailing: Text('mark: the team', style: muted),
     );
 
-    Widget list(String title, List<String> items) => items.isEmpty
+    Widget list(String title, List<String> items, {Tone? tone}) => items.isEmpty
         ? const SizedBox.shrink()
         : Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(title, style: theme.textTheme.labelLarge),
+                if (tone == null)
+                  Text(title, style: theme.textTheme.labelLarge)
+                else
+                  ToneHeading(title, tone),
                 for (final item in items)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text('• $item', style: theme.textTheme.bodyMedium),
+                    child: tone == null
+                        ? Text('• $item', style: theme.textTheme.bodyMedium)
+                        : Align(
+                            alignment: Alignment.centerLeft,
+                            child: Copyable(
+                              item,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
                   ),
               ],
             ),
@@ -1271,8 +1277,8 @@ class _DetailState extends State<_Detail> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          list('Strong at', p.strengths),
-          list('To improve', p.improve),
+          list('Strong at', p.strengths, tone: Tone.ok),
+          list('To improve', p.improve, tone: Tone.caution),
           Text(_caveat, style: muted?.copyWith(fontStyle: FontStyle.italic)),
         ],
       ),

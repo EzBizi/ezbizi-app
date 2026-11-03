@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/suggestions_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -53,6 +54,39 @@ void main() {
     expect(body, contains('name="module"\r\n\r\njobs'));
     expect(body, contains('name="body"\r\n\r\nSee the picture.'));
     expect(body, contains('name="files[]"; filename="screen.png"'));
+  });
+
+  // Jose, 2026-11-02: "paste images that may be in their clipboard".
+  testWidgets('Ctrl+V with a picture on the clipboard attaches it', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      (request) async => _json({'data': []}),
+      clipboard: () async => [1, 2, 3],
+    );
+
+    await tester.tap(find.byType(TextField).last);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(InputChip, 'pasted-1.png'), findsOneWidget);
+  });
+
+  testWidgets('Ctrl+V with only text on the clipboard attaches nothing', (
+    tester,
+  ) async {
+    await _pump(tester, (request) async => _json({'data': []}));
+
+    await tester.tap(find.byType(TextField).last);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InputChip), findsNothing);
   });
 
   testWidgets(
@@ -127,6 +161,7 @@ Future<void> _pump(
   WidgetTester tester,
   MockClientHandler handler, {
   Future<PickedBytes?> Function({String accept})? pick,
+  Future<List<int>?> Function()? clipboard,
 }) async {
   tester.view.physicalSize = const Size(1600, 2200);
   tester.view.devicePixelRatio = 1.0;
@@ -147,6 +182,7 @@ Future<void> _pump(
             (key: 'settings', label: 'Settings'),
           ],
           pickFile: pick ?? ({String accept = ''}) async => null,
+          clipboardImage: clipboard ?? () async => null,
         ),
       ),
     ),

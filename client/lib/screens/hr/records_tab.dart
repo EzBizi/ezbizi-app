@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -384,13 +385,8 @@ class _RecordsTabState extends State<RecordsTab> {
         Padding(
           key: const ValueKey('tour-hr-records-search'),
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-          child: TextField(
-            decoration: const InputDecoration(
-              hintText: 'Search people',
-              prefixIcon: Icon(Icons.search),
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
+          child: ListSearch(
+            hint: 'Search people',
             onChanged: _typed,
           ),
         ),
@@ -1310,7 +1306,7 @@ class _PersonRecordState extends State<_PersonRecord> {
                   refusedDelete ??
                       'Erases them and their personal data everywhere, so '
                           'their email and phone can be used for a new account. '
-                          'Unlike Deactivate, it cannot be undone.',
+                          'This cannot be undone.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

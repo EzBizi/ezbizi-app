@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/ai_mark.dart';
+import '../../widgets/call_text.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/open_destination.dart';
@@ -345,21 +347,30 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     _load();
   }
 
-  /// A dispatcher's New / Existing tag, set by hand; null clears it.
+  /// A dispatcher's New / Existing tag, set by hand; null clears it. Only
+  /// that row changes, at once, and goes back if the server refuses (Jose,
+  /// 2026-11-02: each change reloaded the whole page).
   Future<void> _setTag(String person, String? tag) async {
+    final row = [
+      for (final p in (_report?['people'] as List? ?? const []))
+        if (p is Map && p['person'] == person) p,
+    ].firstOrNull;
+    final before = row?['tag'];
+    setState(() {
+      _error = null;
+      row?['tag'] = tag;
+    });
+
     final response = await widget.api.put('/reports/experimental/people/tag', {
       'person': person,
       'tag': tag,
     });
 
-    if (!mounted) return;
-
-    if (!response.ok) {
-      setState(() => _error = response.message);
-      return;
-    }
-
-    _load();
+    if (!mounted || response.ok) return;
+    setState(() {
+      row?['tag'] = before;
+      _error = response.message;
+    });
   }
 
   @override
@@ -971,15 +982,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   }
 
   /// "Find a caller…" in an Overview list, styled as the Calls search.
-  Widget _listSearch(String key, void Function(String) set) => TextField(
+  Widget _listSearch(String key, void Function(String) set) => ListSearch(
     key: ValueKey(key),
+    hint: 'Find a caller…',
     onChanged: (value) => setState(() => set(value)),
-    decoration: const InputDecoration(
-      isDense: true,
-      prefixIcon: Icon(Icons.search, size: 18),
-      hintText: 'Find a caller…',
-      border: OutlineInputBorder(),
-    ),
   );
 
   Widget _notBookedCard(
@@ -1267,15 +1273,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         children: [
           SizedBox(
             width: 220,
-            child: TextField(
+            child: ListSearch(
               key: const ValueKey('people-search'),
+              hint: 'Find a person…',
               onChanged: (value) => setState(() => _personQuery = value),
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a person…',
-                border: OutlineInputBorder(),
-              ),
             ),
           ),
           const SizedBox(width: 10),
@@ -1535,15 +1536,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         : Wrap(spacing: 20, runSpacing: 8, children: groups);
     final search = SizedBox(
       width: phone ? double.infinity : 260,
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('calls-search'),
+        hint: 'Find a caller, person, or any call by number',
         onChanged: (value) => setState(() => _query = value),
-        decoration: const InputDecoration(
-          isDense: true,
-          prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'Find a caller, person, or any call by number',
-          border: OutlineInputBorder(),
-        ),
       ),
     );
     // Which AI put each call where, above the table it narrows.
@@ -1718,7 +1714,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? '—'
         : (_existingLabels[label] ?? _notBookedLabels[label] ?? label);
 
-    final line = Text(
+    final line = SelectableText(
       'AI: ${name(read)}',
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
         color: Theme.of(context).colorScheme.primary,
@@ -1777,10 +1773,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           child: Text(open ? 'Hide transcript' : _firstWords(words)),
         ),
         if (open)
-          SelectableText(
-            words.isEmpty ? 'Nothing was said.' : words,
-            style: theme.textTheme.bodySmall,
-          ),
+          words.isEmpty
+              ? Text('Nothing was said.', style: theme.textTheme.bodySmall)
+              : CallTranscriptText(words),
       ],
     );
   }
@@ -1932,6 +1927,16 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
+  /// A coaching check as a chip, tinted by its share: 80% up, 50 to 79, below.
+  static Widget _checkPill(String label, int pct) => StatusPill(
+    '$label $pct%',
+    tone: pct >= 80
+        ? Tone.ok
+        : pct >= 50
+        ? Tone.caution
+        : Tone.bad,
+  );
+
   Widget _ourCoaching(BuildContext context, String name) {
     final scores = _scoresOf(name);
     if (scores.isEmpty) return const SizedBox.shrink();
@@ -1952,28 +1957,45 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Coaching · ${avg.toStringAsFixed(1)} / 10 over '
-            '${scores.length} scored call${scores.length == 1 ? '' : 's'}',
-            style: theme.textTheme.titleSmall,
-          ),
-          const SizedBox(height: 4),
           Wrap(
-            spacing: 16,
-            runSpacing: 2,
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Coaching · over ${scores.length} scored '
+                'call${scores.length == 1 ? '' : 's'}',
+                style: theme.textTheme.titleSmall,
+              ),
+              StatusPill(
+                '${avg.toStringAsFixed(1)} / 10',
+                tone: scoreTone(avg),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: [
               for (final check in _checks.entries)
-                Text(
-                  '${check.value}: ${(scores.where((s) => (s['checks'] as Map?)?[check.key] == true).length / scores.length * 100).round()}%',
-                  style: theme.textTheme.bodySmall,
+                _checkPill(
+                  check.value,
+                  scores
+                          .where(
+                            (s) => (s['checks'] as Map?)?[check.key] == true,
+                          )
+                          .length *
+                      100 ~/
+                      scores.length,
                 ),
             ],
           ),
-          for (final note in notes) ...[
-            const SizedBox(height: 4),
-            Text('To improve: $note', style: muted),
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            ToneHeading('To improve', Tone.caution),
+            for (final note in notes) Copyable(note),
           ],
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             'Scored by AI from the transcript. A guide for coaching, not a '
             'verdict: the transcript can mishear, and some calls cannot be won.',
@@ -2352,6 +2374,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final outbound = _isOutbound(call);
     // An outbound call that connected has nobody "answering" on our side.
     final missed = by == null && call['outcome'] != 'connected';
+    // In a person's list, a call that rang them and somebody else took is
+    // theirs only as Not answered: no booking, no score (Jose, 2026-11-03:
+    // "credits for calls they haven't booked").
+    final notTheirs = name != null && by != null && by != name;
 
     // Said in words. Jose, 2026-09-24: "hard to understand what the icons
     // mean" - an arrow and a bell told nobody which was which.
@@ -2363,7 +2389,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? '$by'
         : by == name
         ? 'Answered'
-        : 'Rang · $by answered';
+        : 'Not answered · $by took it';
 
     // Talk time on EVERY answered call, whoever took it. It used to say
     // "rang" on calls this person did not take, which read as a missing time.
@@ -2400,7 +2426,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 '${fix['reason'] == null ? '' : ' · ${fix['reason']}'}',
             child: pill,
           );
-    final result = missed
+    final result = notTheirs
+        ? const StatusPill('Not answered', tone: Tone.caution)
+        : missed
         ? StatusPill(
             outbound
                 ? 'No answer'
@@ -2530,7 +2558,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     // AI's coaching score for the call (Jose, 2026-10-13: "a column that
     // shows the score given by AI"); a dash until the call is scored, and
     // "Missed" on a call nobody answered (Jose, 2026-10-14).
-    final aiScore = (call['score'] as Map?)?['score'];
+    final aiScore = notTheirs ? null : (call['score'] as Map?)?['score'];
     final score = Text(
       aiScore != null ? '$aiScore / 10' : '',
       key: ValueKey('score-cell-$callId'),
@@ -2611,7 +2639,16 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ),
           ),
         ),
-        if (detailsOpen) _under(_details(context, call, line, voicemail, id)),
+        if (detailsOpen)
+          _under(
+            _details(
+              context,
+              notTheirs ? ({...call}..remove('score')) : call,
+              line,
+              voicemail,
+              id,
+            ),
+          ),
         if (listening)
           _under(
             ConstrainedBox(
@@ -2654,18 +2691,40 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   ) {
     final theme = Theme.of(context);
     final outbound = _isOutbound(call);
+    // Trey Brannan's suggestion (01a19db5, approved 2026-11-02): each number
+    // its own labelled row, the line's area and ad source under the caller.
+    final muted = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final source = '${call['to_name'] ?? ''}'.replaceAll(' - ', ' · ');
     final numbers = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SelectableText(
-          '${outbound ? 'Number called' : 'Caller'}: ${call['from'] ?? 'unknown'}',
-          style: theme.textTheme.bodySmall,
+        Text(outbound ? 'Number called' : 'Caller', style: muted),
+        Copyable(
+          call['from'] == null
+              ? 'unknown'
+              : formatPhoneNumber('${call['from']}'),
+          copy: '${call['from'] ?? 'unknown'}',
         ),
-        if (!outbound)
-          SelectableText(
-            'Line called: ${line.isEmpty ? 'unknown' : line}',
-            style: theme.textTheme.bodySmall,
+        if (!outbound) ...[
+          if (source.isNotEmpty)
+            SelectableText(
+              source,
+              key: ValueKey('call-source-${call['id']}'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          const SizedBox(height: 6),
+          Text('Line called', style: muted),
+          Copyable(
+            call['to_number'] == null
+                ? 'unknown'
+                : formatPhoneNumber('${call['to_number']}'),
+            copy: '${call['to_number'] ?? 'unknown'}',
           ),
+        ],
       ],
     );
 
@@ -2710,14 +2769,24 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _labelLine(context, call),
-              if (call['score'] case final Map score)
-                Text(
-                  'AI score ${score['score']}/10'
-                  '${score['strength'] == null ? '' : ' · Did well: ${score['strength']}'}'
-                  '${score['improve'] == null ? '' : ' · To improve: ${score['improve']}'}',
+              if (call['score'] case final Map score) ...[
+                const SizedBox(height: 6),
+                StatusPill(
+                  'AI score ${score['score']}/10',
                   key: ValueKey('score-${call['id']}'),
-                  style: theme.textTheme.bodySmall,
+                  tone: scoreTone(num.tryParse('${score['score']}') ?? 0),
                 ),
+                for (final (label, text, tone) in [
+                  ('Did well', score['strength'], Tone.ok),
+                  ('To improve', score['improve'], Tone.caution),
+                ])
+                  if (text != null) ...[
+                    const SizedBox(height: 6),
+                    ToneHeading(label, tone),
+                    Copyable('$text'),
+                  ],
+              ],
+              const Divider(height: 16),
               numbers,
               if (convertible) ...[
                 const SizedBox(height: 6),
@@ -3323,15 +3392,10 @@ class _SourcesState extends State<_Sources> {
         if (accounts.isEmpty)
           Text('None connected.', style: theme.textTheme.bodySmall)
         else ...[
-          TextField(
+          ListSearch(
             key: const Key('sources-search'),
+            hint: 'Find an account…',
             onChanged: (v) => setState(() => _find = v),
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Find an account…',
-              border: OutlineInputBorder(),
-            ),
           ),
           const SizedBox(height: 4),
           Row(

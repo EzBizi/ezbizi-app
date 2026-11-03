@@ -4,7 +4,7 @@ iPhone 15 Pro Max, iOS 26.6 (physical)
 iPad Pro 13-inch (M4), iPadOS 26.0 (simulator)
 
 FUNCTION AND AUDIENCE
-EzBizi is field-service business software for companies running work across more than one location - chimney sweeps, garage-door installers and similar trades with several branches or franchises. Customers, jobs, inspections, inventory, vehicles and staff sit on the same records, scoped so each location sees its own work while the group above sees all of it. Audience: owners, office staff and field technicians at multi-location service businesses. Sold to the business, not to consumers.
+EzBizi is field-service business software for multi-location trades such as chimney sweeps and garage-door installers. Customers, jobs, inspections, inventory, vehicles and staff sit on the same records, scoped so each location sees its own work while the group above sees all of it. Audience: owners, office staff and field technicians at multi-location service businesses. Sold to the business, not to consumers.
 
 ACCESS
 One account type. Sign in with the credentials in the Sign-In Information fields. That account administers a demonstration organization holding invented data only - no real customer or business information. No setup, no sample files. The sidebar lists every area; account deletion is in the account screen, reached from the avatar.
@@ -12,26 +12,26 @@ One account type. Sign in with the credentials in the Sign-In Information fields
 WHAT THE APP DOES NOT DO
 Registration: "Create an account" on the sign-in screen sets up a new business with its owner as administrator. Staff join by invitation from their organization. No payment is asked for or taken in the app.
 No purchases, subscriptions or paid content. Nothing is sold in the app.
-No user-generated public content, no feed and no public profiles. Everything written is a private business record visible only to that organization. People can reach only colleagues inside their own organization - for example by dialling a coworker's phone extension - and never anyone outside it.
+No public user content, feed or profiles. Everything is a private business record of that organization, and people can reach only colleagues in it (for example a coworker's phone extension).
 
 PERMISSIONS
 The app asks for three permissions, each only at the moment it is needed:
 - Microphone: the first time someone makes or takes a phone call in the app, or starts a safety recording. A safety recording is started by the technician with a tap, only for staff whose employer allows it; it records the visit for the technician's safety and training, continues while the phone is locked (the audio background mode, with iOS's microphone indicator showing), and stops when they tap Stop, leave the job, or after four hours.
 - Notifications: so a job assigned to someone reaches their phone.
-- Location (When In Use only, never Always): the Field feature is off unless an employer turns it on, and applies only to employees whose role the employer marks as tracked. The employer chooses when location is shared: while clocked in, during scheduled hours, or at all times the app is running. It is used for staff safety, SOS, recording arrival at a job, and routing between jobs. Sharing starts only while the app is open; iOS then shows its blue location indicator whenever location is used in the background.
+- Location (When In Use only, never Always): the Field feature is off unless an employer turns it on, and applies only to employees whose role the employer marks as tracked. The employer chooses when: while clocked in, during scheduled hours, or whenever the app runs. It is used for staff safety, SOS, recording arrival at a job, and routing between jobs. Sharing starts only while the app is open; iOS then shows its blue location indicator whenever location is used in the background.
 It does not use contacts, camera, photos or App Tracking Transparency.
 
 ACCOUNT DELETION
-A person deletes their own account from the account screen. It requires their password and typing DELETE, then erases their personal details and signs them out on every device. The sole administrator of an organization is refused and told to make somebody else an administrator first, so a business is never left with nobody able to run it.
+A person deletes their own account from the account screen. It requires their password and typing DELETE, then erases their personal details and signs them out on every device. The sole administrator is refused until someone else is made administrator.
 
 EXTERNAL SERVICES
 Infrastructure: Amazon Web Services (hosting, database), Amazon SES (transactional email), WhatsApp Business by Meta (messaging).
-Optional per-tenant integrations, none required and none configured in the demo organization, each connected by the customer with their own account and disconnectable at any time: Twilio (phone, SMS); Google and Microsoft 365 (company mailbox); Meta, TikTok, Pinterest, LinkedIn, X, YouTube (publishing the customer's own posts to their own accounts); Google Ads, Google Business Profile, Thumbtack (lead sources).
+Optional integrations, none in the demo, each connected by the customer with their own account and removable any time: Twilio (phone, SMS); Google and Microsoft 365 (company mailbox); Meta, TikTok, Pinterest, LinkedIn, X, YouTube (publishing the customer's own posts to their own accounts); Google Ads, Google Business Profile, Thumbtack (lead sources).
 No payment processor and no advertising, analytics, attribution or crash-reporting SDK.
-The Assistant tab answers questions by searching the organization's own help entries. It uses no outside AI or machine-learning service and sends no data to one.
+AI: call summaries, lead notes, review-reply drafts and the staff Assistant send the organization's own business records to xAI (Grok) to write that text. Results are shown only inside that organization; xAI is not used for advertising or tracking.
 
 REGIONS
 Identical in every region. English (United States) only, no region-gated features, no regional pricing, no content varying by territory.
 
 REGULATION
-Not a regulated service and contains no licensed or protected third-party material. All content is EzBizi's own or entered by the customer about their own business.
+Not a regulated service; no licensed third-party material. Content is EzBizi's own or the customer's.

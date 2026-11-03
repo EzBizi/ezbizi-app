@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -301,16 +302,9 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
           // Standard field height, as tall as Leads search (Jose, 2026-10-27).
           child: SizedBox(
             width: 240,
-            child: TextField(
+            child: ListSearch(
               key: const Key('whatsapp-groups-search'),
-              textAlignVertical: TextAlignVertical.center,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIconConstraints: BoxConstraints(minWidth: 36),
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a group',
-                border: OutlineInputBorder(),
-              ),
+              hint: 'Find a group',
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
@@ -384,13 +378,23 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
               fontWeight: FontWeight.w800,
             ),
           ),
-          for (final p in unset)
-            ActionChip(
-              key: ValueKey('whatsapp-unset-${p.key}'),
-              // An ellipsis rather than a cut mid-word on a phone.
-              label: Text(p.label, overflow: TextOverflow.ellipsis),
-              onPressed: () => _create(p.key),
+          // One searchable picker, not a chip per report: about 60 of them
+          // wrapped eight rows (deep dive 2026-11-02).
+          SizedBox(
+            width: narrow ? double.infinity : 360,
+            child: SearchPickerField<String>(
+              key: const Key('whatsapp-unset-picker'),
+              value: null,
+              isDense: true,
+              hint: 'Choose a report · ${unset.length}',
+              options: [
+                for (final p in unset) SearchOption(value: p.key, label: p.label),
+              ],
+              onChanged: (key) {
+                if (key != null) _create(key);
+              },
             ),
+          ),
           Text(
             'Each needs a group before it can be sent.',
             style: theme.textTheme.bodySmall,

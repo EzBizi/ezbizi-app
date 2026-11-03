@@ -1,5 +1,7 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
@@ -223,24 +225,15 @@ class _LocationListState extends State<LocationList> {
         Padding(
           key: const ValueKey('tour-inventory-locations-search'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: TextField(
+          child: ListSearch(
             controller: _search,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'Name',
-              suffixIcon: _search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear),
-                      tooltip: 'Clear the search',
-                      onPressed: () {
-                        _search.clear();
-                        _load();
-                      },
-                    ),
-            ),
-            onSubmitted: (_) => _load(),
+            hint: 'Name',
             onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _load(),
+            onClear: () {
+                          _search.clear();
+                          _load();
+                        },
           ),
         ),
         Padding(
@@ -260,13 +253,17 @@ class _LocationListState extends State<LocationList> {
         ),
         Expanded(
           child: _locations.isEmpty
-              ? Center(
-                  child: Text(
-                    _search.text.trim().isEmpty && !_closed && _tile == null
-                        ? 'There are no locations.'
-                        : 'Nothing matches those filters.',
-                  ),
-                )
+              ? _search.text.trim().isEmpty && !_closed && _tile == null
+                    ? const EmptyState(
+                        icon: Icons.warehouse_outlined,
+                        title: 'No locations yet',
+                        message: 'There are no locations.',
+                      )
+                    : const EmptyState(
+                        icon: Icons.search_off,
+                        title: 'No matches',
+                        message: 'Nothing matches those filters.',
+                      )
               : LayoutBuilder(
                   builder: (context, box) => box.maxWidth >= 760 && !_hasPane
                       ? _table(context)

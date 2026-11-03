@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -212,24 +213,15 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
   }
 
   Widget _filters(bool narrow) {
-    final theme = Theme.of(context);
     Widget box(Widget child, double width) =>
         narrow ? child : SizedBox(width: width, child: child);
     final fields = <Widget>[
       box(
-        TextField(
+        ListSearch(
           key: const Key('financials-results-search'),
           controller: _search,
+          hint: 'Place, source, area or date',
           onChanged: _searched,
-          style: theme.textTheme.bodyMedium,
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: const Icon(Icons.search, size: 18),
-            hintText: 'Place, source, area or date',
-            hintStyle: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.inputDecorationTheme.hintStyle?.color,
-            ),
-          ),
         ),
         240,
       ),

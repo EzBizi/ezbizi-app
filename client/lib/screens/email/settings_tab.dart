@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -378,6 +379,7 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
             loading: _loading,
             error: _error,
             onRetry: _load,
+            skeleton: true,
             child: LayoutBuilder(
               builder: (context, box) {
                 final beside = box.maxWidth >= _paneBeside;
@@ -618,15 +620,11 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
       children: [
         SizedBox(
           width: 280,
-          child: TextField(
+          child: ListSearch(
             key: const ValueKey('email-inbox-search'),
             controller: _search,
+            hint: 'Search inboxes',
             onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Search inboxes',
-            ),
           ),
         ),
         if (keys.length > 1)

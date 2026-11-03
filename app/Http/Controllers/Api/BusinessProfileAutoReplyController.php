@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\BusinessLocation;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Reviews\ReviewAutoReplyRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -29,6 +30,10 @@ class BusinessProfileAutoReplyController extends Controller
         if ($location->auto_reply !== $on) {
             $location->forceFill(['auto_reply' => $on])->save();
             $audit->log($on ? 'business_location.auto_reply_on' : 'business_location.auto_reply_off', $location);
+        }
+        // The switch works by itself: the rule that posts the replies is made with it (Jose, 2026-11-02).
+        if ($on) {
+            ReviewAutoReplyRule::ensure($request->user());
         }
 
         return response()->json(['data' => ['id' => $location->id, 'auto_reply' => $location->auto_reply]]);

@@ -29,6 +29,8 @@ class AnswerWhatsAppWithTech implements ShouldQueue
         if ($mediaId !== null) {
             $this->timeout = 150;
             $this->onConnection('database-long')->onQueue('long');
+        } else {
+            $this->onQueue(config('services.ai.staff_queue', 'default'));   // a person is waiting: never behind call processing
         }
     }
 

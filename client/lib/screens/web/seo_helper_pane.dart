@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -429,13 +430,9 @@ class _SeoHelperPaneState extends State<SeoHelperPane> {
         children: [
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 320),
-            child: TextField(
+            child: ListSearch(
               key: const Key('seo-find'),
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a page',
-              ),
+              hint: 'Find a page',
               onChanged: (value) => setState(() => _find = value),
             ),
           ),

@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -212,14 +213,10 @@ Widget _searchField(
   String hint,
 ) => Padding(
   padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-  child: TextField(
+  child: ListSearch(
     key: ValueKey(key),
     controller: controller,
-    decoration: InputDecoration(
-      isDense: true,
-      prefixIcon: const Icon(Icons.search),
-      hintText: hint,
-    ),
+    hint: hint,
   ),
 );
 

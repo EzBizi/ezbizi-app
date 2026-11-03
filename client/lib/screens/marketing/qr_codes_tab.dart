@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -348,16 +349,9 @@ class _QrCodesTabState extends State<QrCodesTab> {
   // Standard field height, as tall as Leads search (Jose, 2026-10-27).
   Widget _searchField() => SizedBox(
     width: 240,
-    child: TextField(
+    child: ListSearch(
       key: const Key('qr-codes-search'),
-      textAlignVertical: TextAlignVertical.center,
-      decoration: const InputDecoration(
-        isDense: true,
-        prefixIconConstraints: BoxConstraints(minWidth: 36),
-        prefixIcon: Icon(Icons.search, size: 18),
-        hintText: 'Find a QR code',
-        border: OutlineInputBorder(),
-      ),
+      hint: 'Find a QR code',
       onChanged: (v) => setState(() => _query = v),
     ),
   );

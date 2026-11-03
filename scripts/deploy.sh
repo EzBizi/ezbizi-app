@@ -433,6 +433,9 @@ refresh "$ROOT/deploy/ezbizi-watch-peer.timer" /etc/systemd/system/ezbizi-watch-
 refresh "$ROOT/deploy/ezbizi-watch-peer-failed.service" /etc/systemd/system/ezbizi-watch-peer-failed.service 0644
 refresh "$ROOT/deploy/ezbizi-transcribe.service" /etc/systemd/system/ezbizi-transcribe.service 0644
 refresh "$ROOT/deploy/ezbizi-transcribe.timer" /etc/systemd/system/ezbizi-transcribe.timer 0644
+refresh "$ROOT/deploy/ezbizi-label.service" /etc/systemd/system/ezbizi-label.service 0644
+refresh "$ROOT/deploy/ezbizi-label.timer" /etc/systemd/system/ezbizi-label.timer 0644
+refresh "$ROOT/deploy/ezbizi-worker-staff.service" /etc/systemd/system/ezbizi-worker-staff.service 0644
 if [ "$updated" -eq 1 ]; then
   sudo systemctl daemon-reload
 else
@@ -534,14 +537,10 @@ if [ "$CODE_ONLY" != "--code" ]; then
   rm -f "$BUNDLE"
 fi
 
-# The marketing site, last, for the same reason the code goes before the UI:
-# www/index.html loads the snippet from app.ezbizi.com, so a site published
-# ahead of the API advertises a URL that is not there yet.
-#
-# Announced rather than fatal. Everything above has already shipped by this
-# point, and a red exit here would say the release failed when the release is
-# live. Re-run it alone with scripts/deploy-www.sh.
-echo "→ publishing the marketing site"
-scripts/deploy-www.sh "$GATED_SHA" || echo "⚠ the SITE did not publish — the app release above is fine. Re-run: scripts/deploy-www.sh" >&2
+# The marketing site is not published from here any more. Since 2026-11-02
+# www.ezbizi.com is WordPress on the websites box, and www/ in this repo no
+# longer goes live. Comparing the live pages with www/ printed a red line on
+# every cut. Edit the WordPress pages instead (see docs/WEBSITE-CLAIMS.md).
+# /download/* is still served from /var/www/www, and release.sh writes it.
 
 echo "✓ done — https://app.ezbizi.com"

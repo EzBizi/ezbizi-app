@@ -83,6 +83,7 @@ class SearchPickerField<T> extends StatelessWidget {
     this.errorText,
     this.border,
     this.isDense = false,
+    this.contentPadding,
     this.allowClear = false,
     this.searchFrom = 8,
     this.create,
@@ -124,6 +125,9 @@ class SearchPickerField<T> extends StatelessWidget {
   final InputBorder? border;
   final bool isDense;
 
+  /// Overrides the theme's padding, e.g. to match a toolbar's height.
+  final EdgeInsetsGeometry? contentPadding;
+
   /// Whether the list offers a way back to nothing chosen. Off by default,
   /// because most of these fields are required and a stray "None" row invites
   /// somebody to empty a thing they were asked to fill.
@@ -163,11 +167,23 @@ class SearchPickerField<T> extends StatelessWidget {
           errorText: errorText,
           border: border,
           isDense: isDense,
+          // A dense picker sits in a filter row: 44 high, the ListSearch
+          // height beside it (UI review 2026-11-02 #3).
+          contentPadding:
+              contentPadding ??
+              (isDense
+                  ? const EdgeInsets.symmetric(horizontal: 12, vertical: 11.5)
+                  : null),
           enabled: enabled,
           // A dropdown's arrow, not a magnifier: the field opens a list to
           // pick from, and a magnifier made every one of them read as a
           // search box (UI review, 2026-10-08). The search is inside the list
           // once it is long enough to need one.
+          // Material's 48-point floor on a suffix icon kept every dense
+          // picker 48 high beside a 44 search.
+          suffixIconConstraints: isDense
+              ? const BoxConstraints(minWidth: 40, minHeight: 24)
+              : null,
           suffixIcon: Icon(
             Icons.arrow_drop_down,
             color: enabled ? scheme.onSurfaceVariant : theme.disabledColor,

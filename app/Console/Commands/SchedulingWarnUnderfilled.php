@@ -32,6 +32,9 @@ class SchedulingWarnUnderfilled extends Command
 
     public const HOUR = 'scheduling.underfilled_hour';
 
+    /** A branch left out of the report (Shoval, 2026-11-03: "disable nationwide"). */
+    public const INCLUDE = 'scheduling.underfilled_include';
+
     protected $signature = 'scheduling:warn-underfilled {--now : Ignore the hour setting (for a manual run)}';
 
     protected $description = 'Raise "tomorrow under-filled" for areas with empty spots tomorrow';
@@ -53,7 +56,8 @@ class SchedulingWarnUnderfilled extends Command
                 }
                 $min = (int) $settings->get(self::MIN_EMPTY, $organization);
                 $under = collect(app(Overbooking::class)->fill(ServiceArea::query()->get(), $date))
-                    ->filter(fn ($r) => $r['capacity'] > 0 && $r['gap'] >= $min)->values();
+                    ->filter(fn ($r) => $r['capacity'] > 0 && $r['gap'] >= $min)
+                    ->filter(fn ($r) => (bool) $settings->get(self::INCLUDE, Franchise::query()->find($r['franchise_id'])))->values();
                 if ($under->isEmpty()) {
                     return;
                 }

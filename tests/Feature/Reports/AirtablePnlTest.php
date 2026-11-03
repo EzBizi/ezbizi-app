@@ -27,6 +27,14 @@ class AirtablePnlTest extends TestCase
 {
     private const WEEK = '7 Sep - 13 Sep';
 
+    /** Prod's NJ order, 2026-11-02: the screen opened on the last listed week, 6 Jul. */
+    public function test_weeks_come_oldest_first_whatever_order_airtable_sends(): void
+    {
+        $rows = array_map(fn ($w) => ['Week' => $w], ['28 Sep - 4 Oct', '19 Oct - 25 Oct', '6 Jul - 12 Jul']);
+
+        $this->assertSame(['6 Jul - 12 Jul', '28 Sep - 4 Oct', '19 Oct - 25 Oct'], (new AirtablePnl)->weeks($rows));
+    }
+
     public function test_it_reproduces_a_real_week_the_sheet_already_answered(): void
     {
         $week = (new AirtablePnl)->week($this->realWeek(), self::WEEK);

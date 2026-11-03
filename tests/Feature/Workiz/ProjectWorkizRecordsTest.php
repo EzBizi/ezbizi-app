@@ -95,6 +95,29 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->assertSame(['ana ruiz', $tenant['admin']->id], [$job->created_by_label, $job->created_by_user_id]);
     }
 
+    /** Jobs, 2026-11-02: type, sub-status and tags land on create and follow Workiz until a person changes them. */
+    public function test_workiz_labels_land_and_follow_until_a_person_changes_them(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $row = $this->mirror($tenant, [], ['JobType' => ' Chimney Sweep ', 'SubStatus' => 'Waiting', 'Tags' => ['VIP ', 'VIP', 'Roof']]);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $job = fn () => $this->inTenant($tenant['org'], fn () => Job::query()->sole());
+        $this->assertSame(['Chimney Sweep', 'Waiting', ['VIP', 'Roof']], [$job()->job_type, $job()->sub_status, $job()->tags]);
+
+        // Workiz moves all three; nobody touched them here, so they follow.
+        $move = fn (array $p) => $this->inTenant($tenant['org'], fn () => $row->fresh()->forceFill(['payload' => $p + $row->fresh()->payload])->save());
+        $move(['JobType' => 'Inspection', 'SubStatus' => 'Parts ordered', 'Tags' => ['Roof']]);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame(['Inspection', 'Parts ordered', ['Roof']], [$job()->job_type, $job()->sub_status, $job()->tags]);
+
+        // A person sets the type and empties the tags; Workiz moving again leaves those alone.
+        $this->inTenant($tenant['org'], fn () => $job()->forceFill(['job_type' => 'Repair', 'tags' => []])->save());
+        $move(['JobType' => 'Sweep', 'SubStatus' => 'Ready', 'Tags' => ['New']]);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame(['Repair', 'Ready', []], [$job()->job_type, $job()->sub_status, $job()->tags]);
+    }
+
     /** Scheduling, 2026-10-27: Workiz's team is handed over on create and again only when it moves. */
     public function test_the_workiz_team_is_followed_only_when_it_moves(): void
     {

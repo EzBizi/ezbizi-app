@@ -447,6 +447,11 @@ Route::get('v1/whatsapp/media/{phone}/{media}', \App\Http\Controllers\Api\WhatsA
     ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
     ->name('whatsapp.media');
 
+Route::get('v1/meta/media/{connection}/{mid}/{index}', \App\Http\Controllers\Api\MetaMediaController::class)
+    ->middleware(['signed', 'throttle:120,1'])
+    ->where(['connection' => '[0-9a-f-]+', 'mid' => '[A-Za-z0-9_-]+', 'index' => '[0-9]+'])
+    ->name('meta.media');
+
 Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
     ->middleware(['signed', 'throttle:30,1'])
     ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
@@ -1009,6 +1014,13 @@ Route::prefix('v1')
         Route::get('reviews', [ReviewsController::class, 'index']);
         Route::post('reviews/replies/draft-batch', [ReviewsController::class, 'draftBatch']);
         Route::get('reviews/sources', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'sources']);
+        // The eKomi screen (Jose, 2026-11-02).
+        Route::get('ekomi', [\App\Http\Controllers\Api\EkomiController::class, 'index']);
+        Route::get('ekomi/{connection}/overview', [\App\Http\Controllers\Api\EkomiController::class, 'overview']);
+        Route::get('ekomi/{connection}/requests', [\App\Http\Controllers\Api\EkomiController::class, 'requests']);
+        Route::post('ekomi/{connection}/requests', [\App\Http\Controllers\Api\EkomiController::class, 'ask']);
+        Route::put('ekomi/{connection}/settings', [\App\Http\Controllers\Api\EkomiController::class, 'updateSettings']);
+        Route::post('ekomi/{connection}/test', [\App\Http\Controllers\Api\EkomiController::class, 'test']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
@@ -1445,9 +1457,9 @@ Route::prefix('v1')
             Route::post('reports/experimental/workiz', [WorkizConnectController::class, 'store']);
 
             // Hand-set facts the phones cannot say (Jose, 2026-10-05).
-            Route::put('reports/experimental/people/tag', [ExperimentalCallReportController::class, 'tag']);
+            Route::put('reports/experimental/people/tag', [ExperimentalCallReportController::class, 'tag'])->middleware('permission:reports.handles');
             Route::put('reports/experimental/sources', [ExperimentalCallReportController::class, 'sources']);
-            Route::post('reports/experimental/calls/{call}/convert', [ExperimentalCallReportController::class, 'convert']);
+            Route::post('reports/experimental/calls/{call}/convert', [ExperimentalCallReportController::class, 'convert'])->middleware('permission:reports.handles');
         });
 
         /*

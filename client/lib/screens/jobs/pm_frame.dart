@@ -162,7 +162,7 @@ class _PmFrameState extends State<PmFrame> {
           bar = Wrap(
             spacing: 12,
             runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.start,
             children: [
               SizedBox(width: 300, child: widget.search),
               if (widget.place != null)

@@ -7,151 +7,72 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const american = DisplayFormats(dateFormat: 'M/D/YYYY', timeFormat: '12h');
   const european = DisplayFormats(dateFormat: 'D/M/YYYY', timeFormat: '24h');
+  const iso = DisplayFormats(dateFormat: 'YYYY-MM-DD', timeFormat: '24h');
+  final box = find.byKey(const Key('calendar-day-text'));
 
-  testWidgets('typing month, day and year stores an ISO day', (tester) async {
+  Future<void> leave(WidgetTester tester) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+  }
+
+  /// One field, not three boxes (Jose, 2026-11-03: "1 - yes").
+  testWidgets('a typed day is stored as ISO and shown the org way', (
+    tester,
+  ) async {
     final controller = TextEditingController();
     await _pump(tester, controller, formats: american);
 
-    await tester.enterText(find.byKey(const Key('calendar-day-month')), '09');
-    await tester.enterText(find.byKey(const Key('calendar-day-day')), '01');
-    await tester.enterText(find.byKey(const Key('calendar-day-year')), '2026');
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.enterText(box, '09/01/2026');
     await tester.pump();
-
     expect(controller.text, '2026-09-01');
+
+    await leave(tester);
+    expect(find.widgetWithText(TextField, '9/1/2026'), findsOneWidget);
   });
 
-  // On a phone the hour ended one line and the minute began the next. The
-  // date and the time now wrap as two whole pieces.
-  testWidgets('at a narrow width the hour and the minute stay on one line', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(392, 800);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await _pump(
-      tester,
-      TextEditingController(),
-      formats: american,
-      withTime: true,
-    );
+  testWidgets('the hint is the organization pattern', (tester) async {
+    await _pump(tester, TextEditingController(), formats: european);
+    expect(find.text('DD/MM/YYYY'), findsOneWidget);
 
-    expect(
-      tester.getTopLeft(find.byKey(const Key('calendar-day-hour'))).dy,
-      tester.getTopLeft(find.byKey(const Key('calendar-day-minute'))).dy,
-    );
-  });
-
-  // Resting inside a box this narrow, the label was cut to "Mo…" on a phone.
-  // It sits above the box instead, with the format inside.
-  testWidgets('an empty box names itself above, not inside', (tester) async {
-    await _pump(
-      tester,
-      TextEditingController(),
-      formats: american,
-      withTime: true,
-    );
-
-    for (final (key, label) in [('month', 'Month'), ('minute', 'Minute')]) {
-      final box = find.byKey(Key('calendar-day-$key'));
-      final text = find.descendant(
-        of: box,
-        matching: find.byType(EditableText),
-      );
-      expect(
-        tester
-            .getCenter(find.descendant(of: box, matching: find.text(label)))
-            .dy,
-        lessThan(tester.getTopLeft(text).dy),
-        reason: label,
-      );
-    }
-  });
-
-  testWidgets('D/M/YYYY puts the day box first', (tester) async {
-    final controller = TextEditingController();
-    await _pump(tester, controller, formats: european);
-
-    final labels = tester
-        .widgetList<TextField>(find.byType(TextField))
-        .map((f) => f.decoration?.labelText)
-        .toList();
-
-    expect(labels.take(3), ['Day', 'Month', 'Year']);
+    await _pump(tester, TextEditingController(), formats: iso, withTime: true);
+    expect(find.text('YYYY-MM-DD 09:00'), findsOneWidget);
   });
 
   testWidgets('the same digits are two different days under two settings', (
     tester,
   ) async {
-    final americanController = TextEditingController();
-    await _pump(tester, americanController, formats: american);
-
-    var boxes = find.byType(TextField);
-    await tester.enterText(boxes.at(0), '8');
-    await tester.enterText(boxes.at(1), '3');
-    await tester.enterText(boxes.at(2), '2026');
+    final us = TextEditingController();
+    await _pump(tester, us, formats: american);
+    await tester.enterText(box, '3/8/2026');
     await tester.pump();
-    expect(americanController.text, '2026-08-03');
+    expect(us.text, '2026-03-08');
 
-    final europeanController = TextEditingController();
-    await _pump(tester, europeanController, formats: european);
-
-    boxes = find.byType(TextField);
-    await tester.enterText(boxes.at(0), '8');
-    await tester.enterText(boxes.at(1), '3');
-    await tester.enterText(boxes.at(2), '2026');
+    final eu = TextEditingController();
+    await _pump(tester, eu, formats: european);
+    await tester.enterText(box, '3/8/2026');
     await tester.pump();
-    expect(europeanController.text, '2026-03-08');
+    expect(eu.text, '2026-08-03');
   });
 
-  testWidgets('changing the setting reorders the boxes and keeps the day', (
+  testWidgets('changing the setting rewrites the field and keeps the day', (
     tester,
   ) async {
-    final controller = TextEditingController(text: '2026-08-03');
+    final controller = TextEditingController(text: '2026-03-08');
     await _pump(tester, controller, formats: american);
-
-    expect(
-      tester
-          .widgetList<TextField>(find.byType(TextField))
-          .map((f) => f.decoration?.labelText)
-          .take(3),
-      ['Month', 'Day', 'Year'],
-    );
+    expect(find.widgetWithText(TextField, '3/8/2026'), findsOneWidget);
 
     await _pump(tester, controller, formats: european);
-
-    expect(
-      tester
-          .widgetList<TextField>(find.byType(TextField))
-          .map((f) => f.decoration?.labelText)
-          .take(3),
-      ['Day', 'Month', 'Year'],
-    );
-    expect(controller.text, '2026-08-03');
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('calendar-day-month')))
-          .controller!
-          .text,
-      '08',
-    );
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('calendar-day-day')))
-          .controller!
-          .text,
-      '03',
-    );
+    expect(find.widgetWithText(TextField, '8/3/2026'), findsOneWidget);
+    expect(controller.text, '2026-03-08');
   });
 
-  testWidgets('the calendar under the boxes sets the three parts', (
-    tester,
-  ) async {
+  testWidgets('the calendar under the field sets the day', (tester) async {
     final controller = TextEditingController();
     await _pump(tester, controller, formats: american);
 
     await tester.tap(find.byKey(const Key('calendar-day-pick')));
     await tester.pumpAndSettle();
-
     expect(find.byType(CalendarDatePicker), findsOneWidget);
 
     await tester.tap(find.text('15'));
@@ -167,97 +88,84 @@ void main() {
     final controller = TextEditingController();
     await _pump(tester, controller, formats: american);
 
-    await tester.enterText(find.byKey(const Key('calendar-day-month')), '02');
-    await tester.enterText(find.byKey(const Key('calendar-day-day')), '31');
-    await tester.enterText(find.byKey(const Key('calendar-day-year')), '2026');
+    await tester.enterText(box, '02/31/2026');
     await tester.pump();
+    await leave(tester);
 
     expect(controller.text, isEmpty);
-    expect(find.text('That day is not on the calendar.'), findsOneWidget);
+    expect(find.text('Type it as MM/DD/YYYY, or pick a day.'), findsOneWidget);
   });
 
   testWidgets('a scheduled time keeps the hour next to the day', (tester) async {
     final controller = TextEditingController();
-    await _pump(
-      tester,
-      controller,
-      formats: european,
-      withTime: true,
-    );
+    await _pump(tester, controller, formats: european, withTime: true);
 
-    await tester.enterText(find.byKey(const Key('calendar-day-day')), '08');
-    await tester.enterText(find.byKey(const Key('calendar-day-month')), '03');
-    await tester.enterText(find.byKey(const Key('calendar-day-year')), '2026');
-    await tester.enterText(find.byKey(const Key('calendar-day-hour')), '09');
-    await tester.enterText(find.byKey(const Key('calendar-day-minute')), '00');
+    await tester.enterText(box, '08/03/2026 09:00');
     await tester.pump();
 
     expect(controller.text, '2026-03-08 09:00');
   });
 
-  /// Jose, 2026-09-30, booking a lead: the boxes read 16 : 00 PM and the job
-  /// would have been booked with no time at all.
-  testWidgets('16 in a 12-hour box is 4 PM, and is stored', (tester) async {
+  /// Jose, 2026-09-30, booking a lead: 16:00 PM must not book a job with no
+  /// time at all.
+  testWidgets('16 in a 12-hour field is 4 PM, and is stored', (tester) async {
     final controller = TextEditingController();
     await _pump(tester, controller, formats: american, withTime: true);
 
-    await tester.enterText(find.byKey(const Key('calendar-day-month')), '09');
-    await tester.enterText(find.byKey(const Key('calendar-day-day')), '30');
-    await tester.enterText(find.byKey(const Key('calendar-day-year')), '2026');
-    await tester.enterText(find.byKey(const Key('calendar-day-hour')), '16');
-    await tester.enterText(find.byKey(const Key('calendar-day-minute')), '00');
+    await tester.enterText(box, '9/30/2026 16:00');
     await tester.pump();
-
     expect(controller.text, '2026-09-30 16:00');
-    expect(find.widgetWithText(TextField, '4'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'PM'), findsOneWidget);
+
+    await leave(tester);
+    expect(find.widgetWithText(TextField, '9/30/2026 4:00 PM'), findsOneWidget);
   });
 
-  testWidgets('an hour no clock has says so instead of storing nothing', (
+  testWidgets('PM is read', (tester) async {
+    final controller = TextEditingController();
+    await _pump(tester, controller, formats: american, withTime: true);
+
+    await tester.enterText(box, '9/30/2026 2:15 pm');
+    await tester.pump();
+    expect(controller.text, '2026-09-30 14:15');
+  });
+
+  testWidgets('an hour no clock has is not stored, and says so', (
     tester,
   ) async {
     final controller = TextEditingController();
     await _pump(tester, controller, formats: american, withTime: true);
 
-    await tester.enterText(find.byKey(const Key('calendar-day-month')), '09');
-    await tester.enterText(find.byKey(const Key('calendar-day-day')), '30');
-    await tester.enterText(find.byKey(const Key('calendar-day-year')), '2026');
-    await tester.enterText(find.byKey(const Key('calendar-day-hour')), '25');
-    await tester.enterText(find.byKey(const Key('calendar-day-minute')), '00');
+    await tester.enterText(box, '9/30/2026 25:00');
     await tester.pump();
+    await leave(tester);
 
-    expect(find.text('Hours go from 1 to 12.'), findsOneWidget);
     expect(controller.text, isEmpty);
+    expect(
+      find.text('Type it as MM/DD/YYYY 9:00 AM, or pick a day.'),
+      findsOneWidget,
+    );
   });
 
   /// A job keeps the seconds it was booked with until somebody changes it.
-  ///
-  /// The blur is wired to the DATE boxes (Jobs' note: a test that blurred the
-  /// minute box triggered nothing and passed against the bug), so this clicks
-  /// into the day and out again.
-  testWidgets('a click in and out of the day leaves a stored time as it was', (
+  testWidgets('a click in and out leaves a stored time as it was', (
     tester,
   ) async {
     final controller = TextEditingController(text: '2026-09-24 09:43:33');
     await _pump(tester, controller, formats: european, withTime: true);
 
-    await tester.tap(find.byKey(const Key('calendar-day-day')));
+    await tester.tap(box);
     await tester.pump();
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pump();
-
+    await leave(tester);
     expect(controller.text, '2026-09-24 09:43:33');
 
     // A real change still writes, at the field's own minute precision.
-    await tester.enterText(find.byKey(const Key('calendar-day-day')), '25');
+    await tester.enterText(box, '25/9/2026 09:43');
     await tester.pump();
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pump();
-
+    await leave(tester);
     expect(controller.text, '2026-09-25 09:43');
   });
 
-  testWidgets('three boxes and the calendar fit a 375-wide phone', (
+  testWidgets('the field and the calendar fit a 375-wide phone', (
     tester,
   ) async {
     final controller = TextEditingController(text: '2026-09-01');
@@ -265,10 +173,11 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await _pump(tester, controller, formats: american);
+    await tester.tap(find.byKey(const Key('calendar-day-pick')));
+    await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
     expect(find.text('Next service on'), findsOneWidget);
-    expect(find.byKey(const Key('calendar-day-pick')), findsOneWidget);
   });
 }
 

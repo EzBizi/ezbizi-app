@@ -26,6 +26,8 @@ class AnswerTelegramWithTech implements ShouldQueue
         if ($fileId !== null) {
             $this->timeout = 150;
             $this->onConnection('database-long')->onQueue('long');
+        } else {
+            $this->onQueue(config('services.ai.staff_queue', 'default'));   // a person is waiting: never behind call processing
         }
     }
 
