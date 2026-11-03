@@ -1381,8 +1381,10 @@ class _GmailInboxState extends State<GmailInbox> {
     final notice = _notConnectedNotice(context);
     final quiet = _quietLine(context);
     final open = _openRow != null;
+    // Side by side that does not fit opens the mail over the whole pane, with
+    // back — not a half-height reader below (Jose 11-03).
     final pane = _pane == ReadingPane.right && width < _rightPaneNeeds
-        ? ReadingPane.below
+        ? ReadingPane.off
         : _pane;
 
     final Widget body = switch (pane) {
