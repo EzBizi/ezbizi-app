@@ -48,6 +48,9 @@ class PhoneLineAudit extends Command
 
             $ours = PhoneNumber::query()->withoutGlobalScopes()
                 ->where('connection_id', $connection->id)
+                // A line parked on another account (the 855 on the main profile)
+                // is not in this account's list; ponytail: unchecked until we list that account.
+                ->where(fn ($q) => $q->whereNull('account_sid')->orWhere('account_sid', $connection->account_sid))
                 ->pluck('e164', 'twilio_sid');
 
             foreach ($ours as $sid => $e164) {
