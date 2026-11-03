@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 
@@ -1163,12 +1164,9 @@ class _PeopleRailState extends State<_PeopleRail> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
+        ListSearch(
           key: const Key('desktop-monitoring-people-search'),
-          decoration: const InputDecoration(
-            hintText: 'Search people',
-            prefixIcon: Icon(Icons.search),
-          ),
+          hint: 'Search people',
           onChanged: (value) => setState(() => _query = value),
         ),
         const SizedBox(height: 8),

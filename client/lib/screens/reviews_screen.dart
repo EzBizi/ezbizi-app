@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -988,19 +989,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     final left = <Widget>[
       SizedBox(
         width: width < 600 ? width - 32 : 260,
-        child: TextField(
+        child: ListSearch(
           key: const Key('reviews-search'),
           controller: _search,
+          hint: 'Name or what they said',
           onChanged: _searched,
-          style: theme.textTheme.bodyMedium,
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: const Icon(Icons.search, size: 18),
-            hintText: 'Name or what they said',
-            hintStyle: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.inputDecorationTheme.hintStyle?.color,
-            ),
-          ),
         ),
       ),
       FilterChip(

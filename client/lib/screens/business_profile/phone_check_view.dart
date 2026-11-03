@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -142,13 +143,9 @@ class _PhoneCheckViewState extends State<PhoneCheckView> {
                   ),
               SizedBox(
                 width: 240,
-                child: TextField(
+                child: ListSearch(
                   key: const ValueKey('cx-phone-search'),
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Search listings',
-                    isDense: true,
-                  ),
+                  hint: 'Search listings',
                   onChanged: (v) => setState(() => _q = v),
                 ),
               ),

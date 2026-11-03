@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -580,15 +581,11 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
           ),
           SizedBox(
             width: 240,
-            child: TextField(
+            child: ListSearch(
               key: const ValueKey('complaints-search'),
               controller: _search,
+              hint: 'Name or what they said',
               onChanged: _searched,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Name or what they said',
-              ),
             ),
           ),
         ],

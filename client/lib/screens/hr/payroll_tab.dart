@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -280,15 +281,11 @@ class _PayrollTabState extends State<PayrollTab> {
     },
   );
 
-  Widget _searchBox() => TextField(
+  Widget _searchBox() => ListSearch(
     key: const Key('payroll-search'),
     controller: _search,
+    hint: 'Search people',
     onChanged: (_) => setState(() {}),
-    decoration: const InputDecoration(
-      hintText: 'Search people',
-      prefixIcon: Icon(Icons.search),
-      isDense: true,
-    ),
   );
 
   Widget _showLeftChip() => FilterChip(

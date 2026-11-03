@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -844,13 +845,9 @@ class _FinancialsScreenState extends State<FinancialBases> {
               const SizedBox(width: 12),
               SizedBox(
                 width: 200,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('financials-grid-search'),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search),
-                    hintText: 'Search',
-                  ),
+                  hint: 'Search',
                   onChanged: (t) => setState(() => _search = t.trim()),
                 ),
               ),

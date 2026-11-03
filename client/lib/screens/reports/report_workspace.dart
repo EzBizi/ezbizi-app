@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -260,14 +261,9 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
       children: [
         Padding(
           padding: const EdgeInsets.all(8),
-          child: TextField(
+          child: ListSearch(
             key: const Key('workspace-search'),
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Find a report',
-              border: OutlineInputBorder(),
-            ),
+            hint: 'Find a report',
             onChanged: (v) => setState(() => _query = v),
           ),
         ),

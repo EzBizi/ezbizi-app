@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
@@ -252,13 +253,9 @@ class _FinancialHomeState extends State<FinancialHome> {
                 alignment: Alignment.centerLeft,
                 child: SizedBox(
                   width: phone ? double.infinity : 320,
-                  child: TextField(
+                  child: ListSearch(
                     key: const ValueKey('financials-home-search'),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Find an area or base',
-                    ),
+                    hint: 'Find an area or base',
                     onChanged: (t) => setState(() => _query = t.trim()),
                   ),
                 ),

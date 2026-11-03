@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -390,15 +391,11 @@ class _PtoTabState extends State<PtoTab> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-                child: TextField(
+                child: ListSearch(
                   key: const Key('pto-search'),
                   controller: _search,
+                  hint: 'Search people',
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    hintText: 'Search people',
-                    prefixIcon: Icon(Icons.search),
-                    isDense: true,
-                  ),
                 ),
               ),
               Padding(
@@ -2980,18 +2977,14 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
   }
 
   Widget _toolbar(BuildContext context) {
-    final search = TextField(
+    final search = ListSearch(
       key: const Key('pto-req-search'),
       controller: _search,
-      onSubmitted: (_) => _load(),
+      hint: 'Search people',
       onChanged: (v) {
-        if (v.isEmpty) _load();
-      },
-      decoration: const InputDecoration(
-        hintText: 'Search people',
-        prefixIcon: Icon(Icons.search),
-        isDense: true,
-      ),
+          if (v.isEmpty) _load();
+        },
+      onSubmitted: (_) => _load(),
     );
     final status = SearchPickerField<String>(
       key: const Key('pto-req-status'),

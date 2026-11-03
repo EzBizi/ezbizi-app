@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'tag.dart';
 
@@ -168,21 +169,11 @@ class _CataloguePickerState extends State<CataloguePicker> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
+        ListSearch(
           key: const Key('catalogue-picker-search'),
           controller: _search,
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: widget.searchHint,
-            prefixIcon: const Icon(Icons.search, size: 18),
-            suffixIcon: _search.text.isEmpty
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.clear, size: 18),
-                    tooltip: 'Clear',
-                    onPressed: _search.clear,
-                  ),
-          ),
+          hint: widget.searchHint,
+          onClear: _search.clear,
         ),
         if (_query.isNotEmpty) ...[
           const SizedBox(height: 6),

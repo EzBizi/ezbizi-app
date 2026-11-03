@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -417,16 +418,9 @@ class _RolesScreenState extends State<RolesScreen> {
                 // Standard field height, as tall as Leads search (Jose, 2026-10-27).
                 SizedBox(
                   width: 240,
-                  child: TextField(
+                  child: ListSearch(
                     key: const Key('roles-list-search'),
-                    textAlignVertical: TextAlignVertical.center,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      prefixIconConstraints: BoxConstraints(minWidth: 36),
-                      prefixIcon: Icon(Icons.search, size: 18),
-                      hintText: 'Find a role',
-                      border: OutlineInputBorder(),
-                    ),
+                    hint: 'Find a role',
                     onChanged: (v) => setState(() => _listQuery = v),
                   ),
                 ),
@@ -1429,16 +1423,11 @@ class _RolePageState extends State<_RolePage> {
 
     final search = SizedBox(
       width: narrow ? double.infinity : 220,
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('role-search'),
+        hint: 'Find a permission',
         onChanged: (value) =>
-            setState(() => _query = value.trim().toLowerCase()),
-        decoration: const InputDecoration(
-          isDense: true,
-          hintText: 'Find a permission',
-          prefixIcon: Icon(Icons.search, size: 18),
-          border: OutlineInputBorder(),
-        ),
+              setState(() => _query = value.trim().toLowerCase()),
       ),
     );
 

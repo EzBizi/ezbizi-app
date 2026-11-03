@@ -6,6 +6,7 @@
 /// correction becomes a Library entry the assistant reads from then on.
 library;
 
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -42,16 +43,9 @@ List<String> _list(Object? v) =>
 Widget _search(Key key, String hint, ValueChanged<String> onChanged) =>
     SizedBox(
       width: 260,
-      child: TextField(
+      child: ListSearch(
         key: key,
-        textAlignVertical: TextAlignVertical.center,
-        decoration: InputDecoration(
-          isDense: true,
-          prefixIconConstraints: const BoxConstraints(minWidth: 36),
-          prefixIcon: const Icon(Icons.search, size: 18),
-          hintText: hint,
-          border: const OutlineInputBorder(),
-        ),
+        hint: hint,
         onChanged: onChanged,
       ),
     );

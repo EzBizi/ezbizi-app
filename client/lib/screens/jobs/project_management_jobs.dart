@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -356,15 +357,11 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
               'Work the jobs of one stage, or of a number opened from '
               'Overview, and open a job for its timeline.',
           scope: widget.scope,
-          search: TextField(
+          search: ListSearch(
             key: const ValueKey('pm-jobs-search'),
             controller: _search,
+            hint: pmJobSearchHint,
             onChanged: _typed,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: pmJobSearchHint,
-            ),
           ),
           place: widget.areas.isEmpty
               ? null

@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/empty_state.dart';
@@ -194,24 +195,15 @@ class _ItemListState extends State<ItemList> {
         Padding(
           key: const ValueKey('tour-inventory-items-search'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: TextField(
+          child: ListSearch(
             controller: _search,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'Name, SKU or number',
-              suffixIcon: _search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear),
-                      tooltip: 'Clear the search',
-                      onPressed: () {
-                        _search.clear();
-                        _load();
-                      },
-                    ),
-            ),
-            onSubmitted: (_) => _load(),
+            hint: 'Name, SKU or number',
             onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _load(),
+            onClear: () {
+                          _search.clear();
+                          _load();
+                        },
           ),
         ),
         // A server without tiles keeps the old way to see discontinued ones.
