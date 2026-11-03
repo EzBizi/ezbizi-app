@@ -13,6 +13,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use RuntimeException;
@@ -230,6 +231,27 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertTrue($byId['c-marked']['booked']);
         $this->assertTrue($byId['c-marked']['converted']);
         $this->assertFalse($byId['c-open']['booked']);
+    }
+
+    /**
+     * A call from the client's other number is booked too (Trey, 2026-11-03:
+     * 10 of 43 "AI heard a booking, no job" calls in a week were).
+     */
+    public function test_a_job_booked_under_the_second_phone_books_the_call(): void
+    {
+        $this->fakeCallLog([array_merge(
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
+            ['id' => 'c-second', 'from' => ['phoneNumber' => '+12125557777', 'name' => 'X']],
+        )]);
+
+        $day = app(CallReconciliation::class)->forRange(
+            app(RingCentralCallLog::class)->forDate('x', 'y'),
+            [['created_at' => '2026-09-14 10:00:00', 'phone' => '2125550001', 'second_phone' => '(212) 555-7777', 'created_by' => 'Trey Brannan']],
+            '2026-09-14',
+            '2026-09-14',
+        );
+
+        $this->assertTrue(array_column($day['calls'], null, 'id')['c-second']['booked']);
     }
 
     /**
@@ -624,10 +646,10 @@ class ExperimentalCallReportTest extends TestCase
     public function test_a_finished_day_is_kept_in_ezbizi_not_only_in_the_cache(): void
     {
         $this->fakeCallLog([$this->inbound(rang: [['Trey Brannan', 'Call connected']])]);
-        $day = \Carbon\CarbonImmutable::now()->subDays(3)->startOfDay();
+        $day = CarbonImmutable::now()->subDays(3)->startOfDay();
 
         app(RingCentralCallLog::class)->forPeriod($day, $day->endOfDay());
-        \Illuminate\Support\Facades\Cache::flush();
+        Cache::flush();
         Http::fake(['*' => Http::response([], 500)]);
 
         $again = app(RingCentralCallLog::class)->forPeriod($day, $day->endOfDay());
