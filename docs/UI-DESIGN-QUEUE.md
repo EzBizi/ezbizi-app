@@ -5263,7 +5263,7 @@ this shipped for were closed at 16h each when nobody knows when those people
 actually went home. Correcting them is the first real use of this screen, and
 Jose will be the one doing it.
 
-### 172 · Estimate Board — **sent 2026-11-03** (`docs/previews/estimate-board-layouts.html`)
+### 172 · Estimate Board — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend"; Jobs builds) (`docs/previews/estimate-board-layouts.html`)
 
 From Jose's Monday list ("New Estimate Board"), via the desk. Server ready (GET /estimates status filters + status_counts; PATCH status refuses illegal moves), so client only; Jobs builds. Recommended **1 + phone 4**:
 - **Where:** a List | Board toggle on Jobs › Estimates that keeps the search, "Company · Branch" and date filters, with column counts from status_counts.
