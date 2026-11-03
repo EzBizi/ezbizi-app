@@ -14,6 +14,21 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0525',
+      date: '3 Nov 2026',
+      items: [
+        'WhatsApp assistant: shows it is typing, answers any question with AI, and replies in a looser style.',
+        'Jobs › Estimates: a Board view with a column per status; drag a card to change it.',
+        'Texting: replying STOP stops every text from that company, START resumes, and automated texts say how to opt out.',
+        'Inspections: before and after photos are paired in the report and the job photos, and the report PDF reaches Workiz.',
+        'Customers can carry tags; newsletters and automations can target a tag.',
+        'Settings › Integrations: every connection is checked daily; cards show when, and a dead sign-in shows Needs reconnecting.',
+        'Fleet: each state button number now matches the search and filters you have on.',
+        'HR › Records: No start date and No contract filters.',
+        'Weekly AI Google posts per listing are drafted for approval.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0524',
       date: '3 Nov 2026',
       items: [
