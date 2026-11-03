@@ -342,6 +342,8 @@ class TasksController extends Controller
         return match ($v->column?->type) {
             'number' => $v->value_number,
             'date' => $v->value_date?->toDateString(),
+            // Stored as its start (value_date) and end (value_text).
+            'timeline' => $v->value_date ? ['from' => $v->value_date->toDateString(), 'to' => $v->value_text] : null,
             'person' => $v->value_user_id,
             'checkbox' => (bool) $v->value_number,
             default => $v->value_text,

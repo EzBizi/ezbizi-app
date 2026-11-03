@@ -628,6 +628,18 @@ class TaskWriter
                         JobTechnicianSync::toJob($task, $value, $key);
                     }
                     break;
+                case 'timeline':
+                    $day = fn ($d) => is_string($d) && \DateTime::createFromFormat('!Y-m-d', $d)?->format('Y-m-d') === $d;
+                    $ok = is_array($value) && $day($value['from'] ?? null) && $day($value['to'] ?? null) && $value['from'] <= $value['to'];
+                    $why = 'A range as {from, to}, YYYY-MM-DD, from no later than to.';
+                    $row['value_date'] = $ok ? $value['from'] : null;
+                    $row['value_text'] = $ok ? $value['to'] : null;
+                    break;
+                case 'formula':
+                    // Worked out from the other columns where it is shown; nothing to store.
+                    $ok = false;
+                    $why = 'A formula column works itself out.';
+                    break;
                 case 'checkbox':
                     $ok = in_array($value, [true, false, 0, 1, '0', '1'], true);
                     $why = 'This column takes true or false.';
