@@ -77,6 +77,26 @@ final class WhatsAppCloud
         return (string) config('services.meta.whatsapp_token');
     }
 
+    /**
+     * Blue ticks and "typing…" on an inbound message while the AI works (Jose,
+     * 2026-11-03: "theres no indicator that its working"). Meta shows it up to
+     * 25 s or until the reply; a failure is logged, never thrown.
+     */
+    public function typing(string $phoneNumberId, string $wamid): void
+    {
+        try {
+            Http::withToken(self::tokenFor($phoneNumberId))->timeout(5)
+                ->post(self::endpoint().'/'.$phoneNumberId.'/messages', [
+                    'messaging_product' => 'whatsapp',
+                    'status' => 'read',
+                    'message_id' => $wamid,
+                    'typing_indicator' => ['type' => 'text'],
+                ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
     public static function endpoint(): string
     {
         return 'https://graph.facebook.com/'

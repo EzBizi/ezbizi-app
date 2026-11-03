@@ -159,7 +159,7 @@ final class WhatsAppStaffBot
             return;
         }
 
-        $techMode = $viewer !== null && GrokCli::configured()
+        $techMode = $viewer !== null && GrokCli::configured() && $viewer->hasPermission(StaffAnswer::PARTS)
             && app(TechAssistant::class)->enabled(Organization::findOrFail($number->organization_id));
 
         // A photo captioned results or ACE: a lead source's results (WhatsAppResults).
@@ -410,7 +410,9 @@ final class WhatsAppStaffBot
             'type' => 'interactive',
             'interactive' => [
                 'type' => 'list',
-                'header' => ['type' => 'text', 'text' => mb_substr($this->brain->name($organization), 0, 60)],
+                // EzBizi's own numbers (no connection of their own) speak as EzBizi,
+                // not as the one tenant's assistant name (Jose, 2026-11-03).
+                'header' => ['type' => 'text', 'text' => mb_substr($number->social_connection_id === null ? 'EzBizi' : $this->brain->name($organization), 0, 60)],
                 'body' => ['text' => $body],
                 'footer' => ['text' => 'Ask a question, or text MENU'],
                 'action' => [
@@ -608,9 +610,12 @@ final class WhatsAppStaffBot
             return;
         }
 
-        // A question about the figures goes to AI before the Library's word
-        // match, which answered "how much did we sell" with the CSIA entry.
-        if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && self::asksFigures($query)) {
+        // Staff words go to the AI agent, not the word match (Jose, 2026-11-03:
+        // "it feel like it looks for keywords ... when it should just answer").
+        // StaffAnswer reads the Library first anyway. Three characters or
+        // fewer is a branch code or a state, which only the location search knows.
+        if ($viewer !== null && GrokCli::configured() && mb_strlen($query) > 3) {
+            $this->typing($number, $to);
             AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer->getKey(), $query);
 
             return;
@@ -638,6 +643,7 @@ final class WhatsAppStaffBot
             // the webhook must answer Meta at once (Jose, 2026-10-12).
             // Staff only: strangers have the intake, and each ask is an xAI call.
             if ($viewer !== null && GrokCli::configured() && mb_strlen($query) > 3) {
+                $this->typing($number, $to);
                 AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer?->getKey(), $query);
 
                 return;
@@ -724,6 +730,10 @@ final class WhatsAppStaffBot
             return;
         }
 
+        // ponytail: shown on dispatch and again here; Meta drops it after 25 s, so a
+        // slow app-data answer goes quiet for its last stretch. A timer if that bites.
+        $this->typing($number, $to);
+
         try {
             // 80 s: inside AnswerWhatsAppWithAi's 85 s and the queue's 90 s retry_after.
             $found = StaffAnswer::answer($viewer, $organization, $query, 'whatsapp', 80);
@@ -733,8 +743,9 @@ final class WhatsAppStaffBot
             return;
         }
 
+        // An agent says it did not find it; the menu read as a keyword bot.
         if ($found === null) {
-            $this->nothingMatched($number, $to, $viewer, $query);
+            $this->text($number, $to, "\u{1F937} I couldn't find that in EzBizi. Try asking another way, or type *MENU*.", preview: false);
 
             return;
         }
@@ -914,5 +925,16 @@ final class WhatsAppStaffBot
     private function nothingMatched(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
     {
         $this->menu($number, $to, $viewer, "\u{1F937} Nothing matched *".mb_substr($query, 0, 40)."*\n\nNo answer and no location for that.");
+    }
+
+    /** "Typing…" on the person's last message while the AI works (Jose, 2026-11-03). */
+    private function typing(WhatsAppNumber $number, string $to): void
+    {
+        $wamid = WhatsAppMessage::query()->withoutGlobalScopes()->where('phone_number_id', $number->phone_number_id)
+            ->where('counterparty', $to)->where('direction', 'in')->latest('created_at')->value('wamid');
+
+        if (filled($wamid)) {
+            $this->cloud->typing((string) $number->phone_number_id, (string) $wamid);
+        }
     }
 }
