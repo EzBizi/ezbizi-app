@@ -107,9 +107,8 @@ class VehicleList extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) => _build(context, box.maxWidth),
-  );
+  Widget build(BuildContext context) =>
+      LayoutBuilder(builder: (context, box) => _build(context, box.maxWidth));
 
   Widget _build(BuildContext context, double width) {
     final total = places.fold<int>(
@@ -200,17 +199,61 @@ class VehicleList extends StatelessWidget {
         ),
       ),
     ];
-    final count = vehicles.length + (page < lastPage ? 1 : 0);
+    // All states: one section per branch, "Company · Branch  N" (Jose,
+    // 2026-11-03: "divissions in the list"). One state open, no headers.
+    final entries = <Object>[];
+    if (place == null && places.length > 1) {
+      final groups = <String, List<Map<String, dynamic>>>{};
+      for (final v in vehicles) {
+        final id = '${fleetMap(v['franchise'])?['id'] ?? fleetGeneralValue}';
+        (groups[id] ??= []).add(v);
+      }
+      for (final MapEntry(key: id, value: rows) in groups.entries) {
+        final known = places.where((p) => '${p['id']}' == id).firstOrNull;
+        final n = (known?['count'] as num?)?.toInt() ?? rows.length;
+        final company = fleetMap(rows.first['company'])?['name'] as String?;
+        final branch = fleetPlaceLabel(rows.first);
+        entries
+          ..add((
+            id,
+            company == null || company == branch
+                ? branch
+                : '$company · $branch',
+            n,
+          ))
+          ..addAll(rows);
+      }
+    } else {
+      entries.addAll(vehicles);
+    }
+    final count = entries.length + (page < lastPage ? 1 : 0);
 
-    Widget item(BuildContext context, int i) => i == vehicles.length
-        ? LoadMore(
-            shown: shown,
-            total: total,
-            busy: fetching,
-            error: pageError,
-            onMore: onMore,
-          )
-        : _row(context, vehicles[i]);
+    Widget item(BuildContext context, int i) {
+      if (i == entries.length) {
+        return LoadMore(
+          shown: shown,
+          total: total,
+          busy: fetching,
+          error: pageError,
+          onMore: onMore,
+        );
+      }
+      final entry = entries[i];
+      if (entry is (String, String, int)) {
+        final theme = Theme.of(context);
+        return Padding(
+          key: ValueKey('fleet-section-${entry.$1}'),
+          padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+          child: Text(
+            '${entry.$2}  ${entry.$3}',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        );
+      }
+      return _row(context, entry as Map<String, dynamic>);
+    }
 
     // On a phone the search and the nine chips scroll with the rows. Standing
     // above them they took three lines of chips and 200 of the screen's 800
