@@ -378,6 +378,7 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
             loading: _loading,
             error: _error,
             onRetry: _load,
+            skeleton: true,
             child: LayoutBuilder(
               builder: (context, box) {
                 final beside = box.maxWidth >= _paneBeside;

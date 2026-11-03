@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -144,44 +145,40 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            ChoiceChip(
-              label: const Text('All areas'),
-              selected: _franchiseId == _all,
-              onSelected: (_) {
+        // One searchable picker rather than a chip per branch (deep dive
+        // 2026-11-02: 30 chips over four rows).
+        Center(
+          child: SizedBox(
+            width: 360,
+            child: SearchPickerField<String>(
+              key: const ValueKey('calendar-franchise-picker'),
+              value: _franchiseId,
+              hint: 'Choose a branch',
+              options: [
+                const SearchOption(value: _all, label: 'All areas'),
+                for (final f in widget.franchises)
+                  SearchOption(
+                    value: f['id'] as String,
+                    // "Company · Branch", labelled by the pane from /me.
+                    label: f['label'] as String? ?? f['name'] as String? ?? '',
+                  ),
+              ],
+              onChanged: (id) {
+                if (id == null) return;
                 setState(() {
-                  _franchiseId = _all;
+                  _franchiseId = id;
                   _areaId = null;
                 });
                 _load();
               },
             ),
-            for (final f in widget.franchises)
-              ChoiceChip(
-                // "Company · Branch", labelled by the pane from /me.
-                label: Text(
-                  f['label'] as String? ?? f['name'] as String? ?? '',
-                ),
-                selected: _franchiseId == f['id'],
-                onSelected: (_) {
-                  setState(() {
-                    _franchiseId = f['id'] as String;
-                    _areaId = null;
-                  });
-                  _load();
-                },
-              ),
-          ],
+          ),
         ),
         if (_franchiseId == null)
           Padding(
             padding: const EdgeInsets.only(top: 20),
             child: Text(
-              'Pick All areas, or a franchise, to see its month.',
+              'Choose a branch, or All areas, to see its month.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(color: muted),
             ),

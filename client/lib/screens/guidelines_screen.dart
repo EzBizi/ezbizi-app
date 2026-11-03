@@ -6,6 +6,7 @@
 /// Tabs are tracked by KEY, never by position — see work_hours_screen.dart.
 library;
 
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -248,15 +249,13 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             sliver: SliverToBoxAdapter(
-              child: TextField(
-                key: const ValueKey('guidelines-search'),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: 'Search guidelines',
-                  isDense: true,
-                  border: OutlineInputBorder(),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: ListSearch(
+                  key: const ValueKey('guidelines-search'),
+                  hint: 'Search guidelines',
+                  onChanged: (v) => setState(() => _query = v),
                 ),
-                onChanged: (v) => setState(() => _query = v),
               ),
             ),
           ),

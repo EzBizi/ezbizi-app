@@ -533,18 +533,22 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       width: 520,
       docked: widget.onDone != null,
       onClose: widget.onDone == null ? null : () => _done(null),
+      // Save and Cancel belong to the Job tab's fields; Money, Photos and
+      // Notes save themselves or are read only (deep dive 2026-11-02).
       actions: [
-        TextButton(
-          onPressed: _busy ? null : () => _done(null),
-          child: const Text('Cancel'),
-        ),
-        Refused(
-          reason: _editRefusal,
-          child: FilledButton(
-            onPressed: editable ? _save : null,
-            child: const Text('Save'),
+        if (!const {'money', 'files', 'notes'}.contains(_tab)) ...[
+          TextButton(
+            onPressed: _busy ? null : () => _done(null),
+            child: const Text('Cancel'),
           ),
-        ),
+          Refused(
+            reason: _editRefusal,
+            child: FilledButton(
+              onPressed: editable ? _save : null,
+              child: const Text('Save'),
+            ),
+          ),
+        ],
       ],
       child: _loading
           ? const Padding(

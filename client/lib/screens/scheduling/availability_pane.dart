@@ -1,3 +1,4 @@
+import '../../widgets/search_picker.dart';
 import '../../core/branch_options.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -584,23 +585,28 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
       return _note(Theme.of(context), 'No service areas in this view yet.');
     }
 
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        ChoiceChip(
-          label: const Text('All areas'),
-          selected: _franchiseId == _all,
-          onSelected: (_) => _pickFranchise(_all),
+    // One searchable "Company · Branch" picker, not a wall of a chip per
+    // branch (30 of them wrapped four rows; deep dive 2026-11-02).
+    return Center(
+      child: SizedBox(
+        width: 360,
+        child: SearchPickerField<String>(
+          key: const ValueKey('availability-area-picker'),
+          value: _franchiseId,
+          hint: 'Choose a branch',
+          options: [
+            const SearchOption(value: _all, label: 'All areas'),
+            for (final f in _franchises)
+              SearchOption(
+                value: f['id'] as String,
+                label: f['label'] as String? ?? f['name'] as String? ?? '',
+              ),
+          ],
+          onChanged: (id) {
+            if (id != null) _pickFranchise(id);
+          },
         ),
-        for (final f in _franchises)
-          ChoiceChip(
-            label: Text(f['label'] as String? ?? f['name'] as String? ?? ''),
-            selected: _franchiseId == f['id'],
-            onSelected: (_) => _pickFranchise(f['id'] as String),
-          ),
-      ],
+      ),
     );
   }
 

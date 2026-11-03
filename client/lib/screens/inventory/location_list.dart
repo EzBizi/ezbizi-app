@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
@@ -260,13 +261,17 @@ class _LocationListState extends State<LocationList> {
         ),
         Expanded(
           child: _locations.isEmpty
-              ? Center(
-                  child: Text(
-                    _search.text.trim().isEmpty && !_closed && _tile == null
-                        ? 'There are no locations.'
-                        : 'Nothing matches those filters.',
-                  ),
-                )
+              ? _search.text.trim().isEmpty && !_closed && _tile == null
+                    ? const EmptyState(
+                        icon: Icons.warehouse_outlined,
+                        title: 'No locations yet',
+                        message: 'There are no locations.',
+                      )
+                    : const EmptyState(
+                        icon: Icons.search_off,
+                        title: 'No matches',
+                        message: 'Nothing matches those filters.',
+                      )
               : LayoutBuilder(
                   builder: (context, box) => box.maxWidth >= 760 && !_hasPane
                       ? _table(context)

@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -222,25 +223,19 @@ class _ServiceListState extends State<ServiceList> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: TextField(
-            key: const ValueKey('tour-services-search'),
-            controller: _search,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'Name or number',
-              suffixIcon: _search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear),
-                      tooltip: 'Clear the search',
-                      onPressed: () {
-                        _search.clear();
-                        _load();
-                      },
-                    ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ListSearch(
+              key: const ValueKey('tour-services-search'),
+              controller: _search,
+              hint: 'Name or number',
+              onClear: () {
+                _search.clear();
+                _load();
+              },
+              onSubmitted: (_) => _load(),
+              onChanged: (_) => setState(() {}),
             ),
-            onSubmitted: (_) => _load(),
-            onChanged: (_) => setState(() {}),
           ),
         ),
         Padding(
