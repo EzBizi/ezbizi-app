@@ -21,6 +21,7 @@ import 'task_board_columns.dart';
 import 'task_board_files.dart';
 import 'task_board_move.dart';
 import 'task_board_people.dart';
+import 'task_board_plan_views.dart';
 import 'task_board_sidebar.dart';
 
 typedef _Json = Map<String, dynamic>;
@@ -269,7 +270,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// A phone showing the boards tree in place of the board (UI queue 152, 4).
   bool _choosing = false;
 
-  bool _kanban = false;
+  /// table, kanban, calendar or timeline (design 178).
+  String _view = 'table';
   String _query = '';
   final Set<String?> _folded = {};
 
@@ -975,8 +977,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Future<void> _addColumn(String type) async {
     await showSidePanel<bool>(
       context,
-      builder: (_) =>
-          ColumnPanel(api: widget.api, boardId: '${_board!['id']}', type: type),
+      builder: (_) => ColumnPanel(
+        api: widget.api,
+        boardId: '${_board!['id']}',
+        type: type,
+        others: boardColumns(_board),
+      ),
     );
     if (mounted) await _load();
   }
@@ -993,6 +999,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         type: c.type,
         column: c,
         raw: raw.cast<String, dynamic>(),
+        others: boardColumns(_board),
       ),
     );
     if (mounted) await _load();
@@ -1139,9 +1146,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                         children: [
                           _toolbar(context, phone: cards),
                           Expanded(
-                            child: _kanban
-                                ? _kanbanView(context, narrow: cards)
-                                : _tableView(context, cards: cards),
+                            child: switch (_view) {
+                              'kanban' => _kanbanView(context, narrow: cards),
+                              'calendar' => _calendarView(phone: cards),
+                              'timeline' => _timelineView(phone: cards),
+                              _ => _tableView(context, cards: cards),
+                            },
                           ),
                         ],
                       ),
@@ -1331,23 +1341,24 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          SegmentedButton<bool>(
+          SegmentedButton<String>(
             key: const Key('tasks-view'),
             showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(
-                value: false,
-                label: Text('Table'),
-                icon: Icon(Icons.table_rows_outlined, size: 18),
-              ),
-              ButtonSegment(
-                value: true,
-                label: Text('Kanban'),
-                icon: Icon(Icons.view_kanban_outlined, size: 18),
-              ),
+            segments: [
+              for (final (v, label, icon) in const [
+                ('table', 'Table', Icons.table_rows_outlined),
+                ('kanban', 'Kanban', Icons.view_kanban_outlined),
+                ('calendar', 'Calendar', Icons.calendar_month_outlined),
+                ('timeline', 'Timeline', Icons.view_timeline_outlined),
+              ])
+                ButtonSegment(
+                  value: v,
+                  label: Text(label),
+                  icon: phone ? null : Icon(icon, size: 18),
+                ),
             ],
-            selected: {_kanban},
-            onSelectionChanged: (v) => setState(() => _kanban = v.first),
+            selected: {_view},
+            onSelectionChanged: (v) => setState(() => _view = v.first),
           ),
           SizedBox(
             width: phone ? 200 : 240,
@@ -1679,6 +1690,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           ),
                       ],
                     ],
+                    ?_footer(context, shown),
                     if (_canEdit && id != null)
                       _cellBorder(
                         context,
@@ -1746,6 +1758,76 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     ),
     child: child,
   );
+
+  /// Under a group's rows: each number or formula column's sum or average,
+  /// as its settings say (design 178). Null when no column asks for one.
+  Widget? _footer(BuildContext context, List<_Json> tasks) {
+    final columns = boardColumns(_board);
+    if (tasks.isEmpty || columns.every((c) => c.footer == 'none')) return null;
+    final theme = Theme.of(context);
+    final style = theme.textTheme.bodySmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      color: theme.colorScheme.onSurfaceVariant,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    bool shown(String key) => _builtinShown(_board, key);
+    Widget blank(double w) => SizedBox(width: w);
+    String? total(BoardColumn c) {
+      if (c.footer == 'none' || (c.type != 'number' && c.type != 'formula')) {
+        return null;
+      }
+      final values = [
+        for (final t in tasks)
+          if (columnValue(t, c) case final num n) n,
+      ];
+      if (values.isEmpty) return null;
+      final sum = values.fold<num>(0, (a, b) => a + b);
+      return c.footer == 'average'
+          ? 'avg ${formatColumnNumber(sum / values.length, c)}'
+          : formatColumnNumber(sum, c);
+    }
+
+    return _cellBorder(
+      context,
+      SizedBox(
+        height: 30,
+        child: Row(
+          children: [
+            const SizedBox(width: 6),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text('Total', style: style),
+              ),
+            ),
+            if (shown('creator')) blank(_widths.creator),
+            if (shown('owner')) blank(_widths.owner),
+            if (shown('status')) blank(_widths.status),
+            if (shown('created')) blank(_widths.created),
+            if (shown('due')) blank(_widths.due),
+            for (final c in columns)
+              SizedBox(
+                width: _widths.custom,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    total(c) ?? '',
+                    key: ValueKey('column-footer-${c.id}'),
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: style,
+                  ),
+                ),
+              ),
+            if (shown('about')) blank(_widths.about),
+            if (shown('updates')) blank(_widths.updates),
+            if (_canEdit) blank(_widths.add),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _headings(BuildContext context, Object? group) {
     final theme = Theme.of(context);
@@ -2421,6 +2503,69 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   // ── Kanban ─────────────────────────────────────────────────────
+
+  /// Every task the table would show, in its groups' order.
+  List<_Json> get _shownTasks => [
+    for (final g in _groups(_board!)) ..._tasksIn(g['id']).where(_matches),
+  ];
+
+  Color _planColour(_Json t) =>
+      _statusColours(context, _statusFor(_board, _statusOf(t))).fill;
+
+  Future<void> _patchTask(_Json task, _Json body) async {
+    final res = await widget.api.patch('/tasks/${task['id']}', body);
+    if (!mounted) return;
+    if (res.ok) {
+      _replace(res.body['data'] as _Json);
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(res.reason)));
+    }
+  }
+
+  Widget _calendarView({required bool phone}) => TaskBoardCalendar(
+    tasks: _shownTasks,
+    canEdit: _canEdit,
+    formats: _formats,
+    compact: phone,
+    colourOf: _planColour,
+    onOpen: _openTask,
+    onMoveDate: (t, day) => _patchTask(t, {'due_on': day}),
+  );
+
+  Widget _timelineView({required bool phone}) {
+    final column = (_board!['columns'] as List? ?? const [])
+        .whereType<Map>()
+        .where((c) => c['type'] == 'timeline')
+        .firstOrNull;
+    return TaskBoardTimeline(
+      groups: _groups(_board!),
+      tasksIn: (id) => _tasksIn(id).where(_matches).toList(),
+      columnId: column?['id'] as String?,
+      canEdit: _canEdit,
+      compact: phone,
+      colourOf: _planColour,
+      onOpen: _openTask,
+      onSetRange: (t, from, to) => _patchTask(t, {
+        'values': {
+          column!['id']: {'from': from, 'to': to},
+        },
+      }),
+      onAddColumn: () async {
+        final res = await widget.api.post(
+          '/task-boards/${_board!['id']}/columns',
+          {'name': 'Timeline', 'type': 'timeline'},
+        );
+        if (!mounted) return;
+        res.ok
+            ? await _load()
+            : ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(res.reason)));
+      },
+    );
+  }
 
   Widget _kanbanView(BuildContext context, {required bool narrow}) {
     final columns = [
