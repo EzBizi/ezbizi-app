@@ -861,6 +861,11 @@ class ActionRunner
             $path = 'inspection-reports/'.$subject->organization_id.'/'.$subject->id.'.pdf';
             \Illuminate\Support\Facades\Storage::disk('local')->put($path, $this->reportPdf->render($subject));
             \App\Jobs\AttachFileToWorkiz::for($job, 'local', $path, 'Inspection report '.($subject->submitted_at ?? now())->format('Y-m-d').'.pdf');
+
+            // A finished-job report also sends its after photos (the befores went up on arrival's PDF).
+            foreach (\App\Support\Inspection\BeforeAfter::pairs($subject) as $pair) {
+                \App\Jobs\AttachFileToWorkiz::for($job, $pair['after']->disk, $pair['after']->path, 'After - '.$pair['label'].'.'.pathinfo($pair['after']->original_name, PATHINFO_EXTENSION));
+            }
         }
 
         return match (true) {
