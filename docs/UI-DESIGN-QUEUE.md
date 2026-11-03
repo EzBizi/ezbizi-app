@@ -2969,6 +2969,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 169 · Deep-dive patterns (filter bar, search, pickers, skeletons) — **no gallery — Jose 2026-11-02: implement all recommendations** (`docs/reviews/2026-11-02/ui-ux-deep-dive.md` §2, `ui-ux.md` #3/#4/#7/#10)
+
+These were built from the review straight away, with no gallery. `ListSearch` (`client/lib/widgets/list_search.dart`) is the one list search box: outlined, 44 high, about 280 wide on a desktop and the full width on a phone. It is used in Automations, Guidelines and Services so far. Availability's Area and Calendar branch chips are now one "Company · Branch" `SearchPickerField`. `AsyncBody(skeleton: true)` and `LoadingSkeleton` show grey rows in place of a long spinner (Email › Settings, Profit & Loss). Job and Customer panes drop Save/Cancel on their read-only tabs. The sidebar shows a scroll thumb. Inventory's empty lists use `EmptyState`. **Kept:** Training's search stays 56 high (Jose 2026-10-27), and the three-box `CalendarDayField` stays, because it was the owner's own ask.
+
 ### 168 · Development tab brought up to date — **sent 2026-11-02 — Jose: "go ahead with ur recommendations" (1 + phone 4)** (`docs/previews/development-tab-layouts.html`)
 
 Jose: "the Development Tab, it's a bit outdated". Recommended 1 + phone 4: 103 first-level tabs (Health with a red problem count); one thin red control-plane bar, walkthrough offer only via the title (▶); Organizations / Modules / Client versions as one-row-per-item tables with search, counts pluralised and the branch label; Modules' permissions on expand; Health problems first in red, healthy checks green on one line, repeated app issues merged with a count. 2 = tighter two-column cards; 3 = overview tiles first.

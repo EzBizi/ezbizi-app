@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/loading_skeleton.dart';
 import '../widgets/report_grid.dart';
 import '../widgets/module_overview.dart';
 import '../core/theme.dart';
@@ -183,14 +184,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loadingSources) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
+    if (_loadingSources) return const LoadingSkeleton();
 
     if (_sources != null && _sources!.isEmpty) {
       return _empty(
@@ -207,11 +201,9 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
         _pickers(context),
         const SizedBox(height: 16),
         if (_error != null) ErrorNote(_error!),
+        // Grey rows, not a spinner: the week takes over 15 s (deep dive).
         if (_error == null && _loadingWeek)
-          const Padding(
-            padding: EdgeInsets.all(32),
-            child: Center(child: CircularProgressIndicator()),
-          ),
+          const SizedBox(height: 360, child: LoadingSkeleton(rows: 5)),
         if (_error == null && !_loadingWeek && _figures != null)
           ..._week_(context),
         // A table with no weeks said so rather than drawing nothing - a
