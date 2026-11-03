@@ -74,6 +74,8 @@ final class CallReconciliation
 
         // Jose, 2026-11-03, asked whether these are one person: "yes".
         'Bryan Lagazon' => 'Bryan Nixon Lagazon',
+        // Jose, 2026-11-03, asked whether these are one person: "yes they are the same person".
+        'Jay Ticoit' => 'Dieuve Ticoit',
     ];
 
     private function canonical(?string $name): ?string
