@@ -406,6 +406,12 @@ class CustomersController extends Controller
                 'name', 'email', 'phone', 'owning_franchise_id', 'is_active',
             ])]);
 
+            if (($customer->tags ?? []) !== []) {
+                $this->events->emit('customer.tagged', $customer, [
+                    'before' => ['tags' => []], 'after' => ['tags' => $customer->tags],
+                ]);
+            }
+
             return $customer;
         });
 
@@ -432,6 +438,7 @@ class CustomersController extends Controller
 
             $changed = $customer->getDirty();
             $before  = array_intersect_key($customer->getOriginal(), $changed);
+            $tagsBefore = $customer->getOriginal('tags') ?? [];
 
             $this->audit->logChange('customer.updated', $customer);
 
@@ -440,6 +447,16 @@ class CustomersController extends Controller
             if ($changed !== []) {
                 $this->events->emit('customer.updated', $customer, [
                     'before' => $before, 'after' => $changed,
+                ]);
+            }
+
+            // Its own trigger (Automations 4ece166b6): "tagged VIP" is a rule
+            // people build, and a field-change on a JSON column is not one
+            // anybody can write. Only this person-made edit raises it; imports
+            // and bulk writes do not come through here.
+            if ($tagsBefore !== ($customer->tags ?? [])) {
+                $this->events->emit('customer.tagged', $customer, [
+                    'before' => ['tags' => $tagsBefore], 'after' => ['tags' => $customer->tags ?? []],
                 ]);
             }
         });

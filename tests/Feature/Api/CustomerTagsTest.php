@@ -31,4 +31,24 @@ class CustomerTagsTest extends TestCase
         $this->assertSame([], $as->getJson('/api/v1/customers?tag=vip')->json('data'));
         $this->assertSame([], $as->getJson("/api/v1/customers/{$ann['id']}")->json('data.tags'));
     }
+
+    public function test_a_tag_change_raises_customer_tagged_and_other_edits_do_not(): void
+    {
+        $t = $this->provisionTenant('Alpha', 'a@alpha.test');
+        $as = $this->signedInAs($t['admin']);
+        $id = $as->postJson('/api/v1/customers', ['owning_franchise_id' => $t['franchise']->id, 'name' => 'Ann'])
+            ->assertCreated()->json('data.id');
+        $tagged = fn () => \App\Models\AutomationEvent::withoutGlobalScopes()
+            ->where('event_key', 'customer.tagged')->orderBy('occurred_at')->get();
+
+        $as->patchJson("/api/v1/customers/{$id}", ['name' => 'Ann B'])->assertOk();
+        $this->assertCount(0, $tagged(), 'a name edit is not a tag change');
+
+        $as->patchJson("/api/v1/customers/{$id}", ['tags' => ['VIP']])->assertOk();
+        $as->patchJson("/api/v1/customers/{$id}", ['tags' => ['vip']])->assertOk(); // same tag, other case: still a change of spelling
+
+        $events = $tagged();
+        $this->assertSame(['tags' => []], $events[0]->payload['before']);
+        $this->assertSame(['tags' => ['VIP']], $events[0]->payload['after']);
+    }
 }
