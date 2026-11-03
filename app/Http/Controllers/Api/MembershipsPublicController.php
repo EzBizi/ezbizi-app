@@ -89,6 +89,9 @@ class MembershipsPublicController extends Controller
                 // The job the link was sent for, when it was a job's link.
                 'job_id'              => $verified ? CustomerLinks::jobId($input['c'] ?? null) : null,
                 'membership_join_url' => CustomerLinks::joinUrl($customer),
+                // Jose 11-03: the offer goes once per customer. A short join
+                // link exists only once an offer has rendered one.
+                'membership_offered'  => \App\Models\ReviewCode::query()->where('customer_id', $customer->getKey())->whereNull('job_id')->exists(),
             ]]);
         });
 
