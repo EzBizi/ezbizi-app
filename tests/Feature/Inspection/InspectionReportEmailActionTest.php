@@ -3,6 +3,7 @@
 namespace Tests\Feature\Inspection;
 
 use App\Mail\InspectionReportMail;
+use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\InspectionDefinition;
 use App\Models\InspectionDefinitionVersion;
@@ -10,8 +11,9 @@ use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\SendingIdentity;
 use App\Support\Automations\ActionRunner;
-use App\Support\Mail\SendingState;
 use App\Support\Mail\MailTransport;
+use App\Support\Mail\SendingState;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\Concerns\BuildsTenants;
@@ -35,7 +37,7 @@ use Tests\TestCase;
  * So: it must not send from the EzBizi address, it must not raise when the
  * tenant has not set an address up, and it must not invent a recipient. Each of
  * those returns a run-log line the tenant can act on, and writes nothing.
-*
+ *
  * ── FOUR TESTS WERE REMOVED WITH THE HOLD, DELIBERATELY ─────────
  *
  * `emailInspectionReport` now returns Jose's ruling before it looks at
@@ -61,11 +63,6 @@ class InspectionReportEmailActionTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
-
-
-
-
-
 
     /**
      * NO SENDING IDENTITY, DELIBERATELY — that is the production state.
@@ -104,13 +101,28 @@ class InspectionReportEmailActionTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $bytes = "%PDF-1.4\xff\xfe\x00\x80binary";
-        $mail = new InspectionReportMail($this->reportFor($tenant, email: 'owner@example.test'), 'Alpha', $bytes);
+        $report = $this->reportFor($tenant, email: 'owner@example.test');
+        $mail = $this->inTenant($tenant['org'], fn () => new InspectionReportMail($report->fresh(), 'Alpha', $bytes));
 
         $this->assertNotFalse(json_encode(serialize($mail)));
         $this->assertSame($bytes, unserialize(serialize($mail))->attachments()[0]->attachWith(fn ($path) => null, fn ($data) => $data()));
     }
 
     /** A customer with no address is an ordinary case, not a fault. */
+    /**
+     * The worker unserializes with no tenant in context; a restored report
+     * refused its customer read and the first real send failed.
+     */
+    public function test_the_queued_mail_renders_with_no_tenant_in_context(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $report = $this->reportFor($tenant, email: 'owner@example.test');
+        $payload = $this->inTenant($tenant['org'], fn () => serialize(new InspectionReportMail($report->fresh(), 'Alpha', '%PDF')));
+        app(TenantContext::class)->forget();
+
+        $this->assertStringContainsString('Alpha', unserialize($payload)->render());
+    }
+
     public function test_a_customer_with_no_email_is_reported_and_nothing_is_sent(): void
     {
         Mail::fake();
@@ -213,9 +225,9 @@ class InspectionReportEmailActionTest extends TestCase
         ));
     }
 
-    private function event(array $tenant): \App\Models\AutomationEvent
+    private function event(array $tenant): AutomationEvent
     {
-        return $this->inTenant($tenant['org'], fn () => \App\Models\AutomationEvent::create([
+        return $this->inTenant($tenant['org'], fn () => AutomationEvent::create([
             'event_key' => 'inspection.submitted',
             'subject_type' => 'inspection_report',
             'subject_id' => null,
