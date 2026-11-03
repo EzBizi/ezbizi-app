@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0522',
       date: '3 Nov 2026',
       items: [
+        'Fleet: Vehicles opens on all states, grouped by company and branch.',
         'Customers: the Money card shows \$0 again instead of hiding when nothing is owed.',
       ],
     ),
