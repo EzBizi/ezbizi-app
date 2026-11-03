@@ -1278,7 +1278,9 @@ class _ShiftRow extends StatelessWidget {
                     ),
                   )
                 else ...[
-                  _Pip(colour: scheme.error),
+                  // Muted: clocking out is normal, not a problem (deep dive
+                  // 2026-11-02 #7).
+                  _Pip(colour: scheme.outline),
                   const SizedBox(width: 6),
                   Text(shift.clockedOut, style: theme.textTheme.bodySmall),
                 ],

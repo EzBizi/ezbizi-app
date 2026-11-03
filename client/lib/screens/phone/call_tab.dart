@@ -18,6 +18,7 @@ import '../../core/phone_call_service.dart';
 import '../../core/timestamps.dart';
 import 'staff_thread.dart';
 import 'call_history_pane.dart';
+import 'phone_search.dart';
 
 /// Call desk — layout 1: teammates, pad, person. Below 600px, one pane at a time.
 /// Which of the desk's two faces is showing.
@@ -42,6 +43,7 @@ class CallTab extends StatefulWidget {
 
   final ApiClient api;
   final Session session;
+
   /// The desk. Defaults to the app-wide one the shell brought up; a test
   /// passes its own so it does not have to stub three endpoints to get a
   /// phone that answers.
@@ -304,9 +306,10 @@ class _CallTabState extends State<CallTab> {
       // whichever number happened to sort first — "General Use" — while the
       // person's own line sat below it marked "yours", and every call went
       // out under the wrong one unless they noticed and switched.
-      _numberId ??= (numbers.where((n) => n.assignedToMe).firstOrNull
-              ?? numbers.firstOrNull)
-          ?.id;
+      _numberId ??=
+          (numbers.where((n) => n.assignedToMe).firstOrNull ??
+                  numbers.firstOrNull)
+              ?.id;
     });
 
     if (numbers.isEmpty) return;
@@ -1236,7 +1239,9 @@ class _CallTabState extends State<CallTab> {
         // the customer pane was away, which on a wide window was about three
         // quarters of the screen for a list of phone numbers.
         var history = _historyWidth ?? available * 0.26;
-        var customer = showCustomer ? (_customerWidth ?? available * 0.44) : 0.0;
+        var customer = showCustomer
+            ? (_customerWidth ?? available * 0.44)
+            : 0.0;
 
         // The pad is the one with a hard minimum: a list just gets narrower
         // and stays readable, a keypad stops being tappable. So it is paid
@@ -1252,7 +1257,9 @@ class _CallTabState extends State<CallTab> {
             pad = math.max(0, available - history - customer);
           } else {
             history -= short * ((history - _historyFloor) / give);
-            if (showCustomer) customer -= short * ((customer - _customerFloor) / give);
+            if (showCustomer) {
+              customer -= short * ((customer - _customerFloor) / give);
+            }
             pad = available - history - customer;
           }
         }
@@ -1434,6 +1441,9 @@ class _CallTabState extends State<CallTab> {
   /// `unread`, or null for everyone.
   String? _teamFilter;
 
+  /// The Team roster's search (every list has one; deep dive 2026-11-02 #12).
+  String _teamQuery = '';
+
   /// The tile a presence state falls under. The same three words the row
   /// prints, so a tile and the pills under it can never disagree.
   static String _stateKey(String state) => switch (state) {
@@ -1467,7 +1477,10 @@ class _CallTabState extends State<CallTab> {
         _teammates.where((row) => _stateKey(row.state) == key).length;
     int unreadFrom(_Teammate row) => _unread[row.userId] ?? 0;
 
-    final waiting = _teammates.fold<int>(0, (sum, row) => sum + unreadFrom(row));
+    final waiting = _teammates.fold<int>(
+      0,
+      (sum, row) => sum + unreadFrom(row),
+    );
     final shown = [
       for (final row in _teammates)
         if (switch (_teamFilter) {
@@ -1475,7 +1488,7 @@ class _CallTabState extends State<CallTab> {
           'unread' => unreadFrom(row) > 0,
           final key => _stateKey(row.state) == key,
         })
-          row,
+          if (phoneSearchHit(_teamQuery, [row.name])) row,
     ];
 
     return ListView(
@@ -1525,6 +1538,15 @@ class _CallTabState extends State<CallTab> {
           ],
         ),
         const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: phoneSearchBox(
+            key: const ValueKey('phone-team-search'),
+            hint: 'Search people',
+            onChanged: (v) => setState(() => _teamQuery = v),
+          ),
+        ),
+        const SizedBox(height: 12),
         if (_teammates.isEmpty)
           Padding(
             padding: const EdgeInsets.all(8),
@@ -1534,9 +1556,14 @@ class _CallTabState extends State<CallTab> {
             ),
           )
         else if (shown.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(24),
-            child: Text('Nobody in this state.', textAlign: TextAlign.center),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              _teamQuery.trim().isNotEmpty
+                  ? 'Nothing matches "${_teamQuery.trim()}".'
+                  : 'Nobody in this state.',
+              textAlign: TextAlign.center,
+            ),
           )
         else
           ListTable(
@@ -1571,10 +1598,7 @@ class _CallTabState extends State<CallTab> {
                     },
                   ),
                   unreadFrom(row) > 0
-                      ? StatusPill(
-                          '${unreadFrom(row)} new',
-                          tone: Tone.caution,
-                        )
+                      ? StatusPill('${unreadFrom(row)} new', tone: Tone.caution)
                       : Text(
                           '—',
                           style: theme.textTheme.bodySmall?.copyWith(
@@ -1918,9 +1942,7 @@ class _CallTabState extends State<CallTab> {
                     : 'Keep this open between calls',
                 visualDensity: VisualDensity.compact,
                 icon: Icon(
-                  _customerPinned
-                      ? Icons.push_pin
-                      : Icons.push_pin_outlined,
+                  _customerPinned ? Icons.push_pin : Icons.push_pin_outlined,
                   size: 18,
                 ),
                 onPressed: () {
@@ -2766,7 +2788,7 @@ extension _LiveCall on _CallTabState {
               row(
                 Icons.ring_volume_outlined,
                 '${formatPhoneNumber(ringing.fromE164)} is ringing '
-                    '${formatPhoneNumber(ringing.toE164)}',
+                '${formatPhoneNumber(ringing.toE164)}',
                 () => _takeRinging(ringing),
               ),
             for (final parked in _parked)

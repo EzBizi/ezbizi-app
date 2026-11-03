@@ -658,7 +658,12 @@ Widget _shiftsText(BuildContext context, Map<String, dynamic> row) {
     return Text(
       "Didn't clock in",
       key: const ValueKey('approval-no-show'),
-      style: base?.copyWith(color: scheme.error, fontWeight: FontWeight.w700),
+      // Caution, not red: a missed shift is for the manager to look at, not
+      // an error (deep dive 2026-11-02 #7).
+      style: base?.copyWith(
+        color: ToneColours.of(context, Tone.caution).ink,
+        fontWeight: FontWeight.w700,
+      ),
     );
   }
 

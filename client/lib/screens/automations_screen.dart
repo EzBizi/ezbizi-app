@@ -974,10 +974,14 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
 
   // ── row actions ──────────────────────────────────────────────────
 
-  Future<void> _setActive(Map<String, dynamic> automation, bool on) async {
+  Future<void> _setActive(
+    Map<String, dynamic> automation,
+    bool on, {
+    bool undoing = false,
+  }) async {
     // Switching off a rule a tab depends on says what stops, first.
     final core = automation['core_reason'] as String?;
-    if (!on && core != null) {
+    if (!on && core != null && !undoing) {
       final go = await showSidePanel<bool>(
         context,
         builder: (context) => SidePanel(
@@ -1013,6 +1017,23 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text(response.message)));
       return;
+    }
+
+    // One stray click flipped a live rule with no way back (deep dive
+    // 2026-11-02 #10), so every switch offers Undo.
+    if (!undoing) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            key: const ValueKey('automation-live-undo'),
+            content: Text('${automation['name']} is ${on ? 'on' : 'off'}.'),
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () => _setActive(automation, !on, undoing: true),
+            ),
+          ),
+        );
     }
 
     _load();
