@@ -2374,6 +2374,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final outbound = _isOutbound(call);
     // An outbound call that connected has nobody "answering" on our side.
     final missed = by == null && call['outcome'] != 'connected';
+    // In a person's list, a call that rang them and somebody else took is
+    // theirs only as Not answered: no booking, no score (Jose, 2026-11-03:
+    // "credits for calls they haven't booked").
+    final notTheirs = name != null && by != null && by != name;
 
     // Said in words. Jose, 2026-09-24: "hard to understand what the icons
     // mean" - an arrow and a bell told nobody which was which.
@@ -2385,7 +2389,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? '$by'
         : by == name
         ? 'Answered'
-        : 'Rang · $by answered';
+        : 'Not answered · $by took it';
 
     // Talk time on EVERY answered call, whoever took it. It used to say
     // "rang" on calls this person did not take, which read as a missing time.
@@ -2422,7 +2426,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 '${fix['reason'] == null ? '' : ' · ${fix['reason']}'}',
             child: pill,
           );
-    final result = missed
+    final result = notTheirs
+        ? const StatusPill('Not answered', tone: Tone.caution)
+        : missed
         ? StatusPill(
             outbound
                 ? 'No answer'
@@ -2552,7 +2558,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     // AI's coaching score for the call (Jose, 2026-10-13: "a column that
     // shows the score given by AI"); a dash until the call is scored, and
     // "Missed" on a call nobody answered (Jose, 2026-10-14).
-    final aiScore = (call['score'] as Map?)?['score'];
+    final aiScore = notTheirs ? null : (call['score'] as Map?)?['score'];
     final score = Text(
       aiScore != null ? '$aiScore / 10' : '',
       key: ValueKey('score-cell-$callId'),
@@ -2633,7 +2639,16 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ),
           ),
         ),
-        if (detailsOpen) _under(_details(context, call, line, voicemail, id)),
+        if (detailsOpen)
+          _under(
+            _details(
+              context,
+              notTheirs ? ({...call}..remove('score')) : call,
+              line,
+              voicemail,
+              id,
+            ),
+          ),
         if (listening)
           _under(
             ConstrainedBox(
@@ -2686,7 +2701,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(outbound ? 'Number called' : 'Caller', style: muted),
-        Copyable('${call['from'] ?? 'unknown'}'),
+        Copyable(
+          call['from'] == null
+              ? 'unknown'
+              : formatPhoneNumber('${call['from']}'),
+          copy: '${call['from'] ?? 'unknown'}',
+        ),
         if (!outbound) ...[
           if (source.isNotEmpty)
             SelectableText(
@@ -2698,7 +2718,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             ),
           const SizedBox(height: 6),
           Text('Line called', style: muted),
-          Copyable('${call['to_number'] ?? 'unknown'}'),
+          Copyable(
+            call['to_number'] == null
+                ? 'unknown'
+                : formatPhoneNumber('${call['to_number']}'),
+            copy: '${call['to_number'] ?? 'unknown'}',
+          ),
         ],
       ],
     );
