@@ -1175,6 +1175,7 @@ Route::prefix('v1')
             Route::post('airtable-links', 'mirrorAirtable');
             Route::post('tables/{table}/refresh', 'refreshAirtable');
             Route::post('tables/{table}/cut-over', 'cutOver');
+            Route::get('parity', 'parity');
             Route::get('tables/{table}', 'showTable');
             Route::patch('tables/{table}', 'updateTable');
             Route::delete('tables/{table}', 'destroyTable');

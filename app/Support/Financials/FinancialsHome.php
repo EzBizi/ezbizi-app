@@ -169,11 +169,14 @@ final class FinancialsHome
             if ($rows->isEmpty()) {
                 continue;
             }
-            $count = $rows->filter(fn ($r) => $group->contains(fn (FinancialSource $s) => $s->owns((array) $r->fields)))->count();
+            $name = (string) $rows->first()->table_name;
             $mirror = $mirrors[$key] ?? null;
+            // Cut over: EzBizi's rows are the count, not the frozen copy.
+            $rows = $mirror?->isCutOver() ? collect(FinancialSource::ezbiziRows($mirror))->map(fn ($r) => (object) $r) : $rows;
+            $count = $rows->filter(fn ($r) => $group->contains(fn (FinancialSource $s) => $s->owns((array) $r->fields)))->count();
             $out[] = [
                 'key' => $key,
-                'name' => (string) $rows->first()->table_name,
+                'name' => $name,
                 'count' => $count,
                 'table_id' => $mirror?->id,
                 'route' => $mirror ? '/financials/tables/'.$mirror->id : null,
