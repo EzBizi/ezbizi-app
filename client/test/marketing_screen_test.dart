@@ -2471,6 +2471,68 @@ void main() {
       expect(_refusalOn(tester, 'Send now'), contains('Choose who this goes to'));
     });
 
+    // UI queue 173: "+ New list" opens a side panel, posts the list (the tag
+    // only when typed), and the new list is picked with its tag in the label.
+    for (final tag in ['fall-sweep', '']) {
+      testWidgets('a new list is created and picked (tag "$tag")', (
+        tester,
+      ) async {
+        Map<String, dynamic>? posted;
+        final base = _handler(
+          canEdit: true,
+          newsletters: const [_draftWithoutAudience],
+          audiences: const [_audience],
+        );
+        await _pumpComposer(tester, (request) async {
+          final path = request.url.path;
+          if (path.endsWith('/newsletter/mailchimp/lists')) {
+            return _json({
+              'data': [
+                {'id': 'mc-9', 'name': 'Brightside main list', 'members': 40},
+              ],
+            });
+          }
+          if (request.method == 'POST' &&
+              path.endsWith('/newsletter/audiences')) {
+            posted = jsonDecode(request.body) as Map<String, dynamic>;
+            return http.Response(
+              jsonEncode({
+                'data': {'id': 'a-new', 'name': 'Fall', 'kind': 'customers'},
+              }),
+              201,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          return base(request);
+        });
+
+        await tester.tap(find.byKey(const ValueKey('newsletter-new-list')));
+        await tester.pumpAndSettle();
+        expect(find.byType(SidePanel), findsOneWidget);
+
+        await tester.enterText(find.byKey(const ValueKey('new-list-name')), 'Fall');
+        await tester.tap(find.byKey(const ValueKey('new-list-mailchimp')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Brightside main list').last);
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const ValueKey('new-list-tag')), tag);
+        await tester.tap(find.byKey(const ValueKey('new-list-create')));
+        await tester.pumpAndSettle();
+
+        expect(posted, isNotNull);
+        expect(posted!['name'], 'Fall');
+        expect(posted!['kind'], 'customers');
+        expect(posted!['mailchimp_list_id'], 'mc-9');
+        expect(posted!.containsKey('tag'), tag.isNotEmpty);
+        if (tag.isNotEmpty) expect(posted!['tag'], tag);
+
+        expect(find.byType(SidePanel), findsNothing);
+        final label = tag.isEmpty ? 'Fall · built from your customers'
+            : 'Fall · $tag · built from your customers';
+        expect(find.text(label), findsOneWidget);
+      });
+    }
+
     testWidgets('a block can be added, and columns are offered', (
       tester,
     ) async {
