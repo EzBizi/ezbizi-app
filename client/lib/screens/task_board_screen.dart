@@ -1633,7 +1633,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 children: [
                   header,
                   if (!folded) ...[
-                    _headings(context, id),
+                    // An empty group drew a full column-header row for nothing.
+                    if (shown.isNotEmpty) _headings(context, id),
                     if (_renaming case final r? when r.group == id)
                       _columnNameField(r.key),
                   ],
