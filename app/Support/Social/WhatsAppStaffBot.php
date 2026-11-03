@@ -29,6 +29,7 @@ use App\Support\Assistant\AssistantBrain;
 use App\Support\Assistant\TechAssistant;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * The staff line: a tech texts it, it answers.
@@ -59,6 +60,9 @@ use Illuminate\Support\Collection;
  */
 final class WhatsAppStaffBot
 {
+    /** Sent once to each tech with the parts tab, on their first message. */
+    public const PARTS_TIP = "\u{1F527} Tip for your jobs: send this chat a rating-plate photo or the model number and I will find the part.";
+
     /** Menu row ids. Kept short: WhatsApp caps a row id at 200 characters. */
     public const FIND_LOCATION = 'find_location';
 
@@ -161,6 +165,12 @@ final class WhatsAppStaffBot
 
         $techMode = $viewer !== null && GrokCli::configured() && $viewer->hasPermission(StaffAnswer::PARTS)
             && app(TechAssistant::class)->enabled(Organization::findOrFail($number->organization_id));
+
+        // The parts tip, once per tech, on their first message (2026-11-03: Meta
+        // files it as MARKETING and blocks the template; their own message opens the window).
+        if ($techMode && Cache::add('whatsapp.parts_tip.'.$viewer->getKey(), true)) {
+            $this->text($number, $to, self::PARTS_TIP, preview: false);
+        }
 
         // A photo captioned results or ACE: a lead source's results (WhatsAppResults).
         if ($viewer?->hasPermission(WhatsAppResults::PERMISSION) && $inbound->kind === 'image'
