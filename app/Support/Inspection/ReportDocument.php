@@ -128,7 +128,21 @@ final class ReportDocument
             $body = '<p class="empty">This inspection had no questions.</p>';
         }
 
-        return $this->page($report, $this->summary($screens, $answers).$body.$this->table($screens, $answers));
+        return $this->page($report, $this->summary($screens, $answers).$body.$this->beforeAfter($report).$this->table($screens, $answers));
+    }
+
+    /** Side by side, one row per pair; nothing at all when there are no pairs. */
+    private function beforeAfter(InspectionReport $report): string
+    {
+        $rows = '';
+
+        foreach (BeforeAfter::pairs($report) as $pair) {
+            $rows .= '<tr><td colspan="2" class="l">'.$this->text($pair['label']).'</td></tr>'
+                .'<tr><td style="width:50%">Before'.$this->photo($pair['before']).'</td>'
+                .'<td style="width:50%">After'.$this->photo($pair['after']).'</td></tr>';
+        }
+
+        return $rows === '' ? '' : '<h2>Before &amp; after</h2><table class="ba" style="width:100%">'.$rows.'</table>';
     }
 
     /**
