@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -414,15 +415,11 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
       onChanged: (r) => _refilter(() => _range = r),
     );
 
-    final search = TextField(
+    final search = ListSearch(
       key: const ValueKey('pm-logs-search'),
       controller: _search,
+      hint: 'Job, customer, rule or person',
       onChanged: _typed,
-      decoration: const InputDecoration(
-        isDense: true,
-        prefixIcon: Icon(Icons.search, size: 18),
-        hintText: 'Job, customer, rule or person',
-      ),
     );
 
     final pickers = [

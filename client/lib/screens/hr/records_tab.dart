@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -384,13 +385,8 @@ class _RecordsTabState extends State<RecordsTab> {
         Padding(
           key: const ValueKey('tour-hr-records-search'),
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-          child: TextField(
-            decoration: const InputDecoration(
-              hintText: 'Search people',
-              prefixIcon: Icon(Icons.search),
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
+          child: ListSearch(
+            hint: 'Search people',
             onChanged: _typed,
           ),
         ),

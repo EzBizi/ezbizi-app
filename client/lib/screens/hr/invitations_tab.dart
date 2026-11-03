@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -126,21 +127,16 @@ class _InvitationsTabState extends State<InvitationsTab> {
     alignment: Alignment.centerLeft,
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 320),
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('tour-hr-invitations-search'),
-        decoration: const InputDecoration(
-          hintText: 'Search by name or email',
-          prefixIcon: Icon(Icons.search),
-          isDense: true,
-          border: OutlineInputBorder(),
-        ),
+        hint: 'Search by name or email',
         onChanged: (value) {
-          _searchDelay?.cancel();
-          _searchDelay = Timer(const Duration(milliseconds: 300), () {
-            _search = value.trim();
-            _load();
-          });
-        },
+            _searchDelay?.cancel();
+            _searchDelay = Timer(const Duration(milliseconds: 300), () {
+              _search = value.trim();
+              _load();
+            });
+          },
       ),
     ),
   );

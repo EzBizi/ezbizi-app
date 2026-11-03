@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/open_destination.dart';
@@ -892,14 +893,10 @@ class _LoginCardState extends State<_LoginCard> {
           ),
           if (_open) ...[
             const SizedBox(height: 8),
-            TextField(
+            ListSearch(
               key: ValueKey('login-search:$key'),
               controller: _search,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Search these connections',
-              ),
+              hint: 'Search these connections',
               onChanged: (_) => setState(() {}),
             ),
             for (final r in shown) widget.row(r),

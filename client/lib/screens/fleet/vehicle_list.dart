@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/load_more.dart';
@@ -142,21 +143,12 @@ class VehicleList extends StatelessWidget {
       Padding(
         key: const ValueKey('tour-fleet_management-search'),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: TextField(
+        child: ListSearch(
           controller: search,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.search),
-            hintText: 'Name, plate, VIN, number or driver',
-            suffixIcon: search.text.isEmpty
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.clear),
-                    tooltip: 'Clear the search',
-                    onPressed: onClearSearch,
-                  ),
-          ),
-          onSubmitted: (_) => onSearch(),
+          hint: 'Name, plate, VIN, number or driver',
           onChanged: (_) => onSearchChanged(),
+          onSubmitted: (_) => onSearch(),
+          onClear: onClearSearch,
         ),
       ),
       Padding(

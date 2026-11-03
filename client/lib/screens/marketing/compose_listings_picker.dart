@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/social_network_mark.dart';
@@ -168,15 +169,11 @@ class _ComposeListingsPickerState extends State<ComposeListingsPicker> {
       children: [
         summary,
         const SizedBox(height: 6),
-        TextField(
+        ListSearch(
           key: const ValueKey('social-places-search'),
           controller: _search,
+          hint: 'Find a listing',
           onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Find a listing',
-          ),
         ),
         const SizedBox(height: 6),
         for (final (i, entry) in groups.entries.indexed)

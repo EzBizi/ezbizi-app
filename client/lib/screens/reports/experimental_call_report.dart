@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -981,15 +982,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   }
 
   /// "Find a caller…" in an Overview list, styled as the Calls search.
-  Widget _listSearch(String key, void Function(String) set) => TextField(
+  Widget _listSearch(String key, void Function(String) set) => ListSearch(
     key: ValueKey(key),
+    hint: 'Find a caller…',
     onChanged: (value) => setState(() => set(value)),
-    decoration: const InputDecoration(
-      isDense: true,
-      prefixIcon: Icon(Icons.search, size: 18),
-      hintText: 'Find a caller…',
-      border: OutlineInputBorder(),
-    ),
   );
 
   Widget _notBookedCard(
@@ -1277,15 +1273,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         children: [
           SizedBox(
             width: 220,
-            child: TextField(
+            child: ListSearch(
               key: const ValueKey('people-search'),
+              hint: 'Find a person…',
               onChanged: (value) => setState(() => _personQuery = value),
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a person…',
-                border: OutlineInputBorder(),
-              ),
             ),
           ),
           const SizedBox(width: 10),
@@ -1545,15 +1536,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         : Wrap(spacing: 20, runSpacing: 8, children: groups);
     final search = SizedBox(
       width: phone ? double.infinity : 260,
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('calls-search'),
+        hint: 'Find a caller, person, or any call by number',
         onChanged: (value) => setState(() => _query = value),
-        decoration: const InputDecoration(
-          isDense: true,
-          prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'Find a caller, person, or any call by number',
-          border: OutlineInputBorder(),
-        ),
       ),
     );
     // Which AI put each call where, above the table it narrows.
@@ -3381,15 +3367,10 @@ class _SourcesState extends State<_Sources> {
         if (accounts.isEmpty)
           Text('None connected.', style: theme.textTheme.bodySmall)
         else ...[
-          TextField(
+          ListSearch(
             key: const Key('sources-search'),
+            hint: 'Find an account…',
             onChanged: (v) => setState(() => _find = v),
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Find an account…',
-              border: OutlineInputBorder(),
-            ),
           ),
           const SizedBox(height: 4),
           Row(

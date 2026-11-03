@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -740,25 +741,16 @@ class _JobsScreenState extends State<JobsScreen> {
         children: [
           SizedBox(
             width: 320,
-            child: TextField(
+            child: ListSearch(
               key: const ValueKey('tour-jobs-search'),
               controller: _search,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
-                hintText: 'Job number, title or customer',
-                suffixIcon: _search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear),
-                        tooltip: 'Clear the search',
-                        onPressed: () {
-                          _search.clear();
-                          _load();
-                        },
-                      ),
-              ),
-              onSubmitted: (_) => _load(),
+              hint: 'Job number, title or customer',
               onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _load(),
+              onClear: () {
+                            _search.clear();
+                            _load();
+                          },
             ),
           ),
           if (!wide && _statusChoices.isNotEmpty)

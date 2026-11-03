@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import 'dart:typed_data';
@@ -296,14 +297,10 @@ class _ReportsTabState extends State<ReportsTab> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: ListSearch(
                     key: const ValueKey('tour-inspection-reports-search'),
                     controller: _search,
-                    decoration: const InputDecoration(
-                      hintText: 'Client name or job number',
-                      prefixIcon: Icon(Icons.search),
-                    ),
-                    textInputAction: TextInputAction.search,
+                    hint: 'Client name or job number',
                     onSubmitted: (_) => _load(),
                   ),
                 ),

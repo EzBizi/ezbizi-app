@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -303,14 +304,9 @@ class _ContractsTabState extends State<ContractsTab> {
     alignment: Alignment.centerLeft,
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 320),
-      child: TextField(
+      child: ListSearch(
         key: const ValueKey('tour-hr-contracts-search'),
-        decoration: const InputDecoration(
-          hintText: 'Search contracts',
-          prefixIcon: Icon(Icons.search),
-          isDense: true,
-          border: OutlineInputBorder(),
-        ),
+        hint: 'Search contracts',
         onChanged: (v) => setState(() => _query = v),
       ),
     ),

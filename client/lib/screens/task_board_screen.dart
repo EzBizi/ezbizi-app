@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -1350,14 +1351,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           ),
           SizedBox(
             width: phone ? 200 : 240,
-            child: TextField(
+            child: ListSearch(
               key: const Key('tasks-search'),
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Find a task',
-                border: OutlineInputBorder(),
-              ),
+              hint: 'Find a task',
               onChanged: (v) => setState(() => _query = v),
             ),
           ),

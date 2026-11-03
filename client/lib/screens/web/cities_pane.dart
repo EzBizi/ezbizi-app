@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -188,13 +189,9 @@ class _CitiesPaneState extends State<CitiesPane> {
           child: Row(
             children: [
               Expanded(
-                child: TextField(
+                child: ListSearch(
                   key: const ValueKey('tour-seo-cities-search'),
-                  decoration: InputDecoration(
-                    labelText: 'Search the cities on ${widget.host}',
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                  ),
+                  hint: 'Search the cities on ${widget.host}',
                   onChanged: (value) => setState(() => _search = value),
                 ),
               ),

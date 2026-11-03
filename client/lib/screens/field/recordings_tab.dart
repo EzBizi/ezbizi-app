@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -327,17 +328,10 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
                     ),
                   SizedBox(
                     width: 260,
-                    child: TextField(
+                    child: ListSearch(
                       key: const ValueKey('field-recordings-search'),
+                      hint: 'Search person, job or reason',
                       onChanged: _search,
-                      textAlignVertical: TextAlignVertical.center,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: 'Search person, job or reason',
-                        prefixIcon: Icon(Icons.search, size: 18),
-                        prefixIconConstraints: BoxConstraints(minWidth: 36),
-                        border: OutlineInputBorder(),
-                      ),
                     ),
                   ),
                 ],

@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -198,13 +199,9 @@ class _ListingServicesState extends State<ListingServices> {
           style: theme.textTheme.titleSmall,
         ),
         const SizedBox(height: 6),
-        TextField(
+        ListSearch(
           key: const ValueKey('cx-services-search'),
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search, size: 18),
-            hintText: 'Search services',
-            isDense: true,
-          ),
+          hint: 'Search services',
           onChanged: (v) => setState(() => _q = v),
         ),
         const SizedBox(height: 6),

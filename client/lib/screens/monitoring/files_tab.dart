@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter/material.dart';
@@ -780,17 +781,10 @@ class _FilesTabState extends State<FilesTab> {
   // Standard field height, as tall as Leads search (Jose, 2026-10-27).
   Widget _searchField() => SizedBox(
     width: 240,
-    child: TextField(
+    child: ListSearch(
       key: const Key('files-search'),
       controller: _search,
-      textAlignVertical: TextAlignVertical.center,
-      decoration: const InputDecoration(
-        isDense: true,
-        prefixIconConstraints: BoxConstraints(minWidth: 36),
-        prefixIcon: Icon(Icons.search, size: 18),
-        hintText: 'Find a file or folder',
-        border: OutlineInputBorder(),
-      ),
+      hint: 'Find a file or folder',
       onChanged: (v) => setState(() => _query = v),
     ),
   );

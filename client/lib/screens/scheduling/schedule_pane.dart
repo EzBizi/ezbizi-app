@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import '../../core/branch_options.dart';
 import 'package:flutter/material.dart';
 
@@ -468,15 +469,10 @@ class _SchedulePaneState extends State<SchedulePane> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: TextField(
+          child: ListSearch(
             key: const Key('schedule-unassigned-search'),
             controller: _unassignedSearch,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Customer, job #, address',
-              border: OutlineInputBorder(),
-            ),
+            hint: 'Customer, job #, address',
             onChanged: (_) => setState(() {}),
           ),
         ),

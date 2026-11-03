@@ -12,6 +12,7 @@
 /// Tabs are tracked by KEY, never by position — see work_hours_screen.dart.
 library;
 
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -932,16 +933,9 @@ class _LibraryTabState extends State<LibraryTab> {
             // Standard field height, as tall as Leads search (Jose, 2026-10-27).
             child: SizedBox(
               width: 240,
-              child: TextField(
+              child: ListSearch(
                 key: const Key('ai-library-search'),
-                textAlignVertical: TextAlignVertical.center,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIconConstraints: BoxConstraints(minWidth: 36),
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Find an answer',
-                  border: OutlineInputBorder(),
-                ),
+                hint: 'Find an answer',
                 onChanged: (v) => setState(() => _query = v),
               ),
             ),

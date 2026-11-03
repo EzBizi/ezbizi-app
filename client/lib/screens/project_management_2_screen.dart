@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -212,16 +213,11 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
               ),
               SizedBox(
                 width: 320,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('pm2-search'),
                   controller: _search,
+                  hint: 'Customer, job ID or address',
                   onChanged: _searched,
-                  style: theme.textTheme.bodyMedium,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Customer, job ID or address',
-                  ),
                 ),
               ),
             ],

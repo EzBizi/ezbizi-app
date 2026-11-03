@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -71,13 +72,9 @@ class _ReviewSourcesState extends State<ReviewSources> {
             Text('Sources', style: theme.textTheme.titleSmall),
             SizedBox(
               width: 220,
-              child: TextField(
+              child: ListSearch(
                 key: const ValueKey('cx-sources-search'),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Search sources',
-                  isDense: true,
-                ),
+                hint: 'Search sources',
                 onChanged: (v) => setState(() => _q = v),
               ),
             ),

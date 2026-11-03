@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -342,15 +343,10 @@ class _AlertFormState extends State<AlertForm> {
           ),
           const SizedBox(height: 6),
         ],
-        TextField(
+        ListSearch(
           key: const Key('alert-people-search'),
           controller: _search,
-          decoration: const InputDecoration(
-            hintText: 'Add people…',
-            prefixIcon: Icon(Icons.search),
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
+          hint: 'Add people…',
           onChanged: (_) => setState(() {}),
         ),
         if (query.isNotEmpty)

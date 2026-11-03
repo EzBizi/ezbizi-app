@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -206,15 +207,11 @@ class _TechnicianRosterState extends State<TechnicianRoster> {
             children: [
               SizedBox(
                 width: 280,
-                child: TextField(
+                child: ListSearch(
                   key: const ValueKey('roster-search'),
                   controller: _search,
+                  hint: 'Search technicians',
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    hintText: 'Search technicians',
-                    prefixIcon: Icon(Icons.search),
-                    isDense: true,
-                  ),
                 ),
               ),
               SizedBox(
