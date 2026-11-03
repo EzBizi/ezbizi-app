@@ -3207,6 +3207,16 @@ class ModuleServiceProvider extends ServiceProvider
                             .'neither has a website form. The reply is recorded as automatic, so it '
                             .'does not take the lead off the unreplied list.',
                     ),
+                    // The booking bot (Jose, 2026-11-03): BookingBot.
+                    new ActionDefinition(
+                        key: 'lead.book_by_chat',
+                        label: 'Book through the chat',
+                        description: 'Answers the customer with the next thing a booking needs: the '
+                            .'service address, the service, then a real open time near them, or on the '
+                            .'day they asked for. When they agree, the time is held for a dispatcher to '
+                            .'approve in Online Booking; approving books the job. Never answers a lead '
+                            .'that is booked, completed, lost or not a lead.',
+                    ),
                     new ActionDefinition(
                         key: 'lead.update_field',
                         label: 'Update a field',
