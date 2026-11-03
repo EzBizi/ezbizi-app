@@ -71,6 +71,9 @@ final class CallReconciliation
         'Chevel Richards' => 'Chevel Richards Turner',
         'Hyanne Faelnar' => 'Hyanne Kylla Faelnar',
         'Danika Kaye' => 'Danika Kaye Navarroza',
+
+        // Jose, 2026-11-03, asked whether these are one person: "yes".
+        'Bryan Lagazon' => 'Bryan Nixon Lagazon',
     ];
 
     private function canonical(?string $name): ?string
