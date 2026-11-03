@@ -16,6 +16,15 @@ final class BeforeAfter
 {
     public const PREFIX = 'after_';
 
+    /** Marks each pair's photos for the job photo tab's Before/After pills. */
+    public static function label(InspectionReport $after): void
+    {
+        foreach (self::pairs($after) as $pair) {
+            $pair['before']->update(['label' => 'before']);
+            $pair['after']->update(['label' => 'after']);
+        }
+    }
+
     /**
      * @return list<array{label: string, before: Attachment, after: Attachment}>
      */

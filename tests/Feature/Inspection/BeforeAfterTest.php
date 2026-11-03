@@ -42,6 +42,10 @@ class BeforeAfterTest extends TestCase
             $this->assertSame($before->attachments->first()->id, $pairs[0]['before']->id);
             $this->assertStringContainsString('Before &amp; after', app(ReportDocument::class)->html($after->fresh()));
             $this->assertSame([], BeforeAfter::pairs($before->fresh()));
+
+            BeforeAfter::label($after->fresh());
+            $this->assertSame('before', $before->attachments->first()->fresh()->label);
+            $this->assertSame('after', $after->attachments->first()->fresh()->label);
         });
     }
 
