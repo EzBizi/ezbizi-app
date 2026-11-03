@@ -60,10 +60,11 @@ class _FleetScreenState extends State<FleetScreen> {
   bool _insuranceExpiring = false;
 
   /// The open state (franchise id, or 'general'), or null for all of them.
-  /// The first load opens the first state rather than every state at once —
-  /// Eve: "I don't wanna see them all on one page because it's confusing".
+  /// Opens on every state, the list split into one section per branch (Jose,
+  /// 2026-11-03: "what eve asked was divissions in the list, not just show
+  /// ct"). Eve, 2026-10-12: "I don't wanna see them all on one page because
+  /// it's confusing".
   String? _place;
-  bool _placeChosen = false;
   List<Map<String, dynamic>> _places = const [];
 
   /// 0 General, 1 Vehicles.
@@ -115,8 +116,6 @@ class _FleetScreenState extends State<FleetScreen> {
 
     if (!mounted || request != _request) return;
 
-    var openFirstPlace = false;
-
     setState(() {
       _loading = false;
       _fetching = false;
@@ -142,17 +141,6 @@ class _FleetScreenState extends State<FleetScreen> {
         ];
       }
 
-      // Open on one state, once. Rows from the all-states answer are not
-      // drawn, so the first thing on screen is a single state.
-      if (!_placeChosen && _place == null && _places.length > 1) {
-        _placeChosen = true;
-        _place = _places.first['id'] as String?;
-        _loading = true;
-        openFirstPlace = true;
-        return;
-      }
-      _placeChosen = true;
-
       final rows = List<Map<String, dynamic>>.from(response.data as List);
       _vehicles = page == 1 ? rows : [..._vehicles, ...rows];
 
@@ -160,9 +148,6 @@ class _FleetScreenState extends State<FleetScreen> {
       _lastPage = meta?['last_page'] as int? ?? 1;
       _page = page;
     });
-
-    // The first answer chose a state above; fetch that state.
-    if (openFirstPlace) _load();
   }
 
   void _clearPane() => setState(() {
