@@ -433,7 +433,6 @@ void main() {
               api: api,
               canListen: true,
               canKeep: false,
-              player: FakeRecordingPlayer(),
             ),
           ),
         ),
