@@ -534,7 +534,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Blocked drain'), findsOneWidget);
-    expect(find.text('Rang · Bo answered'), findsOneWidget);
+    expect(find.text('Not answered · Bo took it'), findsOneWidget);
+    expect(find.text('Not answered'), findsOneWidget);
     expect(find.text('5:00'), findsNWidgets(before + 1));
   });
 
