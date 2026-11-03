@@ -2969,6 +2969,15 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 171 · Leads on a phone: cleaner thread and list — **sent 2026-11-03** (`docs/previews/leads-mobile-clean-layouts.html`)
+
+A staff message, via Jose: the reply box is too small, the top should scroll away so the messages show. Jose: "mobile is a mess, we need something cleaner and simpler". Recommended 1, messenger style:
+- **Thread:** one app-bar row (back, avatar, name, a status chip opening a sheet, Book, ⋯), with job, phone, notes and More moved into ⋯. Messages fill the rest of the screen, even with the keyboard up.
+- **Composer:** full width, pinned above the keyboard, 1–5 lines. + opens a sheet (Suggest, quick replies with search, emoji, attach); round Send on the right. Quick replies show as one chip row only while the box is focused and empty.
+- **List:** search plus one "Filters (n)" button opening a sheet (show only / sources / channels, "Show N leads"). Only the picked quick chips stay visible, as one row. Rows are two lines.
+
+2 = Messages | Details tabs in the thread, with all chips in one sideways row. 3 = today's header scrolls away and folds when the keyboard opens, with a stacked composer. Phone only; desktop unchanged.
+
 ### 170 · Reports › Performance › People: answer and booking in separate columns — **sent 2026-11-03** (`docs/previews/reports-people-answer-booking-layouts.html`)
 
 Jose 11-03: "a column for not answered and answered, missed call, separate from the booked, not booked". Recommended 1 + phone 4. The People table becomes Rang · Answered · Not answered · Missed · Booked · Booking rate (booked out of answered). A person's calls get an Answer pill (Answered / Not answered · who took it / Missed) and a Booking pill (Booked / Not booked / Existing job, "—" when not answered), with two filter chip groups. Red only for Missed. 2 = one column with stacked pills; 3 = separate Answering and Booking tables. Reports builds it.
