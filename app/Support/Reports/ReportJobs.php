@@ -40,7 +40,7 @@ final class ReportJobs
                 'j.remote_id as ref',
                 DB::raw("json_unquote(json_extract(j.payload, '$.SerialId')) as serial"),
                 DB::raw("coalesce(nullif(trim(json_unquote(json_extract(ec.payload, '$.company_name'))), ''), j.job_source) as job_source"),
-                'j.service_area', 'j.status', 'j.booked_at',
+                'j.service_area', 'j.status', 'j.sub_status', 'j.booked_at',
                 'j.last_status_update as closed_at',
                 DB::raw("cast(coalesce(json_unquote(json_extract(j.payload, '$.JobTotalPrice')), 0) as decimal(12,2)) as total"),
                 DB::raw("coalesce(json_extract(j.payload, '$.Team'), json_array()) as team"),

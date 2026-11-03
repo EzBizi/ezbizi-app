@@ -33,7 +33,7 @@ class PeriodReportTest extends TestCase
             $this->job($f, ['job_source' => 'LS Ads', 'status' => 'Done', 'booked_at' => '2026-09-23 09:00:00',
                 'last_status_update' => '2026-09-24 10:00:00', 'payload' => ['Team' => [['id' => 'USR-ann', 'Name' => 'Ann']], 'JobTotalPrice' => 400]]);
             // Booked before, canceled in the week: closed, not created.
-            $this->job($f, ['job_source' => 'GMB', 'status' => 'Canceled', 'booked_at' => '2026-09-01 09:00:00',
+            $this->job($f, ['job_source' => 'GMB', 'status' => 'Canceled', 'sub_status' => 'Tech No Call No Show', 'booked_at' => '2026-09-01 09:00:00',
                 'last_status_update' => '2026-09-25 10:00:00', 'payload' => ['Team' => [['id' => 'USR-ann', 'Name' => 'Ann']]]]);
 
             // Two people Workiz's API cannot name collect money: each shown by id.
@@ -66,9 +66,14 @@ class PeriodReportTest extends TestCase
         $this->assertStringContainsString('Alpha Co · Weekly Report · Sep 21 – Sep 27, 2026', $html);
         $this->assertStringContainsString($this->row('LS Ads', '2', '1', '1', '0', '0.0%', '$400.00', '$400.00'), $html);
         $this->assertStringContainsString($this->row('GMB', '0', '1', '100.0%', '$0.00', '—'), $html);
-        $this->assertStringContainsString($this->row('Ann', '1', '1', '50.0%', '$400.00', '$400.00', '$400.00'), $html);
-        $this->assertStringContainsString($this->row("Not in Workiz's API (USR-x)", '0', '0', '—', '$0.00', '—', '$100.00'), $html);
-        $this->assertStringContainsString($this->row("Not in Workiz's API (USR-y)", '0', '0', '—', '$0.00', '—', '$50.00'), $html);
+        // Jose's list, 2026-11-03: tech KPIs - the cancel Ann caused, her share of gross.
+        $this->assertStringContainsString($this->row('Ann', '1', '1', '50.0%', '1', '$400.00', '100.0%', '$400.00', '$400.00'), $html);
+        $this->assertStringContainsString($this->row("Not in Workiz's API (USR-x)", '0', '0', '—', '0', '$0.00', '0.0%', '—', '$100.00'), $html);
+        $this->assertStringContainsString($this->row("Not in Workiz's API (USR-y)", '0', '0', '—', '0', '$0.00', '0.0%', '—', '$50.00'), $html);
+        // KPIs: 2 created, 1 done (50%); 1 done + 1 canceled closed; $550 deposits; 75% margin.
+        $this->assertStringContainsString($this->row('2', '50.0%', '1', '1', '50.0%', '$400.00', '$400.00', '$550.00', '75.0%'), $html);
+        // The cancellation breakdown, by Workiz's reason.
+        $this->assertStringContainsString($this->row('Tech No Call No Show', '1', '100.0%'), $html);
         $this->assertStringContainsString($this->row('Income', '$1,000.00', '100.0%'), $html);
         $this->assertStringContainsString($this->row('$1,000.00', '$250.00', '$750.00', '75.0%'), $html);
 
