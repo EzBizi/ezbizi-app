@@ -411,6 +411,9 @@ class InspectionRunsController extends Controller
             ]);
             $this->audit->log('inspection.submitted', $report);
 
+            // Before/After pills on the job's photo tab.
+            \App\Support\Inspection\BeforeAfter::label($report);
+
             return $report;
         });
 
