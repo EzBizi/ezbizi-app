@@ -2627,6 +2627,23 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
             ),
 
+            // Design 175 (Jose 2026-11-03, "as you recommend with everything"):
+            // who owns what, the main flow's step owners, and each branch's KPIs
+            // on one screen. It reads HR's ownership and Reports' figures and
+            // keeps nothing of its own; editing rides on hr.edit server-side.
+            new ModuleDefinition(
+                key: 'company',
+                label: 'Company',
+                actions: ['view'],
+                tabs: [
+                    new TabDefinition('ownership', 'Ownership'),
+                    new TabDefinition('processes', 'Processes'),
+                    new TabDefinition('kpis', 'KPIs'),
+                ],
+                automationExemptBecause: 'Company only reads what HR and Reports already record; '
+                    .'there is no event here that another module does not raise first.',
+            ),
+
             new ModuleDefinition(
                 key: 'tasks',
                 label: 'Task Board',
