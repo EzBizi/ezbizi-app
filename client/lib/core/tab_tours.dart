@@ -109,7 +109,8 @@ const Map<String, Tour> tabTours = {
   ),
   'leads': Tour(
     // 2: charge, IVR, dispatcher, dates and Edit (UI queue 103).
-    version: 2,
+    // 3: no Unread chip; the phone's one Filters button (2026-11-03).
+    version: 3,
     steps: [
       TourStep(
         anchor: 'source-rail',
@@ -137,8 +138,9 @@ const Map<String, Tour> tabTours = {
         anchor: 'tour-leads-filters',
         title: 'Quick filters',
         body:
-            'Unread, Unreplied, Overdue, Follow up and Starred narrow the list '
-            'together. Mark all read sits at the end.',
+            'Unreplied, Overdue, Follow up and Starred narrow the list '
+            'together. Mark all read sits at the end. On a phone they open '
+            'from the one Filters button, beside search.',
       ),
       TourStep(
         anchor: 'tour-leads-more-filters',
