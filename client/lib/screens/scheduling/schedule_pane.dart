@@ -484,8 +484,8 @@ class _SchedulePaneState extends State<SchedulePane> {
           padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
           child: Text(
             board['can_dispatch'] == true
-                ? 'Tap a job to assign, unassign or move it. Changes go '
-                      'straight to Workiz.'
+                ? 'Tap a job to assign, unassign or move it. Changes are '
+                      'saved here and copied to Workiz.'
                 : 'Jobs are assigned in Workiz; this board shows what is '
                       'booked.',
             style: theme.textTheme.bodySmall?.copyWith(

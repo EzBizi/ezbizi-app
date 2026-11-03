@@ -96,7 +96,7 @@ class _ReschedulingTabState extends State<ReschedulingTab> {
           level: TabLevel.secondary,
           labels: const [
             ('Rescheduling Availability', Icons.stacked_bar_chart),
-            ('AI Rescheduling Suggestion', Icons.auto_awesome_outlined),
+            ('AI rescheduling suggestions', Icons.auto_awesome_outlined),
           ],
           selected: _tab,
           onSelected: (i) => setState(() => _select(i)),

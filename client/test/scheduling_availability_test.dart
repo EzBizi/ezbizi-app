@@ -342,7 +342,7 @@ void main() {
     expect(find.text('Zip'), findsOneWidget);
     expect(find.text('Area'), findsOneWidget);
     expect(find.text('Calendar'), findsOneWidget);
-    expect(find.text('Search by Zip Code'), findsNothing);
+    expect(find.text('Search by zip code'), findsNothing);
   });
 
   /// Search by Area: one chip per franchise that HAS areas — the server's

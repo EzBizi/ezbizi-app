@@ -441,7 +441,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
                             child: _modeButton(
                               _Mode.zip,
                               Icons.location_on_outlined,
-                              short ? 'Zip' : 'Search by Zip Code',
+                              short ? 'Zip' : 'Search by zip code',
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -457,7 +457,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
                             child: _modeButton(
                               _Mode.calendar,
                               Icons.calendar_month_outlined,
-                              short ? 'Calendar' : 'Calendar View',
+                              short ? 'Calendar' : 'Calendar view',
                             ),
                           ),
                         ],
