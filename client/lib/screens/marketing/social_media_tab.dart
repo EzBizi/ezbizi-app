@@ -1246,10 +1246,14 @@ class _PostsDashboard extends StatelessWidget {
     String column(_SentPost p) {
       final statuses = p.targets.map((t) => t.status).toSet();
       if (statuses.contains('queued')) return 'posting';
-      if (statuses.isNotEmpty && statuses.every((s) => s == 'scheduled')) {
+      // A weekly Business Profile draft waits in Reviews; it is not posted yet.
+      if (statuses.isNotEmpty &&
+          statuses.every((s) => s == 'scheduled' || s == 'awaiting_approval')) {
         return 'scheduled';
       }
       if (statuses.contains('sent')) return 'posted';
+      // Turned down in Reviews: it never went out.
+      if (statuses.contains('disapproved')) return 'failed';
       return statuses.contains('failed') ? 'failed' : 'posted';
     }
 
@@ -1524,8 +1528,8 @@ class _TimelineRow extends StatelessWidget {
 
   static Tone _toneOf(_SentTarget target) => switch (target.status) {
     'failed' => Tone.bad,
-    'scheduled' => Tone.info,
-    'queued' => Tone.neutral,
+    'scheduled' || 'awaiting_approval' => Tone.info,
+    'queued' || 'disapproved' => Tone.neutral,
     _ => Tone.ok,
   };
 
@@ -4678,6 +4682,12 @@ class _TargetLine extends StatelessWidget {
     final (word, tone, icon) = switch (target.status) {
       'queued' => ('Posting…', Tone.neutral, Icons.hourglass_top),
       'scheduled' => ('Scheduled', Tone.info, Icons.schedule),
+      'awaiting_approval' => (
+        'Waiting for approval in Reviews',
+        Tone.info,
+        Icons.hourglass_empty,
+      ),
+      'disapproved' => ('Not approved. Not posted.', Tone.neutral, Icons.block),
       'removed' => (
         'Deleted from $network',
         Tone.neutral,
