@@ -771,13 +771,21 @@ class _LeadsScreenState extends State<LeadsScreen> {
     );
     // (?) runs the open source's own walkthrough, by the server's name for
     // its tab (Jose, 2026-10-14: walkthroughs for "all the sub tabs"). The
-    // three Local Services chips are one tab, the module's own tour.
+    // group tabs (Calls, SMS Texts, Meta, Forms) have their own, and a chip
+    // picked inside one runs that source's. LS Booking is the module's own.
     final tab = const {
+      'calls': 'Calls',
+      'ls_call': 'Calls',
+      'sms': 'SMS Texts',
+      'ls_text': 'SMS Texts',
+      'facebook': 'Messenger',
+      'instagram': 'Instagram',
+      'job_applicant': 'Forms',
       'thumbtack': 'Thumbtack',
       'website_chat': 'Chat',
       'website_form': 'Forms',
       'website_booking': 'Online Booking',
-      'meta': 'Messenger',
+      'meta': 'Meta',
       'forms': 'Forms',
       'workiz': 'Workiz',
       'whatsapp': 'WhatsApp',
@@ -1230,32 +1238,36 @@ class _LeadsScreenState extends State<LeadsScreen> {
     final group = _source!;
     final label = _labelOf(_sourceChips.firstWhere((c) => c.$1 == group));
 
-    return Padding(
-      key: ValueKey('$group-sources'),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: Wrap(
-        spacing: 4,
-        runSpacing: 4,
-        children: [
-          for (final m in <(String?, String)>[
-            (null, 'All $label'),
-            ..._visibleIn(group),
-          ])
-            ChoiceChip(
-              key: ValueKey('$group-source-${m.$1 ?? 'all'}'),
-              showCheckmark: false,
-              visualDensity: VisualDensity.compact,
-              label: Text(
-                '${m.$2} ${_unreadIn(m.$1 ?? group)}',
-                style: theme.textTheme.labelSmall,
+    // One literal key for every group's chips: the walkthroughs anchor on it.
+    return KeyedSubtree(
+      key: const ValueKey('group-sources'),
+      child: Padding(
+        key: ValueKey('$group-sources'),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: [
+            for (final m in <(String?, String)>[
+              (null, 'All $label'),
+              ..._visibleIn(group),
+            ])
+              ChoiceChip(
+                key: ValueKey('$group-source-${m.$1 ?? 'all'}'),
+                showCheckmark: false,
+                visualDensity: VisualDensity.compact,
+                label: Text(
+                  '${m.$2} ${_unreadIn(m.$1 ?? group)}',
+                  style: theme.textTheme.labelSmall,
+                ),
+                selected: _pick == m.$1,
+                onSelected: (_) {
+                  setState(() => _pick = m.$1);
+                  _load();
+                },
               ),
-              selected: _pick == m.$1,
-              onSelected: (_) {
-                setState(() => _pick = m.$1);
-                _load();
-              },
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
