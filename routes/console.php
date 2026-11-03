@@ -181,7 +181,8 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  * what changed, about eight calls a branch, well under the key's burst limit.
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
-Schedule::command('ezbizi:sync-workiz-calls')->everyTenMinutes()->withoutOverlapping(30);
+// Off the records run's minute: the ten-minute readers firing together hit Workiz's rate limit (measured 11-03).
+Schedule::command('ezbizi:sync-workiz-calls')->cron('3-59/10 * * * *')->withoutOverlapping(30);
 // Workiz's own Payments report, through each tenant's signed-in web session.
 Schedule::command('ezbizi:workiz-web-payments')->everyThirtyMinutes()->withoutOverlapping(30);
 // At :15 and :45, beside the payments read at :00 and :30: one login, one switch at a time (measured 2026-10-29: 90 s for 10 accounts).
@@ -201,7 +202,7 @@ Schedule::command('ezbizi:backfill-workiz --pending --since=2000-01-01 --pages=2
 Schedule::command('ezbizi:workiz-fill-creators')->everyFiveMinutes()->withoutOverlapping(10);
 
 // Each new Workiz client's v2 id, the only way v2 reads its notes: a page a branch.
-Schedule::command('ezbizi:sync-workiz-client-ids')->everyTenMinutes()->withoutOverlapping(10);
+Schedule::command('ezbizi:sync-workiz-client-ids')->cron('6-59/10 * * * *')->withoutOverlapping(10);
 
 /*
  * EVERY MINUTE - Jose, 2026-09-28: "make jobs and customer update every 1 min
