@@ -195,4 +195,37 @@ class VehicleListApiTest extends TestCase
 
         $this->assertSame(['POOL-A'], collect($general)->pluck('plate')->all());
     }
+
+    /**
+     * Each state's number is what tapping it shows under the search (Jose,
+     * 2026-11-03), and a state the search empties stays listed at 0 so the
+     * screen is never stranded on a chip that vanished.
+     */
+    public function test_state_counts_follow_the_search_and_keep_empty_states(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $other = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $other = Franchise::create([
+                'organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
+                'name' => 'Alpha Connecticut', 'timezone' => 'America/New_York', 'currency' => 'USD', 'is_active' => true,
+            ]);
+            foreach ([[$tenant['franchise']->id, 'KEEP-1'], [$tenant['franchise']->id, 'OTHER-1'], [$other->id, 'OTHER-2'], [null, 'KEEP-2']] as [$f, $plate]) {
+                Vehicle::factory()->create(['company_id' => $tenant['company']->id, 'franchise_id' => $f, 'plate' => $plate, 'status' => 'active']);
+            }
+
+            return $other;
+        });
+
+        $places = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/vehicles?search=KEEP')
+            ->assertOk()
+            ->json('meta.places');
+
+        $this->assertSame([
+            ['id' => $other->id, 'name' => 'Alpha Connecticut', 'count' => 0],
+            ['id' => $tenant['franchise']->id, 'name' => $tenant['franchise']->name, 'count' => 1],
+            ['id' => 'general', 'name' => 'General', 'count' => 1],
+        ], $places);
+    }
 }
