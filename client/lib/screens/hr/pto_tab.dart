@@ -484,7 +484,16 @@ class _PtoTabState extends State<PtoTab> {
         // fact, as it was before; with one, the Left on the right says it.
         subtitle: _hasBalance(person)
             ? null
-            : Text(_allowance(person), style: theme.textTheme.bodySmall),
+            // One line; the whole allowance on hover (UI/UX, 2026-11-02).
+            : Tooltip(
+                message: _allowance(person),
+                child: Text(
+                  _allowance(person),
+                  style: theme.textTheme.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
         trailing: _rowEnd(context, person),
         onTap: () => setState(() {
           // A half-picked set of days belongs to the person it was for.
@@ -642,9 +651,14 @@ class _PtoTabState extends State<PtoTab> {
               ),
               subtitle: _hasBalance(person)
                   ? null
-                  : Text(
-                      _allowance(person),
-                      style: Theme.of(context).textTheme.bodySmall,
+                  : Tooltip(
+                      message: _allowance(person),
+                      child: Text(
+                        _allowance(person),
+                        style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
               trailing: _rowEnd(context, person),
               onTap: () =>
