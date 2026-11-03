@@ -149,9 +149,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// arrow (UI queue 34, Jose's 1 + 4 of 2026-09-30).
   bool _managing = false;
 
-  /// A phone's search box, opened from its icon.
-  bool _searching = false;
-
   /// The lead a phone has open in place of the list, with its own back
   /// arrow: containment, never a page pushed over the app.
   String? _phoneLeadId;
@@ -814,6 +811,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   Widget _phone(ThemeData theme) {
     if (_choosingSource) return _sourcesPage(theme);
+    if (_moreFilters) return _phoneFilters(theme);
 
     final id = _phoneLeadId;
     if (id != null) {
@@ -1346,71 +1344,175 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   // ── the phone (mobile 5) ─────────────────────────────────────────
 
-  Widget _phoneHeader(ThemeData theme) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
-        child: Row(
-          children: [
-            Expanded(child: _sourceButton(theme)),
-            IconButton(
-              key: const ValueKey('search-open'),
-              tooltip: _searching ? 'Close search' : 'Search',
-              icon: Icon(_searching ? Icons.search_off : Icons.search),
-              onPressed: () {
-                if (_searching && _search.text.isNotEmpty) {
-                  _search.clear();
-                  _load();
-                }
-                setState(() => _searching = !_searching);
-              },
-            ),
-            IconButton(
-              key: const ValueKey('leads-fetch'),
-              tooltip: 'Fetch new leads now',
-              onPressed: _syncing ? null : _sync,
-              icon: _syncing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.sync),
-            ),
-          ],
+  /// What the phone's one Filters button counts: everything its page sets.
+  int get _phoneFiltersSet =>
+      [
+        _source != null,
+        _unreplied,
+        _overdue,
+        _followUp,
+        _starred,
+        _status.isNotEmpty,
+        _allLeftOut.isNotEmpty,
+      ].where((on) => on).length +
+      _foldedSet;
+
+  /// Design 171 (option 1): search, one Filters button and Fetch, then only
+  /// the quick chips that are on. The sources, the chips, status, the
+  /// takeover filters and In All live on the Filters page: as rows they took
+  /// half the screen before the first lead (Jose, 2026-11-03: "mobile is a
+  /// mess").
+  Widget _phoneHeader(ThemeData theme) {
+    final current = _visibleSources.where((s) => s.$1 == _source).firstOrNull;
+    final on = [
+      if (current != null)
+        ActionChip(
+          key: const ValueKey('leads-source-chip'),
+          avatar: Icon(current.$3, size: 16),
+          label: Text(current.$2),
+          visualDensity: VisualDensity.compact,
+          onPressed: () => setState(() => _moreFilters = true),
         ),
-      ),
-      if (_groups.containsKey(_source)) _inGroup(theme),
-      if (_searching || _search.text.isNotEmpty)
+      for (final c in _quickFilters(theme, withStatus: false))
+        if (c is FilterChip && c.selected) c,
+    ];
+    final n = _phoneFiltersSet;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: _searchField(),
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(height: _barHeight, child: _searchField()),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: _barHeight,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('leads-more-filters'),
+                  onPressed: () => setState(() => _moreFilters = true),
+                  icon: const Icon(Icons.tune, size: 18),
+                  label: Text(n > 0 ? 'Filters ($n)' : 'Filters'),
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('leads-fetch'),
+                tooltip: 'Fetch new leads now',
+                onPressed: _syncing ? null : _sync,
+                icon: _syncing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync),
+              ),
+            ],
+          ),
         ),
-      _filterRow(theme, withStatus: true),
-      // Phone (UI queue 103, 4): the four takeover filters behind one button.
-      Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 6),
-          child: TextButton.icon(
-            key: const ValueKey('leads-more-filters'),
-            onPressed: () => setState(() => _moreFilters = !_moreFilters),
-            icon: Icon(_moreFilters ? Icons.expand_less : Icons.tune, size: 18),
-            label: Text(
-              [_charge, _ivr, _dispatcher, _dates].any((v) => v != null)
-                  ? 'More filters (${[_charge, _ivr, _dispatcher, _dates].where((v) => v != null).length})'
-                  : 'More filters',
+        if (_groups.containsKey(_source)) _inGroup(theme),
+        if (on.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: SingleChildScrollView(
+              key: const ValueKey('tour-leads-filters'),
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  for (final (i, c) in on.indexed) ...[
+                    if (i > 0) const SizedBox(width: 6),
+                    c,
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ..._alerts(theme),
+      ],
+    );
+  }
+
+  /// The phone's Filters page, in place of the list like the sources page.
+  Widget _phoneFilters(ThemeData theme) {
+    void close() => setState(() => _moreFilters = false);
+    final label = theme.textTheme.labelMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w700,
+    );
+    Widget heading(String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 6),
+      child: Text(text, style: label),
+    );
+
+    return Column(
+      key: const ValueKey('leads-filters-page'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+          child: Row(
+            children: [
+              IconButton(
+                key: const ValueKey('filters-back'),
+                tooltip: 'Back to the leads',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: close,
+              ),
+              Expanded(
+                child: Text('Filters', style: theme.textTheme.titleMedium),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 12),
+            children: [
+              heading('Source'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(
+                  height: _barHeight,
+                  child: _sourceButton(theme),
+                ),
+              ),
+              if (_groups.containsKey(_source)) _inGroup(theme),
+              heading('Show only'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: _quickFilters(theme, withStatus: true),
+                ),
+              ),
+              heading('More'),
+              _takeoverFilters(),
+              if (_source == null && _visibleSources.length > 1) _inAll(theme),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: FilledButton(
+              key: const ValueKey('filters-done'),
+              onPressed: close,
+              child: const Text('Show leads'),
             ),
           ),
         ),
-      ),
-      if (_moreFilters) _takeoverFilters(),
-      if (_source == null && _visibleSources.length > 1) _inAll(theme),
-      ..._alerts(theme),
-    ],
-  );
+      ],
+    );
+  }
 
   /// Which source is showing and how many are unread; it opens the sources.
   Widget _sourceButton(ThemeData theme) {
@@ -1572,26 +1674,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget _phoneThread(ThemeData theme, Map<String, dynamic> lead) {
     void close() => setState(() => _phoneLeadId = null);
 
+    // Design 171: the way back is the start of the thread's own bar.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-          child: Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(
-              key: const ValueKey('thread-back'),
-              onPressed: close,
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('All leads'),
-            ),
-          ),
-        ),
         Expanded(
           child: LeadThread(
             key: ValueKey('thread-${lead['id']}'),
             api: widget.api,
             lead: lead,
+            onBack: close,
             // Deciding what a lead is ends the visit: back to the list, which
             // reloads with the new status, rather than a stale control on a
             // screen holding the row as it was.
