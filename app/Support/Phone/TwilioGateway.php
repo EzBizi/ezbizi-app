@@ -120,6 +120,14 @@ interface TwilioGateway
      */
     public function listIncoming(PhoneConnection $connection): array;
 
+    /**
+     * Numbers held on any account the platform credentials reach (the main
+     * profile, a parent), for the nightly line audit. Read-only.
+     *
+     * @return list<array{sid: string, phone_number: string, friendly_name: string, voice_url: string, sms_url: string}>
+     */
+    public function listAccountIncoming(string $accountSid): array;
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array;
 
     /**

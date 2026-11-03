@@ -35,8 +35,18 @@ class PhoneLineAuditTest extends TestCase
                     'scope_id' => $t['org']->id,
                     'twilio_sid' => $sid,
                     'e164' => $e164,
+                    'account_sid' => $connection->account_sid,
                 ]);
             }
+            // Held on the parent account, read with the platform credentials.
+            PhoneNumber::factory()->create([
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'twilio_sid' => 'PN4',
+                'e164' => '+18555550004',
+                'account_sid' => 'ACparent',
+            ]);
         });
 
         $line = fn ($sid, $e164, $voice) => ['sid' => $sid, 'phone_number' => $e164, 'friendly_name' => '', 'voice_url' => $voice, 'sms_url' => $host.'/api/v1/phone/sms'];
@@ -44,10 +54,12 @@ class PhoneLineAuditTest extends TestCase
             $line('PN1', '+12035550001', $host.'/api/v1/phone/voice'),
             $line('PN2', '+12035550002', 'https://elsewhere.example/voice'),
         ];
+        $twilio->accountIncoming['ACparent'] = [$line('PN4', '+18555550004', 'https://elsewhere.example/voice')];
 
         $this->artisan('ezbizi:phone-line-audit')
             ->expectsOutput('+12035550002: voice goes to https://elsewhere.example/voice')
             ->expectsOutput('+12035550003: gone from Twilio')
+            ->expectsOutput('+18555550004: voice goes to https://elsewhere.example/voice')
             ->doesntExpectOutput('+12035550001: gone from Twilio')
             ->assertSuccessful();
 

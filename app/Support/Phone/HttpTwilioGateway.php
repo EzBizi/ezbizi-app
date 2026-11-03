@@ -425,6 +425,26 @@ final class HttpTwilioGateway implements TwilioGateway
         return $out;
     }
 
+    public function listAccountIncoming(string $accountSid): array
+    {
+        $response = Http::withBasicAuth(
+            (string) config('services.twilio.platform_account_sid'),
+            (string) config('services.twilio.platform_auth_token'),
+        )->timeout(15)->get("https://api.twilio.com/2010-04-01/Accounts/{$accountSid}/IncomingPhoneNumbers.json", ['PageSize' => 1000]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException("Twilio refused the number list ({$response->status()})");
+        }
+
+        return array_map(fn (array $n) => [
+            'sid' => (string) $n['sid'],
+            'phone_number' => (string) $n['phone_number'],
+            'friendly_name' => (string) ($n['friendly_name'] ?? ''),
+            'voice_url' => (string) ($n['voice_url'] ?? ''),
+            'sms_url' => (string) ($n['sms_url'] ?? ''),
+        ], (array) $response->json('incoming_phone_numbers', []));
+    }
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array
     {
         $created = $this->connectionClient($connection)->incomingPhoneNumbers->create([

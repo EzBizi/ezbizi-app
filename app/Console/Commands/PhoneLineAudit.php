@@ -38,49 +38,18 @@ class PhoneLineAudit extends Command
             ->get();
 
         foreach ($connections as $connection) {
-            try {
-                $live = collect($twilio->listIncoming($connection))->keyBy('sid');
-            } catch (Throwable $e) {
-                $issues[] = "{$connection->id}: Twilio unreachable: {$e->getMessage()}";
-
-                continue;
-            }
-
             $ours = PhoneNumber::query()->withoutGlobalScopes()
                 ->where('connection_id', $connection->id)
-                // A line parked on another account (the 855 on the main profile)
-                // is not in this account's list; ponytail: unchecked until we list that account.
-                ->where(fn ($q) => $q->whereNull('account_sid')->orWhere('account_sid', $connection->account_sid))
-                ->pluck('e164', 'twilio_sid');
+                ->get(['e164', 'twilio_sid', 'account_sid']);
 
-            foreach ($ours as $sid => $e164) {
-                $line = $live->get($sid);
-                if ($line === null) {
-                    $issues[] = "{$e164}: gone from Twilio";
-                } elseif (! str_starts_with($line['voice_url'], $host.'/')) {
-                    $issues[] = "{$e164}: voice goes to ".($line['voice_url'] ?: 'nothing');
-                } elseif (! str_starts_with($line['sms_url'], $host.'/')) {
-                    $issues[] = "{$e164}: texts go to ".($line['sms_url'] ?: 'nothing');
-                }
+            // Lines parked on another account (the 855 on the main profile)
+            // are read from that account with the platform credentials.
+            foreach ($ours->groupBy(fn ($n) => $n->account_sid ?: $connection->account_sid) as $account => $lines) {
+                $read = $account === $connection->account_sid
+                    ? fn () => $twilio->listIncoming($connection)
+                    : fn () => $twilio->listAccountIncoming((string) $account);
+                $this->check($read, $lines->pluck('e164', 'twilio_sid')->all(), "{$connection->id}:{$account}", $host, $issues);
             }
-
-            $key = "phone-line-audit:{$connection->id}";
-            $now = $live->map(fn ($l) => $l['phone_number'].'|'.$l['voice_url'].'|'.$l['sms_url'])->sort()->all();
-            $before = Cache::get($key);
-            if (is_array($before)) {
-                foreach (array_diff_key($now, $before) as $line) {
-                    $issues[] = 'added on Twilio: '.strtok($line, '|');
-                }
-                foreach (array_diff_key($before, $now) as $line) {
-                    $issues[] = 'removed from Twilio: '.strtok($line, '|');
-                }
-                foreach (array_intersect_key($now, $before) as $sid => $line) {
-                    if ($line !== $before[$sid]) {
-                        $issues[] = 'changed on Twilio: '.strtok($line, '|');
-                    }
-                }
-            }
-            Cache::forever($key, $now);
         }
 
         foreach ($issues as $issue) {
@@ -90,5 +59,46 @@ class PhoneLineAudit extends Command
         $this->info(count($connections).' accounts, '.count($issues).' issues.');
 
         return self::SUCCESS;
+    }
+
+    /** @param array<string, string> $ours sid => e164 */
+    private function check(callable $read, array $ours, string $key, string $host, array &$issues): void
+    {
+        try {
+            $live = collect($read())->keyBy('sid');
+        } catch (Throwable $e) {
+            $issues[] = "{$key}: Twilio unreachable: {$e->getMessage()}";
+
+            return;
+        }
+
+        foreach ($ours as $sid => $e164) {
+            $line = $live->get($sid);
+            if ($line === null) {
+                $issues[] = "{$e164}: gone from Twilio";
+            } elseif (! str_starts_with($line['voice_url'], $host.'/')) {
+                $issues[] = "{$e164}: voice goes to ".($line['voice_url'] ?: 'nothing');
+            } elseif (! str_starts_with($line['sms_url'], $host.'/')) {
+                $issues[] = "{$e164}: texts go to ".($line['sms_url'] ?: 'nothing');
+            }
+        }
+
+        $cacheKey = "phone-line-audit:{$key}";
+        $now = $live->map(fn ($l) => $l['phone_number'].'|'.$l['voice_url'].'|'.$l['sms_url'])->sort()->all();
+        $before = Cache::get($cacheKey);
+        if (is_array($before)) {
+            foreach (array_diff_key($now, $before) as $line) {
+                $issues[] = 'added on Twilio: '.strtok($line, '|');
+            }
+            foreach (array_diff_key($before, $now) as $line) {
+                $issues[] = 'removed from Twilio: '.strtok($line, '|');
+            }
+            foreach (array_intersect_key($now, $before) as $sid => $line) {
+                if ($line !== $before[$sid]) {
+                    $issues[] = 'changed on Twilio: '.strtok($line, '|');
+                }
+            }
+        }
+        Cache::forever($cacheKey, $now);
     }
 }

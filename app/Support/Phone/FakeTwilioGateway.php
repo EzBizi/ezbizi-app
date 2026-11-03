@@ -326,6 +326,16 @@ final class FakeTwilioGateway implements TwilioGateway
         return $this->incoming;
     }
 
+    /** @var array<string, list<array{sid: string, phone_number: string, friendly_name: string, voice_url: string, sms_url: string}>> */
+    public array $accountIncoming = [];
+
+    public function listAccountIncoming(string $accountSid): array
+    {
+        $this->record(__FUNCTION__, [$accountSid]);
+
+        return $this->accountIncoming[$accountSid] ?? [];
+    }
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array
     {
         $this->record(__FUNCTION__, [$connection->id, $phoneNumber, $params]);
