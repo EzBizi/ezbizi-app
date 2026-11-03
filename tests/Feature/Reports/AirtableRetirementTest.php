@@ -208,4 +208,23 @@ class AirtableRetirementTest extends TestCase
             ->assertJsonPath('data.0.base_id', self::BASE)->assertJsonPath('data.0.streak', 1)
             ->assertJsonPath('data.0.ready', false)->assertJsonPath('data.0.tables.0.green', true);
     }
+
+    public function test_reading_from_a_store_resets_even_when_the_callback_throws(): void
+    {
+        $this->backfill();
+        $this->setEzbizi('rec1', 'Amount', 42);
+        $this->in(function () {
+            $source = FinancialSource::query()->sole();
+            $this->assertContains(42, FinancialSource::readingFrom('ezbizi', fn () => $source->rows()->pluck('Amount')->all()));
+
+            try {
+                FinancialSource::readingFrom('ezbizi', fn () => throw new \RuntimeException('boom'));
+                $this->fail('the throw should come through');
+            } catch (\RuntimeException $e) {
+                $this->assertSame('boom', $e->getMessage());
+            }
+            $this->assertNull(FinancialSource::forcedStore());
+            $this->assertNotContains(42, $source->rows()->pluck('Amount')->all()); // live store again (Airtable, not cut over)
+        });
+    }
 }
