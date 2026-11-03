@@ -14,6 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0521',
+      date: '2 Nov 2026',
+      items: [
+        'Every list search is the same size, so filter rows line up across the app; Team, Alerts and Field alerts gained search.',
+        'Calmer colours: normal states are no longer red, and purple is gone.',
+        'Automations: switching a rule on or off offers Undo.',
+        'Dashboard: job-status colours stay fixed, and tiles fill their row.',
+        'Voicemail: compact cards with one line of details.',
+        'Payroll, Time off, PTO, Helpers and Task Board: clearer labels, steadier widths and quieter empty states.',
+        'WhatsApp groups: one picker instead of a wall of chips; Review links table fills the width.',
+        'Failed posts show one plain line; Reviews shows the Google chip.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0520',
       date: '2 Nov 2026',
       items: [
