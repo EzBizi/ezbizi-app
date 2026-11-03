@@ -78,7 +78,13 @@ void main() {
             'The message is open and nothing on screen says which inbox it '
             'arrived in. That is how a reply goes out as the wrong address.',
       );
-      expect(find.textContaining('Reply as info@a-1chimney.com'), findsOneWidget);
+      // Below 900 (Jose 11-03) the reply address is on the icon's tooltip.
+      expect(
+        width < 900
+            ? find.byTooltip('Reply as info@a-1chimney.com')
+            : find.textContaining('Reply as info@a-1chimney.com'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }

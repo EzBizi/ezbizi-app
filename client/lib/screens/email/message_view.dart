@@ -82,175 +82,232 @@ class MailMessageView extends StatelessWidget {
     final customer = this.customer;
 
     return LayoutBuilder(
-      builder: (context, constraints) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ConstrainedBox(
-            // The header scrolls on its own past half the pane, so a long
-            // subject and the From picker never push the mail off a phone.
-            constraints: BoxConstraints(
-              maxHeight: constraints.maxHeight * 0.55,
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    message.subject.isEmpty ? 'No subject' : message.subject,
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontSize: 21,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SenderAvatar(
-                        name: message.fromName,
-                        email: message.fromAddress,
+      builder: (context, constraints) {
+        // Below 900 the mail gets the screen: icon actions, a header capped at
+        // a third (Jose 11-03: "take over the entire screen not half of it").
+        final compact = MediaQuery.sizeOf(context).width < 900;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConstrainedBox(
+              // The header scrolls on its own past its cap, so a long subject
+              // and the From picker never push the mail off a phone.
+              constraints: BoxConstraints(
+                maxHeight: constraints.maxHeight * (compact ? 0.3 : 0.55),
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      message.subject.isEmpty ? 'No subject' : message.subject,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontSize: 21,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              message.from,
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                            Text(
-                              'to ${mailbox.address} · '
-                              '${formatStamp(message.receivedAt, 'No date', formats: formats)}',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                            if (message.thread.length > 1)
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SenderAvatar(
+                          name: message.fromName,
+                          email: message.fromAddress,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                '${message.thread.length} messages',
+                                message.from,
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                              Text(
+                                'to ${mailbox.address} · '
+                                '${formatStamp(message.receivedAt, 'No date', formats: formats)}',
                                 style: theme.textTheme.bodySmall,
                               ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (customer != null) ...[
-                    const SizedBox(height: 10),
-                    ActionChip(
-                      key: const ValueKey('email-customer-chip'),
-                      avatar: Icon(
-                        customer.type == 'lead'
-                            ? Icons.person_search_outlined
-                            : Icons.person_outline,
-                        size: 18,
-                      ),
-                      label: Text(
-                        '${customer.type == 'lead' ? 'Lead' : 'Customer'} · '
-                        '${customer.name.isEmpty ? 'Open record' : customer.name}',
-                      ),
-                      onPressed: onOpenCustomer,
-                    ),
-                  ],
-                  if (seen != null) ...[
-                    const SizedBox(height: 8),
-                    SeenByLine(sentence: seen),
-                  ],
-                  const SizedBox(height: 12),
-                  if (copies.length > 1) ...[
-                    Wrap(
-                      key: const ValueKey('email-from-picker'),
-                      spacing: 6,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text('From', style: theme.textTheme.labelMedium),
-                        for (final copy in copies)
-                          ChoiceChip(
-                            label: Text(copy.address),
-                            selected: copy.mailboxId == mailbox.id,
-                            onSelected: (_) =>
-                                onFromChanged?.call(copy.mailboxId),
+                              if (message.thread.length > 1)
+                                Text(
+                                  '${message.thread.length} messages',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                            ],
                           ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                  ],
-                  // Wrap, not Row: "Reply as bookings@…" beside a second control
-                  // overflows a 375px pane.
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Refused(
-                        reason: refusal,
-                        child: FilledButton.icon(
-                          onPressed: refusal == null ? onReply : null,
-                          icon: const Icon(Icons.reply, size: 18),
-                          label: Text('Reply as ${mailbox.address}'),
-                        ),
-                      ),
-                      if (onReplyAll != null)
-                        Refused(
-                          reason: refusal,
-                          child: OutlinedButton.icon(
-                            key: const ValueKey('email-reply-all'),
-                            onPressed: refusal == null ? onReplyAll : null,
-                            icon: const Icon(Icons.reply_all, size: 18),
-                            label: const Text('Reply all'),
-                          ),
-                        ),
-                      if (onForward != null)
-                        OutlinedButton.icon(
-                          key: const ValueKey('email-forward'),
-                          onPressed: onForward,
-                          icon: const Icon(Icons.forward, size: 18),
-                          label: const Text('Forward'),
-                        ),
-                      if (onCompose != null)
-                        OutlinedButton.icon(
-                          key: const ValueKey('email-reader-compose'),
-                          onPressed: onCompose,
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: const Text('Compose'),
-                        ),
-                      // Handled, which is NOT the same as read: the inbox's
-                      // fact that the customer has been answered.
-                      OutlinedButton.icon(
-                        key: const ValueKey('email-handled-toggle'),
-                        onPressed: onToggleDealt,
-                        icon: Icon(
-                          dealt != null
-                              ? Icons.check_circle
-                              : Icons.check_circle_outline,
+                    if (customer != null) ...[
+                      const SizedBox(height: 10),
+                      ActionChip(
+                        key: const ValueKey('email-customer-chip'),
+                        avatar: Icon(
+                          customer.type == 'lead'
+                              ? Icons.person_search_outlined
+                              : Icons.person_outline,
                           size: 18,
                         ),
                         label: Text(
-                          dealt != null
-                              ? handledSentence(dealt!, formats)
-                              : 'Mark handled',
+                          '${customer.type == 'lead' ? 'Lead' : 'Customer'} · '
+                          '${customer.name.isEmpty ? 'Open record' : customer.name}',
                         ),
+                        onPressed: onOpenCustomer,
                       ),
                     ],
-                  ),
+                    if (seen != null) ...[
+                      const SizedBox(height: 8),
+                      SeenByLine(sentence: seen),
+                    ],
+                    const SizedBox(height: 12),
+                    if (copies.length > 1) ...[
+                      Wrap(
+                        key: const ValueKey('email-from-picker'),
+                        spacing: 6,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text('From', style: theme.textTheme.labelMedium),
+                          for (final copy in copies)
+                            ChoiceChip(
+                              label: Text(copy.address),
+                              selected: copy.mailboxId == mailbox.id,
+                              onSelected: (_) =>
+                                  onFromChanged?.call(copy.mailboxId),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    if (compact)
+                      _iconActions(context)
+                    else
+                      // Wrap, not Row: "Reply as bookings@…" beside a second control
+                      // overflows a 375px pane.
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Refused(
+                            reason: refusal,
+                            child: FilledButton.icon(
+                              onPressed: refusal == null ? onReply : null,
+                              icon: const Icon(Icons.reply, size: 18),
+                              label: Text('Reply as ${mailbox.address}'),
+                            ),
+                          ),
+                          if (onReplyAll != null)
+                            Refused(
+                              reason: refusal,
+                              child: OutlinedButton.icon(
+                                key: const ValueKey('email-reply-all'),
+                                onPressed: refusal == null ? onReplyAll : null,
+                                icon: const Icon(Icons.reply_all, size: 18),
+                                label: const Text('Reply all'),
+                              ),
+                            ),
+                          if (onForward != null)
+                            OutlinedButton.icon(
+                              key: const ValueKey('email-forward'),
+                              onPressed: onForward,
+                              icon: const Icon(Icons.forward, size: 18),
+                              label: const Text('Forward'),
+                            ),
+                          if (onCompose != null)
+                            OutlinedButton.icon(
+                              key: const ValueKey('email-reader-compose'),
+                              onPressed: onCompose,
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              label: const Text('Compose'),
+                            ),
+                          // Handled, which is NOT the same as read: the inbox's
+                          // fact that the customer has been answered.
+                          OutlinedButton.icon(
+                            key: const ValueKey('email-handled-toggle'),
+                            onPressed: onToggleDealt,
+                            icon: Icon(
+                              dealt != null
+                                  ? Icons.check_circle
+                                  : Icons.check_circle_outline,
+                              size: 18,
+                            ),
+                            label: Text(
+                              dealt != null
+                                  ? handledSentence(dealt!, formats)
+                                  : 'Mark handled',
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _conversation(mailbox, message)),
+                  if (_files.isNotEmpty) _attachments(context),
                 ],
               ),
             ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: _conversation(mailbox, message)),
-                if (_files.isNotEmpty) _attachments(context),
-              ],
-            ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
+
+  Widget _iconActions(BuildContext context) => Row(
+    key: const ValueKey('email-icon-actions'),
+    children: [
+      Refused(
+        reason: refusal,
+        child: IconButton(
+          key: const ValueKey('email-reply'),
+          tooltip: 'Reply as ${mailbox.address}',
+          icon: const Icon(Icons.reply),
+          onPressed: refusal == null ? onReply : null,
+        ),
+      ),
+      if (onReplyAll != null)
+        Refused(
+          reason: refusal,
+          child: IconButton(
+            key: const ValueKey('email-reply-all'),
+            tooltip: 'Reply all',
+            icon: const Icon(Icons.reply_all),
+            onPressed: refusal == null ? onReplyAll : null,
+          ),
+        ),
+      if (onForward != null)
+        IconButton(
+          key: const ValueKey('email-forward'),
+          tooltip: 'Forward',
+          icon: const Icon(Icons.forward),
+          onPressed: onForward,
+        ),
+      if (onCompose != null)
+        IconButton(
+          key: const ValueKey('email-reader-compose'),
+          tooltip: 'Compose',
+          icon: const Icon(Icons.edit_outlined),
+          onPressed: onCompose,
+        ),
+      IconButton(
+        key: const ValueKey('email-handled-toggle'),
+        tooltip: dealt != null
+            ? handledSentence(dealt!, formats)
+            : 'Mark handled',
+        icon: Icon(
+          dealt != null ? Icons.check_circle : Icons.check_circle_outline,
+        ),
+        onPressed: onToggleDealt,
+      ),
+    ],
+  );
 
   Widget _conversation(Mailbox mailbox, MessageDetail message) {
     if (message.thread.length <= 1) {
