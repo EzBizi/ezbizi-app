@@ -130,6 +130,14 @@ class AppServiceProvider extends ServiceProvider
             ));
         }
 
+        // A call or a form has no chat: the answer is a text (SmsLeadReplies).
+        foreach ([Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_WEBSITE_FORM] as $source) {
+            $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new \App\Support\Leads\SmsLeadReplies(
+                $source,
+                $app->make(\App\Support\Leads\LeadTexts::class),
+            ));
+        }
+
         $this->app->tag(
             [
                 LocalServicesLeads::class,
@@ -140,6 +148,8 @@ class AppServiceProvider extends ServiceProvider
                 'lead-reply-channel.whatsapp',
                 'lead-reply-channel.ez_texts',
                 'lead-reply-channel.ez_calls',
+                'lead-reply-channel.ringcentral',
+                'lead-reply-channel.website_form',
             ],
             LeadReplies::TAG,
         );
