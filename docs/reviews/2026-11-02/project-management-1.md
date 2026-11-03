@@ -41,8 +41,11 @@ The web app is behind sign-in, so the tabs were not clicked by hand. They were o
      - Jobs ran it for the page and again for its count.
      - Indexes are in place (`workiz_records.job_id`, `workiz_jobs.job_id`, `estimates.job_id`).
    - **Fixed**: each stage's jobs are now read once per request, and every number and the page reuse them (a60a213dc).
-   - **Expected**, from parts measured on prod: Overview about 1.2 s and Jobs about 1.1 s. Reading the stage takes 0.96 s; sums over those ids take 0.08 s.
-   - The stopped filter stays near 2 s, because it narrows all 34,054 in-scope jobs by money first.
+   - **Measured on prod after the fix** (0.0.0523, 2026-11-03):
+     - Overview: 5.6 s → 2.3 s.
+     - Jobs: 3.1 s → 1.5 s.
+     - Done, waiting payment: 3.0 s → 1.3 s.
+     - Jobs › payments stopped: 5.3 s → 3.2 s. It still narrows all 34,054 in-scope jobs by money first.
    - The lasting fix is stored money on the job (Suggestion 3).
 2. **Assignments has had no new card since 10-23.**
    - Why: Action 1, which makes the card when a payment arrives, is off by Jose's order. The 7 cards are all from October. (Needs Jose 1.)
