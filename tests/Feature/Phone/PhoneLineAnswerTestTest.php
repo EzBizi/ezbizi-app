@@ -30,12 +30,21 @@ class PhoneLineAnswerTestTest extends TestCase
                 'scope_id' => $t['org']->id,
                 'status' => PhoneConnection::STATUS_CONNECTED,
             ]);
-            foreach (['+12035550001', '+12035550002', '+18559553322'] as $e164) {
+            // No open hours on any day: closed whenever the test runs.
+            $closed = \App\Models\PhoneHoursSchedule::query()->create([
+                'scope_type' => 'organization', 'scope_id' => $t['org']->id,
+                'connection_id' => $connection->id, 'name' => 'Never open', 'timezone' => 'America/New_York', 'weeks' => [],
+            ]);
+            foreach (['+12035550001' => 'voicemail', '+12035550002' => 'voicemail', '+18559553322' => 'voicemail', '+12035550004' => 'forward', '+12035550005' => null] as $e164 => $after) {
                 PhoneNumber::factory()->create([
                     'connection_id' => $connection->id,
                     'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                     'scope_id' => $t['org']->id,
                     'e164' => $e164,
+                    // 0005 has no hours schedule: always open, so it would ring people.
+                    'hours_schedule_id' => $after === null ? null : $closed->id,
+                    'after_hours' => $after ?? 'voicemail',
+                    'after_hours_number' => $after === 'forward' ? '+12035559999' : null,
                 ]);
             }
         });
@@ -48,6 +57,8 @@ class PhoneLineAnswerTestTest extends TestCase
         $twilio->platformCallResults['+12035550002'] = ['status' => 'no-answer', 'duration' => 0];
 
         $this->artisan('ezbizi:phone-line-answer-test', ['--wait' => 0, '--all' => true])
+            ->expectsOutput('+12035550004: not tested, rings people after hours')
+            ->expectsOutput('+12035550005: not tested, rings people after hours')
             ->expectsOutput('+12035550002: did not answer (no-answer)')
             ->assertSuccessful();
 

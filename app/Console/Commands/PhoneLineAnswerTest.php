@@ -39,13 +39,23 @@ class PhoneLineAnswerTest extends Command
         $lines = PhoneNumber::query()->withoutGlobalScopes()
             ->whereIn('connection_id', PhoneConnection::query()->withoutGlobalScopes()->where('status', PhoneConnection::STATUS_CONNECTED)->select('id'))
             ->where('e164', '!=', $from)
-            ->get(['e164', 'organization_id'])
+            ->get()
             ->filter(fn ($n) => $this->option('all') || self::due(now(self::zone((string) $n->organization_id))))
-            ->pluck('e164')->unique()->values();
+            ->unique('e164');
 
         $calls = [];
         $issues = [];
-        foreach ($lines as $e164) {
+        foreach ($lines as $line) {
+            $e164 = (string) $line->e164;
+
+            // Only a line that is closed right now and ends in voicemail (or a
+            // closed message) rings nobody; anything else would wake somebody.
+            if (! self::ringsNobody($line)) {
+                $issues[] = "{$e164}: not tested, rings people after hours";
+
+                continue;
+            }
+
             try {
                 $calls[$e164] = $twilio->platformCall($account, $from, $e164, $twiml);
             } catch (Throwable $e) {
@@ -71,6 +81,21 @@ class PhoneLineAnswerTest extends Command
         $this->info(count($lines).' lines rung, '.count($issues).' failed.');
 
         return self::SUCCESS;
+    }
+
+    private static function ringsNobody(PhoneNumber $line): bool
+    {
+        $organization = \App\Models\Organization::query()->find($line->organization_id);
+
+        return $organization !== null && app(\App\Support\Tenancy\TenantContext::class)->run($organization, function () use ($line) {
+            $schedule = $line->resolved('hours_schedule_id') === null
+                ? null
+                : \App\Models\PhoneHoursSchedule::query()->find($line->resolved('hours_schedule_id'));
+
+            return $schedule !== null
+                && ! \App\Support\Phone\HoursClock::open($schedule, new \DateTimeImmutable('now'))
+                && $line->resolved('after_hours') !== PhoneNumber::AFTER_HOURS_FORWARD;
+        });
     }
 
     /** An even-week Monday at 21:xx, in the line's own zone. */
