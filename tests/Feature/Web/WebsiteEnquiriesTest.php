@@ -11,6 +11,7 @@ use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Support\Automations\ActionRunner;
 use App\Support\Leads\LeadReplies;
+use App\Support\Leads\SmsLeadReplies;
 use App\Support\Web\WebsiteChatReplies;
 use App\Support\Web\WebsiteEnquiries;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -488,12 +489,12 @@ class WebsiteEnquiriesTest extends TestCase
     }
 
     /**
-     * A submitted form has no page left to answer into.
-     *
-     * Refused rather than quietly sent by email: that would be a second send
-     * path with its own consent and audit questions, wearing this one's name.
+     * A submitted form has no page left to answer into, so it is answered by
+     * a text (Jose, 2026-11-03) - and only when the form left a phone. Never
+     * by email: that would be a second send path with its own consent and
+     * audit questions, wearing this one's name.
      */
-    public function test_a_form_submission_offers_no_reply_channel(): void
+    public function test_a_form_submission_is_answered_by_text_and_only_with_a_phone(): void
     {
         ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
 
@@ -506,8 +507,8 @@ class WebsiteEnquiriesTest extends TestCase
             $lead = Lead::query()->firstOrFail();
             $replies = app(LeadReplies::class);
 
-            $this->assertFalse($replies->canReply($lead));
-            $this->assertNull($replies->for($lead));
+            $this->assertFalse($replies->canReply($lead), 'No phone on the form, nothing to text.');
+            $this->assertInstanceOf(SmsLeadReplies::class, $replies->for($lead));
         });
     }
 
