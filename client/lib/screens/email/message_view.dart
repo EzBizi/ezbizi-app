@@ -177,103 +177,61 @@ class MailMessageView extends StatelessWidget {
                   ],
                   // Wrap, not Row: "Reply as bookings@…" beside a second control
                   // overflows a 375px pane.
-                  // Under 600px a compact icon row; labelled buttons wrapped
-                  // to four big rows on a phone (Jose, 2026-11-03).
-                  Builder(
-                    builder: (context) {
-                      final compact = MediaQuery.sizeOf(context).width < 600;
-                      Widget action(
-                        Key? key,
-                        IconData icon,
-                        String label,
-                        VoidCallback? onPressed, {
-                        bool filled = false,
-                      }) {
-                        // Reply keeps its label: it names the inbox the answer goes from.
-                        if (compact && !filled) {
-                          return filled
-                              ? IconButton.filled(
-                                  key: key,
-                                  tooltip: label,
-                                  onPressed: onPressed,
-                                  icon: Icon(icon),
-                                )
-                              : IconButton(
-                                  key: key,
-                                  tooltip: label,
-                                  onPressed: onPressed,
-                                  icon: Icon(icon),
-                                );
-                        }
-                        return filled
-                            ? FilledButton.icon(
-                                key: key,
-                                onPressed: onPressed,
-                                icon: Icon(icon, size: 18),
-                                label: Text(label),
-                              )
-                            : OutlinedButton.icon(
-                                key: key,
-                                onPressed: onPressed,
-                                icon: Icon(icon, size: 18),
-                                label: Text(label),
-                              );
-                      }
-
-                      return Wrap(
-                        spacing: compact ? 0 : 8,
-                        runSpacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Refused(
-                            reason: refusal,
-                            child: action(
-                              null,
-                              Icons.reply,
-                              'Reply as ${mailbox.address}',
-                              refusal == null ? onReply : null,
-                              filled: true,
-                            ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Refused(
+                        reason: refusal,
+                        child: FilledButton.icon(
+                          onPressed: refusal == null ? onReply : null,
+                          icon: const Icon(Icons.reply, size: 18),
+                          label: Text('Reply as ${mailbox.address}'),
+                        ),
+                      ),
+                      if (onReplyAll != null)
+                        Refused(
+                          reason: refusal,
+                          child: OutlinedButton.icon(
+                            key: const ValueKey('email-reply-all'),
+                            onPressed: refusal == null ? onReplyAll : null,
+                            icon: const Icon(Icons.reply_all, size: 18),
+                            label: const Text('Reply all'),
                           ),
-                          if (onReplyAll != null)
-                            Refused(
-                              reason: refusal,
-                              child: action(
-                                const ValueKey('email-reply-all'),
-                                Icons.reply_all,
-                                'Reply all',
-                                refusal == null ? onReplyAll : null,
-                              ),
-                            ),
-                          if (onForward != null)
-                            action(
-                              const ValueKey('email-forward'),
-                              Icons.forward,
-                              'Forward',
-                              onForward,
-                            ),
-                          if (onCompose != null)
-                            action(
-                              const ValueKey('email-reader-compose'),
-                              Icons.edit_outlined,
-                              'Compose',
-                              onCompose,
-                            ),
-                          // Handled, which is NOT the same as read: the inbox's
-                          // fact that the customer has been answered.
-                          action(
-                            const ValueKey('email-handled-toggle'),
-                            dealt != null
-                                ? Icons.check_circle
-                                : Icons.check_circle_outline,
-                            dealt != null
-                                ? handledSentence(dealt!, formats)
-                                : 'Mark handled',
-                            onToggleDealt,
-                          ),
-                        ],
-                      );
-                    },
+                        ),
+                      if (onForward != null)
+                        OutlinedButton.icon(
+                          key: const ValueKey('email-forward'),
+                          onPressed: onForward,
+                          icon: const Icon(Icons.forward, size: 18),
+                          label: const Text('Forward'),
+                        ),
+                      if (onCompose != null)
+                        OutlinedButton.icon(
+                          key: const ValueKey('email-reader-compose'),
+                          onPressed: onCompose,
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: const Text('Compose'),
+                        ),
+                      // Handled, which is NOT the same as read: the inbox's
+                      // fact that the customer has been answered.
+                      OutlinedButton.icon(
+                        key: const ValueKey('email-handled-toggle'),
+                        onPressed: onToggleDealt,
+                        icon: Icon(
+                          dealt != null
+                              ? Icons.check_circle
+                              : Icons.check_circle_outline,
+                          size: 18,
+                        ),
+                        label: Text(
+                          dealt != null
+                              ? handledSentence(dealt!, formats)
+                              : 'Mark handled',
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
