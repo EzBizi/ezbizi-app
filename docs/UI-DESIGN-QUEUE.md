@@ -5296,6 +5296,6 @@ For Field (c60be2fc) and Jobs. Jose's "AI Tech Recorder & Summary". Recommended 
 
 For Task Board (Monday survey 131037c3a; A-1 off Monday by Nov 10). Recommended 1 + phone 4: Calendar (Month|Week, drag to re-date, no-date tray) and Timeline (range column + Gantt, drag/resize, today line, Week|Month|Quarter) join the existing Table|Kanban|Cards switcher; Number gets Plain|Currency|% and a Formula column is built in the column settings SidePanel, with group-footer sums. Phone: Calendar is an agenda list, Timeline scrolls sideways.
 
-### 179 · Calls: set New/Existing and Booked/Not booked by hand — **sent 2026-11-03** (`docs/previews/call-reclassify-layouts.html`)
+### 179 · Calls: set New/Existing and Booked/Not booked by hand — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend on the trey stuff") (`docs/previews/call-reclassify-layouts.html`)
 
 For Reports (backend 1e45b6f06, gated on reports.handles). Jose for Trey: "reclassify from existing to new and viceverse as well as to booke from not booked and viceversa". Recommended 1 + phone 4: Client and Booking segmented controls in the call details, "Set by X · Automatic ↺" to undo, a ✎ mark with a tooltip on the row pills.
