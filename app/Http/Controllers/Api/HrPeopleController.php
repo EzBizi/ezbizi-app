@@ -34,6 +34,7 @@ use App\Support\TimeClock\WorkSchedule;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -342,13 +343,14 @@ class HrPeopleController extends Controller
      * from their onboarding, downloaded as its attachment; the contract is
      * their latest onboarding, downloaded as its PDF.
      */
-    public function payroll(Request $request): JsonResponse
+    public function payroll(Request $request): JsonResponse|Response
     {
         $actor = $request->user();
         $seesPay = $actor->hasPermission('hr.pay.view');
         $today = now()->toDateString();
 
-        $people = User::query()->with('role:id,name')
+        $people = User::query()->with(['role:id,name', 'assignments.assignedCompany:id,name',
+            'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
             ->orderBy('name')->get();
@@ -365,8 +367,11 @@ class HrPeopleController extends Controller
         $taxForms = OnboardingAnswer::query()
             ->whereIn('onboarding_id', $onboardings->map->getKey()->all())->where('field_key', 'tax_form')
             ->get()->keyBy('onboarding_id');
+        $taxIds = OnboardingAnswer::query()
+            ->whereIn('onboarding_id', $onboardings->map->getKey()->all())->where('field_key', 'tax_id_type')
+            ->get()->keyBy('onboarding_id');
 
-        $rows = $people->map(function (User $person) use ($rates, $events, $onboardings, $taxForms, $seesPay) {
+        $rows = $people->map(function (User $person) use ($rates, $events, $onboardings, $taxForms, $taxIds, $seesPay) {
             $mine = $events->get($person->getKey(), collect());
             $left = $mine->where('kind', EmploymentEvent::LEFT)->last();
             $started = $mine->where('kind', EmploymentEvent::STARTED)->first();
@@ -393,6 +398,18 @@ class HrPeopleController extends Controller
                 'terminated_on' => $left !== null && ($lastStart === null || $left->occurred_on->gte($lastStart->occurred_on))
                     ? $left->occurred_on->toDateString() : null,
                 'role' => $person->role === null ? null : ['id' => $person->role->getKey(), 'name' => $person->role->name],
+                // W-2 or 1099 (the accountant via Jose, 2026-11-02): a 1099
+                // contract, or an EIN given as their tax ID, is 1099; any other
+                // contract is W-2; no contract is unknown (null).
+                'employment_type' => $onboarding === null ? null : (
+                    str_contains((string) $onboarding->contractVersion?->contract?->name, '1099')
+                    || strtoupper(trim((string) $taxIds->get($onboarding->getKey())?->value)) === 'EIN'
+                        ? '1099' : 'W-2'),
+                // Where they are assigned: each company and branch.
+                'assigned' => $person->assignments->map(fn ($a) => [
+                    'company' => $a->assignedCompany?->name,
+                    'branch' => $a->assignedFranchise?->name,
+                ])->filter(fn ($a) => $a['company'] !== null || $a['branch'] !== null)->values()->all(),
                 'contract' => $onboarding === null ? null : [
                     'id' => $onboarding->contractVersion?->contract?->getKey(),
                     'name' => $onboarding->contractVersion?->contract?->name,
@@ -406,7 +423,35 @@ class HrPeopleController extends Controller
             ->when($request->query('w2') === 'signed', fn ($c) => $c->where('w2.signed', true))
             ->when($request->query('w2') === 'unsigned', fn ($c) => $c->where('w2.signed', false))
             ->when($request->query('contract_id'), fn ($c, $id) => $c->where('contract.id', $id))
+            ->when($request->query('type') === 'w2', fn ($c) => $c->where('employment_type', 'W-2'))
+            ->when($request->query('type') === '1099', fn ($c) => $c->where('employment_type', '1099'))
+            // No contract on record, so no type: the ones to sort out.
+            ->when($request->query('type') === 'unknown', fn ($c) => $c->whereNull('employment_type'))
             ->values();
+
+        // The same list as a spreadsheet, for the accountant (?format=csv).
+        if ($request->query('format') === 'csv') {
+            $this->audit->log('person.payroll_exported', metadata: ['rows' => $rows->count()]);
+            $out = fopen('php://temp', 'r+');
+            fputcsv($out, ['Employee', 'Type', 'Company', 'Branch', 'Role', 'Contract', 'Start date', 'Termination date', 'W-4 signed']
+                + ($seesPay ? [9 => 'Salary', 10 => 'Per'] : []));
+            foreach ($rows as $r) {
+                fputcsv($out, [
+                    $r['name'], $r['employment_type'] ?? '',
+                    implode('; ', array_unique(array_filter(array_column($r['assigned'], 'company')))),
+                    implode('; ', array_unique(array_filter(array_column($r['assigned'], 'branch')))),
+                    $r['role']['name'] ?? '', $r['contract']['name'] ?? '', $r['started_on'] ?? '', $r['terminated_on'] ?? '',
+                    $r['w2']['signed'] ? 'Yes' : 'No',
+                ] + ($seesPay ? [9 => $r['salary']['amount'] ?? '', 10 => $r['salary']['period'] ?? ''] : []));
+            }
+            rewind($out);
+            $csv = stream_get_contents($out);
+
+            return response($csv, 200, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="payroll.csv"',
+            ]);
+        }
 
         return response()->json([
             'data' => $rows,

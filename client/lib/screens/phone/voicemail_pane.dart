@@ -499,6 +499,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
       return const StatusPill('None', tone: Tone.caution);
     }
 
+    if (count == 0) return const Text('Every line (default)');
     return Text(fallback ? '$count + account default' : '$count');
   }
 

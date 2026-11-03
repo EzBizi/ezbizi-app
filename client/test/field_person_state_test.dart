@@ -123,7 +123,7 @@ void main() {
     expect(FieldPersonState.notReported.tone, Tone.bad);
     expect(FieldPersonState.offline.colour, EzBiziTheme.fieldSlate);
     expect(FieldPersonState.ongoing.colour, EzBiziTheme.fieldGreen);
-    expect(FieldPersonState.stopped.colour, EzBiziTheme.fieldPurple);
+    expect(FieldPersonState.stopped.colour, EzBiziTheme.fieldTeal);
     // Unassigned jobs are colorScheme.outline since 2026-10-30, so yellow
     // is free for lost signal.
     final jobColours = {

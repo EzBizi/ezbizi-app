@@ -13,6 +13,7 @@ use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Social\Publishing\StillProcessing;
 use App\Support\Social\Publishing\ThreadsPublisher;
 use App\Support\Social\Publishing\TikTokPublisher;
+use App\Support\Social\Publishing\YouTubePublisher;
 use App\Support\Social\SocialMediaKind;
 use App\Support\Social\SocialProvider;
 use Illuminate\Support\Facades\Http;
@@ -482,6 +483,12 @@ class SocialPublishingTest extends TestCase
         );
     }
 
+    public function test_a_pin_links_to_its_page(): void
+    {
+        $this->assertSame('https://www.pinterest.com/pin/1234567/',
+            (new PinterestPublisher)->permalink($this->connection(SocialProvider::Pinterest), '1234567'));
+    }
+
     public function test_a_slow_instagram_video_is_handed_on_not_failed(): void
     {
         $this->reachable();
@@ -794,6 +801,16 @@ class SocialPublishingTest extends TestCase
     }
 
     /** Delete from the network (2026-10-15). */
+    public function test_youtube_deletes_the_video_it_published(): void
+    {
+        config(['services.youtube.client_id' => 'cid', 'services.youtube.client_secret' => 'sec']);
+        Http::fake(['oauth2.googleapis.com/token' => Http::response(['access_token' => 't', 'expires_in' => 3600]), '*' => Http::response(null, 204)]);
+
+        (new YouTubePublisher)->deleteRemote($this->connection(SocialProvider::YouTube), 'vid-9');
+
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_contains($r->url(), '/youtube/v3/videos?id=vid-9'));
+    }
+
     public function test_pinterest_deletes_the_pin_it_published(): void
     {
         Http::fake();

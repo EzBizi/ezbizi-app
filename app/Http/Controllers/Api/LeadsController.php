@@ -294,7 +294,7 @@ class LeadsController extends Controller
                     ->orWhereNotIn('leads.lead_type', ['PHONE_CALL', 'BOOKING'])
                     ->orWhereNull('leads.lead_type'))
                 // Completed: the customer is owed nothing (Jose, 2026-10-01).
-                ->whereNotIn('leads.status', [Lead::STATUS_COMPLETED, Lead::STATUS_LOST])
+                ->whereNotIn('leads.status', Lead::STATUSES_NO_REPLY_OWED)
                 ->where(function ($q) {
                     $q->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
                         ->orWhereNull('leads.last_contact_from');
@@ -1146,8 +1146,8 @@ class LeadsController extends Controller
                 && $c->recording_url !== null && $c->duration_ms !== null
                 && $c->occurred_at?->gte(now()->subDays(7)) === true
                 && app(CallTranscripts::class)->enabled(),
-            // A WhatsApp file becomes a short-lived signed link, streamed from Meta.
-            'attachments' => array_map(WhatsAppMediaController::url(...), $c->attachments ?? []),
+            // A WhatsApp, Messenger or Instagram file becomes a short-lived signed link, streamed from Meta.
+            'attachments' => array_map(fn (string $a) => MetaMediaController::url(WhatsAppMediaController::url($a)), $c->attachments ?? []),
             // Never the URL itself: it is fetched with the connection's
             // token through the recording endpoint.
             'has_recording' => $c->recording_url !== null,
@@ -2078,6 +2078,9 @@ class LeadsController extends Controller
             // The customer has waited longer than the business should let
             // them - the list's red mark (Jose, 2026-09-28).
             'reply_overdue' => $lead->replyOverdue($canReply),
+            // Whether this status owes anybody an answer: the list's Awaiting
+            // reply chip reads it (Lead::STATUSES_NO_REPLY_OWED).
+            'reply_owed' => ! in_array($lead->status, Lead::STATUSES_NO_REPLY_OWED, true),
             'company' => $lead->company?->only(['id', 'name']),
             'franchise' => $lead->franchise?->only(['id', 'name']),
 

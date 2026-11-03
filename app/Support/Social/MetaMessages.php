@@ -2,6 +2,7 @@
 
 namespace App\Support\Social;
 
+use App\Http\Controllers\Api\MetaMediaController;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
@@ -148,10 +149,11 @@ final class MetaMessages
             'channel' => LeadConversation::CHANNEL_MESSAGE,
             'participant' => LeadConversation::FROM_CONSUMER,
             'occurred_at' => $at,
-            // Only text is read. An image or a sticker becomes a row with a
-            // null body and the right channel, which is honest - an empty
-            // string would read as somebody having sent nothing.
+            // A photo alone keeps a null body: an empty string would read as
+            // somebody having sent nothing.
             'text' => isset($message['text']) && $message['text'] !== '' ? (string) $message['text'] : null,
+            // Streamed from Meta on demand (MetaMediaController), never stored.
+            'attachments' => MetaMediaController::refs($connection, $mid, $message),
             'is_ad_question' => self::adQuestion($event),
         ]);
     }

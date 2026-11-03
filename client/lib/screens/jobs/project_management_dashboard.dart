@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -190,15 +191,11 @@ class _ProjectManagementDashboardState
           "What needs attention today, across Project Management's open "
           'jobs.',
       scope: widget.scope,
-      search: TextField(
+      search: ListSearch(
         key: const ValueKey('pm-dash-search'),
         controller: _search,
+        hint: pmJobSearchHint,
         onChanged: _typed,
-        decoration: const InputDecoration(
-          isDense: true,
-          prefixIcon: Icon(Icons.search, size: 18),
-          hintText: pmJobSearchHint,
-        ),
       ),
       place: widget.areas.isEmpty
           ? null

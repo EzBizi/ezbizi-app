@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Jobs\MirrorToWorkiz;
+use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\SocialConnection;
@@ -92,6 +93,8 @@ class ProjectManagement2Test extends TestCase
         $page = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs?per_page=1')->assertOk();
         $this->assertCount(1, $page->json('data'));
         $this->assertSame(['total' => 2, 'per_page' => 1, 'current_page' => 1, 'last_page' => 2, 'counts' => ['pending' => 2, 'ready' => 0, 'submitted' => 0]], $page->json('meta'));
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs?per_page=1&page=2')->assertOk()
+            ->assertJsonMissingPath('meta.counts');
     }
 
     public function test_a_job_opens_with_its_money_and_timeline(): void
@@ -136,7 +139,7 @@ class ProjectManagement2Test extends TestCase
         $this->assertSame(['Payment', 'Refund', 'Tags +DEPOSIT'], array_slice(array_column($job['timeline'], 'what'), 3));
 
         $rows = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs')->json('data'))->keyBy('id');
-        $this->assertSame([null, null, null], [$rows[$bare]['total'], $rows[$bare]['paid'], $rows[$bare]['pending']], 'no price draws no zero');
+        $this->assertSame([0, 0, 0], [$rows[$bare]['total'], $rows[$bare]['paid'], $rows[$bare]['pending']], 'no price reads \$0');
         $this->assertSame(['N-1', 5000, 0, 5000], [$rows[$native]['job_number'], $rows[$native]['total'], $rows[$native]['paid'], $rows[$native]['pending']]);
         $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs/{$native}")->assertOk()
             ->assertJsonPath('data.timeline.0.what', 'Job created');
@@ -168,6 +171,8 @@ class ProjectManagement2Test extends TestCase
 
             return [$unpaid, $paid, $submitted];
         });
+        // The Workiz move reaches the Submitted tab through the every-minute copy.
+        $this->artisan('project-management-2:record-submissions')->expectsOutput('Recorded 1 submissions.')->assertSuccessful();
         $tab = fn (string $t) => $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs?tab={$t}")->assertOk();
         $ids = fn (string $t) => collect($tab($t)->json('data'))->pluck('id')->sort()->values()->all();
         $sorted = fn (array $a) => collect($a)->sort()->values()->all();
@@ -188,6 +193,12 @@ class ProjectManagement2Test extends TestCase
         $this->assertSame($paid, $tab('submitted')->json('data.0.id'), 'latest submitted first');
 
         $submit($paid)->assertStatus(409)->assertJsonPath('message', 'This job is no longer done pending approval.');
+
+        // Kept for good (Jose, 2026-11-02): a re-run records nothing twice, and the
+        // tab outlives the events, which expire in three months.
+        $this->artisan('project-management-2:record-submissions')->expectsOutput('Recorded 0 submissions.')->assertSuccessful();
+        $this->inTenant($alpha['org'], fn () => AutomationEvent::query()->delete());
+        $this->assertSame($sorted([$paid, $submitted]), $ids('submitted'));
     }
 
     private function record(array $tenant, string $job, string $type, string $remote, string $amount, ?string $status, string $day, array $payload = []): void

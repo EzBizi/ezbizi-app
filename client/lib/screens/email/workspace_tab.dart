@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -991,15 +992,10 @@ class _WorkspaceViewState extends State<WorkspaceView> {
             ),
           ),
         if (_applied case final applied?) _appliedBox(context, applied),
-        TextField(
+        ListSearch(
           key: const ValueKey('tour-email-workspace-search'),
           controller: _search,
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Search people',
-            isDense: true,
-            border: OutlineInputBorder(),
-          ),
+          hint: 'Search people',
         ),
       ],
     );

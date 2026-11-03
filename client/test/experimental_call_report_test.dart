@@ -99,9 +99,11 @@ void main() {
     tester,
   ) async {
     final put = <String>[];
+    var gets = 0;
     final api = ApiClient(
       client: MockClient((request) async {
         if (request.url.path.endsWith('/reports/experimental/calls')) {
+          gets++;
           return _json(_report, 200);
         }
         if (request.method == 'PUT') {
@@ -133,6 +135,16 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(put.single, contains('"tag":"existing"'));
+    // Jose, 2026-11-02: only the row changes; the report is not read again.
+    expect(gets, 1);
+    expect(
+      tester
+          .widget<SegmentedButton<String>>(
+            find.byKey(const ValueKey('handles-Ada')),
+          )
+          .selected,
+      {'existing'},
+    );
   });
 
   testWidgets('Handles is read-only without edit rights', (tester) async {
@@ -462,10 +474,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('coaching-Ada')), findsOneWidget);
-    expect(find.textContaining('7.0 / 10 over 1 scored call'), findsOneWidget);
-    expect(find.text('Greeted with the company name: 100%'), findsOneWidget);
-    expect(find.text('Offered a time: 0%'), findsOneWidget);
-    expect(find.text('To improve: Offer a time.'), findsOneWidget);
+    expect(find.textContaining('over 1 scored call'), findsOneWidget);
+    expect(find.text('Greeted with the company name 100%'), findsOneWidget);
+    expect(find.text('Offered a time 0%'), findsOneWidget);
+    expect(find.text('Offer a time.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Copy').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Copied'), findsOneWidget);
     expect(find.byKey(const ValueKey('coaching-Bo')), findsNothing);
   });
 
@@ -519,7 +534,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Blocked drain'), findsOneWidget);
-    expect(find.text('Rang · Bo answered'), findsOneWidget);
+    expect(find.text('Not answered · Bo took it'), findsOneWidget);
+    expect(find.text('Not answered'), findsOneWidget);
     expect(find.text('5:00'), findsNWidgets(before + 1));
   });
 
@@ -632,25 +648,24 @@ void main() {
 
     // Closed: no details, no play button on a missed row, and a voicemail
     // icon that says there is a recording inside (UI/UX).
-    expect(find.text('Caller: +15550004444'), findsNothing);
+    expect(find.text('Line called'), findsNothing);
     expect(find.byKey(const ValueKey('listen-rec-4')), findsNothing);
     expect(find.byTooltip('Show details'), findsWidgets);
 
     await tester.tap(find.byKey(const ValueKey('call-details-c4')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Caller: +15550004444'), findsOneWidget);
-    expect(
-      find.text('Line called: +15558887777 · DFW - LS Ads'),
-      findsOneWidget,
-    );
+    expect(find.text('+15550004444'), findsWidgets);
+    expect(find.text('DFW · LS Ads'), findsOneWidget);
+    expect(find.text('Line called'), findsOneWidget);
+    expect(find.text('+1 (555) 888-7777'), findsWidgets);
     expect(find.byKey(const ValueKey('voicemail-rec-4')), findsOneWidget);
 
     // A missed call with no voicemail opens to its numbers, no player.
     await tester.tap(find.byKey(const ValueKey('call-details-c3')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Caller: +15550003333'), findsOneWidget);
+    expect(find.text('Caller'), findsNWidgets(2));
     expect(find.byKey(const ValueKey('voicemail-null')), findsNothing);
   });
 
@@ -658,7 +673,7 @@ void main() {
     // Bar, via Jose, 2026-10-12: a notification opens "the exact thing".
     await _pump(tester, width: 1400, openCall: 'c3');
 
-    expect(find.text('Caller: +15550003333'), findsOneWidget);
+    expect(find.text('Caller'), findsOneWidget);
     expect(find.byTooltip('Hide details'), findsOneWidget);
   });
 

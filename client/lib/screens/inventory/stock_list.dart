@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -337,14 +338,10 @@ class _StockListState extends State<StockList> {
   }
 
   Widget _toolbar(BuildContext context, StockJoin join, {required bool wide}) {
-    final search = TextField(
+    final search = ListSearch(
       key: const Key('stock-search'),
       controller: _search,
-      decoration: const InputDecoration(
-        hintText: 'Find an item, SKU or number',
-        prefixIcon: Icon(Icons.search, size: 20),
-        isDense: true,
-      ),
+      hint: 'Find an item, SKU or number',
       onChanged: (_) => setState(() {}),
     );
     final places = SearchPickerField<String>(

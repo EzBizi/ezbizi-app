@@ -442,6 +442,17 @@ class _HelpersPaneState extends State<HelpersPane> {
                 _grid(context, compact: false),
                 const SizedBox(height: 10),
                 _legend(context),
+                if (_byDay.isEmpty) ...[
+                  const SizedBox(height: 10),
+                  // An empty month grid alone looked broken.
+                  Text(
+                    'No helpers booked this month.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

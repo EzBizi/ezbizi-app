@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -281,13 +282,9 @@ class _LightingTabState extends State<LightingTab> {
       children: [
         SizedBox(
           width: 280,
-          child: TextField(
+          child: ListSearch(
             key: const ValueKey('lighting-search'),
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              hintText: 'Search PCs or people',
-              isDense: true,
-            ),
+            hint: 'Search PCs or people',
             onChanged: (v) => setState(() => _query = v),
           ),
         ),

@@ -145,6 +145,7 @@ final class RescheduleOffers
     public function move(SchedulingRescheduleOffer $offer): Job
     {
         abort_if($offer->moved_at !== null, 409, 'This appointment was already moved.');
+        abort_if($offer->open_date->isBefore(today()), 409, 'That opening has passed. Pick another time on the board.');
         $job = Job::query()->findOrFail($offer->job_id);
         $area = ServiceArea::query()->findOrFail($offer->service_area_id);
         $date = CarbonImmutable::parse($offer->open_date);

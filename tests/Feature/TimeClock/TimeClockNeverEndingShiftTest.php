@@ -181,6 +181,27 @@ class TimeClockNeverEndingShiftTest extends TestCase
     }
 
     /**
+     * The same re-punch on a day off (production, 2026-10-25): Romnick's
+     * Sunday shift closed at 18:00:01, he clocked back in at 18:00:03, and the
+     * reopened shift took the whole cap again and closed at 08:00 Monday —
+     * twenty hours. Continuing a shift the clock closed buys one extension.
+     */
+    public function test_reopening_a_shift_the_clock_closed_buys_one_extension_on_a_day_off(): void
+    {
+        [$alpha, $person] = $this->scheduled();
+
+        Carbon::setTestNow(Carbon::parse('2026-09-12 15:00:00', 'UTC')); // Saturday: no schedule
+        $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk();
+        Carbon::setTestNow(Carbon::parse('2026-09-13 07:00:01', 'UTC'));
+        $this->artisan('ezbizi:close-ended-shifts')->assertSuccessful();
+
+        Carbon::setTestNow(Carbon::parse('2026-09-13 07:00:03', 'UTC'));
+        $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk();
+
+        $this->assertSame('2026-09-13 07:30:03', $this->open($alpha, $person)->scheduled_end_at->toDateTimeString());
+    }
+
+    /**
      * A close cannot invent hours.
      *
      * The sweep stamps the END it was sweeping, not the moment it got there.

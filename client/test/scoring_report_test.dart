@@ -235,7 +235,7 @@ void main() {
     );
     expect(find.text('Got the address'), findsOneWidget);
     expect(
-      find.text('• Say the visit fee before the time slots'),
+      find.text('Say the visit fee before the time slots'),
       findsOneWidget,
     );
 

@@ -231,7 +231,9 @@ class OpenRgbClient {
   Future<Uint8List> _ask(int dev, int id) {
     _waiting = Completer<Uint8List>();
     _send(dev, id);
-    return _waiting!.future.timeout(const Duration(seconds: 5));
+    // 30 s, not 5: on ASUS boards OpenRGB answers only after its SMBus
+    // detection, and 8 PCs timed out at 5 s (prod, 2026-11-02).
+    return _waiting!.future.timeout(const Duration(seconds: 30));
   }
 
   Future<List<OpenRgbController>> controllers() async {

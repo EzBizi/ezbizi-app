@@ -3537,23 +3537,18 @@ final _onePixelPng = base64Decode(
 
 String _two(int n) => n.toString().padLeft(2, '0');
 
-/// Fill the Send-at boxes the way somebody would: month, day, year, then time.
+/// Fill the Send-at field the way somebody would: the day, then the time, in
+/// the fallback YYYY-MM-DD order (one field since Jose, 2026-11-03).
 Future<void> _typeWhen(
   WidgetTester tester,
   DateTime day, {
   required String hour,
   required String minute,
 }) async {
-  Future<void> box(String name, String value) async {
-    await tester.enterText(find.byKey(Key('calendar-day-$name')), value);
-    await tester.pump();
-  }
-
-  await box('month', _two(day.month));
-  await box('day', _two(day.day));
-  await box('year', day.year.toString());
-  await box('hour', hour);
-  await box('minute', minute);
+  await tester.enterText(
+    find.byKey(const Key('calendar-day-text')),
+    '${day.year}-${_two(day.month)}-${_two(day.day)} $hour:$minute',
+  );
   await tester.pumpAndSettle();
 }
 

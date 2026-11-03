@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
 import '../../core/timestamps.dart';
@@ -107,16 +108,9 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
               // Standard field height, as tall as Leads search (Jose, 2026-10-27).
               SizedBox(
                 width: 240,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('staff-accounts-search'),
-                  textAlignVertical: TextAlignVertical.center,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIconConstraints: BoxConstraints(minWidth: 36),
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Find a staff account',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Find a staff account',
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),

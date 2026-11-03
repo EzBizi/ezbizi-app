@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -602,17 +603,11 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-            child: TextField(
+            child: ListSearch(
               key: const ValueKey('ads-account-search'),
               controller: _accountSearch,
-              decoration: InputDecoration(
-                isDense: true,
-                prefixIcon: const Icon(Icons.search, size: 18),
-                border: const OutlineInputBorder(),
-                hintText:
-                    'Search ${_accounts.length} '
-                    '${_accounts.length == 1 ? 'account' : 'accounts'}',
-              ),
+              hint: 'Search ${_accounts.length} '
+                      '${_accounts.length == 1 ? 'account' : 'accounts'}',
             ),
           ),
           const Divider(height: 1),
@@ -1264,15 +1259,10 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            TextField(
+            ListSearch(
               key: const ValueKey('ads-campaign-search'),
               controller: _campaignSearch,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                border: OutlineInputBorder(),
-                hintText: 'Search campaigns',
-              ),
+              hint: 'Search campaigns',
             ),
           ],
         ),
