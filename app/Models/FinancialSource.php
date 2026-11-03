@@ -117,11 +117,33 @@ class FinancialSource extends Model implements StatesRetention
         return $rows->filter(fn (array $fields) => $this->owns($fields))->values();
     }
 
+    /** Which store rows() is forced to read; null = the live one. Set only by readingFrom(). */
+    private static ?string $readFrom = null;
+
     /**
-     * Forces which store rows() reads (parity compares the two); null = the
-     * live one. Always reset it (try/finally).
+     * Runs $fn with every rows() reading one store ('airtable' or 'ezbizi'),
+     * as parity compares the two; the previous setting comes back even if
+     * $fn throws.
      */
-    public static ?string $readFrom = null;
+    public static function readingFrom(string $store, callable $fn): mixed
+    {
+        if (! in_array($store, ['airtable', 'ezbizi'], true)) {
+            throw new \InvalidArgumentException("Unknown store {$store}.");
+        }
+        $before = self::$readFrom;
+        self::$readFrom = $store;
+        try {
+            return $fn();
+        } finally {
+            self::$readFrom = $before;
+        }
+    }
+
+    /** The store rows() is forced to read right now, if any. */
+    public static function forcedStore(): ?string
+    {
+        return self::$readFrom;
+    }
 
     /** The Financials table that mirrors (or took over) this source's Airtable table. */
     public function mirrorTable(): ?FinancialTable

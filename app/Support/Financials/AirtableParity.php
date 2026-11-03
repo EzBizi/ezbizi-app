@@ -146,12 +146,7 @@ final class AirtableParity
         foreach ($months as $month) {
             $from = CarbonImmutable::parse($month.'-01');
             $render = function (string $store) use ($from, $source, $kind) {
-                FinancialSource::$readFrom = $store;
-                try {
-                    $buckets = SourceFigures::refunds($from->toDateString(), $from->endOfMonth()->toDateString(), $source->franchise_id);
-                } finally {
-                    FinancialSource::$readFrom = null;
-                }
+                $buckets = FinancialSource::readingFrom($store, fn () => SourceFigures::refunds($from->toDateString(), $from->endOfMonth()->toDateString(), $source->franchise_id));
                 $buckets = array_values(array_filter($buckets, fn ($b) => $b['kind'] === $kind));
                 foreach ($buckets as &$b) {
                     usort($b['items'], fn ($x, $y) => strcmp(json_encode($x), json_encode($y)));
