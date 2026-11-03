@@ -161,9 +161,10 @@ final class CallReconciliation
         foreach ($jobs as $job) {
             $day = substr((string) ($job['created_at'] ?? ''), 0, 10);
             $status = strtolower(trim((string) ($job['status'] ?? '')));
-            if ($day !== '' && $day < $from && ! in_array($status, ['done', 'canceled', 'cancelled'], true)
-                && ($phone = NumberNames::lastTen($job['phone'] ?? null)) !== null) {
-                $openJobs[$phone] = ['created_at' => $job['created_at'], 'scheduled_for' => $job['scheduled_for'] ?? null, 'status' => $job['status'] ?? null];
+            if ($day !== '' && $day < $from && ! in_array($status, ['done', 'canceled', 'cancelled'], true)) {
+                foreach ($this->phones($job) as $phone) {
+                    $openJobs[$phone] = ['created_at' => $job['created_at'], 'scheduled_for' => $job['scheduled_for'] ?? null, 'status' => $job['status'] ?? null];
+                }
             }
         }
         $existingJob = fn (array $call) => $openJobs[NumberNames::lastTen($call['from'] ?? null) ?? ''] ?? null;
@@ -177,7 +178,7 @@ final class CallReconciliation
         $bookedPhones = [];
 
         foreach ($booked as $job) {
-            if (($phone = NumberNames::lastTen($job['phone'] ?? null)) !== null) {
+            foreach ($this->phones($job) as $phone) {
                 $bookedPhones[$phone] = true;
             }
         }
@@ -457,6 +458,19 @@ final class CallReconciliation
             'Blocked', 'Rejected' => 'blocked',
             default => 'other',
         };
+    }
+
+    /**
+     * A job's numbers, last ten digits: its Phone and its SecondPhone.
+     *
+     * @return list<string>
+     */
+    private function phones(array $job): array
+    {
+        return array_values(array_filter([
+            NumberNames::lastTen($job['phone'] ?? null),
+            NumberNames::lastTen($job['second_phone'] ?? null),
+        ]));
     }
 
     /**
