@@ -1988,6 +1988,7 @@ function ezbizi_review_faces_shortcode($atts) {
         . $s . ' .ezbizi-rf-hint{display:block;margin:-2px 0 6px;font-size:.85em;opacity:.8}'
         . $s . ' input,' . $s . ' textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:12px;font:inherit;min-height:48px}'
         . $s . ' .ezbizi-rf-hp{position:absolute;left:-9999px}'
+        . $s . ' .ezbizi-rf-consent{margin:14px auto 0;max-width:460px;font-size:12px;line-height:1.4;opacity:.75}'
         . '</style>';
 
     // A face drawn rather than an emoji, so it looks the same on every phone.
@@ -2012,6 +2013,14 @@ function ezbizi_review_faces_shortcode($atts) {
             . ($hint === '' ? '' : '<small class="ezbizi-rf-hint" id="' . $fid . '-hint">' . esc_html($hint) . '</small>') . $input;
     };
 
+    // Texts after a review (thank-you, Membership offer) need consent shown before
+    // the tap (Jose, 2026-11-03: "so any text we sent is legal").
+    $company = ezbizi_value('company_name');
+    $consent = '<p class="ezbizi-rf-consent">' . esc_html(sprintf(
+        __('By continuing you agree to receive texts from %s about your service and offers. Msg & data rates may apply. Reply STOP to opt out.', 'ezbizi'),
+        $company !== '' ? $company : __('us', 'ezbizi')
+    )) . '</p>';
+
     $out .= '<div class="ezbizi-review-faces" id="' . esc_attr($id) . '">'
         . '<div data-step="pick"><h3>' . $t('title') . '</h3><p>' . $t('text') . '</p>'
         . '<div class="ezbizi-rf-faces">'
@@ -2022,7 +2031,7 @@ function ezbizi_review_faces_shortcode($atts) {
         // without naming Google on the button (Jose, 2026-10-20).
         . '<small>' . ($link === '' ? esc_html__('Happy with the visit', 'ezbizi')
             : esc_html__('Share your experience with us', 'ezbizi')) . '</small></span></button>'
-        . '</div></div>'
+        . '</div>' . $consent . '</div>'
         /*
          * Jose, 2026-10-05: a good review can bring a thank-you and the
          * Membership offer. A customer who came by their personal link (`?c=`)
