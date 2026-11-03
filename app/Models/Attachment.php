@@ -228,6 +228,8 @@ class Attachment extends Model implements HoldsPersonalData
         'attachable_type', 'attachable_id',
         'original_name', 'mime',
         'uploaded_by_user_id',
+        // 'before' or 'after': which side of the work a photo shows.
+        'label',
     ];
 
     protected function casts(): array
@@ -324,6 +326,7 @@ class Attachment extends Model implements HoldsPersonalData
             ],
             'original_name' => $this->original_name,
             'mime'          => $this->mime,
+            'label'         => $this->label,
             'size_bytes'    => $this->size_bytes,
             'checksum'      => $this->checksum,
             'uploaded_by'   => [

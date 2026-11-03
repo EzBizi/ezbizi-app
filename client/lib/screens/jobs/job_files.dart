@@ -10,6 +10,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
 import 'job_workiz.dart';
 
 /// A job's own photos and files (UI queue 119; Jose: option 1 and phone 4).
@@ -591,6 +592,18 @@ class _JobFilesState extends State<JobFiles> {
                       // Remove needs, and the name is printed underneath.
                       child: face,
                     ),
+                    if (row['label'] case 'before' || 'after')
+                      Positioned(
+                        top: 4,
+                        left: 4,
+                        child: StatusPill(
+                          row['label'] == 'before' ? 'Before' : 'After',
+                          key: ValueKey('job-own-label-$id'),
+                          tone: row['label'] == 'before'
+                              ? Tone.neutral
+                              : Tone.ok,
+                        ),
+                      ),
                     if (showRemove)
                       Positioned(
                         top: 4,

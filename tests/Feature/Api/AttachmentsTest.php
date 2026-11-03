@@ -80,6 +80,31 @@ class AttachmentsTest extends TestCase
         $this->assertSame($content, $body);
     }
 
+    /** Inspection labels a job's photos before or after; the list says which. */
+    public function test_the_list_says_a_photos_before_or_after_label(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $job   = $this->job($alpha);
+
+        $id = $this->signedInAs($alpha['admin'])->post('/api/v1/attachments', [
+            'attachable_type' => 'jobs',
+            'attachable_id'   => $job->id,
+            'file'            => UploadedFile::fake()->createWithContent('meter.pdf', "%PDF-1.4
+%%EOF
+"),
+        ], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
+
+        $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/attachments?attachable_type=jobs&attachable_id='.$job->id)
+            ->assertJsonPath('data.0.label', null);
+
+        $this->inTenant($alpha['org'], fn () => Attachment::findOrFail($id)->update(['label' => 'before']));
+
+        $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/attachments?attachable_type=jobs&attachable_id='.$job->id)
+            ->assertJsonPath('data.0.label', 'before');
+    }
+
     /**
      * The row records the bytes, not what the uploader said about them.
      *
