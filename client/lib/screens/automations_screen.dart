@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
@@ -436,17 +437,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  SizedBox(
-                    width: 260,
-                    child: TextField(
-                      key: const Key('automations-search'),
-                      onChanged: (text) => setState(() => _query = text),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        prefixIcon: Icon(Icons.search),
-                        hintText: 'Find a rule',
-                      ),
-                    ),
+                  ListSearch(
+                    key: const Key('automations-search'),
+                    hint: 'Find a rule',
+                    onChanged: (text) => setState(() => _query = text),
                   ),
                   chip('all', 'All', _automations.length),
                   chip('on', 'On', count((a) => a['is_active'] == true)),

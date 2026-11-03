@@ -2062,10 +2062,7 @@ class _HomeShellState extends State<HomeShell> {
         if (destination.id == 'dashboard')
           PhoneAppCard(session: widget.session),
         Expanded(
-          child: ModuleToolbarScope(
-            slot: toolbar,
-            child: destination.screen,
-          ),
+          child: ModuleToolbarScope(slot: toolbar, child: destination.screen),
         ),
       ],
     );
@@ -2579,6 +2576,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
   bool _arranging = false;
 
   final TextEditingController _search = TextEditingController();
+  final ScrollController _railScroll = ScrollController();
 
   /// What is typed in the module filter. Empty means no filter at all.
   ///
@@ -2591,6 +2589,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
   @override
   void dispose() {
     _search.dispose();
+    _railScroll.dispose();
     super.dispose();
   }
 
@@ -2823,40 +2822,49 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                   : filtering && shown.isEmpty
                   ? _noMatch(context, _query.trim())
                   : LayoutBuilder(
-                      builder: (context, constraints) => SingleChildScrollView(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight: constraints.maxHeight,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (var g = 0; g < segments.length; g++) ...[
-                                if (g > 0)
-                                  Divider(
-                                    height: 17,
-                                    thickness: 1,
-                                    indent: width * 0.15,
-                                    endIndent: width * 0.15,
-                                    color: scheme.outlineVariant,
+                      // A visible thumb when the list is taller than the
+                      // window: without it the lower group just stopped
+                      // mid-row with no hint there was more (deep dive
+                      // 2026-11-02).
+                      builder: (context, constraints) => Scrollbar(
+                        controller: _railScroll,
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          controller: _railScroll,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: constraints.maxHeight,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var g = 0; g < segments.length; g++) ...[
+                                  if (g > 0)
+                                    Divider(
+                                      height: 17,
+                                      thickness: 1,
+                                      indent: width * 0.15,
+                                      endIndent: width * 0.15,
+                                      color: scheme.outlineVariant,
+                                    ),
+                                  IntrinsicHeight(
+                                    child: _rail(
+                                      context,
+                                      expanded: expanded,
+                                      width: width,
+                                      destinations: [
+                                        for (final i in segments[g])
+                                          widget.destinations[i],
+                                      ],
+                                      selectedIndex: within(segments[g]),
+                                      onSelected: (i) =>
+                                          widget.onSelected(segments[g][i]),
+                                      query: query,
+                                    ),
                                   ),
-                                IntrinsicHeight(
-                                  child: _rail(
-                                    context,
-                                    expanded: expanded,
-                                    width: width,
-                                    destinations: [
-                                      for (final i in segments[g])
-                                        widget.destinations[i],
-                                    ],
-                                    selectedIndex: within(segments[g]),
-                                    onSelected: (i) =>
-                                        widget.onSelected(segments[g][i]),
-                                    query: query,
-                                  ),
-                                ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
                       ),

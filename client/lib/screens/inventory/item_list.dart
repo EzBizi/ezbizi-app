@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -231,13 +232,17 @@ class _ItemListState extends State<ItemList> {
           ),
         Expanded(
           child: _items.isEmpty
-              ? Center(
-                  child: Text(
-                    _search.text.trim().isEmpty && _tile == null
-                        ? 'There are no items.'
-                        : 'Nothing matches those filters.',
-                  ),
-                )
+              ? _search.text.trim().isEmpty && _tile == null
+                    ? const EmptyState(
+                        icon: Icons.inventory_2_outlined,
+                        title: 'No items yet',
+                        message: 'There are no items.',
+                      )
+                    : const EmptyState(
+                        icon: Icons.search_off,
+                        title: 'No matches',
+                        message: 'Nothing matches those filters.',
+                      )
               : LayoutBuilder(
                   builder: (context, box) => box.maxWidth >= 760 && !_hasPane
                       ? _table(context)
