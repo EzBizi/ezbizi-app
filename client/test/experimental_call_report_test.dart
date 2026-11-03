@@ -657,7 +657,7 @@ void main() {
     expect(find.text('+15550004444'), findsWidgets);
     expect(find.text('DFW · LS Ads'), findsOneWidget);
     expect(find.text('Line called'), findsOneWidget);
-    expect(find.text('+15558887777'), findsWidgets);
+    expect(find.text('+1 (555) 888-7777'), findsWidgets);
     expect(find.byKey(const ValueKey('voicemail-rec-4')), findsOneWidget);
 
     // A missed call with no voicemail opens to its numbers, no player.

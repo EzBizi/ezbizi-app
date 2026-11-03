@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
 import '../../widgets/call_text.dart';
 import '../../widgets/status_pill.dart';
@@ -180,7 +181,10 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Copyable(
-                        '${c['caller_number'] ?? 'unknown number'}',
+                        c['caller_number'] == null
+                            ? 'unknown number'
+                            : formatPhoneNumber('${c['caller_number']}'),
+                        copy: '${c['caller_number'] ?? ''}',
                         style: theme.textTheme.bodyMedium,
                       ),
                     ),

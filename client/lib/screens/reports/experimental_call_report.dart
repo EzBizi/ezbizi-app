@@ -2700,7 +2700,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(outbound ? 'Number called' : 'Caller', style: muted),
-        Copyable('${call['from'] ?? 'unknown'}'),
+        Copyable(
+          call['from'] == null
+              ? 'unknown'
+              : formatPhoneNumber('${call['from']}'),
+          copy: '${call['from'] ?? 'unknown'}',
+        ),
         if (!outbound) ...[
           if (source.isNotEmpty)
             SelectableText(
@@ -2712,7 +2717,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             ),
           const SizedBox(height: 6),
           Text('Line called', style: muted),
-          Copyable('${call['to_number'] ?? 'unknown'}'),
+          Copyable(
+            call['to_number'] == null
+                ? 'unknown'
+                : formatPhoneNumber('${call['to_number']}'),
+            copy: '${call['to_number'] ?? 'unknown'}',
+          ),
         ],
       ],
     );
