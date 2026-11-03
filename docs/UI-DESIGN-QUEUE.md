@@ -5262,3 +5262,12 @@ nobody closes is now auto-closed at `time_clock.max_hours` (org setting, default
 this shipped for were closed at 16h each when nobody knows when those people
 actually went home. Correcting them is the first real use of this screen, and
 Jose will be the one doing it.
+
+### 172 · Estimate Board — **sent 2026-11-03** (`docs/previews/estimate-board-layouts.html`)
+
+From Jose's Monday list ("New Estimate Board"), via the desk. Server ready (GET /estimates status filters + status_counts; PATCH status refuses illegal moves), so client only; Jobs builds. Recommended **1 + phone 4**:
+- **Where:** a List | Board toggle on Jobs › Estimates that keeps the search, "Company · Branch" and date filters, with column counts from status_counts.
+- **Archived (1,846 of 2,231):** a collapsed amber column at the right that expands on click and accepts drops while shut.
+- **Drag:** columns the card can't go to fade, allowed ones are outlined, and a refused drop springs back with the server's reason. A card opens in the SidePanel. 25 cards per column, then "Show 25 more".
+- **Phone:** one column at a time with swipeable status tabs, and "Move to" as a bottom sheet listing only the allowed moves.
+Alternatives: 2, Archived hidden behind a "Show archived" chip; 3, a separate Estimate board tab.
