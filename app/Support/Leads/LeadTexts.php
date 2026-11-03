@@ -119,7 +119,7 @@ final class LeadTexts
      * then the organization's, cleared for outbound texts.
      * ponytail: first cleared line per scope; a setting if a branch has two.
      */
-    private function line(Lead $lead): ?PhoneNumber
+    public function line(Lead $lead): ?PhoneNumber
     {
         $cleared = PhoneNumber::query()->where('sms_outbound_allowed', true)->get()
             ->filter(fn (PhoneNumber $n) => $n->sms_outbound_allowed);
