@@ -59,6 +59,77 @@ void main() {
     });
   });
 
+  // Design 172, option 1 with phone 4 (Jose, 2026-11-03: "as u recommend").
+  group('the board', () {
+    testWidgets('a column per status, Archived shut, a card dragged across', (
+      tester,
+    ) async {
+      await _estimates(tester);
+      await tester.tap(find.text('Board'));
+      await tester.pumpAndSettle();
+
+      expect(_server.preferences['jobs.estimates.view'], 'board');
+      for (final s in ['draft', 'sent', 'accepted', 'declined']) {
+        expect(find.byKey(ValueKey('estimate-column-$s')), findsOneWidget);
+      }
+      expect(find.text('▸ Archived · 1,954'), findsOneWidget);
+      expect(
+        find.text('Paula Grant'),
+        findsNothing,
+        reason: 'Archived is shut',
+      );
+
+      // Brian Moss is sent: Draft is not somewhere it can go.
+      final drag = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('estimate-card-e-1'))),
+      );
+      await drag.moveBy(const Offset(20, 0));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('estimate-column-draft-refused')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('estimate-column-accepted')),
+        findsOneWidget,
+      );
+
+      await drag.moveTo(
+        tester.getCenter(
+          find.byKey(const ValueKey('estimate-column-accepted')),
+        ),
+      );
+      await tester.pump();
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(_server.patches.last, {'status': 'accepted'});
+      expect(_server.estimates['e-1']!['status'], 'accepted');
+    });
+
+    testWidgets(
+      'a phone shows one status, and Move to lists only the allowed',
+      (tester) async {
+        await _estimates(tester, size: const Size(400, 860));
+        await tester.tap(find.text('Board'));
+        await tester.pumpAndSettle();
+        expect(_server.lastList?['status'], 'draft');
+
+        await tester.tap(find.byKey(const ValueKey('estimate-chip-sent')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('estimate-move-to-e-1')));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('estimate-move-draft')), findsNothing);
+        for (final s in ['accepted', 'declined', 'archived']) {
+          expect(find.byKey(ValueKey('estimate-move-$s')), findsOneWidget);
+        }
+        await tester.tap(find.byKey(const ValueKey('estimate-move-declined')));
+        await tester.pumpAndSettle();
+        expect(_server.patches.last, {'status': 'declined'});
+      },
+    );
+  });
+
   group('the list', () {
     testWidgets('counts each status, and a chip narrows it', (tester) async {
       await _estimates(tester);
@@ -513,6 +584,11 @@ class _Server {
     final id = path.split('/').last;
 
     if (path.endsWith('/me')) return _json({'data': _me});
+    if (path.endsWith('/me/preferences')) {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      preferences.addAll(body['preferences'] as Map<String, dynamic>);
+      return _json({'data': preferences});
+    }
     if (path.endsWith('/services')) {
       return _json({
         'data': [
@@ -530,12 +606,25 @@ class _Server {
     if (path.endsWith('/estimates') && request.method == 'GET') {
       lastList = request.url.queryParameters;
       final nobody = lastList!['search'] == 'nobody';
+      // A board column asks for one status a page at a time.
+      final column = lastList!.containsKey('per_page')
+          ? lastList!['status']
+          : null;
       return _json({
         'data': [
           if (!nobody)
-            for (final e in estimates.values) {...e}..remove('lines'),
+            for (final e in estimates.values)
+              if (column == null || e['status'] == column)
+                {...e}..remove('lines'),
         ],
         'meta': {
+          'transitions': {
+            'draft': ['sent', 'archived'],
+            'sent': ['accepted', 'declined', 'archived'],
+            'accepted': ['archived'],
+            'declined': ['archived'],
+            'archived': <String>[],
+          },
           'total': 2388,
           'current_page': 1,
           'last_page': 1,
@@ -629,6 +718,7 @@ class _Server {
   }
 
   List<String> permissions = _writes;
+  final preferences = <String, dynamic>{};
 
   Map<String, dynamic> get _me => {
     'id': 'u-1',
@@ -636,7 +726,7 @@ class _Server {
     'email': 'jose@example.com',
     'role': {'name': 'Dispatcher'},
     'has_avatar': false,
-    'preferences': <String, dynamic>{},
+    'preferences': preferences,
     'organization': {
       'id': 'org-1',
       'name': 'A1-Group',
