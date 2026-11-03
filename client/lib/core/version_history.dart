@@ -14,6 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0524',
+      date: '3 Nov 2026',
+      items: [
+        'Reports › People: Phone and Sales columns, bookings credited to whoever answered, and a call booked under a client second number now counts.',
+        'Leads on a phone: one header bar, a simpler reply box and one Filters page.',
+        'Google Business Profile: connecting now reaches every account the Google login manages.',
+        'Report texts with nothing to report are not sent; weekly losses say when a week cannot be judged yet.',
+        'Email: personal Google sign-in is retired; connect through Google Workspace, or IMAP with an app password.',
+        'Automations: new trigger for a call that ended without a booking.',
+        'Financial reports: key figures, a cancellation breakdown by reason, and tech-caused cancels with each tech share of sales.',
+        'Inspection reports email the PDF reliably, and files can be attached to the Workiz job.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0523',
       date: '3 Nov 2026',
       items: [

@@ -66,11 +66,13 @@ final class WorkizWebSession
 
     /**
      * One internal call. JSON in and out; the cookie jar follows Set-Cookie,
-     * so a franchise switch carries into the next call.
+     * so a franchise switch carries into the next call. A $file
+     * ['name', 'bytes', 'mime'] goes as Workiz's own `the_file` multipart
+     * field, with $json as the other form fields.
      *
      * @return array{data: mixed, refused: ?string}
      */
-    public static function call(SocialConnection $connection, string $path, ?array $json = null, string $form = ''): array
+    public static function call(SocialConnection $connection, string $path, ?array $json = null, string $form = '', ?array $file = null): array
     {
         $cred = (array) $connection->credentials;
         $request = Http::withoutRedirecting()->withHeaders([
@@ -80,6 +82,8 @@ final class WorkizWebSession
         ])->timeout(60);
 
         $response = match (true) {
+            $file !== null => $request->attach('the_file', $file['bytes'], $file['name'], ['Content-Type' => $file['mime']])
+                ->post(self::ORIGIN.$path, $json ?? []),
             $json !== null => $request->post(self::ORIGIN.$path, $json),
             $form !== '' => $request->withBody($form, 'application/x-www-form-urlencoded; charset=UTF-8')->post(self::ORIGIN.$path),
             default => $request->get(self::ORIGIN.$path),

@@ -1139,6 +1139,14 @@ class ModuleServiceProvider extends ServiceProvider
                     // smiled — by the customer's own review link, or by the
                     // phone or email the faces asked for. A happy one is when
                     // to offer the membership: {{ membership_join_url }}.
+                    // Memberships: raised by memberships:offer-prior-clients for
+                    // each prior client chosen; the rule on it sends the offer.
+                    new TriggerDefinition(
+                        key: 'customer.membership_offer',
+                        label: 'Membership offer to a prior client',
+                        description: 'Raised by a deliberate run offering the membership to past customers, '
+                            .'paced and never twice in a year. {{ membership_link }} is the sign-up link.',
+                    ),
                     new TriggerDefinition(
                         key: 'customer.reviewed',
                         label: 'Left a review on the website',
@@ -3118,6 +3126,15 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A lead was read and categorised — what kind of work it is '
                             .'about, and whether it looks like a real enquiry at all. It fires '
                             .'after "Lead received", once any recording has been transcribed.',
+                    ),
+                    // Jose's project list, 2026-11-03: "Not booked recovery automatic msg".
+                    new TriggerDefinition(
+                        key: 'lead.call_not_booked',
+                        label: 'A call ended without a booking',
+                        description: 'AI read a call transcript: the caller did not book and did not '
+                            .'complain. Use a wait and a "Status" condition so a lead booked, lost or '
+                            .'closed meanwhile is skipped. It carries the AI summary, caller name and phone.',
+                        composedFields: ['summary'],
                     ),
                     new TriggerDefinition(
                         key: 'lead.call_complaint',

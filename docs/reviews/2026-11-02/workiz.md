@@ -1,7 +1,7 @@
 # Workiz integration — review 2026-11-02 (measured on prod, ~09:55 ET)
 
 ## 1. Working
-- API connections: 11 `workiz` connections, all `connected` (10 branches rotated 10-26, plus a second "Connecticut", see 5).
+- API connections: 11 `workiz` connections, all `connected` (10 branches rotated 10-26, plus Everdoors Connecticut).
 - Job sync: every branch synced within the last 3 min (14:53–14:56 UTC); the newest bookings are from this morning on 9 of 10 branches.
 - New York's newest booking is from 10-27, but that is real: only 2 NY EzBizi jobs since then (JOB-54870 is mirrored; JOB-55198 was deleted 10-30 and audited `workiz.job_gone`).
 - Projection: 2 unprojected rows in total (Illinois 1, Texas 1), out of roughly 15.7k rows synced in 24 h.
@@ -48,4 +48,4 @@
 3. Phone mismatch check: flag an EzBizi job whose customer phone differs from the Workiz client's. Payoff: catches mistyped phones like the 4 found on 10-29. Note that Workiz v2 cannot update a client, so the fix stays manual in Workiz.
 
 ## 5. Needs Jose
-- There are **two branches named "Connecticut"** (franchises 019fd712-75d6… with 6,080 jobs and 019fd8d7-fa5a… with 1,530 jobs). Each has its own live Workiz key, and both sync. The second key was not part of the 10-26 rotation (last updated 10-19). Is the second one a separate Workiz account, such as garage doors? Should it be renamed (for example "Connecticut – Garage Doors") and should its key be rotated too? Two branches with the same name can also confuse the web login's account-to-branch match, which goes by name.
+- Nothing. The second "Connecticut" is **Everdoors** Connecticut (company Everdoors), not a duplicate of A-1 Chimney Connecticut. Its Workiz key is separate and was not part of A-1's 10-26 rotation; it works.

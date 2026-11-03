@@ -1816,7 +1816,8 @@ void _conversationRowTests() {
       size: const Size(375, 812),
     );
 
-    final search = find.byKey(const ValueKey('source-button'));
+    // Design 171: search and the one Filters button.
+    final search = find.byKey(const ValueKey('leads-more-filters'));
     expect(tester.getTopLeft(search).dy, greaterThanOrEqualTo(0));
 
     await tester.drag(find.text('Caller 0'), const Offset(0, -500));
@@ -1884,7 +1885,7 @@ void _conversationRowTests() {
     await tester.tap(find.byKey(const ValueKey('thread-back')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('source-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('leads-more-filters')), findsOneWidget);
     expect(find.byKey(const ValueKey('thread-back')), findsNothing);
   });
 
@@ -1900,6 +1901,9 @@ void _conversationRowTests() {
       size: const Size(375, 812),
     );
 
+    // Design 171: the source button is on the Filters page.
+    await tester.tap(find.byKey(const ValueKey('leads-more-filters')));
+    await tester.pumpAndSettle();
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('source-button')),
@@ -1923,6 +1927,17 @@ void _conversationRowTests() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('source-button')),
+        matching: find.text('Chat'),
+      ),
+      findsOneWidget,
+    );
+
+    // Back on the list, the source it is narrowed to still shows.
+    await tester.tap(find.byKey(const ValueKey('filters-done')));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('leads-source-chip')),
         matching: find.text('Chat'),
       ),
       findsOneWidget,

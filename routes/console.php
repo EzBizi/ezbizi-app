@@ -366,6 +366,9 @@ Schedule::command('ezbizi:expire-training-passes')->dailyAt('04:10');
 // tenant gets muted, and a muted alarm is worse than none.
 Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30);
 
+// Every Twilio line still routes to us; numbers added, removed or repointed.
+Schedule::command('ezbizi:phone-line-audit')->dailyAt('04:30')->withoutOverlapping(30);
+
 // Field: lost-signal alerts (the one fact no incoming point can announce) and
 // geocoding the next days' job addresses, so arrival checks never wait on Google.
 // NOT runInBackground(): the scheduler is a systemd oneshot unit with
