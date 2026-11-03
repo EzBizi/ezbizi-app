@@ -208,7 +208,9 @@ code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-r
  <li><b>Ownership:</b> a chart built from HR's roles and branches; each box names the area it owns.</li>
  <li><b>Processes:</b> Lead → Booking → Job → Payment → Review, each step with its owner and live counts.</li>
  <li><b>KPIs:</b> one table per role from Reports' figures, green at or above goal and red below.</li>
- <li><b>Missing data:</b> a reports-to field (HR); who owns each area and each step (new, set on this screen); goals for answer, booking and close rates, and tech KPIs (Reports).</li>
+ <li><b>Missing data, Ownership:</b> no reports-to, manager or area-owner field. Until HR adds users.reports_to_user_id and an area owner per company or branch, the chart draws roles and branches only.</li>
+ <li><b>Missing data, KPIs:</b> no goals per person or per role, and none for answer, booking or close rate; new ReportGoals keys with an optional role would cover it. Tech KPIs (done, canceled, canc%, tech-caused cancels, gross, share of gross, avg sale, deposits) arrive with b8a466693. Jobs a day is cheap to add; callbacks have no data at all.</li>
+ <li><b>Available now:</b> branch close rate, canc%, avg sale, deposits and net margin; answer and booking rate per person.</li>
 </ul>
 <div class="win" style="height:430px"><div class="top"><span class="logo">EzBizi</span><span class="org">Company › Ownership</span></div>
 <div class="page">
