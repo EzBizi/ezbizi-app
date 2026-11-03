@@ -26,6 +26,11 @@ class VersionHistory {
         'Fleet: each state button number now matches the search and filters you have on.',
         'HR › Records: No start date and No contract filters.',
         'Weekly AI Google posts per listing are drafted for approval.',
+        'Customer Experience › Posts to approve: approve, edit or disapprove each listing weekly AI Google post.',
+        'Local Services texts: the assistant offers a real open time and holds it for a one-tap approval in Online Booking.',
+        'Call and form leads can be texted back from the lead thread.',
+        'Company: ownership chart, process map and KPIs (administrators until a role is given access).',
+        'Jobs: a Record button in the job header; job recordings are transcribed and summarised, and no audio is kept.',
       ],
     ),
     VersionRelease(
