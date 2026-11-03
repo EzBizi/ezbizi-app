@@ -103,27 +103,62 @@ class FinancialSource extends Model implements StatesRetention
      */
     public function rows(): \Illuminate\Support\Collection
     {
-        $cut = FinancialTable::query()->where('source_base_id', $this->base_id)->where('source_table_id', $this->table_id)
-            ->whereNotNull('cut_over_at')->first();
+        $table = $this->mirrorTable();
+        $ezbizi = match (self::$readFrom) {
+            'airtable' => false,
+            'ezbizi' => true,
+            default => $table?->isCutOver() ?? false,
+        };
 
-        if ($cut !== null) {
-            $names = $cut->fields()->get()->mapWithKeys(fn (FinancialField $f) => [$f->id => $f->source_name ?? $f->name]);
-            $rows = $cut->records()->get()->map(function (FinancialRecord $r) use ($names) {
-                $out = [];
-                foreach ((array) $r->values as $fieldId => $value) {
-                    if (isset($names[$fieldId])) {
-                        $out[$names[$fieldId]] = $value;
-                    }
-                }
-
-                return $out;
-            });
-        } else {
-            $rows = AirtableRecord::query()->where('base_id', $this->base_id)->where('table_id', $this->table_id)
-                ->whereNull('gone_at')->get(['fields'])->map(fn (AirtableRecord $r) => (array) $r->fields);
-        }
+        $rows = $ezbizi
+            ? ($table === null ? collect() : collect(self::ezbiziRows($table))->pluck('fields'))
+            : collect(self::airtableRows($this->base_id, $this->table_id))->pluck('fields');
 
         return $rows->filter(fn (array $fields) => $this->owns($fields))->values();
+    }
+
+    /**
+     * Forces which store rows() reads (parity compares the two); null = the
+     * live one. Always reset it (try/finally).
+     */
+    public static ?string $readFrom = null;
+
+    /** The Financials table that mirrors (or took over) this source's Airtable table. */
+    public function mirrorTable(): ?FinancialTable
+    {
+        return FinancialTable::query()->where('source_base_id', $this->base_id)
+            ->where('source_table_id', $this->table_id)->orderBy('created_at')->first();
+    }
+
+    /** @return list<array{id: string, fields: array<string, mixed>}> the Airtable copy, live rows */
+    public static function airtableRows(string $baseId, string $tableId): array
+    {
+        return AirtableRecord::query()->where('base_id', $baseId)->where('table_id', $tableId)
+            ->whereNull('gone_at')->get(['record_id', 'fields'])
+            ->map(fn (AirtableRecord $r) => ['id' => $r->record_id, 'fields' => (array) $r->fields])->all();
+    }
+
+    /**
+     * A Financials table's rows with values mapped back to the Airtable column
+     * names, so field maps keep working. id = the Airtable record it came
+     * from; null = entered in EzBizi.
+     *
+     * @return list<array{id: ?string, fields: array<string, mixed>}>
+     */
+    public static function ezbiziRows(FinancialTable $table): array
+    {
+        $names = $table->fields()->get()->mapWithKeys(fn (FinancialField $f) => [$f->id => $f->source_name ?? $f->name]);
+
+        return $table->records()->get()->map(function (FinancialRecord $r) use ($names) {
+            $out = [];
+            foreach ((array) $r->values as $fieldId => $value) {
+                if (isset($names[$fieldId])) {
+                    $out[$names[$fieldId]] = $value;
+                }
+            }
+
+            return ['id' => $r->source_record_id, 'fields' => $out];
+        })->all();
     }
 
     /** Whether a copied Airtable row belongs to this source's place. */

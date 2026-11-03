@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Models\Company;
 use App\Models\FinancialBase;
 use App\Models\FinancialField;
+use App\Models\FinancialParityCheck;
 use App\Models\FinancialRecord;
 use App\Models\FinancialTable;
 use App\Models\FinancialView;
 use App\Models\Franchise;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Financials\AirtableBaseName;
 use App\Support\Financials\AirtableMirror;
+use App\Support\Financials\AirtableParity;
 use App\Support\Financials\AirtableWriter;
 use App\Support\Financials\CostSplit;
 use App\Support\Financials\FieldType;
@@ -671,6 +674,9 @@ class FinancialsController extends Controller
             throw ValidationException::withMessages(['table' => 'This table was never kept in Airtable.']);
         }
         $back = $request->validate(['undo' => ['sometimes', 'boolean']])['undo'] ?? false;
+        if ($back && $table->cut_over_at === null && $table->isCutOver()) {
+            throw ValidationException::withMessages(['table' => 'This whole Airtable base was switched to EzBizi at once; it is switched back for the whole base, not table by table.']);
+        }
 
         $table->forceFill($back
             ? ['cut_over_at' => null, 'cut_over_by_user_id' => null]
@@ -683,6 +689,32 @@ class FinancialsController extends Controller
         }
 
         return response()->json(['data' => $this->tableShape($table->refresh())]);
+    }
+
+    /**
+     * Airtable retirement: per Airtable base, the green parity streak and the
+     * latest day's tables. Organization view, like cutting over.
+     */
+    public function parity(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', FinancialBase::class);
+        abort_unless(ViewScope::forUser($request->user())->isOrganization(), 403, 'Parity is read from the organization view.');
+
+        $need = (int) config('airtable.parity_days', 14);
+        $data = FinancialParityCheck::query()->distinct()->pluck('source_base_id')->map(function (string $baseId) use ($need) {
+            $day = FinancialParityCheck::query()->where('source_base_id', $baseId)->max('day');
+            $streak = AirtableParity::streak($baseId);
+
+            return [
+                'base_id' => $baseId, 'name' => AirtableBaseName::of($baseId), 'streak' => $streak, 'needed' => $need, 'ready' => $streak >= $need,
+                'day' => $day === null ? null : substr((string) $day, 0, 10),
+                'tables' => FinancialParityCheck::query()->where('source_base_id', $baseId)->whereDate('day', $day)->orderBy('table_name')->get()
+                    ->map(fn (FinancialParityCheck $c) => ['table_id' => $c->source_table_id, 'name' => $c->table_name, 'green' => $c->green,
+                        'cut_over' => $c->cut_over, 'airtable_rows' => $c->airtable_rows, 'ezbizi_rows' => $c->ezbizi_rows, 'diffs' => $c->diffs])->all(),
+            ];
+        })->values()->all();
+
+        return response()->json(['data' => $data]);
     }
 
     public function refreshAirtable(Request $request, FinancialTable $table): JsonResponse
@@ -781,7 +813,7 @@ class FinancialsController extends Controller
             'base_id' => $t->base_id,
             'name' => $t->name,
             'mirror' => $t->isMirror() ? ['base_id' => $t->source_base_id, 'table_id' => $t->source_table_id, 'synced_at' => $t->synced_at?->toIso8601String()] : null,
-            'cut_over' => $t->cut_over_at === null ? null : ['at' => $t->cut_over_at->toIso8601String(), 'airtable' => $t->source_base_id.'/'.$t->source_table_id],
+            'cut_over' => ! $t->isCutOver() ? null : ['at' => $t->cut_over_at?->toIso8601String(), 'base' => $t->cut_over_at === null, 'airtable' => $t->source_base_id.'/'.$t->source_table_id],
             'fields' => (function () use ($t) {
                 // A mirrored table's computed Airtable columns are locked.
                 $computed = $t->isMirror() ? AirtableWriter::computedFields($t) : [];

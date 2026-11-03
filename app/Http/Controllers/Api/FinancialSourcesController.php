@@ -145,7 +145,7 @@ class FinancialSourcesController extends Controller
 
     private function shape(FinancialSource $s): array
     {
-        $cut = FinancialTable::query()->where('source_base_id', $s->base_id)->where('source_table_id', $s->table_id)->whereNotNull('cut_over_at')->exists();
+        $cut = FinancialTable::query()->where('source_base_id', $s->base_id)->where('source_table_id', $s->table_id)->cutOver()->exists();
         $copied = AirtableRecord::query()->where('base_id', $s->base_id)->where('table_id', $s->table_id)->max('fetched_at');
 
         return [
