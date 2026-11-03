@@ -221,6 +221,7 @@ class BusinessProfileController extends Controller
             'verification_state' => $location->verification_state,
             'is_published'       => $location->is_published,
             'auto_reply'         => (bool) $location->auto_reply,
+            'auto_post'          => (bool) $location->auto_post,
             'is_live'            => $location->isLive(),
             'synced_at'          => $location->synced_at?->toIso8601String(),
             'company'            => $location->company?->only(['id', 'name']),
