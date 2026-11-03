@@ -350,10 +350,7 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
   void _search(String value) {
     setState(() => _query = value);
     _searchDebounce?.cancel();
-    _searchDebounce = Timer(
-      const Duration(milliseconds: 400),
-      _loadMessages,
-    );
+    _searchDebounce = Timer(const Duration(milliseconds: 400), _loadMessages);
   }
 
   /// The 50 rows on screen, narrowed by the search box as well.
@@ -484,51 +481,51 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
 
   Widget _row(_Voicemail message, ThemeData theme) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 6),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                // Who left it, with the number under (Jose, 2026-10-09).
+                // One meta line: who, their number, and WHEN — "ring them
+                // back" depends on whether it was an hour ago or last
+                // Tuesday. Compact cards (UI/UX, 2026-11-02): twice as many
+                // fit a screen.
                 Expanded(
-                  child: message.name == null
-                      ? Text(
-                          formatPhoneNumber(message.from),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: message.name ?? formatPhoneNumber(message.from),
                           style: theme.textTheme.titleSmall,
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(message.name!, style: theme.textTheme.titleSmall),
-                            Text(
-                              formatPhoneNumber(message.from),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
                         ),
-                ),
-
-                // WHEN it was left. A list of messages with no times in it
-                // cannot be worked through — "ring them back" depends on
-                // whether they rang an hour ago or last Tuesday.
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Text(
-                    formatListStamp(
-                      message.createdAt,
-                      '',
-                      formats: widget.session.me!.display,
+                        TextSpan(
+                          text:
+                              [
+                                    if (message.name != null)
+                                      formatPhoneNumber(message.from),
+                                    formatListStamp(
+                                      message.createdAt,
+                                      '',
+                                      formats: widget.session.me!.display,
+                                    ),
+                                  ]
+                                  .where((t) => t.isNotEmpty)
+                                  .map((t) => '  ·  $t')
+                                  .join(),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                const SizedBox(width: 8),
                 // Both states named, as the tiles name them, so a card read
                 // under All says which tile it is counted in.
                 message.dealt
@@ -552,13 +549,12 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
                 // never a bare Twilio URL — a recording link that works
                 // without signing in is a customer's voicemail anybody can
                 // replay.
-                load: () => widget.api.getBytes(
-                  '/phone/calls/${message.id}/recording',
-                ),
+                load: () =>
+                    widget.api.getBytes('/phone/calls/${message.id}/recording'),
               ),
             ],
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
 
             // ── NAME THE SWITCH, DO NOT GUESS AT THE CAUSE ──────
             //
@@ -674,6 +670,7 @@ class _Voicemail {
   /// Who has the number: the customer on file, else the server's lookup
   /// (another spelling, a lead, a colleague). Null shows the number alone.
   final String? name;
+
   /// The MESSAGE, written down — not the call it was left on.
   ///
   /// `transcript` is live transcription of the whole conversation, which on a
