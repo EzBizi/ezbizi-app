@@ -1310,7 +1310,7 @@ class _PersonRecordState extends State<_PersonRecord> {
                   refusedDelete ??
                       'Erases them and their personal data everywhere, so '
                           'their email and phone can be used for a new account. '
-                          'Unlike Deactivate, it cannot be undone.',
+                          'This cannot be undone.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

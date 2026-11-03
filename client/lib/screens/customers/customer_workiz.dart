@@ -26,8 +26,18 @@ class CustomerMoney {
   /// A-1 bills in one currency; more than one would need its own design.
   static CustomerMoney? of(Object? raw) {
     if (raw is! List || raw.isEmpty || raw.first is! Map) return null;
-    return CustomerMoney._(Map<String, dynamic>.from(raw.first as Map));
+    final money = CustomerMoney._(Map<String, dynamic>.from(raw.first as Map));
+    // A customer with no billing reads as $0 everywhere; draw nothing instead.
+    return money.isEmpty ? null : money;
   }
+
+  bool get isEmpty =>
+      (pastDue ?? 0) == 0 &&
+      due == 0 &&
+      paid == 0 &&
+      invoiced == 0 &&
+      invoices == 0 &&
+      openEstimates == 0;
 
   int _minor(String key) => (_map[key] as num?)?.toInt() ?? 0;
 

@@ -331,7 +331,7 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
 /// Jose's three tabs (2026-10-28): the server's key, the label, the icon.
 const _tabs = [
   ('pending', 'Pending', Icons.hourglass_empty),
-  ('ready', 'Ready for Submission', Icons.task_alt),
+  ('ready', 'Ready for submission', Icons.task_alt),
   ('submitted', 'Submitted', Icons.send_outlined),
 ];
 

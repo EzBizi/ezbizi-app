@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Availability › Calendar View (Jose, 2026-09-25, from A1 Tools' calendar):
+/// Availability › Calendar view (Jose, 2026-09-25, from A1 Tools' calendar):
 /// a franchise's or an area's month, spots left of what each day takes.
 void main() {
   testWidgets('a franchise month shows each day left of capacity', (
