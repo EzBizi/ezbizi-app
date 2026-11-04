@@ -206,6 +206,27 @@ final class HttpTwilioGateway implements TwilioGateway
     }
 
     /**
+     * Twilio answers with either a plain map or a PhoneNumberCapabilities
+     * object, whose properties are protected: an (array) cast of that object
+     * stored keys like "*sms" wrapped in NUL bytes and every flag read as missing.
+     *
+     * @return array<string, bool>
+     */
+    private static function capabilities(mixed $raw): array
+    {
+        if ($raw instanceof \Twilio\Base\PhoneNumberCapabilities) {
+            return ['voice' => $raw->getVoice(), 'sms' => $raw->getSms(), 'mms' => $raw->getMms(), 'fax' => $raw->getFax()];
+        }
+
+        $capabilities = [];
+        foreach ((array) ($raw ?? []) as $name => $enabled) {
+            $capabilities[strtolower((string) $name)] = (bool) $enabled;
+        }
+
+        return $capabilities;
+    }
+
+    /**
      * One search hit, flattened.
      *
      * `address_requirements` is the field that decides whether a number can
@@ -219,10 +240,7 @@ final class HttpTwilioGateway implements TwilioGateway
     {
         // Twilio answers with mixed-case capability keys — voice, SMS, MMS,
         // fax. EzBizi speaks one case everywhere.
-        $capabilities = [];
-        foreach ((array) ($number->capabilities ?? []) as $name => $enabled) {
-            $capabilities[strtolower((string) $name)] = (bool) $enabled;
-        }
+        $capabilities = self::capabilities($number->capabilities ?? null);
 
         return [
             'phone_number' => (string) $number->phoneNumber,
@@ -247,10 +265,7 @@ final class HttpTwilioGateway implements TwilioGateway
             ->incomingPhoneNumbers($incomingSid)
             ->fetch();
 
-        $capabilities = [];
-        foreach ((array) ($number->capabilities ?? []) as $name => $enabled) {
-            $capabilities[strtolower((string) $name)] = (bool) $enabled;
-        }
+        $capabilities = self::capabilities($number->capabilities ?? null);
 
         return [
             'sid' => (string) $number->sid,
@@ -408,6 +423,53 @@ final class HttpTwilioGateway implements TwilioGateway
         }
 
         return $out;
+    }
+
+    public function listAccountIncoming(string $accountSid): array
+    {
+        $response = Http::withBasicAuth(
+            (string) config('services.twilio.platform_account_sid'),
+            (string) config('services.twilio.platform_auth_token'),
+        )->timeout(15)->get("https://api.twilio.com/2010-04-01/Accounts/{$accountSid}/IncomingPhoneNumbers.json", ['PageSize' => 1000]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException("Twilio refused the number list ({$response->status()})");
+        }
+
+        return array_map(fn (array $n) => [
+            'sid' => (string) $n['sid'],
+            'phone_number' => (string) $n['phone_number'],
+            'friendly_name' => (string) ($n['friendly_name'] ?? ''),
+            'voice_url' => (string) ($n['voice_url'] ?? ''),
+            'sms_url' => (string) ($n['sms_url'] ?? ''),
+        ], (array) $response->json('incoming_phone_numbers', []));
+    }
+
+    public function platformCall(string $accountSid, string $from, string $to, string $twiml): string
+    {
+        $response = $this->platformHttp()->asForm()
+            ->post("https://api.twilio.com/2010-04-01/Accounts/{$accountSid}/Calls.json", ['From' => $from, 'To' => $to, 'Twiml' => $twiml]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException("Twilio refused the test call ({$response->status()}): ".$response->json('message', ''));
+        }
+
+        return (string) $response->json('sid');
+    }
+
+    public function platformCallStatus(string $accountSid, string $callSid): array
+    {
+        $response = $this->platformHttp()->get("https://api.twilio.com/2010-04-01/Accounts/{$accountSid}/Calls/{$callSid}.json");
+
+        return ['status' => (string) $response->json('status', 'unknown'), 'duration' => (int) $response->json('duration', 0)];
+    }
+
+    private function platformHttp(): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::withBasicAuth(
+            (string) config('services.twilio.platform_account_sid'),
+            (string) config('services.twilio.platform_auth_token'),
+        )->timeout(15);
     }
 
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array

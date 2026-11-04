@@ -113,7 +113,7 @@ final class InvoiceChannels
     {
         $number = PhoneNumber::query()->findOrFail((string) $this->settings->get('invoicing.sms_from', $issuer));
         foreach ($phones as $phone) {
-            $this->texts->send($number, $phone, $this->shortText($issuer, $invoice));
+            $this->texts->send($number, $phone, $this->shortText($issuer, $invoice), automated: true);
         }
 
         return (string) $number->e164;

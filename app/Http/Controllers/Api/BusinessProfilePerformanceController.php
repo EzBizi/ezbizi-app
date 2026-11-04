@@ -49,7 +49,7 @@ class BusinessProfilePerformanceController extends Controller
             'totals' => $sum($rows),
             'daily' => $rows->groupBy(fn ($r) => $r->date->toDateString())->sortKeys()
                 ->map(fn ($day, $date) => ['date' => $date, ...$sum($day)])->values()->all(),
-            'by_location' => $locations->map(fn (BusinessLocation $l) => ['id' => $l->id, 'name' => $l->title,
+            'by_location' => $locations->map(fn (BusinessLocation $l) => ['id' => $l->id, 'name' => $l->label(),
                 ...$sum($rows->where('business_location_id', $l->id))])->values()->all(),
             'last_date' => $rows->max(fn ($r) => $r->date->toDateString()),
         ]]);

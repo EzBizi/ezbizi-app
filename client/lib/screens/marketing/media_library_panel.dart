@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -154,13 +155,9 @@ class _LibraryPanelState extends State<_LibraryPanel> {
           Row(
             children: [
               Expanded(
-                child: TextField(
+                child: ListSearch(
                   key: const ValueKey('library-find'),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Search',
-                  ),
+                  hint: 'Search',
                   onChanged: (v) => setState(() => _find = v),
                 ),
               ),

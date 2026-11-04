@@ -5,6 +5,7 @@ namespace App\Support\Dashboard;
 use App\Models\User;
 use App\Support\Dashboard\Glances\AutomationsGlance;
 use App\Support\Dashboard\Glances\BusinessProfileGlance;
+use App\Support\Dashboard\Glances\CompanyGlance;
 use App\Support\Dashboard\Glances\CustomersGlance;
 use App\Support\Dashboard\Glances\EmailGlance;
 use App\Support\Dashboard\Glances\FieldGlance;
@@ -68,6 +69,8 @@ class GlanceRegistry
         'financials',
         // Task Board, on the end (2026-10-13).
         'tasks',
+        // Company (design 175, 2026-11-03).
+        'company',
     ];
 
     /**
@@ -241,6 +244,7 @@ class GlanceRegistry
         MarketingGlance::class,
         ReportsGlance::class,
         FieldGlance::class,
+        CompanyGlance::class,
     ];
 
     public function __construct(

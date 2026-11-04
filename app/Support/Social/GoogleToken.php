@@ -243,7 +243,22 @@ final class GoogleToken
             expiresIn: is_numeric($response->json('expires_in'))
                 ? (int) $response->json('expires_in')
                 : null,
+            extra: ['account_email' => self::idTokenEmail($response->json('id_token'))],
         );
+    }
+
+    /**
+     * The Google login a consent was given by, from the id_token the `openid
+     * email` scopes add (Jose, 2026-11-02: three sign-ins made 37 rows and
+     * only display names said whose). Read unverified: it came straight from
+     * Google's token endpoint over TLS, not from the browser.
+     */
+    private static function idTokenEmail(mixed $idToken): ?string
+    {
+        $payload = is_string($idToken) ? explode('.', $idToken)[1] ?? '' : '';
+        $email = json_decode((string) base64_decode(strtr($payload, '-_', '+/')), true)['email'] ?? null;
+
+        return is_string($email) && $email !== '' ? strtolower($email) : null;
     }
 
     private static function label(string $service): string

@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -446,15 +447,11 @@ class _ReportBuilderState extends State<ReportBuilder> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
+            ListSearch(
               key: const Key('builder-field-search'),
               controller: _search,
+              hint: 'Find a field',
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Find a field',
-              ),
             ),
             const SizedBox(height: 8),
             Expanded(

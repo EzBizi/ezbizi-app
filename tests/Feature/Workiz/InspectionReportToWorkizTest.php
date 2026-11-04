@@ -96,10 +96,16 @@ class InspectionReportToWorkizTest extends TestCase
             ->push($this->job(['description' => "Swept, all good.\n".$line]))
             ->push(['data' => [$this->job(['description' => "Swept, all good.\n".$line])]])]);
 
+        \Illuminate\Support\Facades\Queue::fake([\App\Jobs\AttachFileToWorkiz::class]);
+        \Illuminate\Support\Facades\Storage::fake('local');
+
         $first = $this->act($tenant, $report);
         $second = $this->act($tenant, $report);
 
-        $this->assertSame([true, 'The report link was added to the Workiz job.'], [$first['ok'], $first['detail']]);
+        $this->assertSame([true, 'The report link was added to the Workiz job, and the PDF is being attached.'], [$first['ok'], $first['detail']]);
+        // The PDF follows the link, once: the retry wrote no link, so it attaches nothing.
+        \Illuminate\Support\Facades\Queue::assertPushedTimes(\App\Jobs\AttachFileToWorkiz::class, 1);
+        \Illuminate\Support\Facades\Storage::disk('local')->assertExists('inspection-reports/'.$report->organization_id.'/'.$report->id.'.pdf');
         $this->assertSame([true, 'The report was already on the Workiz job.'], [$second['ok'], $second['detail']]);
         Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['description'] === "Swept, all good.\n".$line && $r->hasHeader('Authorization', 'Bearer v2key_CT'));
         $this->assertSame(1, collect(Http::recorded())->filter(fn ($pair) => $pair[0]->method() === 'PUT')->count());

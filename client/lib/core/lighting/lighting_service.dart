@@ -158,7 +158,23 @@ class LightingService {
     return null;
   }
 
+  /// One tick at a time. The timer fires every 10 s whether or not the last
+  /// tick finished; a rescan waiting on a slow OpenRGB overlapped the next,
+  /// whose request replaced the first's pending reply on the one socket, so
+  /// both timed out (12 PCs engine_not_responding, prod 2026-11-03).
+  bool _busy = false;
+
   Future<void> _tick() async {
+    if (_busy) return;
+    _busy = true;
+    try {
+      await _tickOnce();
+    } finally {
+      _busy = false;
+    }
+  }
+
+  Future<void> _tickOnce() async {
     final ok = MonitoringHeartbeat.extraSpecs['rgb_status'] == 'ok';
     if (_rgb?.listChanged == true || ++_ticks % (ok ? 60 : 6) == 0) {
       _rgb?.listChanged = false;

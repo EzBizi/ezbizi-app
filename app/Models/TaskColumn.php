@@ -19,7 +19,13 @@ class TaskColumn extends Model implements StatesRetention
     use BelongsToTenant;
     use HasUuids;
 
-    public const TYPES = ['text', 'number', 'status', 'date', 'person', 'dropdown', 'checkbox'];
+    public const TYPES = ['text', 'number', 'status', 'date', 'person', 'dropdown', 'checkbox', 'timeline', 'formula'];
+
+    /** How a number or formula shows (design 178): plain, currency or a percentage. */
+    public const FORMATS = ['plain', 'currency', 'percent'];
+
+    /** What a group's footer shows under a number or formula column. */
+    public const FOOTERS = ['sum', 'average', 'none'];
 
     public const WITH_OPTIONS = ['status', 'dropdown'];
 

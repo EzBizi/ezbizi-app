@@ -1,3 +1,4 @@
+import '../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -167,8 +168,12 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
 
   void _open(Map<String, dynamic> row) => showSidePanel<void>(
     context,
-    builder: (_) =>
-        _JobPanel(api: widget.api, session: widget.session, row: row),
+    builder: (_) => _JobPanel(
+      api: widget.api,
+      session: widget.session,
+      row: row,
+      onChanged: _load,
+    ),
   );
 
   @override
@@ -208,22 +213,21 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
               ),
               SizedBox(
                 width: 320,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('pm2-search'),
                   controller: _search,
+                  hint: 'Customer, job ID or address',
                   onChanged: _searched,
-                  style: theme.textTheme.bodyMedium,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Customer, job ID or address',
-                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          if (rows.isEmpty && _q.isNotEmpty)
+          // A tab switch empties the rows: while its first page loads, no
+          // empty-state sentence that may not be true (2026-11-02 review).
+          if (rows.isEmpty && _fetching)
+            const LinearProgressIndicator()
+          else if (rows.isEmpty && _q.isNotEmpty)
             Text('No job matches "$_q".')
           else if (rows.isEmpty)
             Text(_empty[_tab]!)
@@ -296,7 +300,17 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                         child: FilledButton.tonal(
                           key: ValueKey('pm2-submit:${row['id']}'),
                           onPressed: () => _submit(row),
-                          child: const Text('Submit'),
+                          // At 1280 px the column is ~70 px: tight padding and
+                          // one line, or it wrapped to "Sub/mit".
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          child: const Text(
+                            'Submit',
+                            maxLines: 1,
+                            softWrap: false,
+                          ),
                         ),
                       ),
                   ],
@@ -323,7 +337,7 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
 /// Jose's three tabs (2026-10-28): the server's key, the label, the icon.
 const _tabs = [
   ('pending', 'Pending', Icons.hourglass_empty),
-  ('ready', 'Ready for Submission', Icons.task_alt),
+  ('ready', 'Ready for submission', Icons.task_alt),
   ('submitted', 'Submitted', Icons.send_outlined),
 ];
 
@@ -339,12 +353,14 @@ const _empty = {
   'submitted': 'No job has gone from done pending approval to Submitted yet.',
 };
 
-/// Jose, 2026-10-27, reordered 2026-10-29: "Paid - Pending - Total". Total is
-/// the price (Workiz's invoice, else its estimate), Paid what came in less
-/// refunds, Pending what is left. None of them where the job has no price.
+/// Jose, 2026-10-27, reordered 2026-10-29: "Paid - Pending - Total"; the
+/// middle one reads Balance since 2026-11-02 (Jose: "sure"), as Pending is
+/// also the first tab and a Workiz status. Total is the price (Workiz's
+/// invoice, else its estimate), Paid what came in less refunds, Balance what
+/// is left. The server's key is still `pending`.
 const _moneyFields = [
   ('Paid', 'paid'),
-  ('Pending', 'pending'),
+  ('Balance', 'pending'),
   ('Total', 'total'),
 ];
 
@@ -370,11 +386,15 @@ class _JobPanel extends StatefulWidget {
     required this.api,
     required this.session,
     required this.row,
+    required this.onChanged,
   });
 
   final ApiClient api;
   final Session session;
   final Map<String, dynamic> row;
+
+  /// The full job was changed from here: the list behind reloads too.
+  final VoidCallback onChanged;
 
   @override
   State<_JobPanel> createState() => _JobPanelState();
@@ -413,7 +433,10 @@ class _JobPanelState extends State<_JobPanel> {
         id: '${widget.row['id']}',
       ),
     );
-    if (changed == true && mounted) _load();
+    if (changed == true && mounted) {
+      _load();
+      widget.onChanged();
+    }
   }
 
   @override

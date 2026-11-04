@@ -25,6 +25,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -56,6 +57,8 @@ class WhatsAppStaffBotTest extends TestCase
     /** @var list<array<string, mixed>> */
     private array $sent = [];
 
+    private array $typing = [];
+
     private function configured(): void
     {
         config([
@@ -67,11 +70,15 @@ class WhatsAppStaffBotTest extends TestCase
         $n = 0;
         Http::fake(function ($request) use (&$n) {
             $n++;
-            $this->sent[] = $request->data();
+            // "Typing…" is its own call; asserted in test_staff_see_typing_while_ai_works.
+            if (($request->data()['status'] ?? null) === 'read') {
+                $this->typing[] = $request->data();
+            } else {
+                $this->sent[] = $request->data();
+            }
 
             return Http::response(['messages' => [['id' => 'wamid.REPLY'.$n]]]);
-        });
-    }
+        });    }
 
     private function number(array $t, string $phoneNumberId): void
     {
@@ -141,6 +148,8 @@ class WhatsAppStaffBotTest extends TestCase
             'phone' => $phone,
             'is_active' => $active,
         ])->save());
+        // The one-time parts tip is spent; TechAssistantWhatsAppTest covers it.
+        Cache::put('whatsapp.parts_tip.'.$t['admin']->getKey(), true);
     }
 
     private function menuIds(): array
@@ -200,7 +209,8 @@ class WhatsAppStaffBotTest extends TestCase
 
         // Jose's wording from the first real handset: the header names the
         // bot, and the greeting is not the bare "What do you need?".
-        $this->assertSame('A1 Chimney Bot', $this->sent[0]['interactive']['header']['text']);
+        // EzBizi's own number speaks as EzBizi, not as one tenant's assistant (Jose, 2026-11-03).
+        $this->assertSame('EzBizi', $this->sent[0]['interactive']['header']['text']);
         $this->assertStringContainsString('Welcome to the A1 Chimney staff assistant',
             $this->sent[0]['interactive']['body']['text']);
         $this->assertStringNotContainsString('What do you need', $this->sent[0]['interactive']['body']['text']);
@@ -722,7 +732,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertStringContainsString('Answered by AI', $this->sent[0]['text']['body']);
     }
 
-    public function test_when_ai_has_no_answer_the_usual_nothing_matched_menu_follows(): void
+    public function test_when_ai_has_no_answer_staff_get_a_plain_not_found_and_typing(): void
     {
         $t = $this->provisionTenant('A1-Group');
         $this->configured();
@@ -735,7 +745,10 @@ class WhatsAppStaffBotTest extends TestCase
         $this->staff($t);
         $this->inbound(self::BOT, $this->text('what is the wifi password'))->assertOk();
 
-        $this->assertStringContainsString('Nothing matched', $this->sent[0]['interactive']['body']['text']);
+        // An agent's "not found", not the keyword menu (Jose, 2026-11-03).
+        $this->assertSame('text', $this->sent[0]['type']);
+        $this->assertStringContainsString("couldn't find that", $this->sent[0]['text']['body']);
+        $this->assertNotEmpty($this->typing, 'staff see typing while the AI works');
     }
 
     /** Meta review, 2026-10-13: a stranger has the intake; no xAI call per message from the public. */

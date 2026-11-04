@@ -61,6 +61,35 @@ void main() {
     expect(find.byKey(const Key('job-file-drop')), findsOneWidget);
   });
 
+  // Inspection labels arrival and finished photos (Jose's before & after, 11-03).
+  testWidgets('a labelled photo says Before or After on its tile', (
+    tester,
+  ) async {
+    final after = {
+      ..._pdf,
+      'id': '0199a1b2-0000-7000-8000-000000000003',
+      'label': 'after',
+    };
+    await _pumpFiles(
+      tester,
+      _Server(
+        own: [
+          {..._photo, 'label': 'before'},
+          after,
+          _pdf,
+        ],
+      ),
+    );
+
+    final before = find.byKey(ValueKey('job-own-label-${_photo['id']}'));
+    expect(
+      find.descendant(of: before, matching: find.text('Before')),
+      findsOneWidget,
+    );
+    expect(find.text('After'), findsOneWidget);
+    expect(find.byKey(ValueKey('job-own-label-${_pdf['id']}')), findsNothing);
+  });
+
   testWidgets('an upload posts the file against this job', (tester) async {
     final server = _Server(own: const []);
     await _pumpFiles(

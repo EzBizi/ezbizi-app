@@ -105,7 +105,9 @@ const _folders = [
   _Folder('all', 'All mail', Icons.all_inbox_outlined),
 ];
 
+// All first and the default: the whole inbox, newest first (Jose, 2026-11-03).
 const _categories = [
+  ('all', 'All', Icons.all_inbox_outlined),
   ('primary', 'Primary', Icons.inbox_outlined),
   ('people', 'Leads & customers', Icons.people_outline),
   ('notifications', 'Notifications', Icons.notifications_none),
@@ -163,7 +165,7 @@ class _GmailInboxState extends State<GmailInbox> {
     (f) => f.id == _folder,
     orElse: () => _folders.first,
   );
-  String _category = 'primary';
+  String _category = 'all';
   final TextEditingController _search = TextEditingController();
   String _submittedSearch = '';
   Timer? _debounce;
@@ -274,13 +276,25 @@ class _GmailInboxState extends State<GmailInbox> {
     _followLink();
   }
 
-  Future<void> _loadList({String? cursor}) async {
+  /// Scrolling to the bottom brings the next page under the last row: a list
+  /// that stopped at Nov 1 read as "there is no older mail" (Jose, 11-04).
+  bool _appending = false;
+
+  void _appendOlder() {
+    final next = _next;
+    if (next == null || _appending) return;
+    _appending = true;
+    _loadList(cursor: next, append: true)
+        .whenComplete(() => _appending = false);
+  }
+
+  Future<void> _loadList({String? cursor, bool append = false}) async {
     if (_mailboxes.isEmpty) return;
 
     final request = ++_listRequest;
 
     setState(() {
-      _loadingList = _rows.isEmpty || cursor != _cursor;
+      _loadingList = !append && (_rows.isEmpty || cursor != _cursor);
       _listError = null;
     });
 
@@ -290,7 +304,7 @@ class _GmailInboxState extends State<GmailInbox> {
     final query = <String, String>{
       if (filterId == null) 'folder': _folder,
       'filter': ?filterId,
-      if (_folder == 'inbox') 'category': _category,
+      if (_folder == 'inbox' && _category != 'all') 'category': _category,
       'mailbox': ?_mailboxFilter,
       if (_submittedSearch.isNotEmpty) 'search': _submittedSearch,
       'cursor': ?cursor,
@@ -311,6 +325,12 @@ class _GmailInboxState extends State<GmailInbox> {
       }
 
       final page = InboxPage.fromResponse(response.data, response.body['meta']);
+      if (append) {
+        final seen = {for (final r in _rows) r.key};
+        _rows = [..._rows, ...page.rows.where((r) => !seen.contains(r.key))];
+        _next = page.cursor;
+        return;
+      }
       _rows = page.rows;
       _cursor = cursor;
       _next = page.cursor;
@@ -376,18 +396,6 @@ class _GmailInboxState extends State<GmailInbox> {
     final next = value.trim();
     if (next == _submittedSearch) return;
     _requery(() => _submittedSearch = next);
-  }
-
-  void _older() {
-    final next = _next;
-    if (next == null) return;
-    _previous.add(_cursor);
-    _loadList(cursor: next);
-  }
-
-  void _newer() {
-    if (_previous.isEmpty) return;
-    _loadList(cursor: _previous.removeLast());
   }
 
   /// Opens the exact email a notification is about (Bar via Jose,
@@ -874,7 +882,6 @@ class _GmailInboxState extends State<GmailInbox> {
                       ? Icons.inbox_outlined
                       : Icons.link_off,
                   label: mailbox.address,
-                  badge: _unreadBadge(mailbox.unread),
                   indent: 24,
                   selected: _mailboxFilter == mailbox.id,
                   onTap: () => _selectMailbox(mailbox.id),
@@ -1322,19 +1329,6 @@ class _GmailInboxState extends State<GmailInbox> {
             ),
           ],
           const Spacer(),
-          if (_previous.isNotEmpty)
-            IconButton(
-              key: const ValueKey('email-newer'),
-              tooltip: 'Newer',
-              icon: const Icon(Icons.chevron_left),
-              onPressed: _newer,
-            ),
-          if (_next != null)
-            TextButton(
-              key: const ValueKey('email-older'),
-              onPressed: _older,
-              child: const Text('Older ›'),
-            ),
         ],
       ),
     );
@@ -1381,8 +1375,10 @@ class _GmailInboxState extends State<GmailInbox> {
     final notice = _notConnectedNotice(context);
     final quiet = _quietLine(context);
     final open = _openRow != null;
+    // Side by side that does not fit opens the mail over the whole pane, with
+    // back — not a half-height reader below (Jose 11-03).
     final pane = _pane == ReadingPane.right && width < _rightPaneNeeds
-        ? ReadingPane.below
+        ? ReadingPane.off
         : _pane;
 
     final Widget body = switch (pane) {
@@ -1459,15 +1455,15 @@ class _GmailInboxState extends State<GmailInbox> {
               )
             : ListView.builder(
                 padding: EdgeInsets.only(bottom: phone ? 88 : 8),
-                itemCount: _rows.length + (phone && _next != null ? 1 : 0),
+                itemCount: _rows.length + (_next != null ? 1 : 0),
                 itemBuilder: (context, index) {
                   if (index == _rows.length) {
-                    return Center(
-                      child: TextButton(
-                        key: const ValueKey('email-older'),
-                        onPressed: _older,
-                        child: const Text('Older ›'),
-                      ),
+                    WidgetsBinding.instance
+                        .addPostFrameCallback((_) => _appendOlder());
+                    return const Padding(
+                      key: ValueKey('email-more'),
+                      padding: EdgeInsets.all(16),
+                      child: Center(child: CircularProgressIndicator()),
                     );
                   }
                   final row = _rows[index];

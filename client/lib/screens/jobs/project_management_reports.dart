@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import '../../core/branch_options.dart';
 import 'dart:async';
 
@@ -314,15 +315,11 @@ class _ProjectManagementReportsState extends State<ProjectManagementReports>
           "Source: Financials' Repair Team sheet, one branch and one week at a time. Not limited to Project Management's jobs.",
       search: SizedBox(
         width: phone ? double.infinity : 300,
-        child: TextField(
+        child: ListSearch(
           key: const ValueKey('pm-reports-search'),
           controller: _search,
+          hint: 'Search technicians',
           onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(Icons.search, size: 18),
-            hintText: 'Search technicians',
-          ),
         ),
       ),
       place: picker,
@@ -883,15 +880,11 @@ class _ProjectManagementReportTableState
           "Source: Financials' Repair Team sheet, one branch and one week at a time. Not limited to Project Management's jobs.",
       search: SizedBox(
         width: phone ? double.infinity : 300,
-        child: TextField(
+        child: ListSearch(
           key: const ValueKey('pm-table-search'),
           controller: _search,
+          hint: 'Search technicians',
           onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(Icons.search, size: 18),
-            hintText: 'Search technicians',
-          ),
         ),
       ),
       place: picker,

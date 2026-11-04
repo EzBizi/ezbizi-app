@@ -236,4 +236,18 @@ class MembershipsPublicTest extends TestCase
             $this->assertNull($this->customer->fresh()->membership_link, 'Already a member.');
         });
     }
+
+    public function test_the_review_event_says_whether_the_offer_was_already_made(): void
+    {
+        $c = $this->inTenant($this->t['org'], fn () => CustomerLinks::token($this->customer));
+        $offered = fn () => AutomationEvent::withoutGlobalScopes()->where('event_key', 'customer.reviewed')->latest('occurred_at')->first()->payload['after']['membership_offered'];
+
+        $this->postJson('/api/v1/web/review', ['key' => $this->site->public_key, 'rating' => 'happy', 'c' => $c])->assertOk();
+        $this->assertFalse($offered());
+
+        $this->inTenant($this->t['org'], fn () => $this->customer->membership_link);   // the offer text rendered it
+        AutomationEvent::withoutGlobalScopes()->delete();
+        $this->postJson('/api/v1/web/review', ['key' => $this->site->public_key, 'rating' => 'happy', 'c' => $c])->assertOk();
+        $this->assertTrue($offered());
+    }
 }

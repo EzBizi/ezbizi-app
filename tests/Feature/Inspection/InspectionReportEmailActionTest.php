@@ -95,6 +95,21 @@ class InspectionReportEmailActionTest extends TestCase
         );
     }
 
+    /**
+     * Mail::fake() above never builds a queue payload, so it passed while the
+     * first real send died with "Malformed UTF-8": the queue JSON-encodes the
+     * mailable and a PDF is binary.
+     */
+    public function test_the_queued_mail_survives_json_encoding_with_binary_pdf_bytes(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $bytes = "%PDF-1.4\xff\xfe\x00\x80binary";
+        $mail = new InspectionReportMail($this->reportFor($tenant, email: 'owner@example.test'), 'Alpha', $bytes);
+
+        $this->assertNotFalse(json_encode(serialize($mail)));
+        $this->assertSame($bytes, unserialize(serialize($mail))->attachments()[0]->attachWith(fn ($path) => null, fn ($data) => $data()));
+    }
+
     /** A customer with no address is an ordinary case, not a fault. */
     public function test_a_customer_with_no_email_is_reported_and_nothing_is_sent(): void
     {

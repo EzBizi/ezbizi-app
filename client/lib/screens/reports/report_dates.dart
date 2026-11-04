@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/timestamps.dart';
@@ -260,16 +261,9 @@ Widget reportSearch({
   required ValueChanged<String> onChanged,
 }) => SizedBox(
   width: 240,
-  child: TextField(
+  child: ListSearch(
     key: key,
-    textAlignVertical: TextAlignVertical.center,
-    decoration: InputDecoration(
-      isDense: true,
-      prefixIconConstraints: const BoxConstraints(minWidth: 36),
-      prefixIcon: const Icon(Icons.search, size: 18),
-      hintText: hint,
-      border: const OutlineInputBorder(),
-    ),
+    hint: hint,
     onChanged: onChanged,
   ),
 );

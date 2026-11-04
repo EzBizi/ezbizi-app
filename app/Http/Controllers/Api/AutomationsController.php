@@ -137,6 +137,7 @@ class AutomationsController extends Controller
         'resend',
         'revoke',
         'reply',
+        'book_by_chat',
         'report.send',
 
         // Not subject-bound: it exists so a rule on something with no phone in
@@ -599,6 +600,9 @@ class AutomationsController extends Controller
                     ['key' => 'changed', 'label' => 'changed'],
                     ['key' => 'changed_to', 'label' => 'changed to'],
                     ['key' => 'changed_from', 'label' => 'changed from'],
+                    ['key' => 'has_tag', 'label' => 'has the tag'],
+                    ['key' => 'not_has_tag', 'label' => 'does not have the tag'],
+                    ['key' => 'tag_added', 'label' => 'got the tag'],
                 ],
                 // The vocabulary POST /automations accepts. Anything not here is
                 // declared intent, not a usable action.
@@ -2160,6 +2164,7 @@ class AutomationsController extends Controller
         'inspection_report.workiz' => [\App\Models\InspectionReport::class],
         'add_to_audience' => [\App\Models\Lead::class],
         'reply' => [\App\Models\Lead::class],
+        'book_by_chat' => [\App\Models\Lead::class],
     ];
 
     /** Refused at save when the trigger is about a record this step does not work on. */
@@ -2389,6 +2394,12 @@ class AutomationsController extends Controller
             $type('publish_reply', 'Publish a reply on Google', true, [
                 $parameter('ai', 'Let AI write it for this review', 'boolean', false),
                 $parameter('message', 'The reply (when AI is not writing it)', 'rich_text', false, variables: true),
+                // Words per star rating (Jose, 2026-11-02); an empty one falls back to the reply above.
+                $parameter('by_rating_5', 'Reply to a 5-star review', 'rich_text', false, variables: true),
+                $parameter('by_rating_4', 'Reply to a 4-star review', 'rich_text', false, variables: true),
+                $parameter('by_rating_3', 'Reply to a 3-star review', 'rich_text', false, variables: true),
+                $parameter('by_rating_2', 'Reply to a 2-star review', 'rich_text', false, variables: true),
+                $parameter('by_rating_1', 'Reply to a 1-star review', 'rich_text', false, variables: true),
             ]),
             $type('onboarding.start', 'Start the onboarding', true, [
                 $parameter('contract_id', 'Which contract', 'contract'),
@@ -2451,6 +2462,8 @@ class AutomationsController extends Controller
             $type('reply', 'Reply to the lead', true, [
                 $parameter('message', 'Message', 'rich_text', variables: true),
             ]),
+            // The booking bot writes its own reply; nothing to fill in.
+            $type('book_by_chat', 'Book through the chat', true, []),
 
             // Task Board (2026-10-13). A task's status is "Change the status".
             $type('task.create', 'Add a task', true, [

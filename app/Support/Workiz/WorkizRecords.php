@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\DB;
  */
 final class WorkizRecords
 {
+    /** The account's own lists, read hourly. */
+    public const LISTS = ['custom_field', 'job_type', 'ad_group', 'tag', 'sub_status'];
+
     public const TYPES = ['invoice', 'payment', 'estimate', 'time_off', 'event', 'timesheet', 'custom_field', 'item', 'job_type', 'ad_group', 'tag', 'sub_status'];
 
     /** v2 caps a page at 300. */

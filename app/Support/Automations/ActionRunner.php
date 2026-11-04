@@ -56,6 +56,7 @@ use App\Support\Hr\InvitationActions;
 use App\Support\Inspection\ReportPdf;
 use App\Support\Inventory\InventoryItemStatus;
 use App\Support\Inventory\InventoryUnit;
+use App\Support\Leads\BookingBot;
 use App\Support\Leads\LeadReplies;
 use App\Support\Leads\LeadTexts;
 use App\Support\Mail\CannotSendMail;
@@ -508,6 +509,7 @@ class ActionRunner
             'resend' => $this->resendInvitation($subject),
             'revoke' => $this->revokeInvitation($subject),
             'reply' => $this->replyToLead($action, $event, $subject),
+            'book_by_chat' => $this->bookByChat($action, $event, $subject),
             'report.send' => $this->sendReport($action, $event, $automation),
             'email.send' => $this->sendEmail($action, $event, $automation, $subject),
             'whatsapp.send' => $this->sendWhatsApp($action, $event, $subject),
@@ -770,6 +772,7 @@ class ActionRunner
                 $this->audit->log(action: 'job.updated_by_automation', target: $job, changes: $payload,
                     metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key]);
                 $this->emitter->emit(eventKey: $this->updateEventFor($job), subject: $job, payload: $payload, causedBy: $event);
+                $this->emitter->emit(eventKey: 'job.tags_changed', subject: $job, payload: $payload, causedBy: $event);
             }
             $done[] = 'tags '.implode(', ', $tags);
         }
@@ -855,10 +858,23 @@ class ActionRunner
             $link,
         );
 
+        // The PDF too, once per report: only when the link was newly written,
+        // so a re-run does not attach a second copy. Queued; never blocks this.
+        if ($result['written'] && $result['refused'] === null && ($job = \App\Models\Job::withTrashed()->find($subject->job_id)) !== null) {
+            $path = 'inspection-reports/'.$subject->organization_id.'/'.$subject->id.'.pdf';
+            \Illuminate\Support\Facades\Storage::disk('local')->put($path, $this->reportPdf->render($subject));
+            \App\Jobs\AttachFileToWorkiz::for($job, 'local', $path, 'Inspection report '.($subject->submitted_at ?? now())->format('Y-m-d').'.pdf');
+
+            // A finished-job report also sends its after photos (the befores went up on arrival's PDF).
+            foreach (\App\Support\Inspection\BeforeAfter::pairs($subject) as $pair) {
+                \App\Jobs\AttachFileToWorkiz::for($job, $pair['after']->disk, $pair['after']->path, 'After - '.$pair['label'].'.'.pathinfo($pair['after']->original_name, PATHINFO_EXTENSION));
+            }
+        }
+
         return match (true) {
             $result['refused'] !== null => ['type' => $type, 'ok' => false, 'detail' => 'Workiz did not take it: '.$result['refused']],
             ! $result['written'] => ['type' => $type, 'ok' => true, 'detail' => 'The report was already on the Workiz job.'],
-            default => ['type' => $type, 'ok' => true, 'detail' => 'The report link was added to the Workiz job.'],
+            default => ['type' => $type, 'ok' => true, 'detail' => 'The report link was added to the Workiz job, and the PDF is being attached.'],
         };
     }
 
@@ -1215,9 +1231,12 @@ class ActionRunner
             ];
         }
 
+        // A call Google takes no text for, or a channel gone: the enquiry is
+        // the wrong kind, not the rule broken, so it skips like Not connected
+        // does and the failure count cannot switch the rule off.
         if (! $this->leadReplies->canReply($subject)) {
             return [
-                'type' => $type, 'ok' => false,
+                'type' => $type, 'ok' => true, 'skipped' => true,
                 'detail' => $this->leadReplies->whyNot($subject)
                     ?? 'This enquiry cannot be replied to just now.',
             ];
@@ -1249,6 +1268,23 @@ class ActionRunner
             'detail' => 'Replied in the chat. It is recorded as automatic, so the enquiry still '
                 .'shows as awaiting a reply.',
         ];
+    }
+
+    /** The booking bot's next line, sent as an automatic reply (BookingBot). */
+    private function bookByChat(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        if (! $subject instanceof Lead) {
+            return ['type' => 'book_by_chat', 'ok' => false, 'detail' => 'This step can only answer an enquiry.'];
+        }
+
+        $next = app(BookingBot::class)->next($subject);
+        if ($next['reply'] === null) {
+            return ['type' => 'book_by_chat', 'ok' => true, 'skipped' => true, 'detail' => $next['why']];
+        }
+
+        $sent = $this->replyToLead(['message' => $next['reply']] + $action, $event, $subject);
+
+        return ['type' => 'book_by_chat'] + ($sent['ok'] ? ['detail' => $next['why']] : []) + $sent;
     }
 
     /**
@@ -2022,6 +2058,11 @@ class ActionRunner
                 'ok' => false,
                 'detail' => 'That line has no phone account behind it, so nothing was sent.',
             ];
+        }
+
+        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true);
+        if ($body === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
         }
 
         try {
@@ -3047,7 +3088,12 @@ class ActionRunner
             }
         }
 
-        return trim($this->interpolate((string) ($action['message'] ?? ''), $event, $review));
+        // Words per star rating (ReviewAutoReplyRule), else the one message.
+        // An empty field saved by the builder falls back to the one message; by_rating is
+        // the shape 0.0.0514 wrote before the flat keys (2026-11-02).
+        $message = ($action['by_rating_'.$review->rating] ?? '') ?: ($action['by_rating'][(string) $review->rating] ?? $action['message'] ?? '');
+
+        return trim($this->interpolate((string) $message, $event, $review));
     }
 
     /**
@@ -3090,7 +3136,15 @@ class ActionRunner
             ? User::query()->find($automation->activeVersion->created_by)
             : null;
 
-        if ($author === null || ! Gate::forUser($author)->allows('publish', $subject)) {
+        // The author's grant and reach, not the view they last stood in: a rule runs from a
+        // queue, and the policy's write check reads the saved view, so a rule made by someone
+        // looking at one company refused every other company's reviews (sweep, 2026-11-04).
+        $reaches = $author !== null && $author->hasPermission('reviews.publish') && match (true) {
+            $subject->franchise_id !== null => ($f = \App\Models\Franchise::query()->find($subject->franchise_id)) !== null && $author->canActOnFranchise($f),
+            $subject->company_id !== null => ($c = \App\Models\Company::query()->find($subject->company_id)) !== null && $author->canActOnCompany($c),
+            default => $author->canActOnOrganization($author->organization),
+        };
+        if (! $reaches) {
             return ['type' => $type, 'ok' => false,
                 'detail' => 'The person who built this rule may not publish replies to this review, so nothing '
                     .'was posted. Somebody who can should open the rule and save it again.'];
@@ -3637,6 +3691,17 @@ class ActionRunner
         }
 
         $about = $subject ? array_search($subject::class, Task::ABOUT, true) : false;
+
+        // One task per rule per record per 10 minutes (review 2026-11-02): one
+        // phone call read as two transcripts raised two complaints 3 seconds
+        // apart, and one payment twice, each a second identical task.
+        if ($about !== false && $automation !== null && Task::query()
+            ->where('created_by_automation_id', $automation->getKey())
+            ->where('about_type', $about)->where('about_id', $subject->getKey())
+            ->where('created_at', '>=', now()->subMinutes(10))->exists()) {
+            return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => 'This rule already added a task about this record in the last 10 minutes.'];
+        }
+
         $board = app(TaskBoards::class)->ensureFor($owner);
 
         // The board's own columns by name, and its group by name (Task Board, 60f643812).
@@ -3870,8 +3935,9 @@ class ActionRunner
         $told = 0;
         foreach ($people as $person) {
             $told += $this->notifications->dispatch(
-                title: $alert->message,
-                body: 'From the automation "'.($automation?->name ?? 'a rule').'"',
+                // notifications.title is 255; a long {{comment}} failed "Sad review" 11 times (review 2026-11-02).
+                title: \Illuminate\Support\Str::limit($alert->message, 250),
+                body: (mb_strlen($alert->message) > 250 ? $alert->message."\n\n" : '').'From the automation "'.($automation?->name ?? 'a rule').'"',
                 subject: $alert,
                 onlyTo: $person,
                 source: 'alert',

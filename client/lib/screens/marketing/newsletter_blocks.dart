@@ -96,11 +96,18 @@ class NewsletterAudience {
     required this.id,
     required this.name,
     required this.kind,
+    this.tag,
   });
 
   final String id;
   final String name;
   final String kind;
+
+  /// Narrows the send: a Mailchimp tag, or (customers) a tag on their jobs.
+  final String? tag;
+
+  /// The picker's label: "Name · tag" when the list is narrowed.
+  String get label => tag == null || tag!.isEmpty ? name : '$name · $tag';
 
   String get where =>
       kind == 'mailchimp' ? 'in Mailchimp' : 'built from your customers';
@@ -110,6 +117,7 @@ class NewsletterAudience {
         id: json['id'] as String? ?? '',
         name: json['name'] as String? ?? '',
         kind: json['kind'] as String? ?? '',
+        tag: json['tag'] as String?,
       );
 }
 

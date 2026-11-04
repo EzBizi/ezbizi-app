@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -6,6 +7,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
+import 'phone_search.dart';
 
 /// Communication › Alerts: send chosen people an alert they must dismiss (UI
 /// queue 65).
@@ -40,6 +42,10 @@ class _AlertsTabState extends State<AlertsTab> {
 
   /// The alert whose people are shown.
   String? _open;
+
+  /// Every list has a search (deep dive 2026-11-02 #12): the message, the
+  /// sender or a recipient.
+  String _query = '';
 
   @override
   void initState() {
@@ -88,6 +94,17 @@ class _AlertsTabState extends State<AlertsTab> {
         return ListView(
           padding: EdgeInsets.all(phone ? 12 : 24),
           children: [
+            if (_sent.isNotEmpty) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: phoneSearchBox(
+                  key: const ValueKey('alerts-search'),
+                  hint: 'Search alerts',
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (phone)
               Card(
                 child: Padding(
@@ -125,7 +142,7 @@ class _AlertsTabState extends State<AlertsTab> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     children: [
-                      for (final (i, alert) in _sent.indexed) ...[
+                      for (final (i, alert) in _sent.where(_hit).indexed) ...[
                         if (i > 0) const Divider(height: 1),
                         _row(context, alert),
                       ],
@@ -138,6 +155,14 @@ class _AlertsTabState extends State<AlertsTab> {
       },
     );
   }
+
+  bool _hit(Map<String, dynamic> alert) => phoneSearchHit(_query, [
+    alert['message'] as String?,
+    alert['body'] as String?,
+    (alert['sender'] as Map?)?['name'] as String?,
+    for (final r in (alert['recipients'] as List? ?? const []))
+      if (r is Map) r['name'] as String?,
+  ]);
 
   Widget _row(BuildContext context, Map<String, dynamic> alert) {
     final theme = Theme.of(context);
@@ -175,12 +200,16 @@ class _AlertsTabState extends State<AlertsTab> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                StatusPill(
-                  done == people.length
-                      ? 'Dismissed by all ${people.length}'
-                      : 'Dismissed by $done of ${people.length}',
-                  tone: done == people.length ? Tone.ok : Tone.caution,
-                ),
+                // Sent to nobody: "Dismissed by all 0" in green read as done.
+                if (people.isEmpty)
+                  const StatusPill('Sent to nobody', tone: Tone.neutral)
+                else
+                  StatusPill(
+                    done == people.length
+                        ? 'Dismissed by all ${people.length}'
+                        : 'Dismissed by $done of ${people.length}',
+                    tone: done == people.length ? Tone.ok : Tone.caution,
+                  ),
               ],
             ),
             Text(
@@ -342,15 +371,10 @@ class _AlertFormState extends State<AlertForm> {
           ),
           const SizedBox(height: 6),
         ],
-        TextField(
+        ListSearch(
           key: const Key('alert-people-search'),
           controller: _search,
-          decoration: const InputDecoration(
-            hintText: 'Add people…',
-            prefixIcon: Icon(Icons.search),
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
+          hint: 'Add people…',
           onChanged: (_) => setState(() {}),
         ),
         if (query.isNotEmpty)

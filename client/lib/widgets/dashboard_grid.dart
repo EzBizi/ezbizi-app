@@ -212,15 +212,21 @@ class _DashboardGridState extends State<DashboardGrid> {
                   children: [
                     for (final (j, index) in row.indexed) ...[
                       if (j > 0) SizedBox(width: widget.spacing),
-                      SizedBox(
-                        width: widthOf(
-                          DashboardGrid.spanOf(
-                            widget.panels[index].size,
-                            columns,
+                      // The last card stretches over what the row leaves, so
+                      // a short row has no hole (UI/UX, 2026-11-02). Not while
+                      // customizing: there the width shows the chosen size.
+                      if (j == row.length - 1 && !widget.customizing)
+                        Expanded(child: _cardAt(index))
+                      else
+                        SizedBox(
+                          width: widthOf(
+                            DashboardGrid.spanOf(
+                              widget.panels[index].size,
+                              columns,
+                            ),
                           ),
+                          child: _cardAt(index),
                         ),
-                        child: _cardAt(index),
-                      ),
                     ],
                   ],
                 ),
@@ -269,8 +275,7 @@ class _DashboardGridState extends State<DashboardGrid> {
       child: DragTarget<String>(
         onWillAcceptWithDetails: (details) =>
             details.data != panel.key && _indexOf(details.data) != null,
-        onAcceptWithDetails: (details) =>
-            _move(_indexOf(details.data)!, index),
+        onAcceptWithDetails: (details) => _move(_indexOf(details.data)!, index),
         builder: (context, candidate, rejected) => Stack(
           children: [
             card,
@@ -282,8 +287,7 @@ class _DashboardGridState extends State<DashboardGrid> {
                 child: IgnorePointer(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      borderRadius:
-                          BorderRadius.circular(DashboardCard.radius),
+                      borderRadius: BorderRadius.circular(DashboardCard.radius),
                       border: Border.all(
                         color: Theme.of(context).colorScheme.primary,
                         width: 2,
@@ -515,7 +519,11 @@ class _DashboardGridState extends State<DashboardGrid> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(panel.icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+            Icon(
+              panel.icon,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 8),
             Text(panel.title, style: theme.textTheme.titleSmall),
           ],
@@ -640,9 +648,8 @@ class _GripDrag extends Draggable<String> {
   /// Written as "the rest" rather than as a list of kinds, so that a pointer
   /// kind Flutter adds later drags a card immediately — which is the behaviour
   /// every pointer had before — rather than being unable to drag one at all.
-  static final Set<PointerDeviceKind> _pointers = PointerDeviceKind.values
-      .toSet()
-    ..removeAll(_held);
+  static final Set<PointerDeviceKind> _pointers =
+      PointerDeviceKind.values.toSet()..removeAll(_held);
 
   /// The pointers that have to HOLD the grip before the card comes up.
   ///
@@ -671,18 +678,19 @@ class _GripDrag extends Draggable<String> {
     }
 
     return DelayedMultiDragGestureRecognizer(
-      debugOwner: this,
-      supportedDevices: _held,
-    )..onStart = (position) {
-      final drag = onStart(position);
+        debugOwner: this,
+        supportedDevices: _held,
+      )
+      ..onStart = (position) {
+        final drag = onStart(position);
 
-      // The same click `LongPressDraggable` gives a held pickup, and for its
-      // reason: the finger that is holding the card is also covering it, so
-      // the feedback that says "it is up now" cannot only be something to look
-      // at.
-      if (drag != null) HapticFeedback.selectionClick();
+        // The same click `LongPressDraggable` gives a held pickup, and for its
+        // reason: the finger that is holding the card is also covering it, so
+        // the feedback that says "it is up now" cannot only be something to look
+        // at.
+        if (drag != null) HapticFeedback.selectionClick();
 
-      return drag;
-    };
+        return drag;
+      };
   }
 }

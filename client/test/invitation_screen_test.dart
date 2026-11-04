@@ -120,13 +120,8 @@ void main() {
       ),
     );
 
-    final order = tester
-        .widgetList<TextField>(find.byType(TextField))
-        .map((f) => f.decoration?.labelText)
-        .where((label) => label == 'Day' || label == 'Month' || label == 'Year')
-        .toList();
-
-    expect(order, ['Day', 'Month', 'Year']);
+    // One date field whose pattern is the org's order (Jose, 2026-11-03).
+    expect(find.text('DD/MM/YYYY'), findsOneWidget);
   });
 
   testWidgets('nothing can be submitted until a password is chosen', (
@@ -310,17 +305,10 @@ Future<void> _type(WidgetTester tester, String label, String text) async {
 }
 
 Future<void> _typeDay(WidgetTester tester, DateTime at) async {
+  // The fixture's organization writes M/D/YYYY.
   await tester.enterText(
-    find.byKey(const Key('calendar-day-month')),
-    at.month.toString().padLeft(2, '0'),
-  );
-  await tester.enterText(
-    find.byKey(const Key('calendar-day-day')),
-    at.day.toString().padLeft(2, '0'),
-  );
-  await tester.enterText(
-    find.byKey(const Key('calendar-day-year')),
-    '${at.year}',
+    find.byKey(const Key('calendar-day-text')),
+    '${at.month}/${at.day}/${at.year}',
   );
   await tester.pumpAndSettle();
 }

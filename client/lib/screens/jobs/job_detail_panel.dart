@@ -11,6 +11,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
+import 'job_record_pill.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
@@ -531,20 +532,25 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
               franchise?['name'],
             ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
       width: 520,
+      headerActions: [if (row != null) JobRecordPill(jobId: '${row['id']}')],
       docked: widget.onDone != null,
       onClose: widget.onDone == null ? null : () => _done(null),
+      // Save and Cancel belong to the Job tab's fields; Money, Photos and
+      // Notes save themselves or are read only (deep dive 2026-11-02).
       actions: [
-        TextButton(
-          onPressed: _busy ? null : () => _done(null),
-          child: const Text('Cancel'),
-        ),
-        Refused(
-          reason: _editRefusal,
-          child: FilledButton(
-            onPressed: editable ? _save : null,
-            child: const Text('Save'),
+        if (!const {'money', 'files', 'notes'}.contains(_tab)) ...[
+          TextButton(
+            onPressed: _busy ? null : () => _done(null),
+            child: const Text('Cancel'),
           ),
-        ),
+          Refused(
+            reason: _editRefusal,
+            child: FilledButton(
+              onPressed: editable ? _save : null,
+              child: const Text('Save'),
+            ),
+          ),
+        ],
       ],
       child: _loading
           ? const Padding(
@@ -592,8 +598,11 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
         if (tabs.length > 1)
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
+            // A row inside the Jobs tab: design 103's second level, the
+            // way HR records and Memberships draw theirs (deep dive 2026-11-02).
             child: TabBarLike(
               key: const Key('job-tabs'),
+              level: TabLevel.secondary,
               labels: [for (final t in tabs) (t.$2, t.$3)],
               selected: tabs.indexWhere((t) => t.$1 == current),
               onSelected: (i) => setState(() => _tab = tabs[i].$1),

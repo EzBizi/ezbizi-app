@@ -32,7 +32,7 @@ use Illuminate\Support\Collection;
 #[Fillable([
     'owning_franchise_id', 'number', 'name', 'email', 'phone',
     'address_line1', 'address_line2', 'city', 'state', 'postal_code',
-    'notes', 'is_active', 'customer_since',
+    'notes', 'is_active', 'customer_since', 'tags',
 ])]
 class Customer extends Model implements HoldsPersonalData
 {
@@ -44,7 +44,7 @@ class Customer extends Model implements HoldsPersonalData
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean', 'customer_since' => 'date'];
+        return ['is_active' => 'boolean', 'customer_since' => 'date', 'tags' => 'array'];
     }
 
     /**
@@ -211,6 +211,23 @@ class Customer extends Model implements HoldsPersonalData
         return $subject instanceof self
             ? static::query()->withTrashed()->whereKey($subject->getKey())
             : null;
+    }
+
+    /**
+     * Tags as written once: trimmed, blanks dropped, one per spelling
+     * regardless of case (the first spelling wins), in the order given.
+     */
+    public function setTagsAttribute(?array $tags): void
+    {
+        $kept = [];
+        foreach ($tags ?? [] as $tag) {
+            $tag = trim((string) $tag);
+            if ($tag !== '' && ! isset($kept[mb_strtolower($tag)])) {
+                $kept[mb_strtolower($tag)] = $tag;
+            }
+        }
+
+        $this->attributes['tags'] = $kept === [] ? null : json_encode(array_values($kept));
     }
 
     // ── relations ────────────────────────────────────────────────

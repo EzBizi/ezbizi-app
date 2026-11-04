@@ -37,7 +37,8 @@ class LeadTextStepTest extends TestCase
             $withPhone = $lead('+15553334444');
             $sent = $runner->run(['type' => 'lead.text', 'body' => 'Thanks {{contact_name}}, a supervisor has been assigned.'], $event, $withPhone, automation: $rule);
             $this->assertTrue($sent['ok'], $sent['detail']);
-            $this->assertSame(['Thanks Pat, a supervisor has been assigned.'], LeadConversation::query()->where('lead_id', $withPhone->id)->pluck('text')->all());
+            // An automated text always carries the opt-out line (SmsConsent).
+            $this->assertSame(['Thanks Pat, a supervisor has been assigned.'."\n".\App\Support\Phone\SmsConsent::FOOTER], LeadConversation::query()->where('lead_id', $withPhone->id)->pluck('text')->all());
 
             $none = $runner->run(['type' => 'lead.text', 'body' => 'Hi'], $event, $lead(null), automation: $rule);
             $this->assertTrue($none['skipped'] ?? false, 'no phone is skipped, not a failure toward switching the rule off');

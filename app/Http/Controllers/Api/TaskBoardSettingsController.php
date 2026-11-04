@@ -284,6 +284,24 @@ class TaskBoardSettingsController extends Controller
         if (in_array($type, TaskColumn::WITH_OPTIONS, true)) {
             $out['options'] = $this->options($settings['options'] ?? []);
         }
+        if (in_array($type, ['number', 'formula'], true)) {
+            foreach (['format' => TaskColumn::FORMATS, 'footer' => TaskColumn::FOOTERS] as $k => $allowed) {
+                if (isset($settings[$k])) {
+                    in_array($settings[$k], $allowed, true)
+                        ?: throw ValidationException::withMessages(["settings.$k" => 'One of '.implode(', ', $allowed).'.']);
+                    $out[$k] = $settings[$k];
+                }
+            }
+        }
+        if ($type === 'formula') {
+            // Column names in brackets, numbers and + - * / ( ): the client works it out.
+            $expr = $settings['expression'] ?? null;
+            $bare = is_string($expr) ? preg_replace('/\[[^\[\]]{1,255}\]/u', '1', $expr) : null;
+            if ($bare === null || mb_strlen($expr) > 500 || ! preg_match('/^[\d\s.+\-*\/()]+$/', $bare)) {
+                throw ValidationException::withMessages(['settings.expression' => 'Columns in [brackets], numbers and + - × ÷ ( ).']);
+            }
+            $out['expression'] = $expr;
+        }
 
         return $out === [] ? null : $out;
     }

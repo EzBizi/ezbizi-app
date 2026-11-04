@@ -27,6 +27,7 @@ import '../screens/project_management_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
+import '../screens/company_screen.dart';
 import '../screens/task_board_screen.dart';
 import '../screens/training_screen.dart';
 import '../screens/web_screen.dart';
@@ -159,6 +160,11 @@ final Map<String, ModuleScreen> moduleScreens = {
   'financials': ModuleScreen(
     Icons.table_chart_outlined,
     (api, session) => FinancialsScreen(api: api, session: session),
+  ),
+  // Design 175: ownership chart, step owners and KPIs.
+  'company': ModuleScreen(
+    Icons.account_tree_outlined,
+    (api, session) => CompanyScreen(api: api, session: session),
   ),
   'tasks': ModuleScreen(
     Icons.view_kanban_outlined,

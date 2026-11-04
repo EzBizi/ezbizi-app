@@ -447,6 +447,11 @@ Route::get('v1/whatsapp/media/{phone}/{media}', \App\Http\Controllers\Api\WhatsA
     ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
     ->name('whatsapp.media');
 
+Route::get('v1/meta/media/{connection}/{mid}/{index}', \App\Http\Controllers\Api\MetaMediaController::class)
+    ->middleware(['signed', 'throttle:120,1'])
+    ->where(['connection' => '[0-9a-f-]+', 'mid' => '[A-Za-z0-9_-]+', 'index' => '[0-9]+'])
+    ->name('meta.media');
+
 Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
     ->middleware(['signed', 'throttle:30,1'])
     ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
@@ -893,6 +898,7 @@ Route::prefix('v1')
         // id, and the failure is a 404 about a customer rather than a route
         // that was never reached.
         Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
+        Route::get('customers/tags', [CustomersController::class, 'tags']);
         Route::apiResource('customers', CustomersController::class);
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
         // Each branch's Workiz notes on the customer, read live, never copied.
@@ -1009,6 +1015,13 @@ Route::prefix('v1')
         Route::get('reviews', [ReviewsController::class, 'index']);
         Route::post('reviews/replies/draft-batch', [ReviewsController::class, 'draftBatch']);
         Route::get('reviews/sources', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'sources']);
+        // The eKomi screen (Jose, 2026-11-02).
+        Route::get('ekomi', [\App\Http\Controllers\Api\EkomiController::class, 'index']);
+        Route::get('ekomi/{connection}/overview', [\App\Http\Controllers\Api\EkomiController::class, 'overview']);
+        Route::get('ekomi/{connection}/requests', [\App\Http\Controllers\Api\EkomiController::class, 'requests']);
+        Route::post('ekomi/{connection}/requests', [\App\Http\Controllers\Api\EkomiController::class, 'ask']);
+        Route::put('ekomi/{connection}/settings', [\App\Http\Controllers\Api\EkomiController::class, 'updateSettings']);
+        Route::post('ekomi/{connection}/test', [\App\Http\Controllers\Api\EkomiController::class, 'test']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
@@ -1052,6 +1065,11 @@ Route::prefix('v1')
         Route::get('business-profile/locations/{location}/search-terms', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'searchTerms']);
         // Lets a rule publish review replies on this listing (A1 Leads takeover, 2026-10-20). Off by default.
         Route::put('business-profile/locations/{location}/auto-reply', \App\Http\Controllers\Api\BusinessProfileAutoReplyController::class);
+        // Weekly AI posts waiting for Approve / Disapprove (Jose, 2026-11-03).
+        Route::get('business-profile/post-queue', [\App\Http\Controllers\Api\BusinessProfilePostQueueController::class, 'index']);
+        Route::post('business-profile/post-queue/{target}/approve', [\App\Http\Controllers\Api\BusinessProfilePostQueueController::class, 'approve']);
+        Route::post('business-profile/post-queue/{target}/disapprove', [\App\Http\Controllers\Api\BusinessProfilePostQueueController::class, 'disapprove']);
+        Route::put('business-profile/locations/{location}/auto-post', [\App\Http\Controllers\Api\BusinessProfilePostQueueController::class, 'autoPost']);
         // Media, services, phone check (A1 Leads takeover, design 154). Google writes stay behind the write switch.
         Route::get('business-profile/phone-check', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'phoneCheck']);
         Route::get('business-profile/whatsapp-links', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'whatsappLinks']);
@@ -1175,6 +1193,7 @@ Route::prefix('v1')
             Route::post('airtable-links', 'mirrorAirtable');
             Route::post('tables/{table}/refresh', 'refreshAirtable');
             Route::post('tables/{table}/cut-over', 'cutOver');
+            Route::get('parity', 'parity');
             Route::get('tables/{table}', 'showTable');
             Route::patch('tables/{table}', 'updateTable');
             Route::delete('tables/{table}', 'destroyTable');
@@ -1745,6 +1764,7 @@ Route::prefix('v1')
         });
         Route::get('field/recordings', [FieldRecordingsController::class, 'index']);
         Route::get('field/recordings/{recording}/audio/{seq}', [FieldRecordingsController::class, 'audio'])->whereNumber('seq');
+        Route::get('field/recordings/{recording}/transcript', [FieldRecordingsController::class, 'transcript']);
         Route::post('field/recordings/{recording}/flag', [FieldRecordingsController::class, 'flag']);
 
         // Training — guides people read, the tests they take, and (later
@@ -2106,6 +2126,9 @@ Route::prefix('v1')
         // is what adds everybody else's. The controller makes that split —
         // see HrPeopleController::pto.
         Route::get('hr/pto', [HrPeopleController::class, 'pto']);
+        // The ownership chart (Jose, 2026-11-03, design 175). OwnershipController.
+        Route::get('hr/ownership', [\App\Http\Controllers\Api\OwnershipController::class, 'index']);
+        Route::put('hr/ownership', [\App\Http\Controllers\Api\OwnershipController::class, 'update']);
         // The Payroll tab (Jose, 2026-10-22). Salary itself rides on hr.pay.view
         // and is changed through the pay-rate history (details/pay-rates).
         Route::get('hr/payroll', [HrPeopleController::class, 'payroll'])->middleware('permission:hr.payroll.view');

@@ -1,6 +1,8 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
@@ -8,10 +10,11 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
-import '../phone/recording_player.dart';
 
-/// Field › Recordings (UI queue 102, design 4: a table, and the player in a
-/// side panel; in place on a phone).
+/// Field › Recordings (UI queue 102, design 4: a table and a side panel, in
+/// place on a phone). The panel is design 177 option 1 / phone 4 (Jose,
+/// 2026-11-03): the summary in labelled sections, then the transcript. The
+/// audio is deleted once it is words, so there is no player.
 ///
 /// The server decides whose: your own, or with field.listen everyone Field
 /// shows you. Each recording is one-minute pieces played one after another.
@@ -23,7 +26,6 @@ class FieldRecordingsTab extends StatefulWidget {
     required this.api,
     required this.canListen,
     required this.canKeep,
-    this.player,
   });
 
   final ApiClient api;
@@ -33,9 +35,6 @@ class FieldRecordingsTab extends StatefulWidget {
 
   /// field.manage: Keep and Stop keeping.
   final bool canKeep;
-
-  /// For tests.
-  final RecordingPlayer? player;
 
   static const double sideAbove = 900;
 
@@ -55,11 +54,9 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
   Timer? _searchDebounce;
 
   Map<String, dynamic>? _open;
-  late final RecordingPlayer _player = widget.player ?? createRecordingPlayer();
-  StreamSubscription<RecordingPlayback>? _sub;
-  RecordingPlayback _playback = const RecordingPlayback();
-  int _seq = 0;
-  bool _playingAll = false;
+
+  /// GET field/recordings/{id}/transcript for the open row.
+  Map<String, dynamic>? _transcript;
   bool _keeping = false;
   final _reason = TextEditingController();
   String? _panelError;
@@ -67,15 +64,12 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
   @override
   void initState() {
     super.initState();
-    _sub = _player.changes.listen(_onPlayback);
     _load();
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
     _searchDebounce?.cancel();
-    _player.dispose();
     _reason.dispose();
     super.dispose();
   }
@@ -108,73 +102,27 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
     });
   }
 
-  // ----------------------------------------------------------- playing
-
-  /// The pieces play one after another, as one recording.
-  void _onPlayback(RecordingPlayback p) {
-    final ended =
-        _playback.playing &&
-        !p.playing &&
-        p.loaded &&
-        p.position >= p.duration - const Duration(milliseconds: 300);
-    setState(() => _playback = p);
-    final chunks = (_open?['chunks'] as num?)?.toInt() ?? 0;
-    if (ended && _playingAll && _seq + 1 < chunks) _playSeq(_seq + 1);
-    if (ended && _seq + 1 >= chunks) setState(() => _playingAll = false);
-  }
-
-  Future<void> _playSeq(int seq) async {
-    final id = _open?['id'];
-    if (id == null) return;
-    setState(() {
-      _seq = seq;
-      _playingAll = true;
-      _panelError = null;
-    });
-    final bytes = await widget.api.getBytes('/field/recordings/$id/audio/$seq');
-    if (!mounted || _open?['id'] != id) return;
-    if (bytes == null) {
-      setState(() {
-        _playingAll = false;
-        _panelError = 'That minute could not be loaded.';
-      });
-      return;
-    }
-    try {
-      await _player.play(bytes);
-    } on RecordingPlaybackFailure catch (e) {
-      if (mounted) {
-        setState(() {
-          _playingAll = false;
-          _panelError = e.message;
-        });
-      }
-    }
-  }
-
-  Future<void> _toggle() async {
-    if (_playback.playing) {
-      await _player.pause();
-      setState(() => _playingAll = false);
-    } else if (_playback.loaded && _playback.position < _playback.duration) {
-      setState(() => _playingAll = true);
-      await _player.resume();
-    } else {
-      await _playSeq(
-        _seq >= ((_open?['chunks'] as num?)?.toInt() ?? 1) - 1 ? 0 : _seq,
-      );
-    }
-  }
+  // ----------------------------------------------------------- transcript
 
   void _openRow(Map<String, dynamic> row) {
-    _player.stop();
     setState(() {
       _open = row;
-      _seq = 0;
-      _playingAll = false;
-      _playback = const RecordingPlayback();
+      _transcript = null;
       _keeping = false;
       _panelError = null;
+    });
+    _loadTranscript(row['id'] as String);
+  }
+
+  Future<void> _loadTranscript(String id) async {
+    final response = await widget.api.get('/field/recordings/$id/transcript');
+    if (!mounted || _open?['id'] != id) return;
+    setState(() {
+      if (response.ok) {
+        _transcript = response.data as Map<String, dynamic>?;
+      } else {
+        _panelError = response.message;
+      }
     });
   }
 
@@ -327,17 +275,10 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
                     ),
                   SizedBox(
                     width: 260,
-                    child: TextField(
+                    child: ListSearch(
                       key: const ValueKey('field-recordings-search'),
+                      hint: 'Search person, job or reason',
                       onChanged: _search,
-                      textAlignVertical: TextAlignVertical.center,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: 'Search person, job or reason',
-                        prefixIcon: Icon(Icons.search, size: 18),
-                        prefixIconConstraints: BoxConstraints(minWidth: 36),
-                        border: OutlineInputBorder(),
-                      ),
                     ),
                   ),
                 ],
@@ -480,8 +421,6 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
     final job = r['job'] as Map?;
     final chunks = (r['chunks'] as num?)?.toInt() ?? 0;
     final total = Duration(seconds: (r['duration_s'] as num?)?.toInt() ?? 0);
-    // Where in the whole recording, counting the minutes before this piece.
-    final at = Duration(minutes: _seq) + _playback.position;
     final reason = switch (r['stop_reason']) {
       'done' => 'Done',
       'customer_request' => 'The customer asked',
@@ -501,10 +440,7 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
               IconButton(
                 tooltip: inPlace ? 'Back to the recordings' : 'Close',
                 icon: Icon(inPlace ? Icons.arrow_back : Icons.close),
-                onPressed: () {
-                  _player.stop();
-                  setState(() => _open = null);
-                },
+                onPressed: () => setState(() => _open = null),
               ),
               Expanded(
                 child: Text(
@@ -527,34 +463,7 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
             style: small,
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              IconButton.filled(
-                key: const ValueKey('field-recording-play'),
-                tooltip: _playback.playing ? 'Pause' : 'Play',
-                icon: Icon(_playback.playing ? Icons.pause : Icons.play_arrow),
-                onPressed: chunks == 0 ? null : _toggle,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: LinearProgressIndicator(
-                  value: total.inMilliseconds == 0
-                      ? 0
-                      : (at.inMilliseconds / total.inMilliseconds).clamp(0, 1),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(_clock(at), style: small),
-            ],
-          ),
-          if (chunks == 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                'Nothing has arrived from the phone yet.',
-                style: small,
-              ),
-            ),
+          ..._words(theme, chunks),
           if (_gaps(r).isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -621,5 +530,120 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
         ],
       ),
     );
+  }
+
+  static const _sections = [
+    ('summary', 'Summary'),
+    ('done', 'Done'),
+    ('found', 'Found'),
+    ('recommended', 'Recommended'),
+    ('customer_asked', 'Customer asked'),
+  ];
+
+  List<Widget> _words(ThemeData theme, int chunks) {
+    final small = theme.textTheme.bodySmall;
+    final t = _transcript;
+    if (t == null) {
+      return [
+        if (_panelError == null)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: LinearProgressIndicator(),
+          ),
+      ];
+    }
+    final summary = (t['summary'] as Map?) ?? const {};
+    final segments = ((t['segments'] as List?) ?? const []).cast<Map>();
+    final pending = (t['pending'] as num?)?.toInt() ?? 0;
+
+    Widget heading(String label, String copy) => Row(
+      children: [
+        Expanded(child: Text(label, style: theme.textTheme.titleSmall)),
+        IconButton(
+          tooltip: 'Copy',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.copy_outlined, size: 16),
+          onPressed: copy.isEmpty
+              ? null
+              : () => Clipboard.setData(ClipboardData(text: copy)),
+        ),
+      ],
+    );
+
+    final transcript = [
+      for (final s in segments)
+        '${_wallClock(s['started_at'] as String?)}  ${s['text']}',
+    ].join('\n');
+
+    return [
+      for (final (key, label) in _sections)
+        if ('${summary[key] ?? ''}'.trim().isNotEmpty) ...[
+          heading(label, '${summary[key]}'.trim()),
+          SelectableText(
+            '${summary[key]}'.trim(),
+            key: ValueKey('field-recording-$key'),
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 8),
+        ],
+      if (pending > 0)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            'Transcribing… $pending left',
+            key: const ValueKey('field-recording-pending'),
+            style: small?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ),
+      if (summary.isEmpty && pending == 0 && segments.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text('The summary is being written.', style: small),
+        ),
+      heading('Transcript', transcript),
+      if (segments.isEmpty)
+        Text(
+          chunks == 0
+              ? 'Nothing has arrived from the phone yet.'
+              : pending > 0
+              ? 'Nothing written up yet.'
+              : 'Nothing was said.',
+          style: small,
+        )
+      else
+        for (final s in segments)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 64,
+                  child: Text(
+                    _wallClock(s['started_at'] as String?),
+                    style: small?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: SelectableText(
+                    '${s['text']}',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
+    ];
+  }
+
+  /// 10:04:12, the phone's wall clock.
+  static String _wallClock(String? iso) {
+    final at = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+    if (at == null) return '';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(at.hour)}:${two(at.minute)}:${two(at.second)}';
   }
 }

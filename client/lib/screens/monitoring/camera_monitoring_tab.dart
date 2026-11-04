@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -224,16 +225,9 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
               // Standard field height, as tall as Leads search (Jose, 2026-10-27).
               SizedBox(
                 width: 240,
-                child: TextField(
+                child: ListSearch(
                   key: const Key('cameras-search'),
-                  textAlignVertical: TextAlignVertical.center,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIconConstraints: BoxConstraints(minWidth: 36),
-                    prefixIcon: Icon(Icons.search, size: 18),
-                    hintText: 'Find a camera',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Find a camera',
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),

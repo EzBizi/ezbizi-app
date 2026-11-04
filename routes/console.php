@@ -23,6 +23,12 @@ Artisan::command('inspire', function () {
 Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
+// Expired, never-accepted invitations are withdrawn (Jose, 2026-11-03).
+Schedule::command('ezbizi:revoke-expired-invitations')->dailyAt('06:20')->withoutOverlapping(30);
+// Meta connections Meta no longer lets us reach turn red (Jose, 2026-11-02).
+Schedule::command('ezbizi:meta-access-check')->dailyAt('07:15')->withoutOverlapping(30);
+// Every connected token gets one cheap read; a refused one turns red (Jose, 2026-11-03).
+Schedule::command('ezbizi:check-connection-health')->dailyAt('06:40')->withoutOverlapping(120);
 // Paid time off that opens today or resets in 30 days (Jose, 2026-10-21).
 // Work Hours › Daily approval reminders (2026-10-22); each approver once a day.
 Schedule::command('ezbizi:time-clock-approval-reminders')->everyFifteenMinutes()->withoutOverlapping(10);
@@ -37,6 +43,8 @@ Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverla
 Schedule::command('ezbizi:airtable-snapshot')->hourlyAt(17)->withoutOverlapping(10);
 // Financials tables linked to Airtable read that copy, ten minutes after it lands.
 Schedule::command('ezbizi:financials-airtable-refresh')->hourlyAt(27)->withoutOverlapping(10);
+// Airtable retirement: each base's Airtable copy vs EzBizi, once a day after a refresh (plan 2026-11-03 §4).
+Schedule::command('ezbizi:airtable-parity')->dailyAt('05:45')->withoutOverlapping(30);
 // Invoices that passed their due date unpaid raise invoice.overdue once each.
 Schedule::command('ezbizi:invoices-overdue')->dailyAt('08:05')->withoutOverlapping(10);
 Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('America/New_York')->withoutOverlapping(30);
@@ -179,7 +187,8 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  * what changed, about eight calls a branch, well under the key's burst limit.
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
-Schedule::command('ezbizi:sync-workiz-calls')->everyTenMinutes()->withoutOverlapping(30);
+// Off the records run's minute: the ten-minute readers firing together hit Workiz's rate limit (measured 11-03).
+Schedule::command('ezbizi:sync-workiz-calls')->cron('3-59/10 * * * *')->withoutOverlapping(30);
 // Workiz's own Payments report, through each tenant's signed-in web session.
 Schedule::command('ezbizi:workiz-web-payments')->everyThirtyMinutes()->withoutOverlapping(30);
 // At :15 and :45, beside the payments read at :00 and :30: one login, one switch at a time (measured 2026-10-29: 90 s for 10 accounts).
@@ -199,7 +208,7 @@ Schedule::command('ezbizi:backfill-workiz --pending --since=2000-01-01 --pages=2
 Schedule::command('ezbizi:workiz-fill-creators')->everyFiveMinutes()->withoutOverlapping(10);
 
 // Each new Workiz client's v2 id, the only way v2 reads its notes: a page a branch.
-Schedule::command('ezbizi:sync-workiz-client-ids')->everyTenMinutes()->withoutOverlapping(10);
+Schedule::command('ezbizi:sync-workiz-client-ids')->cron('6-59/10 * * * *')->withoutOverlapping(10);
 
 /*
  * EVERY MINUTE - Jose, 2026-09-28: "make jobs and customer update every 1 min
@@ -260,8 +269,11 @@ Schedule::command('scheduling:warn-overbooking')->dailyAt('07:00')->timezone('Am
 Schedule::command('scheduling:warn-underfilled')->hourlyAt(2);
 // job.estimate_aging, once a day (Jose's Project Management rule 2, 2026-10-21).
 Schedule::command('jobs:emit-estimate-aging')->dailyAt('08:10')->timezone('America/New_York')->withoutOverlapping(60);
+// Mirrored jobs keep Workiz's type, sub-status and tags where nobody set them (review 2026-11-02: 2,174 jobs had none).
 // The paid-not-started warning (Jose, 2026-10-22): daily, to each company's address.
 Schedule::command('jobs:warn-paid-not-started')->dailyAt('08:20')->timezone('America/New_York')->withoutOverlapping(60);
+// Project Management - 2's Submitted tab keeps its jobs for good (Jose, 2026-11-02): each move is copied before its event expires.
+Schedule::command('project-management-2:record-submissions')->everyMinute()->withoutOverlapping(5);
 
 // A month before a membership year ends (Customers › Memberships).
 Schedule::command('memberships:remind-renewals')->dailyAt('09:00')->timezone('America/New_York');
@@ -361,6 +373,11 @@ Schedule::command('ezbizi:expire-training-passes')->dailyAt('04:10');
 // tenant gets muted, and a muted alarm is worse than none.
 Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30);
 
+// Every Twilio line still routes to us; numbers added, removed or repointed.
+Schedule::command('ezbizi:phone-line-audit')->dailyAt('04:30')->withoutOverlapping(30);
+// Hourly at :30; the command rings each line only at 21:30 on an even-week Monday in its own zone (after hours: voicemail, nobody rung).
+Schedule::command('ezbizi:phone-line-answer-test')->hourlyAt(30)->withoutOverlapping(30);
+
 // Field: lost-signal alerts (the one fact no incoming point can announce) and
 // geocoding the next days' job addresses, so arrival checks never wait on Google.
 // NOT runInBackground(): the scheduler is a systemd oneshot unit with
@@ -406,6 +423,11 @@ Schedule::command('ezbizi:leads-link-profiles')->dailyAt('05:40')->timezone('Ame
 Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
 Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);
 Schedule::command('ezbizi:ekomi-reviews sync')->cron('50 */6 * * *')->withoutOverlapping(60);
+// The unanswered Google reviews, 50 a day so listings are not flooded (Jose, 2026-11-02).
+Schedule::command('ezbizi:review-backlog')->dailyAt('15:00')->withoutOverlapping(120);
+// One AI Google post per listing a week, into the approval queue (Jose, 2026-11-03).
+Schedule::command('ezbizi:gbp-weekly-posts')->weeklyOn(1, '13:00')->withoutOverlapping(120);
+Schedule::command('ezbizi:ekomi-requests')->everyFifteenMinutes()->withoutOverlapping(30);
 // Complaints from bad reviews, Bad Ratings and complaint calls (2026-10-20).
 Schedule::command('ezbizi:complaints-intake')->everyMinute()->withoutOverlapping(5);
 // Google's daily counts per listing, the last ten days re-read (2026-10-20).

@@ -1,5 +1,7 @@
 # What the website claims, and on whose authority
 
+> **2026-11-02: www.ezbizi.com is WordPress now** (Jose: "remake it on wordpress then, the entire site"). `www/` edits NO LONGER GO LIVE. Pages live on the websites box, /var/www/vhosts/ezbizi.com/httpdocs (theme ezbizi-site). Body = one HTML block in post_content; <head> = post meta `_ezb_head`. Edit with wp-cli as ezbizi_ftp, `--user=ezbizi_admin` (else kses strips scripts). Imported from main f4cb9327e. The claims register below still holds; the daily check must diff the live page against WordPress, not `www/`. Owner of the WP plumbing: Web Module (local_89561020).
+
 
 The public site says what EzBizi does. This page records **why each claim is
 allowed to be there**, and — more importantly — what must *not* go back on.
@@ -97,6 +99,7 @@ touches apps, monitoring, social, Google or mail.
 | "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
 | "A Google Business Profile can be connected to read and answer reviews" — **REMOVED 2026-09-22** | `/` ×3 | `app/Services/Reviews/BusinessProfileReviews.php` — its own docblock: *"The Business Profile APIs ship at 0 QPM and stay there until Google approves an access application. Every call here will fail until that lands."* The replacement sentence is true while that stays so. **What would let it back:** Google granting Business Profile quota, which `08c2b82e` puts no earlier than **2026-10-24** — the application was REFUSED on the 60-day verified-listing rule and the profile verified 2026-08-25. Re-read the docblock, not this row. |
 | "There are two writes to Google" (reply to a text enquiry; pause or resume a campaign) · "does not create or remove campaigns, or change anything … other than pausing or resuming it" · "No rule or schedule does it" | `/google-ads-api/` | Every Google Ads/LSA `->post(` in `app/`: `grep -rn "googleAds\|localServices:\|:mutate" app --include=*.php`. Today: `LocalServicesLeads` `appendLeadConversation` and `CampaignPerformance::setStatus` `campaigns:mutate` (`updateMask: status`). **Went false on 2026-09-24** (`5b27593b` added pause/enable) and was caught 09-30: the page said "one write" and "does not … pause campaigns" for six days, on the page Google's API reviewer reads. A third endpoint, a mask wider than `status`, or an automation action/command calling `setStatus` falsifies it. |
+| "an automated first reply: a message the customer wrote themselves" · "EzBizi supplies no wording of its own" | `/google-ads-api/` | **NEW 2026-11-03, true today by usage only.** `lead.book_by_chat` (`3c56384c6`, live in 0.0.0525) is an automation step that answers a Local Services text with EzBizi's own template lines (`BookingBot::next`: address, service, an open window, "we are holding") through `replyToLead(..., automatic: true)`, on every customer message, after Grok reads the thread. **Test:** active automations whose active version's `actions` contain `book_by_chat` (production 2026-11-03: **0**, 0 runs). The first such rule makes both sentences false on a page filed with Google — the page is the Google API module's and Jose's call, not this check's; flag it, do not rewrite it. `/privacy/` "A draft is never sent on its own" survives (the bot sends templates, not drafts) but its Leads purpose list does not name reading the thread for an address, service and a yes. |
 | "watch a machine live and take control of it, and … browse the files on it and download them — reading only … each folder opened and file downloaded recorded" · "watching a screen or browsing its files shows no notice" | `/privacy/` | `app/Http/Controllers/Api/Monitoring/FilesController.php` (ops `list`/`download` only; audit `monitoring.files.listed` / `.downloaded` per path; grant `monitoring.files.view`) and `client/lib/core/file_access_service.dart` (no notice drawn). Added 2026-10-02 after `0.0.0348` shipped it. An upload/rename/delete op, or audit moving to once-per-session, falsifies it; a notice on the machine falsifies the second clause in the reassuring direction. |
 | "An organization can also have EzBizi send mail on its behalf" | `/privacy/` | The automation actions that send. Corrected in `0.0.0240` after two days wrong — the previous sentence promised the opposite. |
 | "WhatsApp … kept for 24 months" · "Facebook or Instagram message is kept with the enquiry … deleted when that enquiry is" | `/privacy/` | `WhatsAppMessage::retention()` (`window(months: 24)`) and `LeadConversation::retention()` (`withParent`). Two different rules; never merge them into one period. |
@@ -3200,3 +3203,104 @@ Production `/download/windows.json` 0.0.0506 at `dd01cf3b0`. Before this edit al
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461. Desk not
 reachable from a scheduled run; publish asked as `0139`.
+
+## 2026-10-30: 0.0.0507-0.0.0513 live, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0513 at `27b215107` (= main). All 10 live `www/`
+files byte-identical to the repo, so `0139` (review auto-reply) is live.
+
+- **A1 Leads reader removed** (`config/services.php` lost `a1leads`): the site never named
+  A1 Leads; the sub-processor list is unaffected. **eKomi reviews** (0.0.0507) are read from
+  an organization's own connected eKomi account (`EkomiReviews`, shop id + password on an
+  `ekomi` connection): inbound, covered by "the accounts you connect".
+- **WhatsApp media "streamed, never stored"** (0.0.0507): consistent with `/privacy/`'s "we
+  store what each message says". New lead columns (`handle`, `avatar_url` as a URL,
+  `referral`, `form_answers`, WhatsApp `profile_name`/`saved_name`) are enquiry details kept
+  with the lead; the paragraph is not exhaustive, so not false. **Hidden leads excluded from
+  AI** narrows what reaches xAI; every xAI sentence is still true.
+- WhatsApp row: still held (no customer-number count taken this run). Reports Performance /
+  date bar / Sources ticks, Workiz job sales read-in, Field map colours, Business Profile bulk
+  WhatsApp link, phone-app downloads (share sheet, no new permission in manifests), Leads
+  layout, 7,000 lines removed: no sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502. No `www/`
+edit, so nothing to publish.
+
+## 2026-10-31: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0513 at `27b215107`; main has only the 10-30
+website commit since. All 10 live `www/` files byte-identical to the repo. WhatsApp row:
+still held, not re-measured (nothing shipped to move it).
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502. No `www/`
+edit, so nothing to publish.
+
+## 2026-11-01: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0513 at `27b215107`; main has only the 10-31
+website commit since. All 15 live `www/` files byte-identical to the repo. WhatsApp row:
+still held, not re-measured (nothing shipped to move it).
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502. No `www/`
+edit, so nothing to publish.
+
+## 2026-11-02: 0.0.0514-0.0.0519 live, and three sentences went false on the first WordPress day
+
+Production `/download/windows.json` 0.0.0519 at `3848d575f`. First run against WordPress:
+edits went to the WP pages (wp-cli, `--user=ezbizi_admin`), not `www/`. Pre-edit copies of
+post_content / `_ezb_head` for pages 4, 8, 9 and `sitemap.xml` are in `~/ezb-wp-bak-20261102/`
+on the websites box. **`www/` was NOT updated** — it still carries all three false sentences, so
+rolling back to the static copy re-publishes them.
+
+- **Business Profile works on production.** `ezbizi:review-backlog` (`0541f7b07`, daily 15:00)
+  PUT a reply to Google v4 at 20:36 UTC (`review_replies` automation/published); 610 Google
+  reviews with a `connection_id` were created today. So the homepage "reading and answering its
+  reviews is waiting on Google to grant Business Profile API access" (×3: two in the body, one in
+  the FAQ JSON-LD) was false. **Pulled, not replaced**: now "A Google Business Profile can be
+  connected too." / "Ads brings its Local Services enquiries in as leads." Re-adding "read and
+  answer reviews" is allowed (the row-100 test passed) but was not done on one day's evidence.
+  The `BusinessProfileReviews` docblock still says 0 QPM — stale. **Owed:** the `/privacy/`
+  Google user data section names no Business Profile purpose, and review text read through our
+  Business Profile OAuth now reaches xAI — Google API module's call, not edited here.
+- **`/privacy/` "only to a review less than 30 days old"** was false: the backlog job posts AI
+  replies by itself to up to 50 four- and five-star reviews a day of any age (auto-reply listings,
+  60 on), and drafts ≤3-star ones on every listing — xAI triggered with nobody pressing anything.
+  Rewrote the paragraph and the xAI list item; Last updated / `dateModified` / sitemap 11-02.
+- **`/social-media/` "We do not: Read or reply to direct messages, or use Messenger"** was false:
+  `leads` source facebook 77, instagram 14, `is_test = 0`, newest today. Line removed; date
+  bumped. The Messenger/Instagram do-not row's count test now passes; the Growth card was NOT
+  extended (Meta app status not checked this run).
+- Messenger/Instagram photos streamed not stored, YouTube delete (`youtube.force-ssl`), Google
+  login recorded on connections, Leads rail, Scoring, Task Board, Development tab, web `--wasm`:
+  no other sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy); forbidden-terms (LINE-split)
+over the 8 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1,
+0.0.0502. WP pages 5, 6, 7, 10, 11 unmodified since the 11-02 import. Desk not asked: there is
+no publish step left for it.
+
+## 2026-11-03: 0.0.0520-0.0.0525 live, and `/privacy/`'s xAI list missed two new sends
+
+Production `/download/windows.json` 0.0.0525 at `c32d81b3a`. All 8 live pages match their WP
+post_content (only theme-rewritten logo `src` differ). Another session added a true "Job-visit
+recordings" paragraph to `/privacy/` at 18:49 UTC (checked: Whisper on our box, chunk deleted
+after transcribing, 1-day sweep, `KEEP_DAYS = 90`, Grok summary, consent-state refusal) but not
+to the xAI item under Who we rely on, and did not bump the date.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261103/` on the websites box): new "Weekly Google
+  posts" paragraph (`WeeklyBusinessProfilePosts::write` sends business name, city/state, category
+  and recent posts; `auto_post` default false, 0 listings on, 0 drafts yet) and both sends added to
+  the xAI item; Last updated / `dateModified` / sitemap lastmod 11-03. `www/` not updated (still
+  frozen at the 11-02 import).
+- **Booking bot held, measured:** 0 rules use `book_by_chat` — see the new load-bearing row; the
+  first one falsifies `/google-ads-api/`.
+- Estimates Board (0.0.0525) is a do-not row; nothing added. STOP/START per company concerns
+  tenant texts, not the sign-in code sentence. Personal Google mail sign-in retired: no page names
+  it. Customer tags, Integrations health, Company chart, Reports overrides, Task Board views: no
+  sentence touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) over the 8
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.

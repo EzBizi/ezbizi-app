@@ -1119,6 +1119,12 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A new customer was added to the books.',
                     ),
                     new TriggerDefinition(
+                        key: 'customer.tagged',
+                        label: 'Tags changed',
+                        description: 'A customer\'s tags changed. It carries the tags before and after, '
+                            .'so "Tags got the tag X" fires only when X was added.',
+                    ),
+                    new TriggerDefinition(
                         key: 'customer.updated',
                         label: 'Updated',
                         // The distinction somebody will get wrong. Reassignment
@@ -1296,6 +1302,13 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A job was booked. If it was given a date at the same time, '
                             .'"Date set or changed" fires as well.',
                     ),
+                    // Jose, 2026-11-03: texts and emails "by tag". Pair with "Tags got the tag".
+                    new TriggerDefinition(
+                        key: 'job.tags_changed',
+                        label: 'Tags changed',
+                        description: 'A job\'s tags changed, in EzBizi or in Workiz. It carries the tags '
+                            .'before and after, so "Tags got the tag X" fires only when X was added.',
+                    ),
                     new TriggerDefinition(
                         key: 'job.updated',
                         label: 'Updated',
@@ -1456,6 +1469,9 @@ class ModuleServiceProvider extends ServiceProvider
                 // "- 1" beside its rebuild, Project Management - 2 (Jose, 2026-10-26).
                 label: 'Project Management - 1',
                 actions: ['view'],
+                // Jose, 2026-11-02: never without Jobs. It shows every job
+                // waiting on an estimate and who paid, which Jobs guards.
+                actionRequires: ['view' => ['jobs.view']],
                 /*
                  * Overview | Jobs | Assignments | Repair team | Rules | Logs |
                  * Settings (UI queue 127, 139, 141, 143, 144). All are the one grant the
@@ -2611,6 +2627,23 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
             ),
 
+            // Design 175 (Jose 2026-11-03, "as you recommend with everything"):
+            // who owns what, the main flow's step owners, and each branch's KPIs
+            // on one screen. It reads HR's ownership and Reports' figures and
+            // keeps nothing of its own; editing rides on hr.edit server-side.
+            new ModuleDefinition(
+                key: 'company',
+                label: 'Company',
+                actions: ['view'],
+                tabs: [
+                    new TabDefinition('ownership', 'Ownership'),
+                    new TabDefinition('processes', 'Processes'),
+                    new TabDefinition('kpis', 'KPIs'),
+                ],
+                automationExemptBecause: 'Company only reads what HR and Reports already record; '
+                    .'there is no event here that another module does not raise first.',
+            ),
+
             new ModuleDefinition(
                 key: 'tasks',
                 label: 'Task Board',
@@ -3116,6 +3149,15 @@ class ModuleServiceProvider extends ServiceProvider
                             .'about, and whether it looks like a real enquiry at all. It fires '
                             .'after "Lead received", once any recording has been transcribed.',
                     ),
+                    // Jose's project list, 2026-11-03: "Not booked recovery automatic msg".
+                    new TriggerDefinition(
+                        key: 'lead.call_not_booked',
+                        label: 'A call ended without a booking',
+                        description: 'AI read a call transcript: the caller did not book and did not '
+                            .'complain. Use a wait and a "Status" condition so a lead booked, lost or '
+                            .'closed meanwhile is skipped. It carries the AI summary, caller name and phone.',
+                        composedFields: ['summary'],
+                    ),
                     new TriggerDefinition(
                         key: 'lead.call_complaint',
                         label: 'A call sounded like a complaint',
@@ -3181,6 +3223,16 @@ class ModuleServiceProvider extends ServiceProvider
                             .'Facebook or Instagram. A Google call has nothing to reply into, and '
                             .'neither has a website form. The reply is recorded as automatic, so it '
                             .'does not take the lead off the unreplied list.',
+                    ),
+                    // The booking bot (Jose, 2026-11-03): BookingBot.
+                    new ActionDefinition(
+                        key: 'lead.book_by_chat',
+                        label: 'Book through the chat',
+                        description: 'Answers the customer with the next thing a booking needs: the '
+                            .'service address, the service, then a real open time near them, or on the '
+                            .'day they asked for. When they agree, the time is held for a dispatcher to '
+                            .'approve in Online Booking; approving books the job. Never answers a lead '
+                            .'that is booked, completed, lost or not a lead.',
                     ),
                     new ActionDefinition(
                         key: 'lead.update_field',

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Social;
 
+use App\Http\Controllers\Api\MetaMediaController;
 use App\Models\AutomationEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
@@ -394,5 +395,30 @@ class MetaMessagesWebhookTest extends TestCase
         // that is not words", which is what happened.
         $this->assertNull($said->text);
         $this->assertSame(LeadConversation::CHANNEL_MESSAGE, $said->channel);
+    }
+
+    /** UI-UX, 2026-11-02: a customer's photo arrived as an empty row. */
+    public function test_a_photo_is_streamed_from_meta_on_demand_and_never_stored(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $page = $this->pageBelongsTo($t);
+        $this->holdsToken($page, $t);
+        Http::fake([
+            'graph.facebook.com/*m_PHOTO*' => Http::response(['attachments' => ['data' => [['image_data' => ['url' => 'https://cdn.meta.test/fresh.jpg']]]]]),
+            'cdn.meta.test/*' => Http::response('JPEGBYTES', 200, ['Content-Type' => 'image/jpeg']),
+            '*' => Http::response([]),
+        ]);
+
+        $this->deliver($this->body(['mid' => 'm_PHOTO', 'attachments' => [['type' => 'image', 'payload' => ['url' => 'https://cdn.meta.test/expires.jpg']], ['type' => 'fallback', 'payload' => ['url' => 'https://example.test/shared']]]]))->assertOk();
+
+        $refs = LeadConversation::query()->withoutGlobalScopes()->firstOrFail()->attachments;
+        $this->assertCount(1, $refs);   // a share has no media to stream: no ref, no 404
+        $ref = $refs[0];
+        $this->assertStringStartsWith(MetaMediaController::PREFIX, $ref);   // not Meta's expiring URL
+
+        $res = $this->get(MetaMediaController::url($ref))->assertOk();
+        $this->assertSame('JPEGBYTES', $res->getContent());
+        $this->get(str_replace('signature=', 'signature=x', MetaMediaController::url($ref)))->assertForbidden();
     }
 }

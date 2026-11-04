@@ -326,6 +326,31 @@ final class FakeTwilioGateway implements TwilioGateway
         return $this->incoming;
     }
 
+    /** @var array<string, list<array{sid: string, phone_number: string, friendly_name: string, voice_url: string, sms_url: string}>> */
+    public array $accountIncoming = [];
+
+    public function listAccountIncoming(string $accountSid): array
+    {
+        $this->record(__FUNCTION__, [$accountSid]);
+
+        return $this->accountIncoming[$accountSid] ?? [];
+    }
+
+    /** @var array<string, array{status: string, duration: int}> keyed by the number dialled */
+    public array $platformCallResults = [];
+
+    public function platformCall(string $accountSid, string $from, string $to, string $twiml): string
+    {
+        $this->record(__FUNCTION__, [$accountSid, $from, $to, $twiml]);
+
+        return 'CA'.$to;
+    }
+
+    public function platformCallStatus(string $accountSid, string $callSid): array
+    {
+        return $this->platformCallResults[substr($callSid, 2)] ?? ['status' => 'completed', 'duration' => 8];
+    }
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array
     {
         $this->record(__FUNCTION__, [$connection->id, $phoneNumber, $params]);

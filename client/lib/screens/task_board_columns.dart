@@ -20,7 +20,30 @@ typedef BoardColumn = ({
   String type,
   String? unit,
   List<ColumnOption> options,
+
+  /// Number and formula (design 178): plain, currency or percent.
+  String format,
+
+  /// Number and formula: what a group's footer shows, sum, average or none.
+  String footer,
+
+  /// A formula's expression with each [Column] as {column id}, formulas
+  /// it names written out in place; null on any other type.
+  String? formula,
 });
+
+/// [expr] with each [Name] as {id}: a number column by its id, a formula by
+/// its own expression in brackets, at most five deep; anything else 0.
+String _compile(String expr, Map<String, Map> byName, [int depth = 0]) =>
+    expr.replaceAllMapped(RegExp(r'\[([^\[\]]+)\]'), (m) {
+      final c = byName[m[1]!.trim().toLowerCase()];
+      if (c == null || depth > 4) return '0';
+      if (c['type'] == 'formula') {
+        final inner = '${(c['settings'] as Map?)?['expression'] ?? '0'}';
+        return '(${_compile(inner, byName, depth + 1)})';
+      }
+      return c['type'] == 'number' ? '{${c['id']}}' : '0';
+    });
 
 /// The columns a board shows, in its order. Hidden ones are left out.
 List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
@@ -34,6 +57,10 @@ List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
             (b['position'] as num?) ?? 0,
           ),
         );
+  final byName = {
+    for (final c in (board?['columns'] as List? ?? const []).whereType<Map>())
+      '${c['name'] ?? ''}'.trim().toLowerCase(): c,
+  };
   return [
     for (final c in rows)
       (
@@ -41,6 +68,14 @@ List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
         name: '${c['name'] ?? ''}',
         type: '${c['type'] ?? 'text'}',
         unit: (c['settings'] as Map?)?['unit'] as String?,
+        format: '${(c['settings'] as Map?)?['format'] ?? 'plain'}',
+        footer: '${(c['settings'] as Map?)?['footer'] ?? 'none'}',
+        formula: c['type'] == 'formula'
+            ? _compile(
+                '${(c['settings'] as Map?)?['expression'] ?? ''}',
+                byName,
+              )
+            : null,
         options: [
           for (final o
               in ((c['settings'] as Map?)?['options'] as List? ?? const [])
@@ -57,9 +92,99 @@ List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
   ];
 }
 
-/// A task's value for one column.
+/// A task's value for one column; a formula's is worked out here.
 Object? columnValue(Map<String, dynamic> task, BoardColumn c) =>
-    (task['values'] as Map?)?[c.id];
+    c.formula != null
+    ? evalFormula(c.formula!, (task['values'] as Map?) ?? const {})
+    : (task['values'] as Map?)?[c.id];
+
+/// Works out a compiled formula over a task's values: + - * / and brackets,
+/// an empty value counts 0. Null when it does not parse or divides by 0.
+num? evalFormula(String compiled, Map values) {
+  final src = compiled.replaceAllMapped(RegExp(r'\{([^}]+)\}'), (m) {
+    final v = values[m[1]];
+    final n = v is num ? v : num.tryParse('${v ?? ''}');
+    return '${n ?? 0}';
+  });
+  final tokens = RegExp(
+    r'\d+(?:\.\d+)?|[-+*/()]',
+  ).allMatches(src).map((m) => m[0]!).toList();
+  if (tokens.isEmpty || tokens.join() != src.replaceAll(RegExp(r'\s+'), '')) {
+    return null;
+  }
+  var i = 0;
+  late num? Function() expr;
+  num? factor() {
+    if (i >= tokens.length) return null;
+    final t = tokens[i++];
+    if (t == '-') {
+      final f = factor();
+      return f == null ? null : -f;
+    }
+    if (t == '(') {
+      final e = expr();
+      if (i >= tokens.length || tokens[i++] != ')') return null;
+      return e;
+    }
+    return num.tryParse(t);
+  }
+
+  num? term() {
+    var left = factor();
+    while (left != null &&
+        i < tokens.length &&
+        (tokens[i] == '*' || tokens[i] == '/')) {
+      final op = tokens[i++];
+      final right = factor();
+      if (right == null || (op == '/' && right == 0)) return null;
+      left = op == '*' ? left * right : left / right;
+    }
+    return left;
+  }
+
+  expr = () {
+    var left = term();
+    while (left != null &&
+        i < tokens.length &&
+        (tokens[i] == '+' || tokens[i] == '-')) {
+      final op = tokens[i++];
+      final right = term();
+      if (right == null) return null;
+      left = op == '+' ? left + right : left - right;
+    }
+    return left;
+  };
+
+  final out = expr();
+  return i == tokens.length ? out : null;
+}
+
+/// A number as its column shows it: currency with two decimals, a
+/// percentage, or plain with the column's unit.
+String formatColumnNumber(Object? v, BoardColumn c) {
+  final n = v is num ? v : num.tryParse('${v ?? ''}');
+  if (n == null) return v == null ? '' : '$v';
+  return switch (c.format) {
+    'currency' => () {
+      final fixed = n.abs().toStringAsFixed(2).split('.');
+      return '${n < 0 ? '-' : ''}\$${formatCellNumber(int.parse(fixed[0]), null)}.${fixed[1]}';
+    }(),
+    'percent' =>
+      '${formatCellNumber(n == n.roundToDouble() ? n.toInt() : double.parse(n.toStringAsFixed(1)), null)}%',
+    _ => formatCellNumber(n, c.unit),
+  };
+}
+
+/// "Nov 9 – Nov 17" for a Timeline value; null when it is not one.
+String? timelineLabel(Object? v, DisplayFormats formats) {
+  if (v is! Map) return null;
+  final from = DateTime.tryParse('${v['from']}');
+  final to = DateTime.tryParse('${v['to']}');
+  if (from == null || to == null) return null;
+  return from == to
+      ? formats.formatDate(from)
+      : '${formats.formatDate(from)} – ${formats.formatDate(to)}';
+}
 
 ColumnOption? _option(BoardColumn c, Object? value) {
   for (final o in c.options) {
@@ -227,11 +352,20 @@ class ColumnCell extends StatelessWidget {
             ),
           ),
         );
+      case 'timeline':
+        final label = timelineLabel(v, formats);
+        return Text(
+          label ?? '—',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: label == null ? muted : null,
+        );
       case 'number':
+      case 'formula':
         return Align(
           alignment: Alignment.centerRight,
           child: Text(
-            v == null ? '—' : formatCellNumber(v, column.unit),
+            v == null ? '—' : formatColumnNumber(v, column),
             textAlign: TextAlign.right,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -360,6 +494,55 @@ class _ColumnEditorState extends State<ColumnEditor> {
           formats: widget.formats,
           onChanged: widget.onChanged,
         );
+      case 'formula':
+        return Text(
+          widget.value == null ? '—' : formatColumnNumber(widget.value, c),
+          key: key,
+        );
+      case 'timeline':
+        final range = widget.value is Map ? widget.value as Map : const {};
+        void set(String end, Object? day) {
+          final next = {'from': range['from'], 'to': range['to'], end: day};
+          if (next['from'] == null && next['to'] == null) {
+            widget.onChanged?.call(null);
+            return;
+          }
+          // One end alone is a single day.
+          next['from'] ??= next['to'];
+          next['to'] ??= next['from'];
+          if ('${next['from']}'.compareTo('${next['to']}') > 0) {
+            end == 'from'
+                ? next['to'] = next['from']
+                : next['from'] = next['to'];
+          }
+          widget.onChanged?.call(next);
+        }
+
+        return Row(
+          key: key,
+          children: [
+            Expanded(
+              child: _DateEditor(
+                key: ValueKey('column-editor-${c.id}-from'),
+                value: range['from'] as String?,
+                formats: widget.formats,
+                onChanged: editable ? (d) => set('from', d) : null,
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6),
+              child: Text('–'),
+            ),
+            Expanded(
+              child: _DateEditor(
+                key: ValueKey('column-editor-${c.id}-to'),
+                value: range['to'] as String?,
+                formats: widget.formats,
+                onChanged: editable ? (d) => set('to', d) : null,
+              ),
+            ),
+          ],
+        );
       default:
         return TextField(
           key: key,
@@ -436,7 +619,7 @@ const swatches = [
   '#FDAB3D', '#D9930D', '#E2445C', '#C53B3B', '#FF5AC4', '#8E9BA3',
 ];
 
-/// The seven column types, in the order the + menu offers them.
+/// The column types, in the order the + menu offers them.
 const columnTypes = [
   ('text', 'Text', Icons.short_text),
   ('number', 'Number', Icons.tag),
@@ -445,6 +628,8 @@ const columnTypes = [
   ('person', 'Person', Icons.person_outline),
   ('dropdown', 'Dropdown', Icons.arrow_drop_down_circle_outlined),
   ('checkbox', 'Checkbox', Icons.check_box_outlined),
+  ('timeline', 'Timeline', Icons.view_timeline_outlined),
+  ('formula', 'Formula', Icons.functions),
 ];
 
 String columnTypeLabel(String type) =>
@@ -514,11 +699,15 @@ class ColumnPanel extends StatefulWidget {
     required this.type,
     this.column,
     this.raw,
+    this.others = const [],
   });
 
   final ApiClient api;
   final String boardId;
   final String type;
+
+  /// The board's other columns, for a formula's building blocks.
+  final List<BoardColumn> others;
 
   /// The column being changed; null adds one.
   final BoardColumn? column;
@@ -533,6 +722,27 @@ class ColumnPanel extends StatefulWidget {
 class _ColumnPanelState extends State<ColumnPanel> {
   late final _name = TextEditingController(text: widget.column?.name ?? '');
   late final _unit = TextEditingController(text: widget.column?.unit ?? '');
+  late String _format = widget.column?.format ?? 'plain';
+  late String _footer = widget.column?.footer ?? 'none';
+  late final _expression = TextEditingController(
+    text: '${widget.raw?['settings']?['expression'] ?? ''}',
+  );
+
+  bool get _numeric => widget.type == 'number' || widget.type == 'formula';
+
+  /// Puts [text] where the cursor is in the formula.
+  void _insert(String text) {
+    final sel = _expression.selection;
+    final at = sel.isValid ? sel.start : _expression.text.length;
+    final end = sel.isValid ? sel.end : at;
+    final pad = text.startsWith('[') ? text : ' $text ';
+    _expression.value = TextEditingValue(
+      text: _expression.text.replaceRange(at, end, pad),
+      selection: TextSelection.collapsed(offset: at + pad.length),
+    );
+    setState(() {});
+  }
+
   late final List<({TextEditingController label, String colour, String? id})>
   _options = [
     for (final o in widget.column?.options ?? const <ColumnOption>[])
@@ -552,6 +762,7 @@ class _ColumnPanelState extends State<ColumnPanel> {
   void dispose() {
     _name.dispose();
     _unit.dispose();
+    _expression.dispose();
     for (final o in _options) {
       o.label.dispose();
     }
@@ -561,6 +772,9 @@ class _ColumnPanelState extends State<ColumnPanel> {
   Map<String, dynamic> get _settings => {
     if (widget.type == 'number' && _unit.text.trim().isNotEmpty)
       'unit': _unit.text.trim(),
+    if (_numeric && _format != 'plain') 'format': _format,
+    if (_numeric && _footer != 'none') 'footer': _footer,
+    if (widget.type == 'formula') 'expression': _expression.text.trim(),
     if (_hasOptions)
       'options': [
         for (final o in _options)
@@ -667,7 +881,77 @@ class _ColumnPanelState extends State<ColumnPanel> {
               border: OutlineInputBorder(),
             ),
           ),
-          if (widget.type == 'number') ...[
+          if (widget.type == 'formula') ...[
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('column-formula'),
+              controller: _expression,
+              decoration: const InputDecoration(
+                labelText: 'Formula',
+                hintText: '[Job Cost] + [Materials]',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final c in widget.others)
+                  if ((c.type == 'number' || c.type == 'formula') &&
+                      c.id != widget.column?.id)
+                    ActionChip(
+                      key: ValueKey('formula-column-${c.id}'),
+                      label: Text(c.name),
+                      onPressed: () => _insert('[${c.name}]'),
+                    ),
+                for (final (op, label) in const [
+                  ('+', '+'),
+                  ('-', '−'),
+                  ('*', '×'),
+                  ('/', '÷'),
+                  ('(', '('),
+                  (')', ')'),
+                ])
+                  ActionChip(
+                    key: ValueKey('formula-op-$op'),
+                    label: Text(label),
+                    onPressed: () => _insert(op),
+                  ),
+              ],
+            ),
+          ],
+          if (_numeric) ...[
+            const SizedBox(height: 12),
+            Text('Show as', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 6),
+            SegmentedButton<String>(
+              key: const Key('column-format'),
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: 'plain', label: Text('Plain')),
+                ButtonSegment(value: 'currency', label: Text('Currency')),
+                ButtonSegment(value: 'percent', label: Text('%')),
+              ],
+              selected: {_format},
+              onSelectionChanged: (v) => setState(() => _format = v.first),
+            ),
+            const SizedBox(height: 12),
+            Text('Group footer', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 6),
+            SegmentedButton<String>(
+              key: const Key('column-footer'),
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: 'sum', label: Text('Sum')),
+                ButtonSegment(value: 'average', label: Text('Average')),
+                ButtonSegment(value: 'none', label: Text('None')),
+              ],
+              selected: {_footer},
+              onSelectionChanged: (v) => setState(() => _footer = v.first),
+            ),
+          ],
+          if (widget.type == 'number' && _format == 'plain') ...[
             const SizedBox(height: 12),
             TextField(
               key: const Key('column-unit'),

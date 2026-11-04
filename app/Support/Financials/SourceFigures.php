@@ -2,7 +2,6 @@
 
 namespace App\Support\Financials;
 
-use App\Models\AirtableRecord;
 use App\Models\FinancialAdjustment;
 use App\Models\FinancialRepairWeek;
 use App\Models\FinancialSource;
@@ -362,15 +361,16 @@ final class SourceFigures
             ->get()->filter(fn (FinancialSource $s) => $s->overlaps($from, $to))->values();
     }
 
-    /** The source's live copied rows that are its place's and dated inside both the period and its validity. */
+    /**
+     * The source's live rows (the Airtable copy, or EzBizi's once its table
+     * was cut over) that are its place's and dated inside both the period and
+     * its validity.
+     */
     public static function rows(FinancialSource $source, string $from, string $to): \Generator
     {
-        $records = AirtableRecord::query()->where('base_id', $source->base_id)->where('table_id', $source->table_id)
-            ->whereNull('gone_at')->get(['fields']);
-        foreach ($records as $record) {
-            $f = (array) $record->fields;
+        foreach ($source->rows() as $f) {
             $date = substr((string) self::value($source, $f, 'date'), 0, 10);
-            if (! $source->owns($f) || $date === '' || $date < $from || $date > $to || ! $source->covers($date)) {
+            if ($date === '' || $date < $from || $date > $to || ! $source->covers($date)) {
                 continue;
             }
             yield $f;

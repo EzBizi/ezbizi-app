@@ -110,6 +110,22 @@ class ReviewAutoReplyTest extends TestCase
         Http::assertSentCount(2); // one token, one reply
     }
 
+    /** Sweep 2026-11-04: Jose's saved view was A-1, and his rule refused every Everdoors review. */
+    public function test_the_authors_saved_view_does_not_narrow_where_the_rule_publishes(): void
+    {
+        $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
+        $this->inTenant($this->t['org'], function () {
+            $other = \App\Models\Company::create(['organization_id' => $this->t['org']->id, 'name' => 'Other Co']);
+            $this->review->forceFill(['company_id' => $this->t['company']->id])->save();
+            $this->t['admin']->forceFill(['preferences' => ['navigation.scope' => 'company:'.$other->id]])->save();
+        });
+
+        $result = $this->fire($this->t['admin']->fresh());
+
+        $this->assertTrue($result['ok'], $result['detail'] ?? '');
+        $this->assertSame(1, $this->published());
+    }
+
     public function test_an_author_who_may_not_publish_posts_nothing(): void
     {
         $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
@@ -151,5 +167,34 @@ class ReviewAutoReplyTest extends TestCase
         $this->assertStringContainsString('days old', $this->fire()['detail']);
 
         $this->assertSame(0, $this->published());
+    }
+
+    /** Jose, 2026-11-02: "if i turn it on, it should just start working". The switch makes the one rule, once. */
+    public function test_the_switch_makes_the_rule_once_and_its_words_follow_the_stars(): void
+    {
+        $on = fn () => $this->signedInAs($this->t['admin'])
+            ->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
+        $on();
+        $on();
+        $rules = $this->inTenant($this->t['org'], fn () => Automation::query()->where('name', \App\Support\Reviews\ReviewAutoReplyRule::NAME)->get());
+        $this->assertCount(1, $rules);
+        $this->assertTrue($rules[0]->is_active);
+        $this->assertSame('review.received', $rules[0]->trigger_key);
+
+        $this->inTenant($this->t['org'], fn () => $this->review->forceFill(['rating' => 2])->save());
+        $action = $this->inTenant($this->t['org'], fn () => $rules[0]->activeVersion->actions[0]);
+        $this->assertTrue($this->fire(action: $action)['ok']);
+        $this->assertSame(\App\Support\Reviews\ReviewAutoReplyRule::REPLIES['2'], ReviewReply::withoutGlobalScopes()->first()->body);
+    }
+
+    public function test_the_backfill_makes_the_rule_for_listings_switched_on_before(): void
+    {
+        $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
+        $this->inTenant($this->t['org'], fn () => Automation::query()->where('name', \App\Support\Reviews\ReviewAutoReplyRule::NAME)->get()
+            ->each(fn ($a) => $a->versions()->delete() + $a->forceDelete()));
+
+        $this->artisan('ezbizi:review-auto-reply-rule')->assertSuccessful();
+
+        $this->assertSame(1, $this->inTenant($this->t['org'], fn () => Automation::query()->where('name', \App\Support\Reviews\ReviewAutoReplyRule::NAME)->count()));
     }
 }

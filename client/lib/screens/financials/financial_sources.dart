@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -532,15 +533,11 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
       ],
       onChanged: (v) => setState(() => _branchFilter = v),
     );
-    final search = TextField(
+    final search = ListSearch(
       key: const ValueKey('sources-search'),
       controller: _search,
+      hint: 'Table or base',
       onChanged: (_) => setState(() {}),
-      decoration: const InputDecoration(
-        labelText: 'Table or base',
-        prefixIcon: Icon(Icons.search),
-        isDense: true,
-      ),
     );
     return Wrap(
       spacing: 12,

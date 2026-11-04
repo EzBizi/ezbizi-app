@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
@@ -382,16 +383,9 @@ class _MarketingReportState extends State<MarketingReport> {
         alignment: Alignment.centerLeft,
         child: SizedBox(
           width: 240,
-          child: TextField(
+          child: ListSearch(
             key: const Key('marketing-report-search'),
-            textAlignVertical: TextAlignVertical.center,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIconConstraints: BoxConstraints(minWidth: 36),
-              prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Find a branch or source',
-              border: OutlineInputBorder(),
-            ),
+            hint: 'Find a branch or source',
             onChanged: (v) => setState(() => _query = v),
           ),
         ),

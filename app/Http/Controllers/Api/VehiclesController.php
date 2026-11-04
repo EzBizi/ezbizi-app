@@ -85,19 +85,11 @@ class VehiclesController extends Controller
         $statuses = $this->requestedStatuses($request);
         $query->whereIn('status', $statuses);
 
-        // The states (franchises) the register spans, with how many vehicles
-        // each holds, so the screen can open one state at a time — Eve,
-        // 2026-10-12: "I click Connecticut and I see all of Connecticut".
-        // Counted before the state filter below, so every chip keeps its
-        // number while another state is open.
-        $places = $this->places(clone $query);
-
-        $place = $request->query('franchise_id');
-        if (is_string($place) && $place !== '') {
-            $place === self::GENERAL_PLACE
-                ? $query->whereNull('vehicles.franchise_id')
-                : $query->where('vehicles.franchise_id', $place);
-        }
+        // The states (franchises) the register spans, so the screen can open
+        // one state at a time — Eve, 2026-10-12: "I click Connecticut and I
+        // see all of Connecticut". Which states: the whole register, so a chip
+        // never vanishes under a filter and strands the screen on it.
+        $register = clone $query;
 
         if (filled($request->query('search'))) {
             $term = trim((string) $request->query('search'));
@@ -151,6 +143,17 @@ class VehiclesController extends Controller
             });
         }
 
+        // How many: under every filter and the search but not the state, so
+        // each number is what tapping that chip shows (Jose, 2026-11-03).
+        $places = $this->places($register, clone $query);
+
+        $place = $request->query('franchise_id');
+        if (is_string($place) && $place !== '') {
+            $place === self::GENERAL_PLACE
+                ? $query->whereNull('vehicles.franchise_id')
+                : $query->where('vehicles.franchise_id', $place);
+        }
+
         $vehicles = $query
             ->orderBy('label')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
@@ -167,15 +170,20 @@ class VehiclesController extends Controller
     private const GENERAL_PLACE = 'general';
 
     /**
-     * One entry per franchise holding a vehicle in this query, by name, with
-     * the untagged ones last as General. Only places that hold something: a
-     * state with no vehicles is not a page anybody needs to open.
+     * One entry per franchise holding a vehicle in the register, by name, with
+     * the untagged ones last as General; each counts the filtered query, so a
+     * state can read 0. A state with no vehicles at all is not listed.
      *
      * @return list<array{id: string, name: string, count: int}>
      */
-    private function places(Builder $query): array
+    private function places(Builder $register, Builder $filtered): array
     {
-        $rows = $query->reorder()
+        $counts = (clone $filtered)->reorder()
+            ->selectRaw('vehicles.franchise_id as place, COUNT(*) as total')
+            ->groupBy('vehicles.franchise_id')
+            ->pluck('total', 'place');
+
+        $rows = $register->reorder()
             ->selectRaw('vehicles.franchise_id as place, COUNT(*) as total')
             ->groupBy('vehicles.franchise_id')
             ->get();
@@ -186,10 +194,12 @@ class VehiclesController extends Controller
 
         $places = [];
         $general = 0;
+        $hasGeneral = false;
 
         foreach ($rows as $row) {
             if ($row->place === null) {
-                $general = (int) $row->total;
+                $general = (int) ($counts[''] ?? 0);
+                $hasGeneral = true;
 
                 continue;
             }
@@ -197,13 +207,13 @@ class VehiclesController extends Controller
             $places[] = [
                 'id' => (string) $row->place,
                 'name' => (string) ($names[$row->place] ?? 'Unnamed'),
-                'count' => (int) $row->total,
+                'count' => (int) ($counts[$row->place] ?? 0),
             ];
         }
 
         usort($places, fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
 
-        if ($general > 0) {
+        if ($hasGeneral) {
             $places[] = ['id' => self::GENERAL_PLACE, 'name' => 'General', 'count' => $general];
         }
 

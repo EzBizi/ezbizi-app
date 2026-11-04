@@ -124,7 +124,8 @@ class SchedulingOverbookingController extends Controller
             'end_time' => $offer->end_time === null ? null : substr((string) $offer->end_time, 0, 5),
             'booked_for' => $offer->booked_for?->format('Y-m-d H:i'),
             'moved_at' => $offer->moved_at?->toIso8601String(),
-            'can_move' => $request->user()->hasPermission('scheduling.edit') && $offer->moved_at === null,
+            'can_move' => $request->user()->hasPermission('scheduling.edit') && $offer->moved_at === null
+                && ! $offer->open_date->isBefore(today()),
         ]]);
     }
 

@@ -31,7 +31,7 @@ class HeldEquipment extends Model implements HoldsPersonalData
 
     protected $fillable = [
         'organization_id', 'user_id', 'name', 'category', 'quantity',
-        'identifier', 'issued_on', 'returned_on', 'note',
+        'identifier', 'issued_on', 'returned_on', 'note', 'import_ref',
     ];
 
     protected function casts(): array

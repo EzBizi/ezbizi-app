@@ -73,9 +73,20 @@ class AttachmentsController extends Controller
 
         $this->authorizeAttachment('view', $subject);
 
+        $files = $subject->attachments()->with('uploadedBy:id,name')->get();
+
+        // A job's list also carries its inspection reports' before and after
+        // photos (Inspection, 2026-11-03): the submit puts them on the report.
+        if ($subject instanceof \App\Models\Job) {
+            $files = $files->concat(Attachment::query()->with('uploadedBy:id,name')
+                ->where('attachable_type', 'inspection_reports')
+                ->whereIn('attachable_id', \App\Models\InspectionReport::query()->where('job_id', $subject->id)->select('id'))
+                ->whereIn('label', ['before', 'after'])
+                ->get());
+        }
+
         return response()->json([
-            'data' => $subject->attachments()->with('uploadedBy:id,name')->get()
-                ->map(fn (Attachment $a) => $a->present())->all(),
+            'data' => $files->map(fn (Attachment $a) => $a->present())->all(),
 
             // So the upload control can state the limit before somebody spends
             // four minutes uploading something that will be refused. The number

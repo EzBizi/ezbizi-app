@@ -472,6 +472,118 @@ void main() {
     expect(find.text('Sort'), findsOneWidget);
   });
 
+  // UI queue 174 (Jose 2026-11-03: newsletters and automations "by tag").
+  // The Tags cell is ~95 px at this size: two pills there were the empty grey
+  // ovals seen in the 11-03 video, so a narrow cell shows one, then +N.
+  testWidgets('a narrow row shows one tag, then +N', (tester) async {
+    await _pump(tester, customers: [
+      {..._alice, 'tags': ['VIP', 'Annual sweep', 'Referral', 'Gas']},
+    ]);
+
+    expect(find.text('VIP'), findsOneWidget);
+    expect(find.text('Annual sweep'), findsNothing);
+    expect(find.text('+3'), findsOneWidget);
+  });
+
+  testWidgets('the Tag picker filters the list with tag=', (tester) async {
+    final tags = <String?>[];
+    await _pump(
+      tester,
+      customers: [
+        {..._alice, 'tags': ['VIP']},
+      ],
+      onRequest: (request) {
+        if (request.method == 'GET' && request.url.path.endsWith('/customers')) {
+          tags.add(request.url.queryParameters['tag']);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('customers-tag-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('VIP').last);
+    await tester.pumpAndSettle();
+
+    expect(tags.last, 'VIP');
+  });
+
+  testWidgets('the Tag picker offers the organization tags, most used first', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      customers: [_alice],
+      onRequest: (request) => request.url.path.endsWith('/customers/tags')
+          ? _json({
+              'data': [
+                {'tag': 'Annual sweep', 'customers': 40},
+                {'tag': 'VIP', 'customers': 12},
+              ],
+            })
+          : null,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('customers-tag-filter')));
+    await tester.pumpAndSettle();
+
+    final sweep = tester.getTopLeft(find.text('Annual sweep').last).dy;
+    final vip = tester.getTopLeft(find.text('VIP').last).dy;
+    expect(sweep, lessThan(vip));
+  });
+
+  testWidgets('adding and removing a tag sends the whole list', (tester) async {
+    final bodies = <Object?>[];
+    var current = <String>['VIP'];
+    await _pump(
+      tester,
+      customers: [_alice],
+      onRequest: (request) {
+        final path = request.url.path;
+        if (path.endsWith('/customers/c-1') && request.method == 'PATCH') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          bodies.add(body);
+          current = List<String>.from(body['tags'] as List);
+          return _json({
+            'data': {..._aliceDetail, 'tags': current},
+          });
+        }
+        if (path.endsWith('/customers/c-1')) {
+          return _json({
+            'data': {..._aliceDetail, 'tags': current},
+          });
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Alice Roofing'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('customer-tag-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('customer-tag-input')),
+      'Gas fireplace',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(bodies.last, {
+      'tags': ['VIP', 'Gas fireplace'],
+    });
+
+    final remove = find.descendant(
+      of: find.byKey(const ValueKey('customer-tag-VIP')),
+      matching: find.byType(Icon),
+    );
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+
+    expect(bodies.last, {
+      'tags': ['Gas fireplace'],
+    });
+  });
 }
 
 const _alice = {
@@ -583,6 +695,10 @@ Future<void> _pump(
             'inventory_refusal': null,
           },
         });
+      }
+
+      if (path.endsWith('/customers/tags')) {
+        return _json({'data': const []});
       }
 
       if (path.endsWith('/customers/c-1')) {

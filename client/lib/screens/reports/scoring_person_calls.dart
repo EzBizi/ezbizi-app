@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -122,15 +123,10 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
+        ListSearch(
           key: const ValueKey('scoring-calls-search'),
+          hint: 'Search their calls by number or words',
           onChanged: _search,
-          decoration: const InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Search their calls by number or words',
-            border: OutlineInputBorder(),
-          ),
         ),
         const SizedBox(height: 8),
         if (_error != null)

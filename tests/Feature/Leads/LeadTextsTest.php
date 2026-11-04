@@ -32,7 +32,7 @@ class LeadTextsTest extends TestCase
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
         $send = collect($gateway->calls)->firstWhere('method', 'sendMessage');
-        $this->assertSame(['+12035551004', '+15553334444', 'Your visit is confirmed.'], array_slice($send['args'], 1, 3));
+        $this->assertSame(['+12035551004', '+15553334444', "Your visit is confirmed.\n".\App\Support\Phone\SmsConsent::FOOTER], array_slice($send['args'], 1, 3));
 
         // The answer, and a text from a stranger that is not filed anywhere.
         $url = url('/api/v1/phone/sms/'.$t['org']->id.'/'.$connection->id);
@@ -40,7 +40,7 @@ class LeadTextsTest extends TestCase
         $this->signed($url, ['MessageSid' => 'SM2', 'AccountSid' => 'AC'.str_repeat('a', 32), 'From' => '+15559990000', 'To' => '+12035551004', 'Body' => 'Who is this', 'SmsStatus' => 'received'], $token)->assertOk();
 
         $thread = $this->inTenant($t['org'], fn () => LeadConversation::query()->where('lead_id', $lead->id)->orderBy('occurred_at')->get());
-        $this->assertSame([[LeadTexts::CHANNEL, 'ADVERTISER', 'Your visit is confirmed.', true], [LeadTexts::CHANNEL, 'CONSUMER', 'Thanks, see you then', false]],
+        $this->assertSame([[LeadTexts::CHANNEL, 'ADVERTISER', "Your visit is confirmed.\n".\App\Support\Phone\SmsConsent::FOOTER, true], [LeadTexts::CHANNEL, 'CONSUMER', 'Thanks, see you then', false]],
             $thread->map(fn ($c) => [$c->channel, $c->participant, $c->text, (bool) $c->is_automatic])->all());
     }
 
@@ -58,6 +58,29 @@ class LeadTextsTest extends TestCase
             ->assertJsonPath('data.conversations.0.sent_by', $viewer->name)
             ->assertJsonPath('data.can_reply', true)
             ->assertJsonPath('data.cannot_reply_because', null);
+    }
+
+    /** Jose, 2026-11-03: a call or a form is answered by a text, kept on the lead (the not-booked recovery text). */
+    public function test_a_call_or_a_form_is_answered_by_a_text_on_its_thread(): void
+    {
+        $t = $this->provisionTenant();
+        $this->line($t, true);
+
+        foreach ([Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_WEBSITE_FORM] as $source) {
+            $lead = $this->lead($t, '+15553334444', $source);
+            $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertJsonPath('data.can_reply', true);
+            $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/messages", ['text' => 'Still need that sweep?'])->assertSuccessful();
+
+            $row = $this->inTenant($t['org'], fn () => LeadConversation::query()->where('lead_id', $lead->id)->sole());
+            $this->assertSame([LeadTexts::CHANNEL, 'ADVERTISER', $source === Lead::SOURCE_RINGCENTRAL
+                // Only the company's first text to a number carries the opt-out line (SmsConsent).
+                ? "Still need that sweep?\n".\App\Support\Phone\SmsConsent::FOOTER
+                : 'Still need that sweep?'], [$row->channel, $row->participant, $row->text], $source);
+        }
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+        $this->assertCount(2, collect($gateway->calls)->where('method', 'sendMessage'));
     }
 
     public function test_no_cleared_line_is_said_plainly(): void

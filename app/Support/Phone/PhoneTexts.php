@@ -28,7 +28,7 @@ final class PhoneTexts
     /**
      * @throws TextRefused when the line may not send, or Twilio refused
      */
-    public function send(PhoneNumber $number, string $to, string $body): PhoneMessage
+    public function send(PhoneNumber $number, string $to, string $body, bool $automated = false): PhoneMessage
     {
         if (! $number->sms_outbound_allowed) {
             throw new TextRefused(PhoneNumber::SMS_REFUSAL, 403);
@@ -40,6 +40,7 @@ final class PhoneTexts
         }
 
         $from = (string) $number->e164;
+        $body = SmsConsent::prepare($connection, $to, $body, $automated) ?? throw new TextRefused(SmsConsent::REFUSAL, 422);
 
         try {
             $sent = $this->twilio->sendMessage($connection, $from, $to, $body, $number->account_sid);

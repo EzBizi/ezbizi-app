@@ -132,6 +132,46 @@ class MailchimpClient
     }
 
     /** A separate immutable segment per send prevents simultaneous mailings changing each other's recipients. */
+    /**
+     * Subscribed addresses carrying one Mailchimp tag. Tags are static
+     * segments at Mailchimp, so the tag is found by name among them.
+     *
+     * @return array<int, string>
+     */
+    public function taggedMembers(string $apiKey, string $listId, string $tag): array
+    {
+        $segments = $this->call($apiKey, 'get', '/lists/'.rawurlencode($listId).'/segments', [
+            'type' => 'static', 'count' => 1000, 'fields' => 'segments.id,segments.name',
+        ])['segments'] ?? [];
+        $found = collect(is_array($segments) ? $segments : [])
+            ->first(fn ($s) => mb_strtolower(trim((string) ($s['name'] ?? ''))) === mb_strtolower($tag));
+        if ($found === null) {
+            throw new NewsletterSendFailed('Mailchimp has no tag called "'.$tag.'" on that list. Nothing was sent.');
+        }
+
+        $emails = [];
+        $offset = 0;
+        do {
+            $body = $this->call($apiKey, 'get', '/lists/'.rawurlencode($listId).'/segments/'.(int) $found['id'].'/members', [
+                'count' => 1000, 'offset' => $offset,
+                'fields' => 'members.email_address,members.status,total_items',
+            ]);
+            $members = $body['members'] ?? [];
+            if (! is_array($members) || ! isset($body['total_items'])) {
+                throw new NewsletterSendFailed('Mailchimp did not return the tagged members. Nothing was sent.');
+            }
+            foreach ($members as $member) {
+                $email = mb_strtolower(trim((string) ($member['email_address'] ?? '')));
+                if (($member['status'] ?? '') === 'subscribed' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $emails[] = $email;
+                }
+            }
+            $offset += count($members);
+        } while ($members !== [] && $offset < (int) $body['total_items']);
+
+        return array_values(array_unique($emails));
+    }
+
     public function recipientSegment(string $apiKey, string $listId, array $emails): int
     {
         if ($emails === []) {

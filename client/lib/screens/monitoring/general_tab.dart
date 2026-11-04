@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -1787,12 +1788,9 @@ class _AssignPanelState extends State<_AssignPanel> {
             ErrorNote(widget.error!),
             const SizedBox(height: 12),
           ],
-          TextField(
+          ListSearch(
             key: const Key('assign-search'),
-            decoration: const InputDecoration(
-              labelText: 'Search people',
-              prefixIcon: Icon(Icons.search),
-            ),
+            hint: 'Search people',
             onChanged: (value) => setState(() => _query = value),
           ),
           const SizedBox(height: 12),

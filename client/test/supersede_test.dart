@@ -43,6 +43,10 @@ void main() {
 
     await _pump(tester, (request) async {
       if (request.url.path.endsWith('/me')) return _json({'data': _me});
+      // The tag list (UI queue 174) is its own request, not a list load.
+      if (request.url.path.endsWith('/customers/tags')) {
+        return _json({'data': const []});
+      }
 
       final term = request.url.queryParameters['search'] ?? '';
       searches.add(term);

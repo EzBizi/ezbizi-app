@@ -16,6 +16,7 @@ use App\Support\Email\GoogleWorkspace;
 use App\Support\Email\GoogleWorkspaceRefused;
 use App\Support\Email\GoogleWorkspaceSignIns;
 use App\Support\Email\MailboxAccess;
+use App\Support\Email\GmailMailboxReader;
 use App\Support\Email\MailboxProvider;
 use App\Support\Email\MailboxReaders;
 use App\Support\Email\MailOAuthRefused;
@@ -169,62 +170,8 @@ class GoogleMailAuthController extends Controller
             ], Status::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        /*
-         * The installation's own answer, asked of the reader rather than of
-         * config here.
-         *
-         * `notReadyBecause()` is the sentence the mailbox catalogue already
-         * publishes as `unusable_because`, so the screen that hides the button
-         * and the endpoint that refuses the request are reading the same fact
-         * from the same place. Duplicating the config check here is how the two
-         * come to disagree — and the one that would be wrong is always this one,
-         * because it is not the one anybody looks at.
-         */
-        $notReady = $this->readers->forProvider(MailboxProvider::GmailOAuth)->notReadyBecause();
-
-        if ($notReady !== null) {
-            return response()->json(['message' => $notReady], Status::HTTP_NOT_IMPLEMENTED);
-        }
-
-        try {
-            $begun = $this->signIns->begin($user, $mailbox);
-        } catch (MailOAuthRefused $e) {
-            return response()->json(['message' => $e->getMessage()], $e->status);
-        }
-
-        // That a sign-in was STARTED, never the state or the URL. The URL
-        // carries the state, and an audit table is read by more people than a
-        // credential store is.
-        $this->audit->log('mailbox.google_sign_in_started', $mailbox, [
-            'address' => $mailbox->address,
-        ]);
-
-        return response()->json(['data' => [
-            'authorization_url' => $begun['url'],
-
-            /*
-             * Which attempt this is, so {@see status} can answer about THIS one.
-             *
-             * The screen opens a consent window it cannot see into and then
-             * polls. Without a flow the only question the server could answer is
-             * "does this inbox have a credential yet", which is also true of the
-             * attempt somebody abandoned ten minutes ago — so a second press
-             * would report success it had nothing to do with.
-             */
-            'flow' => $begun['flow'],
-
-            'expires_at' => $begun['expires_at']->toIso8601String(),
-
-            // What the screen should say before sending somebody off, so the
-            // consent screen is not the first place they learn which account
-            // to choose. The mismatch this prevents is the expensive one — see
-            // MailOAuthRefused::wrongAccount.
-            'sign_in_as' => $mailbox->address,
-
-            // Published rather than described, so a client never has to hard-code
-            // a list of permissions that could drift from what is actually asked.
-            'scopes' => [GoogleOAuth::SCOPE_MODIFY],
-        ]]);
+        // Retired 2026-11-03: no sign-in asks Google for gmail.modify again.
+        return response()->json(['message' => GmailMailboxReader::RETIRED], Status::HTTP_GONE);
     }
 
     /**

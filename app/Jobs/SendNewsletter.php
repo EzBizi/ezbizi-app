@@ -147,7 +147,13 @@ final class SendNewsletter implements ShouldQueue
 
         $gone = NewsletterSenders::unsubscribedIn($newsletter);
 
+        $tag = trim((string) $audience->tag);
+
         return Customer::query()
+            ->when($tag !== '', fn ($q) => $q->where(fn ($w) => $w
+                // The customer's own tag (any case) or a tag on one of their jobs.
+                ->whereRaw("JSON_SEARCH(LOWER(customers.tags), 'one', ?) IS NOT NULL", [addcslashes(mb_strtolower($tag), '%_'.chr(92))])
+                ->orWhereHas('jobs', fn ($j) => $j->whereJsonContains('tags', $tag))))
             ->whereNotNull('email')
             ->where('email', '!=', '')
             ->get()

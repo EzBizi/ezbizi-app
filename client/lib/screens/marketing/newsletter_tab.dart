@@ -9,6 +9,7 @@ import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
+import 'newsletter_new_list_panel.dart';
 import 'newsletter_blocks.dart';
 import 'newsletter_dashboard.dart';
 import 'newsletter_editor.dart';
@@ -698,12 +699,24 @@ class _NewsletterTabState extends State<NewsletterTab> {
         setState(() => _audienceId = id);
         _touched();
       },
+      onNewList: _mayOpen('composer') ? _newList : null,
       onHtml: (html) {
         setState(() => _htmlOverride = html);
         _touched();
       },
       onSend: _send,
     );
+  }
+
+  /// UI queue 173: create a list in a side panel, then pick it.
+  Future<void> _newList() async {
+    final made = await showNewListPanel(context, api: widget.api);
+    if (made == null || !mounted) return;
+    setState(() {
+      _audiences = [..._audiences, made];
+      _audienceId = made.id;
+    });
+    _touched();
   }
 
   Future<void> _send() async {

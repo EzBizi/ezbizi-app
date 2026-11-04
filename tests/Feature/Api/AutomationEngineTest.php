@@ -1167,8 +1167,10 @@ class AutomationEngineTest extends TestCase
 
         // Since 2026-09-29 a rule MAY answer Google (Jose: "flip the block
         // now"). This lead still gets nothing - it has no account to send
-        // through - and it says so, not the old compliance refusal.
-        $this->assertFalse($refused['ok']);
+        // through - and it says so, not the old compliance refusal. A skip,
+        // like Workiz's "no longer connected" (11-04: a call lead failing four
+        // times was counting toward switching the rule off).
+        $this->assertTrue($refused['skipped'] ?? false);
         $this->assertStringNotContainsString('can only be answered by a person', $refused['detail']);
         $this->assertStringContainsString('no longer connected', $refused['detail']);
 

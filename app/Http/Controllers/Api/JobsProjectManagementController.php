@@ -456,10 +456,10 @@ class JobsProjectManagementController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
         $rules = ProjectStages::forFranchises(\App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->get(), $settings);
-        $filtered = fn () => $this->stageFiltered($user, $settings, $input);
+        $ids = $this->stageIds($user, $settings, $input, $rules);
+        $want = isset($input['stage']) ? [$input['stage']] : ($input['stages'] ?? array_keys($rules));
 
-        $page = (isset($input['stage']) ? ProjectStages::scope($filtered(), $rules[$input['stage']] ?? null)
-                : ProjectStages::anyOf($filtered(), $rules, $input['stages'] ?? null))
+        $page = Job::query()->whereIn('id', array_values(array_unique(array_merge([], ...array_map(fn ($k) => $ids[$k] ?? [], $want)))))
             ->with(['customer:id,name', 'franchise:id,name', 'serviceArea:id,name', 'performedBy:id,name', 'workizJob'])
             ->orderByDesc('updated_at')->paginate(100, ['*'], 'page', (int) ($input['page'] ?? 1));
 
@@ -488,13 +488,8 @@ class JobsProjectManagementController extends Controller
             ] + ($money && isset($m['total']) ? ['total_minor' => $m['total'], 'due_minor' => $m['due']] : []);
         });
 
-        $counts = [];
-        foreach (ProjectStages::KEYS as $key) {
-            $counts[$key] = isset($rules[$key]) ? ProjectStages::scope($filtered(), $rules[$key])->count() : 0;
-        }
-
         return response()->json(['data' => $rows, 'meta' => [
-            'counts' => $counts, 'mapped' => array_keys($rules),
+            'counts' => array_map('count', $ids), 'mapped' => array_keys($rules),
             'page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total(),
         ]]);
     }
@@ -510,7 +505,9 @@ class JobsProjectManagementController extends Controller
         $user = $this->pmUser($request);
         $input = $request->validate($this->stageFilters());
         $rules = ProjectStages::forFranchises(\App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->get(), $settings);
-        $in = fn (string $key) => ProjectStages::scope($this->stageFiltered($user, $settings, $input), $rules[$key] ?? null);
+        $ids = $this->stageIds($user, $settings, $input, $rules);
+        $in = fn (string $key) => Job::query()->whereIn('id', $ids[$key]);
+        $any = fn (array $keys) => Job::query()->whereIn('id', array_values(array_unique(array_merge([], ...array_map(fn ($k) => $ids[$k], $keys)))));
         $money = $user->hasPermission('jobs.financials');
 
         $reasons = collect((array) $settings->get('jobs.review_reasons', $this->pmScope($user)))->filter(fn ($r) => is_array($r) && isset($r['value']));
@@ -523,13 +520,12 @@ class JobsProjectManagementController extends Controller
         $inProgress = $in('in_progress')->count();
         $redoCount = ProjectStages::anyWord($in('in_progress'), $redo)->count();
 
-        $notStarted = collect(ProjectStages::NOT_STARTED)->flatMap(fn ($k) => isset($rules[$k]) ? $in($k)->pluck('id') : [])->unique();
+        $notStarted = collect(ProjectStages::NOT_STARTED)->flatMap(fn ($k) => $ids[$k])->unique();
         $firstPaid = collect(JobMoney::paidDates($notStarted))->map(fn ($d) => $d['first']);
         $limit = (int) $settings->get('jobs.pm_warn_days', $this->pmScope($user));
         $waitingJobs = Job::query()->whereIn('id', $firstPaid->keys())->with('customer:id,name')->get(['id', 'number', 'customer_id']);
 
-        $open = Job::query()->where(fn ($w) => collect(ProjectStages::OPEN)->filter(fn ($k) => isset($rules[$k]))
-            ->each(fn ($k) => $w->orWhereIn('id', $in($k)->select('id'))))->whereRaw(collect(ProjectStages::OPEN)->contains(fn ($k) => isset($rules[$k])) ? '1 = 1' : '1 = 0');
+        $open = $any(ProjectStages::OPEN);
 
         $doneWaiting = $in('done_waiting_payment');
 
@@ -563,7 +559,7 @@ class JobsProjectManagementController extends Controller
             ],
             'done_waiting_payment' => ['count' => $doneWaiting->count()]
                 + ($money ? ['total_minor' => JobMoney::sum($in('done_waiting_payment'), 'total'), 'due_minor' => JobMoney::sum($in('done_waiting_payment'), 'due')] : []),
-            'stopped_payments' => ProjectStages::stopped(ProjectStages::anyOf($this->stageFiltered($user, $settings, $input), $rules), (int) $settings->get('jobs.pm_stopped_days', $this->pmScope($user)))->count(),
+            'stopped_payments' => ProjectStages::stopped($any(array_keys($rules)), (int) $settings->get('jobs.pm_stopped_days', $this->pmScope($user)))->count(),
             'per_team' => (clone $open)->with('performedBy:id,name')->get(['id', 'performed_by_user_id'])
                 ->groupBy(fn ($j) => $j->performedBy?->name ?? 'Unassigned')->map(fn ($g, $name) => ['name' => $name, 'count' => $g->count()])
                 ->sortByDesc('count')->values()->all(),
@@ -855,6 +851,26 @@ class JobsProjectManagementController extends Controller
             'review_reason' => ['nullable', 'array'],
             'review_reason.*' => ['string', 'max:100'],
         ];
+    }
+
+    /**
+     * Each stage's job ids under the Jobs tab's filters, read once per request. A
+     * rule can be costly: on A-1 Chimney "Done, money still due" reads the money of
+     * every Done job (31,000, about a second), and Overview used to run it once
+     * for each number it shows (5.6 s). Unmapped stages hold none.
+     * ponytail: the ids go back in as bindings; past MySQL's 65,535 placeholders a
+     * stage would need its subquery instead.
+     *
+     * @return array<string, list<string>>
+     */
+    private function stageIds($user, SettingsResolver $settings, array $input, array $rules): array
+    {
+        $ids = [];
+        foreach (ProjectStages::KEYS as $key) {
+            $ids[$key] = isset($rules[$key]) ? ProjectStages::scope($this->stageFiltered($user, $settings, $input), $rules[$key])->pluck('id')->all() : [];
+        }
+
+        return $ids;
     }
 
     /** The jobs in reach under the Jobs tab's filters. */

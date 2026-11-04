@@ -425,6 +425,15 @@ return [
     |
     */
     'twilio' => [
+        // Nightly line audit and the fortnightly answer test (Jose, 2026-11-03:
+        // "whatsapp and email to shoval - bar - me"). User ids; the WhatsApp
+        // template stays null until Meta approves it, and email carries it alone.
+        'audit_alert_user_ids' => array_filter(explode(',', (string) env('PHONE_AUDIT_ALERT_USERS',
+            '01a121ea-7ef7-73da-8920-23a9944ee198,019ff631-866b-70e5-9ac6-8bc4a6d28ea0,019fd712-75d3-711e-86f1-596d39292c51'))),
+        'audit_alert_whatsapp_template' => env('PHONE_AUDIT_ALERT_WHATSAPP_TEMPLATE'),
+        'audit_call_from' => env('PHONE_AUDIT_CALL_FROM', '+18559553322'),
+        'audit_call_account_sid' => env('PHONE_AUDIT_CALL_ACCOUNT_SID', 'ACbfccaca6da66d0b542a51ab89d306fe4'),
+
         'platform_account_sid' => env('TWILIO_PLATFORM_ACCOUNT_SID'),
         'platform_api_key_sid' => env('TWILIO_PLATFORM_API_KEY_SID'),
         'platform_api_secret' => env('TWILIO_PLATFORM_API_SECRET'),
@@ -568,6 +577,9 @@ return [
     // every AI feature shows its calm "not available" state (Jose, 2026-10-27).
     'ai' => [
         'provider' => env('AI_PROVIDER', 'auto'),
+        // Staff questions' queue. 'staff' once deploy/ezbizi-worker-staff.service is
+        // installed (a worker of its own); until then 'default', so nothing waits on a queue nobody serves.
+        'staff_queue' => env('QUEUE_STAFF', 'default'),
         'claude' => [
             'key' => env('AI_CLAUDE_KEY'),   // falls back to ANTHROPIC_API_KEY (Reports' tagger)
             'model' => env('AI_CLAUDE_MODEL', 'claude-opus-5-5'),

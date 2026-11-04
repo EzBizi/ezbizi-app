@@ -211,9 +211,7 @@ class _RecordCardState extends State<RecordCard> {
             if (idle && _confirming) ...[
               const SizedBox(height: 10),
               Text(
-                'This records the sound around your phone: you, and anyone '
-                'near you. Field managers can listen to it. It is deleted '
-                'after 90 days unless somebody keeps it.',
+                fieldRecordingDisclosure,
                 key: const ValueKey('field-record-disclosure'),
                 style: small,
               ),

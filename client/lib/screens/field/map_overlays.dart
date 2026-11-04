@@ -1,3 +1,4 @@
+import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
@@ -308,16 +309,12 @@ class FieldMapPanel extends StatelessWidget {
             Padding(
               key: const ValueKey('tour-field-map-search'),
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-              child: TextField(
+              child: ListSearch(
                 key: ValueKey(jobsTab),
+                hint: jobsTab
+                        ? 'Job number or customer'
+                        : 'Find a person',
                 onChanged: onQuery,
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.search, size: 18),
-                  hintText: jobsTab
-                      ? 'Job number or customer'
-                      : 'Find a person',
-                ),
               ),
             ),
             if (!jobsTab)

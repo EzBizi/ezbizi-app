@@ -311,6 +311,8 @@ class TasksController extends Controller
             'title' => $task->title,
             'status' => $task->status,
             'status_id' => $task->status_id,
+            // A roll-up shows a branch's task on its company board, whose statuses differ: matched by name.
+            'status_name' => $task->statusRow?->name,
             'values' => (object) $task->values->mapWithKeys(fn (TaskColumnValue $v) => [$v->column_id => self::valueOf($v)])->all(),
             'subtasks_count' => (int) ($task->subtasks_count ?? 0),
             'subtasks_done' => (int) ($task->subtasks_done ?? 0),
@@ -340,6 +342,8 @@ class TasksController extends Controller
         return match ($v->column?->type) {
             'number' => $v->value_number,
             'date' => $v->value_date?->toDateString(),
+            // Stored as its start (value_date) and end (value_text).
+            'timeline' => $v->value_date ? ['from' => $v->value_date->toDateString(), 'to' => $v->value_text] : null,
             'person' => $v->value_user_id,
             'checkbox' => (bool) $v->value_number,
             default => $v->value_text,

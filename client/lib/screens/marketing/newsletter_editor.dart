@@ -54,6 +54,7 @@ class NewsletterEditor extends StatefulWidget {
     required this.previewHtml,
     required this.onChanged,
     required this.onAudience,
+    this.onNewList,
     required this.onHtml,
     required this.onSend,
   });
@@ -87,6 +88,9 @@ class NewsletterEditor extends StatefulWidget {
 
   final VoidCallback onChanged;
   final ValueChanged<String?> onAudience;
+
+  /// Opens the new-list panel (UI queue 173); null hides "+ New list".
+  final VoidCallback? onNewList;
   final ValueChanged<String> onHtml;
   final Future<void> Function() onSend;
 
@@ -745,9 +749,19 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               isDense: true,
               options: [
                 for (final a in widget.audiences)
-                  SearchOption(value: a.id, label: '${a.name} · ${a.where}'),
+                  SearchOption(value: a.id, label: '${a.label} · ${a.where}'),
               ],
               onChanged: _locked ? null : widget.onAudience,
+            ),
+          if (widget.onNewList != null && !_locked)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const ValueKey('newsletter-new-list'),
+                onPressed: widget.onNewList,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('New list'),
+              ),
             ),
           kind('When'),
           Align(

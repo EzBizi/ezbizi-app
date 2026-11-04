@@ -5,11 +5,14 @@ namespace Tests\Feature\Newsletter;
 use App\Jobs\SendNewsletter;
 use App\Models\AutomationEvent;
 use App\Models\Company;
+use App\Models\Customer;
+use App\Models\Job;
 use App\Models\Newsletter;
 use App\Models\NewsletterAudience;
 use App\Models\NewsletterUnsubscribe;
 use App\Models\SocialConnection;
 use App\Models\User;
+use App\Support\Newsletter\BlockRenderer;
 use App\Support\Newsletter\MailchimpClient;
 use App\Support\Newsletter\MailchimpSender;
 use App\Support\Newsletter\NewsletterUnsubscribeLink;
@@ -168,6 +171,51 @@ class NewsletterApiTest extends TestCase
     }
 
     // ── The send itself ─────────────────────────────────────────
+
+    public function test_a_mailchimp_tag_narrows_the_send_to_its_subscribed_members(): void
+    {
+        $t = $this->provisionTenant('Tagged');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $this->inTenant($t['org'], fn () => $audience->forceFill(['tag' => 'VIP'])->save());
+        Http::fake([
+            '*/segments?*' => Http::response(['segments' => [['id' => 7, 'name' => 'Other'], ['id' => 9, 'name' => 'vip']]]),
+            '*/segments/9/members*' => Http::response(['members' => [
+                ['email_address' => 'in@example.com', 'status' => 'subscribed'],
+                ['email_address' => 'left@example.com', 'status' => 'unsubscribed'],
+            ], 'total_items' => 2]),
+            '*/segments' => Http::response(['id' => 123]),
+            '*/campaigns' => Http::response(['id' => 'tagged', 'recipients' => ['recipient_count' => 1]]),
+            '*' => Http::response([]),
+        ]);
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, ['subject' => 'VIPs', 'audience_id' => $audience->id])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['in@example.com']);
+    }
+
+    public function test_a_customers_tag_takes_only_customers_whose_jobs_carry_it(): void
+    {
+        $t = $this->provisionTenant('JobTagged');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $this->inTenant($t['org'], function () use ($t, $audience) {
+            $audience->forceFill(['kind' => NewsletterAudience::KIND_CUSTOMERS, 'tag' => 'Annual'])->save();
+            Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-own', 'name' => 'Own', 'email' => 'own@example.com', 'tags' => ['annual']]);
+            foreach (['yes@example.com' => ['Annual'], 'no@example.com' => ['Other']] as $email => $tags) {
+                $c = Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-'.$email, 'name' => $email, 'email' => $email]);
+                Job::factory()->create(['franchise_id' => $t['franchise']->id, 'customer_id' => $c->id, 'tags' => $tags]);
+            }
+        });
+        Http::fake([
+            '*/members*' => Http::response(['members' => [['email_address' => 'yes@example.com'], ['email_address' => 'no@example.com'], ['email_address' => 'own@example.com']], 'total_items' => 3]),
+            '*/segments' => Http::response(['id' => 123]),
+            '*/campaigns' => Http::response(['id' => 'jt', 'recipients' => ['recipient_count' => 1]]),
+            '*' => Http::response([]),
+        ]);
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, ['subject' => 'Annual', 'audience_id' => $audience->id])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['yes@example.com', 'own@example.com']);
+    }
 
     public function test_a_send_reaches_mailchimp_and_raises_the_event(): void
     {
@@ -770,7 +818,7 @@ class NewsletterApiTest extends TestCase
     /** A block's address keeps only a scheme a newsletter uses. */
     public function test_a_block_link_with_a_script_scheme_is_dropped(): void
     {
-        $html = app(\App\Support\Newsletter\BlockRenderer::class)->render([
+        $html = app(BlockRenderer::class)->render([
             ['type' => 'button', 'text' => 'Go', 'url' => 'javascript:alert(1)'],
             ['type' => 'button', 'text' => 'Book', 'url' => 'https://a-1chimney.com/book'],
             ['type' => 'image', 'src' => 'data:image/svg+xml;base64,PHN2Zz4=', 'alt' => 'x'],

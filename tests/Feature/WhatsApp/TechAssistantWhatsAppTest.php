@@ -11,6 +11,7 @@ use App\Support\Social\WhatsAppBills;
 use App\Support\Social\WhatsAppStaffBot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -65,6 +66,8 @@ class TechAssistantWhatsAppTest extends TestCase
             'id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id, 'phone_number_id' => self::BOT,
             'counterparty' => '17867762666', 'kind' => 'lead', 'created_at' => now(), 'updated_at' => now(),
         ]);
+        // The one-time parts tip is already spent, so each test reads its own reply first.
+        Cache::put('whatsapp.parts_tip.'.$this->t['admin']->getKey(), true);
     }
 
     private function inbound(array $message, string $wamid = 'wamid.IN1'): void
@@ -172,6 +175,31 @@ class TechAssistantWhatsAppTest extends TestCase
 
         Process::assertNothingRan();
         $this->assertSame('interactive', $this->sent[0]['type']);
+    }
+
+    /** Jose, 2026-11-03: parts answers "only Technicians" - whoever holds the Parts tab. */
+    public function test_staff_without_the_parts_tab_get_no_parts_answer(): void
+    {
+        $this->grok('CONFIDENCE: POSSIBLE');
+        $this->inTenant($this->t['org'], fn () => $this->t['admin']->forceFill(['phone' => null])->save());
+        $dispatcher = $this->userWithRole($this->t, 'Dispatcher', ['customers.view']);
+        $this->inTenant($this->t['org'], fn () => $dispatcher->forceFill(['phone' => '(786) 776-2666', 'is_active' => true])->save());
+
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'valve for majestic insert, LP i think']]);
+
+        $this->assertSame(0, AssistantAnswer::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_a_tech_gets_the_parts_tip_once_on_their_first_message(): void
+    {
+        Process::fake();
+        Cache::forget('whatsapp.parts_tip.'.$this->t['admin']->getKey());
+
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'hi']]);
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'hi']], 'wamid.IN2');
+
+        $tips = array_filter($this->sent, fn ($m) => ($m['text']['body'] ?? null) === WhatsAppStaffBot::PARTS_TIP);
+        $this->assertCount(1, $tips);
     }
 
     public function test_a_stranger_never_reaches_the_tech_assistant(): void
