@@ -31,6 +31,11 @@ import 'automation_builder.dart';
 /// Panels stay for the things that genuinely sit BESIDE a row — its run
 /// history, a rehearsal, confirming a delete — which is what a side panel is
 /// for (see side_panel.dart).
+/// On means running: an auto-disabled rule keeps is_active but has stopped,
+/// so its switch reads off and switching it on re-enables it.
+bool _runs(Map<String, dynamic> a) =>
+    a['is_active'] == true && a['disabled_at'] == null;
+
 class AutomationsScreen extends StatefulWidget {
   const AutomationsScreen({
     super.key,
@@ -207,7 +212,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
               ? 'Rules that do the next step for you when something happens.'
               : '${_automations.length} '
                     '${_automations.length == 1 ? 'rule' : 'rules'} · '
-                    '${_automations.where((a) => a['is_active'] == true).length} on',
+                    '${_automations.where(_runs).length} on',
           action: _tab != 'rules'
               ? null
               : Refused(
@@ -341,7 +346,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     final theme = Theme.of(context);
     final words = _query.trim().toLowerCase();
     bool shown(Map<String, dynamic> a) {
-      final on = a['is_active'] == true;
+      final on = _runs(a);
       final keep = switch (_show) {
         'on' => on,
         'off' => !on,
@@ -443,8 +448,8 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                     onChanged: (text) => setState(() => _query = text),
                   ),
                   chip('all', 'All', _automations.length),
-                  chip('on', 'On', count((a) => a['is_active'] == true)),
-                  chip('off', 'Off', count((a) => a['is_active'] != true)),
+                  chip('on', 'On', count(_runs)),
+                  chip('off', 'Off', count((a) => !_runs(a))),
                   chip('attention', 'Needs attention', count(_needsAttention)),
                 ],
               ),
@@ -551,7 +556,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                       label: 'Live — ${automation['name']}',
                       child: Switch(
                         key: const ValueKey('tour-automations-live'),
-                        value: automation['is_active'] as bool? ?? false,
+                        value: _runs(automation),
                         onChanged: noEdit != null
                             ? null
                             : (on) => _setActive(automation, on),
