@@ -13,6 +13,7 @@ use App\Support\Notifications\LeadNotificationText;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -476,6 +477,12 @@ final class MetaMessages
         }
 
         if ($response->failed()) {
+            // The screen gets one sentence; this keeps Meta's code, so a 502 on
+            // POST leads/{id}/messages can be told apart (11-04: eight, unread).
+            Log::warning('Meta refused a reply.', ['status' => $response->status(),
+                'provider' => $connection->provider] + array_intersect_key((array) $response->json('error'),
+                    array_flip(['code', 'error_subcode', 'type', 'message', 'error_user_msg'])));
+
             throw new RuntimeException((string) ($response->json('error.error_user_msg')
                 ?? $response->json('error.message')
                 ?? 'Meta refused the reply (HTTP '.$response->status().').'));
