@@ -401,7 +401,7 @@ final class WorkizJobWriter
     private function statuses(string $franchiseId): array
     {
         $parents = WorkizRecord::query()->where('franchise_id', $franchiseId)->where('type', 'sub_status')->get(['payload'])
-            ->map(fn (WorkizRecord $r) => $r->payload['parentName'] ?? null);
+            ->toBase()->map(fn (WorkizRecord $r) => $r->payload['parentName'] ?? null);
 
         return $parents->merge(WorkizJob::query()->where('franchise_id', $franchiseId)->distinct()->pluck('status'))
             ->filter(fn ($s) => is_string($s) && trim($s) !== '')->map(fn ($s) => trim($s))->unique()->values()->all();
@@ -416,9 +416,8 @@ final class WorkizJobWriter
     public function setStatus(WorkizJob $job, string $status, ?string $subStatusName = null): WorkizJob
     {
         [$connection, $id] = $this->v2Job($job);
-        $known = $this->statuses($job->franchise_id);
-        $word = collect($known)->first(fn (string $s) => strcasecmp($s, trim($status)) === 0)
-            ?? throw new RuntimeException('Workiz has no status "'.$status.'". It takes: '.implode(', ', $known).'.');
+        // One the branch never used goes as typed: Workiz's own refusal is the answer.
+        $word = collect($this->statuses($job->franchise_id))->first(fn (string $s) => strcasecmp($s, trim($status)) === 0) ?? trim($status);
         $body = ['status' => $word];
 
         if ($subStatusName !== null && trim($subStatusName) !== '') {

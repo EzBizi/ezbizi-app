@@ -71,19 +71,14 @@ class WorkizJobStatusAndTagsTest extends TestCase
         $this->assertSame('Canceled', $this->inTenant($this->t['org'], fn () => $this->job->fresh()->status));
     }
 
-    /** Jose 11-04: the statuses are the account's own, not a list in code; one it never used is refused before Workiz is asked. */
-    public function test_a_status_the_account_does_not_have_is_refused_with_its_own_list(): void
+    /** Jose 11-04: the statuses are the account's own, not a list in code: EzBizi's word goes up as the account spells it. */
+    public function test_a_status_goes_up_in_the_accounts_own_spelling(): void
     {
-        Http::fake();
+        Http::fake(['api.workiz.com/crm/api/v2/jobs/JOB-1' => Http::response(array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1']))]);
 
-        try {
-            $this->inTenant($this->t['org'], fn () => $this->writer()->setStatus($this->job, 'Archived'));
-            $this->fail('refused');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('done pending approval', $e->getMessage());
-            $this->assertStringContainsString('Canceled', $e->getMessage());
-        }
-        Http::assertNothingSent();
+        $this->inTenant($this->t['org'], fn () => $this->writer()->setStatus($this->job, 'Done Pending Approval'));
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['status'] === 'done pending approval');
     }
 
     public function test_workizs_own_refusal_is_thrown_as_it_reads(): void
