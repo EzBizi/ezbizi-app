@@ -52,7 +52,10 @@ final class MetaMediaController
     {
         $refs = [];
         foreach (array_values((array) ($message['attachments'] ?? [])) as $i => $a) {
-            $kind = in_array($a['type'] ?? null, ['image', 'video', 'audio'], true) ? $a['type'] : 'file';
+            // Shares, reels, story mentions and sticker fallbacks have no media Meta will hand back.
+            if (! in_array($kind = $a['type'] ?? null, ['image', 'video', 'audio', 'file'], true)) {
+                continue;
+            }
             $refs[] = self::PREFIX.$connection->getKey().':'.rtrim(strtr(base64_encode($mid), '+/', '-_'), '=').':'.$i.':'.$kind;
         }
 
