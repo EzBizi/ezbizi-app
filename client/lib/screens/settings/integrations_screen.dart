@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
+import '../../widgets/list_search.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/sending_server_panel.dart';
@@ -420,6 +421,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
   bool _phone = false;
 
+  String _query = '';
+
   Widget _grid(
     BuildContext context,
     Set<String> providers,
@@ -434,7 +437,28 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               'The outside services EzBizi works with. Open one to connect, '
               'edit or disconnect it.',
         ),
-        Expanded(child: _list(context, providers, byProvider)),
+        // Every list has search: about twenty services in six cards (phone
+        // audit 2026-11-04, Section 4 #12).
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ListSearch(
+              key: const ValueKey('integrations-search'),
+              hint: 'Find a service',
+              width: _phone ? double.infinity : 280,
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+        ),
+        Expanded(
+          child: _list(context, {
+            for (final p in providers)
+              if (_query.trim().isEmpty ||
+                  _label(p).toLowerCase().contains(_query.trim().toLowerCase()))
+                p,
+          }, byProvider),
+        ),
       ],
     );
   }

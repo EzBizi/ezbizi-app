@@ -84,12 +84,12 @@ class _ReportsTabState extends State<ReportsTab> {
     final answers = report['answers'];
     if (answers is! Map) return;
 
-    for (final screen in (report['screens'] as List? ?? const [])) {
+    for (final screen in _items(report['screens'])) {
       if (screen is! Map) continue;
-      for (final field in (screen['fields'] as List? ?? const [])) {
+      for (final field in _items(screen['fields'])) {
         if (field is! Map) continue;
         if (field['type'] != 'photo' && field['type'] != 'signature') continue;
-        for (final id in (answers['${field['key']}'] as List? ?? const [])) {
+        for (final id in _items(answers['${field['key']}'])) {
           final key = '$id';
           if (_photos.containsKey(key)) continue;
           final bytes = await widget.api.getBytes('/attachments/$key');
@@ -138,11 +138,11 @@ class _ReportsTabState extends State<ReportsTab> {
     }
 
     final hits = [
-      for (final row in (list.data as List? ?? const []))
+      for (final row in _items(list.data))
         if (row is Map) Map<String, dynamic>.from(row),
     ];
     final message = list.body['message'] as String?;
-    final keep = openId ?? _selectedId ?? (hits.isNotEmpty ? hits.first['id'] as String? : null);
+    final keep = openId ?? _selectedId ?? (hits.isNotEmpty ? hits.first['id']?.toString() : null);
 
     setState(() {
       _loading = false;
@@ -219,7 +219,7 @@ class _ReportsTabState extends State<ReportsTab> {
   /// No remove control: a submitted report is frozen, and the server refuses a
   /// delete against one. A button that always failed would be a lie on screen.
   Widget _photoRow(dynamic value, {bool signature = false}) {
-    final ids = [for (final id in (value as List? ?? const [])) '$id'];
+    final ids = [for (final id in _items(value)) '$id'];
 
     if (ids.isEmpty) {
       return Text(
@@ -363,7 +363,7 @@ class _ReportsTabState extends State<ReportsTab> {
               itemBuilder: (context, index) {
                 final row = _hits[index];
                 return ListTile(
-                  selected: row['id'] == _selectedId,
+                  selected: '${row['id']}' == _selectedId,
                   title: Text('${row['definition_name'] ?? ''}'),
                   subtitle: Text(
                     [
@@ -395,7 +395,7 @@ class _ReportsTabState extends State<ReportsTab> {
         ? Map<String, dynamic>.from(report['answers'] as Map)
         : const <String, dynamic>{};
     final screens = [
-      for (final s in (report['screens'] as List? ?? const []))
+      for (final s in _items(report['screens']))
         if (s is Map) Map<String, dynamic>.from(s),
     ];
     final stamp = formatStamp(
@@ -443,7 +443,7 @@ class _ReportsTabState extends State<ReportsTab> {
               ),
               const SizedBox(height: 8),
               for (final field in [
-                for (final f in (screen['fields'] as List? ?? const []))
+                for (final f in _items(screen['fields']))
                   if (f is Map) Map<String, dynamic>.from(f),
               ]) ...[
                 Text(
@@ -483,3 +483,14 @@ class _ReportsTabState extends State<ReportsTab> {
     );
   }
 }
+
+/// A column read as a list, whatever shape it came in. A report imported from
+/// A1 keeps A1's shape: a photo answer can be one string, a keyed object or a
+/// list, and a bare `as List?` on the first two crashed the whole tab to a
+/// grey box (phone audit 2026-11-04, Section 3 #1).
+List<dynamic> _items(dynamic value) => switch (value) {
+  final List list => list,
+  final Map map => map.values.toList(),
+  final String text when text.trim().isNotEmpty => [text],
+  _ => const [],
+};

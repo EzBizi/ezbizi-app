@@ -1368,17 +1368,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
-          if (_canEdit &&
-              (_board?['statuses'] as List? ?? const []).any(
-                (s) => s is Map && s.containsKey('id'),
-              ))
-            OutlinedButton.icon(
-              key: const Key('tasks-statuses'),
-              onPressed: _editStatuses,
-              icon: const Icon(Icons.label_outline, size: 18),
-              label: const Text('Statuses…'),
+          // On a phone the rest of the toolbar folds behind one button: all
+          // pinned, it left about 300 px for tasks (phone audit 2026-11-04,
+          // Section 4 #4).
+          if (phone)
+            IconButton(
+              key: const Key('tasks-more-tools'),
+              tooltip: _toolsOpen ? 'Fewer controls' : 'More controls',
+              isSelected: _toolsOpen,
+              icon: const Icon(Icons.tune),
+              onPressed: () => setState(() => _toolsOpen = !_toolsOpen),
             ),
-          if (_canEdit && _board?['builtin_columns'] is Map) _columnsControl(),
+          if (!phone || _toolsOpen) ..._moreTools(phone: phone),
+          // People stays a chip on a phone (UI queue 95, phone 7).
           ..._boardFaces(phone: phone),
           if (!_canEdit)
             Text(
@@ -1392,6 +1394,23 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       ),
     );
   }
+
+  /// Folded away on a phone until asked for.
+  bool _toolsOpen = false;
+
+  List<Widget> _moreTools({required bool phone}) => [
+    if (_canEdit &&
+        (_board?['statuses'] as List? ?? const []).any(
+          (s) => s is Map && s.containsKey('id'),
+        ))
+      OutlinedButton.icon(
+        key: const Key('tasks-statuses'),
+        onPressed: _editStatuses,
+        icon: const Icon(Icons.label_outline, size: 18),
+        label: const Text('Statuses…'),
+      ),
+    if (_canEdit && _board?['builtin_columns'] is Map) _columnsControl(),
+  ];
 
   /// Who is on the board, on EVERY board (Jose could not find People: it
   /// showed on boards made with New board only), with its faces when the
@@ -2892,6 +2911,10 @@ class _TaskPanelState extends State<_TaskPanel> {
           ] else
             TextButton.icon(
               key: const Key('task-delete'),
+              // Red, the colour of what it does (phone audit 2026-11-04).
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
               onPressed: () => setState(() => _confirmDelete = true),
               icon: const Icon(Icons.delete_outline, size: 18),
               label: const Text('Delete…'),

@@ -295,7 +295,10 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
                 top: false,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: FilledButton.icon(
+                  // Outlined, not filled: a sticky full-width button under
+                  // the thumb approved everyone on a stray tap (phone audit
+                  // 2026-11-04, Section 3 #6).
+                  child: OutlinedButton.icon(
                     key: const ValueKey('tour-work_hours-approval-all'),
                     onPressed: _busy ? null : _approveAll,
                     icon: const Icon(Icons.done_all, size: 18),
@@ -780,7 +783,11 @@ class _DayBar extends StatelessWidget {
           ),
     ];
 
+    // Full width: on a phone the card's column starts its children at their
+    // own width, and a painter has none, so the bar drew as a 2 px stub
+    // (phone audit 2026-11-04, Section 3 #7).
     return SizedBox(
+      width: double.infinity,
       height: 16,
       child: CustomPaint(
         key: ValueKey('approval-bar-${(row['person'] as Map?)?['id']}'),

@@ -88,7 +88,10 @@ class _GuideBuilderState extends State<GuideBuilder> {
   String? _error;
 
   late TextEditingController _title;
-  String _status = 'draft';
+  /// Null until the guide has loaded: a published guide read "Draft — nobody
+  /// sees it yet" with a Publish button for five seconds (phone audit
+  /// 2026-11-04, Section 3 #14).
+  String? _status;
   List<Map<String, dynamic>> _screens = [];
   int? _selected;
 
@@ -344,11 +347,13 @@ class _GuideBuilderState extends State<GuideBuilder> {
                     decoration: const InputDecoration(isDense: true, border: InputBorder.none),
                   ),
                 ),
-                Tag(_status == 'published' ? 'Published' : 'Draft — nobody sees it yet'),
-                OutlinedButton(
-                  onPressed: _togglePublish,
-                  child: Text(_status == 'published' ? 'Unpublish' : 'Publish'),
-                ),
+                if (_status != null) ...[
+                  Tag(_status == 'published' ? 'Published' : 'Draft — nobody sees it yet'),
+                  OutlinedButton(
+                    onPressed: _togglePublish,
+                    child: Text(_status == 'published' ? 'Unpublish' : 'Publish'),
+                  ),
+                ],
                 ElevatedButton(
                   key: const Key('training.save-guide'),
                   onPressed: _saving ? null : _save,
