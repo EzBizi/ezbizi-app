@@ -1,5 +1,9 @@
 import '../../widgets/list_search.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../../widgets/empty_state.dart';
 import '../../widgets/report_grid.dart';
@@ -37,6 +41,11 @@ class MarketingReport extends StatefulWidget {
   @override
   State<MarketingReport> createState() => _MarketingReportState();
 }
+
+/// Swappable so a test sees the PDF instead of a print dialog.
+@visibleForTesting
+Future<void> Function(Uint8List pdf, String name) printPdf = (pdf, name) =>
+    Printing.layoutPdf(onLayout: (_) async => pdf, name: name);
 
 class _MarketingReportState extends State<MarketingReport> {
   late DateSpan _span = widget.span ?? _lastWeek(_today);
@@ -214,6 +223,117 @@ class _MarketingReportState extends State<MarketingReport> {
     };
   }
 
+  /// Print (Merav, 2026-11-04; UI-UX approved): the dates, the four figures
+  /// and every row with the Total, black on white, landscape. The header
+  /// repeats on each page; the footer says the page and when it was printed.
+  Future<void> _print() async {
+    final t = _totals;
+    final dates = _span.single
+        ? widget.formats.formatDate(_span.from)
+        : '${widget.formats.formatDate(_span.from)} – '
+              '${widget.formats.formatDate(_span.to)}';
+    final at = (widget.now ?? DateTime.now)();
+    final printed =
+        '${widget.formats.formatDate(at)} '
+        '${widget.formats.formatTime(at.hour, at.minute)}';
+    final figures = [
+      ('Ad cost', _money(t['cost_minor'])),
+      ('Leads', _count(t['leads'])),
+      ('Gross sales', _money(t['gross_minor'])),
+      ('Net profit', _money(t['net_profit_minor'])),
+    ];
+    String text(Map<String, dynamic> row, String key) {
+      final missing = row['profit_missing'];
+      if ((key == 'profit_minor' || key == 'net_profit_minor') &&
+          row[key] == null &&
+          missing is String) {
+        return 'No P&L';
+      }
+      return _cell(row, key);
+    }
+
+    // ponytail: the PDF's built-in Helvetica has no dashes, arrows or dots;
+    // plain stand-ins until a font is bundled.
+    String plain(String v) => v
+        .replaceAll('—', '-')
+        .replaceAll('–', '-')
+        .replaceAll('→', '->')
+        .replaceAll('·', '|');
+
+    final doc = pw.Document(title: plain('Marketing $dates'));
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.letter.landscape,
+        margin: const pw.EdgeInsets.all(28),
+        footer: (c) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('Printed $printed', style: const pw.TextStyle(fontSize: 8)),
+            pw.Text(
+              'Page ${c.pageNumber} of ${c.pagesCount}',
+              style: const pw.TextStyle(fontSize: 8),
+            ),
+          ],
+        ),
+        build: (_) => [
+          pw.Text(
+            plain('Marketing | $dates'),
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Row(
+            children: [
+              for (final (label, value) in figures)
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(label, style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text(
+                        plain(value),
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          pw.SizedBox(height: 12),
+          pw.TableHelper.fromTextArray(
+            headerCount: 1, // repeated on every page
+            headers: [for (final (_, label) in _columns) plain(label)],
+            data: [
+              for (final row in _rows)
+                [for (final (key, _) in _columns) plain(text(row, key))],
+              [
+                for (final (key, _) in _columns)
+                  plain(_cell(t.cast<String, dynamic>(), key)),
+              ],
+            ],
+            headerStyle: pw.TextStyle(
+              fontSize: 8,
+              fontWeight: pw.FontWeight.bold,
+            ),
+            cellStyle: const pw.TextStyle(fontSize: 8),
+            cellAlignments: {
+              for (var i = 2; i < _columns.length; i++)
+                i: pw.Alignment.centerRight,
+            },
+            border: const pw.TableBorder(
+              horizontalInside: pw.BorderSide(width: 0.3),
+              bottom: pw.BorderSide(width: 0.3),
+              top: pw.BorderSide(width: 0.3),
+            ),
+          ),
+        ],
+      ),
+    );
+    await printPdf(await doc.save(), 'Marketing $dates');
+  }
+
   /// UI queue 87, desktop 1: the figures, then the one table, Branch and
   /// Source pinned, a Total row, a loss in red.
   List<Widget> _figuresAndTable() {
@@ -320,19 +440,36 @@ class _MarketingReportState extends State<MarketingReport> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        if (widget.span == null) ...[
-          ReportDates(
-            key: const ValueKey('tour-report-dates'),
-            initial: _span,
-            today: _today,
-            formats: widget.formats,
-            onChanged: (span) {
-              setState(() => _span = span);
-              _load();
-            },
-          ),
-          const SizedBox(height: 12),
-        ],
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: widget.span == null
+                  ? ReportDates(
+                      key: const ValueKey('tour-report-dates'),
+                      initial: _span,
+                      today: _today,
+                      formats: widget.formats,
+                      onChanged: (span) {
+                        setState(() => _span = span);
+                        _load();
+                      },
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            const SizedBox(width: 8),
+            // Disabled, not hidden, with nothing to print, so it stays put.
+            OutlinedButton.icon(
+              key: const Key('marketing-print'),
+              onPressed: _loading || _error != null || _rows.isEmpty
+                  ? null
+                  : _print,
+              icon: const Icon(Icons.print_outlined, size: 18),
+              label: const Text('Print'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         if (_error != null)
           ErrorNote(_error!)
         else if (_loading)

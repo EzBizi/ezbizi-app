@@ -2,7 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Organization;
 use App\Support\Reports\Experimental\RingCentralCallLog;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 
@@ -28,8 +31,11 @@ class WarmCallLog extends Command
             return self::SUCCESS;
         }
 
-        // The report's own zone when the screen sends none - see the controller.
-        $zone = (string) config('app.timezone');
+        // The days the report asks for: its organization's own (ReportView::zone,
+        // 2026-11-04), or the warmed days would be ones nobody opens.
+        $org = Organization::query()->where('slug', RingCentralCallLog::ENV_ORGANIZATION_SLUG)->first();
+        $zone = (string) (($org === null ? null : app(TenantContext::class)->run($org, fn () => app(SettingsResolver::class)->get('timezone', $org)))
+            ?: config('app.timezone'));
         $today = CarbonImmutable::now($zone)->startOfDay();
         $read = 0;
 

@@ -54,7 +54,7 @@ class ScoringReportController extends Controller
             'q' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $zone = (string) config('app.timezone');
+        $zone = ReportView::zone();
         $from = max(CarbonImmutable::parse($q['from'], $zone)->startOfDay(), LabelReportCalls::aiSince());
         $to = CarbonImmutable::parse($q['to'], $zone)->endOfDay();
         $search = trim((string) ($q['q'] ?? ''));
@@ -153,7 +153,7 @@ class ScoringReportController extends Controller
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
         ]);
 
-        $zone = (string) config('app.timezone');
+        $zone = ReportView::zone();
         $from = max(CarbonImmutable::parse($q['from'], $zone)->startOfDay(), LabelReportCalls::aiSince());
         $to = CarbonImmutable::parse($q['to'], $zone)->endOfDay();
 

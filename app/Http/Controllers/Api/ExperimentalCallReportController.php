@@ -13,6 +13,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
+use App\Support\Reports\ReportView;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -147,7 +148,7 @@ class ExperimentalCallReportController extends Controller
             'timezone' => ['nullable', 'string', 'timezone'],
         ]);
 
-        $zone = $validated['timezone'] ?? (string) config('app.timezone');
+        $zone = $validated['timezone'] ?? ReportView::zone();
         $day = CarbonImmutable::parse($validated['day'] ?? 'today', $zone)->startOfDay();
 
         /*
