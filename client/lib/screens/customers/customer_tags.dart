@@ -7,7 +7,8 @@ List<String> customerTags(Map<String, dynamic>? row) => [
   for (final t in (row?['tags'] as List? ?? const [])) '$t',
 ];
 
-/// The tags on a list row: two, then "+N" (UI queue 174).
+/// The tags on a list row: two, then "+N" (UI queue 174); one when the cell
+/// is narrow, where two Flexible pills were squeezed to empty grey ovals.
 class CustomerTagChips extends StatelessWidget {
   const CustomerTagChips(this.tags, {super.key});
 
@@ -18,19 +19,24 @@ class CustomerTagChips extends StatelessWidget {
     if (tags.isEmpty) return const SizedBox.shrink();
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final t in tags.take(2)) Flexible(child: Tag(t)),
-        if (tags.length > 2)
-          Padding(
-            padding: const EdgeInsets.only(left: 6),
-            child: Text(
-              '+${tags.length - 2}',
-              style: TextStyle(fontSize: 11, color: muted),
-            ),
-          ),
-      ],
+    return LayoutBuilder(
+      builder: (context, box) {
+        final shown = box.maxWidth >= 180 ? 2 : 1;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final t in tags.take(shown)) Flexible(child: Tag(t)),
+            if (tags.length > shown)
+              Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Text(
+                  '+${tags.length - shown}',
+                  style: TextStyle(fontSize: 11, color: muted),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

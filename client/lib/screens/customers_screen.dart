@@ -292,8 +292,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
                 : _customers.length < _total
                 ? 'Showing ${_customers.length} of ${formatCount(_total)} shared across the '
                       'organization. The $label tag shows who is accountable.'
-                : '${formatCount(_total)} shared across the organization. The $label tag shows who is '
-                      'accountable for each relationship.',
+                // ponytail: _total is the filtered count, so it names the rows shown, not the org.
+                : '${formatCount(_total)} ${_total == 1 ? 'customer' : 'customers'} · shared across the organization. '
+                      'The $label tag shows who is accountable for each relationship.',
             // A Wrap rather than a Row: on a narrow window — and on a phone, which
             // is coming — three controls side by side either overflow or squeeze
             // the labels out. They fall onto a second line instead, in the same
@@ -429,9 +430,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _load(),
                   onClear: () {
-                                _search.clear();
-                                _load();
-                              },
+                    _search.clear();
+                    _load();
+                  },
                 ),
               ),
               // The chips' choice, as a picker where three chips would wrap.
@@ -473,7 +474,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     options: [
                       SearchOption<String?>(
                         value: null,
-                        label: 'All ${label.toLowerCase()}s',
+                        label:
+                            'All ${label.toLowerCase()}${label.toLowerCase().endsWith('ch') ? 'es' : 's'}',
                       ),
                       for (final b in branchOptionsInView(me))
                         SearchOption<String?>(value: b.id, label: b.label),
@@ -492,7 +494,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     value: _tag,
                     label: 'Tag',
                     options: [
-                      const SearchOption<String?>(value: null, label: 'Any tag'),
+                      const SearchOption<String?>(
+                        value: null,
+                        label: 'Any tag',
+                      ),
                       for (final t in _knownTags)
                         SearchOption<String?>(value: t, label: t),
                     ],
@@ -520,9 +525,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     label: 'Sort',
                     options: [
                       for (final (key, up, down) in _sortWords(label))
-                        for (final ascending in _firstDirection(key)
-                            ? [true, false]
-                            : [false, true])
+                        for (final ascending
+                            in _firstDirection(key)
+                                ? [true, false]
+                                : [false, true])
                           SearchOption<String>(
                             value: '$key:${ascending ? 'asc' : 'desc'}',
                             label: ascending ? up : down,
@@ -562,7 +568,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   /// Whether a column's natural first direction is ascending -- the same rule
   /// a header click follows, so the picker lists the likelier choice first.
-  static bool _firstDirection(String key) => !(key == 'created' || key == 'jobs');
+  static bool _firstDirection(String key) =>
+      !(key == 'created' || key == 'jobs');
 
   /// People found by the search who are still only leads (2026-10-16): their
   /// own rows above the customers, never mixed in, each opening the lead.
@@ -619,9 +626,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
               trailing: openLead == null
                   ? null
                   : const Icon(Icons.chevron_right),
-              onTap: openLead == null
-                  ? null
-                  : () => openLead('${lead['id']}'),
+              onTap: openLead == null ? null : () => openLead('${lead['id']}'),
             ),
         ],
       ),
@@ -866,10 +871,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         'Created',
         width: 104,
         sortKey: 'created',
-        cell: (_, c) => Text(
-          _createdOn(c),
-          style: TextStyle(color: muted),
-        ),
+        cell: (_, c) => Text(_createdOn(c), style: TextStyle(color: muted)),
       ),
     ];
   }
@@ -1319,7 +1321,8 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
     if (q.isEmpty) return _groups;
     return [
       for (final group in _groups)
-        if (_groupText(group).any((field) => field.toLowerCase().contains(q))) group,
+        if (_groupText(group).any((field) => field.toLowerCase().contains(q)))
+          group,
     ];
   }
 
@@ -1329,7 +1332,9 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
     yield by;
     yield value;
     if (by == 'phone') yield formatPhoneNumber(value);
-    for (final member in List<Map<String, dynamic>>.from(group['customers'] as List? ?? const [])) {
+    for (final member in List<Map<String, dynamic>>.from(
+      group['customers'] as List? ?? const [],
+    )) {
       final owner = member['owning_franchise'] as Map<String, dynamic>?;
       yield '${member['name'] ?? ''}';
       yield '${member['number'] ?? ''}';
@@ -1374,7 +1379,8 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
 
     return SidePanel(
       title: 'Possible duplicates',
-      subtitle: 'Across the whole organization — the same person booked by two '
+      subtitle:
+          'Across the whole organization — the same person booked by two '
           'branches is the one most worth finding.',
       actions: [
         FilledButton(
@@ -1407,7 +1413,10 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
                 else if (_groups.isEmpty && _query.trim().isEmpty)
                   Text('Nothing looks duplicated.', style: text.bodyMedium)
                 else if (_matching.isEmpty)
-                  Text('No duplicates match "${_query.trim()}".', style: text.bodyMedium)
+                  Text(
+                    'No duplicates match "${_query.trim()}".',
+                    style: text.bodyMedium,
+                  )
                 else ...[
                   // Says only what a person can actually do. It used to say
                   // "correct or remove one", and a real duplicate always has jobs,
@@ -1457,7 +1466,8 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
           ),
           ...members.map((member) {
             final owner = member['owning_franchise'] as Map<String, dynamic>?;
-            final company = (owner?['company'] as Map<String, dynamic>?)?['name'];
+            final company =
+                (owner?['company'] as Map<String, dynamic>?)?['name'];
             final franchise = owner?['name'] ?? '';
 
             return ListTile(

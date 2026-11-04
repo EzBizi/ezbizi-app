@@ -647,6 +647,12 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
       d = DateTime(d.year, d.month + 1)
     ) {
       final at = d.isBefore(first) ? first : d;
+      // A part month at the left edge is labelled only if its label fits
+      // before the next month's; otherwise the two drew on top of each other.
+      if (d.isBefore(first) &&
+          x(DateTime(d.year, d.month + 1)) - x(first) < 110) {
+        continue;
+      }
       labels.add(
         Positioned(
           left: x(at) + 4,
