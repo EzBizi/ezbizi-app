@@ -308,7 +308,7 @@ class LeadsController extends Controller
             $query->where('leads.status', Lead::STATUS_NEW)
                 ->whereNotIn('leads.source', Lead::SOURCES_NO_REPLY_OWED)
                 ->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
-                ->where('leads.last_contact_at', '<=', now()->subMinutes(Lead::REPLY_OVERDUE_AFTER_MINUTES))
+                ->where('leads.last_contact_at', '<=', now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes')))
                 ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_LOCAL_SERVICES)
                     ->orWhere('leads.lead_type', 'MESSAGE'))
                 ->where(fn ($q) => $q->whereNotIn('leads.source', Lead::SOURCES_VIA_CONNECTION)
@@ -574,7 +574,7 @@ class LeadsController extends Controller
         )->map(fn ($t) => [
             'name' => (string) ($t['label'] ?? $t),
             'text' => strtr((string) ($t['value'] ?? $t), [
-                '{{greeting}}' => $first === null ? 'Hi there' : "Hi {$first}",
+                '{{greeting}}' => Lead::greeting($first, $lead->organization_id),
                 '{{company}}' => (string) ($lead->company?->name ?? request()->user()->organization->name),
                 '{{missing}}' => $missingText,
                 '{{availability}}' => str_contains((string) ($t['value'] ?? ''), '{{availability}}')
@@ -1868,13 +1868,11 @@ class LeadsController extends Controller
     /**
      * "Connected" while nothing is being read. A Google Ads account is read
      * every few minutes and each read stamps `last_reached_at`; one that has
-     * not been reached in SYNC_FAILING_AFTER_HOURS is failing every read
+     * not been reached in leads.sync_failing_hours is failing every read
      * (2026-09-30: a row with no lasting permission stayed "connected" while
      * every tick refused it). Thumbtack is pushed to us, not read, so its
      * stamp says nothing and it never counts.
      */
-    private const SYNC_FAILING_AFTER_HOURS = 6;
-
     private static function syncFailing(SocialConnection $c): bool
     {
         if ($c->provider !== SocialProvider::GoogleAds->value || $c->status !== SocialConnection::STATUS_CONNECTED) {
@@ -1883,7 +1881,7 @@ class LeadsController extends Controller
 
         $since = $c->last_reached_at ?? $c->created_at;
 
-        return $since !== null && $since->lt(now()->subHours(self::SYNC_FAILING_AFTER_HOURS));
+        return $since !== null && $since->lt(now()->subHours((int) SettingsResolver::forOrganization('leads.sync_failing_hours', $c->organization_id)));
     }
 
     /**

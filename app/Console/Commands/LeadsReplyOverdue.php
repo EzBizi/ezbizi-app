@@ -14,7 +14,7 @@ use Illuminate\Console\Command;
 
 /**
  * Every minute: raise `lead.reply_overdue` for each customer message nobody
- * has answered in Lead::REPLY_OVERDUE_AFTER_MINUTES, so a rule can tell the
+ * has answered in leads.reply_overdue_minutes, so a rule can tell the
  * dispatchers (Jose, 2026-09-28: "sometimes they may miss a lead or forget to
  * reply after the customer replies and the customer is left waiting").
  *
@@ -37,7 +37,7 @@ class LeadsReplyOverdue extends Command
             ->whereIn('source', Lead::INBOX_SOURCES)
             ->where('status', Lead::STATUS_NEW)
             ->where('last_contact_from', LeadConversation::FROM_CONSUMER)
-            ->whereBetween('last_contact_at', [now()->subHours(6), now()->subMinutes(Lead::REPLY_OVERDUE_AFTER_MINUTES)])
+            ->whereBetween('last_contact_at', [now()->subHours(6), now()->subMinute()]) // each org's own minutes: replyOverdue()
             ->where(fn ($q) => $q->whereNull('reply_overdue_raised_at')->orWhereColumn('reply_overdue_raised_at', '<', 'last_contact_at'))
             ->get();
 
