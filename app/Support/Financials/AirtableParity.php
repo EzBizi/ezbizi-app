@@ -54,6 +54,15 @@ final class AirtableParity
         $table = FinancialTable::query()->where('source_base_id', $baseId)->where('source_table_id', $tableId)->orderBy('created_at')->first();
         $name = $table?->name ?? AirtableRecord::query()->where('base_id', $baseId)->where('table_id', $tableId)->value('table_name');
 
+        // An empty Airtable table never reaches the copy, so it has no name and no
+        // mirror (prod 11-04: Payroll "Table 1 copy", Repair GA/MA). Nothing on
+        // either side is agreement, not a missing table; a row that appears later
+        // turns it red until the backfill mirrors it.
+        if ($table === null && $airtable === []) {
+            return ['table_name' => $name, 'green' => true, 'cut_over' => false, 'airtable_rows' => 0,
+                'ezbizi_rows' => 0, 'diffs' => []];
+        }
+
         if ($table === null) {
             return ['table_name' => $name, 'green' => false, 'cut_over' => false, 'airtable_rows' => count($airtable),
                 'ezbizi_rows' => 0, 'diffs' => ['missing_table' => 'No EzBizi table holds this Airtable table yet: run the backfill.']];

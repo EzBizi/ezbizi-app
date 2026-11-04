@@ -227,4 +227,21 @@ class AirtableRetirementTest extends TestCase
             $this->assertNotContains(42, $source->rows()->pluck('Amount')->all()); // live store again (Airtable, not cut over)
         });
     }
+
+    /** Prod 11-04: an empty Airtable table (never copied, never mirrored) read red as "run the backfill". */
+    public function test_an_empty_airtable_table_with_no_mirror_is_green_until_a_row_appears(): void
+    {
+        $this->backfill();
+        $this->in(fn () => FinancialSource::create(['base_id' => self::BASE, 'table_id' => 'tblEmpty', 'role' => 'check_returns',
+            'franchise_id' => $this->t['franchise']->id, 'field_map' => ['amount' => 'Amount', 'date' => 'Date']]));
+
+        $this->artisan('ezbizi:airtable-parity')->assertSuccessful();
+        $checks = $this->in(fn () => FinancialParityCheck::query()->get()->keyBy('source_table_id'));
+        $this->assertTrue($checks['tblEmpty']->green, json_encode($checks['tblEmpty']->diffs));
+        $this->assertTrue($checks['tblRefunds']->green);
+
+        $this->in(fn () => $this->row('recE', ['Amount' => 3, 'Date' => '2026-10-05'], 'tblEmpty'));
+        $this->artisan('ezbizi:airtable-parity')->assertSuccessful();
+        $this->in(fn () => $this->assertArrayHasKey('missing_table', FinancialParityCheck::query()->where('source_table_id', 'tblEmpty')->sole()->diffs));
+    }
 }
