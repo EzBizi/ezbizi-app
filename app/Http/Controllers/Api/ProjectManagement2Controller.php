@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\AutomationEvent;
 use App\Models\Job;
+use App\Models\Organization;
 use App\Models\ProjectManagementSubmission;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Jobs\JobMoney;
 use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Workiz\WorkizMirror;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -26,9 +28,19 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class ProjectManagement2Controller extends Controller
 {
-    public const STATUS = 'done pending approval';
+    /**
+     * The organization's words for "done pending approval" and "submitted"
+     * (Jose, 2026-11-04: no business values in code), trimmed and lowercased.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function statuses(Organization $organization): array
+    {
+        $settings = app(SettingsResolver::class);
 
-    public const SUBMITTED = 'submitted';
+        return array_map(fn (string $k) => mb_strtolower(trim((string) $settings->get($k, $organization))),
+            ['jobs.pm2_pending_status', 'jobs.pm2_submitted_status']);
+    }
 
     public const TABS = ['pending', 'ready', 'submitted'];
 
@@ -50,7 +62,7 @@ class ProjectManagement2Controller extends Controller
         $tab = $input['tab'] ?? 'pending';
 
         // q is the search box: customer name, job ID (Workiz's or ours) or address.
-        $page = $this->tab($this->inView($user), $tab)
+        $page = $this->tab($this->inView($user), $tab, $user)
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q
                 ->where('number', 'like', "%{$term}%")
                 ->orWhereHas('workizJob', fn ($w) => $w->where('serial_id', 'like', "%{$term}%"))
@@ -70,7 +82,7 @@ class ProjectManagement2Controller extends Controller
             // Each tab's count, for its label, without the search. First page only:
             // "Load more" changes no count, and the three cost ~370 ms (2026-11-02).
             'meta' => $this->pageMeta($page) + ($page->currentPage() > 1 ? [] : ['counts' => collect(self::TABS)
-                ->mapWithKeys(fn (string $t) => [$t => $this->tab($this->inView($user), $t)->count()])->all()]),
+                ->mapWithKeys(fn (string $t) => [$t => $this->tab($this->inView($user), $t, $user)->count()])->all()]),
         ]);
     }
 
@@ -86,7 +98,8 @@ class ProjectManagement2Controller extends Controller
         $user = $this->allowed($request);
         $job = $this->inView($user)->with(self::WITH)->findOrFail($id);
         $this->authorize('update', $job);
-        abort_unless(mb_strtolower(trim((string) $job->status)) === self::STATUS, Response::HTTP_CONFLICT,
+        [$pending, $submitted] = self::statuses($user->organization);
+        abort_unless(mb_strtolower(trim((string) $job->status)) === $pending, Response::HTTP_CONFLICT,
             'This job is no longer done pending approval.');
         abort_unless((JobMoney::paidCents([$job->id])[$job->id] ?? 0) > 0, Response::HTTP_CONFLICT,
             'Nothing has been paid on this job yet.');
@@ -94,7 +107,7 @@ class ProjectManagement2Controller extends Controller
         $before = $job->status;
         // The organization's own word for it (A-1's is Workiz's, "Submitted").
         $job->status = collect(Job::allowedStatuses($job->franchise))
-            ->first(fn (string $s) => strcasecmp(trim($s), self::SUBMITTED) === 0) ?? 'Submitted';
+            ->first(fn (string $s) => strcasecmp(trim($s), $submitted) === 0) ?? $submitted;
         $change = ['before' => ['status' => $before], 'after' => ['status' => $job->status]];
 
         DB::transaction(function () use ($job, $change, $audit, $events) {
@@ -191,9 +204,10 @@ class ProjectManagement2Controller extends Controller
      * full. Submitted: jobs now Submitted that came from done pending
      * approval, by this tab's button or in Workiz, latest first.
      */
-    private function tab(Builder $jobs, string $tab): Builder
+    private function tab(Builder $jobs, string $tab, User $user): Builder
     {
-        $dpa = fn (Builder $q) => $q->whereRaw('LOWER(TRIM(status)) = ?', [self::STATUS]);
+        [$pending, $submitted] = self::statuses($user->organization);
+        $dpa = fn (Builder $q) => $q->whereRaw('LOWER(TRIM(status)) = ?', [$pending]);
 
         return match ($tab) {
             'pending' => $dpa($jobs),
@@ -202,7 +216,7 @@ class ProjectManagement2Controller extends Controller
             // Read from the stored submissions, kept for good (Jose, 2026-11-02), not the
             // events, which expire in 3 months. One grouped pass, joined: a subquery per
             // row took 2.1 s for this tab on 2026-11-02.
-            'submitted' => $jobs->whereRaw('LOWER(TRIM(jobs.status)) = ?', [self::SUBMITTED])
+            'submitted' => $jobs->whereRaw('LOWER(TRIM(jobs.status)) = ?', [$submitted])
                 ->joinSub(ProjectManagementSubmission::query()->groupBy('job_id')->selectRaw('job_id, MAX(submitted_at) AS submitted_at'),
                     'submitted', 'submitted.job_id', '=', 'jobs.id')
                 ->select('jobs.*')

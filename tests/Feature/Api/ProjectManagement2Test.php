@@ -56,6 +56,22 @@ class ProjectManagement2Test extends TestCase
         $this->assertNotEmpty($rows[0]['status']);
     }
 
+    public function test_the_status_listed_is_the_organizations_setting(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->inTenant($alpha['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)
+            ->set('jobs.pm2_pending_status', $alpha['org'], 'Awaiting Sign-off'));
+        $id = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $this->job($alpha, 'J-2', 'done pending approval');
+
+            return $this->job($alpha, 'J-1', 'awaiting sign-off');
+        });
+
+        $rows = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs')->assertOk()->json('data');
+
+        $this->assertSame([$id], array_column($rows, 'id'));
+    }
+
     public function test_money_is_absent_without_financials_and_the_module_is_required(): void
     {
         $alpha = $this->provisionTenant('Alpha');

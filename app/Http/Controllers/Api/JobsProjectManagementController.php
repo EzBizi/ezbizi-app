@@ -63,7 +63,7 @@ class JobsProjectManagementController extends Controller
         // Only the stage lists need watched statuses; a stat's jobs and Recently Paid
         // stand without them (2026-10-22: a cleared setting emptied every drill-down).
         if ($watched === [] && ! isset($input['ids']) && ($input['filter'] ?? null) !== 'recently_paid') {
-            return response()->json(['data' => [], 'meta' => ['watched' => [], 'deadline_days' => EstimateAging::DAYS]]);
+            return response()->json(['data' => [], 'meta' => ['watched' => [], 'deadline_days' => EstimateAging::days($user->organization)]]);
         }
 
         $left = AutomationEvent::query()->where('event_key', 'job.status_changed')->where('subject_type', Job::class)
@@ -139,7 +139,7 @@ class JobsProjectManagementController extends Controller
             ? $daysOk($base()->whereIn('id', JobMoney::paidJobIds(...$this->window($input, $user, $settings)))
                 ->with('franchise:id,timezone')->get())->count() : null] + $counts;
 
-        return response()->json(['data' => $rows, 'meta' => ['watched' => $watched, 'deadline_days' => EstimateAging::DAYS, 'counts' => $counts]]);
+        return response()->json(['data' => $rows, 'meta' => ['watched' => $watched, 'deadline_days' => EstimateAging::days($user->organization), 'counts' => $counts]]);
     }
 
     /** @param  array{total: ?int, paid: int}|null  $m  the job's JobMoney */
@@ -206,8 +206,9 @@ class JobsProjectManagementController extends Controller
         $watched = (array) $settings->get('jobs.estimate_aging_statuses', $user->organization);
         $waitingIds = $watched === [] ? [] : (clone $jobs)->whereIn('status', $watched)->pluck('id')->all();
         $paid = JobMoney::paidCents($waitingIds);
-        $due = array_keys(array_filter(EstimateAging::latestEstimateDates($waitingIds), function (string $d, string $id) use ($paid, $input) {
-            $deadline = Carbon::parse($d)->addDays(EstimateAging::DAYS)->toDateString();
+        $days = EstimateAging::days($user->organization);
+        $due = array_keys(array_filter(EstimateAging::latestEstimateDates($waitingIds), function (string $d, string $id) use ($paid, $input, $days) {
+            $deadline = Carbon::parse($d)->addDays($days)->toDateString();
 
             return ($paid[$id] ?? 0) <= 0 && $deadline >= $input['from'] && $deadline <= $input['to'];
         }, ARRAY_FILTER_USE_BOTH));
@@ -261,6 +262,14 @@ class JobsProjectManagementController extends Controller
             ])) ?: 'Tags changed',
             default => $step['kind'],
         };
+    }
+
+    private ?int $deadlineDays = null;
+
+    /** jobs.estimate_deadline_days, read once per request. */
+    private function deadlineDays(Job $job): int
+    {
+        return $this->deadlineDays ??= EstimateAging::days($job->organization);
     }
 
     private function row(Job $job, array $watched, bool $money, ?string $estimateDate, ?array $m, Collection $payments, Collection $events): array
@@ -342,9 +351,9 @@ class JobsProjectManagementController extends Controller
                 // since the rule cancels on "nothing paid", and stops at the
                 // first payment. deadline_at is that day's start in the
                 // branch's zone, for a countdown in days and hours.
-                'deadline' => $stage === 'waiting' ? Carbon::parse($estimateDate)->addDays(EstimateAging::DAYS)->toDateString() : null,
+                'deadline' => $stage === 'waiting' ? Carbon::parse($estimateDate)->addDays($this->deadlineDays($job))->toDateString() : null,
                 'deadline_at' => $stage === 'waiting'
-                    ? Carbon::parse($estimateDate, $today->timezone)->addDays(EstimateAging::DAYS)->toIso8601String() : null,
+                    ? Carbon::parse($estimateDate, $today->timezone)->addDays($this->deadlineDays($job))->toIso8601String() : null,
                 'timer' => match (true) { ! $open => 'closed', $stage === 'waiting' => 'running', default => 'stopped' },
             ],
             'timeline' => $timeline->sortBy('at')->map(fn (array $s) => $s + ['what' => $this->what($s)])->values()->all(),

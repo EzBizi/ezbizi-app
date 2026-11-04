@@ -42,17 +42,25 @@ class ProjectManagementSubmission extends Model implements StatesRetention
     public static function record(): int
     {
         $since = DB::table('project_management_submissions')->max('submitted_at');
+        $recorded = 0;
 
-        return DB::affectingStatement(
-            'INSERT IGNORE INTO project_management_submissions (id, organization_id, job_id, automation_event_id, submitted_at)
-             SELECT UUID(), e.organization_id, e.subject_id, e.id, e.occurred_at
-             FROM automation_events e JOIN jobs j ON j.id = e.subject_id
-             WHERE e.event_key = ? AND e.subject_type = ?
-               AND LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(e.payload, \'$.before.status\')))) = ?
-               AND LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(e.payload, \'$.after.status\')))) = ?'
-            .($since === null ? '' : ' AND e.occurred_at >= DATE_SUB(?, INTERVAL 1 DAY)'),
-            array_merge(['job.status_changed', Job::class, ProjectManagement2Controller::STATUS, ProjectManagement2Controller::SUBMITTED],
-                $since === null ? [] : [$since]),
-        );
+        // Each organization's own two statuses (jobs.pm2_*_status).
+        foreach (Organization::query()->get() as $organization) {
+            [$pending, $submitted] = app(\App\Support\Tenancy\TenantContext::class)
+                ->run($organization, fn () => ProjectManagement2Controller::statuses($organization));
+            $recorded += DB::affectingStatement(
+                'INSERT IGNORE INTO project_management_submissions (id, organization_id, job_id, automation_event_id, submitted_at)
+                 SELECT UUID(), e.organization_id, e.subject_id, e.id, e.occurred_at
+                 FROM automation_events e JOIN jobs j ON j.id = e.subject_id
+                 WHERE e.organization_id = ? AND e.event_key = ? AND e.subject_type = ?
+                   AND LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(e.payload, \'$.before.status\')))) = ?
+                   AND LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(e.payload, \'$.after.status\')))) = ?'
+                .($since === null ? '' : ' AND e.occurred_at >= DATE_SUB(?, INTERVAL 1 DAY)'),
+                array_merge([$organization->id, 'job.status_changed', Job::class, $pending, $submitted],
+                    $since === null ? [] : [$since]),
+            );
+        }
+
+        return $recorded;
     }
 }
