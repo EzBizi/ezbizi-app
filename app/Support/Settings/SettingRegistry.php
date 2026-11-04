@@ -968,6 +968,24 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 help: 'How long the review link sent after a job keeps knowing who the customer is.',
             ),
+            new SettingDefinition(
+                key: 'customers.membership_reminder_days', label: 'Membership renewal reminder (days before the year ends)',
+                type: SettingDefinition::TYPE_INT, default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'When the "Renewal due" trigger fires for a member.',
+            ),
+            new SettingDefinition(
+                key: 'customers.membership_follow_up_days', label: 'Membership follow-up when no visit is booked (days after the reminder)',
+                type: SettingDefinition::TYPE_INT, default: 14,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'When the "No visit date" trigger fires so staff can call.',
+            ),
+            new SettingDefinition(
+                key: 'customers.membership_visit_months', label: 'Membership visit can be booked up to (months after the year ends)',
+                type: SettingDefinition::TYPE_INT, default: 6,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'The latest day a member can pick for their next visit.',
+            ),
         ];
     }
 

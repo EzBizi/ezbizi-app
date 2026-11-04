@@ -46,7 +46,7 @@ button:focus-visible,input:focus-visible{outline:3px solid #00B4D8;outline-offse
   @if ($error)<p class="error">{{ $error }}</p>@endif
   <form method="post">
     <label for="visit-date">Day of your visit</label>
-    <input type="date" id="visit-date" name="date" required min="{{ now()->addDay()->toDateString() }}" max="{{ $membership->ends_on->addMonths(\App\Http\Controllers\Api\MembershipsPublicController::VISIT_MONTHS_AFTER)->toDateString() }}" value="{{ max($membership->ends_on->toDateString(), now()->addDay()->toDateString()) }}">
+    <input type="date" id="visit-date" name="date" required min="{{ now()->addDay()->toDateString() }}" max="{{ $membership->ends_on->addMonths(\App\Models\Membership::setting('customers.membership_visit_months', $membership->organization_id))->toDateString() }}" value="{{ max($membership->ends_on->toDateString(), now()->addDay()->toDateString()) }}">
     <button type="submit">Book this day</button>
   </form>
 @endif

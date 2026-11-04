@@ -123,4 +123,17 @@ class MembershipsVisitTest extends TestCase
         $this->assertSame(0, $this->events('membership.visit_unconfirmed'));
         CarbonImmutable::setTestNow();
     }
+
+    public function test_the_follow_up_wait_is_the_organizations_setting(): void
+    {
+        $this->inTenant($this->t['org'], fn () => \App\Models\Setting::create(['organization_id' => $this->t['org']->id,
+            'scope_type' => 'organization', 'scope_id' => $this->t['org']->id, 'key' => 'customers.membership_follow_up_days', 'value' => 3]));
+        app()->forgetInstance(\App\Support\Settings\SettingsResolver::class);
+
+        $this->artisan('memberships:remind-renewals')->assertSuccessful();
+        CarbonImmutable::setTestNow(CarbonImmutable::now()->addDays(4));
+        $this->artisan('memberships:remind-renewals')->assertSuccessful();
+        $this->assertSame(1, $this->events('membership.visit_unconfirmed'), 'Three days, not the default fourteen.');
+        CarbonImmutable::setTestNow();
+    }
 }

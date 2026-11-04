@@ -88,6 +88,14 @@ class Membership extends Model implements StatesRetention
         return max(0, $owed - $this->paid_minor);
     }
 
+    /** A membership business value from the organization's settings (Jose, 11-04: no constants). */
+    public static function setting(string $key, string $organizationId): int
+    {
+        $organization = Organization::query()->withoutGlobalScopes()->findOrFail($organizationId);
+
+        return max(1, (int) app(\App\Support\Settings\SettingsResolver::class)->get($key, $organization));
+    }
+
     public function visitJob(): BelongsTo
     {
         return $this->belongsTo(Job::class, 'visit_job_id');
@@ -102,7 +110,7 @@ class Membership extends Model implements StatesRetention
     {
         return URL::temporarySignedRoute(
             'memberships.visit',
-            $this->ends_on->addMonth()->endOfDay(),
+            $this->ends_on->addMonths(self::setting('customers.membership_visit_months', $this->organization_id))->endOfDay(),
             ['membership' => $this->getKey()],
         );
     }
