@@ -365,7 +365,7 @@ final class SameDayReport
 
     private static function zone(?Franchise $branch): string
     {
-        return $branch?->timezone ?: 'America/New_York';
+        return $branch?->timezone ?: \App\Support\Settings\OrgTimezone::of();
     }
 
     private static function dateLabel(string $date): string

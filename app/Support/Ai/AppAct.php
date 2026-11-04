@@ -37,11 +37,11 @@ final class AppAct
     /** @return array{method: string, path: string, body: array, summary: string}|null */
     public static function plan(string $request, int $timeout = 60): ?array
     {
-        $today = now('America/New_York');
+        $today = now(\App\Support\Settings\OrgTimezone::of());
         $p = GrokCli::ask(
             'You have NO tools and cannot read code or files: only choose from the ENDPOINTS list below. '
             .'A staff member of a home-services business asked their CRM, EzBizi, to DO something. '
-            ."Today is {$today->toDateString()} ({$today->format('l')}), America/New_York. Pick the ONE "
+            ."Today is {$today->toDateString()} ({$today->format('l')}), {$today->getTimezone()->getName()}. Pick the ONE "
             .'endpoint (method, path relative to api/v1 with {placeholders} filled in, JSON body) that '
             .'does it, and a one-line summary in plain words of exactly what will change. If no endpoint '
             .'does it, or you would have to guess an id or a value, return method "".'

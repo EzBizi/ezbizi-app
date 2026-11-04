@@ -226,7 +226,7 @@ final class DailyTexts
         $plural = fn (int $n) => $n.' job'.($n === 1 ? '' : 's');
 
         $lines = ["\u{1F9F0} *Today's In Progress jobs by technician*",
-            '_'.$day->format('D, M j, Y').' · measured '.now('America/New_York')->format('g:i A').' ET from EzBizi jobs_',
+            '_'.$day->format('D, M j, Y').' · measured '.now(\App\Support\Settings\OrgTimezone::of())->format('g:i A T').' from EzBizi jobs_',
             '_Excludes jobs tagged Deposit Received._'];
         $empty = [];
         $assigned = 0;

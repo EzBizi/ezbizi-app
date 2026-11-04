@@ -30,7 +30,7 @@ class WhatsAppSameDayReports extends Command
 
     public function handle(TenantContext $tenant, WhatsAppGroups $groups): int
     {
-        $date = (string) ($this->option('date') ?: Carbon::now('America/New_York')->toDateString());
+        $date = (string) ($this->option('date') ?: Carbon::now(\App\Support\Settings\OrgTimezone::of())->toDateString());
         $sent = 0;
 
         $organizations = Organization::query()->withoutGlobalScopes()

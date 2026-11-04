@@ -37,7 +37,7 @@ final class WhatsAppPeriodReports
     /** The batch for the period that just ended, made once. */
     public function batchFor(string $period, ?Carbon $today = null): WhatsAppReportBatch
     {
-        $today = ($today ?? Carbon::now('America/New_York'))->copy()->startOfDay();
+        $today = ($today ?? Carbon::now(\App\Support\Settings\OrgTimezone::of()))->copy()->startOfDay();
 
         [$from, $to] = $period === 'month'
             ? [$today->copy()->subMonthNoOverflow()->startOfMonth(), $today->copy()->subMonthNoOverflow()->endOfMonth()]

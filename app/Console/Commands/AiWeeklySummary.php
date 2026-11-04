@@ -35,7 +35,7 @@ class AiWeeklySummary extends Command
             return self::SUCCESS;
         }
 
-        $to = CarbonImmutable::now('America/New_York')->startOfWeek()->subDay();   // last Sunday
+        $to = CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of())->startOfWeek()->subDay();   // last Sunday
         $from = $to->subDays(6);
 
         foreach (Organization::query()->withoutGlobalScopes()->get() as $organization) {

@@ -535,7 +535,7 @@ final class Openings
         try {
             return CarbonImmutable::now($timezone)->startOfDay()->addDay();
         } catch (\Throwable) {
-            return CarbonImmutable::now('America/New_York')->startOfDay()->addDay();
+            return CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of())->startOfDay()->addDay();
         }
     }
 

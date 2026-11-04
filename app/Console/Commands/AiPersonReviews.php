@@ -32,7 +32,7 @@ class AiPersonReviews extends Command
         }
 
         $weekly = $this->argument('period') === 'weekly';
-        $zone = 'America/New_York';
+        $zone = \App\Support\Settings\OrgTimezone::of();
         $day = $this->option('date') ? CarbonImmutable::parse($this->option('date'), $zone)
             : CarbonImmutable::now($zone)->subDays($weekly ? 7 : 1);
         [$from, $to] = $weekly ? [$day->startOfWeek(), $day->endOfWeek()] : [$day->startOfDay(), $day->endOfDay()];
