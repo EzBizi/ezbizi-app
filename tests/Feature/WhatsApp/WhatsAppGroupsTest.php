@@ -4,6 +4,7 @@ namespace Tests\Feature\WhatsApp;
 
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
+use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppPendingReport;
 use App\Support\Social\WhatsAppGroups;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -102,6 +103,32 @@ class WhatsAppGroupsTest extends TestCase
             ['13055550102'],
             WhatsAppPendingReport::query()->withoutGlobalScopes()->whereNull('delivered_at')->pluck('counterparty')->all(),
         );
+    }
+
+    /** 2026-11-04: Technician sales was refused, "text.body must be at most 4096 characters". */
+    public function test_a_long_text_goes_in_pieces_with_one_notice(): void
+    {
+        $group = $this->group();
+        $recent = $this->member($group, '(305) 555-0101');
+        $quiet = $this->member($group, '(305) 555-0102');
+        $this->inTenant($this->t['org'], fn () => WhatsAppMessage::create([
+            'phone_number_id' => self::NUMBER, 'direction' => WhatsAppMessage::DIRECTION_IN,
+            'counterparty' => '13055550101', 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi',
+        ]));
+        $body = implode("\n", array_fill(0, 300, str_repeat('x', 29))); // 300 lines, 8,999 characters
+
+        $this->inTenant($this->t['org'], function () use ($recent, $quiet, $body) {
+            $number = WhatsAppNumber::query()->firstOrFail();
+            app(WhatsAppGroups::class)->deliverTextToUser($number, $recent, 'Technician sales', $body);
+            app(WhatsAppGroups::class)->deliverTextToUser($number, $quiet, 'Technician sales', $body);
+        });
+
+        $toRecent = collect($this->sent)->where('to', '13055550101');
+        $this->assertCount(3, $toRecent);
+        $this->assertTrue($toRecent->every(fn ($m) => mb_strlen($m['text']['body']) <= 4000));
+        $this->assertSame($body, $toRecent->pluck('text.body')->implode("\n"));
+        $this->assertCount(1, collect($this->sent)->where('to', '13055550102'), 'one notice');
+        $this->assertSame(3, WhatsAppPendingReport::query()->withoutGlobalScopes()->where('counterparty', '13055550102')->count());
     }
 
     public function test_show_report_delivers_what_was_held_and_nothing_else(): void

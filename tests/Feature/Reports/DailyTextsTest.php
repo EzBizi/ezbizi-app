@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\Company;
 use App\Models\Customer;
 use App\Models\FinancialResult;
+use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
@@ -79,13 +81,14 @@ class DailyTextsTest extends TestCase
     public function test_dispatchers_from_performance_people(): void
     {
         $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn([
-            'Ada' => ['person' => 'Ada', 'answered' => 10, 'new_client' => 4, 'jobs' => 2],
+            'Ada' => ['person' => 'Ada', 'answered' => 10, 'new_client' => 4, 'booked_new' => 2, 'jobs' => 3],
             'Bo' => ['person' => 'Bo', 'answered' => 0, 'new_client' => 0, 'jobs' => 0],
         ]);
 
         $text = $this->text('dispatchers');
 
-        $this->assertStringContainsString('• *Ada*: 2 jobs created · 10 answered · 50.0% of new-client calls', $text);
+        // Booked out of answered new-client calls, not jobs over them (Trey, 2026-11-04).
+        $this->assertStringContainsString('• *Ada*: 3 jobs created · 10 answered · 50.0% of new-client calls booked', $text);
         $this->assertStringNotContainsString('Bo', $text);
     }
 
@@ -101,7 +104,47 @@ class DailyTextsTest extends TestCase
         $text = $render('marketing_ppc');
         $this->assertStringContainsString('Branch area', $text);
         $this->assertStringNotContainsString('HQ area', $text);
-        $this->assertStringContainsString('whole organization only', $render('dispatchers'));
+        $this->assertStringContainsString('No phone account answers for these branches alone', $render('dispatchers'));
+    }
+
+    /**
+     * 2026-11-04: A-1's rule read EverDoors' phones, first() of two accounts
+     * with nobody signed in. A rule reads the accounts that answer for its
+     * branches alone; the organization's reads each, a section apiece.
+     */
+    public function test_dispatchers_read_the_phone_accounts_the_rule_covers(): void
+    {
+        $t = $this->t;
+        [$ours, $theirs] = $this->inTenant($t['org'], function () use ($t) {
+            $other = Company::query()->create(['organization_id' => $t['org']->id, 'name' => 'Doors', 'is_active' => true]);
+            $doors = Franchise::query()->create(['organization_id' => $t['org']->id, 'company_id' => $other->id, 'name' => 'Doors CT',
+                'timezone' => 'America/New_York', 'currency' => 'USD', 'is_active' => true]);
+            $phone = function (string $type, string $scope, string $name) use ($t) {
+                $c = new SocialConnection;
+                $c->forceFill(['organization_id' => $t['org']->id, 'scope_type' => $type, 'scope_id' => $scope,
+                    'provider' => SocialProvider::RingCentral->value, 'remote_id' => Str::random(6), 'display_name' => $name]);
+                $c->connect(['jwt' => 'j']);
+                $c->save();
+
+                return (string) $c->id;
+            };
+
+            return [$phone('company', (string) $t['company']->id, 'Chimney'), $phone('franchise', (string) $doors->id, 'Doors')];
+        });
+        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturnUsing(fn ($u, $from, $to, $connection) => match ($connection) {
+            $ours => ['Ada' => ['person' => 'Ada', 'answered' => 5, 'new_client' => 0, 'jobs' => 1]],
+            $theirs => ['Eve' => ['person' => 'Eve', 'answered' => 7, 'new_client' => 0, 'jobs' => 2]],
+        });
+        $render = fn (?array $branches) => $this->inTenant($t['org'], fn () => app(DailyTexts::class)
+            ->render('dispatchers', $t['org'], CarbonImmutable::parse('2026-10-20'), $branches));
+
+        $mine = $render([(string) $t['franchise']->id]);
+        $this->assertStringContainsString('*Ada*', $mine);
+        $this->assertStringNotContainsString('Eve', $mine);
+
+        $all = $render(null);
+        $this->assertStringContainsString("*Chimney*\n*Jobs created: 1*", $all);
+        $this->assertStringContainsString("*Doors*\n*Jobs created: 2*", $all);
     }
 
     /** Desk, 2026-10-29: A1 Leads' 8:30 assignments, from EzBizi's own jobs; Deposit Received left out. */

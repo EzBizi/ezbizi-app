@@ -21,8 +21,23 @@ class PerformancePeople
         private CallReconciliation $reconcile,
     ) {}
 
-    /** @return array<string, array<string, mixed>> person => row; empty without RingCentral */
-    public function for(?User $user, CarbonImmutable $start, CarbonImmutable $end): array
+    /**
+     * $connection reads that RingCentral account alone; null, the default one.
+     *
+     * @return array<string, array<string, mixed>> person => row; empty without RingCentral
+     */
+    public function for(?User $user, CarbonImmutable $start, CarbonImmutable $end, ?string $connection = null): array
+    {
+        $this->calls->only($connection);
+        try {
+            return $this->people($start, $end);
+        } finally {
+            $this->calls->only(null);
+        }
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    private function people(CarbonImmutable $start, CarbonImmutable $end): array
     {
         if (! $this->calls->configured()) {
             return [];
