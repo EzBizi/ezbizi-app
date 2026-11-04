@@ -1898,19 +1898,23 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ),
   ];
 
-  /// Calls [person] answered that were booked: the credit goes to who took
-  /// the call, never to everyone it rang (Jose, 2026-11-03).
-  int _booked(Map<String, dynamic> person) => [
+  /// New-client calls [person] answered: the credit goes to who took the
+  /// call, never to everyone it rang (Jose, 2026-11-03).
+  List<Map> _answeredNew(Map<String, dynamic> person) => [
     for (final call in (_report?['calls'] as List? ?? const []))
       if (call is Map &&
           call['answered_by'] == person['person'] &&
-          call['booked'] == true)
+          call['queue'] == _newQueue)
         call,
-  ].length;
+  ];
 
-  /// Booked out of answered (design 170); null when they answered nothing.
+  int _booked(Map<String, dynamic> person) =>
+      _answeredNew(person).where((c) => c['booked'] == true).length;
+
+  /// Booked out of the new-client calls they answered (Trey, 2026-11-04:
+  /// existing clients are not bookings); null when they answered none.
   double? _bookingRate(Map<String, dynamic> person) {
-    final answered = (person['answered'] as num?) ?? 0;
+    final answered = _answeredNew(person).length;
     if (answered == 0) return null;
 
     return _booked(person) / answered * 100;
@@ -2226,14 +2230,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                                 ),
                                 if (group == 'Sales')
                                   Tooltip(
-                                    message: 'Rates count answered calls only.',
+                                    message:
+                                        'Booking rate: booked out of the new-client calls they answered.',
                                     child: Padding(
                                       padding: const EdgeInsets.only(left: 4),
                                       child: Icon(
                                         Icons.info_outline,
                                         size: 13,
                                         semanticLabel:
-                                            'Rates count answered calls only.',
+                                            'Booking rate: booked out of the new-client calls they answered.',
                                         color:
                                             theme.colorScheme.onSurfaceVariant,
                                       ),

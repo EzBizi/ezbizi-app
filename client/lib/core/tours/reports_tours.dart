@@ -89,7 +89,8 @@ const Map<String, Tour> reportsTours = {
         body:
             'Phone: what rang each person, what they answered, what a '
             'teammate took (Not answered) and what nobody took (Missed). '
-            'Sales counts only the calls they answered.',
+            'Booking rate is what they booked out of the new-client calls '
+            'they answered.',
       ),
       TourStep(
         anchor: 'tour-person-filters',
