@@ -24,6 +24,7 @@ class VersionHistory {
         'WhatsApp assistant answers questions about a named company correctly.',
         'Posts to approve always has a post for each listing; the next one is written as soon as you decide.',
         'Complaints show what the customer said on the complaint call.',
+        'Leads: a new Facebook, Instagram or WhatsApp message moves the lead to the top.',
         'Automations: a rule switched off after failures shows Off; switching it on re-enables it.',
         'Company › KPIs shows the company line as a Total and no nameless rows.',
         'Phone screens: many layout fixes across the app; pickers open as side panels.',
