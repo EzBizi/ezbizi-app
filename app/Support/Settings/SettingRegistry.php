@@ -1376,6 +1376,15 @@ class SettingRegistry
                 editPermission: 'phone.edit',
                 help: 'Said to a caller on hold before their place in line.',
             ),
+            new SettingDefinition(
+                key: 'phone.request_cooldown_days',
+                label: 'Days before a declined number request can be asked again',
+                type: SettingDefinition::TYPE_INT,
+                default: 7,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'Counted from the decision. Approved requests are not affected.',
+            ),
         ];
     }
 
