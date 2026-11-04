@@ -153,13 +153,17 @@ class ComplaintsController extends Controller
         ]]);
     }
 
-    /** @param array{review: Collection, lead: Collection} $sources */
+    /** @param array{review: Collection, lead: Collection, calls: Collection} $sources */
     private function present(Complaint $c, array $sources): array
     {
         $source = $sources[$c->source_type][$c->source_id] ?? null;
         [$title, $summary, $phone] = match (true) {
             $source instanceof Review => [$source->reviewer_name, $source->comment, null],
-            $source instanceof Lead => [$source->contact_name, $source->summary, $source->phone],
+            // A complaint call shows what was said on THAT call, not the lead's first call,
+            // which is usually the booking (UI audit 2026-11-04: the queue read as bookings).
+            $source instanceof Lead => [$source->contact_name,
+                $c->kind === 'call_complaint' ? ($this->callSummary($sources['calls'][$c->source_id] ?? collect(), $c) ?? $source->summary) : $source->summary,
+                $source->phone],
             default => [null, null, null],
         };
 
@@ -186,7 +190,19 @@ class ComplaintsController extends Controller
         return [
             'review' => Review::query()->whereIn('id', $ids('review'))->get(['id', 'reviewer_name', 'comment'])->keyBy('id'),
             'lead' => Lead::query()->whereIn('id', $ids('lead'))->get(['id', 'contact_name', 'summary', 'phone'])->keyBy('id'),
+            'calls' => \App\Models\AutomationEvent::query()->where('event_key', 'lead.call_complaint')
+                ->whereIn('subject_id', $complaints->where('kind', 'call_complaint')->pluck('source_id')->all())
+                ->get(['subject_id', 'occurred_at', 'payload'])->groupBy('subject_id'),
         ];
+    }
+
+    /** The complaint call's own summary: the call that raised it, else the lead's latest complaint call. */
+    private function callSummary(Collection $calls, Complaint $c): ?string
+    {
+        $call = $calls->first(fn ($e) => $e->occurred_at?->equalTo($c->raised_at)) ?? $calls->sortByDesc('occurred_at')->first();
+        $summary = trim((string) ($call?->payload['after']['summary'] ?? ''));
+
+        return $summary === '' ? null : $summary;
     }
 
     /** Reach, then the current view: what the list shows and what may be opened. */
