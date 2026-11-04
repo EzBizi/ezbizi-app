@@ -22,7 +22,8 @@ class PhoneLineAnswerTestTest extends TestCase
         $twilio = new FakeTwilioGateway;
         $this->app->instance(TwilioGateway::class, $twilio);
         $t = $this->provisionTenant();
-        config(['services.twilio.audit_alert_user_ids' => [$t['admin']->id]]);
+        $this->inTenant($t['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('phone.audit_alert_emails', $t['org'], $t['admin']->email));
+        $this->inTenant($t['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('phone.audit_call_from', $t['org'], '+18559553322'));
 
         $this->inTenant($t['org'], function () use ($t) {
             $connection = PhoneConnection::factory()->create([

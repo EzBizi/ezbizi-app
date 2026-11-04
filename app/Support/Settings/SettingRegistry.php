@@ -277,6 +277,23 @@ class SettingRegistry
     private function operations(): array
     {
         return [
+            // Fleet's "due soon" window (Jose, 2026-11-04: every business value
+            // editable). Read by FleetSummary::soonDays/soonMiles everywhere
+            // Fleet says soon: the list chips, the General tab, the glance.
+            new SettingDefinition(
+                key: 'fleet.soon_days', label: 'Fleet: due soon within (days)',
+                type: SettingDefinition::TYPE_INT, default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                section: 'Fleet',
+                help: 'Service, registration, inspection and insurance dates this close count as due soon.',
+            ),
+            new SettingDefinition(
+                key: 'fleet.soon_miles', label: 'Fleet: service due soon within (miles)',
+                type: SettingDefinition::TYPE_INT, default: 500,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                section: 'Fleet',
+                help: 'A vehicle this many miles from its next service counts as due soon.',
+            ),
             new SettingDefinition(
                 key: 'ops.business_hours', label: 'Business hours',
                 type: SettingDefinition::TYPE_HOURS,
@@ -1053,6 +1070,18 @@ class SettingRegistry
                 help: 'Any case. A job with one of these as a tag is in dispute.',
             ),
             new SettingDefinition(
+                key: 'ads.lsa_warn_days', label: 'Warn before a Local Services licence or insurance expires (days)',
+                type: SettingDefinition::TYPE_INT, default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Ads › Local Services flags a document this many days before it expires.',
+            ),
+            new SettingDefinition(
+                key: 'leads.booking_link_days', label: 'Booking links work for (days)',
+                type: SettingDefinition::TYPE_INT, default: 14,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'How long a booking link texted or emailed to a lead keeps working.',
+            ),
+            new SettingDefinition(
                 key: 'jobs.pm_stopped_days', label: 'Payments count as stopped after (days)',
                 type: SettingDefinition::TYPE_INT, default: 30,
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
@@ -1251,6 +1280,64 @@ class SettingRegistry
                 editPermission: 'phone.edit',
                 help: 'A card with the caller and Accept or Ignore, which can be dragged out of '
                     .'the way. The strip at the top of the screen appears either way.',
+            ),
+            // Line checks (Jose, 2026-11-04: every business value editable, no code constants).
+            new SettingDefinition(
+                key: 'phone.audit_alert_emails',
+                label: 'Phone check alerts go to',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'Emails, separated by commas, of the people told when the nightly line check or the test call finds a '
+                    .'problem. They also get it on WhatsApp once the alert template is approved. Empty: nobody.',
+            ),
+            new SettingDefinition(
+                key: 'phone.audit_call_from',
+                label: 'Test calls come from',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'One of your numbers, like +18559553322, that rings your other lines every two '
+                    .'weeks after hours to check they answer. Empty: no test calls.',
+            ),
+            new SettingDefinition(
+                key: 'phone.voice_elsewhere_ok',
+                label: 'Lines whose calls go elsewhere on purpose',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'Numbers separated by commas, like +18559553322, the line check should not warn about when their '
+                    .'calls are answered outside EzBizi. Texts are still checked.',
+            ),
+            new SettingDefinition(
+                key: 'phone.ringcentral_companies',
+                label: 'RingCentral line names by company',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'For missed-call alerts: a RingCentral line whose name starts with the text is that '
+                    .'company\'s. Text is the start of the line name, name is the company.',
+            ),
+            new SettingDefinition(
+                key: 'phone.missed_call_fresh_minutes',
+                label: 'Missed-call alerts: newer than (minutes)',
+                type: SettingDefinition::TYPE_INT,
+                default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'An older missed call is history, not news, and raises no alert.',
+            ),
+            new SettingDefinition(
+                key: 'phone.queue_wait_greeting',
+                label: 'Hold message opening',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'Thank you for waiting.',
+                editPermission: 'phone.edit',
+                help: 'Said to a caller on hold before their place in line.',
             ),
         ];
     }
