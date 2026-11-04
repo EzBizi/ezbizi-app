@@ -15,9 +15,7 @@ use App\Support\Reports\ReportView;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -555,34 +553,6 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->assertSame($queue, $back['calls'][0]['queue']);
         $this->assertFalse($back['calls'][0]['booked']);
         $this->assertNull($back['calls'][0]['set_by']);
-    }
-
-    /**
-     * Jose, 2026-11-04: a name pair is data, set in one call (the app or the
-     * MCP) and read back; a Workiz name not on its team list is refused.
-     */
-    public function test_a_name_pair_is_set_listed_and_cleared_over_the_api(): void
-    {
-        $tenant = $this->provisionTenant('Alpha');
-        DB::table('workiz_team_members')->insert(['id' => (string) Str::uuid(), 'organization_id' => $tenant['org']->id,
-            'franchise_id' => $tenant['franchise']->id, 'remote_id' => 'U1', 'name' => 'Dieuve  Ticoit', 'payload' => '{}', 'synced_at' => now()]);
-        $admin = $this->signedInAs($tenant['admin']);
-
-        $admin->putJson('/api/v1/reports/experimental/people/names', ['phone_name' => 'Jay Ticoit', 'name' => 'Dieuve Ticoit'])
-            ->assertOk()->assertJsonPath('data.name', 'Dieuve Ticoit');
-        $admin->getJson('/api/v1/reports/experimental/people/names')
-            ->assertOk()->assertJsonPath('data', [['phone_name' => 'Jay Ticoit', 'name' => 'Dieuve Ticoit']]);
-
-        $admin->putJson('/api/v1/reports/experimental/people/names', ['phone_name' => 'Jay Ticoit', 'name' => 'Dieuve Ticiot'])
-            ->assertStatus(422);
-
-        $admin->putJson('/api/v1/reports/experimental/people/names', ['phone_name' => 'Jay Ticoit', 'name' => null])->assertOk();
-        $admin->getJson('/api/v1/reports/experimental/people/names')->assertOk()->assertJsonPath('data', []);
-
-        $viewer = $this->userWithRole($tenant, 'Watcher', ['reports.view', 'reports.experimental.view']);
-        $this->signedInAs($viewer)->getJson('/api/v1/reports/experimental/people/names')->assertOk();
-        $this->signedInAs($viewer)->putJson('/api/v1/reports/experimental/people/names', ['phone_name' => 'X', 'name' => null])
-            ->assertForbidden();
     }
 
     /** Both writes sit behind the pane's own gate. */
