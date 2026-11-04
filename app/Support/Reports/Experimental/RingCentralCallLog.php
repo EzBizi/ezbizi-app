@@ -307,9 +307,12 @@ final class RingCentralCallLog
         for ($day = $start->startOfDay(); $day <= $end; $day = $day->addDay()) {
             $fetch = fn () => $this->forDate($day->toIso8601String(), $day->endOfDay()->toIso8601String());
 
+            // Today is live, but shared for a minute: every open fetched it
+            // afresh, and a burst of opens met RingCentral's 429s, whose waits
+            // outran nginx's 120s (504s, 2026-11-03).
             $calls = [...$calls, ...($day < $today
                 ? $this->storedDay($this->dayKeyFor($day), $fetch)
-                : $fetch())];
+                : Cache::remember($this->dayKeyFor($day).':live', 60, $fetch))];
         }
 
         return $outbound ? $calls : array_values(array_filter($calls, fn (array $call) => $call['direction'] === 'Inbound'));

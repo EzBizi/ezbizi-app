@@ -759,6 +759,10 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertSame(3, $asked);
 
         $log->forPeriod($start, $end);
+        $this->assertSame(3, $asked, 'today is shared for a minute');
+
+        $this->travel(61)->seconds();
+        $log->forPeriod($start, $end);
         $this->assertSame(4, $asked, 'only today should have been asked again');
 
         CarbonImmutable::setTestNow();
