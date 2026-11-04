@@ -1231,10 +1231,18 @@ class ActionRunner
             ];
         }
 
-        // A call Google takes no text for, or a channel gone: the enquiry is
-        // the wrong kind, not the rule broken, so it skips like Not connected
-        // does and the failure count cannot switch the rule off.
-        if (! $this->leadReplies->canReply($subject)) {
+        // Google takes no text against a call, so the reply goes by SMS from
+        // the cleared line instead: skipping left 71 of 125 not-booked
+        // customers with nothing (Jose via Desk, 2026-11-04).
+        $bySms = ! $this->leadReplies->canReply($subject)
+            && $subject->source === Lead::SOURCE_LOCAL_SERVICES
+            && $subject->lead_type !== 'MESSAGE'
+            && Lead::e164($subject->phone) !== null;
+
+        // A channel gone: the enquiry is the wrong kind, not the rule broken,
+        // so it skips like Not connected does and the failure count cannot
+        // switch the rule off.
+        if (! $bySms && ! $this->leadReplies->canReply($subject)) {
             return [
                 'type' => $type, 'ok' => true, 'skipped' => true,
                 'detail' => $this->leadReplies->whyNot($subject)
@@ -1245,7 +1253,9 @@ class ActionRunner
         $text = $this->interpolate($message, $event, $subject);
 
         try {
-            $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
+            $bySms
+                ? app(LeadTexts::class)->send($subject, $text, automatic: true)
+                : $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
         }
@@ -1265,8 +1275,8 @@ class ActionRunner
         return [
             'type' => $type,
             'ok' => true,
-            'detail' => 'Replied in the chat. It is recorded as automatic, so the enquiry still '
-                .'shows as awaiting a reply.',
+            'detail' => ($bySms ? 'Texted the customer, as Google takes no reply to a call.' : 'Replied in the chat.')
+                .' It is recorded as automatic, so the enquiry still shows as awaiting a reply.',
         ];
     }
 
