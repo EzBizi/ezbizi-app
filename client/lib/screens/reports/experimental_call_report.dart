@@ -581,9 +581,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       );
     }
 
-    final people = (report['people'] as List? ?? const [])
-        .map((row) => (row as Map).cast<String, dynamic>())
-        .toList();
+    // Only people the phones rang: someone who only created Workiz jobs
+    // (a technician, the office) is an empty row here (2026-11-04, 18 of 48).
+    final people = [
+      for (final row in (report['people'] as List? ?? const []))
+        if (row is Map &&
+            (((row['rang'] as num?) ?? 0) > 0 ||
+                ((row['answered'] as num?) ?? 0) > 0))
+          row.cast<String, dynamic>(),
+    ];
 
     final totals = (report['totals'] as Map? ?? const {})
         .cast<String, dynamic>();
@@ -819,7 +825,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ),
       ('New client', totals['new_client'], 'new', 'stat-new'),
       ('Jobs created', totals['jobs'], null, null),
-      ('Conv. rate', _rate(totals['jobs'], totals['new_client']), null, null),
+      (
+        'Conv. rate',
+        _rate(totals['booked_new'], totals['answered_new']),
+        null,
+        null,
+      ),
       ('Not booked', totals['not_booked'], 'not_booked', 'stat-not-booked'),
     ];
     const gap = 12.0;
@@ -864,18 +875,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     'Inbound calls': 'New + Existing + other lines',
     'Missed calls': 'Nobody picked up, incl. voicemail',
     'Jobs created': 'Workiz jobs for these dates',
-    'Conv. rate': 'Jobs ÷ answered New-client calls',
+    'Conv. rate': 'Booked ÷ answered New-client calls',
   };
 
   /// Jobs over answered new-client calls, the same rule as each person's
   /// row, never above 100% (review item 3): more jobs than calls is said as
   /// "11 jobs · 6 calls". A dash when there were no new-client calls.
-  static String _rate(Object? jobs, Object? newClient) {
-    final n = (newClient as num?) ?? 0;
-    final j = (jobs as num?) ?? 0;
+  /// Booked out of answered new-client calls, as each person's booking rate.
+  static String _rate(Object? booked, Object? answered) {
+    final n = (answered as num?) ?? 0;
     if (n == 0) return '—';
-    if (j > n) return '$j jobs · $n calls';
-    return '${(j / n * 100).round()}%';
+    return '${(((booked as num?) ?? 0) / n * 100).round()}%';
   }
 
   Widget _stat(
@@ -1236,7 +1246,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               SliverToBoxAdapter(child: _nothing(context))
             else if (wide) ...[
               PinnedHeaderSliver(
-                child: SizedBox(height: 70, child: _headerRow(context)),
+                child: SizedBox(height: 88, child: _headerRow(context)),
               ),
               SliverList.builder(
                 itemCount: ordered.length,
@@ -2266,11 +2276,20 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                             ? MainAxisAlignment.end
                             : MainAxisAlignment.start,
                         children: [
+                          // Two lines rather than run into the next title
+                          // ("RangAnswe…" at a laptop's width).
                           Flexible(
-                            child: Text(
-                              column.label,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelLarge,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: Text(
+                                column.label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: column.numeric
+                                    ? TextAlign.end
+                                    : TextAlign.start,
+                                style: theme.textTheme.labelLarge,
+                              ),
                             ),
                           ),
 
@@ -2381,9 +2400,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     return SegmentedButton<String>(
       key: ValueKey('handles-$name'),
       showSelectedIcon: false,
-      style: const ButtonStyle(
+      // Tight enough that "Existing" stays on one line at a laptop's width.
+      style: ButtonStyle(
         visualDensity: VisualDensity.compact,
-        padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 4),
+        ),
+        textStyle: WidgetStatePropertyAll(
+          Theme.of(context).textTheme.labelMedium,
+        ),
       ),
       segments: const [
         ButtonSegment(value: 'new', label: Text('New')),

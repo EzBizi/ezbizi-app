@@ -69,6 +69,42 @@ class ScoringReportTest extends TestCase
         $this->assertSame(['c3'], array_column($get('&q=gas'), 'call_id'), 'by words');
     }
 
+    /**
+     * Jose, 2026-11-04: Existing-client staff ranked first on "conversion" =
+     * every job they created over their few new calls (6 on 1: 600%). Someone
+     * who handles Existing, or answered under MIN_CALLS new calls, is judged
+     * without it; the rest on booked out of answered new-client calls.
+     */
+    public function test_conversion_is_booked_new_calls_and_skips_existing_handlers(): void
+    {
+        config(['app.timezone' => 'America/New_York', 'services.grok_cli.since' => '2026-10-13']);
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            foreach (['Ada', 'Cris', 'Few'] as $p => $who) {
+                foreach (range(0, 2) as $i) {
+                    $id = "$who$i";
+                    CallReportTranscript::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'transcript' => 'x',
+                        'source' => 'whisper', 'answered_by' => $who, 'call_started_at' => '2026-10-13 1'.$p.':0'.$i.':00']);
+                    CallReportScore::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'score' => 7,
+                        'checks' => array_fill_keys(ScoreReportCalls::CHECKS, true)]);
+                }
+            }
+        });
+        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn([
+            'Ada' => ['new_client' => 10, 'booked_new' => 4, 'jobs' => 9, 'tag' => 'new'],
+            'Cris' => ['new_client' => 5, 'booked_new' => 5, 'jobs' => 30, 'tag' => 'existing'],
+            'Few' => ['new_client' => 1, 'booked_new' => 1, 'jobs' => 6, 'tag' => null],
+        ]);
+
+        $people = collect($this->signedInAs($t['admin'])->getJson('/api/v1/reports/scoring?from=2026-10-13&to=2026-10-13')
+            ->assertOk()->json('data.people'))->keyBy('person');
+
+        $this->assertSame(40, $people['Ada']['conversion']);
+        $this->assertNull($people['Cris']['conversion'], 'handles Existing');
+        $this->assertNull($people['Few']['conversion'], 'one new call is no rate');
+    }
+
     /** Jose, 2026-10-14: conversion counts most, every metric has a weight, and they sum to 100. */
     public function test_the_score_weighs_conversion_and_the_checks_by_the_saved_weights(): void
     {
@@ -83,8 +119,9 @@ class ScoringReportTest extends TestCase
                     'checks' => array_fill_keys(ScoreReportCalls::CHECKS, true)]);
             }
         });
-        // Performance's People row for Ada: 4 new-client calls, 1 job.
-        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn(['Ada' => ['new_client' => 4, 'jobs' => 1]]);
+        // Performance's People row for Ada: 4 new-client calls answered, 1 of
+        // them booked. Her 3 jobs (some for existing clients) are not the rate.
+        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn(['Ada' => ['new_client' => 4, 'booked_new' => 1, 'jobs' => 3]]);
 
         $admin = $this->signedInAs($t['admin']);
         $ada = fn () => $admin->getJson('/api/v1/reports/scoring?from=2026-10-13&to=2026-10-13')->assertOk()->json('data.people.0');
