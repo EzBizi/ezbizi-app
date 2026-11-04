@@ -31,7 +31,7 @@ class CountyLookupController extends Controller
         // Photon unreachable or slow: no suggestions and a sentence, never a 500.
         try {
             $response = Http::timeout(4)
-                ->withHeaders(['User-Agent' => 'EzBizi/address-lookup (https://ezbizi.com; development@ezbizi.com)'])
+                ->withHeaders(['User-Agent' => 'EzBizi/address-lookup (https://ezbizi.com; '.config('ezbizi.contact_email').')'])
                 ->get('https://photon.komoot.io/api/', [
                     'q' => "{$query}, {$state}",
                     'layer' => 'county',
