@@ -194,6 +194,15 @@ void main() {
     // The fallback means disabled_at did not parse — a green test that showed
     // this would be asserting the failure path.
     expect(find.textContaining('At an unknown time'), findsNothing);
+
+    // is_active stays true after an auto-disable; the switch must not read on
+    // beside "Auto-disabled" (phone UI audit 2026-11-04).
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const ValueKey('tour-automations-live')))
+          .value,
+      isFalse,
+    );
   });
 
   // Jose, 2026-10-28: a rule a tab depends on is marked, and switching it
