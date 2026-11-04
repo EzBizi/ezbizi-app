@@ -321,19 +321,18 @@ void main() {
     expect(find.byKey(const ValueKey('email-forward')), findsOneWidget);
   });
 
-  testWidgets('Older › asks for the server\'s cursor, and ‹ goes back', (
-    tester,
-  ) async {
+  testWidgets('reaching the bottom of the list loads the next page under it '
+      '(Jose, 11-04: it stopped at Nov 1)', (tester) async {
     final server = _Server(cursor: 'CUR-2');
     await _pump(tester, server);
 
-    expect(server.lists.single.queryParameters.containsKey('cursor'), isFalse);
+    // The fixture is shorter than the screen, so the bottom is in view at once.
+    await tester.pumpAndSettle();
 
-    await _tap(tester, find.byKey(const ValueKey('email-older')));
     expect(server.lists.last.queryParameters['cursor'], 'CUR-2');
-
-    await _tap(tester, find.byKey(const ValueKey('email-newer')));
-    expect(server.lists.last.queryParameters.containsKey('cursor'), isFalse);
+    // The last page has no cursor: the spinner goes and nothing more is asked.
+    expect(find.byKey(const ValueKey('email-more')), findsNothing);
+    expect(server.lists.length, 2);
   });
 
   testWidgets('the reading pane setting is remembered', (tester) async {
@@ -481,21 +480,12 @@ void main() {
     );
     expect(find.descendant(of: garage, matching: find.text('0')), findsNothing);
 
+    // Inbox rows carry no count (Jose, 11-04); the company total stays.
     await _tap(tester, home);
-    final billing = find.byKey(const ValueKey('email-inbox-mb-billing'));
-    expect(
-      find.descendant(of: billing, matching: find.text('—')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: billing, matching: find.text('0')),
-      findsNothing,
-    );
     final info = find.byKey(const ValueKey('email-inbox-mb-info'));
-    expect(
-      find.descendant(of: info, matching: find.text('12')),
-      findsOneWidget,
-    );
+    expect(find.descendant(of: info, matching: find.text('12')), findsNothing);
+    final billing = find.byKey(const ValueKey('email-inbox-mb-billing'));
+    expect(find.descendant(of: billing, matching: find.text('—')), findsNothing);
   });
 
   testWidgets('a handled mail has a tick on its row, and the reader says who '
