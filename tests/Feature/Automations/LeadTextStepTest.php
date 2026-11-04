@@ -44,4 +44,27 @@ class LeadTextStepTest extends TestCase
             $this->assertTrue($none['skipped'] ?? false, 'no phone is skipped, not a failure toward switching the rule off');
         });
     }
+
+    /** Desk, 2026-11-04: 71 of 125 "After a call" replies skipped because Google takes no text on a call. */
+    public function test_a_reply_to_a_google_call_goes_by_text(): void
+    {
+        $t = $this->provisionTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $connection = PhoneConnection::factory()->create(['scope_type' => PhoneConnection::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id]);
+            PhoneNumber::factory()->create(['connection_id' => $connection->id, 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id, 'e164' => '+12035551004', 'sms_outbound_allowed' => true]);
+            $call = Lead::create(['organization_id' => $t['org']->id, 'source' => Lead::SOURCE_LOCAL_SERVICES,
+                'lead_type' => 'PHONE_CALL', 'remote_id' => uniqid(), 'phone' => '+15553334444', 'status' => 'new', 'received_at' => now(),
+                'contact_name' => 'Pat']);
+            $event = AutomationEvent::create(['organization_id' => $t['org']->id, 'event_key' => 'lead.call_not_booked',
+                'payload' => ['after' => ['contact_name' => 'Pat']], 'occurred_at' => now(), 'available_at' => now()]);
+
+            $sent = app(ActionRunner::class)->run(['type' => 'reply', 'message' => 'Sorry we missed you.'], $event, $call);
+
+            $this->assertTrue($sent['ok'], $sent['detail']);
+            $this->assertFalse($sent['skipped'] ?? false);
+            $this->assertSame(['SMS'], LeadConversation::query()->where('lead_id', $call->id)->pluck('channel')->all());
+        });
+    }
 }
