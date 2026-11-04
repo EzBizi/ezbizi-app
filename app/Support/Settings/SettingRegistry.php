@@ -296,23 +296,6 @@ class SettingRegistry
                 section: 'Fleet',
                 help: 'A vehicle this many miles from its next service counts as due soon.',
             ),
-            // Fleet's "due soon" window (Jose, 2026-11-04: every business value
-            // editable). Read by FleetSummary::soonDays/soonMiles everywhere
-            // Fleet says soon: the list chips, the General tab, the glance.
-            new SettingDefinition(
-                key: 'fleet.soon_days', label: 'Fleet: due soon within (days)',
-                type: SettingDefinition::TYPE_INT, default: 30,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                section: 'Fleet',
-                help: 'Service, registration, inspection and insurance dates this close count as due soon.',
-            ),
-            new SettingDefinition(
-                key: 'fleet.soon_miles', label: 'Fleet: service due soon within (miles)',
-                type: SettingDefinition::TYPE_INT, default: 500,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                section: 'Fleet',
-                help: 'A vehicle this many miles from its next service counts as due soon.',
-            ),
             new SettingDefinition(
                 key: 'ops.business_hours', label: 'Business hours',
                 type: SettingDefinition::TYPE_HOURS,
