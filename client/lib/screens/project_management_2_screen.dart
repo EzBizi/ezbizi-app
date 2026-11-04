@@ -300,7 +300,17 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                         child: FilledButton.tonal(
                           key: ValueKey('pm2-submit:${row['id']}'),
                           onPressed: () => _submit(row),
-                          child: const Text('Submit'),
+                          // At 1280 px the column is ~70 px: tight padding and
+                          // one line, or it wrapped to "Sub/mit".
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          child: const Text(
+                            'Submit',
+                            maxLines: 1,
+                            softWrap: false,
+                          ),
                         ),
                       ),
                   ],

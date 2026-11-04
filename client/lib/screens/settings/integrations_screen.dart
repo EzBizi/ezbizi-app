@@ -1036,9 +1036,12 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                // spaceBetween, not a Spacer: a Spacer took half the row and
+                // cut the pill to "Not conne…".
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   SocialNetworkMark(network: provider, size: 28),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   // Flexible, because the pill is the only thing on this card
                   // that can grow; a fourth status word, or another language,
                   // would otherwise overflow at paint time with no warning.

@@ -473,15 +473,16 @@ void main() {
   });
 
   // UI queue 174 (Jose 2026-11-03: newsletters and automations "by tag").
-  testWidgets('a row shows two tags, then +N', (tester) async {
+  // The Tags cell is ~95 px at this size: two pills there were the empty grey
+  // ovals seen in the 11-03 video, so a narrow cell shows one, then +N.
+  testWidgets('a narrow row shows one tag, then +N', (tester) async {
     await _pump(tester, customers: [
       {..._alice, 'tags': ['VIP', 'Annual sweep', 'Referral', 'Gas']},
     ]);
 
     expect(find.text('VIP'), findsOneWidget);
-    expect(find.text('Annual sweep'), findsOneWidget);
-    expect(find.text('Referral'), findsNothing);
-    expect(find.text('+2'), findsOneWidget);
+    expect(find.text('Annual sweep'), findsNothing);
+    expect(find.text('+3'), findsOneWidget);
   });
 
   testWidgets('the Tag picker filters the list with tag=', (tester) async {

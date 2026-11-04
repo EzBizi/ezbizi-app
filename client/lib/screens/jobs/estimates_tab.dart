@@ -1381,11 +1381,17 @@ class _EstimatePanelState extends State<EstimatePanel> {
     ),
   );
 
-  Widget _linesEditor(BuildContext context) {
+  // Qty, Price, Amount and the bin take ~360 px, so under 560 the Line field
+  // was squeezed to one character; a narrow panel gets the card layout too.
+  Widget _linesEditor(BuildContext context) => LayoutBuilder(
+    builder: (context, box) =>
+        _linesBody(context, cards: widget.inPlace || box.maxWidth < 560),
+  );
+
+  Widget _linesBody(BuildContext context, {required bool cards}) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
     final editable = _canWrite && _linesOpen && !_busy;
-    final cards = widget.inPlace;
 
     Widget field(
       String key,

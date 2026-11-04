@@ -3138,7 +3138,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   static const _tableRow = 1000.0;
 
   /// The time, and the day too when the dates span several.
-  double get _timeWidth => _span.single ? 56 : 108;
+  // "12:59 PM" needs about 20 px more than "17:07"; at 56 the AM ran into
+  // the In/Out column ("9:04 AMn").
+  double get _timeWidth =>
+      (_span.single ? 56 : 108) + (widget.formats.timeFormat == '12h' ? 22 : 0);
 
   /// What hangs under a call - its details, its recording - starts under the
   /// caller on a wide row, so the columns stay readable.
