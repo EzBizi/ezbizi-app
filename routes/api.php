@@ -1010,6 +1010,11 @@ Route::prefix('v1')
         // A manager account: what everything beneath it spent. The one place a
         // fan-out is still the answer, and it costs nothing until asked for.
         Route::get('ads/rollup', [AdsPerformanceController::class, 'rollup']);
+        // Facebook/Instagram campaigns, live from Meta: read, pause, resume, re-budget (Jose, 2026-11-04).
+        Route::get('meta-ads/accounts', [\App\Http\Controllers\Api\MetaAdsController::class, 'accounts']);
+        Route::get('meta-ads/tree', [\App\Http\Controllers\Api\MetaAdsController::class, 'tree']);
+        Route::post('meta-ads/status', [\App\Http\Controllers\Api\MetaAdsController::class, 'setStatus']);
+        Route::post('meta-ads/budget', [\App\Http\Controllers\Api\MetaAdsController::class, 'setBudget']);
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);

@@ -8,7 +8,9 @@ class Tag extends StatelessWidget {
 
   final String label;
 
-  /// Something the reader needs to notice, not just know.
+  /// Something the reader needs to notice, not just know. Amber, not red:
+  /// "12 missing" on every onboarding row is a to-do, and red is kept for a
+  /// problem (phone audit 2026-11-04, Section 3 #8).
   final bool warn;
 
   /// Something working as it should — "Live", "Connected", "Paid".
@@ -21,6 +23,7 @@ class Tag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final caution = ToneColours.of(context, Tone.caution);
 
     return Padding(
       padding: const EdgeInsets.only(left: 8),
@@ -28,7 +31,7 @@ class Tag extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
           color: warn
-              ? scheme.errorContainer.withValues(alpha: 0.6)
+              ? caution.fill
               : good
               ? EzBiziTheme.clockIn(context).withValues(alpha: 0.14)
               : scheme.surfaceContainerHighest.withValues(alpha: 0.6),
@@ -44,7 +47,7 @@ class Tag extends StatelessWidget {
             fontSize: 11,
             fontWeight: FontWeight.w600,
             color: warn
-                ? scheme.error
+                ? caution.ink
                 : good
                 ? EzBiziTheme.clockIn(context)
                 : null,

@@ -95,6 +95,45 @@ void main() {
     expect(find.byKey(const Key('tab-bar-more')), findsNothing);
   });
 
+  // Phone audit 2026-11-04: tabs past the edge went unannounced, and a tab
+  // only half on screen took two taps.
+  testWidgets('a phone strip shows a chevron that pages it, and one tap on a '
+      'half-shown tab selects it', (tester) async {
+    await _phone(tester);
+    int? picked;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TabBarLike(
+            labels: [for (final l in many) (l, Icons.folder_outlined)],
+            selected: 0,
+            onSelected: (i) => picked = i,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('tab-bar-chevron')), findsOneWidget);
+
+    // The first tab whose left edge is on screen but whose right is not.
+    final half = many.indexWhere((l) {
+      final r = tester.getRect(find.text(l));
+      return r.left < 340 && r.right > 340;
+    });
+    if (half >= 0) {
+      await tester.tapAt(
+        tester.getRect(find.text(many[half])).centerLeft + const Offset(4, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(picked, half);
+    }
+
+    await tester.tap(find.byKey(const Key('tab-bar-chevron')));
+    final before = tester.getRect(find.text(many.last)).left;
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.text(many.last)).left, lessThan(before));
+  });
+
   testWidgets('a strip that fits has no fade, and a desk wraps instead', (
     tester,
   ) async {

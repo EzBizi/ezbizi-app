@@ -1013,6 +1013,10 @@ class _RecordsTabState extends State<RecordsTab> {
                   )
                 : TextButton.icon(
                     key: Key('block-caller-${call.id}'),
+                    // Red: it stops every phone ringing for them.
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                    ),
                     icon: const Icon(Icons.block_outlined, size: 18),
                     onPressed: () => _block(call),
                     label: const Text('Block this caller'),

@@ -91,6 +91,18 @@ void main() {
 
     expect(find.text('Dave Turner'), findsOneWidget);
     expect(find.text('Priya Kaur'), findsOneWidget);
+
+    // Every list has search (phone audit 2026-11-04).
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const ValueKey('training-people-search')),
+        matching: find.byType(TextField),
+      ),
+      'priya',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Dave Turner'), findsNothing);
+    expect(find.text('Priya Kaur'), findsOneWidget);
   });
 
   // ── 375px: pane is the whole body, Back returns to the list ─────

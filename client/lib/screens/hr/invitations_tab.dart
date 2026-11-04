@@ -454,6 +454,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
                     'withdraw invitations',
                   ),
                   child: TextButton(
+                    // Red: it withdraws the link (phone audit 2026-11-04).
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                    ),
                     onPressed: mayAct ? () => _revoke(invitation) : null,
                     child: const Text('Revoke'),
                   ),

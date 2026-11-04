@@ -315,6 +315,10 @@ final class RingCentralCallLog
                 : Cache::remember($this->dayKeyFor($day).':live', 60, $fetch))];
         }
 
+        // Newest first across the days: each day comes newest first, but the
+        // days were joined oldest first, so a week opened on its first day.
+        usort($calls, fn (array $a, array $b) => strcmp((string) ($b['started_at'] ?? ''), (string) ($a['started_at'] ?? '')));
+
         return $outbound ? $calls : array_values(array_filter($calls, fn (array $call) => $call['direction'] === 'Inbound'));
     }
 

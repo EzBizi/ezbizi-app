@@ -139,7 +139,12 @@ class _CompanyScreenState extends State<CompanyScreen> {
         (
           'KPIs',
           Icons.speed_outlined,
-          (BuildContext _) => CompanyKpis(api: widget.api),
+          (BuildContext _) => CompanyKpis(
+            api: widget.api,
+            companyNames: [
+              for (final c in widget.session.me?.companies ?? const []) c.name,
+            ],
+          ),
         ),
     ];
     if (tabs.isEmpty) {
@@ -481,9 +486,19 @@ class _OwnerPanelState extends State<_OwnerPanel> {
 /// branches have. Nobody has a per-person goal (Reports, 2026-11-03), so the
 /// person rows say so rather than inventing one.
 class CompanyKpis extends StatefulWidget {
-  const CompanyKpis({super.key, required this.api, this.now});
+  const CompanyKpis({
+    super.key,
+    required this.api,
+    this.now,
+    this.companyNames = const [],
+  });
 
   final ApiClient api;
+
+  /// The companies' own names. A company's main line answers calls as if it
+  /// were a person ("A1 Chimney"); a name matching one of these is that line,
+  /// drawn as the Total at the bottom rather than as somebody on the team.
+  final List<String> companyNames;
   final DateTime Function()? now;
 
   @override
@@ -527,9 +542,25 @@ class _CompanyKpisState extends State<CompanyKpis> {
     if (_loading) return const Center(child: CircularProgressIndicator());
     final calls = (_calls?['calls'] as List? ?? const []).whereType<Map>();
     final q = _query.toLowerCase();
-    final people = [
+    String bare(Object? v) =>
+        '${v ?? ''}'.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final companies = {for (final n in widget.companyNames) bare(n)}
+      ..remove('');
+    // Calls nobody answered come back as a person with no name; they are not
+    // somebody to show (coordinator, 2026-11-04).
+    final everyone = [
       for (final p in (_calls?['people'] as List? ?? const []).whereType<Map>())
-        if (q.isEmpty || '${p['person']}'.toLowerCase().contains(q)) p,
+        if (bare(p['person']).isNotEmpty) p,
+    ];
+    final lines = [
+      for (final p in everyone)
+        if (companies.contains(bare(p['person']))) p,
+    ];
+    final people = [
+      for (final p in everyone)
+        if (!lines.contains(p) &&
+            (q.isEmpty || '${p['person']}'.toLowerCase().contains(q)))
+          p,
     ];
     final labels = {
       for (final k in (_goals?['keys'] as List? ?? const []).whereType<Map>())
@@ -557,8 +588,9 @@ class _CompanyKpisState extends State<CompanyKpis> {
             padding: EdgeInsets.all(8),
             child: Text('Call figures could not be loaded.'),
           ),
-        for (final p in people)
+        for (final p in [...people, ...lines])
           () {
+            final line = lines.contains(p);
             final answered = (p['answered'] as num?)?.toInt() ?? 0;
             final booked = calls
                 .where(
@@ -571,11 +603,11 @@ class _CompanyKpisState extends State<CompanyKpis> {
             return ListTile(
               key: ValueKey('company-kpi-${p['person']}'),
               dense: true,
-              title: Text('${p['person']}'),
+              title: Text(line ? 'Total · ${p['person']}' : '${p['person']}'),
               subtitle: Text(
                 '$answered answered · $booked booked · booking rate $rate',
               ),
-              trailing: Text('No goal', style: muted),
+              trailing: line ? null : Text('No goal', style: muted),
             );
           }(),
         Padding(

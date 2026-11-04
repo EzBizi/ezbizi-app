@@ -54,7 +54,7 @@ class ScoringReportController extends Controller
             'q' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $zone = (string) config('app.timezone');
+        $zone = ReportView::zone();
         $from = max(CarbonImmutable::parse($q['from'], $zone)->startOfDay(), LabelReportCalls::aiSince());
         $to = CarbonImmutable::parse($q['to'], $zone)->endOfDay();
         $search = trim((string) ($q['q'] ?? ''));
@@ -153,7 +153,7 @@ class ScoringReportController extends Controller
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
         ]);
 
-        $zone = (string) config('app.timezone');
+        $zone = ReportView::zone();
         $from = max(CarbonImmutable::parse($q['from'], $zone)->startOfDay(), LabelReportCalls::aiSince());
         $to = CarbonImmutable::parse($q['to'], $zone)->endOfDay();
 
@@ -200,7 +200,13 @@ class ScoringReportController extends Controller
             $notes = fn (string $field) => $calls->pluck($field)->filter()->unique()->take(3)->values()->all();
             $newClient = (int) ($perf[$person]['new_client'] ?? 0);
             $jobs = (int) ($perf[$person]['jobs'] ?? 0);
-            $conversion = $newClient > 0 ? (int) round($jobs / $newClient * 100) : null;
+            // Booked out of the new-client calls they answered, as Performance's
+            // booking rate (Jose, 2026-11-04). Every job they created over those
+            // calls ranked Existing-client staff first: 6 jobs on 1 call, 600%.
+            // Not judged on it when they handle Existing, or answered too few new
+            // calls for a rate: their weight goes to the other measures.
+            $judged = ($perf[$person]['tag'] ?? null) !== 'existing' && $newClient >= self::MIN_CALLS;
+            $conversion = $judged ? (int) round(($perf[$person]['booked_new'] ?? 0) / $newClient * 100) : null;
 
             return [
                 'person' => $person,

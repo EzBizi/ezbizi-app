@@ -30,6 +30,9 @@ final class WhatsAppGroups
     // send, 2026-10-30..11-02); automation_alert is, with {{1}} title, {{2}} what happened.
     public const READY_TEMPLATE = 'automation_alert';
 
+    /** Meta's longest text message, less a margin for how it counts emoji. */
+    private const TEXT_LIMIT = 4000;
+
     private const READY_LINE = 'Your report is ready. Reply to this message and it arrives here.';
 
     private const WINDOW_HOURS = 24;
@@ -116,7 +119,39 @@ final class WhatsAppGroups
      */
     public function deliverTextToUser(WhatsAppNumber $number, User $user, string $title, string $body): bool
     {
-        return $this->toPerson($number, $user, $title, ['type' => 'text', 'text' => ['body' => $body]], $body, null, null);
+        // WhatsApp refuses a text over 4096 characters (Technician sales across
+        // ten branches, 2026-11-04), so a long one goes in pieces. Outside the
+        // window only the first piece sends the notice; the rest wait with it.
+        $sent = false;
+        foreach (self::pieces($body) as $i => $piece) {
+            $sent = $this->toPerson($number, $user, $title, ['type' => 'text', 'text' => ['body' => $piece]], $piece, null, null, notify: $i === 0) || $sent;
+        }
+
+        return $sent;
+    }
+
+    /**
+     * $body cut at line ends into pieces WhatsApp takes; a line too long on
+     * its own is cut where it must be.
+     *
+     * @return list<string>
+     */
+    public static function pieces(string $body, int $max = self::TEXT_LIMIT): array
+    {
+        $pieces = [''];
+        foreach (explode("\n", $body) as $line) {
+            foreach ($line === '' ? [''] : mb_str_split($line, $max) as $part) {
+                $last = array_key_last($pieces);
+                $joined = $pieces[$last] === '' ? $part : $pieces[$last]."\n".$part;
+                if (mb_strlen($joined) <= $max) {
+                    $pieces[$last] = $joined;
+                } else {
+                    $pieces[] = $part;
+                }
+            }
+        }
+
+        return $pieces;
     }
 
     /**
@@ -233,7 +268,7 @@ final class WhatsAppGroups
     }
 
     /** @param  array<string, mixed>  $message */
-    private function toPerson(WhatsAppNumber $number, User $user, string $title, array $message, string $body, ?string $mediaId, ?string $filename): bool
+    private function toPerson(WhatsAppNumber $number, User $user, string $title, array $message, string $body, ?string $mediaId, ?string $filename, bool $notify = true): bool
     {
         $e164 = ThumbtackAssociatePhoneNumbers::e164((string) $user->phone);
 
@@ -250,7 +285,9 @@ final class WhatsAppGroups
         }
 
         // Held only once Meta took the notice: a refused one leaves nothing to flush later.
-        $this->cloud->send(self::READY_TEMPLATE, $e164, [$title, self::READY_LINE], from: (string) $number->display_number);
+        if ($notify) {
+            $this->cloud->send(self::READY_TEMPLATE, $e164, [$title, self::READY_LINE], from: (string) $number->display_number);
+        }
         WhatsAppPendingReport::create([
             'organization_id' => $number->organization_id,
             'phone_number_id' => $number->phone_number_id,

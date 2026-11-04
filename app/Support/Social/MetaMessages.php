@@ -146,7 +146,7 @@ final class MetaMessages
             ? Carbon::createFromTimestampMs((int) $event['timestamp'])
             : now();
 
-        return $this->thread->store($lead, $mid, [
+        $stored = $this->thread->store($lead, $mid, [
             'channel' => LeadConversation::CHANNEL_MESSAGE,
             'participant' => LeadConversation::FROM_CONSUMER,
             'occurred_at' => $at,
@@ -157,6 +157,11 @@ final class MetaMessages
             'attachments' => MetaMediaController::refs($connection, $mid, $message),
             'is_ad_question' => self::adQuestion($event),
         ]);
+
+        // Or the list keeps sorting her by her first message (Jose, 11-04).
+        $this->thread->refresh($lead);
+
+        return $stored;
     }
 
     /**

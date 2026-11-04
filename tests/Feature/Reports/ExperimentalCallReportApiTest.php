@@ -11,6 +11,8 @@ use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Models\WorkizCall;
 use App\Models\WorkizJob;
+use App\Support\Reports\ReportView;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -32,6 +34,24 @@ class ExperimentalCallReportApiTest extends TestCase
     use RefreshDatabase;
 
     // ── the gate ─────────────────────────────────────────────────
+
+    /**
+     * A report's days are the organization's own (Jose, 2026-11-04: on UTC,
+     * "Yesterday" held the evening before and lost its own evening).
+     */
+    public function test_a_reports_day_is_cut_in_the_organizations_time_zone(): void
+    {
+        config(['app.timezone' => 'UTC']);
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('timezone', $t['org'], 'America/New_York'));
+
+        $this->actingAs($t['admin']);
+        // A request has resolved its organization by the time a report asks.
+        $this->inTenant($t['org'], fn () => $this->assertSame('America/New_York', ReportView::zone()));
+
+        auth()->forgetGuards();
+        $this->assertSame('UTC', ReportView::zone(), 'nobody signed in');
+    }
 
     /** Running saved reports is a weaker right and must not open this. */
     public function test_reports_view_alone_cannot_read_it(): void

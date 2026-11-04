@@ -197,9 +197,18 @@ class FactTile extends StatelessWidget {
 
 /// A column: its heading and how much of the row it takes.
 class ListColumn {
-  const ListColumn(this.label, {this.flex = 2, this.end = false});
+  const ListColumn(
+    this.label, {
+    this.flex = 2,
+    this.end = false,
+    this.namedWhenStacked = true,
+  });
 
   final String label;
+
+  /// Whether a stacked row prefixes this cell with [label]. Off where the
+  /// value says what it is and the words would push the row to a third line.
+  final bool namedWhenStacked;
   final int flex;
 
   /// Right-aligned, for numbers and the actions column.
@@ -264,7 +273,31 @@ class ListTable extends StatelessWidget {
                       spacing: 12,
                       runSpacing: 6,
                       crossAxisAlignment: WrapCrossAlignment.center,
-                      children: cells.skip(1).toList(),
+                      // Each value says which column it is: flattened bare,
+                      // PM-2 rows read "11/4/2026 11/4/2026 $0.00 $1,249.00"
+                      // with no way to tell them apart (phone audit
+                      // 2026-11-04, Section 4 #3).
+                      children: [
+                        for (var i = 1; i < cells.length; i++)
+                          columns[i].label.isEmpty ||
+                                  !columns[i].namedWhenStacked
+                              ? cells[i]
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${columns[i].label} ',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
+                                    Flexible(child: cells[i]),
+                                  ],
+                                ),
+                      ],
                     ),
                   ],
                 );

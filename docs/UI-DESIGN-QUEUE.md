@@ -5299,3 +5299,7 @@ For Task Board (Monday survey 131037c3a; A-1 off Monday by Nov 10). Recommended 
 ### 179 · Calls: set New/Existing and Booked/Not booked by hand — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend on the trey stuff") (`docs/previews/call-reclassify-layouts.html`)
 
 For Reports (backend 1e45b6f06, gated on reports.handles). Jose for Trey: "reclassify from existing to new and viceverse as well as to booke from not booked and viceversa". Recommended 1 + phone 4: Client and Booking segmented controls in the call details, "Set by X · Automatic ↺" to undo, a ✎ mark with a tooltip on the row pills.
+
+### 180 · Ads performance: control Meta campaigns — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/meta-campaigns-layouts.html`)
+
+For Meta API (backend a24e0de6f). Jose 11-04: "we need to be able to control meta campaigns from the app." Recommended 1 + phone 4: a Google | Meta switch on Ads performance; an expandable campaign › ad set › ad table with an on/off switch per row ("Paused by campaign" from effective_status); the budget edit only on the row that owns daily_budget, in a SidePanel; pausing takes effect with an Undo snackbar; read-only without ads_performance.manage; an empty state with "Open Integrations" when nothing is connected.

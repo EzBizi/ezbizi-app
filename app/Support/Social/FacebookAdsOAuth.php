@@ -19,7 +19,7 @@ final class FacebookAdsOAuth implements SocialOAuth
     public const CALLBACK_PATH = '/api/v1/social/facebook-ads/callback';
 
     /** @var string[] */
-    public const SCOPES = ['ads_read', 'business_management'];
+    public const SCOPES = ['ads_read', 'ads_management', 'business_management'];
 
     private const TIMEOUT = 15;
 

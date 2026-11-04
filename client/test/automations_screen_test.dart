@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/automations_screen.dart';
 import 'package:ezbizi_client/widgets/scope_choice_field.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -194,6 +195,15 @@ void main() {
     // The fallback means disabled_at did not parse — a green test that showed
     // this would be asserting the failure path.
     expect(find.textContaining('At an unknown time'), findsNothing);
+
+    // is_active stays true after an auto-disable; the switch must not read on
+    // beside "Auto-disabled" (phone UI audit 2026-11-04).
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const ValueKey('tour-automations-live')))
+          .value,
+      isFalse,
+    );
   });
 
   // Jose, 2026-10-28: a rule a tab depends on is marked, and switching it
@@ -1471,7 +1481,7 @@ void main() {
 
     await tester.enterText(
       find.descendant(
-        of: find.byType(AlertDialog),
+        of: find.byType(SidePanel),
         matching: find.byType(TextField),
       ),
       'owner reassigned',
@@ -1507,7 +1517,7 @@ void main() {
     }
 
     await choose();
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SidePanel), findsNothing);
     await _tap(tester, find.text('Keep mine'));
     expect(find.widgetWithText(TextField, 'My own rule'), findsOneWidget);
 

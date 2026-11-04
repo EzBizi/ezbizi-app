@@ -134,7 +134,7 @@ class WorkScheduleCard extends StatelessWidget {
               context,
               Icons.logout,
               (map[day] as Map)['end'] as String? ?? '',
-              EzBiziTheme.clockOut(context),
+              Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ] else
             Text(
@@ -207,7 +207,7 @@ class WorkScheduleCard extends StatelessWidget {
                 Text(
                   window['end'] as String? ?? '',
                   style: theme.textTheme.headlineSmall?.copyWith(
-                    color: EzBiziTheme.clockOut(context),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],

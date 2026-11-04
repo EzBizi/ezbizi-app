@@ -6,6 +6,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/list_search.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 
@@ -74,6 +75,7 @@ class _DashboardPaneState extends State<DashboardPane> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _people = const [];
+  String _query = '';
 
   /// Swaps the stats+people area for [_AssignPane] via `setState` — the
   /// same in-body pattern `TrainingSettingsTab._open`/`LearnShelves._selected`
@@ -107,7 +109,9 @@ class _DashboardPaneState extends State<DashboardPane> {
       _error = null;
     });
 
-    final response = await widget.api.get('/training/dashboard/${widget.itemId}/people');
+    final response = await widget.api.get(
+      '/training/dashboard/${widget.itemId}/people',
+    );
     if (!mounted) return;
 
     setState(() {
@@ -124,7 +128,6 @@ class _DashboardPaneState extends State<DashboardPane> {
 
   @override
   Widget build(BuildContext context) {
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -193,19 +196,66 @@ class _DashboardPaneState extends State<DashboardPane> {
                       // rather than "this test" because the pane covers a guide
                       // OR a test, and naming the object would be wrong half the
                       // time.
-                      ? const Center(child: Text('Nobody to show for this one.'))
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                          itemCount: _people.length,
-                          separatorBuilder: (_, _) => const Divider(height: 1),
-                          itemBuilder: (context, i) => _PersonRow(
-                            // Keyed to the PERSON: this row holds expansion
-                            // state, and an unkeyed row in a rebuilt list keeps
-                            // the state of whoever stood in that slot before.
-                            key: ValueKey(_people[i]['user_id']),
-                            person: _people[i],
-                            session: widget.session,
-                          ),
+                      ? const Center(
+                          child: Text('Nobody to show for this one.'),
+                        )
+                      : Builder(
+                          builder: (context) {
+                            // Every list has search (phone audit 2026-11-04:
+                            // 43 people on one test, none findable).
+                            final q = _query.trim().toLowerCase();
+                            final shown = [
+                              for (final p in _people)
+                                if (q.isEmpty ||
+                                    '${p['name'] ?? ''}'.toLowerCase().contains(
+                                      q,
+                                    ))
+                                  p,
+                            ];
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    20,
+                                    12,
+                                    20,
+                                    0,
+                                  ),
+                                  child: ListSearch(
+                                    key: const ValueKey(
+                                      'training-people-search',
+                                    ),
+                                    hint: 'Find a person',
+                                    onChanged: (v) =>
+                                        setState(() => _query = v),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: ListView.separated(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      20,
+                                      12,
+                                      20,
+                                      24,
+                                    ),
+                                    itemCount: shown.length,
+                                    separatorBuilder: (_, _) =>
+                                        const Divider(height: 1),
+                                    itemBuilder: (context, i) => _PersonRow(
+                                      // Keyed to the PERSON: this row holds
+                                      // expansion state, and an unkeyed row in a
+                                      // rebuilt list keeps the state of whoever
+                                      // stood in that slot before.
+                                      key: ValueKey(shown[i]['user_id']),
+                                      person: shown[i],
+                                      session: widget.session,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                 ),
         ),
@@ -322,7 +372,9 @@ class _AssignPaneState extends State<_AssignPane> {
   }
 
   Future<void> _loadRoles() async {
-    final response = await widget.api.get('/training/assignees', {'type': _typeRole});
+    final response = await widget.api.get('/training/assignees', {
+      'type': _typeRole,
+    });
     if (!mounted) return;
 
     setState(() {
@@ -386,7 +438,10 @@ class _AssignPaneState extends State<_AssignPane> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              TextButton(onPressed: widget.onCancel, child: const Text('Cancel')),
+              TextButton(
+                onPressed: widget.onCancel,
+                child: const Text('Cancel'),
+              ),
             ],
           ),
         ),
@@ -438,7 +493,11 @@ class _AssignPaneState extends State<_AssignPane> {
               ),
             ),
           const SizedBox(height: 8),
-          Expanded(child: _searching ? const Center(child: CircularProgressIndicator()) : _userList()),
+          Expanded(
+            child: _searching
+                ? const Center(child: CircularProgressIndicator())
+                : _userList(),
+          ),
         ] else ...[
           Expanded(
             // A failed fetch still flips `_rolesLoaded` (below) so the
@@ -464,7 +523,9 @@ class _AssignPaneState extends State<_AssignPane> {
               ),
               const SizedBox(height: 12),
               FilledButton(
-                onPressed: (_assigneeId == null || _submitting) ? null : _submit,
+                onPressed: (_assigneeId == null || _submitting)
+                    ? null
+                    : _submit,
                 child: _submitting
                     ? const SizedBox(
                         width: 18,
@@ -482,7 +543,9 @@ class _AssignPaneState extends State<_AssignPane> {
 
   Widget _userList() {
     if (_userResults.isEmpty) {
-      return const Center(child: Text('Nobody matches — try a different name or email.'));
+      return const Center(
+        child: Text('Nobody matches — try a different name or email.'),
+      );
     }
 
     return ListView.builder(
@@ -495,9 +558,17 @@ class _AssignPaneState extends State<_AssignPane> {
         return ListTile(
           dense: true,
           selected: id != null && id == _assigneeId,
-          title: Text(person['name'] as String? ?? '', overflow: TextOverflow.ellipsis),
-          subtitle: Text(person['email'] as String? ?? '', overflow: TextOverflow.ellipsis),
-          trailing: (id != null && id == _assigneeId) ? const Icon(Icons.check) : null,
+          title: Text(
+            person['name'] as String? ?? '',
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            person['email'] as String? ?? '',
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: (id != null && id == _assigneeId)
+              ? const Icon(Icons.check)
+              : null,
           onTap: id == null ? null : () => setState(() => _assigneeId = id),
         );
       },
@@ -527,14 +598,25 @@ class _AssignPaneState extends State<_AssignPane> {
           dense: true,
           enabled: assignable,
           selected: id != null && id == _assigneeId,
-          title: Text(role['name'] as String? ?? '', overflow: TextOverflow.ellipsis),
+          title: Text(
+            role['name'] as String? ?? '',
+            overflow: TextOverflow.ellipsis,
+          ),
           // Shown and refused rather than filtered out — the same
           // "not yours to give" convention `HrPeopleController`'s own role
           // list uses, so "we have no such role" and "not mine to hand out"
           // stay distinguishable.
-          subtitle: assignable ? null : const Text('Not yours to give — needs organization-wide reach.'),
-          trailing: (id != null && id == _assigneeId) ? const Icon(Icons.check) : null,
-          onTap: (!assignable || id == null) ? null : () => setState(() => _assigneeId = id),
+          subtitle: assignable
+              ? null
+              : const Text(
+                  'Not yours to give — needs organization-wide reach.',
+                ),
+          trailing: (id != null && id == _assigneeId)
+              ? const Icon(Icons.check)
+              : null,
+          onTap: (!assignable || id == null)
+              ? null
+              : () => setState(() => _assigneeId = id),
         );
       },
     );
@@ -565,7 +647,9 @@ class _RowStats extends StatelessWidget {
         children: [
           Text(
             '$value',
-            style: theme.textTheme.headlineSmall?.copyWith(color: warn ? scheme.error : null),
+            style: theme.textTheme.headlineSmall?.copyWith(
+              color: warn ? scheme.error : null,
+            ),
           ),
           Text(label, style: theme.textTheme.labelSmall),
         ],
@@ -611,7 +695,9 @@ class _PersonRowState extends State<_PersonRow> {
   /// printing "null%".
   static String _attemptLine(Map attempt, DisplayFormats formats) {
     final when = formatStamp(attempt['taken_at'], 'Undated', formats: formats);
-    final score = attempt['score'] is num ? '${(attempt['score'] as num).toInt()}%' : 'No score';
+    final score = attempt['score'] is num
+        ? '${(attempt['score'] as num).toInt()}%'
+        : 'No score';
     final outcome = attempt['passed'] == true ? 'Passed' : 'Failed';
 
     return '$when  -  $score  -  $outcome';
@@ -631,10 +717,17 @@ class _PersonRowState extends State<_PersonRow> {
     // A guide's own progress — a real fraction off `last_screen`/
     // `screen_count`, the identical shape `LearnShelves` already draws;
     // never invented for a test, which has no "screens seen".
-    final screenCount = person['screen_count'] is num ? (person['screen_count'] as num).toInt() : null;
-    final lastScreen = person['last_screen'] is num ? (person['last_screen'] as num).toInt() : null;
+    final screenCount = person['screen_count'] is num
+        ? (person['screen_count'] as num).toInt()
+        : null;
+    final lastScreen = person['last_screen'] is num
+        ? (person['last_screen'] as num).toInt()
+        : null;
     final fraction = (screenCount != null && screenCount > 0)
-        ? ((lastScreen != null ? lastScreen + 1 : 0) / screenCount).clamp(0.0, 1.0)
+        ? ((lastScreen != null ? lastScreen + 1 : 0) / screenCount).clamp(
+            0.0,
+            1.0,
+          )
         : null;
 
     // A test's own score. `containsKey` rather than a null check on the
@@ -642,7 +735,9 @@ class _PersonRowState extends State<_PersonRow> {
     // failed to record one, which must still say "No score yet" rather
     // than being read as "not a test, say nothing".
     final hasScore = person.containsKey('score');
-    final score = person['score'] is num ? (person['score'] as num).toInt() : null;
+    final score = person['score'] is num
+        ? (person['score'] as num).toInt()
+        : null;
 
     // Every attempt, newest first (owner, 2026-09-09: asked whether this
     // pane shows a person's whole history or only where they stand now, he
@@ -708,7 +803,11 @@ class _PersonRowState extends State<_PersonRow> {
               TextButton(
                 key: const Key('training.person-toggle-attempts'),
                 onPressed: () => setState(() => _showAll = !_showAll),
-                child: Text(_showAll ? 'Show fewer' : 'Show all ${attempts.length} attempts'),
+                child: Text(
+                  _showAll
+                      ? 'Show fewer'
+                      : 'Show all ${attempts.length} attempts',
+                ),
               ),
           ],
           if (fraction != null) ...[

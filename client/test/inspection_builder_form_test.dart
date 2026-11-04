@@ -353,8 +353,9 @@ void main() {
       'Inspection level',
     );
     await tester.tap(find.byKey(const Key('inspection-picker')));
-    await tester.pump(const Duration(milliseconds: 200));
-    await tester.tap(find.text('Dryer vent'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Dryer vent').last);
     await tester.pump(const Duration(milliseconds: 200));
     await tester.pumpAndSettle();
 

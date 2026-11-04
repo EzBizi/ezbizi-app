@@ -359,10 +359,28 @@ class _ReportsTabState extends State<ReportsTab> {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
 
-        // Narrowing by line and by tag, as chips rather than another two
-        // dropdowns: these are the two people pick several of, and a
-        // multi-select dropdown hides what is chosen behind a summary.
-        if (_lines.length > 1) _chips('Lines', _lines, _lineIds),
+        // Narrowing by line and by tag: the two people pick several of.
+        // Lines as a picker: 13 line chips filled the first phone screen
+        // (phone audit 2026-11-04). About stays chips, there are few.
+        if (_lines.length > 1)
+          SizedBox(
+            width: 260,
+            child: SearchMultiPickerField<String>(
+              key: const ValueKey('report-lines'),
+              label: 'Lines',
+              hint: 'Every line',
+              values: _lineIds,
+              options: [
+                for (final l in _lines) SearchOption(value: l.id, label: l.name),
+              ],
+              onChanged: (v) {
+                setState(() => _lineIds
+                  ..clear()
+                  ..addAll(v));
+                _run();
+              },
+            ),
+          ),
         if (_tags.isNotEmpty) _chips('About', _tags, _tagIds),
       ],
     );

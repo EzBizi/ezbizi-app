@@ -169,4 +169,18 @@ class ComplaintsTest extends TestCase
         $this->assertFalse($rows['call_complaint']['source_missing']);
         $this->assertTrue($rows['bad_review']['source_missing']);
     }
+
+    /** UI audit 2026-11-04: the queue showed each lead's first call (the booking), so it read as bookings. */
+    public function test_a_complaint_call_shows_what_was_said_on_that_call_not_the_booking(): void
+    {
+        $caller = $this->inTenant($this->t['org'], fn () => Lead::create(['organization_id' => $this->t['org']->id,
+            'company_id' => $this->t['company']->id, 'franchise_id' => $this->t['franchise']->id, 'source' => 'phone',
+            'remote_id' => 'call-9', 'status' => 'NEW', 'received_at' => now(), 'phone' => '+14145340699',
+            'summary' => 'Dana booked a chimney sweep for Tuesday.']));
+        $this->event('lead.call_complaint', $caller, ['summary' => 'Dana says nobody showed for Tuesday.']);
+        $this->intake();
+
+        $this->signedInAs($this->t['admin'])->getJson('/api/v1/complaints?status=all')->assertOk()
+            ->assertJsonPath('data.0.summary', 'Dana says nobody showed for Tuesday.');
+    }
 }

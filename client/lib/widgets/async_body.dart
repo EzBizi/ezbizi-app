@@ -104,8 +104,13 @@ class HeaderAboveList extends StatelessWidget {
       );
     }
 
+    // Floating: any scroll back up brings the header back. Scrolled with the
+    // body alone, a short section (HR's Pay, one card) left an empty screen
+    // with the name, Back and the section tabs all gone (phone audit
+    // 2026-11-04, Section 3 #5).
     return NestedScrollView(
-      headerSliverBuilder: (context, _) => [SliverToBoxAdapter(child: header)],
+      floatHeaderSlivers: true,
+      headerSliverBuilder: (context, _) => [SliverFloatingHeader(child: header)],
       body: Builder(
         builder: (context) => PrimaryScrollController(
           controller: PrimaryScrollController.of(context),

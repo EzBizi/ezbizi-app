@@ -63,6 +63,50 @@ void main() {
     expect(find.text('That would make a circle.'), findsOneWidget);
   });
 
+  testWidgets('KPIs drop the nameless row and draw the company line as the '
+      'Total at the bottom', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final api = ApiClient(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/reports/experimental/calls')) {
+          return _json({
+            'people': [
+              {'person': '', 'answered': 9},
+              {'person': 'Brightside Home', 'answered': 6},
+              {'person': 'Dana Brightside', 'answered': 4},
+            ],
+            'calls': [],
+          });
+        }
+        return _json({
+          'data': {'keys': [], 'goals': []},
+        });
+      }),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CompanyKpis(api: api, companyNames: const ['Brightside-Home']),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('company-kpi-')), findsNothing);
+    expect(find.text('Total · Brightside Home'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Total · Brightside Home')).dy,
+      greaterThan(tester.getTopLeft(find.text('Dana Brightside')).dy),
+    );
+    final line = find.byKey(const ValueKey('company-kpi-Brightside Home'));
+    expect(
+      find.descendant(of: line, matching: find.text('No goal')),
+      findsNothing,
+    );
+  });
+
   testWidgets('KPIs say "No goal" for a person', (tester) async {
     await _pump(tester, _handler());
 

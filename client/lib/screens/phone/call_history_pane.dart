@@ -46,7 +46,11 @@ class CallHistoryPane extends StatefulWidget {
     required this.onPick,
     this.reloadToken = 0,
     this.onRows,
+    this.bottomPadding = 4,
   });
+
+  /// Room under the last row, for a button floating over the list.
+  final double bottomPadding;
 
   final ApiClient api;
 
@@ -273,7 +277,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: EdgeInsets.only(bottom: widget.bottomPadding),
       itemCount: items.length,
       itemBuilder: (context, i) {
         final item = items[i];

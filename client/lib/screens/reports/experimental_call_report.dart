@@ -581,9 +581,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       );
     }
 
-    final people = (report['people'] as List? ?? const [])
-        .map((row) => (row as Map).cast<String, dynamic>())
-        .toList();
+    // Only people the phones rang: someone who only created Workiz jobs
+    // (a technician, the office) is an empty row here (2026-11-04, 18 of 48).
+    final people = [
+      for (final row in (report['people'] as List? ?? const []))
+        if (row is Map &&
+            (((row['rang'] as num?) ?? 0) > 0 ||
+                ((row['answered'] as num?) ?? 0) > 0))
+          row.cast<String, dynamic>(),
+    ];
 
     final totals = (report['totals'] as Map? ?? const {})
         .cast<String, dynamic>();
@@ -819,7 +825,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ),
       ('New client', totals['new_client'], 'new', 'stat-new'),
       ('Jobs created', totals['jobs'], null, null),
-      ('Conv. rate', _rate(totals['jobs'], totals['new_client']), null, null),
+      (
+        'Conv. rate',
+        _rate(totals['booked_new'], totals['answered_new']),
+        null,
+        null,
+      ),
       ('Not booked', totals['not_booked'], 'not_booked', 'stat-not-booked'),
     ];
     const gap = 12.0;
@@ -864,18 +875,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     'Inbound calls': 'New + Existing + other lines',
     'Missed calls': 'Nobody picked up, incl. voicemail',
     'Jobs created': 'Workiz jobs for these dates',
-    'Conv. rate': 'Jobs ÷ answered New-client calls',
+    'Conv. rate': 'Booked ÷ answered New-client calls',
   };
 
   /// Jobs over answered new-client calls, the same rule as each person's
   /// row, never above 100% (review item 3): more jobs than calls is said as
   /// "11 jobs · 6 calls". A dash when there were no new-client calls.
-  static String _rate(Object? jobs, Object? newClient) {
-    final n = (newClient as num?) ?? 0;
-    final j = (jobs as num?) ?? 0;
+  /// Booked out of answered new-client calls, as each person's booking rate.
+  static String _rate(Object? booked, Object? answered) {
+    final n = (answered as num?) ?? 0;
     if (n == 0) return '—';
-    if (j > n) return '$j jobs · $n calls';
-    return '${(j / n * 100).round()}%';
+    return '${(((booked as num?) ?? 0) / n * 100).round()}%';
   }
 
   Widget _stat(
@@ -1236,7 +1246,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               SliverToBoxAdapter(child: _nothing(context))
             else if (wide) ...[
               PinnedHeaderSliver(
-                child: SizedBox(height: 70, child: _headerRow(context)),
+                child: SizedBox(height: 88, child: _headerRow(context)),
               ),
               SliverList.builder(
                 itemCount: ordered.length,
@@ -2266,11 +2276,20 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                             ? MainAxisAlignment.end
                             : MainAxisAlignment.start,
                         children: [
+                          // Two lines rather than run into the next title
+                          // ("RangAnswe…" at a laptop's width).
                           Flexible(
-                            child: Text(
-                              column.label,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelLarge,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: Text(
+                                column.label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: column.numeric
+                                    ? TextAlign.end
+                                    : TextAlign.start,
+                                style: theme.textTheme.labelLarge,
+                              ),
                             ),
                           ),
 
@@ -2381,9 +2400,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     return SegmentedButton<String>(
       key: ValueKey('handles-$name'),
       showSelectedIcon: false,
-      style: const ButtonStyle(
+      // Tight enough that "Existing" stays on one line at a laptop's width.
+      style: ButtonStyle(
         visualDensity: VisualDensity.compact,
-        padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 4),
+        ),
+        textStyle: WidgetStatePropertyAll(
+          Theme.of(context).textTheme.labelMedium,
+        ),
       ),
       segments: const [
         ButtonSegment(value: 'new', label: Text('New')),
@@ -2664,6 +2689,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       softWrap: false,
       overflow: TextOverflow.visible,
     );
+    // The table's Date and Time, a column each (Jose, 2026-11-04).
+    final stamp = DateTime.tryParse('${call['started_at']}')?.toLocal();
+    Text plain(String text) =>
+        Text(text, style: small, maxLines: 1, softWrap: false);
+    final date = plain(stamp == null ? '' : widget.formats.formatDate(stamp));
+    final time = plain(
+      stamp == null ? '' : widget.formats.formatTime(stamp.hour, stamp.minute),
+    );
     final direction = Text(
       outbound ? 'Out' : 'In',
       style: theme.textTheme.labelSmall?.copyWith(
@@ -2792,7 +2825,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                           )
                         : null,
                     child: _cells([
-                      when,
+                      date,
+                      time,
                       direction,
                       caller,
                       number,
@@ -3063,25 +3097,26 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
     return Row(
       children: [
-        SizedBox(width: _timeWidth, child: pad(c[0])),
-        SizedBox(width: 40, child: pad(c[1])),
-        Expanded(flex: 4, child: pad(c[2])),
-        SizedBox(width: 136, child: pad(c[3])),
-        SizedBox(width: 92, child: pad(c[4])),
-        SizedBox(width: 116, child: pad(c[5])),
-        Expanded(flex: 3, child: pad(c[6])),
+        SizedBox(width: _dateWidth, child: pad(c[0])),
+        SizedBox(width: _timeWidth, child: pad(c[1])),
+        SizedBox(width: 40, child: pad(c[2])),
+        Expanded(flex: 4, child: pad(c[3])),
+        SizedBox(width: 136, child: pad(c[4])),
+        SizedBox(width: 92, child: pad(c[5])),
+        SizedBox(width: 116, child: pad(c[6])),
         Expanded(flex: 3, child: pad(c[7])),
+        Expanded(flex: 3, child: pad(c[8])),
         SizedBox(
           width: 112,
-          child: Align(alignment: Alignment.centerRight, child: c[8]),
-        ),
-        SizedBox(
-          width: 44,
           child: Align(alignment: Alignment.centerRight, child: c[9]),
         ),
         SizedBox(
-          width: 92,
+          width: 44,
           child: Align(alignment: Alignment.centerRight, child: c[10]),
+        ),
+        SizedBox(
+          width: 92,
+          child: Align(alignment: Alignment.centerRight, child: c[11]),
         ),
       ],
     );
@@ -3106,6 +3141,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           SizedBox(
             height: 36,
             child: _cells([
+              heading('Date'),
               heading('Time'),
               const SizedBox.shrink(),
               heading('Caller'),
@@ -3147,18 +3183,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// A row this wide or wider is the table; narrower, a card's lines.
   static const _tableRow = 1000.0;
 
-  /// The time, and the day too when the dates span several.
-  // "12:59 PM" needs about 20 px more than "17:07"; at 56 the AM ran into
-  // the In/Out column ("9:04 AMn").
-  double get _timeWidth =>
-      (_span.single ? 56 : 108) + (widget.formats.timeFormat == '12h' ? 22 : 0);
+  /// The Date and Time columns; the date wide enough for any date format,
+  /// the time for "12:59 PM" (at 56 the AM ran into In/Out: "9:04 AMn").
+  static const _dateWidth = 96.0;
+  static const _timeWidth = 80.0;
 
   /// What hangs under a call - its details, its recording - starts under the
   /// caller on a wide row, so the columns stay readable.
   Widget _under(Widget child) => LayoutBuilder(
     builder: (context, box) => Padding(
       padding: EdgeInsets.only(
-        left: box.maxWidth >= _tableRow ? _timeWidth + 40 : 0,
+        left: box.maxWidth >= _tableRow ? _dateWidth + _timeWidth + 40 : 0,
         top: 4,
         bottom: 10,
       ),

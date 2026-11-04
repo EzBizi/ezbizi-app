@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/reports/experimental_call_report.dart';
 import 'package:ezbizi_client/widgets/ai_mark.dart';
@@ -33,7 +34,8 @@ void main() {
     expect(find.text('11%'), findsNothing);
     expect(find.text('100%'), findsOneWidget);
     // Ada answered one new call and did not book it; Bo's booking is Bo's.
-    expect(find.text('0%'), findsOneWidget);
+    // (The other 0% is Cy's answer rate: rung twice, answered none.)
+    expect(find.text('0%'), findsNWidgets(2));
   });
 
   // Jose, 2026-10-30 (design A1): the counts say what they count and add up.
@@ -388,7 +390,8 @@ void main() {
 
     // Cy answered nothing and booked nothing. 0% would read as a verdict on
     // somebody who was never given the chance, and 0/0 is not zero.
-    expect(find.text('0%'), findsOneWidget); // Ada, who answered 6
+    // Ada's booking rate and Cy's answer rate (0 of 2 rang) are the 0%s.
+    expect(find.text('0%'), findsNWidgets(2));
     expect(find.text('—'), findsWidgets);
   });
 
@@ -709,6 +712,32 @@ void main() {
     expect(find.textContaining('Silent line'), findsNothing);
   });
 
+  // 2026-11-04: it was every Workiz job over new-client calls ("1056 jobs ·
+  // 1028 calls"); now booked out of answered new-client calls.
+  testWidgets('Conv. rate is booked out of answered new-client calls', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400);
+
+    final tile = find
+        .ancestor(of: find.text('Conv. rate'), matching: find.byType(Material))
+        .first;
+    expect(
+      find.descendant(of: tile, matching: find.text('50%')),
+      findsOneWidget,
+    );
+  });
+
+  // Someone the phones never rang (a technician who only books jobs) is an
+  // empty row in a phone table (2026-11-04: 18 of 48).
+  testWidgets('People leaves out whoever no call rang', (tester) async {
+    await _pump(tester, width: 1400, view: 'People');
+
+    expect(find.text('Ada'), findsWidgets);
+    expect(find.text('Cy'), findsWidgets);
+    expect(find.text('Dee'), findsNothing);
+  });
+
   testWidgets('the cards run in the order Jose set', (tester) async {
     await _pump(tester, width: 1400);
 
@@ -729,7 +758,7 @@ void main() {
 
     expect(xs, [...xs]..sort(), reason: 'cards out of order');
     // 1 job over 3 new-client calls.
-    expect(find.text('33%'), findsWidgets);
+    expect(find.text('50%'), findsWidgets);
   });
 
   testWidgets('Not booked lists the answered new-client call and marks it', (
@@ -1265,23 +1294,22 @@ void main() {
     expect(find.text('How much is a sweep?'), findsOneWidget);
   });
 
-  testWidgets('over several days a call says which day it was', (tester) async {
+  // Jose, 2026-11-04: "add date as well to the columns, separate from the
+  // time column". Every call, whatever the range.
+  testWidgets('a call has its date in a Date column beside the time', (
+    tester,
+  ) async {
     await _pump(
       tester,
       width: 1400,
       view: 'Calls',
       now: () => DateTime(2026, 10, 6, 15),
     );
-    expect(find.textContaining('Sep 16'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('date-range-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('date-preset-last_7')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('date-range-apply')));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('Wed, Sep 16'), findsWidgets);
+    expect(find.text('DATE'), findsOneWidget);
+    expect(find.text('TIME'), findsOneWidget);
+    final stamp = DateTime.parse('2026-09-16T14:05:00Z').toLocal();
+    expect(find.text(DisplayFormats.fallback.formatDate(stamp)), findsWidgets);
   });
 
   testWidgets('an account that did not answer is one line above the tabs', (
@@ -1485,6 +1513,8 @@ const _report = {
     'new_client': 3,
     'existing_client': 1,
     'jobs': 1,
+    'answered_new': 2,
+    'booked_new': 1,
     'not_booked': 1,
     'avg_talk_seconds': 120,
   },
@@ -1513,11 +1543,23 @@ const _report = {
     },
     {
       'person': 'Cy',
-      'rang': 0,
+      'rang': 2,
       'answered': 0,
       'new_client': 0,
       'existing_client': 0,
       'jobs': 0,
+      'avg_talk_seconds': null,
+      'in_calls': true,
+      'in_jobs': true,
+    },
+    // Books jobs, never rung: no row in a phone table.
+    {
+      'person': 'Dee',
+      'rang': 0,
+      'answered': 0,
+      'new_client': 0,
+      'existing_client': 0,
+      'jobs': 3,
       'avg_talk_seconds': null,
       'in_calls': false,
       'in_jobs': true,

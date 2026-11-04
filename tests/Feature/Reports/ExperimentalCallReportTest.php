@@ -226,6 +226,9 @@ class ExperimentalCallReportTest extends TestCase
         );
 
         $this->assertSame(1, $day['totals']['not_booked']);
+        // The booking rate's parts (Trey, 2026-11-04): 2 of 3 answered new calls.
+        $this->assertSame(2, $this->person($day, 'Trey Brannan')['booked_new']);
+        $this->assertSame([3, 2], [$day['totals']['answered_new'], $day['totals']['booked_new']]);
         $byId = array_column($day['calls'], null, 'id');
         $this->assertTrue($byId['c-booked']['booked']);
         $this->assertTrue($byId['c-marked']['booked']);
@@ -384,12 +387,17 @@ class ExperimentalCallReportTest extends TestCase
     {
         $day = app(CallReconciliation::class)->forDay(
             [],
-            [['account' => 'CT', 'created_by' => null, 'created_at' => '2026-09-14 10:00:00']],
+            [
+                ['account' => 'CT', 'created_by' => null, 'created_at' => '2026-09-14 10:00:00'],
+                // Blank in Workiz is nobody too, not a person named "" (2026-11-04).
+                ['account' => 'CT', 'created_by' => ' ', 'created_at' => '2026-09-14 11:00:00'],
+            ],
             '2026-09-14',
         );
 
-        $this->assertSame(1, $day['totals']['jobs']);
-        $this->assertSame(1, $this->person($day, 'No one recorded')['jobs']);
+        $this->assertSame(2, $day['totals']['jobs']);
+        $this->assertSame(2, $this->person($day, 'No one recorded')['jobs']);
+        $this->assertSame(['No one recorded'], array_column($day['people'], 'person'));
     }
 
     // ── the two systems disagree about names ─────────────────────
@@ -427,6 +435,19 @@ class ExperimentalCallReportTest extends TestCase
             ['Adeline Pierrelouis'],
             array_column($day['people'], 'person'),
         );
+    }
+
+    /** Jose, 2026-11-04, "yes to all 3": Workiz's spelling onto the phones'. */
+    public function test_workiz_spellings_join_the_phone_name(): void
+    {
+        $this->fakeCallLog([$this->inbound(rang: [['Rolando De Lara', 'Call connected']])]);
+
+        $day = $this->reconcile([
+            ['account' => 'NJ', 'created_by' => 'Rolando De Lara Jr', 'created_at' => '2026-09-14 11:00:00'],
+        ]);
+
+        $this->assertSame(['Rolando De Lara'], array_column($day['people'], 'person'));
+        $this->assertSame([1, 1], [$this->person($day, 'Rolando De Lara')['answered'], $this->person($day, 'Rolando De Lara')['jobs']]);
     }
 
     public function test_similar_names_are_not_merged(): void

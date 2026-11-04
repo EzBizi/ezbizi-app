@@ -287,13 +287,16 @@ class _TabBarLikeState extends State<TabBarLike> {
     // One shape whether or not it fades: swapping a wrapper in and out would
     // rebuild the strip and throw away where it was scrolled to.
     final opaque = Theme.of(context).colorScheme.surface;
-    return rule(
+    // Phone audit 2026-11-04: a 14 % fade on a dark strip read as nothing, and
+    // HR's Payroll sat off the edge unannounced. So the fade is wider, and a
+    // chevron says the strip goes on and pages it along when tapped.
+    final strip = rule(
       ShaderMask(
         blendMode: BlendMode.dstIn,
         // Only the alpha counts under dstIn: opaque, then none past the edge.
         shaderCallback: (bounds) => LinearGradient(
           colors: [opaque, opaque, _more ? Colors.transparent : opaque],
-          stops: const [0, 0.86, 1],
+          stops: const [0, 0.72, 1],
         ).createShader(bounds),
         child: SingleChildScrollView(
           controller: _scroll,
@@ -311,6 +314,31 @@ class _TabBarLikeState extends State<TabBarLike> {
           ),
         ),
       ),
+    );
+    // Always the Stack, chevron or not: the same shape keeps the scroll.
+    return Stack(
+      children: [
+        strip,
+        if (_more)
+          PositionedDirectional(
+            end: 0,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: IconButton(
+                key: const Key('tab-bar-chevron'),
+                tooltip: 'More tabs',
+                icon: const Icon(Icons.chevron_right),
+                onPressed: () => _scroll.animateTo(
+                  (_scroll.offset + _scroll.position.viewportDimension * 0.7)
+                      .clamp(0.0, _scroll.position.maxScrollExtent),
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 

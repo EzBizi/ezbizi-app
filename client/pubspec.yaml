@@ -85,6 +85,9 @@ dependencies:
   # downloads at build time. The web build shows the PDF in the browser's own
   # viewer and never calls it, so pdf.js is never fetched from a CDN.
   printing: ^5.14.2
+  # Reports › Marketing's Print (Merav, 2026-11-04): the page drawn from the
+  # report's rows, so a long table runs onto more pages instead of being cut.
+  pdf: ^3.12.0
   desktop_drop: 0.7.1
 
   # The how-to video in the app on Windows too (Jose, 2026-10-14: "video
