@@ -9,6 +9,7 @@ use App\Models\CallReportPersonReview;
 use App\Models\ReportScoringWeight;
 use App\Models\WorkizCall;
 use App\Support\Reports\Experimental\PerformancePeople;
+use App\Support\Reports\Experimental\PersonNames;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Reports\ReportView;
@@ -59,12 +60,17 @@ class ScoringReportController extends Controller
         $to = CarbonImmutable::parse($q['to'], $zone)->endOfDay();
         $search = trim((string) ($q['q'] ?? ''));
         $digits = preg_replace('/\D/', '', $search);
+        // Every stored spelling that is this person now (PersonNames).
+        $names = PersonNames::forTenant();
+        $spellings = DB::table('call_report_transcripts')->where('organization_id', app(TenantContext::class)->idOrFail())
+            ->whereNotNull('answered_by')->distinct()->pluck('answered_by')
+            ->filter(fn ($n) => ($names->canonical($n) ?? $n) === $q['person'])->push($q['person'])->unique()->values()->all();
 
         $base = fn () => DB::table('call_report_scores as s')
             ->join('call_report_transcripts as t', fn ($j) => $j->on('t.organization_id', '=', 's.organization_id')->on('t.call_id', '=', 's.call_id'))
             ->where('s.organization_id', app(TenantContext::class)->idOrFail())
             ->whereNotNull('s.score')
-            ->where('t.answered_by', $q['person'])
+            ->whereIn('t.answered_by', $spellings)
             ->whereBetween('t.call_started_at', [$from->utc(), $to->utc()])
             ->select(['t.call_id', 't.call_started_at', 't.caller_number', 't.recording_id', 's.score', 's.strength', 's.improve', 't.transcript_labelled', 't.transcript']);
 
@@ -165,6 +171,10 @@ class ScoringReportController extends Controller
             ->whereBetween('t.call_started_at', [$from->utc(), $to->utc()])
             ->orderByDesc('t.call_started_at')
             ->get(['t.answered_by', 't.call_id', 't.call_started_at', 's.score', 's.checks', 's.strength', 's.improve']);
+        // A stored name as Performance shows it today: a pair added since the
+        // call was transcribed applies to it too, with nothing rewritten.
+        $names = PersonNames::forTenant();
+        $rows->each(fn ($r) => $r->answered_by = $names->canonical($r->answered_by) ?? $r->answered_by);
 
         $workiz = WorkizCall::query()
             ->whereBetween('called_at', [$from->toDateString().' 00:00:00', $to->toDateString().' 23:59:59'])
@@ -179,7 +189,7 @@ class ScoringReportController extends Controller
             ->where('to', '<=', $to->toDateString())
             ->orderByDesc('to')
             ->get(['person', 'period', 'from', 'to', 'calls', 'avg_score', 'summary', 'strengths', 'work_on', 'trend'])
-            ->groupBy('person');
+            ->groupBy(fn ($r) => $names->canonical($r->person) ?? $r->person);
         $review = fn ($person, $period) => ($r = $reviews->get($person)?->firstWhere('period', $period)) === null ? null : [
             'from' => $r->from->toDateString(), 'to' => $r->to->toDateString(), 'calls' => $r->calls,
             'avg_score' => $r->avg_score, 'summary' => $r->summary, 'strengths' => $r->strengths,

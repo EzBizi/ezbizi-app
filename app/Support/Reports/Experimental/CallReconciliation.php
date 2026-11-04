@@ -43,59 +43,29 @@ use App\Support\Tenancy\TenantContext;
  * obvious duplicate row. The union of both name sets is returned and a person
  * who appears on only one side is visible as a row of zeroes on the other.
  *
- * ── AN ALIAS IS SOMEBODY'S ANSWER, NEVER A RESEMBLANCE ──────────
+ * ── ONE PERSON, TWO SPELLINGS ──────────
  *
- * `ALIASES` is how two spellings become one person, and every entry in it is a
- * human saying so. Jose, asked whether the two Adelines were the same person:
- * "YES". That is the only thing that may put a row in this list.
- *
- * It is deliberately not a similarity rule, not a normaliser, not an initials
- * match. Those would work on this pair and would also merge two real people
- * who happen to share a surname — silently, and in the direction where one
- * person's work lands on another's row. A list of confirmed pairs cannot do
- * that: it can only be incomplete, which is visible as a duplicate row.
+ * PersonNames decides, from data: a pair stored on somebody's word, Workiz's
+ * own team list, or the one Workiz person with the same first and last word.
+ * It was a constant here (ALIASES) until Jose, 2026-11-04: "Shouldnt u be able
+ * to update them without an update?" A pair is now a row, not a release.
  */
 final class CallReconciliation
 {
-    /**
-     * Spellings confirmed to be one person, mapped to the name to keep.
-     *
-     * Keyed by the RingCentral spelling because that is the one the phone
-     * directory holds; the value is the name the report shows. Add only on
-     * somebody's word.
-     */
-    public const ALIASES = [
-        // Jose, 2026-09-14, asked whether these are the same person: "YES".
-        'Adeline Pierre Louis-Aghaji' => 'Adeline Pierrelouis',
-
-        // Jose, 2026-10-06, asked whether each pair is one person: "Yes, all three".
-        'Chevel Richards' => 'Chevel Richards Turner',
-        'Hyanne Faelnar' => 'Hyanne Kylla Faelnar',
-        'Danika Kaye' => 'Danika Kaye Navarroza',
-
-        // Jose, 2026-11-03, asked whether these are one person: "yes".
-        'Bryan Lagazon' => 'Bryan Nixon Lagazon',
-        // Jose, 2026-11-03, asked whether these are one person: "yes they are the same person".
-        'Jay Ticoit' => 'Dieuve Ticoit',
-        // Jose, 2026-11-04, asked whether each pair is one person: "yes to all 3".
-        // Workiz's spelling onto the phones', so their scored calls keep their name.
-        'Cgrey S. Lumacad' => 'Cgrey Lumacad',
-        'Marydem S. Lucenara' => 'Marydem Lucenara',
-        'Rolando De Lara Jr' => 'Rolando De Lara',
-    ];
-
     /** @var array<string, array<string, array{value: string, by: ?string}>> call id => field => override */
     private array $overrides = [];
 
+    /** @var array<string, PersonNames> organization => its names, read once per instance */
+    private array $names = [];
+
+    private function names(): PersonNames
+    {
+        return $this->names[(string) app(TenantContext::class)->get()?->getKey()] ??= PersonNames::forTenant();
+    }
+
     private function canonical(?string $name): ?string
     {
-        // A blank Workiz creator is nobody, not a person named "" (32 jobs a
-        // week sat on a nameless row, 2026-11-04).
-        if ($name === null || trim($name) === '') {
-            return null;
-        }
-
-        return self::ALIASES[$name] ?? $name;
+        return $this->names()->canonical($name);
     }
 
     /**
@@ -349,7 +319,10 @@ final class CallReconciliation
                 // jobs without answering phones - a normal way to work - must
                 // not be flagged as a mismatch.
                 'in_calls' => isset($rang[$name]) || isset($answered[$name]),
-                'in_jobs' => isset($workizRoster[$name]),
+                // On Workiz's team list, or booked a job in the window: someone
+                // who takes existing clients books nothing and still has an
+                // account (Christine Malana, 2026-11-04).
+                'in_jobs' => isset($workizRoster[$name]) || $this->names()->inWorkiz($name),
 
                 // Set by hand per person (Jose, 2026-10-05, item 5).
                 'tag' => $tags[$name] ?? null,
