@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Settings\SettingsResolver;
 use App\Http\Controllers\Api\MembershipsController;
 use App\Models\Membership;
 use App\Models\Organization;
@@ -37,8 +38,8 @@ class MembershipsRemindRenewals extends Command
         foreach (Organization::query()->whereIn('id', $ids)->get() as $organization) {
             $tenant->run($organization, function () use ($events, $organization) {
                 // Jose, 11-04: these are the organization's settings, not constants.
-                $cutoff = CarbonImmutable::today()->addDays(Membership::setting('customers.membership_reminder_days', $organization->id))->toDateString();
-                $followUpDays = Membership::setting('customers.membership_follow_up_days', $organization->id);
+                $cutoff = CarbonImmutable::today()->addDays(max(1, (int) app(SettingsResolver::class)->get('customers.membership_reminder_days', Organization::query()->withoutGlobalScopes()->findOrFail($organization->id))))->toDateString();
+                $followUpDays = max(1, (int) app(SettingsResolver::class)->get('customers.membership_follow_up_days', Organization::query()->withoutGlobalScopes()->findOrFail($organization->id)));
 
                 $due = Membership::query()->with('plan')
                     ->whereNull('reminded_at')->whereNull('cancelled_at')
