@@ -2,13 +2,13 @@
 
 namespace App\Support\Reports\Texts;
 
-use App\Http\Controllers\Api\ExperimentalCallReportController;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\Organization;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
+use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 
@@ -28,7 +28,7 @@ final class NewClientConversion
         $calls = app(TenantContext::class)->run($organization, function () use ($day) {
             $report = app(CallReconciliation::class)->forRange(
                 app(RingCentralCallLog::class)->forPeriod($day, $day->endOfDay()),
-                app(WorkizJobs::class)->storedAll($day->subDays(ExperimentalCallReportController::LOOKBACK_DAYS)->toDateString())['jobs'],
+                app(WorkizJobs::class)->storedAll($day->subDays(ReportView::lookbackDays())->toDateString())['jobs'],
                 $day->toDateString(),
                 $day->toDateString(),
                 CallReportConversion::query()->pluck('call_id')->all(),

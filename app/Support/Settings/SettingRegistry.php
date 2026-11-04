@@ -1475,6 +1475,29 @@ class SettingRegistry
                 help: 'The queue a caller reaches by choosing "existing customer" in your phone menu. '
                     .'Their calls are tagged Existing client. Empty: none are.',
             ),
+            // Reports' numbers, out of code constants (Jose, 2026-11-04: every
+            // business value editable in the app and over the API).
+            new SettingDefinition(
+                key: 'reports.scoring_min_calls',
+                label: 'Scored calls before a person is ranked',
+                type: SettingDefinition::TYPE_INT,
+                default: 3,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'reports.scoring_weights',
+                help: 'Fewer than this many scored calls in the dates and Scoring shows the person '
+                    .'unranked, and they get no AI review. The same number of new-client calls '
+                    .'before their conversion counts in their score.',
+            ),
+            new SettingDefinition(
+                key: 'reports.call_lookback_days',
+                label: 'Days of jobs a call is matched against',
+                type: SettingDefinition::TYPE_INT,
+                default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'reports.handles',
+                help: 'How far back the call reports read Workiz jobs: a caller with an open job from '
+                    .'this window is an existing job, not a lost booking.',
+            ),
             // A1 Leads takeover, 2026-10-16: one switch that stops every call
             // to Google for a business (GoogleToken refuses the token).
             new SettingDefinition(

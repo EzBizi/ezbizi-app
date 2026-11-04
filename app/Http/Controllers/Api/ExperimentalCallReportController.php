@@ -49,17 +49,6 @@ class ExperimentalCallReportController extends Controller
     public function __construct(private readonly AuditLogger $audit) {}
 
     /**
-     * A booking can be entered AFTER the appointment, so the window reaches back.
-     *
-     * Workiz's `start_date` filters the appointment date, not the booking date,
-     * so a day's bookings have to be found inside a window of appointments.
-     * Measured across all nine accounts: six jobs have an appointment earlier
-     * than their booking, the worst by 13 days. 30 gives room and costs 17
-     * requests for ~840 rows.
-     */
-    public const LOOKBACK_DAYS = 30;
-
-    /**
      * Books that exist, are missing from every total, and always will be.
      *
      * Jose, 2026-09-15, asked why Massachusetts' Workiz Developer page refuses
@@ -207,7 +196,7 @@ class ExperimentalCallReportController extends Controller
 
         if ($accounts !== []) {
             // The synced copy, not Workiz live - see WorkizJobs::stored().
-            $stored = $workiz->storedAll($start->subDays(self::LOOKBACK_DAYS)->toDateString());
+            $stored = $workiz->storedAll($start->subDays(ReportView::lookbackDays())->toDateString());
             $jobs = $stored['jobs'];
             $syncedAt = $stored['synced_at'];
         }
