@@ -919,6 +919,19 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 help: 'Complements the owning-franchise tag (§5.2).',
             ),
+            // Jose, 11-04: no hard-coded business values (Memberships' link lifetimes).
+            new SettingDefinition(
+                key: 'customers.join_link_days', label: 'Membership sign-up links last (days)',
+                type: SettingDefinition::TYPE_INT, default: 60,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'How long the sign-up link in a membership offer keeps working.',
+            ),
+            new SettingDefinition(
+                key: 'customers.review_link_days', label: 'Review links last (days)',
+                type: SettingDefinition::TYPE_INT, default: 90,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'How long the review link sent after a job keeps knowing who the customer is.',
+            ),
         ];
     }
 
