@@ -10,6 +10,7 @@ import '../core/theme.dart';
 import '../widgets/dashboard_chart.dart';
 import '../widgets/date_range_picker.dart';
 import '../widgets/report_grid.dart';
+import 'meta_campaigns_view.dart';
 import 'reports/report_dates.dart';
 
 /// What the Google Ads accounts spent, and what came back for it.
@@ -64,6 +65,9 @@ class _AdsMemory {
   int range = 0; // Today: the default - see _range below.
   DateTimeRange? custom;
   Set<String> extra = <String>{};
+
+  /// 'google' or 'meta' - which advertiser the screen shows (design 180).
+  String source = 'google';
 
   /// Report bodies by account + window.
   final Map<String, Map<String, dynamic>> reports = {};
@@ -532,15 +536,40 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
         : n.toStringAsFixed(2);
   }
 
+  /// Google | Meta, beside each view's range picker (design 180).
+  Widget _sourceSwitch() => SegmentedButton<String>(
+    key: const ValueKey('ads-source'),
+    showSelectedIcon: false,
+    segments: const [
+      ButtonSegment(value: 'google', label: Text('Google')),
+      ButtonSegment(value: 'meta', label: Text('Meta')),
+    ],
+    selected: {_memory.source},
+    onSelectionChanged: (s) => setState(() => _memory.source = s.first),
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    if (_memory.source == 'meta') {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: MetaCampaignsView(
+          api: widget.api,
+          session: widget.session,
+          sourceSwitch: _sourceSwitch(),
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Align(alignment: Alignment.centerLeft, child: _sourceSwitch()),
+          const SizedBox(height: 12),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) => constraints.maxWidth >= 860
