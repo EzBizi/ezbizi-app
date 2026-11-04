@@ -52,7 +52,7 @@ const Map<String, Tour> reportsTours = {
     ],
   ),
   'reports/Performance': Tour(
-    version: 2,
+    version: 3,
     steps: [
       TourStep(
         anchor: 'call-report-period',
@@ -84,6 +84,29 @@ const Map<String, Tour> reportsTours = {
             'Existing or Both kinds of client.',
       ),
       TourStep(
+        anchor: 'tour-people-groups',
+        title: 'Phone and Sales',
+        body:
+            'Phone: what rang each person, what they answered, what a '
+            'teammate took (Not answered) and what nobody took (Missed). '
+            'Sales counts only the calls they answered.',
+      ),
+      TourStep(
+        anchor: 'tour-person-filters',
+        title: "A person's calls",
+        body:
+            'Open a person to see their calls. Answer and Booking narrow them; '
+            'a call a teammate took is never their booking or their score.',
+      ),
+      TourStep(
+        anchor: 'tour-call-corrections',
+        title: 'Correct a call',
+        body:
+            "In a call's details: set its client (New or Existing) or its "
+            'booking (Booked or Not booked) by hand. It shows who set it, and '
+            'Automatic puts it back.',
+      ),
+      TourStep(
         anchor: 'calls-search',
         title: 'Find a call',
         body: 'Narrows the calls as you type.',
@@ -96,7 +119,7 @@ const Map<String, Tour> reportsTours = {
     ],
   ),
   'reports/Workspace': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'workspace-list',
@@ -113,12 +136,14 @@ const Map<String, Tour> reportsTours = {
         title: 'Approve, download or send',
         body:
             'Approve a weekly or monthly report, download it as PDF or Excel, '
-            'or send a daily text to your WhatsApp now.',
+            'or send a daily text to your WhatsApp now. A weekly or monthly '
+            'report opens with its key figures, then why jobs were canceled '
+            'and each technician\'s figures.',
       ),
     ],
   ),
   'reports/Scoring': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-report-dates',
@@ -145,8 +170,17 @@ const Map<String, Tour> reportsTours = {
         title: 'Their calls',
         body:
             "In a person's analysis: their latest three calls and their best "
-            'and worst, each with its score. Search finds any of their calls '
-            'by number or words.',
+            'and worst, each with its score. Open one for what went well, '
+            'what to improve and the words, each speaker in its own colour. '
+            'Search finds any of their calls by number or words.',
+      ),
+      TourStep(
+        anchor: 'tour-call-corrections',
+        title: 'Correct a call',
+        body:
+            "In a call's details: set its client (New or Existing) or its "
+            'booking (Booked or Not booked) by hand. It shows who set it, and '
+            'Automatic puts it back.',
       ),
       TourStep(
         anchor: 'scoring-ranking',

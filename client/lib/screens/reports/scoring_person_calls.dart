@@ -259,6 +259,9 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                   ]) ...[
                     const SizedBox(height: 6),
                     CallCorrection(
+                      key: field == 'client'
+                          ? const ValueKey('tour-call-corrections')
+                          : null,
                       api: widget.api,
                       callId: id,
                       field: field,
