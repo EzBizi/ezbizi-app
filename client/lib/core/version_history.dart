@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0529',
+      date: '4 Nov 2026',
+      items: [
+        'Settings › Lists: business lists such as staff name pairs and placeholder emails, phones and streets are edited here, no update needed.',
+        'Many business values moved from code into Settings: phone alerts, link lifetimes, scheduling rules, fleet due-soon window, HR alert windows, day tags, membership reminders, project management statuses, AI and WhatsApp options.',
+        'Times follow each company time zone setting instead of assuming Eastern.',
+        'Reports: phone names match Workiz names automatically; staff name pairs are editable in Settings › Lists.',
+        'Workiz: job status names come from each branch own Workiz account.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0528',
       date: '4 Nov 2026',
       items: [
