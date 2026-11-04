@@ -13,6 +13,8 @@ use App\Models\User;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Widgets\Hr\ScopesToPlaces;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use App\Support\Training\LapsedPasses;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -35,10 +37,6 @@ final class HrOverview
 
     private const LIST_CAP = 200;
 
-    private const EXPIRING_DAYS = 60;
-
-    /** An invitation unopened this long reads as stalled (InvitationsStalled's default). */
-    private const QUIET_DAYS = 3;
 
     public function for(User $viewer, DashboardPeriod $period): array
     {
@@ -192,7 +190,7 @@ final class HrOverview
 
     private function stalledInvitations(array $places): Collection
     {
-        $quietBefore = now()->subDays(self::QUIET_DAYS);
+        $quietBefore = now()->subDays((int) app(SettingsResolver::class)->get('hr.alerts.quiet_days', app(TenantContext::class)->get()));
 
         return $this->constrainToPlaces(
             Invitation::query()->whereNull('accepted_at')->whereNull('revoked_at'),
@@ -213,7 +211,7 @@ final class HrOverview
     /** The expiry questions on contracts (ExpiringCertifications' rule): lapsed, or due within 60 days. */
     private function certifications(array $places, string $today): Collection
     {
-        $until = Carbon::parse($today)->addDays(self::EXPIRING_DAYS)->toDateString();
+        $until = Carbon::parse($today)->addDays((int) app(SettingsResolver::class)->get('hr.alerts.expiring_days', app(TenantContext::class)->get()))->toDateString();
         $rows = collect();
 
         $onboardings = Onboarding::query()->with(['contractVersion', 'user:id,name'])
