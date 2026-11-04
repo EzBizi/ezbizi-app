@@ -93,7 +93,11 @@ class ReportWorkspaceTest extends TestCase
     {
         $t = $this->provisionTenant('Alpha');
         $this->signedInAs($t['admin'])->getJson('/api/v1/reports/period?from=2026-10-01&to=2026-10-07&format=json')->assertOk()
-            ->assertJsonPath('data.sheets.Created.0', ['Branch', 'Source', 'Jobs', 'Done', 'Open', 'Canceled', 'Gross']);
+            ->assertJsonPath('data.sheets.Created.0', ['Branch', 'Source', 'Jobs', 'Done', 'Open', 'Canceled', 'Gross'])
+            // The PDF's KPIs on the screen and in Excel too (Jose, 2026-11-03).
+            ->assertJsonPath('data.sheets.Key figures.0.2', 'Close rate %')
+            ->assertJsonPath('data.sheets.Cancellations.0', ['Branch', 'Reason', 'Canceled', 'Share %'])
+            ->assertJsonPath('data.sheets.Technicians.0.4', 'Tech-caused canc');
         $this->signedInAs($t['admin'])->getJson('/api/v1/reports/period?from=2026-10-01&to=2026-10-07&format=json&report=job_profitability')->assertOk()
             ->assertJsonPath('data.sheets.Jobs.0.0', 'Branch');
     }

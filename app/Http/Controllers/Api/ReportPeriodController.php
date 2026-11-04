@@ -73,23 +73,40 @@ class ReportPeriodController extends Controller
     /** Three sheets — jobs created, jobs closed, technicians — one row per branch and line. */
     private function workbook(PeriodReport $report, $branches, string $from, string $to): array
     {
+        // The PDF's KPIs on the screen and in Excel too (Jose, 2026-11-03:
+        // "ADD KPI's, Add Cancellation Breakdown, Add Tech KPI's breakdown").
+        // ponytail: net margin stays in the PDF; it reads the P&L from Airtable.
         $sheets = [
+            'Key figures' => ['Branch', 'Jobs created', 'Close rate %', 'Done', 'Canceled', 'Canc %', 'Gross', 'Avg sale', 'Deposits'],
             'Created' => ['Branch', 'Source', 'Jobs', 'Done', 'Open', 'Canceled', 'Gross'],
             'Closed' => ['Branch', 'Source', 'Done', 'Canceled', 'Gross'],
-            'Technicians' => ['Branch', 'Technician', 'Done', 'Canceled', 'Gross', 'Deposits'],
+            'Cancellations' => ['Branch', 'Reason', 'Canceled', 'Share %'],
+            'Technicians' => ['Branch', 'Technician', 'Done', 'Canceled', 'Tech-caused canc', 'Gross', 'Share of gross %', 'Deposits'],
         ];
+        $pct = fn ($n, $of) => $of > 0 ? round($n / $of * 100, 1) : null;
         $rows = array_map(fn ($head) => [$head], $sheets);
         foreach ($branches as $b) {
             $f = $report->figures($b, $from, $to);
             $n = BranchName::of($b);
+            $all = array_sum(array_column($f['created'], 'all'));
+            $done = array_sum(array_column($f['closed'], 'done'));
+            $canceled = array_sum(array_column($f['closed'], 'canceled'));
+            $gross = array_sum(array_column($f['closed'], 'gross'));
+            $rows['Key figures'][] = [$n, $all, $pct(array_sum(array_column($f['created'], 'done')), $all), $done, $canceled,
+                $pct($canceled, $done + $canceled), round($gross, 2), $done > 0 ? round($gross / $done, 2) : null,
+                round(array_sum(array_column($f['techs'], 'deposits')), 2)];
             foreach ($f['created'] as $s => $r) {
                 $rows['Created'][] = [$n, $s, $r['all'], $r['done'], $r['open'], $r['canceled'], round($r['gross'], 2)];
             }
             foreach ($f['closed'] as $s => $r) {
                 $rows['Closed'][] = [$n, $s, $r['done'], $r['canceled'], round($r['gross'], 2)];
             }
+            foreach ($f['reasons'] as $why => $count) {
+                $rows['Cancellations'][] = [$n, $why, $count, $pct($count, $canceled)];
+            }
             foreach ($f['techs'] as $t) {
-                $rows['Technicians'][] = [$n, $t['name'], $t['done'], $t['canceled'], round($t['gross'], 2), round($t['deposits'], 2)];
+                $rows['Technicians'][] = [$n, $t['name'], $t['done'], $t['canceled'], $t['tech_canceled'] ?? 0,
+                    round($t['gross'], 2), $pct($t['gross'], $gross), round($t['deposits'], 2)];
             }
         }
 

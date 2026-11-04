@@ -77,6 +77,11 @@ final class CallReconciliation
         'Bryan Lagazon' => 'Bryan Nixon Lagazon',
         // Jose, 2026-11-03, asked whether these are one person: "yes they are the same person".
         'Jay Ticoit' => 'Dieuve Ticoit',
+        // Jose, 2026-11-04, asked whether each pair is one person: "yes to all 3".
+        // Workiz's spelling onto the phones', so their scored calls keep their name.
+        'Cgrey S. Lumacad' => 'Cgrey Lumacad',
+        'Marydem S. Lucenara' => 'Marydem Lucenara',
+        'Rolando De Lara Jr' => 'Rolando De Lara',
     ];
 
     /** @var array<string, array<string, array{value: string, by: ?string}>> call id => field => override */
@@ -84,7 +89,9 @@ final class CallReconciliation
 
     private function canonical(?string $name): ?string
     {
-        if ($name === null) {
+        // A blank Workiz creator is nobody, not a person named "" (32 jobs a
+        // week sat on a nameless row, 2026-11-04).
+        if ($name === null || trim($name) === '') {
             return null;
         }
 
@@ -200,6 +207,7 @@ final class CallReconciliation
         $talkSeconds = [];
         $talkCalls = [];
         $new = [];
+        $bookedNew = [];
         $existing = [];
 
         $reachedNobody = 0;
@@ -255,6 +263,9 @@ final class CallReconciliation
             // make the day's new-client calls outnumber the day's calls.
             if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE) {
                 $new[$who] = ($new[$who] ?? 0) + 1;
+                if ($this->isBooked($call, $bookedPhones, $converted)) {
+                    $bookedNew[$who] = ($bookedNew[$who] ?? 0) + 1;
+                }
             } elseif ($queue === RingCentralCallLog::EXISTING_CLIENT_QUEUE) {
                 $existing[$who] = ($existing[$who] ?? 0) + 1;
             }
@@ -316,6 +327,9 @@ final class CallReconciliation
                 'rang' => $rang[$name] ?? 0,
                 'answered' => $answered[$name] ?? 0,
                 'new_client' => $new[$name] ?? 0,
+                // Of those new-client calls they answered, the ones booked:
+                // the booking rate's top (Trey, 2026-11-04).
+                'booked_new' => $bookedNew[$name] ?? 0,
                 'existing_client' => $existing[$name] ?? 0,
                 'jobs' => $made[$name] ?? 0,
 
@@ -351,6 +365,9 @@ final class CallReconciliation
                 'answered' => array_sum($answered),
                 'reached_nobody' => $reachedNobody,
                 'new_client' => $newTotal,
+                // The Overview's conversion: booked out of answered new-client calls.
+                'answered_new' => array_sum($new),
+                'booked_new' => array_sum($bookedNew),
                 'existing_client' => $existingTotal,
                 'jobs' => count($booked),
                 'not_booked' => $notBooked,

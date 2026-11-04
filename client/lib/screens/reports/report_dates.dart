@@ -160,15 +160,16 @@ class _ReportDatesState extends State<ReportDates> {
                   ],
                 );
               }
+              // The picker drops to a second line rather than the quick
+              // buttons being cut off (a laptop's 1280 cut "Last 30 days").
               return Row(
                 children: [
                   Expanded(
-                    child: Row(
-                      children: [
-                        Flexible(child: quick),
-                        const SizedBox(width: 12),
-                        dates,
-                      ],
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [(quick.child as Wrap), dates],
                     ),
                   ),
                   ...widget.trailing,
