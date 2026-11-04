@@ -77,7 +77,6 @@ final class WhatsAppStaffBot
     private const MENU_WORDS = ['menu', 'hi', 'hello', 'hey', 'hola', 'start', 'help', '?'];
 
     /** More than this and the reply stops being readable on a phone. */
-    private const MAX_LOCATIONS = 5;
 
     /** WhatsApp's cap on rows in one list, across all its sections. */
     private const MAX_ROWS = 10;
@@ -174,7 +173,7 @@ final class WhatsAppStaffBot
 
         // A photo captioned results or ACE: a lead source's results (WhatsAppResults).
         if ($viewer?->hasPermission(WhatsAppResults::PERMISSION) && $inbound->kind === 'image'
-            && $inbound->media_id !== null && GrokCli::configured() && preg_match(WhatsAppResults::CAPTION, $text) === 1) {
+            && $inbound->media_id !== null && GrokCli::configured() && preg_match(WhatsAppResults::caption($number->organization_id), $text) === 1) {
             ReadWhatsAppResults::dispatch($number->id, $to, $viewer->getKey(), (string) $inbound->media_id, $inbound->body);
             $this->text($number, $to, "\u{1F440} Reading the results in that photo\u{2026}", preview: false);
 
@@ -664,12 +663,13 @@ final class WhatsAppStaffBot
         }
 
         $name = $this->brain->name($organization);
-        $reply = $matches->take(self::MAX_LOCATIONS)
+        $max = max(1, (int) app(SettingsResolver::class)->get('ai_assistance.max_locations', $organization));
+        $reply = $matches->take($max)
             ->map(fn (array $site) => self::describe($site, $name))
             ->implode("\n\n");
 
-        if ($matches->count() > self::MAX_LOCATIONS) {
-            $reply .= "\n\n\u{2139}\u{FE0F} _Showing ".self::MAX_LOCATIONS.' of '.$matches->count()
+        if ($matches->count() > $max) {
+            $reply .= "\n\n\u{2139}\u{FE0F} _Showing ".$max.' of '.$matches->count()
                 .'. Text a city for fewer._';
         }
 

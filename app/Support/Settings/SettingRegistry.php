@@ -1298,6 +1298,67 @@ class SettingRegistry
                 help: 'Extra instructions added to the tech assistant\'s rules, such as preferred suppliers. '
                     .'They cannot switch off its no-guessing rule.',
             ),
+            // Business values moved out of code (Jose, 2026-11-04: every one editable).
+            new SettingDefinition(
+                key: 'ai_assistance.trades',
+                label: 'What the business does',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'chimneys, fireplaces, garage doors, inspections',
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'Told to the AI that reads enquiries and splits call transcripts, e.g. "chimneys, fireplaces, garage doors".',
+            ),
+            new SettingDefinition(
+                key: 'ai_assistance.group_purposes',
+                label: 'WhatsApp group purposes',
+                type: SettingDefinition::TYPE_JSON,
+                default: [
+                    'financial' => 'All-companies summary and financial reports',
+                    'gbp_updates' => 'Local Services & Google Business Profile updates',
+                    'messages' => 'New leads and customer messages',
+                    'dispatch' => 'Dispatch',
+                    'approval' => 'Approves the weekly and monthly reports (the bookkeeper)',
+                ],
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'The name shown for each kind of report group. The kinds are fixed; their names are yours.',
+            ),
+            new SettingDefinition(
+                key: 'ai_assistance.ready_template',
+                label: 'WhatsApp template for "report ready"',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'automation_alert',
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'An approved template taking two values: a title and a line. Sent when a group\'s 24-hour window is closed.',
+            ),
+            new SettingDefinition(
+                key: 'ai_assistance.ready_line',
+                label: '"Report ready" line',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'Your report is ready. Reply to this message and it arrives here.',
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'The second value of the "report ready" template.',
+            ),
+            new SettingDefinition(
+                key: 'ai_assistance.results_words',
+                label: 'Words that mark a results photo',
+                type: SettingDefinition::TYPE_LIST,
+                default: ['result', 'results', 'resultado', 'resultados', 'ace'],
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'A WhatsApp photo captioned with one of these is read as a lead source\'s results.',
+            ),
+            new SettingDefinition(
+                key: 'ai_assistance.max_locations',
+                label: 'Locations shown per answer',
+                type: SettingDefinition::TYPE_INT,
+                default: 5,
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'How many matching places the staff bot lists at once.',
+            ),
         ];
     }
 

@@ -8,6 +8,7 @@ use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppNumber;
 use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Texts\BranchName;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\WhatsAppGroups;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -26,19 +27,11 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class WhatsAppGroupsController extends Controller
 {
-    /** The reports a group can be for, besides one daily group per branch. */
-    private const PURPOSES = [
-        'financial' => 'All-companies summary and financial reports',
-        'gbp_updates' => 'Local Services & Google Business Profile updates',
-        'messages' => 'New leads and customer messages',
-        'dispatch' => 'Dispatch',
-        'approval' => 'Approves the weekly and monthly reports (the bookkeeper)',
-    ];
-
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly AuditLogger $audit,
         private readonly WhatsAppGroups $groups,
+        private readonly SettingsResolver $settings,
     ) {}
 
     public function index(): JsonResponse
@@ -52,7 +45,7 @@ class WhatsAppGroupsController extends Controller
         return response()->json([
             'data' => WhatsAppGroup::query()->with('members:id,name,phone')->orderBy('subject')->get()
                 ->map(fn (WhatsAppGroup $g) => $this->present($g)),
-            'purposes' => collect(self::PURPOSES)->merge($daily)
+            'purposes' => collect((array) $this->settings->get('ai_assistance.group_purposes', $this->tenant->get()))->merge($daily)
                 ->map(fn (string $label, string $key) => ['key' => $key, 'label' => $label])->values(),
             // Who can be added: this business's active people. Here rather
             // than GET /users so the picker needs only ai_assistance.manage.

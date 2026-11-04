@@ -42,7 +42,7 @@ class LabelCallTranscripts extends Command
 
         // Side by side (GrokCli::askMany); a failed call stays unlabelled and
         // is asked about again next run.
-        $reads = TranscriptSpeakers::readMany($rows->map(fn ($row) => (string) $row->transcript)->all());
+        $reads = TranscriptSpeakers::readMany($rows->map(fn ($row) => (string) $row->transcript)->all(), $rows->pluck('organization_id')->all());
 
         foreach ($rows->values() as $n => $row) {
             $read = $reads[$n];

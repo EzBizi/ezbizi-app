@@ -52,11 +52,14 @@ final class TranscriptSpeakers
      * read() for several calls side by side (GrokCli::askMany).
      *
      * @param  list<string>  $raws
+     * @param  list<?string>  $organizationIds  whose call each is, for its trades (ai_assistance.trades)
      * @return list<array|RuntimeException> in order; a failure stays with its call
      */
-    public static function readMany(array $raws): array
+    public static function readMany(array $raws, array $organizationIds = []): array
     {
-        $answers = GrokCli::askMany(array_map(fn ($raw) => self::PROMPT.$raw, $raws), self::SCHEMA);
+        $answers = GrokCli::askMany(array_map(
+            fn ($raw, $i) => str_replace('{trades}', GrokCli::trades($organizationIds[$i] ?? null), self::PROMPT).$raw,
+            $raws, array_keys($raws)), self::SCHEMA);
 
         return array_map(fn ($json, $raw) => $json instanceof RuntimeException ? $json : [
             'labelled' => self::assemble((array) ($json['turns'] ?? []), $raw),
@@ -71,21 +74,20 @@ final class TranscriptSpeakers
         ], $answers, $raws);
     }
 
-    private const PROMPT = "Below is a machine transcript of one phone call to a home-services business (chimneys, "
-        ."fireplaces, garage doors). It starts with the business's recorded phone menu, which may "
+    private const PROMPT = "Below is a machine transcript of one phone call to a home-services business ({trades}). It starts with the business's recorded phone menu, which may "
         ."repeat.\n\n"
         ."1. Split it into turns by who is speaking:\n"
         ."- \"IVR menu\": the recorded menu or any recorded message. Give it ONCE, as one turn, even if it repeated.\n"
         ."- \"Dispatcher\": the business's person who answers.\n"
         ."- \"Customer\": the caller.\n"
         ."Copy the words exactly as written. Do not summarise, correct or add anything.\n"
-        ."2. summary: one plain sentence a dispatcher can read in two seconds: what the caller wanted "
+        .'2. summary: one plain sentence a dispatcher can read in two seconds: what the caller wanted '
         ."and what was agreed (service, day, price if said). Empty if nobody spoke.\n"
-        ."3. next_step: what the business should do next, in a few words (\"Call back with a quote\"), "
+        .'3. next_step: what the business should do next, in a few words ("Call back with a quote"), '
         ."or empty if nothing is left to do.\n"
-        ."4. complaint: true ONLY when the caller is clearly upset with the business and says so: bad or unfinished "
-        ."work, a technician who did not show, an overcharge or refund demand, rude treatment, or a threat to "
-        ."review, dispute or cancel. NOT a complaint: confirming, moving or fixing an appointment, a booking "
+        .'4. complaint: true ONLY when the caller is clearly upset with the business and says so: bad or unfinished '
+        .'work, a technician who did not show, an overcharge or refund demand, rude treatment, or a threat to '
+        .'review, dispute or cancel. NOT a complaint: confirming, moving or fixing an appointment, a booking '
         ."mistake corrected on the call, asking for a status or callback, or a neutral question about a bill.\n"
         ."5. asked_price / asked_availability: the caller asked what it costs / when someone can come.\n"
         ."6. booked: an appointment was agreed on this call.\n\n";
