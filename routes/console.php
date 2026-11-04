@@ -265,7 +265,8 @@ Schedule::command('scheduling:build-zip-map')->everyFiveMinutes()->withoutOverla
  * `scheduling.overbooking_found` where a service area is overbooked or fully
  * booked in the next 7 days. The email itself is an automation on it.
  */
-Schedule::command('scheduling:warn-overbooking')->dailyAt('07:00')->timezone('America/New_York');
+// Hourly; each organization's own scheduling.overbooking_hour, in its own timezone, picks the run.
+Schedule::command('scheduling:warn-overbooking')->hourlyAt(0);
 Schedule::command('scheduling:warn-underfilled')->hourlyAt(2);
 // job.estimate_aging, once a day (Jose's Project Management rule 2, 2026-10-21).
 Schedule::command('jobs:emit-estimate-aging')->dailyAt('08:10')->timezone('America/New_York')->withoutOverlapping(60);

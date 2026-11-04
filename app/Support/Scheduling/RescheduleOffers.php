@@ -40,9 +40,9 @@ final class RescheduleOffers
 
     public const HOURS = 'scheduling.offer_hours';
 
-    private const HORIZON_DAYS = 21;
+    public const HORIZON = 'scheduling.offer_horizon_days';
 
-    private const NOT_AGAIN_DAYS = 30;
+    public const NOT_AGAIN = 'scheduling.offer_not_again_days';
 
     public function __construct(
         private readonly Openings $openings,
@@ -166,10 +166,10 @@ final class RescheduleOffers
     private function candidates(ServiceArea $area, CarbonImmutable $date, Franchise $franchise): Collection
     {
         $from = $date->addDays((int) $this->setting(self::MIN_DAYS_OUT, $franchise));
-        $jobs = $this->openings->jobsBetween($area, $from, $date->addDays(self::HORIZON_DAYS + 1))
+        $jobs = $this->openings->jobsBetween($area, $from, $date->addDays((int) $this->settings->get(self::HORIZON, $area->franchise) + 1))
             ->filter(fn ($j) => $j->kind === 'job' && $j->customer_id !== null);
         $offered = SchedulingRescheduleOffer::query()->whereIn('job_id', $jobs->pluck('job_id'))
-            ->where('created_at', '>=', now()->subDays(self::NOT_AGAIN_DAYS))->pluck('job_id')->flip();
+            ->where('created_at', '>=', now()->subDays((int) $this->settings->get(self::NOT_AGAIN, $area->franchise)))->pluck('job_id')->flip();
         $customers = Customer::query()->whereIn('id', $jobs->pluck('customer_id'))->get(['id', 'name', 'phone'])->keyBy('id');
 
         return $jobs->reject(fn ($j) => isset($offered[$j->job_id]))

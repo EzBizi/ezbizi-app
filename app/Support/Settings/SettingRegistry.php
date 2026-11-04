@@ -1428,6 +1428,42 @@ class SettingRegistry
             $enum('scheduling.reschedule_max_after_miles', 'Re-Scheduling: nearest job after the move within', 10, [2, 5, 10, 15, 20, 30],
                 fn ($v) => "{$v} miles",
                 'A move is suggested only when it puts the job this close to other booked work.'),
+            // Business values once in code (Jose, 2026-11-04: "everything editable").
+            new SettingDefinition(
+                key: 'scheduling.free_statuses', label: 'Job statuses that free a spot',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'canceled', 'label' => 'Canceled'],
+                    ['value' => 'cancelled', 'label' => 'Cancelled'],
+                    ['value' => 'done', 'label' => 'Done'],
+                    ['value' => 'done pending approval', 'label' => 'Done pending approval'],
+                ],
+                help: 'A job in one of these statuses holds no spot in its window. Every other status does.',
+            ),
+            new SettingDefinition(
+                key: 'scheduling.excluded_tags', label: 'Job tags that free a spot',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'deposit received', 'label' => 'Deposit received'],
+                    ['value' => 'deposit recieved', 'label' => 'Deposit recieved'],
+                ],
+                help: 'A job carrying one of these tags holds no spot (matched ignoring case).',
+            ),
+            new SettingDefinition(
+                key: 'scheduling.full_days', label: 'Fully booked means no spot for',
+                type: SettingDefinition::TYPE_INT, default: 10,
+                help: 'Days in a row with no spot before an area counts as fully booked (the morning email, Overbooking and the dashboard).',
+            ),
+            new SettingDefinition(
+                key: 'scheduling.offer_horizon_days', label: 'Earlier-opening text: look at jobs booked up to',
+                type: SettingDefinition::TYPE_INT, default: 21,
+                help: 'Days after the open day whose customers can be offered it.',
+            ),
+            new SettingDefinition(
+                key: 'scheduling.offer_not_again_days', label: 'Earlier-opening text: do not offer the same job again for',
+                type: SettingDefinition::TYPE_INT, default: 30,
+                help: 'Days before a job that was offered an opening can be offered another.',
+            ),
             new SettingDefinition(
                 key: 'scheduling.underfilled_include', label: 'Include in the empty-spots report',
                 type: SettingDefinition::TYPE_BOOL, default: true,
@@ -1448,6 +1484,9 @@ class SettingRegistry
             $enum('scheduling.underfilled_min_empty', 'Tomorrow under-filled: list areas with at least', 2, [1, 2, 3, 5, 10],
                 fn ($v) => $v === 1 ? '1 empty spot' : "{$v} empty spots",
                 'Areas with fewer empty spots tomorrow are left out of the Tomorrow under-filled trigger and its email.'),
+            $enum('scheduling.overbooking_hour', 'Fully booked: check at', 7, range(5, 12),
+                fn ($v) => CarbonImmutable::createFromTime($v)->format('g A'),
+                'When the fully-booked warning is raised. Who gets the email is the automation rule on it.'),
             $enum('scheduling.underfilled_hour', 'Tomorrow under-filled: check at', 16, range(6, 21),
                 fn ($v) => CarbonImmutable::createFromTime($v)->format('g A').' the day before',
                 'When Tomorrow under-filled is raised. Who gets the email is the automation rule on it.'),
