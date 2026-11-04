@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0531', date: '4 Nov 2026', items: [
+      'Leads: callers from Google get the after-call text by SMS from your line',
+    ]),
     VersionRelease(version: '0.0.0530', date: '4 Nov 2026', items: [
       'Leads: reply-overdue and follow-up timings and greetings are now settings you can change',
       'Settings > Lists: Restore defaults asks before resetting; lists with 3+ columns stack on a phone',
