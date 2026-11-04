@@ -110,6 +110,22 @@ class ReviewAutoReplyTest extends TestCase
         Http::assertSentCount(2); // one token, one reply
     }
 
+    /** Sweep 2026-11-04: Jose's saved view was A-1, and his rule refused every Everdoors review. */
+    public function test_the_authors_saved_view_does_not_narrow_where_the_rule_publishes(): void
+    {
+        $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();
+        $this->inTenant($this->t['org'], function () {
+            $other = \App\Models\Company::create(['organization_id' => $this->t['org']->id, 'name' => 'Other Co']);
+            $this->review->forceFill(['company_id' => $this->t['company']->id])->save();
+            $this->t['admin']->forceFill(['preferences' => ['navigation.scope' => 'company:'.$other->id]])->save();
+        });
+
+        $result = $this->fire($this->t['admin']->fresh());
+
+        $this->assertTrue($result['ok'], $result['detail'] ?? '');
+        $this->assertSame(1, $this->published());
+    }
+
     public function test_an_author_who_may_not_publish_posts_nothing(): void
     {
         $this->signedInAs($this->t['admin'])->putJson("/api/v1/business-profile/locations/{$this->location->id}/auto-reply", ['on' => true])->assertOk();

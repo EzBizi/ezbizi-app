@@ -3133,7 +3133,15 @@ class ActionRunner
             ? User::query()->find($automation->activeVersion->created_by)
             : null;
 
-        if ($author === null || ! Gate::forUser($author)->allows('publish', $subject)) {
+        // The author's grant and reach, not the view they last stood in: a rule runs from a
+        // queue, and the policy's write check reads the saved view, so a rule made by someone
+        // looking at one company refused every other company's reviews (sweep, 2026-11-04).
+        $reaches = $author !== null && $author->hasPermission('reviews.publish') && match (true) {
+            $subject->franchise_id !== null => ($f = \App\Models\Franchise::query()->find($subject->franchise_id)) !== null && $author->canActOnFranchise($f),
+            $subject->company_id !== null => ($c = \App\Models\Company::query()->find($subject->company_id)) !== null && $author->canActOnCompany($c),
+            default => $author->canActOnOrganization($author->organization),
+        };
+        if (! $reaches) {
             return ['type' => $type, 'ok' => false,
                 'detail' => 'The person who built this rule may not publish replies to this review, so nothing '
                     .'was posted. Somebody who can should open the rule and save it again.'];
