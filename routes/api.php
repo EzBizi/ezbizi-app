@@ -1010,6 +1010,11 @@ Route::prefix('v1')
         // A manager account: what everything beneath it spent. The one place a
         // fan-out is still the answer, and it costs nothing until asked for.
         Route::get('ads/rollup', [AdsPerformanceController::class, 'rollup']);
+        // Facebook/Instagram campaigns, live from Meta: read, pause, resume, re-budget (Jose, 2026-11-04).
+        Route::get('meta-ads/accounts', [\App\Http\Controllers\Api\MetaAdsController::class, 'accounts']);
+        Route::get('meta-ads/tree', [\App\Http\Controllers\Api\MetaAdsController::class, 'tree']);
+        Route::post('meta-ads/status', [\App\Http\Controllers\Api\MetaAdsController::class, 'setStatus']);
+        Route::post('meta-ads/budget', [\App\Http\Controllers\Api\MetaAdsController::class, 'setBudget']);
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
@@ -3342,6 +3347,16 @@ Route::prefix('v1')
         Route::post('alerts', [\App\Http\Controllers\Api\AlertsController::class, 'send']);
 
         // ── Settings (§6) ────────────────────────────────────────
+        // Settings › Lists (2026-11-04): a business's own lists, a row per call.
+        // Reading follows the Settings tab; each write checks its list's own
+        // edit permission in the controller.
+        Route::middleware('permission:organizations.settings.view')->group(function () {
+            Route::get('settings/lists', [\App\Http\Controllers\Api\BusinessListsController::class, 'index']);
+            Route::post('settings/lists/{list}/items', [\App\Http\Controllers\Api\BusinessListsController::class, 'store']);
+            Route::patch('settings/lists/{list}/items/{item}', [\App\Http\Controllers\Api\BusinessListsController::class, 'update']);
+            Route::delete('settings/lists/{list}/items/{item}', [\App\Http\Controllers\Api\BusinessListsController::class, 'destroy']);
+            Route::post('settings/lists/{list}/reset', [\App\Http\Controllers\Api\BusinessListsController::class, 'reset']);
+        });
         // Settings › Pending: what each place in view is missing (2026-10-26).
         // Gated on organizations.edit, which every fill-in needs at the least.
         Route::get('settings/pending', [\App\Http\Controllers\Api\PendingSettingsController::class, 'index'])

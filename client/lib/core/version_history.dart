@@ -14,6 +14,26 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0528',
+      date: '4 Nov 2026',
+      items: [
+        'Ads performance: a Google | Meta switch; the Meta view lists campaigns, ad sets and ads with spend and leads, and lets you pause, resume and change budgets.',
+        'Reports: a Print button; days follow your time zone, so Yesterday is yesterday; Performance › Calls has a Date column.',
+        'Reports audit: conversion counts booked out of answered new-client calls; period KPI, cancellation and technician sheets on screen and in Excel; Thumbtack shows leads without a branch.',
+        'WhatsApp reports: the dispatcher text reads each branch own calls; long texts are sent in parts.',
+        'WhatsApp assistant answers questions about a named company correctly.',
+        'Posts to approve always has a post for each listing; the next one is written as soon as you decide.',
+        'Complaints show what the customer said on the complaint call.',
+        'Leads: a new Facebook, Instagram or WhatsApp message moves the lead to the top.',
+        'Automations: a rule switched off after failures shows Off; switching it on re-enables it.',
+        'Company › KPIs shows the company line as a Total and no nameless rows.',
+        'Phone screens: many layout fixes across the app; pickers open as side panels.',
+        'Inventory: an item record says Loading until its stock arrives.',
+        'Settings › API activity tiles say they count the last 24 hours.',
+        'Airtable check no longer flags tables that are empty in Airtable.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0527',
       date: '4 Nov 2026',
       items: [

@@ -1578,7 +1578,7 @@ class ModuleServiceProvider extends ServiceProvider
                 /*
                  * The first booking event (Jose, 2026-09-29: a warning email).
                  * Since 2026-10-05 it carries only the areas with no spot left
-                 * for Overbooking::FULL_DAYS days or more (Shoval: so their ads
+                 * for scheduling.full_days days or more (Shoval: so their ads
                  * can be paused). The key keeps its first name, because rules
                  * already listen on it. Raised once each morning by
                  * scheduling:warn-overbooking with a Markdown `summary`, days

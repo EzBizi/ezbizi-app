@@ -211,6 +211,9 @@ class _RecordPanelState extends State<RecordPanel> {
       actions: [
         if (widget.record != null && widget.canDelete)
           TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: _busy ? null : _delete,
             child: const Text('Delete'),
           ),

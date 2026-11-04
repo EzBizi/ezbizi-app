@@ -478,6 +478,11 @@ class _OnboardingTabState extends State<OnboardingTab> {
                       'cancel onboardings',
                     ),
                     child: TextButton(
+                      // Red: it stops somebody's onboarding (phone audit
+                      // 2026-11-04), not a way to back out of a form.
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.error,
+                      ),
                       onPressed: _mayCreate ? () => _cancel(row) : null,
                       child: const Text('Cancel'),
                     ),

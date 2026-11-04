@@ -356,7 +356,7 @@ final class PeriodReport
             .'.na{color:#b45309;margin:2pt 0}.foot{color:#666;font-size:7pt;margin-top:14pt}'
             .'</style></head><body><h1>'.e($title).'</h1>'.$body
             .'<p class="foot">Internal management report. From EzBizi\'s copy of Workiz and the Airtable P&amp;L, made '
-            .e(CarbonImmutable::now('America/New_York')->format('M j, Y g:i A T')).'.</p></body></html>';
+            .e(CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of())->format('M j, Y g:i A T')).'.</p></body></html>';
     }
 
     /**

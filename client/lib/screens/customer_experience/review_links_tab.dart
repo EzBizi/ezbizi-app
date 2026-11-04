@@ -222,7 +222,11 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
 
   Widget _tile(BuildContext context, String kind, String value, String? of) {
     final theme = Theme.of(context);
+    // A zero is no news either way, so it is neutral, not red or green
+    // (phone audit 2026-11-04).
+    final zero = value == '0' || value.startsWith('0 ');
     final colour = switch (kind) {
+      _ when zero => theme.colorScheme.onSurfaceVariant,
       'happy' || 'google' => ToneColours.of(context, Tone.ok).ink,
       'sad' || 'submitted' => ToneColours.of(context, Tone.bad).ink,
       _ => theme.colorScheme.primary,

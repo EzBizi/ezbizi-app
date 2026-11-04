@@ -188,6 +188,56 @@ void main() {
     expect(find.text('Below reorder'), findsWidgets);
   });
 
+  testWidgets(
+    'an item held in two warehouses on two branches shows both on its record',
+    (tester) async {
+      // The A1 import's shape (2026-11-03): a company-level item, a warehouse
+      // per branch. The list said "8 each · 2 places"; the record said none.
+      const item = {
+        'id': 'plate',
+        'number': 'I-00030',
+        'sku': 'OTP13138',
+        'name': 'Top Plate',
+        'unit': 'each',
+        'status': 'active',
+        'reorder_at': null,
+        'company': {'id': 'co', 'name': 'A-1 Chimney'},
+        'franchise': null,
+      };
+      Map<String, dynamic> shelf(String id, String name) => {
+        'id': 'b-$id',
+        'qty_on_hand': '4.000',
+        'item': {
+          for (final e in item.entries)
+            if (e.key != 'company' && e.key != 'franchise') e.key: e.value,
+        },
+        'location': {'id': id, 'name': name, 'kind': 'warehouse', 'status': 'active'},
+      };
+
+      await _pumpScreen(
+        tester,
+        stock: [shelf('il', 'Illinois'), shelf('oh', 'Ohio')],
+        items: [item],
+        size: const Size(390, 844),
+      );
+
+      await tester.tap(find.text('Top Plate').first);
+      await tester.pump();
+
+      // Before its own reads land the record states nothing it has not read.
+      expect(find.text('Loading…'), findsOneWidget);
+      expect(find.text('None on hand at a visible location.'), findsNothing);
+
+      await tester.pumpAndSettle();
+      expect(find.text('Loading…'), findsNothing);
+
+      expect(find.text('None on hand at a visible location.'), findsNothing);
+      expect(find.textContaining('Illinois'), findsWidgets);
+      expect(find.textContaining('Ohio'), findsWidgets);
+      expect(find.textContaining('A-1 Chimney'), findsWidgets);
+    },
+  );
+
   testWidgets('Receive posts and Stock qty updates', (tester) async {
     var received = 0;
     Map<String, dynamic>? posted;

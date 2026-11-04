@@ -242,6 +242,19 @@ void main() {
       expect(find.text('Approve all 2'), findsOneWidget);
       expect(find.text('PERSON'), findsNothing, reason: 'no table header');
       expect(find.byKey(const ValueKey('approval-adjust-u-1')), findsOneWidget);
+      // The day bar spans the card, not a 2 px stub; and Approve all is not
+      // a filled button under the thumb (phone audit 2026-11-04).
+      expect(
+        tester.getSize(find.byKey(const ValueKey('approval-bar-u-1'))).width,
+        greaterThan(200),
+      );
+      expect(
+        find.ancestor(
+          of: find.text('Approve all 2'),
+          matching: find.byType(FilledButton),
+        ),
+        findsNothing,
+      );
 
       await tester.tap(find.text('Approve all 2'));
       await tester.pumpAndSettle();

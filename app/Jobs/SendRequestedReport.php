@@ -55,7 +55,7 @@ class SendRequestedReport implements ShouldQueue
                 ->keyBy(fn ($b) => BranchName::of($b));
 
             try {
-                $ask = ReportFileRequest::read($this->text, $branches->keys()->all(), CarbonImmutable::now('America/New_York'));
+                $ask = ReportFileRequest::read($this->text, $branches->keys()->all(), CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of()));
             } catch (RuntimeException) {
                 $say("\u{26A0}\u{FE0F} I couldn't read that just now. Try again in a minute.");
 

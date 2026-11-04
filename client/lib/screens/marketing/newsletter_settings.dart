@@ -222,6 +222,10 @@ class _NewsletterSettingsState extends State<NewsletterSettings> {
       trailing: Refused(
         reason: refusal,
         child: TextButton(
+          // Muted: destructive, not the main action (phone audit 2026-11-04).
+          style: TextButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           onPressed: refusal == null && !_busy
               ? () => _disconnect(c['id'] as String? ?? '', name)
               : null,

@@ -40,14 +40,14 @@ final class AppAsk
     {
         $started = microtime(true);
         $left = fn () => $timeout - (int) ceil(microtime(true) - $started);
-        $today = now('America/New_York');
+        $today = now(\App\Support\Settings\OrgTimezone::of());
 
         $plan = fn (string $retry) => GrokCli::ask(
             // The CLI is an agent: without this line it planned "grep" calls on the codebase (prod, 2026-10-14).
             'You have NO tools and cannot read code or files: only choose from the ENDPOINTS list below. '
             .'You help a staff member of a home-services business get information from their CRM, EzBizi. '
-            .self::business($viewer, false)
-            ."Today is {$today->toDateString()} ({$today->format('l')}), America/New_York. Pick at most "
+            .self::business($viewer, true)
+            ."Today is {$today->toDateString()} ({$today->format('l')}), {$today->getTimezone()->getName()}. Pick at most "
             .self::MAX_CALLS.' GET endpoints (path relative to api/v1, with {placeholders} filled in, and '
             .'query parameters, using only the names listed in brackets after each endpoint, as a query '
             .'string such as when=upcoming&today=2026-10-15) that would answer the question. If none '
@@ -120,7 +120,9 @@ final class AppAsk
                 // Everdoors', prod 2026-10-26); the data's franchise_id tells them apart.
                 $branches = $viewer->reachableFranchises()->where('company_id', $company->id)->map(fn ($f) => $ids ? "{$f->name} [{$f->id}]" : $f->name);
 
-                return '- '.$company->name.($branches->isEmpty() ? '' : ': '.$branches->implode(', '));
+                // The planner needs the company's id for company_id (prod 2026-11-04: "jobs created
+                // yesterday in ace fireplace" was planned without it and answered from A-1's jobs).
+                return '- '.$company->name.($ids ? " [{$company->id}]" : '').($branches->isEmpty() ? '' : ': '.$branches->implode(', '));
             })->take(60)->implode("\n");
 
         return $lines === '' ? '' : 'Their companies and the branches (franchises) of each - a question naming a '

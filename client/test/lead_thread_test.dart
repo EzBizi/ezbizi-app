@@ -141,6 +141,29 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  /// Phone audit 2026-11-04: status and a worded Book left the name ~60 px.
+  testWidgets('on a phone the name keeps room beside status and Book', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(390, 844),
+    );
+
+    final avatar = tester.getRect(find.byKey(const ValueKey('thread-avatar')));
+    final toggle = tester.getRect(
+      find.byKey(const ValueKey('thread-details-toggle')),
+    );
+    final book = find.byKey(const ValueKey('book-open'));
+    final end = book.evaluate().isEmpty
+        ? toggle.left
+        : tester.getRect(book).left;
+    // What is left between the avatar and the controls, less status (118).
+    expect(end - avatar.right - 118, greaterThanOrEqualTo(100));
+  });
+
   /// Jose, 2026-10-08: a website booking waits for a dispatcher's answer.
   testWidgets('an accepted earlier opening moves the job in one click', (
     tester,

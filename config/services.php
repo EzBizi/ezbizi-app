@@ -153,7 +153,7 @@ return [
         // Login for Business configuration carries the scopes (whatsapp_
         // business_management + _messaging) and a never-expiring business
         // system user token, so the dialog takes config_id and no scope.
-        'whatsapp_signup_config' => env('META_WHATSAPP_SIGNUP_CONFIG_ID', '1772377890501449'),
+        'whatsapp_signup_config' => env('META_WHATSAPP_SIGNUP_CONFIG_ID'),
         'whatsapp_redirect' => env('META_WHATSAPP_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/whatsapp/callback',
         /*
@@ -425,14 +425,9 @@ return [
     |
     */
     'twilio' => [
-        // Nightly line audit and the fortnightly answer test (Jose, 2026-11-03:
-        // "whatsapp and email to shoval - bar - me"). User ids; the WhatsApp
-        // template stays null until Meta approves it, and email carries it alone.
-        'audit_alert_user_ids' => array_filter(explode(',', (string) env('PHONE_AUDIT_ALERT_USERS',
-            '01a121ea-7ef7-73da-8920-23a9944ee198,019ff631-866b-70e5-9ac6-8bc4a6d28ea0,019fd712-75d3-711e-86f1-596d39292c51'))),
+        // Phone check alerts on WhatsApp: null until Meta approves the template.
+        // Who gets them, and the test-call number, are settings (phone.*).
         'audit_alert_whatsapp_template' => env('PHONE_AUDIT_ALERT_WHATSAPP_TEMPLATE'),
-        'audit_call_from' => env('PHONE_AUDIT_CALL_FROM', '+18559553322'),
-        'audit_call_account_sid' => env('PHONE_AUDIT_CALL_ACCOUNT_SID', 'ACbfccaca6da66d0b542a51ab89d306fe4'),
 
         'platform_account_sid' => env('TWILIO_PLATFORM_ACCOUNT_SID'),
         'platform_api_key_sid' => env('TWILIO_PLATFORM_API_KEY_SID'),

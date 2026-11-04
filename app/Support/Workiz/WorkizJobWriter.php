@@ -390,8 +390,22 @@ final class WorkizJobWriter
             ->reject(fn ($a) => $a === null || trim((string) $a) === '' || $a === 'null')->values()->all();
     }
 
-    /** Workiz's own words for a status (v2 lists exactly these, measured 2026-10-20). */
-    public const STATUSES = ['Submitted', 'In progress', 'Pending', 'done pending approval', 'Canceled', 'Done'];
+    /**
+     * The branch's own Workiz statuses, as its account says them: the parents
+     * of its mirrored sub-statuses and every status its mirrored jobs carry
+     * (Jose, 2026-11-04: no business value in code; "done pending approval"
+     * is A-1's own). Matched without case, so EzBizi's word goes up as Workiz spells it.
+     *
+     * @return list<string>
+     */
+    private function statuses(string $franchiseId): array
+    {
+        $parents = WorkizRecord::query()->where('franchise_id', $franchiseId)->where('type', 'sub_status')->get(['payload'])
+            ->toBase()->map(fn (WorkizRecord $r) => $r->payload['parentName'] ?? null);
+
+        return $parents->merge(WorkizJob::query()->where('franchise_id', $franchiseId)->distinct()->pluck('status'))
+            ->filter(fn ($s) => is_string($s) && trim($s) !== '')->map(fn ($s) => trim($s))->unique()->values()->all();
+    }
 
     /**
      * Move a job to a status, and a sub-status by its name in that account
@@ -402,8 +416,8 @@ final class WorkizJobWriter
     public function setStatus(WorkizJob $job, string $status, ?string $subStatusName = null): WorkizJob
     {
         [$connection, $id] = $this->v2Job($job);
-        $word = collect(self::STATUSES)->first(fn (string $s) => strcasecmp($s, trim($status)) === 0)
-            ?? throw new RuntimeException('Workiz has no status "'.$status.'". It takes: '.implode(', ', self::STATUSES).'.');
+        // One the branch never used goes as typed: Workiz's own refusal is the answer.
+        $word = collect($this->statuses($job->franchise_id))->first(fn (string $s) => strcasecmp($s, trim($status)) === 0) ?? trim($status);
         $body = ['status' => $word];
 
         if ($subStatusName !== null && trim($subStatusName) !== '') {

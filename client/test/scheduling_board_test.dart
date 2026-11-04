@@ -174,6 +174,26 @@ void main() {
       reason: errors.map((e) => e.exceptionAsString()).join(' | '),
     );
   });
+  /// Phone audit 2026-11-04: at 390 the grid showed one time column and
+  /// three technicians. A phone lists each technician, then their jobs.
+  testWidgets('a phone lists technicians, each with its jobs and slot', (
+    tester,
+  ) async {
+    await _pump(tester, board: _board, width: 390);
+
+    final ivan = find.byKey(const ValueKey('schedule-phone-tech-fr-ct|101'));
+    final harry = find.byKey(const ValueKey('schedule-phone-tech-fr-ct|102'));
+    expect(ivan, findsOneWidget);
+    expect(harry, findsOneWidget);
+
+    // Ivan's job sits under Ivan and above Harry, with its slot beside it.
+    final job = tester.getCenter(find.text('Honesty Haislett').first);
+    expect(job.dy, greaterThan(tester.getCenter(ivan).dy));
+    expect(job.dy, lessThan(tester.getCenter(harry).dy));
+    final slot = tester.getCenter(find.text('11 AM – 2 PM').first);
+    expect((slot.dy - job.dy).abs(), lessThan(40));
+    expect(slot.dx, lessThan(job.dx));
+  });
 }
 
 const _board = {

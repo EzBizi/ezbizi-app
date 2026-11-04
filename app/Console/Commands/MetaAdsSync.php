@@ -35,7 +35,7 @@ class MetaAdsSync extends Command
         foreach ($connections as $connection) {
             try {
                 $tenant->run(Organization::findOrFail($connection->organization_id), function () use ($connection, $ads) {
-                    $today = Carbon::now('America/New_York')->startOfDay();
+                    $today = Carbon::now(\App\Support\Settings\OrgTimezone::of())->startOfDay();
                     $first = ! MetaAdInsight::query()->where('connection_id', $connection->getKey())->exists();
                     $campaigns = $ads->campaigns($connection);
 

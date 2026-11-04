@@ -242,7 +242,7 @@ class InventorySalesController extends Controller
             }
 
             $sale->status = InventorySaleStatus::Open;
-            $sale->sold_on = now('America/New_York')->toDateString();
+            $sale->sold_on = now(\App\Support\Settings\OrgTimezone::of())->toDateString();
             $sale->save();
 
             $sale->loadMissing('lines.item');

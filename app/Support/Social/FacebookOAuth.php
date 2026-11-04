@@ -37,6 +37,8 @@ final class FacebookOAuth implements SocialOAuth
         // Ad spend and results for Reports, from the same connect - the
         // ad accounts become Facebook Ads connections (SocialAuthController).
         'ads_read',
+        // Pausing, resuming and re-budgeting those campaigns (MetaAdsManager).
+        'ads_management',
     ];
 
     private const TIMEOUT = 10;

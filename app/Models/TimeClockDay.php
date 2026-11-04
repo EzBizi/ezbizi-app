@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -34,11 +35,40 @@ class TimeClockDay extends Model implements HoldsPersonalData
     use HasUuids;
 
     /*
-     * Fixed, in the order the picker draws them. Where they worked first, then
-     * why they did not. Not a setting: a tag an organization renamed would need
-     * translating per organization, and the six are the ones Jose asked for.
+     * The default of `time_clock.day_tags` (Jose, 2026-11-04: every business
+     * value editable). In the order the picker draws them: where they worked
+     * first, then why they did not.
      */
-    public const TAGS = ['office', 'home', 'absent', 'sick', 'holiday', 'vacation'];
+    public const DEFAULT_TAGS = [
+        ['value' => 'office', 'label' => 'Office'],
+        ['value' => 'home', 'label' => 'Home'],
+        ['value' => 'absent', 'label' => 'Absent'],
+        ['value' => 'sick', 'label' => 'Sick'],
+        ['value' => 'holiday', 'label' => 'Holiday'],
+        ['value' => 'vacation', 'label' => 'Vacation'],
+    ];
+
+    /**
+     * The organization's day tags. A label left as its default comes back
+     * null, so the app shows its own translation instead of the English.
+     *
+     * @return list<array{value: string, label: ?string}>
+     */
+    public static function tagsFor(Organization $organization): array
+    {
+        $defaults = array_column(self::DEFAULT_TAGS, 'label', 'value');
+
+        return array_values(array_map(fn (array $t) => [
+            'value' => (string) $t['value'],
+            'label' => ($defaults[$t['value']] ?? null) === $t['label'] ? null : (string) $t['label'],
+        ], (array) app(SettingsResolver::class)->get('time_clock.day_tags', $organization)));
+    }
+
+    /** @return list<string> */
+    public static function tagValuesFor(Organization $organization): array
+    {
+        return array_column(self::tagsFor($organization), 'value');
+    }
 
     // ── §9 data inventory ────────────────────────────────────────
 

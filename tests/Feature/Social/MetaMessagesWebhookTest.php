@@ -195,6 +195,22 @@ class MetaMessagesWebhookTest extends TestCase
         $this->assertSame(3, LeadConversation::query()->withoutGlobalScopes()->count());
     }
 
+    /** Jose, 11-04: seven Messenger messages and her row stayed at "49m ago". */
+    public function test_a_later_message_moves_the_enquiry_to_its_time(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->pageBelongsTo($t);
+
+        $this->deliver($this->body(['mid' => 'm_1', 'text' => 'Hello?']))->assertOk();
+        $this->deliver(str_replace('1789000000000', '1789000600000',
+            $this->body(['mid' => 'm_2', 'text' => 'Anyone there?'])))->assertOk();
+
+        $lead = Lead::query()->withoutGlobalScopes()->sole();
+        $this->assertSame(1789000600, $lead->last_contact_at?->getTimestamp());
+        $this->assertSame('Anyone there?', $lead->last_contact_preview);
+    }
+
     /** A-1, 2026-10-29: questions tapped from a Click-to-Message ad are not typed by the customer. */
     public function test_questions_tapped_from_an_ad_are_marked_and_typed_text_is_not(): void
     {
