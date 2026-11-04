@@ -117,7 +117,7 @@ class LeadInsights
         $asked = array_filter($threads, fn ($t) => $t !== '');
         $answers = $asked === [] ? [] : array_combine(array_keys($asked),
             GrokCli::about(array_values(array_intersect_key($leads, $asked)), fn () => GrokCli::askMany(
-                array_values(array_map(fn ($t) => self::READ_PROMPT.$t, $asked)), self::READ_SCHEMA)));
+                array_values(array_map(fn ($t, $i) => strtr(self::READ_PROMPT, ['{trades}' => GrokCli::trades($leads[$i]->organization_id), '{org}' => (string) $leads[$i]->organization?->name]).$t, $asked, array_keys($asked))), self::READ_SCHEMA)));
 
         return array_map(fn ($i) => match (true) {
             ! isset($answers[$i]) => null,
@@ -126,9 +126,9 @@ class LeadInsights
         }, array_keys($leads));
     }
 
-    private const READ_PROMPT = 'You read enquiries for a home-services business (chimneys, fireplaces, garage doors, '
-        ."inspections). Calls are machine transcripts and start with the business's own phone "
-        ."menu (\"Thank you for calling A1 Chimney, press 1...\"): ignore that. Answer:\n"
+    private const READ_PROMPT = 'You read enquiries for a home-services business ({trades}). '
+        ."Calls are machine transcripts and start with the business's own phone "
+        ."menu (\"Thank you for calling {org}, press 1...\"): ignore that. Answer:\n"
         .'- classification: BOOK (wants work done, quoted or scheduled), SUPPORT (an existing '
         .'customer about a booking, invoice, follow-up or complaint), ARCHIVE (spam, wrong number, '
         ."a vendor selling something, a hang-up, or nothing to act on).\n"

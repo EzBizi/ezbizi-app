@@ -2,11 +2,14 @@
 
 namespace App\Support\Social;
 
+use App\Models\Organization;
 use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppPendingReport;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Throwable;
@@ -26,20 +29,32 @@ use Throwable;
  */
 final class WhatsAppGroups
 {
-    // report_ready was never approved on the Reports WABA (Meta #132001 on every
-    // send, 2026-10-30..11-02); automation_alert is, with {{1}} title, {{2}} what happened.
-    public const READY_TEMPLATE = 'automation_alert';
-
     /** Meta's longest text message, less a margin for how it counts emoji. */
     private const TEXT_LIMIT = 4000;
-
-    private const READY_LINE = 'Your report is ready. Reply to this message and it arrives here.';
 
     private const WINDOW_HOURS = 24;
 
     private const TIMEOUT = 20;
 
-    public function __construct(private readonly WhatsAppCloud $cloud) {}
+    public function __construct(
+        private readonly WhatsAppCloud $cloud,
+        private readonly SettingsResolver $settings,
+    ) {}
+
+    /**
+     * The "report ready" template, from the org's settings (ai_assistance.ready_*).
+     * automation_alert by default: report_ready was never approved on the Reports
+     * WABA (Meta #132001, 2026-10-30..11-02); it takes {{1}} title, {{2}} a line.
+     */
+    private function ready(WhatsAppNumber $number, string $e164, string $title): void
+    {
+        $org = Organization::findOrFail($number->organization_id);
+        [$template, $line] = app(TenantContext::class)->run($org, fn () => [
+            (string) $this->settings->get('ai_assistance.ready_template', $org),
+            (string) $this->settings->get('ai_assistance.ready_line', $org),
+        ]);
+        $this->cloud->send($template, $e164, [$title, $line], from: (string) $number->display_number);
+    }
 
     /**
      * Deliver a report to the group with this purpose ("daily:NJ").
@@ -105,7 +120,7 @@ final class WhatsAppGroups
         }
 
         if (! $open) {
-            $this->cloud->send(self::READY_TEMPLATE, $e164, [$title, self::READY_LINE], from: (string) $number->display_number);
+            $this->ready($number, $e164, $title);
         }
 
         return count($documents);
@@ -286,7 +301,7 @@ final class WhatsAppGroups
 
         // Held only once Meta took the notice: a refused one leaves nothing to flush later.
         if ($notify) {
-            $this->cloud->send(self::READY_TEMPLATE, $e164, [$title, self::READY_LINE], from: (string) $number->display_number);
+            $this->ready($number, $e164, $title);
         }
         WhatsAppPendingReport::create([
             'organization_id' => $number->organization_id,

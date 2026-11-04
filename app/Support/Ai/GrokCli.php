@@ -3,6 +3,9 @@
 namespace App\Support\Ai;
 
 use App\Models\AiTrace;
+use App\Models\Organization;
+use App\Support\Settings\SettingRegistry;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
@@ -44,6 +47,17 @@ final class GrokCli
     public static function since(): CarbonImmutable
     {
         return CarbonImmutable::parse((string) config('services.grok_cli.since', '2026-10-13'))->startOfDay();
+    }
+
+    /** What this org's business does, for a prompt (ai_assistance.trades); the default without one. */
+    public static function trades(?string $organizationId): string
+    {
+        $org = $organizationId === null ? null : Organization::find($organizationId);
+        $settings = app(SettingsResolver::class);
+
+        return $org === null
+            ? (string) app(SettingRegistry::class)->getOrFail('ai_assistance.trades')->default
+            : (string) app(TenantContext::class)->run($org, fn () => $settings->get('ai_assistance.trades', $org));
     }
 
     /** Some AI is set up (GrokCli::provider()). */
