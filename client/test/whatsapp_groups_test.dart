@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/ai_assistance/whatsapp_groups_tab.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -26,7 +27,7 @@ void main() {
     // One picker (deep dive 2026-11-02); its list names the reports.
     await tester.tap(find.byKey(const Key('whatsapp-unset-picker')));
     await tester.pumpAndSettle();
-    final list = find.byType(Dialog);
+    final list = find.byType(SidePanel);
     expect(
       find.descendant(of: list, matching: find.text('Dispatch')),
       findsOneWidget,

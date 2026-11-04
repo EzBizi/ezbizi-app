@@ -87,7 +87,7 @@ void main() {
     expect(find.text('since 2026-03-01'), findsOneWidget);
     expect(find.text(r'$24.50 an hour'), findsOneWidget);
     expect(find.text('✓ Signed'), findsNWidgets(2));
-    expect(find.text('✕ Not signed'), findsOneWidget);
+    expect(find.text('Not signed'), findsOneWidget);
   });
 
   testWidgets('without hr.pay.view the salary is a dash that says why', (

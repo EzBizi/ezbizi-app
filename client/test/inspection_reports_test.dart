@@ -56,6 +56,30 @@ void main() {
     expect(find.textContaining('InspectionReport'), findsNothing);
     expect(find.byType(Dialog), findsNothing);
   });
+
+  // Phone audit 2026-11-04, Section 3 #1: a report imported from A1 carries a
+  // numeric id and photo answers as one string or a keyed object, and a bare
+  // `as List?` crashed the whole tab to a grey box.
+  testWidgets('an A1-shaped report opens instead of crashing', (tester) async {
+    await _pump(
+      tester,
+      width: 390,
+      settle: false,
+      list: '{"data":[{"id":7,"definition_name":"Level 2","customer_name":"Marta Ruiz"}]}',
+      show: '''
+{"data":{"id":7,"definition_name":"Level 2","customer_name":"Marta Ruiz",
+ "answers":{"crown":"Sound","front":"att-1","back":{"0":"att-2"}},
+ "screens":[{"name":"Roof","fields":[
+   {"key":"crown","label":"Crown","type":"text"},
+   {"key":"front","label":"Front","type":"photo"},
+   {"key":"back","label":"Back","type":"photo"}]}]}}
+''',
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Crown'), findsWidgets);
+    expect(find.text('Sound'), findsWidgets);
+  });
 }
 
 Future<void> _pump(
@@ -64,8 +88,10 @@ Future<void> _pump(
   String? show,
   String? search,
   String Function(Uri uri)? onList,
+  double width = 1400,
+  bool settle = true,
 }) async {
-  tester.view.physicalSize = const Size(1400, 900);
+  tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -91,7 +117,14 @@ Future<void> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  // A photo answer's spinner turns until its bytes arrive, which no stub sends.
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
 
   if (search != null) {
     await tester.enterText(find.byType(TextField), search);

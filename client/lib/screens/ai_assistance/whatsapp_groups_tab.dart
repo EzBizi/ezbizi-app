@@ -113,7 +113,10 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
     for (final p in _purposes) {
       if (p.key == key) return p.label;
     }
-    return key;
+    // A purpose the server no longer lists: words, not the raw key
+    // ("WEEKLY_SUMMARY", phone audit 2026-11-04).
+    final words = key.replaceAll('_', ' ').trim().toLowerCase();
+    return words.isEmpty ? '' : words[0].toUpperCase() + words.substring(1);
   }
 
   List<({String key, String label})> get _unset => [
@@ -154,6 +157,33 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
       return;
     }
     _replace(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  /// The ✕ is small and a stray tap took somebody out with no way back
+  /// (phone audit 2026-11-04, Section 4 #10), so it offers Undo.
+  Future<void> _takeOut(
+    Map<String, dynamic> group,
+    List<_Person> members,
+    String id,
+    String name,
+  ) async {
+    final before = [for (final m in members) m.id];
+    await _saveMembers(group, [
+      for (final other in before)
+        if (other != id) other,
+    ]);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$name taken out'),
+        behavior: SnackBarBehavior.floating,
+        width: 420,
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => _saveMembers(group, before),
+        ),
+      ),
+    );
   }
 
   Future<void> _add(Map<String, dynamic> group) async {
@@ -525,10 +555,7 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
                     deleteButtonTooltipMessage: 'Take ${m.name} out',
                     onDeleted: busy
                         ? null
-                        : () => _saveMembers(group, [
-                            for (final other in members)
-                              if (other.id != m.id) other.id,
-                          ]),
+                        : () => _takeOut(group, members, m.id, m.name),
                   ),
                 Tooltip(
                   message: full

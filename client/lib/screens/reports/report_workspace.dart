@@ -345,8 +345,19 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
     if (data == null) return const SizedBox.shrink();
 
     if (_open!.text) {
-      return SelectableText(
-        '${data['text'] ?? ''}',
+      // The daily text is WhatsApp's: *bold* drawn bold, not with its
+      // asterisks (phone audit 2026-11-04, Section 4 #9).
+      final text = '${data['text'] ?? ''}';
+      return SelectableText.rich(
+        TextSpan(
+          children: [
+            for (final (i, part) in text.split(RegExp(r'\*(?=\S)|(?<=\S)\*')).indexed)
+              TextSpan(
+                text: part,
+                style: i.isOdd ? const TextStyle(fontWeight: FontWeight.w700) : null,
+              ),
+          ],
+        ),
         key: const ValueKey('workspace-text'),
         style: theme.textTheme.bodyMedium,
       );

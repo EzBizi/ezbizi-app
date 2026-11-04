@@ -1,5 +1,6 @@
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -124,6 +125,16 @@ void main() {
       isNull,
       reason: 'The picker dialog overflowed at phone width.',
     );
+  });
+
+  // The standing rule (SidePanel, never dialogs); the phone audit 2026-11-04
+  // found the pickers opening as centred dialogs over the form.
+  testWidgets('the picker opens as a SidePanel, not a dialog', (tester) async {
+    await _open(tester, _templates, width: 390);
+
+    expect(find.byType(SidePanel), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(Dialog), findsNothing);
   });
 }
 
