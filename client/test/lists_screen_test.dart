@@ -114,17 +114,67 @@ void main() {
       );
     },
   );
+
+  testWidgets('Restore defaults asks inline first, then resets on Confirm', (
+    tester,
+  ) async {
+    final calls = await _pump(tester, lists: [_list(edited: true)]);
+
+    await tester.tap(find.byKey(const ValueKey('lists-reset')));
+    await tester.pump();
+    expect(find.text('Replace all 2 rows with the defaults?'), findsOneWidget);
+    expect(calls, isEmpty, reason: 'The first tap only asks.');
+
+    await tester.tap(find.byKey(const ValueKey('lists-reset-confirm')));
+    await tester.pumpAndSettle();
+    expect(
+      calls.single.url.path,
+      endsWith('/settings/lists/test.aliases/reset'),
+    );
+  });
+
+  testWidgets('the question lapses after 5 seconds', (tester) async {
+    final calls = await _pump(tester, lists: [_list(edited: true)]);
+
+    await tester.tap(find.byKey(const ValueKey('lists-reset')));
+    await tester.pump(const Duration(seconds: 6));
+    expect(find.byKey(const ValueKey('lists-reset')), findsOneWidget);
+    expect(calls, isEmpty);
+  });
+
+  testWidgets(
+    'at 390 px a 3-column list stacks its cells and does not overflow',
+    (tester) async {
+      final overflows = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = overflows.add;
+      addTearDown(() => FlutterError.onError = previous);
+
+      await _pump(tester, lists: [_list(wide: true)], width: 390);
+      await tester.tap(find.byKey(const ValueKey('list-entry:test.aliases')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('cells-stacked')), findsWidgets);
+      expect(overflows, isEmpty);
+    },
+  );
 }
 
-Map<String, dynamic> _list({bool mayEdit = true}) => {
+Map<String, dynamic> _list({
+  bool mayEdit = true,
+  bool edited = false,
+  bool wide = false,
+}) => {
   'key': 'test.aliases',
   'label': 'Staff aliases',
   'module': 'phone',
   'help': 'Names people say for each other.',
   'columns': [
     {'key': 'name', 'label': 'Name'},
+    if (wide) {'key': 'role', 'label': 'Role'},
+    if (wide) {'key': 'weight', 'label': 'Weight', 'type': 'number'},
   ],
-  'edited': false,
+  'edited': edited,
   'may_edit': mayEdit,
   'items': [
     {

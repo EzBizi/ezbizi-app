@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -320,11 +322,7 @@ class _ListPaneState extends State<_ListPane> {
                 label: Text('Default values'),
               )
             else
-              TextButton(
-                key: const ValueKey('lists-reset'),
-                onPressed: _reset,
-                child: const Text('Restore defaults'),
-              ),
+              ..._resetControls(context),
           ],
         ),
         if ((widget.list['help'] as String?)?.isNotEmpty ?? false)
@@ -395,9 +393,9 @@ class _ListPaneState extends State<_ListPane> {
                     child: Icon(Icons.drag_indicator, size: 18),
                   ),
                 ),
-              for (final c in _columns)
-                Expanded(
-                  child: _cell(
+              ..._cells([
+                for (final c in _columns)
+                  _cell(
                     c,
                     (row['value'] as Map)[c['key']],
                     onSave: (v) {
@@ -408,7 +406,7 @@ class _ListPaneState extends State<_ListPane> {
                     },
                     fieldKey: 'cell:$rowKey:${c['key']}',
                   ),
-                ),
+              ]),
               if (_mayEdit)
                 IconButton(
                   key: ValueKey('remove:$rowKey'),
@@ -441,9 +439,9 @@ class _ListPaneState extends State<_ListPane> {
       children: [
         Row(
           children: [
-            for (final c in _columns)
-              Expanded(
-                child: _cell(
+            ..._cells([
+              for (final c in _columns)
+                _cell(
                   c,
                   _adding![c['key']],
                   autofocus: c == _columns.first,
@@ -456,12 +454,89 @@ class _ListPaneState extends State<_ListPane> {
                     if (filled) _addRow();
                   },
                 ),
-              ),
+            ]),
           ],
         ),
         if (error != null) _errorLine(context, error),
       ],
     );
+  }
+
+  /// Side by side, or stacked as "Label value" lines on a phone once a list
+  /// has 3 or more columns, so a wide list never overflows (UI/UX on 043f3e31).
+  List<Widget> _cells(List<Widget> cells) {
+    final stacked = widget.onBack != null && _columns.length >= 3;
+
+    return stacked
+        ? [
+            Expanded(
+              child: Column(
+                key: const ValueKey('cells-stacked'),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: cells,
+              ),
+            ),
+          ]
+        : [for (final c in cells) Expanded(child: c)];
+  }
+
+  /// Restore defaults is destructive and has no Undo, so it asks inline: the
+  /// first tap turns it into a red question with Confirm and Cancel, which
+  /// lapses after 5 seconds. No dialog.
+  bool _confirmingReset = false;
+  Timer? _resetLapse;
+
+  List<Widget> _resetControls(BuildContext context) {
+    final error = Theme.of(context).colorScheme.error;
+
+    if (!_confirmingReset) {
+      return [
+        TextButton(
+          key: const ValueKey('lists-reset'),
+          style: TextButton.styleFrom(foregroundColor: error),
+          onPressed: () {
+            setState(() => _confirmingReset = true);
+            _resetLapse = Timer(const Duration(seconds: 5), () {
+              if (mounted) setState(() => _confirmingReset = false);
+            });
+          },
+          child: const Text('Restore defaults'),
+        ),
+      ];
+    }
+
+    return [
+      Flexible(
+        child: Text(
+          'Replace all ${_rows.length} rows with the defaults?',
+          style: TextStyle(color: error),
+        ),
+      ),
+      TextButton(
+        key: const ValueKey('lists-reset-confirm'),
+        style: TextButton.styleFrom(foregroundColor: error),
+        onPressed: () {
+          _resetLapse?.cancel();
+          setState(() => _confirmingReset = false);
+          _reset();
+        },
+        child: const Text('Confirm'),
+      ),
+      TextButton(
+        key: const ValueKey('lists-reset-cancel'),
+        onPressed: () {
+          _resetLapse?.cancel();
+          setState(() => _confirmingReset = false);
+        },
+        child: const Text('Cancel'),
+      ),
+    ];
+  }
+
+  @override
+  void dispose() {
+    _resetLapse?.cancel();
+    super.dispose();
   }
 
   Widget _errorLine(BuildContext context, String error) => Padding(
