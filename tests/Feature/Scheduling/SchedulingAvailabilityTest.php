@@ -323,6 +323,21 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame(1, $first['windows'][0]['taken'], 'Only the unclassified status should count.');
     }
 
+    /** The lists are the organization's settings, not code (Jose, 2026-11-04). */
+    public function test_the_free_statuses_and_tags_are_settings(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->booked($tenant, '2026-10-05 07:00:00', 'Something new');
+        $this->booked($tenant, '2026-10-05 08:00:00', 'Canceled');
+        $this->booked($tenant, '2026-10-05 09:00:00', 'Submitted', ['Paid upfront']);
+        $settings = app(\App\Support\Settings\SettingsResolver::class);
+        $this->inTenant($tenant['org'], fn () => $settings->set('scheduling.free_statuses', $tenant['org'], [['value' => 'Something new', 'label' => 'Something new']]));
+        $this->inTenant($tenant['org'], fn () => $settings->set('scheduling.excluded_tags', $tenant['org'], [['value' => 'paid upfront', 'label' => 'Paid upfront']]));
+
+        $this->assertSame(1, $this->first($tenant, 'zip=75201')['first']['windows'][0]['taken'], 'Only Canceled, no longer listed, should count.');
+    }
+
     /** A full day is skipped; the first Monday that still has room is offered. */
     public function test_a_full_day_is_skipped(): void
     {
@@ -1387,7 +1402,7 @@ class SchedulingAvailabilityTest extends TestCase
             ['weekday' => 4, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 1],
         ]])->assertOk();
 
-        $this->artisan('scheduling:warn-overbooking')->assertSuccessful();
+        $this->artisan('scheduling:warn-overbooking', ['--now' => true])->assertSuccessful();
         $this->assertSame(0, $events()->count(), 'Overbooked and open on Thursday: nothing to pause.');
 
         // Mondays only again: nothing until Oct 12, twelve days from today.
@@ -1396,7 +1411,7 @@ class SchedulingAvailabilityTest extends TestCase
             ['weekday' => 1, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1],
         ]])->assertOk();
 
-        $this->artisan('scheduling:warn-overbooking')->assertSuccessful();
+        $this->artisan('scheduling:warn-overbooking', ['--now' => true])->assertSuccessful();
 
         $after = json_decode($events()->first()->payload, true)['after'];
         $this->assertSame(1, $after['fully_booked_areas']);

@@ -25,7 +25,6 @@ use Illuminate\Http\Request;
 class SchedulingOverbookingController extends Controller
 {
     /** How far ahead the fully-booked check looks — the warning email's window. */
-    public const FULL_DAYS = Overbooking::FULL_DAYS;
 
     /**
      * GET /api/v1/scheduling/overbooking[?days=30 | ?date=2026-10-05]
@@ -63,8 +62,8 @@ class SchedulingOverbookingController extends Controller
                 'days' => $days,
                 'overbooked' => $check->overbooked($areas, $from, $days),
                 'full_from' => $tomorrow->toDateString(),
-                'full_days' => self::FULL_DAYS,
-                'fully_booked' => $check->fullyBooked($areas, $tomorrow, self::FULL_DAYS),
+                'full_days' => Overbooking::fullDays(),
+                'fully_booked' => $check->fullyBooked($areas, $tomorrow, Overbooking::fullDays()),
             ],
         ]);
     }
@@ -249,7 +248,7 @@ class SchedulingOverbookingController extends Controller
         return response()->json(['data' => [[
             'id' => 'overbooking',
             'name' => 'Overbooking warning',
-            'description' => 'Service areas with no spot left for the next '.self::FULL_DAYS.' days or more',
+            'description' => 'Service areas with no spot left for the next '.Overbooking::fullDays().' days or more',
             'covers' => 'Every service area',
             'sent_automatically' => $rules->contains(fn (array $r) => $r['is_active'] && $r['disabled_at'] === null),
             'sent_by' => $request->user()->hasPermission('automations.view') ? $rules->all() : null,

@@ -100,7 +100,7 @@ class SchedulingBoardController extends Controller
         }
 
         foreach ($jobs as $job) {
-            if (in_array(mb_strtolower(trim((string) $job->status)), Openings::FREE_STATUSES, true)) {
+            if (in_array(mb_strtolower(trim((string) $job->status)), Openings::freeStatuses(), true)) {
                 continue;
             }
 
