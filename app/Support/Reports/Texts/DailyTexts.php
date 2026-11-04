@@ -4,10 +4,13 @@ namespace App\Support\Reports\Texts;
 
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Models\SocialConnection;
 use App\Services\Ads\AdsCost;
 use App\Support\Reports\Airtable\ReportSources;
 use App\Support\Reports\Experimental\PerformancePeople;
 use App\Support\Reports\ReportJobs;
+use App\Support\Social\SocialProvider;
+use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -142,25 +145,66 @@ final class DailyTexts
     private function dispatchers(CarbonImmutable $day, ?array $branches): string
     {
         $head = "\u{1F4CB} *Dispatcher performance*\n".$day->format('D, M j, Y');
-        if ($branches !== null) {
-            return $head."\n\nCovers the whole organization only; this rule is limited to some branches.";
-        }
-        $people = $this->performance->for(null, $day->startOfDay(), $day->endOfDay());
-
-        $rows = collect($people)->filter(fn ($p) => ($p['answered'] ?? 0) > 0 || ($p['jobs'] ?? 0) > 0)
-            ->sortByDesc(fn ($p) => $p['answered'] ?? 0);
-        if ($rows->isEmpty()) {
-            return $head."\n\nNo answered calls or jobs created.";
+        // One section per phone account the rule covers (2026-11-04: with no
+        // one signed in, first() read EverDoors' calls for A-1's rule). A branch
+        // rule takes an account only when every branch it answers for is the
+        // rule's: never the whole organization's figures (desk, 2026-10-27).
+        $accounts = $this->phoneAccounts($branches);
+        if ($accounts === []) {
+            return $head."\n\nNo phone account answers for these branches alone.";
         }
 
-        $lines = [$head, '*Jobs created: '.$rows->sum('jobs').'*', ''];
-        foreach ($rows as $p) {
-            $new = (int) ($p['new_client'] ?? 0);
-            $lines[] = '• *'.$p['person'].'*: '.(int) ($p['jobs'] ?? 0).' jobs created · '.(int) ($p['answered'] ?? 0).' answered'
-                .($new > 0 ? ' · '.number_format(($p['jobs'] ?? 0) / $new * 100, 1).'% of new-client calls' : '');
+        $sections = [];
+        foreach ($accounts as $id => $name) {
+            $rows = collect($this->performance->for(null, $day->startOfDay(), $day->endOfDay(), $id === '' ? null : (string) $id))
+                ->filter(fn ($p) => ($p['answered'] ?? 0) > 0 || ($p['jobs'] ?? 0) > 0)
+                ->sortByDesc(fn ($p) => $p['answered'] ?? 0);
+            $title = count($accounts) > 1 ? ['*'.$name.'*'] : [];
+            if ($rows->isEmpty()) {
+                $sections[] = implode("\n", [...$title, 'No answered calls or jobs created.']);
+
+                continue;
+            }
+            $lines = [...$title, '*Jobs created: '.$rows->sum('jobs').'*', ''];
+            foreach ($rows as $p) {
+                $new = (int) ($p['new_client'] ?? 0);
+                // Booked out of the new-client calls they answered, as Performance (Trey, 2026-11-04).
+                $lines[] = '• *'.$p['person'].'*: '.(int) ($p['jobs'] ?? 0).' jobs created · '.(int) ($p['answered'] ?? 0).' answered'
+                    .($new > 0 ? ' · '.number_format(($p['booked_new'] ?? 0) / $new * 100, 1).'% of new-client calls booked' : '');
+            }
+            $sections[] = implode("\n", $lines);
         }
 
-        return implode("\n", $lines);
+        return $head."\n\n".implode("\n\n", $sections);
+    }
+
+    /**
+     * The connected RingCentral accounts a rule over $branches may read, id =>
+     * name; '' is the env account (A1-Group before its connection), for the
+     * whole organization only.
+     *
+     * @param  list<string>|null  $branches
+     * @return array<string, string>
+     */
+    private function phoneAccounts(?array $branches): array
+    {
+        $all = SocialConnection::query()->withoutGlobalScopes()->where('organization_id', app(TenantContext::class)->idOrFail())
+            ->where('provider', SocialProvider::RingCentral->value)->where('status', SocialConnection::STATUS_CONNECTED)
+            ->orderBy('created_at')->get();
+        if ($all->isEmpty()) {
+            return $branches === null ? ['' => 'RingCentral'] : [];
+        }
+        // The branches an account answers for; null is the organization's own.
+        $answersFor = fn (SocialConnection $c) => match ($c->scope_type) {
+            'franchise' => [(string) $c->scope_id],
+            'company' => Franchise::query()->where('company_id', $c->scope_id)->pluck('id')->map(fn ($id) => (string) $id)->all(),
+            default => null,
+        };
+
+        return $all->filter(fn (SocialConnection $c) => $branches === null
+            || (($covers = $answersFor($c)) !== null && $covers !== [] && array_diff($covers, $branches) === []))
+            ->mapWithKeys(fn (SocialConnection $c) => [(string) $c->getKey() => (string) ($c->display_name ?: 'RingCentral')])
+            ->all();
     }
 
     /**
