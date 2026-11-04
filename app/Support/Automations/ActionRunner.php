@@ -1231,9 +1231,12 @@ class ActionRunner
             ];
         }
 
+        // A call Google takes no text for, or a channel gone: the enquiry is
+        // the wrong kind, not the rule broken, so it skips like Not connected
+        // does and the failure count cannot switch the rule off.
         if (! $this->leadReplies->canReply($subject)) {
             return [
-                'type' => $type, 'ok' => false,
+                'type' => $type, 'ok' => true, 'skipped' => true,
                 'detail' => $this->leadReplies->whyNot($subject)
                     ?? 'This enquiry cannot be replied to just now.',
             ];
