@@ -296,6 +296,23 @@ class SettingRegistry
                 section: 'Fleet',
                 help: 'A vehicle this many miles from its next service counts as due soon.',
             ),
+            // Fleet's "due soon" window (Jose, 2026-11-04: every business value
+            // editable). Read by FleetSummary::soonDays/soonMiles everywhere
+            // Fleet says soon: the list chips, the General tab, the glance.
+            new SettingDefinition(
+                key: 'fleet.soon_days', label: 'Fleet: due soon within (days)',
+                type: SettingDefinition::TYPE_INT, default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                section: 'Fleet',
+                help: 'Service, registration, inspection and insurance dates this close count as due soon.',
+            ),
+            new SettingDefinition(
+                key: 'fleet.soon_miles', label: 'Fleet: service due soon within (miles)',
+                type: SettingDefinition::TYPE_INT, default: 500,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                section: 'Fleet',
+                help: 'A vehicle this many miles from its next service counts as due soon.',
+            ),
             new SettingDefinition(
                 key: 'ops.business_hours', label: 'Business hours',
                 type: SettingDefinition::TYPE_HOURS,
@@ -1063,29 +1080,6 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
                 help: 'Empty: every status.',
             ),
-            /*
-             * Project Management - 2's two statuses, and the cancel countdown,
-             * in the organization's own words (Jose, 2026-11-04: no business
-             * values in code).
-             */
-            new SettingDefinition(
-                key: 'jobs.pm2_pending_status', label: 'Project Management - 2 lists jobs in this status',
-                type: SettingDefinition::TYPE_STRING, default: 'done pending approval',
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'Its Submit button moves them on to the status below.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm2_submitted_status', label: 'Project Management - 2 submits jobs to this status',
-                type: SettingDefinition::TYPE_STRING, default: 'Submitted',
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'Spelled as your statuses spell it.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.estimate_deadline_days', label: 'Days a job waits on its estimate before it is cancelled',
-                type: SettingDefinition::TYPE_INT, default: 30,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'The countdown Project Management shows. Keep it the same as your cancelling rule.',
-            ),
             new SettingDefinition(
                 key: 'jobs.pm_partly_paid_only', label: 'Project Management shows only partly paid jobs',
                 type: SettingDefinition::TYPE_BOOL, default: false,
@@ -1381,15 +1375,6 @@ class SettingRegistry
                 default: 'Thank you for waiting.',
                 editPermission: 'phone.edit',
                 help: 'Said to a caller on hold before their place in line.',
-            ),
-            new SettingDefinition(
-                key: 'phone.request_cooldown_days',
-                label: 'Days before a declined number request can be asked again',
-                type: SettingDefinition::TYPE_INT,
-                default: 7,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                editPermission: 'phone.edit',
-                help: 'Counted from the decision. Approved requests are not affected.',
             ),
         ];
     }
