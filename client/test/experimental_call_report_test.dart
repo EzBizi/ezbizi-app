@@ -23,14 +23,17 @@ void main() {
 
   // Design 170, option 8 (Jose, 2026-11-03): a booking is credited to who
   // answered the call, never to everyone it rang.
-  testWidgets('booking rate is booked calls out of answered ones', (
+  // Trey, 2026-11-04: only new-client calls are bookings to be had.
+  testWidgets('booking rate is booked out of answered new-client calls', (
     tester,
   ) async {
     await _pump(tester, width: 1400, view: 'People');
 
-    // Bo answered 9 and booked the one call that rang Ada too: 1 of 9.
-    expect(find.text('11%'), findsOneWidget);
-    // Ada answered 6 and booked none of them, Bo's booking included.
+    // Bo answered 9, one of them new, and booked it: 1 of 1, not 1 of 9.
+    // (The other 100%s are answer rates.)
+    expect(find.text('11%'), findsNothing);
+    expect(find.text('100%'), findsNWidgets(3));
+    // Ada answered one new call and did not book it; Bo's booking is Bo's.
     expect(find.text('0%'), findsOneWidget);
   });
 
@@ -224,7 +227,12 @@ void main() {
         findsOneWidget,
       );
     }
-    expect(find.byTooltip('Rates count answered calls only.'), findsOneWidget);
+    expect(
+      find.byTooltip(
+        'Booking rate: booked out of the new-client calls they answered.',
+      ),
+      findsOneWidget,
+    );
   });
 
   // UI queue 78: Calls is a table, and a search narrows it.
