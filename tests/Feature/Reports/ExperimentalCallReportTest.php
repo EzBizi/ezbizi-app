@@ -458,8 +458,9 @@ class ExperimentalCallReportTest extends TestCase
     {
         $legs = app(RingCentralCallLog::class)->forDate('x', 'y');
         $t = $this->provisionTenant('Alpha');
-        DB::table('call_report_name_links')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id,
-            'phone_name' => $phone, 'name' => $name, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('business_list_items')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id,
+            'list_key' => 'reports.staff_names', 'item_key' => $phone, 'value' => json_encode(['phone_name' => $phone, 'name' => $name]),
+            'created_at' => now(), 'updated_at' => now()]);
 
         return $this->inTenant($t['org'], fn () => app(CallReconciliation::class)->forDay($legs, $jobs, '2026-09-14'));
     }

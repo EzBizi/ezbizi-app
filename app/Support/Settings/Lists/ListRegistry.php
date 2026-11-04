@@ -2,6 +2,8 @@
 
 namespace App\Support\Settings\Lists;
 
+use App\Models\Customer;
+use App\Support\Workiz\WorkizTwins;
 use InvalidArgumentException;
 
 /**
@@ -63,12 +65,22 @@ final class ListRegistry
         return [
             // Module owners append theirs here (inventory:
             // docs/reviews/2026-11-04/hardcoded-business-data.md).
-            ...self::placeholders('customers.placeholder_emails', 'Placeholder emails', \App\Models\Customer::PLACEHOLDER_EMAILS,
+            ...self::placeholders('customers.placeholder_emails', 'Placeholder emails', Customer::PLACEHOLDER_EMAILS,
                 'Addresses that mean "no real email": never kept on a customer, matched or mailed.'),
-            ...self::placeholders('customers.placeholder_phones', 'Placeholder phones', \App\Models\Customer::PLACEHOLDER_PHONES,
+            ...self::placeholders('customers.placeholder_phones', 'Placeholder phones', Customer::PLACEHOLDER_PHONES,
                 'Relay, tracking and office lines typed in as the customer phone (ten digits, no leading 1): never kept, texted or matched.'),
-            ...self::placeholders('customers.placeholder_streets', 'Placeholder streets', \App\Support\Workiz\WorkizTwins::PLACEHOLDER_STREETS,
+            ...self::placeholders('customers.placeholder_streets', 'Placeholder streets', WorkizTwins::PLACEHOLDER_STREETS,
                 'Office streets typed in as the customer address: never used to match twins.'),
+            // Which phone-system name is which Workiz person (Reports, Jose
+            // 2026-11-04). No defaults: the pairs are a business's own staff.
+            // Phone name first, so a row added on the screen is keyed by it.
+            new ListDefinition(
+                key: 'reports.staff_names', label: 'Staff names: phone system to Workiz', module: 'reports',
+                columns: [['key' => 'phone_name', 'label' => 'Name on the phones'], ['key' => 'name', 'label' => 'Name in Workiz']],
+                help: 'Only where the two differ by more than a middle name or an initial (Jay Ticoit is Dieuve '
+                    .'Ticoit). Everyone else is matched to Workiz\'s team list by first and last name.',
+                editPermission: 'reports.handles',
+            ),
         ];
     }
 }

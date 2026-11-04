@@ -48,9 +48,9 @@ class PersonNamesTest extends TestCase
     }
 
     /**
-     * End to end: a row added to call_report_name_links changes the report on
-     * the next read, and Workiz's team list says who has an account even when
-     * they booked nothing.
+     * End to end: a pair added on Settings › Lists (one API call, the app's or
+     * the MCP's) changes the report on the next read, and goes when deleted;
+     * Workiz's team list says who has an account even when they booked nothing.
      */
     public function test_a_pair_added_as_data_changes_the_next_report(): void
     {
@@ -65,10 +65,17 @@ class PersonNamesTest extends TestCase
         $this->assertArrayHasKey('Jay Ticoit', $before);
         $this->assertTrue($before['Christine Malana']['in_jobs'], 'on the team list, no jobs booked');
 
-        DB::table('call_report_name_links')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id,
-            'phone_name' => 'Jay Ticoit', 'name' => 'Dieuve Ticoit', 'created_at' => now(), 'updated_at' => now()]);
-
+        $lists = '/api/v1/settings/lists/reports.staff_names/items';
+        $this->signedInAs($t['admin'])->postJson($lists, ['value' => ['phone_name' => 'Jay Ticoit', 'name' => 'Dieuve Ticoit']])
+            ->assertSuccessful()->assertJsonPath('data.key', 'Jay Ticoit');
         $this->assertSame(['Christine Malana', 'Dieuve Ticoit'], array_column($report()['people'], 'person'));
+
+        $this->signedInAs($t['admin'])->deleteJson($lists.'/'.rawurlencode('Jay Ticoit'))->assertSuccessful();
+        $this->assertContains('Jay Ticoit', array_column($report()['people'], 'person'));
+
+        // Editing it is reports.handles, the list's own permission.
+        $viewer = $this->userWithRole($t, 'Watcher', ['reports.view', 'organizations.settings.view']);
+        $this->signedInAs($viewer)->postJson($lists, ['value' => ['phone_name' => 'X Y', 'name' => 'Z']])->assertForbidden();
     }
 
     /** @return array<string, mixed> one call as RingCentralCallLog hands it over */

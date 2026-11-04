@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\CallReportLabel;
-use App\Models\CallReportNameLink;
 use App\Models\CallReportOverride;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
@@ -18,7 +17,6 @@ use App\Support\Reports\ReportView;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response as Status;
 
@@ -354,49 +352,6 @@ class ExperimentalCallReportController extends Controller
         $this->audit->log('call_report.tag_set', null, metadata: $data);
 
         return response()->json(['data' => ['person' => $data['person'], 'tag' => $data['tag']]]);
-    }
-
-    /**
-     * GET reports/experimental/people/names: the phone spellings stored as one
-     * Workiz person (PersonNames). Any other spelling is matched from Workiz's
-     * team list by itself.
-     */
-    public function names(): JsonResponse
-    {
-        return response()->json(['data' => CallReportNameLink::query()->orderBy('phone_name')
-            ->get(['phone_name', 'name'])->map(fn ($l) => ['phone_name' => $l->phone_name, 'name' => $l->name])->all()]);
-    }
-
-    /**
-     * PUT reports/experimental/people/names {phone_name, name}: the phone's
-     * spelling is that Workiz person, from the next read on; name null clears
-     * it (Jose, 2026-11-04: names change without a release). reports.handles,
-     * on the route. The Workiz name must be on Workiz's team list, so a typo
-     * is refused rather than stored.
-     */
-    public function setName(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'phone_name' => ['required', 'string', 'max:191'],
-            'name' => ['present', 'nullable', 'string', 'max:191'],
-        ]);
-        $phone = trim((string) preg_replace('/\s+/u', ' ', $data['phone_name']));
-        $org = $request->user()->organization_id;
-
-        if ($data['name'] === null) {
-            CallReportNameLink::query()->where('phone_name', $phone)->delete();
-        } else {
-            $name = trim((string) preg_replace('/\s+/u', ' ', $data['name']));
-            $onTeam = DB::table('workiz_team_members')->where('organization_id', $org)->pluck('name')
-                ->contains(fn ($n) => trim((string) preg_replace('/\s+/u', ' ', (string) $n)) === $name);
-            if (! $onTeam) {
-                abort(Status::HTTP_UNPROCESSABLE_ENTITY, "Workiz's team list has no one called \"{$name}\".");
-            }
-            CallReportNameLink::query()->updateOrCreate(['organization_id' => $org, 'phone_name' => $phone], ['name' => $name]);
-        }
-        $this->audit->log('call_report.name_linked', null, metadata: ['phone_name' => $phone, 'name' => $data['name']]);
-
-        return response()->json(['data' => ['phone_name' => $phone, 'name' => $data['name'] === null ? null : $name]]);
     }
 
     /**
