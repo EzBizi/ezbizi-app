@@ -151,7 +151,7 @@ class _PostQueueViewState extends State<PostQueueView> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'No posts waiting. A new one is written for each listing every Monday.',
+            'No posts waiting. Each listing gets a new one as soon as the last is decided, and every day at 1 PM.',
             style: theme.textTheme.bodyMedium,
             textAlign: TextAlign.center,
           ),

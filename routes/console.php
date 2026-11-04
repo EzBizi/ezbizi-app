@@ -425,8 +425,8 @@ Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOve
 Schedule::command('ezbizi:ekomi-reviews sync')->cron('50 */6 * * *')->withoutOverlapping(60);
 // The unanswered Google reviews, 50 a day so listings are not flooded (Jose, 2026-11-02).
 Schedule::command('ezbizi:review-backlog')->dailyAt('15:00')->withoutOverlapping(120);
-// One AI Google post per listing a week, into the approval queue (Jose, 2026-11-03).
-Schedule::command('ezbizi:gbp-weekly-posts')->weeklyOn(1, '13:00')->withoutOverlapping(120);
+// One AI Google post always waiting per listing (Jose, 2026-11-03/04); the queue refills on each decision, this catches the rest.
+Schedule::command('ezbizi:gbp-weekly-posts')->dailyAt('13:00')->withoutOverlapping(120);
 Schedule::command('ezbizi:ekomi-requests')->everyFifteenMinutes()->withoutOverlapping(30);
 // Complaints from bad reviews, Bad Ratings and complaint calls (2026-10-20).
 Schedule::command('ezbizi:complaints-intake')->everyMinute()->withoutOverlapping(5);
