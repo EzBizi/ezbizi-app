@@ -2,6 +2,8 @@
 
 namespace App\Support\Settings;
 
+use App\Models\TimeClockDay;
+
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
@@ -1651,6 +1653,18 @@ class SettingRegistry
                     .'whoever sent it, or an Administrator. Until then the new starter sees only '
                     .'their paperwork.',
             ),
+            new SettingDefinition(
+                key: 'hr.alerts.expiring_days', label: 'Warn about expiring certifications (days ahead)',
+                type: SettingDefinition::TYPE_INT, default: 60,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'The HR dashboard lists certifications that expire within this many days.',
+            ),
+            new SettingDefinition(
+                key: 'hr.alerts.quiet_days', label: 'Invitation counts as stalled after (days)',
+                type: SettingDefinition::TYPE_INT, default: 3,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'An invitation nobody opened for this many days shows on the HR dashboard.',
+            ),
         ];
     }
 
@@ -1659,6 +1673,12 @@ class SettingRegistry
         $orgOnly = [SettingDefinition::SCOPE_ORGANIZATION];
 
         return [
+            new SettingDefinition(
+                key: 'time_clock.day_tags', section: 'Clock in and lock screen', label: 'Day tags',
+                type: SettingDefinition::TYPE_LIST, default: TimeClockDay::DEFAULT_TAGS,
+                allowedScopes: $orgOnly,
+                help: 'What HR can mark a working day as in Work Hours. Stored as is what days keep.',
+            ),
             new SettingDefinition(
                 key: 'time_clock.enabled',
                 section: 'Clock in and lock screen',
