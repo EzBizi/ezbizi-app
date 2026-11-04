@@ -410,9 +410,11 @@ class MetaMessagesWebhookTest extends TestCase
             '*' => Http::response([]),
         ]);
 
-        $this->deliver($this->body(['mid' => 'm_PHOTO', 'attachments' => [['type' => 'image', 'payload' => ['url' => 'https://cdn.meta.test/expires.jpg']]]]))->assertOk();
+        $this->deliver($this->body(['mid' => 'm_PHOTO', 'attachments' => [['type' => 'image', 'payload' => ['url' => 'https://cdn.meta.test/expires.jpg']], ['type' => 'fallback', 'payload' => ['url' => 'https://example.test/shared']]]]))->assertOk();
 
-        $ref = LeadConversation::query()->withoutGlobalScopes()->firstOrFail()->attachments[0];
+        $refs = LeadConversation::query()->withoutGlobalScopes()->firstOrFail()->attachments;
+        $this->assertCount(1, $refs);   // a share has no media to stream: no ref, no 404
+        $ref = $refs[0];
         $this->assertStringStartsWith(MetaMediaController::PREFIX, $ref);   // not Meta's expiring URL
 
         $res = $this->get(MetaMediaController::url($ref))->assertOk();
