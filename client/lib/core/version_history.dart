@@ -20,6 +20,7 @@ class VersionHistory {
         'Email: scrolling to the bottom loads older mail, 50 messages a page; links show the site name; no unread counts beside inboxes.',
         'Reports: call reports no longer time out on busy days.',
         'Reports: Booking rate counts only answered calls from new clients.',
+        'Reports: Answer rate is answered calls out of calls that rang.',
         'Jobs: inspection photos show on the job, and the shared disclosure has a Record pill.',
         'Updated walkthroughs for Reports and Jobs.',
       ],
