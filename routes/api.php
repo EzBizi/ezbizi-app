@@ -1465,6 +1465,9 @@ Route::prefix('v1')
 
             // Hand-set facts the phones cannot say (Jose, 2026-10-05).
             Route::put('reports/experimental/people/tag', [ExperimentalCallReportController::class, 'tag'])->middleware('permission:reports.handles');
+            // Which phone spelling is which Workiz person, as data (2026-11-04).
+            Route::get('reports/experimental/people/names', [ExperimentalCallReportController::class, 'names']);
+            Route::put('reports/experimental/people/names', [ExperimentalCallReportController::class, 'setName'])->middleware('permission:reports.handles');
             Route::put('reports/experimental/sources', [ExperimentalCallReportController::class, 'sources']);
             Route::post('reports/experimental/calls/{call}/convert', [ExperimentalCallReportController::class, 'convert'])->middleware('permission:reports.handles');
             Route::put('reports/experimental/calls/{call}/override', [ExperimentalCallReportController::class, 'override'])->middleware('permission:reports.handles');
