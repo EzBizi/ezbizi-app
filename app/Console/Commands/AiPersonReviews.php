@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\CallReportPersonReview;
 use App\Models\Organization;
 use App\Support\Ai\GrokCli;
+use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -20,8 +21,6 @@ use RuntimeException;
  */
 class AiPersonReviews extends Command
 {
-    private const MIN_CALLS = 3;
-
     protected $signature = 'ezbizi:ai-person-reviews {period : daily|weekly} {--date= : a day inside the period, default yesterday / last week}';
 
     protected $description = 'Have Grok write a daily or weekly coaching read per employee from their scored calls';
@@ -41,7 +40,7 @@ class AiPersonReviews extends Command
 
         foreach (Organization::query()->withoutGlobalScopes()->get() as $organization) {
             $people = $this->calls($organization->getKey(), $from, $to)->groupBy('answered_by')
-                ->filter(fn ($calls) => $calls->count() >= self::MIN_CALLS);
+                ->filter(fn ($calls) => $calls->count() >= ReportView::minCalls());
             if ($people->isEmpty()) {
                 continue;
             }

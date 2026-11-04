@@ -9,6 +9,7 @@ use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
 use App\Support\Reports\Experimental\PerformancePeople;
 use App\Support\Reports\Scoring\ScoringWeights;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -103,6 +104,29 @@ class ScoringReportTest extends TestCase
         $this->assertSame(40, $people['Ada']['conversion']);
         $this->assertNull($people['Cris']['conversion'], 'handles Existing');
         $this->assertNull($people['Few']['conversion'], 'one new call is no rate');
+    }
+
+    /** Jose, 2026-11-04: the minimum is a setting, not a constant; raised, Ada's three calls rank her no more. */
+    public function test_the_ranking_minimum_is_the_organizations_setting(): void
+    {
+        config(['app.timezone' => 'America/New_York', 'services.grok_cli.since' => '2026-10-13']);
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            foreach (['a1', 'a2', 'a3'] as $i => $id) {
+                CallReportTranscript::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'transcript' => 'x',
+                    'source' => 'whisper', 'answered_by' => 'Ada', 'call_started_at' => '2026-10-13 1'.$i.':00:00']);
+                CallReportScore::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'score' => 7,
+                    'checks' => array_fill_keys(ScoreReportCalls::CHECKS, true)]);
+            }
+        });
+        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn([]);
+        $ada = fn () => $this->signedInAs($t['admin'])->getJson('/api/v1/reports/scoring?from=2026-10-13&to=2026-10-13')->assertOk()->json('data');
+
+        $this->assertSame(1, $ada()['people'][0]['rank']);
+
+        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('reports.scoring_min_calls', $t['org'], 5));
+        $this->assertSame(5, $ada()['min_calls_to_rank']);
+        $this->assertNull($ada()['people'][0]['rank']);
     }
 
     /** Jose, 2026-10-14: conversion counts most, every metric has a weight, and they sum to 100. */

@@ -31,9 +31,6 @@ use Illuminate\Validation\ValidationException;
  */
 class ScoringReportController extends Controller
 {
-    /** Fewer scored calls than this and a person is shown but not ranked. */
-    public const MIN_CALLS = 3;
-
     /**
      * GET /api/v1/reports/scoring/calls?person=&from=&to=[&q=]
      *
@@ -151,7 +148,7 @@ class ScoringReportController extends Controller
         // has none (2026-10-19).
         if (ReportView::franchiseIds() !== null && ! app(RingCentralCallLog::class)->configured()) {
             return response()->json(['data' => ['from' => $request->query('from'), 'to' => $request->query('to'),
-                'min_calls_to_rank' => self::MIN_CALLS, 'weights' => ScoringWeights::current(), 'people' => []]]);
+                'min_calls_to_rank' => ReportView::minCalls(), 'weights' => ScoringWeights::current(), 'people' => []]]);
         }
 
         $q = $request->validate([
@@ -201,7 +198,8 @@ class ScoringReportController extends Controller
         $perf = $performance->for($request->user(), $from, $to);
         $weights = ScoringWeights::current();
 
-        $people = $rows->groupBy('answered_by')->map(function ($calls, $person) use ($workiz, $review, $perf, $weights) {
+        $min = ReportView::minCalls();
+        $people = $rows->groupBy('answered_by')->map(function ($calls, $person) use ($workiz, $review, $perf, $weights, $min) {
             $checks = [];
             foreach (ScoreReportCalls::CHECKS as $check) {
                 $met = $calls->filter(fn ($c) => (json_decode((string) $c->checks, true)[$check] ?? false) === true)->count();
@@ -215,7 +213,7 @@ class ScoringReportController extends Controller
             // calls ranked Existing-client staff first: 6 jobs on 1 call, 600%.
             // Not judged on it when they handle Existing, or answered too few new
             // calls for a rate: their weight goes to the other measures.
-            $judged = ($perf[$person]['tag'] ?? null) !== 'existing' && $newClient >= self::MIN_CALLS;
+            $judged = ($perf[$person]['tag'] ?? null) !== 'existing' && $newClient >= $min;
             $conversion = $judged ? (int) round(($perf[$person]['booked_new'] ?? 0) / $newClient * 100) : null;
 
             return [
@@ -241,7 +239,7 @@ class ScoringReportController extends Controller
 
         $rank = 0;
         foreach ($people as &$p) {
-            if ($p['calls_scored'] >= self::MIN_CALLS) {
+            if ($p['calls_scored'] >= $min) {
                 $p['rank'] = ++$rank;
             }
         }
@@ -249,7 +247,7 @@ class ScoringReportController extends Controller
         return response()->json(['data' => [
             'from' => $from->toDateString(),
             'to' => $to->toDateString(),
-            'min_calls_to_rank' => self::MIN_CALLS,
+            'min_calls_to_rank' => $min,
             'weights' => $weights,
             'people' => $people,
             // Its jobs are read from these, the reader's ticked ones only, so
