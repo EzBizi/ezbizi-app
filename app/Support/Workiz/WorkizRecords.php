@@ -21,8 +21,6 @@ final class WorkizRecords
     /** v2 caps a page at 300. */
     public const PAGE = 300;
 
-    /** Where a full read starts: the jobs mirror goes back as far. */
-    public const SINCE = '2023-01-01';
 
     /**
      * Free text Workiz keeps on these records, which can say anything about
@@ -197,9 +195,17 @@ final class WorkizRecords
     }
 
     /** The cursor a type's next read starts from: the newest it holds, less two days of overlap. */
-    public static function cursor(?string $newest): string
+    public static function cursor(?string $newest, ?\App\Models\Franchise $branch = null): string
     {
-        return $newest === null ? self::SINCE : now()->parse($newest)->subDays(2)->toDateString();
+        if ($newest !== null) {
+            return now()->parse($newest)->subDays(2)->toDateString();
+        }
+
+        // Where a full read starts: the branch's setting (Jose, 2026-11-04: no business value in code).
+        $default = (string) app(\App\Support\Settings\SettingRegistry::class)->getOrFail('workiz.import_since')->default;
+        $since = $branch === null ? $default : (string) app(\App\Support\Settings\SettingsResolver::class)->get('workiz.import_since', $branch);
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $since) ? $since : $default;
     }
 
     /** "2026-10-05 22:41:13" as Workiz writes it; anything else is no date. */

@@ -2360,6 +2360,12 @@ class SettingRegistry
                     .'time, technicians, description, custom fields) are written to Workiz too, a few '
                     .'seconds later. Turn it off for a branch that no longer uses Workiz.',
             ),
+            new SettingDefinition(
+                key: 'workiz.import_since', label: 'Read Workiz records from',
+                type: SettingDefinition::TYPE_STRING, default: '2023-01-01',
+                help: 'The first day (YYYY-MM-DD) a full read of Workiz invoices, payments, estimates '
+                    .'and timesheets starts from. Later reads only fetch what changed.',
+            ),
         ];
     }
 }
