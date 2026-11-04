@@ -30,9 +30,8 @@ void main() {
     await _pump(tester, width: 1400, view: 'People');
 
     // Bo answered 9, one of them new, and booked it: 1 of 1, not 1 of 9.
-    // (The other 100%s are answer rates.)
     expect(find.text('11%'), findsNothing);
-    expect(find.text('100%'), findsNWidgets(3));
+    expect(find.text('100%'), findsOneWidget);
     // Ada answered one new call and did not book it; Bo's booking is Bo's.
     expect(find.text('0%'), findsOneWidget);
   });

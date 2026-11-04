@@ -2133,14 +2133,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     return (teammate: teammate, nobody: nobody);
   }
 
-  /// Answered out of the calls they could have taken: those a teammate took
-  /// do not count against them. Null when nothing rang them.
+  /// Answered out of every call that rang them (Jose, 2026-11-04: 192 of
+  /// 250 read 99% when a teammate's pick-ups were left out). Null when
+  /// nothing rang them.
   double? _answerRate(Map<String, dynamic> person) {
-    final answered = (person['answered'] as num?) ?? 0;
-    final chances = answered + _missedBy(person).nobody;
-    if (chances == 0) return null;
+    final rang = (person['rang'] as num?) ?? 0;
+    if (rang == 0) return null;
 
-    return answered / chances * 100;
+    return ((person['answered'] as num?) ?? 0) / rang * 100;
   }
 
   /// Ranks two possibly-absent numbers, keeping absence at the bottom.
