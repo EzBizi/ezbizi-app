@@ -790,6 +790,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
             Refused(
               reason: noDelete,
               child: TextButton(
+                // Red: it destroys the rule (phone audit 2026-11-04).
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                ),
                 onPressed: noDelete != null ? null : () => then('delete'),
                 child: const Text('Delete'),
               ),
@@ -1101,6 +1105,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Delete'),
           ),

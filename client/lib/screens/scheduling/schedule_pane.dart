@@ -166,7 +166,13 @@ class _SchedulePaneState extends State<SchedulePane> {
                       )
                     : ListView(
                         children: [
-                          SizedBox(height: 420, child: grid),
+                          // A phone gets one technician after another: the
+                          // grid at 390 px showed one time column and three
+                          // technicians (phone audit 2026-11-04).
+                          if (box.maxWidth < 600)
+                            ..._phoneList(theme, board)
+                          else
+                            SizedBox(height: 420, child: grid),
                           const Divider(height: 1),
                           panel,
                         ],
@@ -418,6 +424,81 @@ class _SchedulePaneState extends State<SchedulePane> {
         ),
       ),
     );
+  }
+
+  /// The board on a phone: each technician, then their jobs in time order.
+  List<Widget> _phoneList(ThemeData theme, Map<String, dynamic> board) {
+    final windows = (board['windows'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final techs = (board['technicians'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final cards = (board['scheduled'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final muted = theme.colorScheme.onSurfaceVariant;
+    if (techs.isEmpty) {
+      return [
+        SizedBox(height: 160, child: _empty(theme, 'No technicians in this view.')),
+      ];
+    }
+    String windowLabel(Object? w) {
+      if (w is! int || w < 0 || w >= windows.length) return 'No time set';
+      return '${_time(windows[w]['start_time'] as String)} – '
+          '${_time(windows[w]['end_time'] as String)}';
+    }
+
+    return [
+      for (final t in techs) ...[
+        Padding(
+          key: ValueKey('schedule-phone-tech-${t['id']}'),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  t['name'] as String? ?? '',
+                  style: theme.textTheme.titleSmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text(
+                '${t['jobs']} ${t['jobs'] == 1 ? 'job' : 'jobs'}',
+                style: theme.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+            ],
+          ),
+        ),
+        for (final c in [
+          for (final c in cards)
+            if (c['technician_id'] == t['id']) c,
+        ]..sort(
+            (a, b) => ((a['window'] as int?) ?? -1).compareTo(
+              (b['window'] as int?) ?? -1,
+            ),
+          ))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 96,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      windowLabel(c['window']),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: muted,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(child: _jobCard(theme, c)),
+              ],
+            ),
+          ),
+        Divider(height: 13, color: EzBiziTheme.edge(context)),
+      ],
+    ];
   }
 
   Widget _unassignedPanel(

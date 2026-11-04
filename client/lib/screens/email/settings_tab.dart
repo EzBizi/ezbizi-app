@@ -1639,6 +1639,10 @@ class _MailboxCard extends StatelessWidget {
                 Refused(
                   reason: disconnectRefusal,
                   child: TextButton(
+                    // Muted: destructive (phone audit 2026-11-04).
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                     onPressed: disconnectRefusal == null ? onDisconnect : null,
                     child: const Text('Disconnect'),
                   ),

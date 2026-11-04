@@ -3613,6 +3613,31 @@ class _AccountsPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final connected = {for (final c in connections) c.provider: c};
+    final phone = MediaQuery.sizeOf(context).width < 600;
+    String subtitleOf(_SocialConnection page) => page.handle != null
+        ? '${page.providerLabel} · @${page.handle}'
+        : page.providerLabel;
+    List<Widget> actionsOf(BuildContext context, _SocialConnection page) => [
+
+                        // Instagram comments are moderated through the Page
+                        // the Instagram account is linked to.
+                        if (page.provider == 'facebook_page')
+                          TextButton(
+                            onPressed: () => onComments(page),
+                            child: const Text('Instagram comments'),
+                          ),
+                        // Muted, not the accent: a destructive link styled as
+                        // the main action (deep dive 2026-11-02 #11).
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                          onPressed: () => onDisconnect(page),
+                          child: const Text('Disconnect'),
+                        ),
+    ];
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -3642,33 +3667,23 @@ class _AccountsPane extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    subtitle: Text(
-                      page.handle != null
-                          ? '${page.providerLabel} · @${page.handle}'
-                          : page.providerLabel,
-                    ),
-                    trailing: Row(
+                    subtitle: phone
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(subtitleOf(page)),
+                              Wrap(children: actionsOf(context, page)),
+                            ],
+                          )
+                        : Text(subtitleOf(page)),
+                    // On a phone the links go under the name: beside it they
+                    // squeezed "Facebook" to one letter a line (phone audit
+                    // 2026-11-04).
+                    trailing: phone
+                        ? null
+                        : Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Instagram comments are moderated through the Page
-                        // the Instagram account is linked to.
-                        if (page.provider == 'facebook_page')
-                          TextButton(
-                            onPressed: () => onComments(page),
-                            child: const Text('Instagram comments'),
-                          ),
-                        // Muted, not the accent: a destructive link styled as
-                        // the main action (deep dive 2026-11-02 #11).
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                          onPressed: () => onDisconnect(page),
-                          child: const Text('Disconnect'),
-                        ),
-                      ],
+                      children: actionsOf(context, page),
                     ),
                   ),
               const SizedBox(height: 12),

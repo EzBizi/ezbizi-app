@@ -2107,6 +2107,137 @@ class _LeadsScreenState extends State<LeadsScreen> {
      */
     final unread = lead['is_unread'] == true;
     final starred = lead['starred'] == true;
+    // A phone puts the chips on their own line (phone audit 2026-11-04).
+    final narrowRow = MediaQuery.sizeOf(context).width < 600;
+    final rowChips = <Widget>[
+      // Beside the name, in its own colour (design 159).
+      if (src.sourceKey != null)
+        LeadSourceChip(
+          src.sourceKey,
+          key: ValueKey('source-badge-$id'),
+        ),
+      // A specimen, not a customer. First on the row because
+      // it changes how everything after it should be read.
+      if (lead['is_test'] == true) ...[
+        _Badge('Test', key: ValueKey('test-badge-$id')),
+      ],
+      // AI thinks Google should refund it, not yet asked.
+      if (lead['credit'] is Map &&
+          (lead['credit'] as Map)['requested_at'] == null)
+        _Badge('Credit?', key: ValueKey('credit-badge-$id')),
+      // An unanswered RC call: Possible spam, Missed
+      // call or Voicemail (Jose, 2026-10-16).
+      if ((lead['source'] == 'ringcentral' ||
+              lead['source'] == 'ez_calls') &&
+          lead['source_status'] is String)
+        _Badge(
+          rcCallTag(lead['source_status'] as String),
+          key: ValueKey('rc-tag-$id'),
+        ),
+      // Only when it is not New: 43,184 of 43,190 are,
+      // and a pill on every row would say nothing.
+      if ((lead['status'] ?? 'new') != 'new')
+        leadStatusPill(
+          lead['status'],
+          key: ValueKey('status-pill-$id'),
+        ),
+      // Somebody else has it open right now.
+      if ((lead['viewers'] as List?)?.isNotEmpty ?? false)
+        Tooltip(
+          message: '${(lead['viewers'] as List).join(', ')} '
+              'viewing this lead',
+          child: Row(
+            key: ValueKey('viewers-$id'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.visibility_outlined,
+                size: 15,
+                color: ToneColours.of(context, Tone.caution).ink,
+              ),
+              const SizedBox(width: 3),
+              // Flexible, so a long name ellipsizes in a
+              // narrow list rather than running past it.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 90),
+                child: Text(
+                  '${(lead['viewers'] as List).first}'
+                  '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: ToneColours.of(context, Tone.caution).ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      // This number is already a customer.
+      if (lead['customer'] is Map) ...[
+        _Badge(
+          'Customer',
+          key: ValueKey('customer-badge-$id'),
+        ),
+      ],
+      // A dispatcher left a note: seen from the list, read on
+      // hover (Jose, 2026-10-13: "u can't tell a note is
+      // there unless u enter the lead").
+      if ((lead['note'] as String?)?.trim().isNotEmpty ?? false)
+        Tooltip(
+          message: [
+            if ((lead['note_by'] as Map?)?['name'] != null)
+              'Note · ${(lead['note_by'] as Map)['name']}',
+            '${lead['note']}',
+          ].join('\n'),
+          child: Icon(
+            Icons.sticky_note_2,
+            key: ValueKey('note-mark-$id'),
+            size: 17,
+            color: ToneColours.of(context, Tone.caution).ink,
+          ),
+        ),
+      // Replied or not, and ONLY where a reply is possible.
+      //
+      // `can_reply` is the channel's own answer, not a guess
+      // from lead_type here: a call cannot be replied to, a
+      // Thumbtack specimen cannot, and a lead whose account was
+      // disconnected cannot. On all of those the badge is
+      // absent entirely rather than reading "Replied", because
+      // "no reply is owed" and "a reply was sent" are different
+      // things and one must not be dressed as the other.
+      // Not on a Completed lead: nobody owes them an
+      // answer, whoever spoke last (Jose, 2026-10-01).
+      // A form has no reply box, but its overdue
+      // mark means a call back is owed (Jose, 2026-10-14).
+      // Not a lead and Lost owe nothing either; the
+      // server says which (Jose, 2026-11-02).
+      if ((lead['can_reply'] == true ||
+              lead['reply_overdue'] == true) &&
+          lead['reply_owed'] != false &&
+          lead['status'] != 'completed') ...[
+        _Badge(
+          mine ? 'Replied' : 'Awaiting reply',
+          key: ValueKey('reply-badge-$id'),
+          alert: !mine,
+        ),
+      ],
+      // Waited too long: the customer spoke last over ten
+      // minutes ago and the lead is still New (Jose,
+      // 2026-09-28). The server decides; the row only shows it.
+      if (lead['reply_overdue'] == true) ...[
+        Tooltip(
+          message: 'Waiting more than 10 minutes for a reply',
+          child: Icon(
+            Icons.warning_rounded,
+            key: ValueKey('overdue-$id'),
+            size: 18,
+            color: theme.colorScheme.error,
+          ),
+        ),
+      ],
+    ];
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: unread
           ? theme.colorScheme.onSurface
@@ -2195,6 +2326,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
                             // of the row) and the name gets the rest: a
                             // fixed 3:2 split clipped chips beside short
                             // names (Jose, 2026-10-30).
+                            // Phone: the chips get their own line under the
+                            // job line, so the name and chips are never cut
+                            // (phone audit 2026-11-04, Leads list #1).
+                            if (!narrowRow)
                             ConstrainedBox(
                               constraints: BoxConstraints(
                                 maxWidth: box.maxWidth * 0.7,
@@ -2202,135 +2337,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                               child: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 physics: const NeverScrollableScrollPhysics(),
-                                child: _spaced([
-                                // Beside the name, in its own colour (design 159).
-                                if (src.sourceKey != null)
-                                  LeadSourceChip(
-                                    src.sourceKey,
-                                    key: ValueKey('source-badge-$id'),
-                                  ),
-                                // A specimen, not a customer. First on the row because
-                                // it changes how everything after it should be read.
-                                if (lead['is_test'] == true) ...[
-                                  _Badge('Test', key: ValueKey('test-badge-$id')),
-                                ],
-                                // AI thinks Google should refund it, not yet asked.
-                                if (lead['credit'] is Map &&
-                                    (lead['credit'] as Map)['requested_at'] == null)
-                                  _Badge('Credit?', key: ValueKey('credit-badge-$id')),
-                                // An unanswered RC call: Possible spam, Missed
-                                // call or Voicemail (Jose, 2026-10-16).
-                                if ((lead['source'] == 'ringcentral' ||
-                                        lead['source'] == 'ez_calls') &&
-                                    lead['source_status'] is String)
-                                  _Badge(
-                                    rcCallTag(lead['source_status'] as String),
-                                    key: ValueKey('rc-tag-$id'),
-                                  ),
-                                // Only when it is not New: 43,184 of 43,190 are,
-                                // and a pill on every row would say nothing.
-                                if ((lead['status'] ?? 'new') != 'new')
-                                  leadStatusPill(
-                                    lead['status'],
-                                    key: ValueKey('status-pill-$id'),
-                                  ),
-                                // Somebody else has it open right now.
-                                if ((lead['viewers'] as List?)?.isNotEmpty ?? false)
-                                  Tooltip(
-                                    message: '${(lead['viewers'] as List).join(', ')} '
-                                        'viewing this lead',
-                                    child: Row(
-                                      key: ValueKey('viewers-$id'),
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.visibility_outlined,
-                                          size: 15,
-                                          color: ToneColours.of(context, Tone.caution).ink,
-                                        ),
-                                        const SizedBox(width: 3),
-                                        // Flexible, so a long name ellipsizes in a
-                                        // narrow list rather than running past it.
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(maxWidth: 90),
-                                          child: Text(
-                                            '${(lead['viewers'] as List).first}'
-                                            '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: theme.textTheme.labelSmall?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                              color: ToneColours.of(context, Tone.caution).ink,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                // This number is already a customer.
-                                if (lead['customer'] is Map) ...[
-                                  _Badge(
-                                    'Customer',
-                                    key: ValueKey('customer-badge-$id'),
-                                  ),
-                                ],
-                                // A dispatcher left a note: seen from the list, read on
-                                // hover (Jose, 2026-10-13: "u can't tell a note is
-                                // there unless u enter the lead").
-                                if ((lead['note'] as String?)?.trim().isNotEmpty ?? false)
-                                  Tooltip(
-                                    message: [
-                                      if ((lead['note_by'] as Map?)?['name'] != null)
-                                        'Note · ${(lead['note_by'] as Map)['name']}',
-                                      '${lead['note']}',
-                                    ].join('\n'),
-                                    child: Icon(
-                                      Icons.sticky_note_2,
-                                      key: ValueKey('note-mark-$id'),
-                                      size: 17,
-                                      color: ToneColours.of(context, Tone.caution).ink,
-                                    ),
-                                  ),
-                                // Replied or not, and ONLY where a reply is possible.
-                                //
-                                // `can_reply` is the channel's own answer, not a guess
-                                // from lead_type here: a call cannot be replied to, a
-                                // Thumbtack specimen cannot, and a lead whose account was
-                                // disconnected cannot. On all of those the badge is
-                                // absent entirely rather than reading "Replied", because
-                                // "no reply is owed" and "a reply was sent" are different
-                                // things and one must not be dressed as the other.
-                                // Not on a Completed lead: nobody owes them an
-                                // answer, whoever spoke last (Jose, 2026-10-01).
-                                // A form has no reply box, but its overdue
-                                // mark means a call back is owed (Jose, 2026-10-14).
-                                // Not a lead and Lost owe nothing either; the
-                                // server says which (Jose, 2026-11-02).
-                                if ((lead['can_reply'] == true ||
-                                        lead['reply_overdue'] == true) &&
-                                    lead['reply_owed'] != false &&
-                                    lead['status'] != 'completed') ...[
-                                  _Badge(
-                                    mine ? 'Replied' : 'Awaiting reply',
-                                    key: ValueKey('reply-badge-$id'),
-                                    alert: !mine,
-                                  ),
-                                ],
-                                // Waited too long: the customer spoke last over ten
-                                // minutes ago and the lead is still New (Jose,
-                                // 2026-09-28). The server decides; the row only shows it.
-                                if (lead['reply_overdue'] == true) ...[
-                                  Tooltip(
-                                    message: 'Waiting more than 10 minutes for a reply',
-                                    child: Icon(
-                                      Icons.warning_rounded,
-                                      key: ValueKey('overdue-$id'),
-                                      size: 18,
-                                      color: theme.colorScheme.error,
-                                    ),
-                                  ),
-                                ],
-                                ]),
+                                child: _spaced(rowChips),
                               ),
                             ),
                           ],
@@ -2350,6 +2357,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       const SizedBox(width: 6),
                     ],
                   ),
+                  if (narrowRow && rowChips.isNotEmpty)
+                    Padding(
+                      key: ValueKey('lead-chips-line-$id'),
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Wrap(
+                        spacing: 4,
+                        runSpacing: 2,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: rowChips,
+                      ),
+                    ),
                   const SizedBox(height: 1),
                   LayoutBuilder(
                     builder: (context, box) => Row(

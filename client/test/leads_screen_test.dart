@@ -1831,6 +1831,33 @@ void _conversationRowTests() {
     );
   });
 
+  /// Phone audit 2026-11-04: beside the name the chips clipped to "Rep" and
+  /// the names to 8 letters. On a phone they get their own line.
+  testWidgets('on a phone a row puts its chips under the name', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [
+        {
+          ..._lead('lead-1', 'Christopher Wellington', canReply: true),
+          'customer': {'id': 'c1'},
+        },
+      ],
+      connections: _connected,
+      size: const Size(390, 844),
+    );
+
+    expect(find.byKey(const ValueKey('lead-chips-line-lead-1')), findsOneWidget);
+    final name = tester.getRect(find.text('Christopher Wellington').first);
+    final badge = tester.getRect(
+      find.byKey(const ValueKey('reply-badge-lead-1')),
+    );
+    expect(badge.top, greaterThan(name.bottom - 1));
+    expect(name.width, greaterThan(150));
+    expect(tester.takeException(), isNull);
+  });
+
   /// Tapping a row opens the thread in place, with a way back: never a page
   /// pushed over the app (the containment rule; design 30).
   testWidgets('on a phone, tapping a row opens the thread with a back bar', (

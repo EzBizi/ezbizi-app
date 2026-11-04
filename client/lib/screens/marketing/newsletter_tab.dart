@@ -614,6 +614,10 @@ class _NewsletterTabState extends State<NewsletterTab> {
               ),
               child: TextButton.icon(
                 key: const ValueKey('tour-newsletter-delete'),
+                // Red: it destroys the mailing (phone audit 2026-11-04).
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                ),
                 onPressed: (widget.session.me?.can('newsletter.delete') ?? false) &&
                         _selected?.status != 'sending'
                     ? _delete
