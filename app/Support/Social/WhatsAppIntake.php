@@ -243,6 +243,8 @@ final class WhatsAppIntake
             'text' => $message->body,
             'attachments' => $media ? [WhatsAppMediaController::ref((string) $message->phone_number_id, (string) $message->media_id, (string) $message->kind)] : null,
         ]);
+        // The list's time and preview (Jose, 11-04: rows not moving up).
+        $this->thread->refresh($lead);
     }
 
     private function notify(WhatsAppContact $contact, string $kind, string $permission): void
