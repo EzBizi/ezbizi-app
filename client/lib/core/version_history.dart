@@ -14,6 +14,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0526',
+      date: '4 Nov 2026',
+      items: [
+        'Automatic review replies now work for every company, whatever view the rule author last used.',
+        'Technicians get a one-time tip on WhatsApp about finding parts, the first time they message the assistant.',
+        'Customers: a narrow Tags cell shows one tag then +N; the header counts customers.',
+        'Task Board Timeline month labels no longer overlap; All branches is spelled right.',
+        'Reports call times, Integrations status pills, the PM-2 Submit button and estimate lines on narrow screens now fit.',
+        'WhatsApp shares, reels and stickers no longer leave a broken media link.',
+        'Automated replies to a lead its channel cannot answer are skipped instead of failing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0525',
       date: '3 Nov 2026',
       items: [
