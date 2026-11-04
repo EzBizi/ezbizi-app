@@ -48,6 +48,7 @@ class BusinessProfilePostQueueController extends Controller
         $target->forceFill(['status' => SocialPostTarget::STATUS_QUEUED])->save();
         app(AuditLogger::class)->log('business_profile.post_approved', $place);
         PublishSocialTarget::dispatch($target->getKey());
+        $this->writeNext($place);
 
         return response()->json(['data' => ['id' => $target->id, 'status' => $target->status]]);
     }
@@ -59,6 +60,7 @@ class BusinessProfilePostQueueController extends Controller
         $input = $request->validate(['reason' => ['nullable', 'string', 'max:500']]);
         $target->forceFill(['status' => SocialPostTarget::STATUS_DISAPPROVED, 'failure' => $input['reason'] ?? null])->save();
         app(AuditLogger::class)->log('business_profile.post_disapproved', $place, metadata: ['reason' => $input['reason'] ?? null]);
+        $this->writeNext($place);
 
         return response()->json(['data' => ['id' => $target->id, 'status' => $target->status]]);
     }
@@ -74,6 +76,16 @@ class BusinessProfilePostQueueController extends Controller
         }
 
         return response()->json(['data' => ['id' => $location->id, 'auto_post' => $location->auto_post]]);
+    }
+
+    /** The listing's next draft, written after the response so the button answers at once. */
+    private function writeNext(BusinessLocation $place): void
+    {
+        // Ids, not models: a model would be restored before the tenant is back in context.
+        [$orgId, $placeId] = [app(\App\Support\Tenancy\TenantContext::class)->idOrFail(), $place->id];
+        dispatch(fn () => app(\App\Support\Tenancy\TenantContext::class)->run(\App\Models\Organization::query()->findOrFail($orgId),
+            fn () => \App\Console\Commands\WeeklyBusinessProfilePosts::draftFor(
+                BusinessLocation::query()->with(['connection', 'company', 'franchise'])->findOrFail($placeId))))->afterResponse();
     }
 
     private function awaiting(SocialPostTarget $target): BusinessLocation
