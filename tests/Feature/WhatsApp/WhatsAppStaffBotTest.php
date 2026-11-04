@@ -1176,5 +1176,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertStringContainsString('9 scheduled', $replies[0]);
         $this->assertStringContainsString('read by AI with your access', $replies[0], 'the same source as the app: AppAsk');
         $this->assertSame([], array_filter($asked, fn ($p) => str_contains($p, 'ORDER CHECK')), 'the parts template was never asked');
+        $planner = collect($asked)->first(fn ($p) => str_contains($p, 'ENDPOINTS:'));
+        $this->assertStringContainsString('['.$t['company']->id.']', $planner, 'the planner can fill company_id');
     }
 }
