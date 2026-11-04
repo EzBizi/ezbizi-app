@@ -14,8 +14,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -419,7 +421,8 @@ class ExperimentalCallReportTest extends TestCase
     {
         $this->fakeCallLog([$this->inbound(rang: [['Adeline Pierre Louis-Aghaji', 'Call connected']])]);
 
-        $day = $this->reconcile([
+        // Stored for the organization now, not a constant (Jose, 2026-11-04).
+        $day = $this->reconcileWithPair('Adeline Pierre Louis-Aghaji', 'Adeline Pierrelouis', [
             ['account' => 'NJ', 'created_by' => 'Adeline Pierrelouis', 'created_at' => '2026-09-14 11:00:00'],
         ]);
 
@@ -437,17 +440,28 @@ class ExperimentalCallReportTest extends TestCase
         );
     }
 
-    /** Jose, 2026-11-04, "yes to all 3": Workiz's spelling onto the phones'. */
-    public function test_workiz_spellings_join_the_phone_name(): void
+    /** Jose, 2026-11-04, "yes to all 3": a suffix takes a stored pair. */
+    public function test_a_stored_pair_joins_the_phone_name_to_workiz(): void
     {
         $this->fakeCallLog([$this->inbound(rang: [['Rolando De Lara', 'Call connected']])]);
 
-        $day = $this->reconcile([
+        $day = $this->reconcileWithPair('Rolando De Lara', 'Rolando De Lara Jr', [
             ['account' => 'NJ', 'created_by' => 'Rolando De Lara Jr', 'created_at' => '2026-09-14 11:00:00'],
         ]);
 
-        $this->assertSame(['Rolando De Lara'], array_column($day['people'], 'person'));
-        $this->assertSame([1, 1], [$this->person($day, 'Rolando De Lara')['answered'], $this->person($day, 'Rolando De Lara')['jobs']]);
+        $this->assertSame(['Rolando De Lara Jr'], array_column($day['people'], 'person'));
+        $this->assertSame([1, 1], [$this->person($day, 'Rolando De Lara Jr')['answered'], $this->person($day, 'Rolando De Lara Jr')['jobs']]);
+    }
+
+    /** The day, read in a tenant that holds one phone-to-Workiz pair. */
+    private function reconcileWithPair(string $phone, string $name, array $jobs): array
+    {
+        $legs = app(RingCentralCallLog::class)->forDate('x', 'y');
+        $t = $this->provisionTenant('Alpha');
+        DB::table('call_report_name_links')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id,
+            'phone_name' => $phone, 'name' => $name, 'created_at' => now(), 'updated_at' => now()]);
+
+        return $this->inTenant($t['org'], fn () => app(CallReconciliation::class)->forDay($legs, $jobs, '2026-09-14'));
     }
 
     public function test_similar_names_are_not_merged(): void
