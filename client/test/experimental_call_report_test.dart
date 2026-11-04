@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/reports/experimental_call_report.dart';
 import 'package:ezbizi_client/widgets/ai_mark.dart';
@@ -1293,23 +1294,22 @@ void main() {
     expect(find.text('How much is a sweep?'), findsOneWidget);
   });
 
-  testWidgets('over several days a call says which day it was', (tester) async {
+  // Jose, 2026-11-04: "add date as well to the columns, separate from the
+  // time column". Every call, whatever the range.
+  testWidgets('a call has its date in a Date column beside the time', (
+    tester,
+  ) async {
     await _pump(
       tester,
       width: 1400,
       view: 'Calls',
       now: () => DateTime(2026, 10, 6, 15),
     );
-    expect(find.textContaining('Sep 16'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('date-range-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('date-preset-last_7')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('date-range-apply')));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('Wed, Sep 16'), findsWidgets);
+    expect(find.text('DATE'), findsOneWidget);
+    expect(find.text('TIME'), findsOneWidget);
+    final stamp = DateTime.parse('2026-09-16T14:05:00Z').toLocal();
+    expect(find.text(DisplayFormats.fallback.formatDate(stamp)), findsWidgets);
   });
 
   testWidgets('an account that did not answer is one line above the tabs', (

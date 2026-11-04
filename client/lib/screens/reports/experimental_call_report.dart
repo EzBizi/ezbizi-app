@@ -2703,6 +2703,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       softWrap: false,
       overflow: TextOverflow.visible,
     );
+    // The table's Date and Time, a column each (Jose, 2026-11-04).
+    final stamp = DateTime.tryParse('${call['started_at']}')?.toLocal();
+    Text plain(String text) =>
+        Text(text, style: small, maxLines: 1, softWrap: false);
+    final date = plain(stamp == null ? '' : widget.formats.formatDate(stamp));
+    final time = plain(
+      stamp == null ? '' : widget.formats.formatTime(stamp.hour, stamp.minute),
+    );
     final direction = Text(
       outbound ? 'Out' : 'In',
       style: theme.textTheme.labelSmall?.copyWith(
@@ -2831,7 +2839,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                           )
                         : null,
                     child: _cells([
-                      when,
+                      date,
+                      time,
                       direction,
                       caller,
                       number,
@@ -3102,25 +3111,26 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
     return Row(
       children: [
-        SizedBox(width: _timeWidth, child: pad(c[0])),
-        SizedBox(width: 40, child: pad(c[1])),
-        Expanded(flex: 4, child: pad(c[2])),
-        SizedBox(width: 136, child: pad(c[3])),
-        SizedBox(width: 92, child: pad(c[4])),
-        SizedBox(width: 116, child: pad(c[5])),
-        Expanded(flex: 3, child: pad(c[6])),
+        SizedBox(width: _dateWidth, child: pad(c[0])),
+        SizedBox(width: _timeWidth, child: pad(c[1])),
+        SizedBox(width: 40, child: pad(c[2])),
+        Expanded(flex: 4, child: pad(c[3])),
+        SizedBox(width: 136, child: pad(c[4])),
+        SizedBox(width: 92, child: pad(c[5])),
+        SizedBox(width: 116, child: pad(c[6])),
         Expanded(flex: 3, child: pad(c[7])),
+        Expanded(flex: 3, child: pad(c[8])),
         SizedBox(
           width: 112,
-          child: Align(alignment: Alignment.centerRight, child: c[8]),
-        ),
-        SizedBox(
-          width: 44,
           child: Align(alignment: Alignment.centerRight, child: c[9]),
         ),
         SizedBox(
-          width: 92,
+          width: 44,
           child: Align(alignment: Alignment.centerRight, child: c[10]),
+        ),
+        SizedBox(
+          width: 92,
+          child: Align(alignment: Alignment.centerRight, child: c[11]),
         ),
       ],
     );
@@ -3145,6 +3155,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           SizedBox(
             height: 36,
             child: _cells([
+              heading('Date'),
               heading('Time'),
               const SizedBox.shrink(),
               heading('Caller'),
@@ -3186,15 +3197,16 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// A row this wide or wider is the table; narrower, a card's lines.
   static const _tableRow = 1000.0;
 
-  /// The time, and the day too when the dates span several.
-  double get _timeWidth => _span.single ? 56 : 108;
+  /// The Date and Time columns; the date wide enough for any date format.
+  static const _dateWidth = 96.0;
+  static const _timeWidth = 72.0;
 
   /// What hangs under a call - its details, its recording - starts under the
   /// caller on a wide row, so the columns stay readable.
   Widget _under(Widget child) => LayoutBuilder(
     builder: (context, box) => Padding(
       padding: EdgeInsets.only(
-        left: box.maxWidth >= _tableRow ? _timeWidth + 40 : 0,
+        left: box.maxWidth >= _tableRow ? _dateWidth + _timeWidth + 40 : 0,
         top: 4,
         bottom: 10,
       ),
