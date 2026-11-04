@@ -39,7 +39,7 @@ class InboxController extends Controller
 {
     private const FOLDERS = ['inbox' => 'INBOX', 'starred' => 'STARRED', 'sent' => 'SENT', 'drafts' => 'DRAFT', 'all' => 'ALL'];
 
-    private const PER_INBOX = 25;
+    private const PER_INBOX = 50; // Gmail's page (Jose, 11-04)
 
     /** With a tab chosen, at most this many Gmail pages per inbox per request. */
     private const MAX_PAGES = 4;

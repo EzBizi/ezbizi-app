@@ -131,7 +131,7 @@ final class HeaderCache
      * over: the alternative is `Cache::flush()`, which would throw away every
      * other tenant's cached everything to tidy one mailbox.
      */
-    public function forget(Mailbox $mailbox, int $limit = 25): void
+    public function forget(Mailbox $mailbox, int $limit = 50): void
     {
         // Every first-page size the screens ask for, and the warm mark, so the
         // warmer re-reads it on its next minute.
@@ -143,7 +143,7 @@ final class HeaderCache
     }
 
     /** The first-page sizes the inbox screens ask for: one inbox, and All inboxes. */
-    public const WARM_LIMITS = [25, 10];
+    public const WARM_LIMITS = [50, 10];
 
     /** How long a warmed first page is served; the warmer replaces it on any change well before. */
     public const WARM_SECONDS = 900;

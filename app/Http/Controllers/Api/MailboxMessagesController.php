@@ -94,7 +94,7 @@ class MailboxMessagesController extends Controller
         ]);
 
         $reader = $this->readers->for($mailbox);
-        $limit  = (int) ($input['limit'] ?? 25);
+        $limit  = (int) ($input['limit'] ?? 50);
         $search = trim((string) ($input['search'] ?? ''));
         $cursor = $input['cursor'] ?? null;
         $label  = strtoupper((string) ($input['label'] ?? 'INBOX'));
