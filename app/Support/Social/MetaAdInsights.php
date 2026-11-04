@@ -188,7 +188,7 @@ final class MetaAdInsights
     }
 
     /** Meta's "lead" action is the total of every lead kind (form, Messenger, website). */
-    private static function leads(array $actions): int
+    public static function leads(array $actions): int
     {
         foreach ($actions as $action) {
             if (is_array($action) && ($action['action_type'] ?? null) === 'lead') {
@@ -205,7 +205,7 @@ final class MetaAdInsights
      * @param  array<string, mixed>  $query
      * @return \Generator<array<string, mixed>>
      */
-    private function pages(SocialConnection $connection, string $path, array $query): \Generator
+    public function pages(SocialConnection $connection, string $path, array $query): \Generator
     {
         $token = $connection->credentials['access_token'] ?? null;
 
