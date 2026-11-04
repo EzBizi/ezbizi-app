@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/business_profile_screen.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -460,7 +461,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
-        of: find.byType(Dialog),
+        of: find.byType(SidePanel),
         matching: find.text('Brightside · Northgate'),
       ),
     );
@@ -514,7 +515,7 @@ void main() {
 
     await tester.tap(picker);
     await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(SidePanel), findsNothing);
     expect(_sent.where((r) => r.method != 'GET'), isEmpty);
   });
 

@@ -265,12 +265,16 @@ void main() {
     expect(find.byKey(const ValueKey('org-tree')), findsNothing);
     expect(find.byKey(const ValueKey('org-detail')), findsOneWidget);
     expect(_stat(tester, 'people'), '9 people');
+    // The page gets the header's height: with both, a branch's Settings
+    // were a 20 px strip (phone audit 2026-11-04).
+    expect(find.byKey(const ValueKey('tour-org-add')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('org-detail-back')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('org-tree')), findsOneWidget);
     expect(find.byKey(const ValueKey('org-detail')), findsNothing);
+    expect(find.byKey(const ValueKey('tour-org-add')), findsOneWidget);
   });
 
   testWidgets('without counts from the server, no number is invented', (

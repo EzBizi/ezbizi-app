@@ -1,3 +1,4 @@
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -95,7 +96,7 @@ void main() {
       final server = await open(tester, const Size(1440, 1000), tab);
       await tester.tap(find.byKey(const ValueKey('pm-area-picker')));
       await tester.pumpAndSettle();
-      final dialog = find.byType(Dialog);
+      final dialog = find.byType(SidePanel);
       await tester.enterText(
         find.descendant(of: dialog, matching: find.byType(TextField)),
         'Area 17',
@@ -118,7 +119,7 @@ void main() {
     await open(tester, const Size(1440, 1000), 'Reports');
     await tester.tap(find.byKey(const ValueKey('pm-report-branch')));
     await tester.pumpAndSettle();
-    final dialog = find.byType(Dialog);
+    final dialog = find.byType(SidePanel);
     expect(
       find.descendant(of: dialog, matching: find.text('Company A · Main')),
       findsOneWidget,

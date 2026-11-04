@@ -624,17 +624,21 @@ class _DeskCellState extends State<_DeskCell> {
             ),
         ],
         onSelected: _seat,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            text,
-            const SizedBox(width: 6),
-            Icon(
-              Icons.add_circle_outline,
-              size: 13,
-              color: theme.colorScheme.outlineVariant,
-            ),
-          ],
+        // 44 px to tap, not the 16 px of its words (phone audit 2026-11-04).
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              text,
+              const SizedBox(width: 6),
+              Icon(
+                Icons.add_circle_outline,
+                size: 18,
+                color: theme.colorScheme.outlineVariant,
+              ),
+            ],
+          ),
         ),
       ),
     );
