@@ -161,8 +161,9 @@ void main() {
             },
           });
         }
-        if (path.endsWith('/meta-ads/status'))
+        if (path.endsWith('/meta-ads/status')) {
           return json({'data': jsonDecode(request.body)});
+        }
         if (path.endsWith('/meta-ads/budget')) {
           return json({
             'message': 'This one has a lifetime budget, not a daily one.',
