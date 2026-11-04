@@ -1373,9 +1373,13 @@ class _CallTabState extends State<CallTab> {
   double? _historyWidth;
   double? _customerWidth;
 
-  Widget _history({required void Function(String e164) onPick}) =>
+  Widget _history({
+    required void Function(String e164) onPick,
+    double bottomPadding = 4,
+  }) =>
       CallHistoryPane(
         api: widget.api,
+        bottomPadding: bottomPadding,
         formats: widget.session.me!.display,
         reloadToken: _historyToken,
         onPick: onPick,
@@ -1401,6 +1405,9 @@ class _CallTabState extends State<CallTab> {
           children: [
             Positioned.fill(
               child: _history(
+                // Clear of the Keypad button, which covered the last row's
+                // time (phone audit 2026-11-04).
+                bottomPadding: 72,
                 onPick: (e164) {
                   _pick(e164);
                   setState(() {

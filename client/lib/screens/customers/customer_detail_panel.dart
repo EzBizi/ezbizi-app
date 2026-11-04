@@ -587,6 +587,10 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                     Refused(
                       reason: _deleteRefusal,
                       child: OutlinedButton(
+                        // Red: it destroys the record (phone audit 2026-11-04).
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                        ),
                         onPressed:
                             (_deleteRefusal == null && !_busy && !_loading)
                             ? _delete

@@ -1565,6 +1565,19 @@ class _PersonPaneState extends State<PersonPane> {
     );
 
     final fills = (widget.person['fills'] as Map?)?.cast<String, dynamic>();
+    final stacked = MediaQuery.sizeOf(context).width < 600;
+    final gmailNow = box(
+      'In Gmail now',
+      _current,
+      'Nothing set, or Google could not be read.',
+      const ValueKey('workspace-person-current'),
+    );
+    final willBe = box(
+      'Will be',
+      _preview,
+      'Nothing yet: write the template first.',
+      const ValueKey('workspace-person-preview'),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1579,28 +1592,21 @@ class _PersonPaneState extends State<PersonPane> {
         else
           widget.link,
         const SizedBox(height: 16),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: box(
-                'In Gmail now',
-                _current,
-                'Nothing set, or Google could not be read.',
-                const ValueKey('workspace-person-current'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: box(
-                'Will be',
-                _preview,
-                'Nothing yet: write the template first.',
-                const ValueKey('workspace-person-preview'),
-              ),
-            ),
-          ],
-        ),
+        // Side by side, or stacked on a phone, where two halves broke the
+        // address mid-word (phone audit 2026-11-04).
+        if (stacked) ...[
+          gmailNow,
+          const SizedBox(height: 10),
+          willBe,
+        ] else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: gmailNow),
+              const SizedBox(width: 10),
+              Expanded(child: willBe),
+            ],
+          ),
         if (widget.mayEdit && !suspended) ...[
           const SizedBox(height: 16),
           Wrap(
@@ -1664,7 +1670,11 @@ class _PersonPaneState extends State<PersonPane> {
             alignment: Alignment.centerLeft,
             child: FilledButton(
               key: const ValueKey('workspace-person-set-now'),
-              onPressed: _busy ? null : _setNow,
+              // Nothing to set until there is something it will be.
+              onPressed:
+                  _busy || (!_ownChosen && (_preview ?? '').trim().isEmpty)
+                  ? null
+                  : _setNow,
               child: const Text('Set it now'),
             ),
           ),

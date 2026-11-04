@@ -811,15 +811,15 @@ class _LeadThreadState extends State<LeadThread> {
         const SizedBox(width: 6),
         SizedBox(width: 118, child: _moves(lead, fill: true)),
       ],
+      // Book as a filled icon: the worded button left the name ~60 px
+      // ("Adelen…", phone audit 2026-11-04). Design 171 keeps one bar.
       if (_canBook) ...[
-        const SizedBox(width: 6),
-        FilledButton(
+        const SizedBox(width: 4),
+        IconButton.filled(
           key: const ValueKey('book-open'),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-          ),
+          tooltip: 'Book',
           onPressed: _openBooking,
-          child: const Text('Book'),
+          icon: const Icon(Icons.event_available_outlined),
         ),
       ],
       IconButton(

@@ -887,7 +887,9 @@ class _NumbersPaneState extends State<NumbersPane> {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          width: 260,
+          // Narrower on a phone, where 260 ran off the screen's right edge
+          // (phone audit 2026-11-04).
+          width: MediaQuery.sizeOf(context).width < 600 ? 170 : 260,
           child: SearchPickerField<String>(
             value: _scope?.id,
             // The label goes INSIDE the field rather than beside it. Beside it

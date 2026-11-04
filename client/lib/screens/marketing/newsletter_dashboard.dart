@@ -122,6 +122,40 @@ class NewsletterDashboard extends StatelessWidget {
 
   Widget _bar(BuildContext context) {
     final can = session.me?.can('newsletter.create') ?? false;
+    final newButton = Refused(
+      reason: session.me?.refusal('newsletter.create', 'write a newsletter'),
+      child: FilledButton.icon(
+        key: const ValueKey('tour-marketing-new-newsletter'),
+        onPressed: can ? onNew : null,
+        icon: const Icon(Icons.add, size: 18),
+        label: const Text('New newsletter'),
+      ),
+    );
+
+    // A phone: the title and New on one line, the search full width under
+    // them. Between them it was ~110 px, "S…" (phone audit 2026-11-04).
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Mailings in $viewName',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              newButton,
+            ],
+          ),
+          if (search case final search?) ...[
+            const SizedBox(height: 8),
+            search,
+          ],
+        ],
+      );
+    }
 
     return Row(
       children: [
@@ -140,15 +174,7 @@ class NewsletterDashboard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
         ],
-        Refused(
-          reason: session.me?.refusal('newsletter.create', 'write a newsletter'),
-          child: FilledButton.icon(
-            key: const ValueKey('tour-marketing-new-newsletter'),
-            onPressed: can ? onNew : null,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('New newsletter'),
-          ),
-        ),
+        newButton,
       ],
     );
   }
