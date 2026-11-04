@@ -8,6 +8,56 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  // Print (Merav, 2026-11-04): disabled, not hidden, with no rows; with rows
+  // it hands over a PDF.
+  testWidgets('Print is disabled with no rows and prints a PDF with them', (
+    tester,
+  ) async {
+    var rows = <Map<String, Object?>>[];
+    final api = ApiClient(
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'data': {'rows': rows},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+    final printed = <List<int>>[];
+    printPdf = (pdf, _) async => printed.add(pdf);
+    tester.view.physicalSize = const Size(2400, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    Future<void> open() async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MarketingReport(api: api, now: () => DateTime(2026, 10, 14)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await open();
+    final button = find.byKey(const Key('marketing-print'));
+    expect(tester.widget<ButtonStyleButton>(button).onPressed, isNull);
+
+    rows = [
+      {'branch': 'Connecticut', 'source': 'LS Ads', 'cost_minor': 3000000},
+    ];
+    await open();
+    await tester.tap(button);
+    await tester.runAsync(() => Future.delayed(const Duration(seconds: 2)));
+    await tester.pump();
+    expect(printed, hasLength(1));
+    expect(ascii.decode(printed.single.take(4).toList()), '%PDF');
+  });
+
   testWidgets('asks for last week and shows cost, jobs and profit per source', (
     tester,
   ) async {
