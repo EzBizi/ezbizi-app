@@ -101,7 +101,7 @@ class SyncWorkizRecords extends Command
         $column = self::CURSOR[$type] ?? null;
         $newest = $column === null || $this->option('full') ? null
             : WorkizRecord::query()->where('franchise_id', $connection->scope_id)->where('type', $type)->max($column);
-        $since = WorkizRecords::cursor($newest);
+        $since = WorkizRecords::cursor($newest, \App\Models\Franchise::query()->find($connection->scope_id));
         $landed = 0;
 
         for ($page = 1; $page <= max(1, (int) $this->option('pages')); $page++) {

@@ -113,6 +113,16 @@ class SyncWorkizRecordsTest extends TestCase
         $this->assertGreaterThan(0, $lists(), 'at :05');
     }
 
+    /** Jose 11-04: where a full read starts is the branch's setting, not a date in code. */
+    public function test_a_full_read_starts_at_the_branchs_import_date(): void
+    {
+        [$tenant] = $this->branch();
+        $this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('workiz.import_since', $tenant['org'], '2025-03-01'));
+
+        $this->assertSame('2025-03-01', $this->inTenant($tenant['org'], fn () => \App\Support\Workiz\WorkizRecords::cursor(null, $tenant['franchise'])));
+        $this->assertSame('2023-01-01', \App\Support\Workiz\WorkizRecords::cursor(null), 'no branch: the default');
+    }
+
     public function test_each_type_lands_with_the_columns_readers_filter_on_and_without_the_free_text(): void
     {
         [$tenant] = $this->branch();

@@ -41,8 +41,14 @@ class WorkizJobStatusAndTagsTest extends TestCase
             $c->connect(['api_token' => 'v2key_NY', 'refresh_token' => 'v2key_NY', 'api_version' => 'v2']);
             $c->save();
             WorkizJob::land($c, WorkizV2::job(array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1'])));
+            $first = WorkizJob::query()->sole();
+            // The account's own statuses, as the mirror knows them: a sub-status's parent, and a status a job carries.
+            \App\Models\WorkizRecord::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $c->id, 'type' => 'sub_status',
+                'remote_id' => 'JSS-9', 'payload' => ['name' => 'Estimate Declined', 'parentName' => 'Canceled'], 'synced_at' => now()]);
+            WorkizJob::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $c->id, 'remote_id' => 'OTHER1',
+                'status' => 'done pending approval', 'payload' => [], 'synced_at' => now()]);
 
-            return WorkizJob::query()->sole();
+            return $first;
         });
     }
 
@@ -63,6 +69,21 @@ class WorkizJobStatusAndTagsTest extends TestCase
 
         Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['status'] === 'Canceled' && $r['subStatusId'] === 'JSS-9');
         $this->assertSame('Canceled', $this->inTenant($this->t['org'], fn () => $this->job->fresh()->status));
+    }
+
+    /** Jose 11-04: the statuses are the account's own, not a list in code; one it never used is refused before Workiz is asked. */
+    public function test_a_status_the_account_does_not_have_is_refused_with_its_own_list(): void
+    {
+        Http::fake();
+
+        try {
+            $this->inTenant($this->t['org'], fn () => $this->writer()->setStatus($this->job, 'Archived'));
+            $this->fail('refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('done pending approval', $e->getMessage());
+            $this->assertStringContainsString('Canceled', $e->getMessage());
+        }
+        Http::assertNothingSent();
     }
 
     public function test_workizs_own_refusal_is_thrown_as_it_reads(): void
