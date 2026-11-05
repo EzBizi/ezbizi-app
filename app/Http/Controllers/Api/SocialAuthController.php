@@ -15,8 +15,10 @@ use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Scoping\ViewScope;
+use App\Support\Social\BusinessProfileOAuth;
 use App\Support\Social\FacebookAdsOAuth;
 use App\Support\Social\FacebookOAuth;
+use App\Support\Social\GoogleAdsOAuth;
 use App\Support\Social\SocialAccount;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialOAuth;
@@ -25,6 +27,7 @@ use App\Support\Social\SocialOAuthGrant;
 use App\Support\Social\SocialOAuthRefused;
 use App\Support\Social\SocialOAuthSignIns;
 use App\Support\Social\SocialProvider;
+use App\Support\Social\YouTubeOAuth;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -66,6 +69,22 @@ class SocialAuthController extends Controller
             Status::HTTP_FORBIDDEN,
             Refusal::permission($oauth->provider()->connectAct())->message(),
         );
+
+        // Google the same way; Gmail is listed but never signed in to.
+        if ($oauth instanceof GoogleAdsOAuth && $request->filled('products')) {
+            $chosen = array_values(array_filter(
+                $request->validate([
+                    'products' => ['array'],
+                    'products.*' => ['in:'.implode(',', array_keys(GoogleAdsOAuth::PRODUCTS))],
+                ])['products'],
+                fn (string $k) => GoogleAdsOAuth::PRODUCTS[$k]['scopes'] !== [],
+            ));
+
+            abort_if($chosen === [], Status::HTTP_UNPROCESSABLE_ENTITY,
+                'Choose Business Profile, Google Ads or YouTube. Gmail is set up through Google Workspace in Email settings.');
+
+            $oauth = $oauth->withProducts($chosen);
+        }
 
         $notReady = $oauth->notReadyBecause();
 
@@ -182,6 +201,11 @@ class SocialAuthController extends Controller
             }
 
             $grant = $oauth->exchange($code, $signIn->code_verifier);
+
+            if ($oauth->provider() === SocialProvider::GoogleAds) {
+                return $this->finishGoogle($user, $signIn, $grant);
+            }
+
             $accounts = $oauth->identify($grant);
 
             if ($oauth->requiresRefreshToken() && ($grant->refreshToken === null || $grant->refreshToken === '')) {
@@ -221,6 +245,52 @@ class SocialAuthController extends Controller
 
             return $this->page('Connected', $said, Status::HTTP_OK, $oauth->provider());
         });
+    }
+
+    /**
+     * ONE GOOGLE SIGN-IN, EVERY GOOGLE PRODUCT (Jose, 2026-11-05: "one
+     * Integrations card per sign-in"). The consent asks for Ads, Business
+     * Profile and YouTube together; each product the person left ticked,
+     * may connect, and owns something in becomes rows. One that brings
+     * nothing costs the others nothing, as Facebook's ad accounts do.
+     */
+    private function finishGoogle(User $user, SocialSignIn $signIn, SocialOAuthGrant $grant): Response
+    {
+        $family = [
+            [SocialProvider::GoogleAds, GoogleAdsOAuth::class, GoogleAdsOAuth::SCOPE],
+            [SocialProvider::GoogleBusinessProfile, BusinessProfileOAuth::class, BusinessProfileOAuth::SCOPES[0]],
+            [SocialProvider::YouTube, YouTubeOAuth::class, YouTubeOAuth::SCOPE_UPLOAD],
+        ];
+        $said = [];
+        $refused = null;
+
+        foreach ($family as [$provider, $driver, $scope]) {
+            if (($grant->scopes !== [] && ! in_array($scope, $grant->scopes, true))
+                || ! $user->hasPermission($provider->connectPermission())) {
+                continue;
+            }
+
+            try {
+                $rows = $this->store($user, $signIn, $provider, $grant, app($driver)->identify($grant));
+            } catch (SocialOAuthRefused $e) {
+                $refused ??= $e;
+
+                continue;
+            }
+
+            $said[] = count($rows) === 1
+                ? $rows[0]->display_name.' ('.$provider->label().')'
+                : count($rows).' '.$provider->label().' accounts';
+        }
+
+        if ($said === []) {
+            throw $refused ?? SocialOAuthRefused::unidentified('Google');
+        }
+
+        $sentence = 'Connected to EzBizi: '.implode(', ', $said).'. You can close this window.';
+        $this->signIns->record($signIn, SocialOAuthSignIns::CONNECTED, $sentence);
+
+        return $this->page('Connected', $sentence, Status::HTTP_OK, SocialProvider::GoogleAds);
     }
 
     /**
@@ -299,6 +369,11 @@ class SocialAuthController extends Controller
                         'access_token' => $account->accessToken ?? $grant->accessToken,
                         'scopes' => $grant->scopes,
                     ];
+
+                    // The one Google sign-in: every row renews through its client.
+                    if ($signIn->provider === SocialProvider::GoogleAds->value) {
+                        $tokens['oauth_service'] = 'google_ads';
+                    }
 
                     if ($grant->expiresIn !== null) {
                         $tokens['expires_at'] = now()->addSeconds($grant->expiresIn)->toIso8601String();
