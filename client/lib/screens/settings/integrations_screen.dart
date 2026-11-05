@@ -14,6 +14,8 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/social_network_mark.dart';
 import '../../widgets/telegram_linked_staff.dart';
 import '../email/mailbox_panels.dart';
+import '../../widgets/disconnect_panel.dart';
+import 'integration_family_card.dart';
 import 'integration_provider_screen.dart';
 
 /// Settings › Integrations — every outside account this view is connected to,
@@ -118,6 +120,19 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// correction, and it is why `IntegrationProviderScreen` carries no
   /// `Scaffold`.
   String? _open;
+
+  /// Products a head's sign-in brings, by head: the catalogue's
+  /// `signed_in_with` (UI queue 182). They draw inside the head's card.
+  Map<String, List<String>> get _folded {
+    final out = <String, List<String>>{};
+    for (final e in _catalogue.entries) {
+      final head = e.value['signed_in_with'] as String?;
+      if (head != null && head.isNotEmpty) {
+        out.putIfAbsent(head, () => []).add(e.key);
+      }
+    }
+    return out;
+  }
 
   String get _viewName =>
       widget.session.me?.scope.label ??
@@ -326,7 +341,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       if (_mayManageWorkspace) 'google_workspace',
       if (_numbers != null) 'phone_numbers',
       if (_sending != null || _sendingRefusal != null) 'sending_server',
-    };
+    }..removeAll(_folded.values.expand((v) => v));
+    // A head with nothing of its own but a connected product still draws.
+    providers.addAll(_folded.keys.where(_catalogue.containsKey));
 
     // THE PANE IN PLACE OF THE GRID, never over the app. See [_open].
     final open = _open;
@@ -455,7 +472,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           child: _list(context, {
             for (final p in providers)
               if (_query.trim().isEmpty ||
-                  _label(p).toLowerCase().contains(_query.trim().toLowerCase()))
+                  [p, ...?_folded[p]].any(
+                    (q) => _label(
+                      q,
+                    ).toLowerCase().contains(_query.trim().toLowerCase()),
+                  ))
                 p,
           }, byProvider),
         ),
@@ -852,6 +873,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
      * So every provider is a card. The ones not connected look lighter and
      * carry Connect, and the connected ones still come first.
      */
+    final folded = _folded;
     final mine = providers.where((p) => _familyOf(p) == family).toList()
       ..sort((a, b) {
         // Connected first, then alphabetically. What a business HAS is the
@@ -881,11 +903,21 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 for (final provider in mine)
-                  _providerRow(
-                    context,
-                    provider: provider,
-                    rows: byProvider[provider] ?? const [],
-                  ),
+                  if (folded.containsKey(provider))
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: _familyCard(
+                        provider,
+                        folded[provider]!,
+                        byProvider,
+                      ),
+                    )
+                  else
+                    _providerRow(
+                      context,
+                      provider: provider,
+                      rows: byProvider[provider] ?? const [],
+                    ),
               ],
             )
           : Wrap(
@@ -893,15 +925,79 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               runSpacing: 12,
               children: [
                 for (final provider in mine)
-                  _providerCard(
-                    context,
-                    provider: provider,
-                    rows: byProvider[provider] ?? const [],
-                    canName: canName,
-                  ),
+                  if (folded.containsKey(provider))
+                    _familyCard(provider, folded[provider]!, byProvider)
+                  else
+                    _providerCard(
+                      context,
+                      provider: provider,
+                      rows: byProvider[provider] ?? const [],
+                      canName: canName,
+                    ),
               ],
             ),
     );
+  }
+
+  /// One sign-in and everything it brings (UI queue 182).
+  Widget _familyCard(
+    String head,
+    List<String> children,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) {
+    final theme = Theme.of(context);
+    final all = [head, ...children];
+    final rows = [for (final p in all) ...?byProvider[p]];
+    final may = _mayConnectProvider(head);
+
+    return IntegrationFamilyCard(
+      head: head,
+      label: _label(head),
+      subtitle: rows.isEmpty ? (_purpose[head] ?? '') : _lastChecked(rows),
+      phone: _phone,
+      mayAddAccess: may && _catalogue[head]?['usable'] != false,
+      onOpen: () => setState(() => _open = head),
+      onDisconnect: rows.isNotEmpty && may
+          ? () => _disconnectFamily(head)
+          : null,
+      products: [
+        for (final p in all)
+          FamilyProduct(
+            provider: p,
+            label: _label(p),
+            connected: (byProvider[p] ?? const []).isNotEmpty,
+            detail: (byProvider[p] ?? const []).isEmpty
+                ? 'Not granted at sign-in'
+                : _beneath(byProvider[p]!),
+            status: _pill(
+              theme,
+              rows: byProvider[p] ?? const [],
+              broken: (byProvider[p] ?? const [])
+                  .where((r) => !r.connected)
+                  .length,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// One code, every row the sign-in brought: the server's
+  /// `DELETE social/providers/{head}/connections` takes the whole family.
+  Future<void> _disconnectFamily(String head) async {
+    final names = [head, ...?_folded[head]].map(_label).join(', ');
+    final done = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect ${_label(head)}?',
+      explanation:
+          'EzBizi stops using everything this sign-in brought: $names. To '
+          'use them again, sign in again.',
+      perform: (code) => widget.api.deleteWithBody(
+        '/social/providers/$head/connections',
+        {'code': code},
+      ),
+    );
+    if (done != null && mounted) await _load();
   }
 
   String _label(String provider) =>
