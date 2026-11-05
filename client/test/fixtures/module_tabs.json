@@ -1,8 +1,8 @@
 {
     "modules": {
         "ads_performance": {
-            "label": "Google Ads",
-            "parent": "reports",
+            "label": "Ads",
+            "parent": "marketing",
             "tabs": []
         },
         "ai_assistance": {
