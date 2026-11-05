@@ -106,7 +106,21 @@ void main() {
       {'navigation.scope': 'company:co-2'},
     ]);
 
+    // Then another company picked by hand: the remount gets the same lead,
+    // and must not switch back to it (Jose, 2026-11-05).
+    await tester.pumpWidget(const SizedBox());
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell'), at('co-2')],
+      connections: _connected,
+      initialLeadId: 'lead-2',
+      me: inCompany,
+    );
+    expect(_preferences, isEmpty);
+    expect(find.text('Dana Whitfield'), findsOneWidget, reason: 'not selected');
+
     // The control: a lead the view already covers moves nothing.
+    await tester.pumpWidget(const SizedBox());
     await _pump(
       tester,
       leads: [_lead('lead-1', 'Marcus Bell'), at('co-1')],
