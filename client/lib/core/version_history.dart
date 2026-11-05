@@ -19,6 +19,9 @@ class VersionHistory {
       'iOS: picking a profile photo works again',
       'An automation email that the mail server turns away no longer leaves a broken connection behind for the emails after it',
       'Reports: the call log refreshes every hour for every phone account, so the call report loads faster',
+      'Marketing: new Ads section for Google and Meta campaigns (moved from Reports)',
+      'Onboarding: County for disputes lists every county in the chosen state, with search',
+      'Email: adding a Gmail address needs only an app password; the server settings fill in',
     ]),
     VersionRelease(version: '0.0.0534', date: '5 Nov 2026', items: [
       'Leads: a caller who already got the after-call text is not texted again when they go quiet',
