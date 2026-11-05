@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0533', date: '5 Nov 2026', items: [
+      'Settings > Lists: report call labels and paid lead sources can be edited',
+    ]),
     VersionRelease(version: '0.0.0532', date: '5 Nov 2026', items: [
       'Reports: new and existing client queues come from Leads settings',
       'Reports: call labels and coaching use your trade from settings',
