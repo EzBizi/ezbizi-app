@@ -311,7 +311,7 @@ class LeadInsights
      * when it has none (Jose, 2026-11-05: "Yes, I call you right away").
      * Never sent by itself: the composer offers it and a person taps it.
      */
-    public function proofread(Lead $lead, string $text): ?string
+    public function proofread(?Lead $lead, string $text): ?string
     {
         $text = trim($text);
 

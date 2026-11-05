@@ -25,6 +25,7 @@ import 'async_body.dart';
 import 'book_job_panel.dart';
 import 'lead_edit_panel.dart';
 import 'lead_source_details.dart';
+import 'proofread_hint.dart';
 import 'side_panel.dart';
 import 'search_picker.dart';
 import 'status_pill.dart';
@@ -235,88 +236,9 @@ class _LeadThreadState extends State<LeadThread> {
   /// A draft is offered only where a reply can go and the model is on.
   bool _canSuggest = false;
 
-  /// "Did you mean" under the box (Jose, 2026-11-05: "Yes, I call you right
-  /// away"): AI's fix for the draft as it stood, offered and never sent by
-  /// itself. Off where the business switched leads.proofread off.
+  /// "Did you mean" under the box (ProofreadHint); off where the business
+  /// switched leads.proofread off.
   bool _canProofread = false;
-  String? _proofread;
-  String _proofFor = '';
-  String _proofAsked = '';
-  Timer? _proofTimer;
-
-  /// A second after typing stops, the draft is asked about once.
-  void _proofreadLater() {
-    final text = _compose.text;
-    if (_proofread != null && text != _proofFor) {
-      setState(() => _proofread = null);
-    }
-    _proofTimer?.cancel();
-    if (!_canProofread || text.trim().length < 3 || text == _proofAsked) return;
-    _proofTimer = Timer(const Duration(seconds: 1), () async {
-      _proofAsked = text;
-      final response = await widget.api.post(
-        '/leads/${widget.lead['id']}/proofread',
-        {'text': text},
-      );
-      if (!mounted || !response.ok || _compose.text != text) return;
-      final fix = (response.data as Map?)?['suggestion'] as String?;
-      if (fix != null) {
-        setState(() {
-          _proofread = fix;
-          _proofFor = text;
-        });
-      }
-    });
-  }
-
-  /// The fix, its changed words bold; a tap puts it in the box.
-  Widget _proofreadHint(ThemeData theme) {
-    final had = _proofFor.split(RegExp(r'\s+')).toSet();
-    final words = _proofread!.split(' ');
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              key: const ValueKey('reply-proofread'),
-              onTap: () {
-                final fix = _proofread!;
-                _compose.value = TextEditingValue(
-                  text: fix,
-                  selection: TextSelection.collapsed(offset: fix.length),
-                );
-                setState(() => _proofread = null);
-              },
-              child: Text.rich(
-                TextSpan(
-                  style: theme.textTheme.bodySmall,
-                  children: [
-                    const TextSpan(text: 'Did you mean: '),
-                    for (final (i, w) in words.indexed)
-                      TextSpan(
-                        text: i == 0 ? w : ' $w',
-                        style: had.contains(w)
-                            ? null
-                            : const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          IconButton(
-            key: const ValueKey('reply-proofread-dismiss'),
-            tooltip: 'Dismiss',
-            visualDensity: VisualDensity.compact,
-            iconSize: 16,
-            onPressed: () => setState(() => _proofread = null),
-            icon: const Icon(Icons.close),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// Canned replies beside Send, already filled in for this customer and
   /// brand (`leads.reply_templates`). A tap puts the text in the box to read
@@ -378,7 +300,6 @@ class _LeadThreadState extends State<LeadThread> {
     );
     _compose.addListener(_typing);
     _compose.addListener(_composerState);
-    _compose.addListener(_proofreadLater);
     _composeFocus.addListener(_composerState);
     // After the first frame: the parent answers by rebuilding its list, and
     // a setState during this widget's own build is an exception, not a mark.
@@ -417,7 +338,6 @@ class _LeadThreadState extends State<LeadThread> {
   @override
   void dispose() {
     _poll?.cancel();
-    _proofTimer?.cancel();
     // Off this lead on everybody else's screen now, not when the check-in
     // runs out (Jose, 2026-10-01). Fire and forget: the thread is closing.
     unawaited(widget.api.post('/leads/${widget.lead['id']}/leave', const {}));
@@ -1668,7 +1588,12 @@ class _LeadThreadState extends State<LeadThread> {
             ),
           ],
         ),
-        if (_proofread != null) _proofreadHint(theme),
+        ProofreadHint(
+          api: widget.api,
+          controller: _compose,
+          path: '/leads/${widget.lead['id']}/proofread',
+          enabled: _canProofread,
+        ),
       ],
     ),
   );

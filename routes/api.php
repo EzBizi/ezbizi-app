@@ -127,6 +127,7 @@ use App\Http\Controllers\Api\ScoringReportController;
 use App\Http\Controllers\Api\StaffBotMenusController;
 use App\Http\Controllers\Api\ThumbtackReportController;
 use App\Http\Controllers\Api\ProfitLossController;
+use App\Http\Controllers\Api\ProofreadController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
@@ -3383,6 +3384,9 @@ Route::prefix('v1')
         Route::get('mail/sending-server', [SendingServersController::class, 'show']);
         Route::put('mail/sending-server', [SendingServersController::class, 'connect']);
         Route::delete('mail/sending-server', [SendingServersController::class, 'disconnect']);
+
+        // "Did you mean" for a composer with no lead behind it (Phone's texts).
+        Route::post('proofread', ProofreadController::class)->middleware('throttle:60,1');
 
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)
