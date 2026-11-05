@@ -3304,3 +3304,33 @@ to the xAI item under Who we rely on, and did not bump the date.
 
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) over the 8
 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
+
+## 2026-11-04: 0.0.0526-0.0.0530 live, and `/social-media/` said we never manage advertising
+
+Production `/download/windows.json` 0.0.0530 at `ba84e0543`; 0.0.0531 (Google call leads
+answered by SMS) is on main, not live. All 8 live pages matched their WP post_content before
+the edit; no WP page had changed since the 11-03 run.
+
+- **`/social-media/` "We do not: Run or manage advertising of any kind"** was false:
+  `a24e0de6f` (0.0.0528, in `ba84e0543`) lets a business pause/resume Meta campaigns, ad sets
+  and ads and change a daily budget (`MetaAdsManager`, `MetaAdsController`), and the Page
+  connect now asks for `ads_management` (`FacebookOAuth`). "Collect … insight data" was
+  already stretched: `MetaAdInsights::sync` stores ad spend/leads since 10-12. **Edited WP
+  page 9** (backup `~/ezb-wp-bak-20261104/` on the websites box): use column gained "Show a
+  business its own Facebook ad campaigns … pause, resume or change a daily budget when somebody
+  at the business asks for it"; do-not column now "Create or remove ads or campaigns, change
+  their targeting or creative, or change anything nobody at the business asked for" and
+  "Collect audience or follower data". Last updated / `dateModified` / sitemap lastmod 11-04.
+  Writes reach Meta only through the two API endpoints (no automation caller), hence "asks
+  for it" rather than "presses". Not measured: whether any grant holds `ads_management` or
+  Meta has approved it — the sentence describes what the app does, not that anyone has used it.
+- `/google-ads-api/` "set or adjust bids or budgets" still true: the Google side is
+  `campaigns:mutate` status only (`CampaignPerformance`); budgets are Meta-only.
+- Times per company time zone, Settings › Lists, Email paging, Reports audit, review replies
+  for every company, WhatsApp media fixes: no sentence on the site touched. "Post anything a
+  person did not write and send" left alone: weekly Google posts still `auto_post` false
+  (11-03 row), not re-counted.
+- `www/` not updated (frozen at the 11-02 import).
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) over the 8
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
