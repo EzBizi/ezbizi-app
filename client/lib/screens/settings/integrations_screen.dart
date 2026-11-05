@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -5,6 +7,7 @@ import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
 import '../../widgets/list_search.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/connect_account.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/sending_server_panel.dart';
 import '../../widgets/workiz_connect_form.dart';
@@ -326,7 +329,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       if (_mayManageWorkspace) 'google_workspace',
       if (_numbers != null) 'phone_numbers',
       if (_sending != null || _sendingRefusal != null) 'sending_server',
-    };
+    }..removeWhere((p) => _headOf(p) != p);
 
     // THE PANE IN PLACE OF THE GRID, never over the app. See [_open].
     final open = _open;
@@ -455,7 +458,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           child: _list(context, {
             for (final p in providers)
               if (_query.trim().isEmpty ||
-                  _label(p).toLowerCase().contains(_query.trim().toLowerCase()))
+                  _family_(p).any(
+                    (f) => _label(
+                      f,
+                    ).toLowerCase().contains(_query.trim().toLowerCase()),
+                  ))
                 p,
           }, byProvider),
         ),
@@ -862,7 +869,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
         return byCount != 0 ? byCount : _label(a).compareTo(_label(b));
       });
-    final connected = mine.where((p) => (byProvider[p] ?? const []).isNotEmpty);
+    final connected = mine.where(
+      (p) => _family_(p).any((f) => (byProvider[f] ?? const []).isNotEmpty),
+    );
     final phone = _phone;
 
     return DashboardCard(
@@ -881,11 +890,14 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 for (final provider in mine)
-                  _providerRow(
-                    context,
-                    provider: provider,
-                    rows: byProvider[provider] ?? const [],
-                  ),
+                  if (_signedIn(provider, byProvider))
+                    _signInCard(context, provider, byProvider)
+                  else
+                    _providerRow(
+                      context,
+                      provider: provider,
+                      rows: byProvider[provider] ?? const [],
+                    ),
               ],
             )
           : Wrap(
@@ -893,14 +905,342 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               runSpacing: 12,
               children: [
                 for (final provider in mine)
-                  _providerCard(
-                    context,
-                    provider: provider,
-                    rows: byProvider[provider] ?? const [],
-                    canName: canName,
-                  ),
+                  if (_signedIn(provider, byProvider))
+                    _signInCard(context, provider, byProvider)
+                  else
+                    _providerCard(
+                      context,
+                      provider: provider,
+                      rows: byProvider[provider] ?? const [],
+                      canName: canName,
+                    ),
               ],
             ),
+    );
+  }
+
+  // ── One card per sign-in (design 182, Jose 2026-11-05) ─────────────
+  //
+  // "1 facebook connections grabs social and ada and whatever scopes we have
+  // etc. Same for disconnecting." A provider whose catalogue row names
+  // `signed_in_with` has no card of its own: the head's sign-in brings it, so
+  // it is a product line on the head's card, and one Disconnect removes them
+  // all (`DELETE /social/providers/{head}/connections`).
+
+  /// The provider whose card carries this one.
+  String _headOf(String provider) =>
+      _catalogue[provider]?['signed_in_with'] as String? ?? provider;
+
+  /// The head and every provider its sign-in brings.
+  List<String> _family_(String head) => [
+    head,
+    for (final entry in _catalogue.entries)
+      if (entry.value['signed_in_with'] == head) entry.key,
+  ];
+
+  /// A sign-in card once its sign-in brought anything; the plain tile (and
+  /// its Connect) before that.
+  bool _signedIn(
+    String provider,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) =>
+      _family_(provider).length > 1 &&
+      _family_(provider).any((f) => (byProvider[f] ?? const []).isNotEmpty);
+
+  static const _productLabels = {
+    'facebook_page': 'Pages',
+    'facebook_ads': 'Ad accounts',
+  };
+
+  String _product(String provider) =>
+      _productLabels[provider] ?? _label(provider);
+
+  /// The head whose Disconnect is open, its code, and the 5 s lapse.
+  String? _confirming;
+  final _code = TextEditingController();
+  Timer? _lapse;
+  bool _disconnecting = false;
+  String? _disconnectError;
+
+  @override
+  void dispose() {
+    _lapse?.cancel();
+    _code.dispose();
+    super.dispose();
+  }
+
+  void _askDisconnect(String head) {
+    _lapse?.cancel();
+    _code.clear();
+    setState(() {
+      _confirming = head;
+      _disconnectError = null;
+    });
+    // Lapses untouched: a code being typed keeps it open.
+    _lapse = Timer(const Duration(seconds: 5), () {
+      if (mounted && _code.text.isEmpty && !_disconnecting) {
+        setState(() => _confirming = null);
+      }
+    });
+  }
+
+  Future<void> _disconnectFamily(String head) async {
+    setState(() {
+      _disconnecting = true;
+      _disconnectError = null;
+    });
+    final response = await widget.api.deleteWithBody(
+      '/social/providers/$head/connections',
+      {'code': _code.text},
+    );
+    if (!mounted) return;
+    setState(() {
+      _disconnecting = false;
+      if (response.ok) {
+        _confirming = null;
+      } else {
+        _disconnectError = response.reason;
+        _code.clear();
+      }
+    });
+    if (response.ok) await _load();
+  }
+
+  Widget _signInCard(
+    BuildContext context,
+    String head,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) {
+    final theme = Theme.of(context);
+    final family = _family_(head);
+    final rows = [for (final f in family) ...?byProvider[f]];
+    final login = rows.map((r) => r.accountEmail).whereType<String>().toSet();
+    final mayDisconnect = family.every(_mayConnectProvider);
+    final startPath = _catalogue[head]?['start_path'] as String?;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final name = _label(head);
+
+    Widget disconnect({bool full = false}) => TextButton(
+      key: ValueKey('family-disconnect:$head'),
+      style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
+      onPressed: _confirming == head ? null : () => _askDisconnect(head),
+      child: Text(full ? 'Disconnect $name' : 'Disconnect'),
+    );
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        final narrow = box.maxWidth < 900;
+
+        return Container(
+          key: ValueKey('signin:$head'),
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  SocialNetworkMark(network: head, size: 28),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name, style: theme.textTheme.titleSmall),
+                        Text(
+                          [
+                            if (login.isNotEmpty)
+                              'Signed in as ${login.join(', ')}',
+                            _lastChecked(rows),
+                          ].join(' · '),
+                          key: ValueKey('last-checked:$head'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (mayDisconnect && !narrow) disconnect(),
+                ],
+              ),
+              const SizedBox(height: 8),
+              for (final product in family)
+                _productLine(
+                  context,
+                  product,
+                  byProvider[product] ?? const [],
+                  addAccess: startPath == null || !_mayConnectProvider(head)
+                      ? null
+                      : ConnectAccount(
+                          key: ValueKey('add-access:$product'),
+                          api: widget.api,
+                          label: name,
+                          action: 'Add access',
+                          startPath: startPath,
+                          onConnected: _load,
+                        ),
+                ),
+              if (_confirming == head)
+                _confirmBox(context, head, family, byProvider)
+              else if (mayDisconnect && narrow)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: disconnect(full: true),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// One product of a sign-in: what it brought, and its own state. Opens the
+  /// product's page, as its tile did.
+  Widget _productLine(
+    BuildContext context,
+    String product,
+    List<IntegrationConnection> rows, {
+    Widget? addAccess,
+  }) {
+    final theme = Theme.of(context);
+    final broken = rows.where((r) => !r.connected).length;
+
+    return InkWell(
+      key: ValueKey('product:$product'),
+      onTap: () => setState(() => _open = product),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 110,
+              child: Text(_product(product), style: theme.textTheme.bodyMedium),
+            ),
+            Expanded(
+              child: Text(
+                rows.isEmpty
+                    ? 'None came with the sign-in'
+                    : rows.map((r) => r.title).join(', '),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (rows.isNotEmpty)
+              _pill(theme, rows: rows, broken: broken)
+            else
+              ?addAccess,
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The second step, in place: what goes, and the authenticator code the
+  /// server asks for (Jose, 2026-10-21). Red, because it is the one thing on
+  /// this screen that removes.
+  Widget _confirmBox(
+    BuildContext context,
+    String head,
+    List<String> family,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final text = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onErrorContainer,
+    );
+
+    return Container(
+      key: ValueKey('family-confirm:$head'),
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'This removes:',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: scheme.onErrorContainer,
+            ),
+          ),
+          for (final product in family)
+            if ((byProvider[product] ?? const []).isNotEmpty)
+              Text(
+                '${_product(product)}: '
+                '${byProvider[product]!.map((r) => r.title).join(', ')}',
+                style: text,
+              ),
+          const SizedBox(height: 8),
+          TextField(
+            key: ValueKey('family-code:$head'),
+            controller: _code,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Authenticator code',
+              counterText: '',
+              isDense: true,
+            ),
+          ),
+          if (_disconnectError != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              _disconnectError!,
+              key: ValueKey('family-error:$head'),
+              style: text?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              FilledButton(
+                key: ValueKey('family-confirm-go:$head'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: scheme.error,
+                  foregroundColor: scheme.onError,
+                ),
+                onPressed:
+                    RegExp(r'^\d{6}$').hasMatch(_code.text) && !_disconnecting
+                    ? () => _disconnectFamily(head)
+                    : null,
+                child: Text(
+                  _disconnecting
+                      ? 'Disconnecting…'
+                      : 'Disconnect ${_label(head)}',
+                ),
+              ),
+              TextButton(
+                key: ValueKey('family-cancel:$head'),
+                onPressed: _disconnecting
+                    ? null
+                    : () => setState(() => _confirming = null),
+                child: const Text('Cancel'),
+              ),
+              if (_code.text.isEmpty)
+                Text('Closes by itself after 5 s', style: text),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
