@@ -149,6 +149,10 @@ class SchedulingLocationsController extends Controller
             ->filter(fn (WebLocation $l) => $scope->coversCompany($l->company_id))
             ->unique(fn (WebLocation $l) => $place($l->address_line1, $l->postal_code))
             ->values();
+        // A site's row with no address beside a filled row for the same branch is the same branch, half-entered.
+        $filled = $web->filter(fn (WebLocation $l) => trim((string) $l->address_line1) !== '' && $this->zip5($l->postal_code) !== '');
+        $web = $web->reject(fn (WebLocation $l) => ($this->zip5($l->postal_code) === '' || trim((string) $l->address_line1) === '')
+            && $filled->contains(fn (WebLocation $f) => $f->id !== $l->id && ($f->name === $l->name || $digits($f->phone) === $digits($l->phone))))->values();
 
         $listings = BusinessLocation::query()
             ->whereNull('not_listed_since')
@@ -172,9 +176,15 @@ class SchedulingLocationsController extends Controller
                 $used[$match->id] = true;
             }
             $centre = $match === null && $this->zip5($b->postal_code) !== '' ? ZipCentroid::locate($this->zip5($b->postal_code)) : null;
-            $rows->push(['source' => 'google_business_profile', 'id' => $b->id, 'name' => $match?->name ?? ($b->city ?: $b->title),
+            // A service-area listing has no storefront: its first service place is its city ("Warren, MI, USA").
+            $served = array_map('trim', explode(',', (string) (($b->service_places ?? [])[0] ?? '')));
+            $city = $b->city ?: (count($served) >= 2 ? $served[0] : null);
+            $state = $b->state ?: (count($served) >= 3 && strlen($served[1]) === 2 ? $served[1] : null);
+            $rows->push(['source' => 'google_business_profile', 'id' => $b->id,
+                'name' => $match?->name ?? trim($b->title.($city ? ' · '.$city.($state ? ', '.$state : '') : '')),
                 'company_id' => $b->company_id, 'address_line1' => $b->address_line1, 'address_line2' => $b->address_line2,
-                'city' => $b->city, 'state' => $b->state, 'postal_code' => $b->postal_code, 'phone' => $b->phone ?: $match?->phone,
+                'city' => $city, 'state' => $state, 'postal_code' => $b->postal_code, 'service_places' => $b->service_places ?? [],
+                'phone' => $b->phone ?: $match?->phone,
                 'email' => $match?->email, 'maps_url' => $match?->maps_url,
                 'latitude' => $match?->latitude ?? $centre?->latitude, 'longitude' => $match?->longitude ?? $centre?->longitude]);
         }
@@ -182,7 +192,7 @@ class SchedulingLocationsController extends Controller
             if (isset($used[$l->id])) {
                 continue;
             }
-            $rows->push(['source' => 'website', 'id' => $l->id, 'name' => $l->name, 'company_id' => $l->company_id,
+            $rows->push(['source' => 'website', 'id' => $l->id, 'name' => $l->name, 'company_id' => $l->company_id, 'service_places' => [],
                 'address_line1' => $l->address_line1, 'address_line2' => $l->address_line2, 'city' => $l->city, 'state' => $l->state,
                 'postal_code' => $l->postal_code, 'phone' => $l->phone, 'email' => $l->email, 'maps_url' => $l->maps_url,
                 'latitude' => $l->latitude, 'longitude' => $l->longitude]);
