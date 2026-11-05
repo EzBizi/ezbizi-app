@@ -405,9 +405,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
       }
     }
 
-    _selectedId = widget.initialLeadId;
-    _toOpen = widget.initialLeadId;
-    if (widget.initialLeadId == null) _movedFor = null;
+    // A notification's lead opens once. The shell hands it to every remount,
+    // and a company switch remounts, so without this every switch picked by
+    // hand snapped back to it. Switching company unselects (Jose, 2026-11-05);
+    // only the remount the open itself caused ([_movedFor]) opens it again.
+    final lead = widget.initialLeadId;
+    if (lead == null || lead != _opened || lead == _movedFor) {
+      _selectedId = lead;
+      _toOpen = lead;
+    }
+    _opened = lead;
+    _movedFor = null;
 
     _load();
     _poll = Timer.periodic(_pollEvery, (_) => _load());
@@ -642,10 +650,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// Switches the view to [lead]'s franchise, or its company, when the view
   /// does not cover it and this person can go there. True when it switched.
-  ///
-  /// Once per notification: the shell keeps handing the same lead to every
-  /// remount, so a company picked by hand afterwards must not be switched
-  /// back. There the lead is let go instead (Jose, 2026-11-05).
   Future<bool> _viewLeadsPlace(Map<String, dynamic> lead) async {
     final me = widget.session.me;
     if (me == null || me.scope.type == 'organization') return false;
@@ -671,24 +675,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
       return false;
     }
 
-    if (_movedFor == lead['id']) {
-      setState(() {
-        if (_pinned?['id'] == lead['id']) {
-          _leads = [for (final l in _leads) if (l['id'] != lead['id']) l];
-          _pinned = null;
-        }
-        _selectedId = null;
-      });
-      return true;
-    }
-
     _movedFor = lead['id'] as String?;
     await widget.session.setScope(target);
     return true;
   }
 
-  /// The lead a notification already moved the view for. Static because the
-  /// switch remounts this screen. ponytail: one id, which is all one shell has.
+  /// The notification's lead already opened, and the one whose open switched
+  /// the view (its remount opens it once more). Static because a switch
+  /// remounts this screen. ponytail: one id each, all one shell hands over.
+  static String? _opened;
   static String? _movedFor;
 
   Future<void> _sync() async {

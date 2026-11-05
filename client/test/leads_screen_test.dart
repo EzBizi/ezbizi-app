@@ -90,46 +90,55 @@ void main() {
         {'id': 'co-2', 'name': 'Garage Doors', 'parent_company_id': null},
       ],
     };
-    Map<String, dynamic> at(String company) => {
-      ..._lead('lead-2', 'Dana Whitfield'),
+    Map<String, dynamic> at(String company, [String id = 'lead-2']) => {
+      ..._lead(id, id == 'lead-2' ? 'Dana Whitfield' : 'Ruth Okafor'),
       'company': {'id': company, 'name': company},
     };
+    Map<String, dynamic> viewing(String company) => {
+      ...inCompany,
+      'scope': {'type': 'company', 'id': company, 'label': company, 'path': [company]},
+    };
+    Future<void> remount(String company, List<Map<String, dynamic>> leads, String? open) async {
+      await tester.pumpWidget(const SizedBox());
+      await _pump(
+        tester,
+        leads: leads,
+        connections: _connected,
+        initialLeadId: open,
+        me: viewing(company),
+      );
+    }
 
-    await _pump(
-      tester,
-      leads: [_lead('lead-1', 'Marcus Bell'), at('co-2')],
-      connections: _connected,
-      initialLeadId: 'lead-2',
-      me: inCompany,
-    );
+    // Leads opened the ordinary way first, as between two notifications: an
+    // earlier test opened lead-2 too.
+    await remount('co-1', const [], null);
+    final leads = [_lead('lead-1', 'Marcus Bell'), at('co-2')];
+    await remount('co-1', leads, 'lead-2');
     expect(_preferences, [
       {'navigation.scope': 'company:co-2'},
     ]);
 
-    // Then another company picked by hand: the remount gets the same lead,
-    // and must not switch back to it (Jose, 2026-11-05).
-    await tester.pumpWidget(const SizedBox());
-    await _pump(
-      tester,
-      leads: [_lead('lead-1', 'Marcus Bell'), at('co-2')],
-      connections: _connected,
-      initialLeadId: 'lead-2',
-      me: inCompany,
-    );
+    // The switch's own remount opens the lead there.
+    await remount('co-2', leads, 'lead-2');
+    expect(_preferences, isEmpty);
+    expect(find.text('Dana Whitfield'), findsNWidgets(2));
+
+    // Then another company picked by hand: the shell hands over the same
+    // lead, and it must neither switch back nor stay selected (Jose,
+    // 2026-11-05: switching company unselects).
+    await remount('co-1', leads, 'lead-2');
     expect(_preferences, isEmpty);
     expect(find.text('Dana Whitfield'), findsOneWidget, reason: 'not selected');
 
-    // The control: a lead the view already covers moves nothing.
-    await tester.pumpWidget(const SizedBox());
-    await _pump(
-      tester,
-      leads: [_lead('lead-1', 'Marcus Bell'), at('co-1')],
-      connections: _connected,
-      initialLeadId: 'lead-2',
-      me: inCompany,
-    );
+    // A notification lead the view already covers moves nothing, and a
+    // company picked afterwards does not snap back to it either.
+    final here = [_lead('lead-1', 'Marcus Bell'), at('co-1', 'lead-3')];
+    await remount('co-1', here, 'lead-3');
     expect(_preferences, isEmpty);
-    expect(find.text('Dana Whitfield'), findsNWidgets(2));
+    expect(find.text('Ruth Okafor'), findsNWidgets(2));
+    await remount('co-2', here, 'lead-3');
+    expect(_preferences, isEmpty);
+    expect(find.text('Ruth Okafor'), findsOneWidget, reason: 'not selected');
   });
 
   testWidgets('search runs as you type, without Enter', (tester) async {
