@@ -287,8 +287,8 @@ final class RingCentralCallLog
      * The call log is in RingCentral's heavy rate group - ten requests a
      * minute - so a month asked for whole would wait minutes on the limit.
      * A day that has ended no longer changes, so it is fetched once and
-     * reused; only today is read live. `ezbizi:warm-call-log` reads yesterday
-     * each night, so a week or a month is normally all cache.
+     * reused; only today is read live. `ezbizi:warm-call-log` keeps every
+     * account's last month each hour, so a week or a month is normally all kept.
      *
      * Inbound only unless $outbound: Jose, 2026-10-12, wants missed calls told
      * apart "between inbound and outbound", and only the report shows
