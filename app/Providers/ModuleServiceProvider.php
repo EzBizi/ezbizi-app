@@ -4588,7 +4588,9 @@ class ModuleServiceProvider extends ServiceProvider
 
             new ModuleDefinition(
                 key: 'ads_performance',
-                label: 'Google Ads',
+                // Google and Meta, behind the screen's switch (Jose could not
+                // find Meta under "Google Ads", 2026-11-05).
+                label: 'Ads',
                 parent: 'reports',
                 actions: ['view', 'manage'],
                 // AUTOMATED since 2026-09-28, as the exemption this replaced

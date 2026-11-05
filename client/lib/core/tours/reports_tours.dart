@@ -296,7 +296,7 @@ const Map<String, Tour> reportsTours = {
       ),
     ],
   ),
-  'reports/Google Ads': Tour(
+  'reports/Ads': Tour(
     version: 1,
     steps: [
       TourStep(

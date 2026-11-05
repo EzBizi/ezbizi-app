@@ -1,7 +1,7 @@
 {
     "modules": {
         "ads_performance": {
-            "label": "Google Ads",
+            "label": "Ads",
             "parent": "reports",
             "tabs": []
         },

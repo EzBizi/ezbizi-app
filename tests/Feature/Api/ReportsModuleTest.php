@@ -36,9 +36,9 @@ class ReportsModuleTest extends TestCase
         );
 
         $this->assertSame(
-            'Google Ads',
+            'Ads',
             $registry->get('ads_performance')?->label,
-            'The tab is named for the thing it reports on, not for the metric.',
+            'The tab holds Google and Meta campaigns; one provider’s name hid the other.',
         );
 
         $this->assertNull(
