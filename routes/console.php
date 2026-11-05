@@ -34,9 +34,10 @@ Schedule::command('ezbizi:check-connection-health')->dailyAt('06:40')->withoutOv
 Schedule::command('ezbizi:time-clock-approval-reminders')->everyFifteenMinutes()->withoutOverlapping(10);
 Schedule::command('ezbizi:pto-daily-triggers')->dailyAt('07:10')->withoutOverlapping(30);
 
-// Yesterday's RingCentral call log into the Experimental report's cache, so a
-// week or a month opens without waiting on RingCentral's rate limit.
-Schedule::command('ezbizi:warm-call-log')->dailyAt('02:30')->withoutOverlapping(30);
+// Every RingCentral account's finished days kept for the reports, so a week or
+// a month opens without waiting on RingCentral's rate limit (CALLS-504: hourly,
+// as 02:30 UTC is still yesterday in New York).
+Schedule::command('ezbizi:warm-call-log')->hourlyAt(7)->withoutOverlapping(60);
 Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverlapping(5);
 // Yesterday's calls AI read as booked with no Workiz job (AiBookedNoJob).
 // A-1's Airtable copied into EzBizi for the reports (A1 Leads takeover, 2026-10-16); about 8 s.
