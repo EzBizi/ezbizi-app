@@ -154,7 +154,9 @@ class SchedulingLocationsController extends Controller
             ->whereNull('not_listed_since')
             ->whereHas('connection', fn ($q) => $q->where('provider', BusinessProfileHours::KEY)->where('status', SocialConnection::STATUS_CONNECTED))
             ->get()
-            ->filter(fn (BusinessLocation $b) => $scope->coversCompany($b->company_id));
+            // A listing filed on no branch is the company's, shown in each of its branch views (Desk, 2026-11-05).
+            ->filter(fn (BusinessLocation $b) => $scope->coversCompany($b->company_id)
+                && ($b->franchise_id === null || $scope->coversFranchise($b->franchise_id)));
 
         $rows = collect();
         $used = [];
