@@ -484,6 +484,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
                 controller: _address,
                 autofocus: true,
                 keyboardType: TextInputType.emailAddress,
+                onChanged: (v) => _server.currentState?.suggestFor(v),
                 decoration: const InputDecoration(
                   labelText: 'Address',
                   hintText: 'info@example.com',
@@ -705,6 +706,15 @@ class _MailServerFieldsState extends State<_MailServerFields> {
 
     _imapEncryption = _encryption('imap_encryption', _tls);
     _smtpEncryption = _encryption('smtp_encryption', _starttls);
+  }
+
+  /// A Gmail address fills Gmail's servers, so adding one is the address and
+  /// an app password, as on A1 Tools (Jose, 11-05). Never over typed values.
+  void suggestFor(String address) {
+    final domain = address.trim().toLowerCase().split('@').last;
+    if (domain != 'gmail.com' && domain != 'googlemail.com') return;
+    if (_imapHost.text.trim().isEmpty) _imapHost.text = 'imap.gmail.com';
+    if (_smtpHost.text.trim().isEmpty) _smtpHost.text = 'smtp.gmail.com';
   }
 
   String _text(String key) {
