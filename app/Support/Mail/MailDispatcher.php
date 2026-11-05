@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 /**
  * The one place a message is given a From, and the one place that is refused.
@@ -624,6 +625,19 @@ class MailDispatcher
             $message->replyTo($identity->replyTo);
         }
 
-        Mail::mailer($this->platform->mailerName())->to($to)->send($message);
+        /*
+         * A refused send throws its connection away before it rethrows.
+         * Symfony keeps a failed SMTP connection, and a queue worker reuses it
+         * until it restarts. The worker listener in AppServiceProvider only
+         * sees a job that THROWS. ActionRunner catches this one into the rule's
+         * run log, and that is how a 451 on 2026-11-04 left failed_jobs empty.
+         */
+        try {
+            Mail::mailer($this->platform->mailerName())->to($to)->send($message);
+        } catch (TransportExceptionInterface $e) {
+            app('mail.manager')->purge($this->platform->mailerName());
+
+            throw $e;
+        }
     }
 }

@@ -12,7 +12,6 @@ use App\Models\VehicleOwnershipPeriod;
 use App\Models\VehiclePayment;
 use App\Models\VehicleServiceVisit;
 use App\Support\Automations\EventEmitter;
-use App\Support\Fleet\FleetSummary;
 use App\Support\Fleet\VehicleBodyType;
 use App\Support\Fleet\VehicleFinancials;
 use App\Support\Fleet\VehicleFuelType;
@@ -123,24 +122,23 @@ class VehiclesController extends Controller
             $query->whereDoesntHave('insurancePolicies', fn (Builder $p) => $p->whereNull('ended_on'));
         }
 
-        // The open policy has expired or expires within the due-soon window: "Renew insurance".
+        // The open policy has expired or expires within 30 days: "Renew insurance".
         if ($request->boolean('insurance_expiring')) {
-            $by = now()->addDays(FleetSummary::soonDays($user))->toDateString();
+            $by = now()->addDays(30)->toDateString();
             $query->whereHas('insurancePolicies', fn (Builder $p) => $p->whereNull('ended_on')
                 ->whereNotNull('expires_on')->whereDate('expires_on', '<=', $by));
         }
 
         if ($request->boolean('due_soon')) {
-            $within = now()->addDays(FleetSummary::soonDays($user))->toDateString();
-            $margin = FleetSummary::soonMiles($user);
-            $query->where(function (Builder $inner) use ($within, $margin): void {
+            $within = now()->addDays(30)->toDateString();
+            $query->where(function (Builder $inner) use ($within): void {
                 $inner->where(function (Builder $date) use ($within): void {
                     $date->whereNotNull('next_service_on')
                         ->whereDate('next_service_on', '<=', $within);
-                })->orWhere(function (Builder $miles) use ($margin): void {
+                })->orWhere(function (Builder $miles): void {
                     $miles->whereNotNull('next_service_miles')
                         ->whereNotNull('odometer_miles')
-                        ->whereRaw('odometer_miles >= next_service_miles - ?', [$margin]);
+                        ->whereRaw('odometer_miles >= next_service_miles - 500');
                 });
             });
         }

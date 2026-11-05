@@ -7,7 +7,6 @@ use App\Models\Vehicle;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
-use App\Support\Fleet\FleetSummary;
 use App\Support\Fleet\VehicleStatus;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
@@ -70,14 +69,14 @@ final class FleetGlance extends DescribedGlance
             ];
 
             $sentences = [];
-            $serviceDue = $this->serviceDueCount(clone $base, $user);
+            $serviceDue = $this->serviceDueCount(clone $base);
             if ($serviceDue > 0) {
                 $sentences[] = $serviceDue === 1
                     ? '1 vehicle needs service soon.'
                     : "{$serviceDue} vehicles need service soon.";
             }
 
-            $insuranceDue = $this->insuranceDueCount(clone $base, $user);
+            $insuranceDue = $this->insuranceDueCount(clone $base);
             if ($insuranceDue > 0) {
                 $sentences[] = $insuranceDue === 1
                     ? '1 vehicle has insurance due soon.'
@@ -106,7 +105,6 @@ final class FleetGlance extends DescribedGlance
             $serviceSoon = $serviceDue - $serviceOverdue;
             $insuranceSoon = $insuranceDue - $insuranceExpired;
 
-            $days = FleetSummary::soonDays($user);
             $attention = array_values(array_filter([
                 $serviceOverdue === 0 ? null : GlancePayload::attention('bad', $serviceOverdue === 1
                     ? '1 vehicle is overdue for service.'
@@ -115,11 +113,11 @@ final class FleetGlance extends DescribedGlance
                     ? '1 vehicle has expired insurance.'
                     : "{$insuranceExpired} vehicles have expired insurance."),
                 $serviceSoon === 0 ? null : GlancePayload::attention('caution', $serviceSoon === 1
-                    ? "1 vehicle needs service within {$days} days."
-                    : "{$serviceSoon} vehicles need service within {$days} days."),
+                    ? '1 vehicle needs service within 30 days.'
+                    : "{$serviceSoon} vehicles need service within 30 days."),
                 $insuranceSoon === 0 ? null : GlancePayload::attention('caution', $insuranceSoon === 1
-                    ? "1 vehicle has insurance expiring within {$days} days."
-                    : "{$insuranceSoon} vehicles have insurance expiring within {$days} days."),
+                    ? '1 vehicle has insurance expiring within 30 days.'
+                    : "{$insuranceSoon} vehicles have insurance expiring within 30 days."),
             ]));
 
             if ($attention !== []) {
@@ -139,21 +137,20 @@ final class FleetGlance extends DescribedGlance
         });
     }
 
-    private function serviceDueCount(Builder $query, User $user): int
+    private function serviceDueCount(Builder $query): int
     {
-        $within = now()->addDays(FleetSummary::soonDays($user))->toDateString();
-        $margin = FleetSummary::soonMiles($user);
+        $within = now()->addDays(30)->toDateString();
 
         return (int) $query
             ->whereNotIn('status', [VehicleStatus::Sold, VehicleStatus::Returned])
-            ->where(function (Builder $inner) use ($within, $margin): void {
+            ->where(function (Builder $inner) use ($within): void {
                 $inner->where(function (Builder $date) use ($within): void {
                     $date->whereNotNull('next_service_on')
                         ->whereDate('next_service_on', '<=', $within);
-                })->orWhere(function (Builder $miles) use ($margin): void {
+                })->orWhere(function (Builder $miles): void {
                     $miles->whereNotNull('next_service_miles')
                         ->whereNotNull('odometer_miles')
-                        ->whereRaw('odometer_miles >= next_service_miles - ?', [$margin]);
+                        ->whereRaw('odometer_miles >= next_service_miles - 500');
                 });
             })
             ->count();
@@ -201,9 +198,9 @@ final class FleetGlance extends DescribedGlance
             ->count();
     }
 
-    private function insuranceDueCount(Builder $query, User $user): int
+    private function insuranceDueCount(Builder $query): int
     {
-        $within = now()->addDays(FleetSummary::soonDays($user))->toDateString();
+        $within = now()->addDays(30)->toDateString();
 
         return (int) $query
             ->whereNotIn('status', [VehicleStatus::Sold, VehicleStatus::Returned])

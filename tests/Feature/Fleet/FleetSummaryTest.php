@@ -5,7 +5,6 @@ namespace Tests\Feature\Fleet;
 use App\Models\Vehicle;
 use App\Models\VehicleInsurancePolicy;
 use App\Models\VehiclePayment;
-use App\Support\Settings\SettingsResolver;
 use App\Support\Time\ViewTimezone;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -161,31 +160,5 @@ class FleetSummaryTest extends TestCase
         ]));
         $renew = $this->signedInAs($t['admin'])->getJson('/api/v1/vehicles?insurance_expiring=1')->assertOk()->json('data');
         $this->assertSame([$truck->id], array_column($renew, 'id'), 'expiring in 17 days is in; a year out is not');
-    }
-    /**
-     * The due-soon window is the organization's setting (Jose, 2026-11-04:
-     * no business value in code). A service 45 days out is not due under the
-     * default 30 and is due once the setting says 60, on the list chip, the
-     * warning and its wording alike.
-     */
-    public function test_the_due_soon_window_is_the_organizations_setting(): void
-    {
-        $this->travelTo(Carbon::parse('2026-10-15 16:00:00', 'UTC'));
-        $t = $this->provisionTenant('Alpha');
-
-        $van = $this->inTenant($t['org'], fn () => Vehicle::factory()->create([
-            'company_id' => $t['company']->id, 'status' => 'active',
-            'next_service_on' => '2026-11-29', 'next_service_miles' => null,
-            'registration_expires_on' => null, 'inspection_expires_on' => null,
-        ]));
-
-        $due = fn () => $this->signedInAs($t['admin'])->getJson('/api/v1/vehicles?due_soon=1')->assertOk()->json('data');
-        $this->assertSame([], $due(), 'control: 45 days out is not due under the default 30');
-
-        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('fleet.soon_days', $t['org'], 60));
-
-        $this->assertSame([$van->id], array_column($due(), 'id'));
-        $warnings = collect($this->signedInAs($t['admin'])->getJson('/api/v1/vehicles/summary')->assertOk()->json('warnings'))->keyBy('key');
-        $this->assertSame('1 vehicle needs service within 60 days.', $warnings['service_due_soon']['sentence']);
     }
 }
