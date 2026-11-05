@@ -198,11 +198,11 @@ final class CallReconciliation
                 $rang[$person] = ($rang[$person] ?? 0) + 1;
             }
 
-            $queue = $call['queue'] ?? null;
+            $client = RingCentralCallLog::clientOf($call['queue'] ?? null);
 
-            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE) {
+            if ($client === 'new') {
                 $newTotal++;
-            } elseif ($queue === RingCentralCallLog::EXISTING_CLIENT_QUEUE) {
+            } elseif ($client === 'existing') {
                 $existingTotal++;
             }
 
@@ -224,19 +224,19 @@ final class CallReconciliation
                 $talkCalls[$who] = ($talkCalls[$who] ?? 0) + 1;
             }
 
-            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
+            if ($client === 'new' && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
                 $notBooked++;
             }
 
             // Attributed to whoever TOOK it. A call that rang four people was
             // one caller with one question, and counting it for all four would
             // make the day's new-client calls outnumber the day's calls.
-            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE) {
+            if ($client === 'new') {
                 $new[$who] = ($new[$who] ?? 0) + 1;
                 if ($this->isBooked($call, $bookedPhones, $converted)) {
                     $bookedNew[$who] = ($bookedNew[$who] ?? 0) + 1;
                 }
-            } elseif ($queue === RingCentralCallLog::EXISTING_CLIENT_QUEUE) {
+            } elseif ($client === 'existing') {
                 $existing[$who] = ($existing[$who] ?? 0) + 1;
             }
         }
@@ -351,6 +351,9 @@ final class CallReconciliation
                     : null,
             ],
             'people' => $people,
+            // The business's two queue names, so the screen splits calls by
+            // the same setting the counts above used.
+            'queues' => ['new' => RingCentralCallLog::newClientQueue(), 'existing' => RingCentralCallLog::existingClientQueue()],
 
             /*
              * ── THE CALLS THEMSELVES, FLAT ──────────────────────────
@@ -538,8 +541,8 @@ final class CallReconciliation
             $fix = $set === null ? ($fixes[(string) ($call['id'] ?? '')] ?? null)
                 : ['corrected_type' => $set['value'], 'reason' => 'Set by '.($set['by'] ?? 'someone'), 'evidence' => null, 'decided_by' => $set['by'] ?? 'someone'];
             $queue = match ($fix['corrected_type'] ?? null) {
-                'new' => RingCentralCallLog::NEW_CLIENT_QUEUE,
-                'existing' => RingCentralCallLog::EXISTING_CLIENT_QUEUE,
+                'new' => RingCentralCallLog::newClientQueue(),
+                'existing' => RingCentralCallLog::existingClientQueue(),
                 default => null,
             };
 

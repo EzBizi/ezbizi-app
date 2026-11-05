@@ -63,12 +63,12 @@ final class CallLabels
      */
     public static function for(?string $queue): ?array
     {
-        return match ($queue) {
-            RingCentralCallLog::EXISTING_CLIENT_QUEUE => [
+        return match (RingCentralCallLog::clientOf($queue)) {
+            'existing' => [
                 'question' => 'This is a call from an existing customer of a chimney service company. Why did they call?',
                 'labels' => self::EXISTING,
             ],
-            RingCentralCallLog::NEW_CLIENT_QUEUE => [
+            'new' => [
                 'question' => 'This is a call from a new customer to a chimney service company. Did they book, and if not, why not?',
                 'labels' => self::NOT_BOOKED,
             ],

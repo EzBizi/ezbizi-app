@@ -5,6 +5,7 @@ namespace Tests\Feature\Reports;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\PersonNames;
 use App\Support\Reports\Experimental\RingCentralCallLog;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -17,8 +18,22 @@ use Tests\TestCase;
  */
 class PersonNamesTest extends TestCase
 {
-    use BuildsTenants;
+    use BuildsTenants {
+        provisionTenant as private tenantWithoutQueues;
+    }
     use RefreshDatabase;
+
+    /** A tenant with A-1's two queue names set, as Settings holds them (no names in code). */
+    protected function provisionTenant(string $name = 'Alpha', ?string $email = null): array
+    {
+        $t = $this->tenantWithoutQueues($name, $email);
+        $this->inTenant($t['org'], function () use ($t) {
+            app(SettingsResolver::class)->set('leads.new_client_queue', $t['org'], 'A1 - New Client');
+            app(SettingsResolver::class)->set('leads.existing_client_queue', $t['org'], 'A1 - Existing Client');
+        });
+
+        return $t;
+    }
 
     public function test_a_stored_pair_then_workiz_then_one_first_and_last_match(): void
     {
@@ -82,7 +97,7 @@ class PersonNamesTest extends TestCase
     private function leg(string $id, string $who): array
     {
         return ['id' => $id, 'direction' => 'Inbound', 'started_at' => '2026-09-14T14:00:00Z', 'from' => '+12125550000',
-            'queue' => RingCentralCallLog::EXISTING_CLIENT_QUEUE, 'result' => 'Accepted', 'outcome' => 'answered',
+            'queue' => 'A1 - Existing Client', 'result' => 'Accepted', 'outcome' => 'answered',
             'rang' => [$who], 'answered_by' => $who, 'talk_seconds' => 60, 'recording_id' => null];
     }
 }
