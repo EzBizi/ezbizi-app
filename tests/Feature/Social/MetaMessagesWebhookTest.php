@@ -265,6 +265,35 @@ class MetaMessagesWebhookTest extends TestCase
         $this->inTenant($t['org'], fn () => $connection->forceFill(['credentials' => ['access_token' => 'page-token']])->save());
     }
 
+    /** Health sweep, 2026-11-05: 551 is permanent, so it is a 422 with a sentence, not a bare 502. */
+    public function test_a_person_who_cannot_be_messaged_is_a_plain_refusal(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->pageBelongsTo($t);
+        $this->holdsToken($page, $t);
+        Http::fake(['graph.facebook.com/*' => Http::sequence()
+            ->push(['error' => ['code' => 551, 'error_subcode' => 1545041, 'message' => 'This person is not available right now.']], 400)
+            ->push(['error' => ['code' => 10, 'message' => 'Outside the window']], 400)]);
+
+        $send = fn () => $this->inTenant($t['org'], fn () => app(MetaMessages::class)->send($page, 'PSID-1', 'Hello'));
+
+        try {
+            $send();
+            $this->fail('551 was not refused');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(422, $e->getCode());
+            $this->assertStringContainsString('cannot receive messages', $e->getMessage());
+        }
+
+        // The control: any other refusal stays a provider failure.
+        try {
+            $send();
+            $this->fail('code 10 was not refused');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(0, $e->getCode());
+        }
+    }
+
     public function test_a_messenger_lead_is_named_from_the_conversation(): void
     {
         $t = $this->provisionTenant('A1-Group');

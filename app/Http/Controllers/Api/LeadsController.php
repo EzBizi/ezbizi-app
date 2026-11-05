@@ -1348,8 +1348,9 @@ class LeadsController extends Controller
             $row = $channel->send($lead, $text);
         } catch (RuntimeException $e) {
             // The provider refused, with a sentence written for the screen.
-            // Only the provider can act on it, so 502.
-            abort(Response::HTTP_BAD_GATEWAY, $e->getMessage());
+            // Only the provider can act on it, so 502 - unless the channel
+            // marked it permanent (422), which no retry will change.
+            abort($e->getCode() === Response::HTTP_UNPROCESSABLE_ENTITY ? $e->getCode() : Response::HTTP_BAD_GATEWAY, $e->getMessage());
         }
 
         $this->audit->log('lead.replied', $lead, [

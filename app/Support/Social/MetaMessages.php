@@ -488,6 +488,15 @@ final class MetaMessages
                 'provider' => $connection->provider] + array_intersect_key((array) $response->json('error'),
                     array_flip(['code', 'error_subcode', 'type', 'message', 'error_user_msg'])));
 
+            // 551/1545041: blocked the Page or left; 100/2018001: no such user.
+            // Permanent, so the screen says so with a 422 rather than a 502
+            // (health sweep, 2026-11-05: 7 of 8 refusals were these).
+            $code = [(int) $response->json('error.code'), (int) $response->json('error.error_subcode')];
+            if ($code[0] === 551 || $code === [100, 2018001]) {
+                throw new RuntimeException('This person cannot receive messages from this account any more, so the '
+                    .'reply was not sent. Call or text them instead.', 422);
+            }
+
             throw new RuntimeException((string) ($response->json('error.error_user_msg')
                 ?? $response->json('error.message')
                 ?? 'Meta refused the reply (HTTP '.$response->status().').'));
