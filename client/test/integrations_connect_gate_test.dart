@@ -269,7 +269,10 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('provider:ringcentral')), findsOneWidget);
-    expect(find.textContaining('Reporting ·'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:reporting')),
+      findsOneWidget,
+    );
 
     await _open(tester, 'ringcentral');
     expect(find.text('Connect account'), findsOneWidget);
@@ -311,7 +314,10 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('provider:telegram')), findsOneWidget);
-    expect(find.textContaining('Messaging ·'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:messaging')),
+      findsOneWidget,
+    );
 
     await _open(tester, 'telegram');
     expect(find.text('Connect bot'), findsOneWidget);
