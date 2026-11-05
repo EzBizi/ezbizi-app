@@ -43,6 +43,9 @@ final class SocialProviderRegistry
                  * control on a customer's screen with nothing failing.
                  */
                 'permission'       => $provider->connectPermission(),
+                // The card this one folds into: its sign-in brings it, so
+                // Integrations draws no card of its own for it.
+                'signed_in_with'   => $provider->signIn() === $provider ? null : $provider->signIn()->value,
             ];
         }, $withDataSources ? SocialProvider::cases() : SocialProvider::all());
     }
