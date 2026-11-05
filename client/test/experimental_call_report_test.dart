@@ -1501,6 +1501,7 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
 /// no rate exists for him — which is the case a 0 would quietly answer wrongly.
 const _report = {
   'connected': true,
+  'queues': {'new': 'A1 - New Client', 'existing': 'A1 - Existing Client'},
   'timezone': 'America/New_York',
   'day': '2026-09-16',
   'workiz_accounts': [],

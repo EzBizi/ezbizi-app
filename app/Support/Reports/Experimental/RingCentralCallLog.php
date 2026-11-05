@@ -5,6 +5,7 @@ namespace App\Support\Reports\Experimental;
 use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Support\Reports\ReportView;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
@@ -403,16 +404,42 @@ final class RingCentralCallLog
     }
 
     /**
-     * The queues that say what the caller was asking for.
+     * The queues that say what the caller was asking for: the business's own
+     * names (Settings: leads.new_client_queue, leads.existing_client_queue;
+     * A-1's are "A1 - New Client" and "A1 - Existing Client").
      *
-     * Named here rather than pattern-matched, because "A1 - New Client" is a
-     * label A-1 chose and can change, and a report that silently reclassified
+     * Named rather than pattern-matched, because a queue name is a label the
+     * business chose and can change, and a report that silently reclassified
      * every call the day somebody renamed a queue would be worse than one that
-     * stopped splitting them.
+     * stopped splitting them. Unset, no call is either.
      */
-    public const NEW_CLIENT_QUEUE = 'A1 - New Client';
+    public static function newClientQueue(): ?string
+    {
+        return self::queueSetting('leads.new_client_queue');
+    }
 
-    public const EXISTING_CLIENT_QUEUE = 'A1 - Existing Client';
+    public static function existingClientQueue(): ?string
+    {
+        return self::queueSetting('leads.existing_client_queue');
+    }
+
+    /** 'new', 'existing', or null: which of the two a call's queue is. */
+    public static function clientOf(?string $queue): ?string
+    {
+        return match (true) {
+            $queue === null => null,
+            $queue === self::newClientQueue() => 'new',
+            $queue === self::existingClientQueue() => 'existing',
+            default => null,
+        };
+    }
+
+    private static function queueSetting(string $key): ?string
+    {
+        $org = app(TenantContext::class)->get();
+
+        return $org === null ? null : ((string) app(SettingsResolver::class)->get($key, $org) ?: null);
+    }
 
     /**
      * @param  array<string, mixed>  $record

@@ -2,7 +2,9 @@
 
 namespace App\Support\Reports\Tagging;
 
+use App\Support\Ai\GrokCli;
 use App\Support\Reports\Experimental\RingCentralCallLog;
+use App\Support\Tenancy\TenantContext;
 
 /**
  * The questions and labels Jose listed for the Performance report
@@ -63,13 +65,16 @@ final class CallLabels
      */
     public static function for(?string $queue): ?array
     {
-        return match ($queue) {
-            RingCentralCallLog::EXISTING_CLIENT_QUEUE => [
-                'question' => 'This is a call from an existing customer of a chimney service company. Why did they call?',
+        // What the business does is its own setting (ai_assistance.trades).
+        $trades = GrokCli::trades(app(TenantContext::class)->get()?->id);
+
+        return match (RingCentralCallLog::clientOf($queue)) {
+            'existing' => [
+                'question' => 'This is a call from an existing customer of a home-services business ('.$trades.'). Why did they call?',
                 'labels' => self::EXISTING,
             ],
-            RingCentralCallLog::NEW_CLIENT_QUEUE => [
-                'question' => 'This is a call from a new customer to a chimney service company. Did they book, and if not, why not?',
+            'new' => [
+                'question' => 'This is a call from a new customer to a home-services business ('.$trades.'). Did they book, and if not, why not?',
                 'labels' => self::NOT_BOOKED,
             ],
             default => null,

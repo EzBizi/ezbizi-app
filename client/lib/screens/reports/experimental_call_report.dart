@@ -216,8 +216,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     'booked': 'AI heard a booking, no job yet',
   };
 
-  static const _newQueue = 'A1 - New Client';
-  static const _existingQueue = 'A1 - Existing Client';
+  // The business's two queue names (Settings: leads.new_client_queue and
+  // leads.existing_client_queue), sent with the report. Unset is '', which no
+  // call's queue is, so it splits nothing.
+  String get _newQueue => '${(_report?['queues'] as Map?)?['new'] ?? ''}';
+  String get _existingQueue =>
+      '${(_report?['queues'] as Map?)?['existing'] ?? ''}';
 
   @override
   void dispose() {
