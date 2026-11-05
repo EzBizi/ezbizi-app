@@ -90,6 +90,33 @@ class SchedulingLocationsTest extends TestCase
         $this->assertSame(['website', $houston->id], [$rows['Houston']['source'], $rows['Houston']['id']]);
     }
 
+    /** Measured on prod 2026-11-05: 11 listings are service-area only (no storefront, only places). */
+    public function test_a_service_area_listing_is_named_by_its_first_place_and_a_half_entered_site_row_is_dropped(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->branches($tenant);
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $gbp = \App\Models\SocialConnection::create([
+                'organization_id' => $tenant['org']->id, 'scope_type' => \App\Models\SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $tenant['company']->id, 'provider' => 'google_business_profile', 'remote_id' => 'acc-1', 'display_name' => 'A1',
+            ]);
+            $gbp->connect(['refresh_token' => 'rt']);
+            $gbp->save();
+            \App\Models\BusinessLocation::create(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
+                'connection_id' => $gbp->id, 'remote_name' => 'locations/mi', 'title' => 'A1 Chimney', 'verification_state' => 'VERIFIED',
+                'phone' => '(313) 284-1124', 'service_places' => ['Warren, MI, USA', 'Detroit, MI, USA']]);
+            // The Houston branch entered again on another site with no address.
+            WebLocation::create(['company_id' => $tenant['company']->id, 'name' => 'Houston', 'phone' => '(469) 454-0303']);
+        });
+
+        $rows = collect($this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/locations')->assertOk()->json('data'))->keyBy('name');
+
+        $this->assertSame(['A1 Chimney · Warren, MI', 'Dallas', 'Houston'], $rows->keys()->sort()->values()->all());
+        $this->assertSame(['Warren', 'MI', ['Warren, MI, USA', 'Detroit, MI, USA']],
+            [$rows['A1 Chimney · Warren, MI']['city'], $rows['A1 Chimney · Warren, MI']['state'], $rows['A1 Chimney · Warren, MI']['service_places']]);
+        $this->assertSame('1 Houston St', $rows['Houston']['address_line1'], 'The filled row stands; the empty one is gone.');
+    }
+
     /** An unplaced listing shows in every branch view of its company; another branch's does not. */
     public function test_a_branch_view_lists_its_own_and_the_companys_unplaced_listings(): void
     {
@@ -110,7 +137,7 @@ class SchedulingLocationsTest extends TestCase
         });
 
         $names = collect($this->signedInAs($tenant['admin'])->withHeaders(['X-EzBizi-View' => 'franchise:'.$tenant['franchise']->id])
-            ->getJson('/api/v1/scheduling/locations')->assertOk()->json('data'))->pluck('name')->sort()->values()->all();
+            ->getJson('/api/v1/scheduling/locations')->assertOk()->json('data'))->pluck('city')->sort()->values()->all();
 
         $this->assertSame(['Mine', 'Unplaced'], $names);
     }
