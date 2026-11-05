@@ -1853,6 +1853,16 @@ class SettingRegistry
                 editPermission: 'leads.edit',
                 help: '{{greeting}} in a message when the customer gave no name.',
             ),
+            new SettingDefinition(
+                key: 'leads.proofread',
+                label: 'Suggest spelling and grammar fixes',
+                type: SettingDefinition::TYPE_BOOL,
+                default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'While a reply is typed, AI offers a corrected version under the box. It is only '
+                    .'sent if somebody taps it (Jose, 2026-11-05).',
+            ),
         ];
     }
 

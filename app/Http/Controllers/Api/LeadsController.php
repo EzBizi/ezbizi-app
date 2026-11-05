@@ -585,6 +585,9 @@ class LeadsController extends Controller
 
         // A draft is offered only where a reply can go and the model is on.
         $data['can_suggest'] = $data['can_reply'] && $this->insights->enabled();
+        // The composer's "Did you mean" (leads.proofread, Jose 2026-11-05).
+        $data['can_proofread'] = $data['can_suggest']
+            && (bool) SettingsResolver::forOrganization('leads.proofread', $lead->organization_id);
 
         // Customers this number already belongs to, so booking can attach to
         // one instead of making a second Jane Doe. Same digits-only match the
@@ -1244,6 +1247,21 @@ class LeadsController extends Controller
         abort_if($draft === null, Response::HTTP_BAD_GATEWAY, 'The model did not answer. Write the reply yourself.');
 
         return response()->json(['data' => ['text' => $draft]]);
+    }
+
+    /**
+     * POST /api/v1/leads/{lead}/proofread {text}: the draft with its clear
+     * spelling and grammar fixed, or null. Offered, never sent by itself.
+     */
+    public function proofread(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        $text = $request->validate(['text' => ['required', 'string', 'max:1000']])['text'];
+
+        $on = $this->insights->enabled()
+            && (bool) SettingsResolver::forOrganization('leads.proofread', $lead->organization_id);
+
+        return response()->json(['data' => ['suggestion' => $on ? $this->insights->proofread($lead, $text) : null]]);
     }
 
     /**
