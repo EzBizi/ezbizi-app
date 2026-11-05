@@ -33,6 +33,7 @@ class ChooseProductsPanel extends StatefulWidget {
     required this.onChanged,
     this.preTick = const {},
     this.openConsent = openConsentWindow,
+    this.onElsewhere,
   });
 
   final ApiClient api;
@@ -52,6 +53,10 @@ class ChooseProductsPanel extends StatefulWidget {
   final Set<String> preTick;
   final OpenConsentWindow openConsent;
 
+  /// Opens where a product is set up when no sign-in asks for it (Gmail:
+  /// Email's Workspace setup). Null leaves the line without a button.
+  final void Function(Map<String, dynamic> product)? onElsewhere;
+
   @override
   State<ChooseProductsPanel> createState() => _ChooseProductsPanelState();
 }
@@ -69,6 +74,21 @@ class _ChooseProductsPanelState extends State<ChooseProductsPanel> {
       for (final p in widget.products)
         if (!_separate(p)) _key(p),
   };
+
+  /// Set up somewhere else, never at a sign-in: no scopes of its own and
+  /// another start path (Gmail → `/email/workspace`, Leads + Google 6262b4928).
+  bool _elsewhere(Map<String, dynamic> p) =>
+      _separate(p) && ((p['scopes'] as List<dynamic>?) ?? const []).isEmpty;
+
+  /// "Email" from `/email/workspace`: the module the setup lives in.
+  static String _where(Map<String, dynamic> p) {
+    final first = ((p['start_path'] as String?) ?? '')
+        .split('/')
+        .firstWhere((s) => s.isNotEmpty, orElse: () => '');
+    return first.isEmpty
+        ? 'its own screen'
+        : '${first[0].toUpperCase()}${first.substring(1)}';
+  }
 
   /// A connected product unticked, waiting on Confirm.
   String? _removing;
@@ -106,7 +126,8 @@ class _ChooseProductsPanelState extends State<ChooseProductsPanel> {
     for (final p in widget.products)
       if (_ticked.contains(_key(p)) &&
           !_connected.contains(_key(p)) &&
-          _separate(p))
+          _separate(p) &&
+          !_elsewhere(p))
         p,
   ];
 
@@ -264,6 +285,38 @@ class _ChooseProductsPanelState extends State<ChooseProductsPanel> {
         .whereType<String>()
         .toList();
     final description = p['description'] as String?;
+
+    if (_elsewhere(p)) {
+      return Padding(
+        key: ValueKey('choose:$key'),
+        padding: const EdgeInsets.fromLTRB(48, 6, 0, 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_label(p), style: theme.textTheme.titleSmall),
+                  Text(
+                    _connected.contains(key)
+                        ? 'Connected. Managed in ${_where(p)}, not at this '
+                              'sign-in.'
+                        : 'Set up in ${_where(p)}, not at this sign-in.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            if (widget.onElsewhere != null)
+              TextButton(
+                key: ValueKey('choose-elsewhere:$key'),
+                onPressed: () => widget.onElsewhere!(p),
+                child: Text('Open ${_where(p)}'),
+              ),
+          ],
+        ),
+      );
+    }
 
     return InkWell(
       key: ValueKey('choose:$key'),
