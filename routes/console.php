@@ -40,6 +40,8 @@ Schedule::command('ezbizi:pto-daily-triggers')->dailyAt('07:10')->withoutOverlap
 Schedule::command('ezbizi:warm-call-log')->hourlyAt(7)->withoutOverlapping(60);
 // Meta enquiries a webhook never brought (Jose, 2026-11-05: "recovery should be automatic").
 Schedule::command('ezbizi:meta-catch-up')->hourlyAt(23)->withoutOverlapping(60);
+// Campaigns on and off at their set times (Jose, 2026-11-05).
+Schedule::command('ezbizi:ad-schedules')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverlapping(5);
 // Yesterday's calls AI read as booked with no Workiz job (AiBookedNoJob).
 // A-1's Airtable copied into EzBizi for the reports (A1 Leads takeover, 2026-10-16); about 8 s.

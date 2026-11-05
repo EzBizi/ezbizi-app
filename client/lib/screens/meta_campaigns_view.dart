@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/job_money.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
+import '../widgets/ad_schedule.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/list_search.dart';
 import '../widgets/open_destination.dart';
@@ -50,6 +51,9 @@ class _MetaCampaignsViewState extends State<MetaCampaignsView> {
   int _days = 30;
 
   List<Map<String, dynamic>>? _campaigns;
+
+  /// The on/off schedules of this account, by campaign id (design 185).
+  Map<String, Map<String, dynamic>> _schedules = const {};
   String? _error;
   bool _loading = false;
 
@@ -128,7 +132,50 @@ class _MetaCampaignsViewState extends State<MetaCampaignsView> {
             .cast<Map>(),
       );
     });
+    await _loadSchedules();
   }
+
+  Future<void> _loadSchedules() async {
+    final id = _account;
+    if (id == null) return;
+    final response = await widget.api.get('/ad-schedules', {
+      'connection_id': id,
+    });
+    if (!mounted || _account != id || !response.ok) return;
+    setState(
+      () => _schedules = {
+        for (final row
+            in (response.body['data'] as List? ?? const []).cast<Map>())
+          '${row['object_id']}': Map<String, dynamic>.from(row),
+      },
+    );
+  }
+
+  Future<void> _editSchedule(Map<String, dynamic> node) async {
+    final changed = await editAdSchedule(
+      context,
+      api: widget.api,
+      connectionId: _account!,
+      objectId: '${node['id']}',
+      objectName: '${node['name']}',
+      schedule: _schedules['${node['id']}'],
+      canManage: _canManage,
+    );
+    if (changed && mounted) _loadSchedules();
+  }
+
+  /// The clock chip, on campaigns only: the level a business schedules.
+  Widget _scheduleCell(Map<String, dynamic> node) => node['level'] == 'campaign'
+      ? Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: AdScheduleChip(
+            key: ValueKey('meta-schedule-${node['id']}'),
+            schedule: _schedules['${node['id']}'],
+            canManage: _canManage,
+            onTap: () => _editSchedule(node),
+          ),
+        )
+      : const SizedBox.shrink();
 
   // ── Figures ────────────────────────────────────────────────────────────
 
@@ -467,6 +514,7 @@ class _MetaCampaignsViewState extends State<MetaCampaignsView> {
 
   static const _columns = <(String, String?, double)>[
     ('On', null, 190),
+    ('Schedule', null, 250),
     ('Budget / day', 'daily_budget', 130),
     ('Spend', 'spend', 100),
     ('Leads', 'leads', 70),
@@ -551,6 +599,7 @@ class _MetaCampaignsViewState extends State<MetaCampaignsView> {
               ),
             ),
             SizedBox(width: 190, child: _onCell(node, theme)),
+            SizedBox(width: 250, child: _scheduleCell(node)),
             SizedBox(width: 130, child: _budgetCell(node, theme)),
             for (final (key, money) in const [
               ('spend', true),
@@ -584,7 +633,7 @@ class _MetaCampaignsViewState extends State<MetaCampaignsView> {
       clipBehavior: Clip.antiAlias,
       child: LayoutBuilder(
         builder: (context, box) {
-          final width = box.maxWidth < 960 ? 960.0 : box.maxWidth;
+          final width = box.maxWidth < 1210 ? 1210.0 : box.maxWidth;
           return SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: SizedBox(
@@ -682,6 +731,7 @@ class _MetaCampaignsViewState extends State<MetaCampaignsView> {
                           Text(_why(node) ?? 'Active', style: muted),
                       ],
                     ),
+                    if (node['level'] == 'campaign') _scheduleCell(node),
                     Text(
                       [
                         _money(node['spend']),
