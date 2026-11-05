@@ -201,4 +201,14 @@ class LeadInsightsTest extends TestCase
         $this->assertNull($ask('Yes, I call you right away'), 'switched off asks nobody');
         $this->assertSame(0, LeadConversation::withoutGlobalScopes()->count(), 'nothing is sent or stored');
     }
+
+    /** Phone's texts have no lead: the same fix from POST /proofread. */
+    public function test_a_text_with_no_lead_is_proofread_too(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->on(["Yes, I'll call you right away"]);
+
+        $this->signedInAs($t['admin'])->postJson('/api/v1/proofread', ['text' => 'Yes, I call you right away'])
+            ->assertOk()->assertJsonPath('data.suggestion', "Yes, I'll call you right away");
+    }
 }

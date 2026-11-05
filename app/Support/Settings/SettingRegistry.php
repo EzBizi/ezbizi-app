@@ -1860,8 +1860,8 @@ class SettingRegistry
                 default: true,
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 editPermission: 'leads.manage',
-                help: 'While a reply is typed, AI offers a corrected version under the box. It is only '
-                    .'sent if somebody taps it (Jose, 2026-11-05).',
+                help: 'While a lead reply or a text is typed, AI offers a corrected version under the '
+                    .'box. It is only used if somebody taps it (Jose, 2026-11-05).',
             ),
         ];
     }
