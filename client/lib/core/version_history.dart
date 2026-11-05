@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0534', date: '5 Nov 2026', items: [
+      'Leads: a caller who already got the after-call text is not texted again when they go quiet',
+    ]),
     VersionRelease(version: '0.0.0533', date: '5 Nov 2026', items: [
       'Settings > Lists: report call labels and paid lead sources can be edited',
     ]),
