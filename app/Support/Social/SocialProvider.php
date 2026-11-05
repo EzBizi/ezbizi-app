@@ -146,6 +146,27 @@ enum SocialProvider: string
         };
     }
 
+    /**
+     * The provider whose sign-in brings this one in: one card, one connect,
+     * one disconnect per sign-in (Jose, 2026-11-05: "1 facebook connections
+     * grabs social and ads ... Same for disconnecting. And this goes for
+     * everything"). The Facebook connect already stores the ad accounts of
+     * its grant as facebook_ads rows.
+     */
+    public function signIn(): self
+    {
+        return match ($this) {
+            self::FacebookAds => self::FacebookPage,
+            default => $this,
+        };
+    }
+
+    /** @return self[] every provider one sign-in brings, this one included */
+    public function family(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $p) => $p->signIn() === $this->signIn()));
+    }
+
     /** Path segment in /social/{key}/start — the reserved callback name. */
     public function routeKey(): string
     {
