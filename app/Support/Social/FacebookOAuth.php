@@ -39,6 +39,10 @@ final class FacebookOAuth implements SocialOAuth
         'ads_read',
         // Pausing, resuming and re-budgeting those campaigns (MetaAdsManager).
         'ads_management',
+        // Listing a Page's lead forms, so forms submitted while EzBizi was not
+        // listening are read back (MetaLeadForms::catchUp); Meta refuses
+        // leadgen_forms without it.
+        'pages_manage_ads',
     ];
 
     /**
@@ -72,7 +76,7 @@ final class FacebookOAuth implements SocialOAuth
             'label' => 'Ad accounts',
             'description' => 'Spend and results in Reports, pausing and re-budgeting campaigns, and lead-ad forms into Leads.',
             'provider' => 'facebook_ads',
-            'scopes' => ['pages_show_list', 'pages_manage_metadata', 'business_management', 'ads_read', 'ads_management', 'leads_retrieval'],
+            'scopes' => ['pages_show_list', 'pages_manage_metadata', 'business_management', 'ads_read', 'ads_management', 'leads_retrieval', 'pages_manage_ads'],
         ],
     ];
 
