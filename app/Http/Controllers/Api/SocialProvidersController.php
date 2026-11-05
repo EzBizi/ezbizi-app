@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\SocialConnection;
 use App\Support\Access\Refusal;
+use App\Support\Social\FacebookOAuth;
+use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProviderRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,7 +13,10 @@ use Symfony\Component\HttpFoundation\Response as Status;
 
 class SocialProvidersController extends Controller
 {
-    public function __construct(private readonly SocialProviderRegistry $providers) {}
+    public function __construct(
+        private readonly SocialProviderRegistry $providers,
+        private readonly SocialConnectionAccess $access,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -20,6 +26,23 @@ class SocialProvidersController extends Controller
             Refusal::permission('open Marketing')->message(),
         );
 
-        return response()->json(['data' => $this->providers->catalogue($request->query('include') === 'data_sources')]);
+        $catalogue = $this->providers->catalogue($request->query('include') === 'data_sources');
+
+        // Whether this view already has each product (design 183). A Facebook
+        // product rides on the Page rows, so it is there when a Page row's
+        // grant holds its scope; a row from before grants were recorded holds
+        // every scope it was asked for, which was all of them.
+        $rows = SocialConnection::query()->get()
+            ->filter(fn (SocialConnection $c) => $this->access->inView($request->user(), $c));
+        $has = fn (array $product) => $rows->contains(fn (SocialConnection $c) => $c->provider === $product['provider']
+            && (! isset(FacebookOAuth::MARKS[$product['key']])
+                || ($scopes = (array) ($c->credentials['scopes'] ?? [])) === []
+                || in_array(FacebookOAuth::MARKS[$product['key']], $scopes, true)));
+
+        foreach ($catalogue as &$entry) {
+            $entry['products'] = array_map(fn (array $p) => $p + ['connected' => $has($p)], $entry['products']);
+        }
+
+        return response()->json(['data' => $catalogue]);
     }
 }
