@@ -62,6 +62,15 @@ final class SocialProviderRegistry
      */
     public function products(SocialProvider $provider): array
     {
+        // The one Google sign-in: Business Profile, Ads and YouTube, and
+        // Workspace mail listed beside them (set up in Email, never asked for).
+        if ($provider === SocialProvider::GoogleAds) {
+            return array_map(fn (string $key, array $p) => ['key' => $key, 'label' => $p['label'],
+                'description' => $p['description'], 'scopes' => $p['scopes'], 'provider' => $p['provider'],
+                'start_path' => $p['scopes'] === [] ? '/email/workspace' : $provider->startPath()],
+                array_keys(GoogleAdsOAuth::PRODUCTS), GoogleAdsOAuth::PRODUCTS);
+        }
+
         if ($provider !== SocialProvider::FacebookPage) {
             return [[
                 'key' => $provider->value,

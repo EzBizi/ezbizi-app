@@ -157,6 +157,8 @@ enum SocialProvider: string
     {
         return match ($this) {
             self::FacebookAds => self::FacebookPage,
+            // One Google sign-in: GoogleAdsOAuth::PRODUCTS.
+            self::GoogleBusinessProfile, self::YouTube => self::GoogleAds,
             default => $this,
         };
     }
