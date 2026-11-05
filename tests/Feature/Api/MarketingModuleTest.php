@@ -248,7 +248,7 @@ class MarketingModuleTest extends TestCase
 
         $this->assertTrue($modules['marketing']['reachable']);
 
-        foreach (['newsletter', 'web_management'] as $key) {
+        foreach (['newsletter', 'web_management', 'ads_performance'] as $key) {
             $this->assertFalse(
                 $modules[$key]['reachable'],
                 "{$key} came with marketing.view, which is a grant nobody made.",
@@ -278,14 +278,14 @@ class MarketingModuleTest extends TestCase
          * catches the absent module; this catches the always-false answer.
          */
         $both = $this->userWithRole($alpha, 'Both', [
-            'marketing.view', 'newsletter.view', 'web_management.view',
+            'marketing.view', 'newsletter.view', 'web_management.view', 'ads_performance.view',
         ], 'both@theta.test');
 
         $granted = collect(
             $this->signedInAs($both)->getJson('/api/v1/me')->assertOk()->json('data.modules')
         )->keyBy('key');
 
-        foreach (['newsletter', 'web_management'] as $key) {
+        foreach (['newsletter', 'web_management', 'ads_performance'] as $key) {
             $this->assertTrue(
                 $granted[$key]['reachable'],
                 "{$key} is not reachable even when its own view is granted, so "
@@ -305,15 +305,20 @@ class MarketingModuleTest extends TestCase
     public function test_a_child_is_reachable_without_the_parent(): void
     {
         $alpha = $this->provisionTenant('Iota');
-        $caller = $this->userWithRole($alpha, 'Caller', ['web_management.view']);
 
-        $modules = collect(
-            $this->signedInAs($caller)->getJson('/api/v1/me')->assertOk()->json('data.modules')
-        )->keyBy('key');
+        // Ads moved in from Reports (2026-11-05): a role holding only its view
+        // keeps it, and finds it here.
+        foreach (['web_management', 'ads_performance'] as $key) {
+            $caller = $this->userWithRole($alpha, "Caller {$key}", ["{$key}.view"], "{$key}@iota.test");
 
-        $this->assertTrue($modules['web_management']['reachable']);
-        $this->assertFalse($modules['marketing']['reachable']);
-        $this->assertSame(self::MODULE, $modules['web_management']['parent']);
+            $modules = collect(
+                $this->signedInAs($caller)->getJson('/api/v1/me')->assertOk()->json('data.modules')
+            )->keyBy('key');
+
+            $this->assertTrue($modules[$key]['reachable'], $key);
+            $this->assertFalse($modules['marketing']['reachable'], $key);
+            $this->assertSame(self::MODULE, $modules[$key]['parent'], $key);
+        }
     }
 
     /** The roles editor is built from this, and nests on the same field. */
