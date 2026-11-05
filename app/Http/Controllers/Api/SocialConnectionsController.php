@@ -476,7 +476,8 @@ class SocialConnectionsController extends Controller
         abort_if($provider === null, Status::HTTP_NOT_FOUND);
 
         $rows = SocialConnection::query()
-            ->where('provider', $provider->value)
+            // Everything the one sign-in brought: Facebook takes its ad accounts with it.
+            ->whereIn('provider', array_map(fn (SocialProvider $p) => $p->value, $provider->family()))
             // One Google login's rows only (design 167): a string is that
             // login, null is the rows whose login is unknown.
             ->when($request->has('account_email'), fn ($q) => $q->where('account_email', $request->input('account_email')))
@@ -486,7 +487,7 @@ class SocialConnectionsController extends Controller
             ->values();
 
         if ($rows->isNotEmpty()) {
-            $this->mayDisconnect($user, $rows->first());
+            $rows->unique('provider')->each(fn (SocialConnection $row) => $this->mayDisconnect($user, $row));
 
             app(DisconnectCode::class)->require($request);
         }
