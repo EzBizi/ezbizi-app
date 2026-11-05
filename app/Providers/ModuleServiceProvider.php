@@ -4557,11 +4557,11 @@ class ModuleServiceProvider extends ServiceProvider
             /*
              * ── Google Ads: what the advertising costs ──────────
              *
-             * A tab inside Reports, not Marketing. Jose's call, 2026-09-15:
-             * "It is clearly not supposed to be in Marketing." Marketing is
-             * what the business SAYS about itself - its listing, its reviews,
-             * its posts. This is a measurement of what that cost, which is the
-             * same kind of thing as every other report.
+             * A tab inside Marketing, called Ads: it holds Google and Meta
+             * campaigns, behind the screen's switch. Jose, 2026-11-05, reversing
+             * his 2026-09-15 call that put it in Reports: "it's not a report,
+             * but ads management which should go on marketing". He could not
+             * find Meta under a tab named Google Ads.
              *
              * Account and Campaign levels, and nothing lower. The scope is a
              * compliance position rather than a backlog: Google's Reporting
@@ -4588,10 +4588,8 @@ class ModuleServiceProvider extends ServiceProvider
 
             new ModuleDefinition(
                 key: 'ads_performance',
-                // Google and Meta, behind the screen's switch (Jose could not
-                // find Meta under "Google Ads", 2026-11-05).
                 label: 'Ads',
-                parent: 'reports',
+                parent: 'marketing',
                 actions: ['view', 'manage'],
                 // AUTOMATED since 2026-09-28, as the exemption this replaced
                 // said it would be "the day spend is stored or watched": each

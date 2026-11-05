@@ -2,7 +2,7 @@
     "modules": {
         "ads_performance": {
             "label": "Ads",
-            "parent": "reports",
+            "parent": "marketing",
             "tabs": []
         },
         "ai_assistance": {
