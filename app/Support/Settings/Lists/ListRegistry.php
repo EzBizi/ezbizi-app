@@ -3,6 +3,8 @@
 namespace App\Support\Settings\Lists;
 
 use App\Models\Customer;
+use App\Support\Reports\MarketingReport;
+use App\Support\Reports\Tagging\CallLabels;
 use App\Support\Workiz\WorkizTwins;
 use InvalidArgumentException;
 
@@ -81,6 +83,28 @@ final class ListRegistry
                     .'Ticoit). Everyone else is matched to Workiz\'s team list by first and last name.',
                 editPermission: 'reports.handles',
             ),
+            // Which Workiz job sources Google Ads pays for (Reports' Marketing).
+            new ListDefinition(
+                key: 'reports.paid_sources', label: 'Paid job sources', module: 'reports',
+                columns: [['key' => 'source', 'label' => 'Workiz job source'], ['key' => 'channel', 'label' => 'Google Ads channel (lsa or ppc)']],
+                defaults: array_map(fn (string $source) => ['key' => $source, 'value' => ['source' => $source, 'channel' => MarketingReport::PAID[$source]]],
+                    array_keys(MarketingReport::PAID)),
+                help: 'The job sources your Google Ads pay for: lsa for Local Services, ppc for Search. Marketing puts '
+                    .'that channel\'s cost against them, and Local Services leads count toward the lsa one.',
+                editPermission: 'reports.settings',
+            ),
+            // Why a call came in, as the AI sorts them (Reports, Jose 2026-11-04).
+            ...array_map(fn (array $list) => new ListDefinition(
+                key: CallLabels::LISTS[$list[0]], label: $list[1], module: 'reports',
+                columns: [['key' => 'label', 'label' => 'Label'], ['key' => 'name', 'label' => 'Shown as'],
+                    ['key' => 'meaning', 'label' => 'What it means (told to the AI)']],
+                defaults: CallLabels::defaults($list[2]), help: $list[3], editPermission: 'reports.handles',
+            ), [
+                ['existing', 'Call labels: existing customers', CallLabels::EXISTING,
+                    'Why an existing customer called. The AI picks one per call, by its meaning. Keep "other" for the rest.'],
+                ['not_booked', 'Call labels: new customers', CallLabels::NOT_BOOKED,
+                    'Why a new customer did not book, or "booked". The AI picks one per call, by its meaning. Keep "other" for the rest.'],
+            ]),
         ];
     }
 }

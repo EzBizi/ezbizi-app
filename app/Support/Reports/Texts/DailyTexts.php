@@ -8,7 +8,9 @@ use App\Models\SocialConnection;
 use App\Services\Ads\AdsCost;
 use App\Support\Reports\Airtable\ReportSources;
 use App\Support\Reports\Experimental\PerformancePeople;
+use App\Support\Reports\MarketingReport;
 use App\Support\Reports\ReportJobs;
+use App\Support\Settings\OrgTimezone;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -73,7 +75,7 @@ final class DailyTexts
             if ($cost['accounts'] === 0) {
                 continue;
             }
-            $jobs = ReportJobs::jobs((string) $branch->getKey())->where('j.job_source', 'PPC')
+            $jobs = ReportJobs::jobs((string) $branch->getKey())->where('j.job_source', MarketingReport::sourceOf('ppc') ?? '')
                 ->whereBetween('j.booked_at', [$day->toDateString().' 00:00:00', $day->toDateString().' 23:59:59'])->count();
             $c = $cost['ppc'];
             $lines = [...$lines, '*'.BranchName::of($branch).'*', ...$this->ppcLines($c['cost_minor'], $c['clicks'], $jobs, $c['conversions']), ''];
@@ -226,7 +228,7 @@ final class DailyTexts
         $plural = fn (int $n) => $n.' job'.($n === 1 ? '' : 's');
 
         $lines = ["\u{1F9F0} *Today's In Progress jobs by technician*",
-            '_'.$day->format('D, M j, Y').' · measured '.now(\App\Support\Settings\OrgTimezone::of())->format('g:i A T').' from EzBizi jobs_',
+            '_'.$day->format('D, M j, Y').' · measured '.now(OrgTimezone::of())->format('g:i A T').' from EzBizi jobs_',
             '_Excludes jobs tagged Deposit Received._'];
         $empty = [];
         $assigned = 0;

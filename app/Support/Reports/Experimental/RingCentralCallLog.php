@@ -78,9 +78,6 @@ use Throwable;
  */
 final class RingCentralCallLog
 {
-    /** RingCentral keeps 12 months of call log; older dates return nothing. */
-    public const RETENTION_MONTHS = 12;
-
     /** The one organization the env credential belongs to (Jose, 2026-10-15). Slug, not name: it was renamed. */
     public const ENV_ORGANIZATION_SLUG = 'a-1-chimney';
 

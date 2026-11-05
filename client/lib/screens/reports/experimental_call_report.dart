@@ -189,32 +189,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   String _notBookedQuery = '';
   String _missedQuery = '';
 
-  static const _existingLabels = {
-    'complaint': 'Complaint',
-    'reschedule': 'Reschedule',
-    'eta': 'ETA',
-    'billing': 'Billing',
-    'cancel': 'Cancel',
-    'estimate_question': 'Estimate question',
-    'job_status': 'Job status',
-    'confirmation': 'Confirmation',
-    'not_a_customer': 'Not a customer',
-    'no_conversation': 'No conversation',
-    'other': 'Other',
+  // The two label lists as the business has them (Settings › Lists), sent
+  // with the report: label => the name shown.
+  Map<String, String> _labels(String which) => switch ((_report?['labels']
+      as Map?)?[which]) {
+    final Map list => {for (final e in list.entries) '${e.key}': '${e.value}'},
+    _ => const {},
   };
-
-  static const _notBookedLabels = {
-    'price': 'Price',
-    'availability': 'Availability',
-    'reschedule': 'Reschedule',
-    'cancel': 'Cancel',
-    'confirmation': 'Confirmation',
-    'service_question': 'Service question',
-    'not_a_customer': 'Not a customer',
-    'no_conversation': 'No conversation',
-    'other': 'Other',
-    'booked': 'AI heard a booking, no job yet',
-  };
+  Map<String, String> get _existingLabels => _labels('existing');
+  Map<String, String> get _notBookedLabels => _labels('not_booked');
 
   // The business's two queue names (Settings: leads.new_client_queue and
   // leads.existing_client_queue), sent with the report. Unset is '', which no
@@ -1027,7 +1010,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         'Not read yet $n',
       if (all.where((c) => _labelOf(c, _labeller) == 'booked').length
           case final n when n > 0)
-        '· ${_notBookedLabels['booked']} $n',
+        '· ${_notBookedLabels['booked'] ?? 'booked'} $n',
     ];
 
     return _listCard(
