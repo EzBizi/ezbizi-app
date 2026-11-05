@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\SocialConnection;
 use App\Support\Access\Refusal;
+use App\Support\Email\GoogleWorkspace;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProviderRegistry;
@@ -16,6 +17,7 @@ class SocialProvidersController extends Controller
     public function __construct(
         private readonly SocialProviderRegistry $providers,
         private readonly SocialConnectionAccess $access,
+        private readonly GoogleWorkspace $workspace,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -34,7 +36,10 @@ class SocialProvidersController extends Controller
         // every scope it was asked for, which was all of them.
         $rows = SocialConnection::query()->get()
             ->filter(fn (SocialConnection $c) => $this->access->inView($request->user(), $c));
-        $has = fn (array $product) => $rows->contains(fn (SocialConnection $c) => $c->provider === $product['provider']
+        $workspace = null;
+        $has = fn (array $product) => $product['provider'] === 'google_workspace'
+            ? ($workspace ??= $this->workspace->connectionsVisibleTo($request->user())->isNotEmpty())
+            : $rows->contains(fn (SocialConnection $c) => $c->provider === $product['provider']
             && (! isset(FacebookOAuth::MARKS[$product['key']])
                 || ($scopes = (array) ($c->credentials['scopes'] ?? [])) === []
                 || in_array(FacebookOAuth::MARKS[$product['key']], $scopes, true)));

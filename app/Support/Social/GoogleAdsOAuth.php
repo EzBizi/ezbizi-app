@@ -28,12 +28,71 @@ final class GoogleAdsOAuth implements SocialOAuth
     public const CALLBACK_PATH = '/api/v1/social/google-ads/callback';
 
     /** @var string[] */
-    public const SCOPES = [
-        'https://www.googleapis.com/auth/adwords',
-        // Which Google login this is (Jose, 2026-11-02): GoogleToken::exchange.
-        'openid',
-        'email',
+    public const SCOPE = 'https://www.googleapis.com/auth/adwords';
+
+    /**
+     * What the one Google sign-in can bring, each chosen before it starts
+     * (Jose, 2026-11-05: "it asks me what connections ... i want to make";
+     * design 183). Gmail is listed and never asked for: Workspace mail is
+     * domain-wide delegation, set up in Email, and no Gmail scope is ever
+     * requested (Google verification depends on it).
+     */
+    public const PRODUCTS = [
+        'business_profile' => [
+            'label' => 'Business Profile',
+            'description' => 'Your listings, their reviews and their messages.',
+            'scopes' => ['https://www.googleapis.com/auth/business.manage'],
+            'provider' => 'google_business_profile',
+        ],
+        'google_ads' => [
+            'label' => 'Google Ads',
+            'description' => 'Local Services leads and what your ads spend and bring.',
+            'scopes' => [self::SCOPE],
+            'provider' => 'google_ads',
+        ],
+        'youtube' => [
+            'label' => 'YouTube',
+            'description' => 'Post videos to your channel, and remove them.',
+            'scopes' => [YouTubeOAuth::SCOPE_UPLOAD, YouTubeOAuth::SCOPE_READONLY, YouTubeOAuth::SCOPE_MANAGE],
+            'provider' => 'youtube',
+        ],
+        'gmail' => [
+            'label' => 'Gmail / Workspace',
+            'description' => 'Company mail through Google Workspace, allowed by its administrator in Email settings.',
+            'scopes' => [],
+            'provider' => 'google_workspace',
+        ],
     ];
+
+    /** Which Google login this is (Jose, 2026-11-02): GoogleToken::exchange. */
+    private const IDENTITY = ['openid', 'email'];
+
+    /** Every Google scope EzBizi uses: the sign-in when nothing was chosen. */
+    public const SCOPES = [
+        self::SCOPE,
+        'https://www.googleapis.com/auth/business.manage',
+        YouTubeOAuth::SCOPE_UPLOAD,
+        YouTubeOAuth::SCOPE_READONLY,
+        YouTubeOAuth::SCOPE_MANAGE,
+        ...self::IDENTITY,
+    ];
+
+    /** @var string[]|null the products this sign-in asks for; null is all */
+    private ?array $chosen = null;
+
+    /**
+     * This sign-in, asking only for [keys]. Google's incremental consent
+     * (include_granted_scopes) keeps whatever the login already granted.
+     *
+     * @param  string[]  $keys  PRODUCTS keys with scopes
+     */
+    public function withProducts(array $keys): self
+    {
+        $copy = clone $this;
+        $copy->chosen = $keys;
+
+        return $copy;
+    }
 
     private const TIMEOUT = 10;
 
@@ -49,7 +108,14 @@ final class GoogleAdsOAuth implements SocialOAuth
 
     public function scopes(): array
     {
-        return self::SCOPES;
+        if ($this->chosen === null) {
+            return self::SCOPES;
+        }
+
+        return array_values(array_unique([
+            ...array_merge(...array_map(fn (string $k) => self::PRODUCTS[$k]['scopes'], $this->chosen)),
+            ...self::IDENTITY,
+        ]));
     }
 
     public function usesPkce(): bool
@@ -111,7 +177,7 @@ final class GoogleAdsOAuth implements SocialOAuth
             'client_id'     => (string) config('services.google_ads.client_id'),
             'redirect_uri'  => $this->redirectUri(),
             'response_type' => 'code',
-            'scope'         => implode(' ', self::SCOPES),
+            'scope'         => implode(' ', $this->scopes()),
             'access_type'   => 'offline',
             'prompt'        => 'consent',
             'include_granted_scopes' => 'true',
