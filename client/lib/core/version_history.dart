@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0537', date: '5 Nov 2026', items: [
+      'Facebook Ads: ad accounts a business manages for a client now connect, not only your own',
+      'Facebook Ads: long campaign histories load in full instead of stopping after the first page',
+    ]),
     VersionRelease(version: '0.0.0536', date: '5 Nov 2026', items: [
       'Integrations redesigned: one card per sign-in, and you choose what to connect before signing in',
       'One Google sign-in now covers Business Profile, Ads and YouTube; one Facebook sign-in covers pages and ad accounts',
