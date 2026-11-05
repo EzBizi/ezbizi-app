@@ -407,6 +407,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     _selectedId = widget.initialLeadId;
     _toOpen = widget.initialLeadId;
+    if (widget.initialLeadId == null) _movedFor = null;
 
     _load();
     _poll = Timer.periodic(_pollEvery, (_) => _load());
@@ -641,34 +642,54 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// Switches the view to [lead]'s franchise, or its company, when the view
   /// does not cover it and this person can go there. True when it switched.
+  ///
+  /// Once per notification: the shell keeps handing the same lead to every
+  /// remount, so a company picked by hand afterwards must not be switched
+  /// back. There the lead is let go instead (Jose, 2026-11-05).
   Future<bool> _viewLeadsPlace(Map<String, dynamic> lead) async {
     final me = widget.session.me;
     if (me == null || me.scope.type == 'organization') return false;
     final franchise = (lead['franchise'] as Map?)?['id'] as String?;
     final company = (lead['company'] as Map?)?['id'] as String?;
 
+    if (franchise != null &&
+        me.franchisesInView.any((f) => f.id == franchise)) {
+      return false;
+    }
+    // A company view covers its franchises, listed or not.
+    if (company != null && me.companiesInView.any((c) => c.id == company)) {
+      return false;
+    }
     final String target;
-    if (franchise != null) {
-      if (me.franchisesInView.any((f) => f.id == franchise)) return false;
-      if (me.switchableFranchises.any((f) => f.id == franchise)) {
-        target = 'franchise:$franchise';
-      } else if (company != null &&
-          me.switchableCompanies.any((c) => c.id == company)) {
-        target = 'company:$company';
-      } else {
-        return false;
-      }
-    } else if (company != null) {
-      if (me.companiesInView.any((c) => c.id == company)) return false;
-      if (!me.switchableCompanies.any((c) => c.id == company)) return false;
+    if (franchise != null &&
+        me.switchableFranchises.any((f) => f.id == franchise)) {
+      target = 'franchise:$franchise';
+    } else if (company != null &&
+        me.switchableCompanies.any((c) => c.id == company)) {
       target = 'company:$company';
     } else {
       return false;
     }
 
+    if (_movedFor == lead['id']) {
+      setState(() {
+        if (_pinned?['id'] == lead['id']) {
+          _leads = [for (final l in _leads) if (l['id'] != lead['id']) l];
+          _pinned = null;
+        }
+        _selectedId = null;
+      });
+      return true;
+    }
+
+    _movedFor = lead['id'] as String?;
     await widget.session.setScope(target);
     return true;
   }
+
+  /// The lead a notification already moved the view for. Static because the
+  /// switch remounts this screen. ponytail: one id, which is all one shell has.
+  static String? _movedFor;
 
   Future<void> _sync() async {
     setState(() {
