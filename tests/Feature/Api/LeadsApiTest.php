@@ -7,6 +7,8 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\Organization;
+use App\Models\ServiceArea;
+use App\Models\ServiceAreaZip;
 use App\Models\SocialConnection;
 use App\Support\Audit\AuditLogger;
 use App\Support\Social\SocialProvider;
@@ -163,6 +165,22 @@ class LeadsApiTest extends TestCase
      * an iPhone reaction recognised as one, and the address, ZIP and name read
      * out of what the customer wrote, with the Google Ads account and status.
      */
+    /** Jose, 2026-11-05: Kristen, 06820, booked with Franchise blank. */
+    public function test_a_lead_with_no_branch_suggests_the_one_covering_its_zip(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $f = $t['franchise'];
+        $this->inTenant($t['org'], function () use ($t, $f) {
+            $area = ServiceArea::create(['organization_id' => $t['org']->id, 'franchise_id' => $f->id, 'name' => 'Fairfield']);
+            ServiceAreaZip::create(['organization_id' => $t['org']->id, 'franchise_id' => $f->id, 'service_area_id' => $area->id, 'zip' => '06820']);
+        });
+        $covered = $this->lead($t, ['postal_code' => '06820', 'company_id' => $t['company']->id, 'franchise_id' => null]);
+        $elsewhere = $this->lead($t, ['postal_code' => '90210', 'company_id' => $t['company']->id, 'franchise_id' => null]);
+
+        $this->assertSame($f->id, $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'/'.$covered->id)->json('data.book_franchise_id'));
+        $this->assertNull($this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'/'.$elsewhere->id)->json('data.book_franchise_id'));
+    }
+
     public function test_the_thread_names_senders_reads_reactions_and_details(): void
     {
         $t = $this->provisionTenant('A1-Group');
@@ -181,13 +199,17 @@ class LeadsApiTest extends TestCase
         config(['services.google_maps.server_key' => 'maps-key']);
         Http::fake(['maps.googleapis.com/*' => Http::response(['status' => 'OK', 'results' => [[
             'formatted_address' => '44 Elm St, Bethel, CT 06801, USA',
-            'address_components' => [['short_name' => '06801', 'types' => ['postal_code']]],
+            'address_components' => [['short_name' => '06801', 'types' => ['postal_code']], ['short_name' => '44', 'types' => ['street_number']],
+                ['short_name' => 'Elm St', 'types' => ['route']], ['short_name' => 'Bethel', 'types' => ['locality']],
+                ['short_name' => 'CT', 'types' => ['administrative_area_level_1']]],
             'geometry' => ['location_type' => 'ROOFTOP'],
         ]]])]);
 
         $data = $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk()->json('data');
 
-        $this->assertSame(['address' => '44 Elm St, Bethel, CT 06801, USA', 'zip' => '06801', 'exact' => true], $data['details']['checked_address']);
+        // line1, city and state fill the Book form (Jose, 2026-11-05).
+        $this->assertSame(['address' => '44 Elm St, Bethel, CT 06801, USA', 'zip' => '06801', 'line1' => '44 Elm St', 'city' => 'Bethel', 'state' => 'CT', 'exact' => true],
+            $data['details']['checked_address']);
         Http::assertSent(fn ($r) => str_contains($r->url(), 'address=44%20Elm%20Street%20Bethel%20CT%2006801')
             && ! str_contains($r->url(), 'Saturday'), 'only the address is sent, nothing else they said');
         $this->assertSame('44 Elm Street Bethel CT 06801', $data['details']['address']);

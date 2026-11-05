@@ -1128,6 +1128,8 @@ class _LeadThreadState extends State<LeadThread> {
       prefill: BookPrefill.fromLead(
         _lead,
         matches: _matches,
+        details: _details,
+        bookFranchiseId: _loaded?['book_franchise_id'] as String?,
         said: [
           for (final c in _conversations)
             if (c['from'] != 'ADVERTISER' && c['text'] is String)
