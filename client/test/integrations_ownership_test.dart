@@ -38,6 +38,8 @@ void main() {
     await _pump(tester);
     await _open(tester, 'google_ads');
 
+    await tester.tap(find.byKey(const ValueKey('actions:ga-1')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('disconnect:ga-1')));
     await tester.pumpAndSettle();
     expect(_deleted, isEmpty, reason: 'nothing goes before the confirmation');

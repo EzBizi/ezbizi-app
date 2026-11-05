@@ -53,6 +53,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('provider:google_workspace')));
     await tester.pumpAndSettle();
     await tester.tap(
+      find.byKey(const ValueKey('actions:google_workspace:company:co-a1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
       find.byKey(const ValueKey('disconnect:google_workspace:company:co-a1')),
     );
     await tester.pumpAndSettle();
