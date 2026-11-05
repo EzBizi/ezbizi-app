@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Models\BusinessLocation;
+use App\Models\Franchise;
 use App\Models\ServiceArea;
+use App\Models\SocialConnection;
 use App\Models\WebLocation;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -64,13 +67,13 @@ class SchedulingLocationsTest extends TestCase
         $tenant = $this->provisionTenant('Alpha');
         [, $dallas, $houston] = $this->branches($tenant);
         $this->inTenant($tenant['org'], function () use ($tenant) {
-            $gbp = \App\Models\SocialConnection::create([
-                'organization_id' => $tenant['org']->id, 'scope_type' => \App\Models\SocialConnection::SCOPE_COMPANY,
+            $gbp = SocialConnection::create([
+                'organization_id' => $tenant['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY,
                 'scope_id' => $tenant['company']->id, 'provider' => 'google_business_profile', 'remote_id' => 'acc-1', 'display_name' => 'A1',
             ]);
             $gbp->connect(['refresh_token' => 'rt']);
             $gbp->save();
-            $listing = fn (array $a) => \App\Models\BusinessLocation::create([
+            $listing = fn (array $a) => BusinessLocation::create([
                 'organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id, 'connection_id' => $gbp->id,
                 'remote_name' => 'locations/'.bin2hex(random_bytes(4)), 'title' => 'A1 Chimney', 'verification_state' => 'VERIFIED', ...$a,
             ]);
@@ -85,6 +88,31 @@ class SchedulingLocationsTest extends TestCase
         $this->assertSame(['Dallas', 'Houston'], $rows->keys()->all(), 'One row per place, no duplicates.');
         $this->assertSame(['google_business_profile', '(469) 000-1111', 32.9126], [$rows['Dallas']['source'], $rows['Dallas']['phone'], $rows['Dallas']['latitude']]);
         $this->assertSame(['website', $houston->id], [$rows['Houston']['source'], $rows['Houston']['id']]);
+    }
+
+    /** An unplaced listing shows in every branch view of its company; another branch's does not. */
+    public function test_a_branch_view_lists_its_own_and_the_companys_unplaced_listings(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->inTenant($tenant['org'], fn () => Franchise::create(['company_id' => $tenant['company']->id, 'name' => 'Other']));
+        $this->inTenant($tenant['org'], function () use ($tenant, $other) {
+            $gbp = SocialConnection::create([
+                'organization_id' => $tenant['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $tenant['company']->id, 'provider' => 'google_business_profile', 'remote_id' => 'acc-1', 'display_name' => 'A1',
+            ]);
+            $gbp->connect(['refresh_token' => 'rt']);
+            $gbp->save();
+            foreach ([['Unplaced', null], ['Mine', $tenant['franchise']->id], ['Theirs', $other->id]] as [$city, $fr]) {
+                BusinessLocation::create(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
+                    'franchise_id' => $fr, 'connection_id' => $gbp->id, 'remote_name' => 'locations/'.$city, 'title' => 'A1',
+                    'verification_state' => 'VERIFIED', 'address_line1' => "1 {$city} St", 'city' => $city, 'state' => 'CT', 'postal_code' => '06010']);
+            }
+        });
+
+        $names = collect($this->signedInAs($tenant['admin'])->withHeaders(['X-EzBizi-View' => 'franchise:'.$tenant['franchise']->id])
+            ->getJson('/api/v1/scheduling/locations')->assertOk()->json('data'))->pluck('name')->sort()->values()->all();
+
+        $this->assertSame(['Mine', 'Unplaced'], $names);
     }
 
     public function test_the_nearest_branches_and_the_area_serving_an_address(): void
