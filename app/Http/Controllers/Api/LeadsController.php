@@ -11,6 +11,7 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\ServiceArea;
+use App\Models\ServiceAreaZip;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Models\WebBooking;
@@ -545,6 +546,18 @@ class LeadsController extends Controller
             : null;
         $data['details']['checked_address'] = $checked;
         $data['details']['zip'] ??= $checked['zip'] ?? null;
+
+        // The branch to book into when the lead names none: the one in its
+        // company whose service areas cover its ZIP (Jose, 2026-11-05: Kristen,
+        // 06820, left Franchise blank and "No area covers 06820").
+        $zip = substr(preg_replace('/\D/', '', (string) ($data['details']['zip'] ?? $lead->postal_code)), 0, 5);
+        $covering = strlen($zip) === 5 && $lead->franchise_id === null
+            ? ServiceAreaZip::query()->where('zip', $zip)
+                ->whereIn('franchise_id', Franchise::query()
+                    ->when($lead->company_id !== null, fn ($q) => $q->where('company_id', $lead->company_id))->pluck('id'))
+                ->distinct()->pluck('franchise_id')
+            : collect();
+        $data['book_franchise_id'] = $lead->franchise_id ?? ($covering->count() === 1 ? $covering->first() : null);
 
         // Whether a reply can go anywhere, and when it cannot, WHY — in the
         // refusing channel's own words. The screen used to carry one sentence
