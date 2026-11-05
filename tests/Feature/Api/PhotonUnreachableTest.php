@@ -3,7 +3,6 @@
 namespace Tests\Feature\Api;
 
 use App\Http\Controllers\Api\AddressLookupController;
-use App\Http\Controllers\Api\CountyLookupController;
 use App\Http\Controllers\Api\SchedulingLocationsController;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
@@ -33,15 +32,6 @@ class PhotonUnreachableTest extends TestCase
         $this->signedInAs($t['admin'])->getJson('/api/v1/address-lookup?q=500+Main')
             ->assertOk()
             ->assertExactJson(['data' => [], 'message' => AddressLookupController::UNAVAILABLE]);
-    }
-
-    public function test_county_lookup_timeout_is_empty_with_a_sentence(): void
-    {
-        $t = $this->provisionTenant('Alpha');
-
-        $this->signedInAs($t['admin'])->getJson('/api/v1/places/counties?state=Florida&q=brow')
-            ->assertOk()
-            ->assertExactJson(['data' => [], 'message' => CountyLookupController::UNAVAILABLE]);
     }
 
     public function test_nearest_branch_timeout_is_a_422_sentence_on_q_not_a_500(): void

@@ -968,7 +968,9 @@ void main() {
     await _type(tester, 'county', 'pa');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
-    expect(asked.single, {'state': 'Florida', 'q': 'pa'});
+    // The whole state's list is asked for once; typing filters it here.
+    expect(asked.single, {'state': 'Florida'});
+    expect(find.byKey(const Key('county-Broward')), findsNothing);
 
     await _tap(tester, find.byKey(const Key('county-Palm Beach')));
     expect(_countyBox(tester).controller!.text, 'Palm Beach');
@@ -2199,12 +2201,8 @@ MockClientHandler _handler({
 
     if (path.endsWith('/places/counties')) {
       onCounties?.call(request.url.queryParameters);
-      final q = request.url.queryParameters['q']!.toLowerCase();
       return _json({
-        'data': [
-          for (final county in ['Palm Beach', 'Pasco', 'Broward'])
-            if (county.toLowerCase().startsWith(q)) county,
-        ],
+        'data': ['Broward', 'Palm Beach', 'Pasco'],
       });
     }
 

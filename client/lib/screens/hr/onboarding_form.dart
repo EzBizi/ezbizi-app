@@ -3295,9 +3295,9 @@ class _SigningStepState extends State<_SigningStep> {
   }
 }
 
-/// "County for disputes": a search of the chosen state's counties
-/// (`GET /places/counties`, HR d834214e). What is typed is the answer and the
-/// list only suggests (Jose, 2026-10-05: Eve typed Cook, the search found
+/// "County for disputes": the chosen state's whole county list
+/// (`GET /places/counties`, the Census file; Merav, 2026-11-05), filtered as
+/// you type. What is typed is the answer and the list only suggests (Jose, 2026-10-05: Eve typed Cook, the search found
 /// nothing, and "she should be able to just save").
 class _CountySearch extends StatefulWidget {
   const _CountySearch({
@@ -3324,50 +3324,43 @@ class _CountySearch extends StatefulWidget {
 }
 
 class _CountySearchState extends State<_CountySearch> {
-  Timer? _debounce;
-  int _run = 0;
   bool _looking = false;
-  List<String> _found = [];
+  List<String> _all = [];
 
-  /// The text the last finished search was for, so "nothing found" is said
-  /// only about what is in the box.
-  String? _searched;
+  /// The state [_all] was loaded for.
+  String? _loadedFor;
 
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    super.dispose();
-  }
-
-  void _search(String text) {
-    _debounce?.cancel();
-    final query = text.trim();
+  Future<void> _load(String state) async {
+    _loadedFor = state;
+    setState(() => _looking = true);
+    final response = await widget.api.get('/places/counties', {'state': state});
+    if (!mounted || _loadedFor != state) return;
     setState(() {
-      if (query.isEmpty) _found = [];
-    });
-    if (query.isEmpty) return;
-    _debounce = Timer(const Duration(milliseconds: 300), () async {
-      final run = ++_run;
-      setState(() => _looking = true);
-      final response = await widget.api.get('/places/counties', {
-        'state': widget.state!,
-        'q': query,
-      });
-      if (!mounted || run != _run) return;
-      setState(() {
-        _looking = false;
-        _searched = query;
-        _found = response.ok && response.data is List
-            ? [for (final name in response.data as List) '$name']
-            : [];
-      });
+      _looking = false;
+      _all = response.ok && response.data is List
+          ? [for (final name in response.data as List) '$name']
+          : [];
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
+    if (state != _loadedFor) {
+      _all = [];
+      if (state != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _load(state));
+      }
+      _loadedFor = state;
+    }
     final typed = widget.controller.text.trim();
+    final picked = _all.any((n) => n.toLowerCase() == typed.toLowerCase());
+    final found = picked
+        ? const <String>[]
+        : [
+            for (final n in _all)
+              if (n.toLowerCase().contains(typed.toLowerCase())) n,
+          ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3379,7 +3372,7 @@ class _CountySearchState extends State<_CountySearch> {
             border: const OutlineInputBorder(),
             hintText: state == null
                 ? 'Choose the governing state first'
-                : 'Search the counties of $state',
+                : 'Pick or type a county of $state',
             prefixIcon: const Icon(Icons.search, size: 20),
             suffixIcon: _looking
                 ? const Padding(
@@ -3394,35 +3387,40 @@ class _CountySearchState extends State<_CountySearch> {
             helperText:
                 typed.isNotEmpty &&
                     !_looking &&
-                    _searched == typed &&
-                    _found.isEmpty
+                    _all.isNotEmpty &&
+                    found.isEmpty &&
+                    !picked
                 ? 'Not in the list. What you typed is saved as the county.'
                 : null,
           ),
           onChanged: (text) {
-            _search(text);
+            setState(() {});
             widget.onPicked(text.trim());
           },
         ),
-        if (_found.isNotEmpty) ...[
+        if (widget.enabled && found.isNotEmpty) ...[
           const SizedBox(height: 4),
           Material(
             elevation: 1,
             borderRadius: BorderRadius.circular(8),
-            child: Column(
-              children: [
-                for (final name in _found)
-                  ListTile(
-                    key: Key('county-$name'),
-                    dense: true,
-                    title: Text(name),
-                    onTap: () {
-                      widget.controller.text = name;
-                      setState(() => _found = []);
-                      widget.onPicked(name);
-                    },
-                  ),
-              ],
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 240),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final name in found)
+                    ListTile(
+                      key: Key('county-$name'),
+                      dense: true,
+                      title: Text(name),
+                      onTap: () {
+                        widget.controller.text = name;
+                        setState(() {});
+                        widget.onPicked(name);
+                      },
+                    ),
+                ],
+              ),
             ),
           ),
         ],
