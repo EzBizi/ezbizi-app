@@ -58,6 +58,35 @@ class SchedulingLocationsTest extends TestCase
         $this->assertSame([], $body['meta']['notes'], 'Only non-empty notes are listed.');
     }
 
+    /** Jose, 2026-11-05: the Business Profile listing is the address; the website row is the fallback. */
+    public function test_business_profile_listings_lead_and_website_rows_fill_the_gaps(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        [, $dallas, $houston] = $this->branches($tenant);
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $gbp = \App\Models\SocialConnection::create([
+                'organization_id' => $tenant['org']->id, 'scope_type' => \App\Models\SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $tenant['company']->id, 'provider' => 'google_business_profile', 'remote_id' => 'acc-1', 'display_name' => 'A1',
+            ]);
+            $gbp->connect(['refresh_token' => 'rt']);
+            $gbp->save();
+            $listing = fn (array $a) => \App\Models\BusinessLocation::create([
+                'organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id, 'connection_id' => $gbp->id,
+                'remote_name' => 'locations/'.bin2hex(random_bytes(4)), 'title' => 'A1 Chimney', 'verification_state' => 'VERIFIED', ...$a,
+            ]);
+            // Same place as the Dallas website row, with Google's current phone.
+            $listing(['address_line1' => '11836 Judd Ct', 'city' => 'Dallas', 'state' => 'TX', 'postal_code' => '75243', 'phone' => '(469) 000-1111']);
+            // A service-area listing (no public address) whose phone is the Houston row's: Houston stays as the website has it.
+            $listing(['phone' => '(469) 454-0303']);
+        });
+
+        $rows = collect($this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/locations')->assertOk()->json('data'))->keyBy('name');
+
+        $this->assertSame(['Dallas', 'Houston'], $rows->keys()->all(), 'One row per place, no duplicates.');
+        $this->assertSame(['google_business_profile', '(469) 000-1111', 32.9126], [$rows['Dallas']['source'], $rows['Dallas']['phone'], $rows['Dallas']['latitude']]);
+        $this->assertSame(['website', $houston->id], [$rows['Houston']['source'], $rows['Houston']['id']]);
+    }
+
     public function test_the_nearest_branches_and_the_area_serving_an_address(): void
     {
         $tenant = $this->provisionTenant('Alpha');
