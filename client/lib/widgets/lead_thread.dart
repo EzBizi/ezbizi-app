@@ -288,11 +288,19 @@ class _LeadThreadState extends State<LeadThread> {
                 );
                 setState(() => _proofread = null);
               },
+              // Two lines at most, so Send stays on a 390pt phone (UI-UX).
               child: Text.rich(
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 TextSpan(
-                  style: theme.textTheme.bodySmall,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                   children: [
-                    const TextSpan(text: 'Did you mean: '),
+                    TextSpan(
+                      text: 'Did you mean: ',
+                      style: TextStyle(color: theme.colorScheme.primary),
+                    ),
                     for (final (i, w) in words.indexed)
                       TextSpan(
                         text: i == 0 ? w : ' $w',
@@ -308,7 +316,8 @@ class _LeadThreadState extends State<LeadThread> {
           IconButton(
             key: const ValueKey('reply-proofread-dismiss'),
             tooltip: 'Dismiss',
-            visualDensity: VisualDensity.compact,
+            // A 44pt target around a small icon (UI-UX).
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
             iconSize: 16,
             onPressed: () => setState(() => _proofread = null),
             icon: const Icon(Icons.close),
