@@ -57,6 +57,52 @@ void main() {
     });
   }
 
+  testWidgets('Gmail is never in the Google sign-in', (tester) async {
+    final calls = await _pump(tester, 1280);
+
+    await _tap(tester, 'family-manage:google_ads');
+    // Gmail has no tick box: it is set up in Email, not at this sign-in.
+    expect(
+      find.textContaining('Managed in Email, not at this sign-in.'),
+      findsOneWidget,
+    );
+    await _tap(tester, 'choose:youtube');
+    await _tap(tester, 'choose-continue');
+
+    final start = calls.singleWhere((c) => c.$1 == 'POST');
+    expect(start.$2, '/api/v1/social/google-ads/start');
+    expect(jsonDecode(start.$3), {
+      'products': ['youtube'],
+    });
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Google keeps Gmail and names the login when it goes', (
+    tester,
+  ) async {
+    final calls = await _pump(tester, 1280);
+
+    await _tap(tester, 'family-disconnect:google_ads');
+    expect(find.byKey(const ValueKey('family-stays:gmail')), findsOneWidget);
+    await _tap(tester, 'family-confirm-go:google_ads');
+    expect(
+      find.textContaining('Gmail / Workspace stays connected.'),
+      findsOneWidget,
+    );
+    await tester.enterText(find.byType(TextField).last, '123456');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Disconnect').last);
+    await tester.pumpAndSettle();
+
+    final delete = calls.singleWhere((c) => c.$1 == 'DELETE');
+    expect(delete.$2, '/api/v1/social/providers/google_ads/connections');
+    expect(jsonDecode(delete.$3), {
+      'code': '123456',
+      'account_email': 'owner@brightside.example',
+    });
+  });
+
   testWidgets('WhatsApp stays when the family goes, and problems show', (
     tester,
   ) async {
@@ -148,6 +194,10 @@ Future<List<(String, String, String)>> _pump(
           'data': [
             _row('fb-1', 'facebook_page', 'Facebook'),
             _row('wa-1', 'whatsapp', 'WhatsApp'),
+            {
+              ..._row('ga-1', 'google_ads', 'Google Ads'),
+              'account_email': 'owner@brightside.example',
+            },
           ],
         });
       }
@@ -170,6 +220,36 @@ Future<List<(String, String, String)>> _pump(
                   connected: true,
                   start: '/social/whatsapp/start',
                 ),
+              ],
+            },
+            {
+              'value': 'google_ads',
+              'label': 'Google',
+              'connects_by': 'sign_in',
+              'start_path': '/social/google-ads/start',
+              'permission': 'marketing.edit',
+              'products': [
+                _product(
+                  'google_ads',
+                  'Google Ads',
+                  connected: true,
+                  start: '/social/google-ads/start',
+                ),
+                _product(
+                  'youtube',
+                  'YouTube',
+                  start: '/social/google-ads/start',
+                ),
+                {
+                  ..._product(
+                    'gmail',
+                    'Gmail / Workspace',
+                    connected: true,
+                    start: '/email/workspace',
+                  ),
+                  'scopes': <String>[],
+                  'provider': 'google_workspace',
+                },
               ],
             },
             {

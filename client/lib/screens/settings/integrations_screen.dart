@@ -17,6 +17,7 @@ import '../email/mailbox_panels.dart';
 import '../../widgets/disconnect_panel.dart';
 import '../../core/theme.dart';
 import '../email/consent_window.dart';
+import '../../widgets/open_destination.dart';
 import 'choose_products_panel.dart';
 import 'integration_family_card.dart';
 import 'integration_provider_screen.dart';
@@ -942,6 +943,37 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     });
   }
 
+  /// Set up in another module, never at a sign-in (Gmail → Email's
+  /// Workspace setup, Leads + Google 6262b4928): no scopes of its own.
+  bool _setUpElsewhere(String head, Map<String, dynamic> product) =>
+      _ownSignIn(head, product) &&
+      ((product['scopes'] as List<dynamic>?) ?? const []).isEmpty;
+
+  /// Lands on the module a product is set up in: `/email/workspace` → Email.
+  void _openElsewhere(Map<String, dynamic> product) {
+    final module = ((product['start_path'] as String?) ?? '')
+        .split('/')
+        .firstWhere((s) => s.isNotEmpty, orElse: () => '');
+    if (module.isNotEmpty) OpenDestination.of(context)?.call(module);
+  }
+
+  /// The login a family's rows came from. Google's DELETE needs it beside the
+  /// code (6262b4928); a family whose rows carry none sends none.
+  Map<String, dynamic>? _accountEmail(String head) {
+    final providers = {
+      head,
+      ...?_folded[head],
+      for (final p in _products(head)) p['provider'] as String? ?? '',
+    };
+    for (final c in [..._connections, ..._workspace]) {
+      final email = c.accountEmail;
+      if (providers.contains(c.provider) && email != null && email.isNotEmpty) {
+        return {'account_email': email};
+      }
+    }
+    return null;
+  }
+
   /// One sign-in and everything it brings (UI queue 182, reshaped by 183).
   Widget _familyCard(
     String head,
@@ -971,7 +1003,15 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       onOpen: () => setState(() => _open = head),
       onManage: products.isNotEmpty && usable ? () => _choose(head) : null,
       onAddAccess: products.isNotEmpty
-          ? (key) => _choose(head, preTick: {key})
+          ? (key) {
+              final product = products.firstWhere(
+                (p) => p['key'] == key,
+                orElse: () => const {},
+              );
+              _setUpElsewhere(head, product)
+                  ? _openElsewhere(product)
+                  : _choose(head, preTick: {key});
+            }
           : null,
       onDisconnect: rows.isNotEmpty && may
           ? () => _disconnectFamily(head)
@@ -1019,6 +1059,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         products: _products(head),
         preTick: preTick,
         openConsent: widget.openConsent,
+        onElsewhere: (product) {
+          Navigator.of(context).pop();
+          _openElsewhere(product);
+        },
         onChanged: _load,
         onRemove: (key) => confirmDisconnect(
           context,
@@ -1030,7 +1074,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               'access back.',
           perform: (code) => widget.api.deleteWithBody(
             '/social/providers/$head/connections?product=$key',
-            {'code': code},
+            {'code': code, ...?_accountEmail(head)},
           ),
         ),
       ),
@@ -1065,7 +1109,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           '${stays.isEmpty ? '' : ' ${stays.join(', ')} stays connected.'}',
       perform: (code) => widget.api.deleteWithBody(
         '/social/providers/$head/connections',
-        {'code': code},
+        {'code': code, ...?_accountEmail(head)},
       ),
     );
     if (done != null && mounted) {
