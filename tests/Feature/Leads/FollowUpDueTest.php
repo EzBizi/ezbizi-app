@@ -98,12 +98,27 @@ class FollowUpDueTest extends TestCase
         $this->assertSame($quiet->id, $events[0]->subject_id);
         $this->assertSame('Hi Dana', $events[0]->payload['after']['greeting']);
         $this->assertSame('ls_text', $events[0]->payload['after']['kind']);
+        $this->assertFalse($events[0]->payload['after']['not_booked_call']);
 
         Carbon::setTestNow('2026-09-30T19:00:00Z');
         $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
         $ids = array_map(fn ($e) => $e->subject_id, $this->raised());
         $this->assertSame(1, count(array_keys($ids, $quiet->id)), 'never twice');
         $this->assertCount(2, $ids, 'and Early is due now, 3.5 hours on');
+    }
+
+    /** Jose, 2026-11-05: "send only one" - a rule can tell the after-call text already went. */
+    public function test_it_says_when_the_call_was_not_booked(): void
+    {
+        $caller = $this->lead('Pat Caller', [[LeadConversation::FROM_CONSUMER, '2026-09-30T14:00:00Z'],
+            [LeadConversation::FROM_ADVERTISER, '2026-09-30T14:00:30Z', true]]);
+        $this->inTenant($this->t['org'], fn () => AutomationEvent::create(['organization_id' => $this->t['org']->id,
+            'event_key' => 'lead.call_not_booked', 'subject_type' => $caller->getMorphClass(), 'subject_id' => $caller->id,
+            'payload' => [], 'occurred_at' => now(), 'available_at' => now()]));
+
+        $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
+
+        $this->assertTrue($this->raised()[0]->payload['after']['not_booked_call']);
     }
 
     public function test_first_name(): void
