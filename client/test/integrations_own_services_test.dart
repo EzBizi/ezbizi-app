@@ -21,7 +21,14 @@ void main() {
       find.byKey(const ValueKey('provider:phone_numbers')),
       findsOneWidget,
     );
-    expect(find.textContaining('Phone · 1 of 1 connected'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:phone')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('integrations-section:connected')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('provider:phone_numbers')));
     await tester.pumpAndSettle();
@@ -51,7 +58,14 @@ void main() {
       find.byKey(const ValueKey('provider:sending_server')),
       findsOneWidget,
     );
-    expect(find.textContaining('Email · 1 of 1 connected'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:email')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('integrations-section:connected')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('provider:sending_server')));
     await tester.pumpAndSettle();

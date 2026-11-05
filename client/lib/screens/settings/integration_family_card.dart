@@ -12,6 +12,7 @@ class FamilyProduct {
     required this.detail,
     required this.connected,
     required this.status,
+    this.keeps = false,
   });
 
   final String provider;
@@ -23,6 +24,10 @@ class FamilyProduct {
 
   /// The status pill, drawn by the screen so every card shares one.
   final Widget status;
+
+  /// Has a sign-in of its own (WhatsApp), so the family's Disconnect leaves
+  /// it: dropping a WhatsApp row drops the number's routing (UI queue 183).
+  final bool keeps;
 }
 
 /// One card per sign-in (UI queue 182, option 1 / phone 4). Jose, 2026-11-05:
@@ -44,6 +49,8 @@ class IntegrationFamilyCard extends StatefulWidget {
     required this.products,
     required this.onOpen,
     this.onDisconnect,
+    this.onManage,
+    this.onAddAccess,
     this.mayAddAccess = false,
     this.phone = false,
   });
@@ -58,6 +65,13 @@ class IntegrationFamilyCard extends StatefulWidget {
 
   /// Null hides Disconnect: nothing connected, or not this person's to remove.
   final VoidCallback? onDisconnect;
+
+  /// "Choose what to connect" (UI queue 183); null when the family lists no
+  /// products to choose between.
+  final VoidCallback? onManage;
+
+  /// Add access for one product line; null falls back to [onOpen].
+  final void Function(String provider)? onAddAccess;
   final bool mayAddAccess;
   final bool phone;
 
@@ -93,6 +107,16 @@ class _IntegrationFamilyCardState extends State<IntegrationFamilyCard> {
     final theme = Theme.of(context);
     final bad = theme.colorScheme.error;
     final connected = widget.products.where((p) => p.connected).toList();
+    final goes = connected.where((p) => !p.keeps).toList();
+    final stays = connected.where((p) => p.keeps).toList();
+    final anyConnected = connected.isNotEmpty;
+    final manage = widget.onManage == null
+        ? null
+        : FilledButton.tonal(
+            key: ValueKey('family-manage:${widget.head}'),
+            onPressed: widget.onManage,
+            child: Text(anyConnected ? 'Manage' : 'Connect'),
+          );
 
     final disconnect = widget.onDisconnect == null
         ? null
@@ -139,6 +163,10 @@ class _IntegrationFamilyCardState extends State<IntegrationFamilyCard> {
                   ],
                 ),
               ),
+              if (manage != null && !widget.phone) ...[
+                manage,
+                const SizedBox(width: 8),
+              ],
               if (disconnect != null && !widget.phone) disconnect,
             ],
           ),
@@ -171,7 +199,9 @@ class _IntegrationFamilyCardState extends State<IntegrationFamilyCard> {
                     if (!p.connected && widget.mayAddAccess)
                       TextButton(
                         key: ValueKey('add-access:${p.provider}'),
-                        onPressed: widget.onOpen,
+                        onPressed: widget.onAddAccess == null
+                            ? widget.onOpen
+                            : () => widget.onAddAccess!(p.provider),
                         child: const Text('Add access'),
                       )
                     else
@@ -180,9 +210,9 @@ class _IntegrationFamilyCardState extends State<IntegrationFamilyCard> {
                 ),
               ),
             ),
-          if (disconnect != null && widget.phone && !_confirming) ...[
-            const SizedBox(height: 4),
-            disconnect,
+          if (widget.phone && !_confirming) ...[
+            if (manage != null) ...[const SizedBox(height: 4), manage],
+            if (disconnect != null) ...[const SizedBox(height: 4), disconnect],
           ],
           if (_confirming) ...[
             const SizedBox(height: 8),
@@ -200,7 +230,16 @@ class _IntegrationFamilyCardState extends State<IntegrationFamilyCard> {
                     'This removes:',
                     style: theme.textTheme.labelLarge?.copyWith(color: bad),
                   ),
-                  for (final p in connected) Text('• ${p.label}: ${p.detail}'),
+                  for (final p in goes) Text('• ${p.label}: ${p.detail}'),
+                  if (stays.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text('Stays connected:', style: theme.textTheme.labelLarge),
+                    for (final p in stays)
+                      Text(
+                        '• ${p.label}: remove it on its own line',
+                        key: ValueKey('family-stays:${p.provider}'),
+                      ),
+                  ],
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
