@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0539', date: '5 Nov 2026', items: [
+      'Marketing > Ads: give any Meta or Google campaign a schedule and it turns itself on and off on the days and times you pick',
+    ]),
     VersionRelease(version: '0.0.0538', date: '5 Nov 2026', items: [
       'Messenger and Instagram messages missed while a Page was disconnected are recovered automatically on reconnect, and checked again every hour',
       'Leads: switching company unselects the open lead instead of switching you back',
