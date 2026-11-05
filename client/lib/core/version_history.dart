@@ -13,6 +13,13 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0535', date: '5 Nov 2026', items: [
+      'Messages: when Meta cannot deliver to a person you see a plain sentence, not an error',
+      'Phone: the Call tab no longer crashes when you leave it while it loads',
+      'iOS: picking a profile photo works again',
+      'An automation email that the mail server turns away no longer leaves a broken connection behind for the emails after it',
+      'Reports: the call log refreshes every hour for every phone account, so the call report loads faster',
+    ]),
     VersionRelease(version: '0.0.0534', date: '5 Nov 2026', items: [
       'Leads: a caller who already got the after-call text is not texted again when they go quiet',
     ]),
