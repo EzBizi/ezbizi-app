@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0538', date: '5 Nov 2026', items: [
+      'Messenger and Instagram messages missed while a Page was disconnected are recovered automatically on reconnect, and checked again every hour',
+      'Leads: switching company unselects the open lead instead of switching you back',
+      'Scheduling > Locations: Business Profiles that only list a service area show their city instead of a blank address',
+      'Integrations: each provider screen has one header and one list',
+    ]),
     VersionRelease(version: '0.0.0537', date: '5 Nov 2026', items: [
       'Facebook Ads: ad accounts a business manages for a client now connect, not only your own',
       'Facebook Ads: long campaign histories load in full instead of stopping after the first page',
