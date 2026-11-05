@@ -626,11 +626,48 @@ class _LeadsScreenState extends State<LeadsScreen> {
       setState(() => _leads = [lead!, ..._leads]);
     }
 
+    // Opened from a notification while the view is on another company: move
+    // the view to the lead's place first, or every reply is refused as out
+    // of view (Jose, 2026-11-05). The switch remounts this screen with the
+    // same lead, which then opens here.
+    if (await _viewLeadsPlace(lead) || !mounted) return;
+
     setState(() => _selectedId = id);
 
     if (mounted && MediaQuery.sizeOf(context).width < 900) {
       _openThread(lead);
     }
+  }
+
+  /// Switches the view to [lead]'s franchise, or its company, when the view
+  /// does not cover it and this person can go there. True when it switched.
+  Future<bool> _viewLeadsPlace(Map<String, dynamic> lead) async {
+    final me = widget.session.me;
+    if (me == null || me.scope.type == 'organization') return false;
+    final franchise = (lead['franchise'] as Map?)?['id'] as String?;
+    final company = (lead['company'] as Map?)?['id'] as String?;
+
+    final String target;
+    if (franchise != null) {
+      if (me.franchisesInView.any((f) => f.id == franchise)) return false;
+      if (me.switchableFranchises.any((f) => f.id == franchise)) {
+        target = 'franchise:$franchise';
+      } else if (company != null &&
+          me.switchableCompanies.any((c) => c.id == company)) {
+        target = 'company:$company';
+      } else {
+        return false;
+      }
+    } else if (company != null) {
+      if (me.companiesInView.any((c) => c.id == company)) return false;
+      if (!me.switchableCompanies.any((c) => c.id == company)) return false;
+      target = 'company:$company';
+    } else {
+      return false;
+    }
+
+    await widget.session.setScope(target);
+    return true;
   }
 
   Future<void> _sync() async {
