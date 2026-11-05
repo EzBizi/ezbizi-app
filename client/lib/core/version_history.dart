@@ -13,6 +13,14 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0536', date: '5 Nov 2026', items: [
+      'Integrations redesigned: one card per sign-in, and you choose what to connect before signing in',
+      'One Google sign-in now covers Business Profile, Ads and YouTube; one Facebook sign-in covers pages and ad accounts',
+      'Leads: opening a lead from a notification switches to its company first',
+      'Leads: Book a job fills the address, branch, service area and job details from the lead',
+      'Leads and Phone: the message box suggests spelling and grammar fixes you can tap to apply',
+      'Scheduling > Locations: addresses come from your Google Business Profiles, with the website list as backup',
+    ]),
     VersionRelease(version: '0.0.0535', date: '5 Nov 2026', items: [
       'Messages: when Meta cannot deliver to a person you see a plain sentence, not an error',
       'Phone: the Call tab no longer crashes when you leave it while it loads',
