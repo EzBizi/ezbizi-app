@@ -77,6 +77,47 @@ void main() {
     expect(find.text('Marcus Bell'), findsOneWidget);
   });
 
+  /// Jose, 2026-11-05: a notification for A1 Garage Doors opened while the
+  /// view was on Ace Fireplace, and every reply was refused as out of view.
+  testWidgets('a notification for another company moves the view there', (
+    tester,
+  ) async {
+    final inCompany = {
+      ..._me,
+      'scope': {'type': 'company', 'id': 'co-1', 'label': 'Everdoors', 'path': ['Everdoors']},
+      'companies': [
+        {'id': 'co-1', 'name': 'Everdoors', 'parent_company_id': null},
+        {'id': 'co-2', 'name': 'Garage Doors', 'parent_company_id': null},
+      ],
+    };
+    Map<String, dynamic> at(String company) => {
+      ..._lead('lead-2', 'Dana Whitfield'),
+      'company': {'id': company, 'name': company},
+    };
+
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell'), at('co-2')],
+      connections: _connected,
+      initialLeadId: 'lead-2',
+      me: inCompany,
+    );
+    expect(_preferences, [
+      {'navigation.scope': 'company:co-2'},
+    ]);
+
+    // The control: a lead the view already covers moves nothing.
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell'), at('co-1')],
+      connections: _connected,
+      initialLeadId: 'lead-2',
+      me: inCompany,
+    );
+    expect(_preferences, isEmpty);
+    expect(find.text('Dana Whitfield'), findsNWidgets(2));
+  });
+
   testWidgets('search runs as you type, without Enter', (tester) async {
     await _pump(
       tester,
@@ -2048,6 +2089,7 @@ Future<void> _pump(
   Size size = const Size(1200, 900),
   String? initialSource,
   String? initialLeadId,
+  Map<String, dynamic> me = _me,
   Map<String, dynamic> preferences = const {},
   Map<String, int> unreadBySource = const {},
 }) async {
@@ -2184,7 +2226,7 @@ Future<void> _pump(
         return http.Response(
           jsonEncode({
             'data': {
-              ..._me,
+              ...me,
               'permissions': permissions,
               'preferences': preferences,
             },
