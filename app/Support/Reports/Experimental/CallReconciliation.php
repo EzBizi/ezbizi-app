@@ -5,6 +5,7 @@ namespace App\Support\Reports\Experimental;
 use App\Models\CallReportOverride;
 use App\Support\Leads\CallTypeCorrections;
 use App\Support\Phone\NumberNames;
+use App\Support\Reports\Tagging\CallLabels;
 use App\Support\Tenancy\TenantContext;
 
 /**
@@ -354,6 +355,9 @@ final class CallReconciliation
             // The business's two queue names, so the screen splits calls by
             // the same setting the counts above used.
             'queues' => ['new' => RingCentralCallLog::newClientQueue(), 'existing' => RingCentralCallLog::existingClientQueue()],
+            // And the label lists' names (Settings › Lists), so a label the
+            // business added is shown by its own name.
+            'labels' => CallLabels::names(),
 
             /*
              * ── THE CALLS THEMSELVES, FLAT ──────────────────────────

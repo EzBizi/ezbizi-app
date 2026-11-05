@@ -127,6 +127,28 @@ class LabelReportCallsTest extends TestCase
         $this->assertStringNotContainsString('price quote', CallLabels::instruction($existing['question'], $existing['labels']));
     }
 
+    /**
+     * Jose, 2026-11-04: the labels are the business's list. One added on
+     * Settings › Lists is offered to the AI and named on the report; the
+     * defaults stay; one removed is no longer offered.
+     */
+    public function test_a_label_added_on_the_list_is_offered_and_named(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $items = '/api/v1/settings/lists/reports.call_labels.existing/items';
+        $this->signedInAs($tenant['admin'])->postJson($items, ['value' => ['label' => 'warranty', 'name' => 'Warranty claim',
+            'meaning' => 'A claim under the warranty for work already done.']])->assertSuccessful();
+        $this->signedInAs($tenant['admin'])->deleteJson($items.'/eta')->assertSuccessful();
+
+        [$ask, $names] = $this->inTenant($tenant['org'], fn () => [CallLabels::for('A1 - Existing Client'), CallLabels::names()]);
+
+        $this->assertSame('A claim under the warranty for work already done.', $ask['labels']['warranty']);
+        $this->assertArrayHasKey('complaint', $ask['labels']);
+        $this->assertArrayNotHasKey('eta', $ask['labels']);
+        $this->assertSame('Warranty claim', $names['existing']['warranty']);
+        $this->assertSame('AI heard a booking, no job yet', $names['not_booked']['booked']);
+    }
+
     /** Grok is asked for one label from the list, by schema, and an off-list answer is not stored as one. */
     public function test_grok_asks_for_one_label_by_schema_and_refuses_an_invented_one(): void
     {
