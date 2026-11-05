@@ -22,6 +22,11 @@ void main() {
     expect(groups.single.extensions, isNot(contains('image/*')));
   });
 
+  test('every group carries a UTI, which iOS requires', () {
+    // client_issue 01a1a934: iOS threw on each pick of an extensions-only group.
+    expect(acceptGroups('.pdf').single.uniformTypeIdentifiers, isNotEmpty);
+  });
+
   test('a spreadsheet import keeps both extensions', () {
     expect(acceptGroups('.csv,.xlsx').single.extensions, ['csv', 'xlsx']);
   });
