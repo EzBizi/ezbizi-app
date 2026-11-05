@@ -218,7 +218,11 @@ final class MetaAdInsights
 
         while ($url !== null) {
             try {
-                $response = Http::timeout(self::TIMEOUT)->get($url, $query);
+                // Meta's next link carries every parameter, cursor and token included;
+                // a query array, even an empty one, would replace them all.
+                $response = $query === []
+                    ? Http::timeout(self::TIMEOUT)->get($url)
+                    : Http::timeout(self::TIMEOUT)->get($url, $query);
             } catch (ConnectionException) {
                 throw new RuntimeException('Meta did not answer the ads read.');
             }

@@ -79,6 +79,35 @@ class MetaAdsControlTest extends TestCase
         $this->assertNull($campaigns[1]['cost_per_lead']);
     }
 
+    public function test_a_second_page_of_results_is_read_through_meta_s_own_next_link(): void
+    {
+        // A-1 Chimney, 2026-11-05: every read past 500 rows failed with
+        // "(#200) Provide valid app ID", because an empty query array replaced
+        // the next link's cursor and token.
+        $t = $this->provisionTenant('Golf');
+        $row = $this->account($t);
+        $next = 'https://graph.facebook.com/v21.0/act_111/insights?after=CUR&access_token=user-token';
+        Http::fake(function (Request $r) use ($next) {
+            parse_str((string) parse_url($r->url(), PHP_URL_QUERY), $q);
+
+            return match (true) {
+                ! isset($q['access_token']) => Http::response(['error' => ['message' => '(#200) Provide valid app ID']], 400),
+                str_contains($r->url(), '/insights') && ($q['after'] ?? null) === 'CUR' => Http::response(['data' => [
+                    ['campaign_id' => '1', 'adset_id' => '11', 'ad_id' => '112', 'spend' => '20.00', 'impressions' => '1', 'clicks' => '1', 'actions' => []],
+                ]]),
+                str_contains($r->url(), '/insights') => Http::response(['data' => [
+                    ['campaign_id' => '1', 'adset_id' => '11', 'ad_id' => '111', 'spend' => '30.00', 'impressions' => '1', 'clicks' => '1', 'actions' => []],
+                ], 'paging' => ['next' => $next]]),
+                str_contains($r->url(), '/campaigns') => Http::response(['data' => [['id' => '1', 'name' => 'Leads', 'status' => 'ACTIVE', 'effective_status' => 'ACTIVE']]]),
+                default => Http::response(['data' => []]),
+            };
+        });
+
+        $this->signedInAs($this->userWithRole($t, 'Reader', ['ads_performance.view']))
+            ->getJson('/api/v1/meta-ads/tree?connection_id='.$row->getKey())
+            ->assertOk()->assertJsonPath('data.campaigns.0.spend', 50);
+    }
+
     public function test_a_manager_pauses_an_ad_and_the_change_is_audited(): void
     {
         $t = $this->provisionTenant('Bravo');
