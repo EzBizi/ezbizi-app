@@ -16,6 +16,7 @@ use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Scoping\ViewScope;
 use App\Support\Social\FacebookAdsOAuth;
+use App\Support\Social\FacebookOAuth;
 use App\Support\Social\SocialAccount;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialOAuth;
@@ -49,6 +50,14 @@ class SocialAuthController extends Controller
     {
         $oauth = $this->driverOrAbort($network);
         $user = $request->user();
+
+        // Only the products chosen before the sign-in (design 183).
+        if ($oauth instanceof FacebookOAuth && $request->filled('products')) {
+            $oauth = $oauth->withProducts($request->validate([
+                'products' => ['array'],
+                'products.*' => ['in:'.implode(',', array_keys(FacebookOAuth::PRODUCTS))],
+            ])['products']);
+        }
 
         // The permission follows the module that USES the connection, not this
         // controller. A Google Ads account is connected by whoever runs Leads.

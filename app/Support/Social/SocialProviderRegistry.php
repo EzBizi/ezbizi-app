@@ -46,8 +46,47 @@ final class SocialProviderRegistry
                 // The card this one folds into: its sign-in brings it, so
                 // Integrations draws no card of its own for it.
                 'signed_in_with'   => $provider->signIn() === $provider ? null : $provider->signIn()->value,
+                'products'         => $this->products($provider),
             ];
         }, $withDataSources ? SocialProvider::cases() : SocialProvider::all());
+    }
+
+    /**
+     * What a person can choose to connect with this provider's sign-in (design
+     * 183). Facebook offers its products; every other provider is one product.
+     * WhatsApp is offered beside Facebook's but keeps its own sign-in
+     * (Embedded Signup) and its own disconnect: dropping its row drops the
+     * number's routing, and getting a number back means registering it again.
+     *
+     * @return list<array{key: string, label: string, description: ?string, scopes: string[], provider: string, start_path: string}>
+     */
+    public function products(SocialProvider $provider): array
+    {
+        if ($provider !== SocialProvider::FacebookPage) {
+            return [[
+                'key' => $provider->value,
+                'label' => $provider->label(),
+                'description' => null,
+                'scopes' => $this->drivers->for($provider)?->scopes() ?? [],
+                'provider' => $provider->value,
+                'start_path' => $provider->startPath(),
+            ]];
+        }
+
+        $products = [];
+        foreach (FacebookOAuth::PRODUCTS as $key => $product) {
+            $products[] = ['key' => $key, 'label' => $product['label'], 'description' => $product['description'],
+                'scopes' => $product['scopes'], 'provider' => $product['provider'], 'start_path' => $provider->startPath()];
+        }
+
+        return [...$products, [
+            'key' => 'whatsapp',
+            'label' => 'WhatsApp',
+            'description' => 'Your own WhatsApp number, to message customers.',
+            'scopes' => ['whatsapp_business_management', 'whatsapp_business_messaging'],
+            'provider' => SocialProvider::WhatsApp->value,
+            'start_path' => SocialProvider::WhatsApp->startPath(),
+        ]];
     }
 
     public function notReadyBecause(SocialProvider $provider): ?string

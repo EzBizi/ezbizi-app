@@ -15,13 +15,17 @@ use App\Support\Integrations\DisconnectCode;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Social\Publishing\TikTokPublisher;
+use App\Support\Social\FacebookOAuth;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
+use App\Support\Social\SocialProviderRegistry;
 use App\Support\Social\ThumbtackAccount;
 use App\Support\Telegram\TelegramBotStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Symfony\Component\HttpFoundation\Response as Status;
 
 class SocialConnectionsController extends Controller
@@ -475,9 +479,17 @@ class SocialConnectionsController extends Controller
 
         abort_if($provider === null, Status::HTTP_NOT_FOUND);
 
+        // One product of the sign-in (design 183), or everything it brought.
+        $product = $request->filled('product')
+            ? (collect(app(SocialProviderRegistry::class)->products($provider))->firstWhere('key', $request->input('product'))
+                ?? abort(Status::HTTP_NOT_FOUND))
+            : null;
+
         $rows = SocialConnection::query()
             // Everything the one sign-in brought: Facebook takes its ad accounts with it.
-            ->whereIn('provider', array_map(fn (SocialProvider $p) => $p->value, $provider->family()))
+            ->whereIn('provider', $product === null
+                ? array_map(fn (SocialProvider $p) => $p->value, $provider->family())
+                : [$product['provider']])
             // One Google login's rows only (design 167): a string is that
             // login, null is the rows whose login is unknown.
             ->when($request->has('account_email'), fn ($q) => $q->where('account_email', $request->input('account_email')))
@@ -492,7 +504,18 @@ class SocialConnectionsController extends Controller
             app(DisconnectCode::class)->require($request);
         }
 
+        // Messenger and Instagram comments ride on the Page rows: they go by
+        // taking their permissions back, and the Pages stay.
+        if (isset(FacebookOAuth::PRODUCTS[$product['key'] ?? '']) && $product['provider'] === SocialProvider::FacebookPage->value
+            && $product['key'] !== 'pages') {
+            return $this->withdraw($user, $rows, $product['key']);
+        }
+
         $problems = [];
+
+        if (isset(FacebookOAuth::PRODUCTS[$product['key'] ?? ''])) {
+            $problems = $this->revokeMeta($rows, $product['key']);
+        }
 
         foreach ($rows as $i => $row) {
             $problems = [...$problems, ...$this->letGo($user, $row, revoke: $i === $rows->count() - 1)];
@@ -502,6 +525,59 @@ class SocialConnectionsController extends Controller
             'provider' => $provider->value,
             'disconnected' => $rows->count(),
             'problems' => array_values(array_unique($problems)),
+        ]]);
+    }
+
+    /**
+     * The scopes only this Facebook product uses, taken back from Meta with
+     * the person's token (an ad account row holds it; a Page row holds the
+     * Page's). Never fatal: what Meta would not take back is said, and the
+     * rows go regardless.
+     *
+     * @return string[]
+     */
+    private function revokeMeta(Collection $rows, string $key): array
+    {
+        $others = array_merge(...array_values(array_map(fn ($p) => $p['scopes'], array_diff_key(FacebookOAuth::PRODUCTS, [$key => 1]))));
+        $own = array_values(array_diff(FacebookOAuth::PRODUCTS[$key]['scopes'], $others));
+        $token = SocialConnection::query()->where('provider', SocialProvider::FacebookAds->value)
+            ->whereIn('organization_id', $rows->pluck('organization_id')->unique())
+            ->get()->map(fn (SocialConnection $c) => $c->credentials['access_token'] ?? null)->filter()->first();
+
+        if (! is_string($token)) {
+            return ['Facebook still lists this access for EzBizi. Remove it in Facebook > Settings > Business integrations.'];
+        }
+
+        $failed = array_filter($own, fn (string $scope) => ! Http::timeout(10)->delete(
+            'https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/me/permissions/'.$scope, ['access_token' => $token],
+        )->successful());
+
+        return $failed === [] ? [] : ['Facebook would not take back '.implode(', ', $failed).'. Remove it in Facebook > Settings > Business integrations.'];
+    }
+
+    /** A product that has no rows of its own: its permissions back, its Pages kept. */
+    private function withdraw(User $user, Collection $rows, string $key): JsonResponse
+    {
+        $problems = $this->revokeMeta($rows, $key);
+        $mark = FacebookOAuth::MARKS[$key];
+
+        foreach ($rows as $row) {
+            // Recorded as withdrawn, so Integrations stops saying it is there.
+            $scopes = (array) ($row->credentials['scopes'] ?? FacebookOAuth::SCOPES) ?: FacebookOAuth::SCOPES;
+            $row->forceFill(['credentials' => [...$row->credentials, 'scopes' => array_values(array_diff($scopes, [$mark]))]])->save();
+        }
+
+        $this->audit->log('social.product_withdrawn', $rows->first() ?? $user->organization, [
+            'product' => $key,
+            'pages' => $rows->count(),
+            'not_tidied' => $problems === [] ? null : $problems,
+        ], actor: $user);
+
+        return response()->json(['data' => [
+            'provider' => SocialProvider::FacebookPage->value,
+            'product' => $key,
+            'disconnected' => 0,
+            'problems' => $problems,
         ]]);
     }
 

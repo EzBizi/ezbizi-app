@@ -149,7 +149,7 @@ class SocialProvidersApiTest extends TestCase
         $row = $this->providerNamed($t, 'pinterest');
 
         $this->assertSame(
-            ['value', 'label', 'usable', 'unusable_because', 'connects_by', 'start_path', 'permission', 'signed_in_with'],
+            ['value', 'label', 'usable', 'unusable_because', 'connects_by', 'start_path', 'permission', 'signed_in_with', 'products'],
             array_keys($row),
         );
         $this->assertSame('sign_in', $row['connects_by']);
