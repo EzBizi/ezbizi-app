@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Services\Leads\LeadInsights;
 use App\Support\Leads\LeadThread;
+use App\Support\Settings\SettingsResolver;
 use Aws\BedrockRuntime\BedrockRuntimeClient;
 use Aws\MockHandler;
 use Aws\Result;
@@ -182,5 +183,22 @@ class LeadInsightsTest extends TestCase
 
         $this->assertStringContainsString('14 Ash Lane', $draft);
         $this->assertSame(1, $this->inTenant($t['org'], fn () => LeadConversation::query()->count()), 'a draft stores nothing');
+    }
+
+    /** Jose, 2026-11-05: "Yes, I call you right away". Offered, never sent; a setting turns it off. */
+    public function test_a_draft_gets_its_clear_fix_and_nothing_when_right_or_switched_off(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->on(["Yes, I'll call you right away", 'See you at 9.']);
+        $lead = $this->lead($t);
+        $ask = fn (string $text) => $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/leads/{$lead->id}/proofread", ['text' => $text])->assertOk()->json('data.suggestion');
+
+        $this->assertSame("Yes, I'll call you right away", $ask('Yes, I call you right away'));
+        $this->assertNull($ask('See you at 9.'), 'nothing wrong, nothing offered');
+
+        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('leads.proofread', $t['org'], false));
+        $this->assertNull($ask('Yes, I call you right away'), 'switched off asks nobody');
+        $this->assertSame(0, LeadConversation::withoutGlobalScopes()->count(), 'nothing is sent or stored');
     }
 }

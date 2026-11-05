@@ -1114,6 +1114,7 @@ Route::prefix('v1')
         Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
         Route::post('leads/{lead}/suggest-reply', [LeadsController::class, 'suggestReply']);
+        Route::post('leads/{lead}/proofread', [LeadsController::class, 'proofread']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
         Route::post('leads/{lead}/follow-up-handled', [LeadsController::class, 'followUpHandled']);
         Route::post('leads/{lead}/reclassify', [LeadsController::class, 'reclassify']);
