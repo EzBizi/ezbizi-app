@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AutomationEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\Organization;
@@ -75,6 +76,10 @@ class LeadsFollowUpDue extends Command
                             'contact_name' => $lead->contact_name,
                             'first_name' => $first,
                             'greeting' => Lead::greeting($first),
+                            // The after-call text already went, so a rule can stay at one
+                            // booking link (Jose, 2026-11-05: "send only one").
+                            'not_booked_call' => AutomationEvent::query()->where('event_key', 'lead.call_not_booked')
+                                ->where('subject_id', $lead->getKey())->exists(),
                             'hours_since_reply' => (int) $firstReply->occurred_at->diffInHours(now()),
                         ],
                     ]);
