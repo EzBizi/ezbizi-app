@@ -112,7 +112,14 @@ class LabelReportCallsTest extends TestCase
     public function test_the_not_booked_question_says_what_a_booking_is(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        [$ask, $existing] = $this->inTenant($tenant['org'], fn () => [CallLabels::for('A1 - New Client'), CallLabels::for('A1 - Existing Client')]);
+        [$ask, $existing] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            app(SettingsResolver::class)->set('ai_assistance.trades', $tenant['org'], 'gutters, roofs');
+
+            return [CallLabels::for('A1 - New Client'), CallLabels::for('A1 - Existing Client')];
+        });
+        // The business's own trade, not A-1's (ai_assistance.trades).
+        $this->assertStringContainsString('(gutters, roofs)', $ask['question'].$existing['question']);
+        $this->assertStringNotContainsString('chimney', $ask['question'].$existing['question']);
         $text = CallLabels::instruction($ask['question'], $ask['labels']);
 
         $this->assertStringContainsString('A price quote or an offered time is not a booking', $text);
