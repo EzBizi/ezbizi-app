@@ -281,7 +281,12 @@ class AppServiceProvider extends ServiceProvider
         // Task Board: every company, franchise and person gets their own board
         // the moment they exist (ezbizi:backfill-task-boards covers older rows).
         foreach ([Company::class, Franchise::class, User::class] as $owner) {
-            $owner::created(fn ($model) => app(TaskBoards::class)->ensureFor($model));
+            // A Sub Company and its franchises get none (Jose, 2026-11-06).
+            $owner::created(function ($model) {
+                if ($model instanceof User || TaskBoards::hasPlaceBoard($model)) {
+                    app(TaskBoards::class)->ensureFor($model);
+                }
+            });
         }
 
         /*
