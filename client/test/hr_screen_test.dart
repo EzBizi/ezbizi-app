@@ -1257,11 +1257,13 @@ void main() {
     TextField box(String label) =>
         tester.widget<TextField>(find.widgetWithText(TextField, label));
 
-    expect(box('Gender').decoration?.hintText, 'Not filled in');
-    expect(box('Gender').decoration?.filled, isTrue);
+    // Gender is a picker now (design 186), saying so while empty.
     expect(
-      box('Gender').decoration?.floatingLabelBehavior,
-      FloatingLabelBehavior.always,
+      find.descendant(
+        of: find.byKey(const ValueKey('hr-gender')),
+        matching: find.text('Not filled in'),
+      ),
+      findsOneWidget,
     );
     // The control: a box with something in it is not amber.
     expect(box('Phone').decoration?.hintText, isNull);
@@ -1297,10 +1299,28 @@ void main() {
       findsOneWidget,
     );
 
-    // Typing takes a box out of amber there and then.
-    await tester.enterText(find.widgetWithText(TextField, 'Gender'), 'Female');
-    await tester.pump();
-    expect(box('Gender').decoration?.hintText, isNull);
+    // Picking takes it out of amber there and then, from the three answers
+    // Jose named (2026-11-06).
+    await tester.ensureVisible(find.byKey(const ValueKey('hr-gender')));
+    await tester.tap(find.byKey(const ValueKey('hr-gender')));
+    await tester.pumpAndSettle();
+    expect(find.text('Prefers not to answer'), findsWidgets);
+    await tester.tap(find.text('Female').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('hr-gender')),
+        matching: find.text('Not filled in'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('hr-gender')),
+        matching: find.text('Female'),
+      ),
+      findsOneWidget,
+    );
   });
 
   // Jose, 2026-09-30: "it should highlight all the missing stuff", not only
