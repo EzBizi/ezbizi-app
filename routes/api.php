@@ -2159,6 +2159,8 @@ Route::prefix('v1')
         Route::get('hr/people/{user}/consents', [HrPeopleController::class, 'consents']);
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
         Route::post('hr/people/{user}/avatar', [ProfileController::class, 'uploadAvatarFor']);
+        Route::post('hr/people/{user}/places', [HrPeopleController::class, 'addPlace']);
+        Route::delete('hr/people/{user}/places/{assignment}', [HrPeopleController::class, 'removePlace']);
         Route::delete('hr/people/{user}/avatar', [ProfileController::class, 'destroyAvatarFor']);
         // Their weekday schedule (design 2026-09-08 §10.3). Zone is the caller's view.
         Route::patch('hr/people/{user}/schedule', [HrPeopleController::class, 'updateSchedule']);
