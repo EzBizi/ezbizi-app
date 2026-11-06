@@ -59,6 +59,22 @@ Meta lead-ad forms are `facebook`/`instagram` rows written by MetaLeadForms. A f
    - **Fixable:** add `website_booking` to the SmsLeadReplies loop and the tag.
 4. **Workiz** gets no reply and no `lead.received`. This is **inherent**: it is an imported book, not an inbox (Lead.php:97).
 
-## Production, last 30 days
+## Production, last 30 days (read-only, non-test leads)
 
-Not measured: the read-only count (a regexp match per customer) did not finish within 2 minutes. The code gap in 1 is total for FB/IG DMs, because they are created with no phone.
+| Source | Leads | With phone | With email | Phone matches a customer |
+|---|---|---|---|---|
+| ringcentral | 7203 | 7203 | 0 | 2109 |
+| local_services | 6456 | 6260 | 314 | 2480 |
+| facebook | 321 | 158 | 1 | **1** |
+| website_form | 297 | 293 | 292 | 113 |
+| website_chat | 240 | 237 | 240 | 107 |
+| instagram | 25 | 13 | 0 | 1 |
+| whatsapp | 20 | 20 | 0 | 0 |
+| website_booking | 18 | 17 | 0 | 12 |
+| thumbtack | 3 | 3 | 0 | 1 |
+| ez_texts | 1 | 1 | 0 | 1 |
+| workiz | 3 | 3 | 3 | 3 |
+
+- Half of Facebook leads (163 of 321) have no phone, so gap 1 is real.
+- Of the 158 that do have a phone, only 1 matches a customer. Every other source matches 30–45%.
+- Check whether those phones are stored in a shape the RIGHT(…,10) match misses, or whether they really are new people from ads.
