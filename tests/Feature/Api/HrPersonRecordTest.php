@@ -328,6 +328,10 @@ class HrPersonRecordTest extends TestCase
 
         $this->signedInAs($t['admin'])->patchJson($url, ['gender' => 'Prefer_Not_To_Answer'])->assertOk();
         $this->assertSame('prefer_not_to_answer', $person->fresh()->gender);
+        $this->signedInAs($t['admin'])->patchJson($url, ['gender' => 'Female'])->assertOk();
+        $this->assertSame('female', $person->fresh()->gender);
+        $this->signedInAs($t['admin'])->patchJson($url, ['gender' => 'Prefers not to answer'])->assertOk();
+        $this->assertSame('prefer_not_to_answer', $person->fresh()->gender);
         $this->signedInAs($t['admin'])->patchJson($url, ['gender' => 'Genderfluid'])->assertUnprocessable();
 
         $this->assertSame(['male', 'female', 'prefer_not_to_answer'],
@@ -346,6 +350,7 @@ class HrPersonRecordTest extends TestCase
         $this->signedInAs($t['admin'])->postJson("/api/v1/hr/people/{$person->id}/avatar", ['photo' => $photo()])
             ->assertOk()->assertExactJson(['avatar' => true]);
         $this->assertNotNull($person->fresh()->avatar_path);
+        $this->assertTrue($this->signedInAs($t['admin'])->getJson("/api/v1/hr/people/{$person->id}")->json('data.has_avatar'));
 
         $this->signedInAs($t['admin'])->deleteJson("/api/v1/hr/people/{$person->id}/avatar")->assertOk();
         $this->assertNull($person->fresh()->avatar_path);

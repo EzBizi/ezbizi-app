@@ -651,8 +651,15 @@ class HrPeopleController extends Controller
 
         $actor = $request->user();
 
+        // The stored value or its label, any case ("Prefers not to answer" → prefer_not_to_answer).
         if (is_string($request->input('gender'))) {
-            $request->merge(['gender' => mb_strtolower(trim($request->input('gender')))]);
+            $typed = mb_strtolower(trim($request->input('gender')));
+            foreach ((array) app(SettingsResolver::class)->get('hr.gender_options', $user->organization) as $option) {
+                if ($typed === mb_strtolower((string) $option['label'])) {
+                    $typed = (string) $option['value'];
+                }
+            }
+            $request->merge(['gender' => $typed]);
         }
 
         $input = $request->validate([
@@ -1259,6 +1266,9 @@ class HrPeopleController extends Controller
             'first_name' => $person->first_name,
             'last_name' => $person->last_name,
             'email' => $person->email,
+            'has_avatar' => $person->avatar_path !== null,
+            // Changes with every new picture, for the client's image cache.
+            'avatar_version' => $person->avatar_path === null ? null : substr(md5($person->avatar_path), 0, 12),
             'is_active' => $person->is_active,
             'role' => [
                 'id' => $person->role_id,
