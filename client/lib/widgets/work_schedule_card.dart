@@ -101,6 +101,22 @@ class WorkScheduleCard extends StatelessWidget {
                       : [
                           for (final day in days)
                             _row(context, theme, map, day),
+                          const Divider(),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'This week',
+                                  style: theme.textTheme.titleSmall,
+                                ),
+                              ),
+                              Text(
+                                _hoursText(_weekMinutes(map)),
+                                key: const ValueKey('schedule-week-total'),
+                                style: theme.textTheme.titleSmall,
+                              ),
+                            ],
+                          ),
                         ],
                 ),
               ),
@@ -110,7 +126,13 @@ class WorkScheduleCard extends StatelessWidget {
     );
   }
 
-  Widget _row(BuildContext context, ThemeData theme, Map map, String day) {
+  Widget _row(
+    BuildContext context,
+    ThemeData theme,
+    Map map,
+    String day, {
+    bool wide = true,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -134,8 +156,23 @@ class WorkScheduleCard extends StatelessWidget {
               context,
               Icons.logout,
               (map[day] as Map)['end'] as String? ?? '',
-              Theme.of(context).colorScheme.onSurfaceVariant,
+              // Red out, green in (Jose, 2026-11-06: "use green and red as
+              // well for clock in - out times"; design 189).
+              EzBiziTheme.clockOut(context),
             ),
+            // The day bar and hours only where there is room (design 189).
+            if (wide) ...[
+              const SizedBox(width: 12),
+              Expanded(child: _bar(context, map[day] as Map)),
+              SizedBox(
+                width: 52,
+                child: Text(
+                  _hoursText(minutes(map[day] as Map)),
+                  textAlign: TextAlign.right,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+            ],
           ] else
             Text(
               UiStrings.t('time_clock.day_off'),
@@ -160,7 +197,7 @@ class WorkScheduleCard extends StatelessWidget {
       _today(context, theme, map, today),
       const SizedBox(height: 4),
       for (final day in days)
-        if (day != today) _row(context, theme, map, day),
+        if (day != today) _row(context, theme, map, day, wide: false),
     ];
   }
 
@@ -207,7 +244,7 @@ class WorkScheduleCard extends StatelessWidget {
                 Text(
                   window['end'] as String? ?? '',
                   style: theme.textTheme.headlineSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: EzBiziTheme.clockOut(context),
                   ),
                 ),
               ],
@@ -219,6 +256,68 @@ class WorkScheduleCard extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+
+  static int? _clock(Object? hhmm) {
+    final parts = '${hhmm ?? ''}'.split(':');
+    if (parts.length < 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    return h == null || m == null ? null : h * 60 + m;
+  }
+
+  /// A day's worked minutes; an end before the start runs past midnight.
+  static int minutes(Map window) {
+    final start = _clock(window['start']);
+    final end = _clock(window['end']);
+    if (start == null || end == null) return 0;
+    return end > start ? end - start : end + 1440 - start;
+  }
+
+  static int _weekMinutes(Map map) => days
+      .where((d) => map[d] is Map)
+      .fold(0, (sum, d) => sum + minutes(map[d] as Map));
+
+  static String _hoursText(int minutes) {
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    return m == 0 ? '$h h' : '$h h $m m';
+  }
+
+  /// Where the shift sits in a 24 h day, green edge to red edge.
+  Widget _bar(BuildContext context, Map window) {
+    final start = _clock(window['start']) ?? 0;
+    final span = minutes(window);
+    final track = ToneColours.of(context, Tone.neutral).fill;
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        final left = c.maxWidth * start / 1440;
+        // ponytail: an overnight shift is clipped at midnight, not wrapped.
+        final width = (c.maxWidth * span / 1440).clamp(0.0, c.maxWidth - left);
+        return Container(
+          height: 8,
+          decoration: BoxDecoration(
+            color: track,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          alignment: Alignment.centerLeft,
+          child: Container(
+            margin: EdgeInsets.only(left: left),
+            width: width,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              gradient: LinearGradient(
+                colors: [
+                  EzBiziTheme.clockIn(context),
+                  EzBiziTheme.clockOut(context),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
