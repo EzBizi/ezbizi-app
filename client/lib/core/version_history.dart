@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0544', date: '6 Nov 2026', items: [
+      'Project Management: rebuilt from scratch with Unscheduled, Ready to Schedule, Scheduled, In Progress, Done Waiting Payment and Complete, a franchise filter, and a Settings tab for columns, labels, colours and statuses',
+      'The old Project Management 1 and 2 are removed',
+      'Customers > Memberships > Promotions: text past Done-job customers with an editable message; replies arrive in Leads > Promotions',
+      'Task Board: sub-companies and their branches no longer get a company board',
+    ]),
     VersionRelease(version: '0.0.0543', date: '6 Nov 2026', items: [
       'Reports: new report texts on WhatsApp: revenue collected at 1 AM, an evening summary at 8 PM with jobs created and Google and Meta ads, and a weekly report on Sunday at 8 PM',
       'Settings: branch order, excluded tags and dispatcher roles for reports are editable lists',
