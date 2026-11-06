@@ -272,24 +272,6 @@
             "parent": "reports",
             "tabs": []
         },
-        "project_management": {
-            "label": "Project Management - 1",
-            "parent": null,
-            "tabs": [
-                "Overview",
-                "Jobs",
-                "Assignments",
-                "Repair team",
-                "Rules",
-                "Logs",
-                "Settings"
-            ]
-        },
-        "project_management_2": {
-            "label": "Project Management - 2",
-            "parent": null,
-            "tabs": []
-        },
         "reports": {
             "label": "Reports",
             "parent": null,
@@ -592,8 +574,6 @@
         "phone.users.view",
         "phone.view",
         "profit_loss.view",
-        "project_management.view",
-        "project_management_2.view",
         "reports.build",
         "reports.builder.view",
         "reports.correct",

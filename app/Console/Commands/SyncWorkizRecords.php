@@ -142,7 +142,7 @@ class SyncWorkizRecords extends Command
 
     /**
      * `job.payment_received`, once per payment new to the mirror, on its
-     * EzBizi job (Automations, 2026-10-21: Jose's Project Management rules).
+     * EzBizi job (Automations, 2026-10-21).
      * A payment dated more than two days back is history arriving (a first
      * read, a full sweep) and is not announced.
      */

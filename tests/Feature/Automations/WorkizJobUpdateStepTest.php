@@ -16,23 +16,11 @@ use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
-/** Jose's Project Management rules (2026-10-21): a rule sets the Workiz job's status and sub-status, and shows Workiz's refusal. */
+/** Jose, 2026-10-21: a rule sets the Workiz job's status and sub-status, and shows Workiz's refusal. */
 class WorkizJobUpdateStepTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
-
-    public function test_both_project_management_templates_save_as_rules_that_are_off(): void
-    {
-        $t = $this->provisionTenant('Alpha');
-        $templates = collect($this->signedInAs($t['admin'])->getJson('/api/v1/automations/catalogue')->assertOk()->json('data.templates'))->keyBy('key');
-        foreach (['pm-payment-on-done-pending-approval', 'pm-estimate-declined-after-30-days'] as $key) {
-            $tpl = $templates[$key] ?? null;
-            $this->assertNotNull($tpl, $key);
-            $this->signedInAs($t['admin'])->postJson('/api/v1/automations', ['name' => $tpl['name'], 'trigger_key' => $tpl['trigger_key'],
-                'conditions' => $tpl['conditions'], 'actions' => $tpl['actions']])->assertCreated()->assertJsonPath('data.is_active', false);
-        }
-    }
 
     public function test_a_rule_cancels_the_workiz_job_with_its_sub_status_and_reports_a_refusal_in_workizs_words(): void
     {
