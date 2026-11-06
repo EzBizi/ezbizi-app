@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\User;
 use App\Support\Jobs\JobMoney;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -84,6 +85,22 @@ class ProjectBoardController extends Controller
             ] +($page->currentPage() > 1 ? [] : ['counts' => collect(self::TABS)
                 ->mapWithKeys(fn (string $t) => [$t => $this->tab($inView(), $rules[$t] ?? [])->count()])->all()]),
         ]);
+    }
+
+    /**
+     * Jobs per sub-tab in the viewer's reach, the board's own counts, for the
+     * dashboard glance so the two cannot disagree.
+     *
+     * @return array<string, int>
+     */
+    public function countsFor(User $user, SettingsResolver $settings): array
+    {
+        $reach = ViewScope::forUser($user)->franchiseIds();
+        $place = ViewScope::forUser($user)->settingsScope();
+        $place = $place instanceof Franchise ? ($place->company ?? $user->organization) : $place;
+        $rules = (array) $settings->get('project_board.tabs', $place);
+
+        return collect(self::TABS)->mapWithKeys(fn (string $t) => [$t => $this->tab(Job::query()->whereIn('franchise_id', $reach), $rules[$t] ?? [])->count()])->all();
     }
 
     /**
