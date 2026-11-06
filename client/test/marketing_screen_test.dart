@@ -1032,6 +1032,29 @@ void main() {
       expect(find.textContaining('has no boards'), findsWidgets);
     });
 
+    testWidgets('a post deleted after it went out still reads as posted', (
+      tester,
+    ) async {
+      var reads = 0;
+
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          postsFor: () => reads++ == 0 ? const [] : [_landed('removed')],
+        ),
+      );
+      await _openCompose(tester);
+
+      await _write(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Not posted'), findsNothing);
+      expect(find.text('Posted · deleted from Pinterest'), findsOneWidget);
+    });
+
     testWidgets('a scheduled post says when, and the calendar goes to it', (
       tester,
     ) async {
