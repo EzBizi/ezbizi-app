@@ -232,7 +232,7 @@ final class DailyTexts
             }
             $per[$id] ??= ['spend' => 0, 'forms' => 0];
             $per[$id]['spend'] += $c['spend_minor'];
-            $per[$id]['forms'] += $c['forms'];
+            $per[$id]['forms'] += $c['leads'];
         }
 
         $source = MarketingReport::sourceOf('meta');
