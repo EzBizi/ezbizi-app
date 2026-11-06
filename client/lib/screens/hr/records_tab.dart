@@ -1505,7 +1505,11 @@ class _Field extends StatelessWidget {
     required this.child,
     this.why,
     this.empty = false,
+    this.suffix,
   });
+
+  /// Inside the box, as a text field's suffix, so the box keeps its height.
+  final Widget? suffix;
 
   final String label;
   final Widget child;
@@ -1524,6 +1528,7 @@ class _Field extends StatelessWidget {
         helperText: why,
         helperMaxLines: 3,
         border: const OutlineInputBorder(),
+        suffixIcon: suffix,
         // Enabled while empty: a disabled box draws no amber border.
         enabled: empty,
       ),
@@ -1726,15 +1731,6 @@ class _PersonalSectionState extends State<_PersonalSection> {
     return null;
   }
 
-  String _genderLabel(String stored) {
-    final value = _genderValue(stored);
-    for (final o in _genderOptions(stored)) {
-      if (o.$1 == value) return o.$2;
-    }
-
-    return stored;
-  }
-
   Future<void> _copy(String value) async {
     await Clipboard.setData(ClipboardData(text: value));
     if (!mounted) return;
@@ -1804,6 +1800,7 @@ class _PersonalSectionState extends State<_PersonalSection> {
           country: _fields['country']!,
           enabled: editable,
           flagEmpty: true,
+          copy: (field, box) => _copyButton(field, () => box.text.trim()),
         ),
         const SizedBox(height: 14),
         _Pair(
@@ -1823,28 +1820,20 @@ class _PersonalSectionState extends State<_PersonalSection> {
             trailing: _copyButton('date_of_birth', () => _bornDay.text),
             onChanged: (v) => setState(() => _born = v.isEmpty ? null : v),
           ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: SearchPickerField<String>(
-                  key: const ValueKey('hr-gender'),
-                  label: 'Gender',
-                  hint: 'Not filled in',
-                  border: const OutlineInputBorder(),
-                  value: _genderValue(gender),
-                  options: [
-                    for (final o in _genderOptions(gender))
-                      SearchOption(value: o.$1, label: o.$2),
-                  ],
-                  allowClear: true,
-                  onChanged: editable
-                      ? (v) => setState(() => _fields['gender']!.text = v ?? '')
-                      : null,
-                ),
-              ),
-              _copyButton('gender', () => _genderLabel(gender)),
+          SearchPickerField<String>(
+            key: const ValueKey('hr-gender'),
+            label: 'Gender',
+            hint: 'Not filled in',
+            border: const OutlineInputBorder(),
+            value: _genderValue(gender),
+            options: [
+              for (final o in _genderOptions(gender))
+                SearchOption(value: o.$1, label: o.$2),
             ],
+            allowClear: true,
+            onChanged: editable
+                ? (v) => setState(() => _fields['gender']!.text = v ?? '')
+                : null,
           ),
         ),
         const SizedBox(height: 14),
@@ -1853,15 +1842,11 @@ class _PersonalSectionState extends State<_PersonalSection> {
           why:
               'They sign in with this, so it is theirs to change under Your '
               'account — changing it from here could lock them out.',
-          child: Row(
-            children: [
-              Expanded(child: Text(widget.person['email']?.toString() ?? '')),
-              _copyButton(
-                'email',
-                () => widget.person['email']?.toString() ?? '',
-              ),
-            ],
+          suffix: _copyButton(
+            'email',
+            () => widget.person['email']?.toString() ?? '',
           ),
+          child: Text(widget.person['email']?.toString() ?? ''),
         ),
         if (editable)
           _SaveBar(

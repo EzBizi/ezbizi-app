@@ -41,7 +41,7 @@ class CalendarDayField extends StatefulWidget {
     this.lastDate,
     this.onChanged,
     this.flagEmpty = false,
-    this.fill = false,
+    this.fill = true,
     this.trailing,
   });
 
@@ -61,8 +61,9 @@ class CalendarDayField extends StatefulWidget {
   /// Marks an empty field "Not filled in" (an optional answer left blank).
   final bool flagEmpty;
 
-  /// Takes the full width instead of a date's 220, so it sits flush in a
-  /// two-column grid with no gap beside it (design 186).
+  /// Takes the full width, as every other box in a form does (Jose,
+  /// 2026-11-06: "the date of birth field is not the same size as the
+  /// rest"); false keeps a date's 220.
   final bool fill;
 
   /// An extra control after the calendar button, e.g. a copy button.
@@ -289,11 +290,11 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
       labelText: label == null || label.isEmpty ? null : label,
       hintText: _pattern,
       floatingLabelBehavior: FloatingLabelBehavior.always,
-      isDense: true,
-      contentPadding: EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: widget.dense ? 10 : 12,
-      ),
+      // The theme's own height unless dense, so it matches the boxes beside it.
+      isDense: widget.dense ? true : null,
+      contentPadding: widget.dense
+          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 10)
+          : null,
       suffixIcon: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
