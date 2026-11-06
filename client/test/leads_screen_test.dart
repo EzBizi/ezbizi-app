@@ -1896,7 +1896,8 @@ void _conversationRowTests() {
   });
 
   /// Phone audit 2026-11-04: beside the name the chips clipped to "Rep" and
-  /// the names to 8 letters. On a phone they get their own line.
+  /// the names to 8 letters. On a phone they go on line 2, under the time
+  /// (design 187).
   testWidgets('on a phone a row puts its chips under the name', (
     tester,
   ) async {
@@ -1912,13 +1913,55 @@ void _conversationRowTests() {
       size: const Size(390, 844),
     );
 
-    expect(find.byKey(const ValueKey('lead-chips-line-lead-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lead-chips-lead-1')), findsOneWidget);
     final name = tester.getRect(find.text('Christopher Wellington').first);
     final badge = tester.getRect(
       find.byKey(const ValueKey('reply-badge-lead-1')),
     );
     expect(badge.top, greaterThan(name.bottom - 1));
     expect(name.width, greaterThan(150));
+    expect(tester.takeException(), isNull);
+  });
+
+  /// Design 187 (Jose, 2026-11-06: "moving all the tabs to the left side of
+  /// the time, so they all line up"): one straight edge down the list, two
+  /// tags at most, then "+N".
+  testWidgets("a row's tags line up beside the time, two then +N", (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [
+        {
+          ..._lead('lead-1', 'Ann Lee', canReply: true),
+          'customer': {'id': 'c1'},
+          'status': 'booked',
+        },
+        {
+          ..._lead('lead-2', 'Christopher Wellington'),
+          'status': 'completed',
+          'received_at': '2026-01-02T09:00:00Z',
+        },
+      ],
+      connections: _connected,
+    );
+
+    Rect at(String key) => tester.getRect(find.byKey(ValueKey(key)));
+    expect(at('lead-tags-lead-1').right, at('lead-tags-lead-2').right);
+    // Line 2's source and channel line up under the time as well.
+    expect(at('lead-chips-lead-1').right, at('lead-chips-lead-2').right);
+    expect(
+      at('source-badge-lead-1').left,
+      greaterThan(at('lead-tags-lead-1').left - 1),
+    );
+    expect(
+      at('status-pill-lead-1').right,
+      lessThan(at('lead-tags-lead-1').right),
+    );
+    // Booked, Customer, then Awaiting reply behind "+N".
+    expect(find.byKey(const ValueKey('customer-badge-lead-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('reply-badge-lead-1')), findsNothing);
+    expect(find.textContaining(RegExp(r'^\+\d$')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
