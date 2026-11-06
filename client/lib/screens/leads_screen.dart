@@ -1,5 +1,6 @@
 import '../core/phone_numbers.dart';
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -13,6 +14,7 @@ import '../widgets/ai_mark.dart';
 import '../widgets/lead_source_details.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
+import '../widgets/row_tags.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/tab_help.dart';
 
@@ -2160,40 +2162,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
      */
     final unread = lead['is_unread'] == true;
     final starred = lead['starred'] == true;
-    // A phone puts the chips on their own line (phone audit 2026-11-04).
-    final narrowRow = MediaQuery.sizeOf(context).width < 600;
-    final rowChips = <Widget>[
-      // Beside the name, in its own colour (design 159).
-      if (src.sourceKey != null)
-        LeadSourceChip(
-          src.sourceKey,
-          key: ValueKey('source-badge-$id'),
-        ),
-      // A specimen, not a customer. First on the row because
-      // it changes how everything after it should be read.
-      if (lead['is_test'] == true) ...[
-        _Badge('Test', key: ValueKey('test-badge-$id')),
-      ],
-      // AI thinks Google should refund it, not yet asked.
-      if (lead['credit'] is Map &&
-          (lead['credit'] as Map)['requested_at'] == null)
-        _Badge('Credit?', key: ValueKey('credit-badge-$id')),
-      // An unanswered RC call: Possible spam, Missed
-      // call or Voicemail (Jose, 2026-10-16).
-      if ((lead['source'] == 'ringcentral' ||
-              lead['source'] == 'ez_calls') &&
-          lead['source_status'] is String)
-        _Badge(
-          rcCallTag(lead['source_status'] as String),
-          key: ValueKey('rc-tag-$id'),
-        ),
-      // Only when it is not New: 43,184 of 43,190 are,
-      // and a pill on every row would say nothing.
-      if ((lead['status'] ?? 'new') != 'new')
-        leadStatusPill(
-          lead['status'],
-          key: ValueKey('status-pill-$id'),
-        ),
+    // Design 187 (Jose, 2026-11-06): the lead's tags line up in one column
+    // beside the time; marks about the row (somebody viewing, a note, an
+    // overdue reply) stay beside the name.
+    final phoneRow = MediaQuery.sizeOf(context).width < 480;
+    final nameMarks = <Widget>[
       // Somebody else has it open right now.
       if ((lead['viewers'] as List?)?.isNotEmpty ?? false)
         Tooltip(
@@ -2227,13 +2200,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
             ],
           ),
         ),
-      // This number is already a customer.
-      if (lead['customer'] is Map) ...[
-        _Badge(
-          'Customer',
-          key: ValueKey('customer-badge-$id'),
-        ),
-      ],
       // A dispatcher left a note: seen from the list, read on
       // hover (Jose, 2026-10-13: "u can't tell a note is
       // there unless u enter the lead").
@@ -2250,6 +2216,61 @@ class _LeadsScreenState extends State<LeadsScreen> {
             size: 17,
             color: ToneColours.of(context, Tone.caution).ink,
           ),
+        ),
+      // Waited too long: the customer spoke last over ten
+      // minutes ago and the lead is still New (Jose,
+      // 2026-09-28). The server decides; the row only shows it.
+      if (lead['reply_overdue'] == true) ...[
+        Tooltip(
+          message: 'Waiting more than 10 minutes for a reply',
+          child: Icon(
+            Icons.warning_rounded,
+            key: ValueKey('overdue-$id'),
+            size: 18,
+            color: theme.colorScheme.error,
+          ),
+        ),
+      ],
+    ];
+    // Most telling first: only two are shown before "+N".
+    final tags = <(String, Widget)>[
+      // A specimen, not a customer. First because it changes how
+      // everything after it should be read.
+      if (lead['is_test'] == true)
+        (
+          'Test',
+          _Badge('Test', key: ValueKey('test-badge-$id')),
+        ),
+      // Only when it is not New: 43,184 of 43,190 are, and a pill on
+      // every row would say nothing.
+      if ((lead['status'] ?? 'new') != 'new')
+        (
+          leadStatusPill(lead['status']).label,
+          leadStatusPill(
+              lead['status'],
+              key: ValueKey('status-pill-$id'),
+            ),
+        ),
+      // An unanswered RC call: Possible spam, Missed call or Voicemail
+      // (Jose, 2026-10-16).
+      if ((lead['source'] == 'ringcentral' ||
+              lead['source'] == 'ez_calls') &&
+          lead['source_status'] is String)
+        (
+          rcCallTag('${lead['source_status']}'),
+          _Badge(
+              rcCallTag(lead['source_status'] as String),
+              key: ValueKey('rc-tag-$id'),
+            ),
+        ),
+      // This number is already a customer.
+      if (lead['customer'] is Map)
+        (
+          'Customer',
+          _Badge(
+              'Customer',
+              key: ValueKey('customer-badge-$id'),
+            ),
         ),
       // Replied or not, and ONLY where a reply is possible.
       //
@@ -2269,28 +2290,56 @@ class _LeadsScreenState extends State<LeadsScreen> {
       if ((lead['can_reply'] == true ||
               lead['reply_overdue'] == true) &&
           lead['reply_owed'] != false &&
-          lead['status'] != 'completed') ...[
-        _Badge(
+          lead['status'] != 'completed')
+        (
           mine ? 'Replied' : 'Awaiting reply',
-          key: ValueKey('reply-badge-$id'),
-          alert: !mine,
+          _Badge(
+              mine ? 'Replied' : 'Awaiting reply',
+              key: ValueKey('reply-badge-$id'),
+              alert: !mine,
+            ),
         ),
-      ],
-      // Waited too long: the customer spoke last over ten
-      // minutes ago and the lead is still New (Jose,
-      // 2026-09-28). The server decides; the row only shows it.
-      if (lead['reply_overdue'] == true) ...[
-        Tooltip(
-          message: 'Waiting more than 10 minutes for a reply',
-          child: Icon(
-            Icons.warning_rounded,
-            key: ValueKey('overdue-$id'),
-            size: 18,
-            color: theme.colorScheme.error,
-          ),
+      // AI thinks Google should refund it, not yet asked.
+      if (lead['credit'] is Map &&
+          (lead['credit'] as Map)['requested_at'] == null)
+        (
+          'Credit?',
+          _Badge('Credit?', key: ValueKey('credit-badge-$id')),
         ),
-      ],
     ];
+    // Line 2's chips, the message's source and channel, go right too, under
+    // the time (Jose, 2026-11-06: "the tags on the second line, we ought to
+    // move them to the right aas well, maybe below the time").
+    final chips = <(String, Widget)>[
+      // The source, in its own colour (design 159).
+      if (src.sourceKey != null)
+        (
+          sourceBadgeWord(lead['source'] as String?),
+          LeadSourceChip(src.sourceKey, key: ValueKey('source-badge-$id')),
+        )
+      else
+        (
+          leadSourceWord(lead),
+          _SourceBadge(leadSourceWord(lead), key: ValueKey('source-badge-$id')),
+        ),
+      // The channel badge is drawn only when it says something the source
+      // badge does not. "Call · Google" is two facts; a chat row read "Chat ·
+      // Chat", one fact twice (UI/UX, 2026-09-08). The rule needs no list of
+      // sources: a fifth source with one channel gets the right answer free.
+      if (channel != null &&
+          !leadSourceWord(lead).endsWith(channelWord(channel)))
+        (
+          channelWord(channel),
+          _Badge(channelWord(channel), call: channel == 'PHONE_CALL'),
+        ),
+    ];
+    Widget tagColumn(String line, double width, List<(String, Widget)> of) =>
+        RowTags(
+          key: ValueKey('lead-$line-$id'),
+          width: width,
+          tags: [for (final t in of) t.$2],
+          hidden: [for (final t in of.skip(2)) t.$1],
+        );
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: unread
           ? theme.colorScheme.onSurface
@@ -2343,7 +2392,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  LayoutBuilder(
+                    builder: (context, line) => Row(
                     children: [
                       Expanded(
                         child: LayoutBuilder(
@@ -2366,61 +2416,40 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 tooltip: aiNameTooltip,
                               ),
                             ],
-                            // The badges wrap under each other rather than push the
-                            // row past its edge: at half a desktop screen the list
-                            // pane is ~300px and a Customer + Text + Awaiting reply +
-                            // warning + Google row overflowed by 118px (Jose,
-                            // 2026-09-28).
-                            const SizedBox(width: 8),
-                            // Design 161: one line. The chips never wrap;
-                            // past the edge they are clipped and the name
-                            // ellipsizes first.
-                            // The chips take the room they need (up to 70%
-                            // of the row) and the name gets the rest: a
-                            // fixed 3:2 split clipped chips beside short
-                            // names (Jose, 2026-10-30).
-                            // Phone: the chips get their own line under the
-                            // job line, so the name and chips are never cut
-                            // (phone audit 2026-11-04, Leads list #1).
-                            if (!narrowRow)
-                            ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: box.maxWidth * 0.7,
-                              ),
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                physics: const NeverScrollableScrollPhysics(),
-                                child: _spaced(rowChips),
-                              ),
-                            ),
+                            if (nameMarks.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              _spaced(nameMarks),
+                            ],
                           ],
                         ),
                         ),
                       ),
                       const SizedBox(width: 6),
-                      Text(
-                        leadWhen(
-                          (lead['last_contact_at'] ?? lead['received_at'])
-                              as String?,
-                        ),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                      // Design 187: up to 44% of the row, so a narrow list
+                      // pane keeps room for the name. A phone puts them on
+                      // line 2, under the time.
+                      if (!phoneRow && tags.isNotEmpty)
+                        tagColumn('tags', math.min(176, line.maxWidth * 0.44), tags),
+                      if (!phoneRow && tags.isNotEmpty)
+                        const SizedBox(width: 6),
+                      SizedBox(
+                        width: 62,
+                        child: Text(
+                          leadWhen(
+                            (lead['last_contact_at'] ?? lead['received_at'])
+                                as String?,
+                          ),
+                          textAlign: TextAlign.end,
+                          maxLines: 1,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
                     ],
                   ),
-                  if (narrowRow && rowChips.isNotEmpty)
-                    Padding(
-                      key: ValueKey('lead-chips-line-$id'),
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Wrap(
-                        spacing: 4,
-                        runSpacing: 2,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: rowChips,
-                      ),
-                    ),
+                  ),
                   const SizedBox(height: 1),
                   LayoutBuilder(
                     builder: (context, box) => Row(
@@ -2448,29 +2477,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       // No company tag here: it is on the lead's own header,
                       // and Jose wants it in one place only (2026-09-30, "not
                       // on both").
-                      // The source first on the line, in its own colour.
-                      if (src.sourceKey == null)
-                        _SourceBadge(
-                          leadSourceWord(lead),
-                          key: ValueKey('source-badge-$id'),
-                        ),
-                      // The channel badge is drawn only when it says
-                      // something the source badge does not. "Call · Google"
-                      // is two facts; a chat row read "Chat · Chat", one fact
-                      // twice (UI/UX, 2026-09-08). The rule needs no list of
-                      // sources: a fifth source with one channel gets the
-                      // right answer for free.
-                      if (channel != null &&
-                          !leadSourceWord(lead).endsWith(
-                            channelWord(channel),
-                          )) ...[
-                        const SizedBox(width: 4),
-                        _Badge(
-                          channelWord(channel),
-                          call: channel == 'PHONE_CALL',
-                        ),
-                      ],
-                      const SizedBox(width: 6),
                       Expanded(
                         child: preview != null && preview.isNotEmpty
                             ? Text.rich(
@@ -2514,6 +2520,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
+                      ),
+                      // Under the time. A phone has no line-1 column, so
+                      // its tags lead here (design 187, phone 4).
+                      const SizedBox(width: 6),
+                      tagColumn(
+                        'chips',
+                        // With the 40% job line and a 48px star target, 34% fits a 260px pane.
+                        math.min(phoneRow ? 150 : 176, box.maxWidth * 0.34),
+                        [if (phoneRow) ...tags, ...chips],
                       ),
                       // Hollow until set, at the end of the line it marks
                       // (design 30): stacked under the time it made every row
