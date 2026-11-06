@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0541', date: '6 Nov 2026', items: [
+      'HR > Records > Employment: a person can work at several companies or franchises at once, and the tab lists everywhere they have access',
+      'Leads: a lead that belongs to the whole organization can be changed by anyone who can see it and edit leads',
+    ]),
     VersionRelease(version: '0.0.0540', date: '6 Nov 2026', items: [
       'Developers: the public API reference at ezbizi.com/developers now updates itself from the app',
       "HR > Records > Personal: gender is picked from a list you edit in settings, every field has a copy button, and you can upload or remove the person's photo",
