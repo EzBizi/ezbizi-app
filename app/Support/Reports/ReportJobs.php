@@ -19,8 +19,9 @@ use Illuminate\Support\Facades\DB;
  * Columns every caller can rely on:
  *   jobs():     ref, serial, job_source, service_area, status ('Done' |
  *               'Canceled' | anything else is open), booked_at, closed_at,
- *               total (decimal), team (JSON list of {id, Name}), phone, created_by
+ *               total (decimal), team (JSON list of {id, Name}), tags (JSON list), phone, created_by
  *   payments(): user_ref, amount (decimal), paid_at
+ *   sales():    job_source, profit (decimal), job_date: Workiz's Sales report, a row a job
  */
 final class ReportJobs
 {
@@ -44,6 +45,18 @@ final class ReportJobs
                 'j.last_status_update as closed_at',
                 DB::raw("cast(coalesce(json_unquote(json_extract(j.payload, '$.JobTotalPrice')), 0) as decimal(12,2)) as total"),
                 DB::raw("coalesce(json_extract(j.payload, '$.Team'), json_array()) as team"),
+                DB::raw("coalesce(json_extract(j.payload, '$.Tags'), json_array()) as tags"),
+            ]);
+    }
+
+    /** A branch's jobs as Workiz's Sales report has them: what each made the company (SyncWorkizWebSales). */
+    public static function sales(string $branchId): Builder
+    {
+        return DB::table('workiz_records')->where('franchise_id', $branchId)->where('type', 'web_sale')
+            ->select([
+                DB::raw("json_unquote(json_extract(payload, '$.ad_group')) as job_source"),
+                DB::raw("cast(coalesce(json_unquote(json_extract(payload, '$.profit')), 0) as decimal(12,2)) as profit"),
+                'starts_at as job_date',
             ]);
     }
 

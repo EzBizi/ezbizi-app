@@ -338,18 +338,20 @@ class CampaignPerformance
      * Cost, clicks and conversions split LOCAL_SERVICES / everything else,
      * read at campaign-channel level and summed: one query per account
      * (Reports' ad cost vs Workiz jobs, 2026-10-12: "LS Ads" and "PPC").
+     * $activeOnly: the campaigns switched on now (Jose's daily texts, 2026-11-06: "only for active campaigns").
      *
      * @return array{currency: ?string, lsa: array{cost_minor: int, clicks: int, conversions: float}, ppc: array{cost_minor: int, clicks: int, conversions: float}}
      *
      * @throws RuntimeException
      */
-    public function channelCost(SocialConnection $connection, Carbon $from, Carbon $to): array
+    public function channelCost(SocialConnection $connection, Carbon $from, Carbon $to, bool $activeOnly = false): array
     {
         $rows = $this->search($connection, GoogleToken::forConnection($connection, 'google_ads'), sprintf(
-            "SELECT customer.currency_code, campaign.advertising_channel_type, metrics.cost_micros, "
-            ."metrics.clicks, metrics.conversions FROM campaign WHERE segments.date BETWEEN '%s' AND '%s'",
+            'SELECT customer.currency_code, campaign.advertising_channel_type, metrics.cost_micros, '
+            ."metrics.clicks, metrics.conversions FROM campaign WHERE segments.date BETWEEN '%s' AND '%s'%s",
             $from->format('Y-m-d'),
             $to->format('Y-m-d'),
+            $activeOnly ? " AND campaign.status = 'ENABLED'" : '',
         ));
 
         $out = ['currency' => null];

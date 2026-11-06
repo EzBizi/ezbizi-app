@@ -86,11 +86,37 @@ final class ListRegistry
             // Which Workiz job sources Google Ads pays for (Reports' Marketing).
             new ListDefinition(
                 key: 'reports.paid_sources', label: 'Paid job sources', module: 'reports',
-                columns: [['key' => 'source', 'label' => 'Workiz job source'], ['key' => 'channel', 'label' => 'Google Ads channel (lsa or ppc)']],
+                columns: [['key' => 'source', 'label' => 'Workiz job source'], ['key' => 'channel', 'label' => 'Ad channel (lsa, ppc or meta)']],
                 defaults: array_map(fn (string $source) => ['key' => $source, 'value' => ['source' => $source, 'channel' => MarketingReport::PAID[$source]]],
                     array_keys(MarketingReport::PAID)),
-                help: 'The job sources your Google Ads pay for: lsa for Local Services, ppc for Search. Marketing puts '
-                    .'that channel\'s cost against them, and Local Services leads count toward the lsa one.',
+                help: 'The job sources your ads pay for: lsa for Google Local Services, ppc for Google Search, meta for '
+                    .'Facebook. Marketing puts that channel\'s cost against them, and Local Services leads count toward the lsa one.',
+                editPermission: 'reports.settings',
+            ),
+            // The daily and weekly WhatsApp texts (Jose, 2026-11-06: "order of report by states").
+            new ListDefinition(
+                key: 'reports.locations', label: 'Report locations, in order', module: 'reports',
+                columns: [['key' => 'branch', 'label' => 'Branch'], ['key' => 'code', 'label' => 'State code (as Meta campaigns name it)']],
+                help: 'The order the WhatsApp report texts list branches in; branches not here come after, by name. '
+                    .'A Meta campaign with no branch counts toward the branch its state code names here.',
+                editPermission: 'reports.settings',
+            ),
+            ...array_map(fn (array $list) => new ListDefinition(
+                key: $list[0], label: $list[1], module: 'reports', columns: [['key' => 'tag', 'label' => 'Workiz tag']],
+                defaults: array_map(fn (string $tag) => ['key' => $tag, 'value' => ['tag' => $tag]], $list[2]),
+                help: $list[3].' Emoji, spaces and dashes are ignored, so "Paid – Estimated" also matches it with a coloured dot in front.',
+                editPermission: 'reports.settings',
+            ), [
+                ['reports.tags_not_in_progress', 'Tags left out of In Progress jobs', ['Deposit Received', 'Deposit Recieved'],
+                    'Jobs with one of these tags are not counted in the In Progress jobs texts.'],
+                ['reports.tags_not_created', 'Tags left out of jobs created', ['Paid – Estimated', 'Paid – Estimated (By Sub)'],
+                    'Jobs with one of these tags are not counted in the jobs created texts.'],
+            ]),
+            new ListDefinition(
+                key: 'reports.dispatcher_roles', label: 'Dispatcher roles, in order', module: 'reports',
+                columns: [['key' => 'role', 'label' => 'Role']],
+                defaults: array_map(fn (string $role) => ['key' => $role, 'value' => ['role' => $role]], ['Dispatcher', 'Remote Dispatcher']),
+                help: 'The weekly dispatcher texts list people by these roles, in this order; anyone else comes last.',
                 editPermission: 'reports.settings',
             ),
             // Why a call came in, as the AI sorts them (Reports, Jose 2026-11-04).
