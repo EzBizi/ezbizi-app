@@ -2017,6 +2017,17 @@ class SettingRegistry
             // Jose, 2026-10-05: "a final approval is pending from the employer
             // who sent it out ... this also should be toggable".
             new SettingDefinition(
+                key: 'hr.gender_options', label: 'Gender choices',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'male', 'label' => 'Male'],
+                    ['value' => 'female', 'label' => 'Female'],
+                    ['value' => 'prefer_not_to_answer', 'label' => 'Prefers not to answer'],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: "What HR picks from for someone's gender under Records › Personal (Jose, 2026-11-06).",
+            ),
+            new SettingDefinition(
                 key: 'hr.onboarding_approval',
                 label: 'Approve onboardings before access',
                 type: SettingDefinition::TYPE_BOOL,

@@ -9,7 +9,9 @@ use App\Models\EmploymentEvent;
 use App\Models\Franchise;
 use App\Support\Access\Refusal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -315,6 +317,38 @@ class HrPersonRecordTest extends TestCase
         // `name` is recomposed from the parts, the rule Your account keeps: every
         // list and every audit entry reads it, so it cannot drift from them.
         $this->assertSame('Jonathan Ames', $fresh->name);
+    }
+
+    /** Gender is a pick from hr.gender_options (Jose, 2026-11-06); the record carries the choices. */
+    public function test_gender_is_one_of_the_organization_choices(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view']);
+        $url = "/api/v1/hr/people/{$person->id}";
+
+        $this->signedInAs($t['admin'])->patchJson($url, ['gender' => 'Prefer_Not_To_Answer'])->assertOk();
+        $this->assertSame('prefer_not_to_answer', $person->fresh()->gender);
+        $this->signedInAs($t['admin'])->patchJson($url, ['gender' => 'Genderfluid'])->assertUnprocessable();
+
+        $this->assertSame(['male', 'female', 'prefer_not_to_answer'],
+            array_column($this->signedInAs($t['admin'])->getJson($url)->assertOk()->json('data.gender_options'), 'value'));
+    }
+
+    /** HR sets and removes someone's picture; someone without hr.edit cannot. */
+    public function test_hr_uploads_a_persons_picture(): void
+    {
+        Storage::fake('local');
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view']);
+        $photo = fn () => UploadedFile::fake()->image('me.png', 200, 200);
+
+        $this->signedInAs($person)->postJson("/api/v1/hr/people/{$t['admin']->id}/avatar", ['photo' => $photo()])->assertForbidden();
+        $this->signedInAs($t['admin'])->postJson("/api/v1/hr/people/{$person->id}/avatar", ['photo' => $photo()])
+            ->assertOk()->assertExactJson(['avatar' => true]);
+        $this->assertNotNull($person->fresh()->avatar_path);
+
+        $this->signedInAs($t['admin'])->deleteJson("/api/v1/hr/people/{$person->id}/avatar")->assertOk();
+        $this->assertNull($person->fresh()->avatar_path);
     }
 
     /**

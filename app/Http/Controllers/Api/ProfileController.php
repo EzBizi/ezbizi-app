@@ -147,6 +147,26 @@ class ProfileController extends Controller
      */
     public function uploadAvatar(Request $request): array
     {
+        return $this->storeAvatar($request, $request->user());
+    }
+
+    /** HR sets someone else's picture (Jose, 2026-11-06): hr.edit within reach, as the rest of their record. */
+    public function uploadAvatarFor(Request $request, User $user): array
+    {
+        $this->authorize('update', $user);
+
+        return $this->storeAvatar($request, $user);
+    }
+
+    public function destroyAvatarFor(Request $request, User $user): array
+    {
+        $this->authorize('update', $user);
+
+        return $this->removeAvatar($user);
+    }
+
+    private function storeAvatar(Request $request, User $user): array
+    {
         $request->validate([
             // `dimensions` as well as mimes: a 40-megapixel photo is a denial of
             // service against the image pipeline, and the file-size limit alone
@@ -156,8 +176,6 @@ class ProfileController extends Controller
                 'dimensions:max_width=6000,max_height=6000',
             ],
         ]);
-
-        $user = $request->user();
 
         $previous = $user->avatar_path;
 
@@ -202,8 +220,11 @@ class ProfileController extends Controller
 
     public function destroyAvatar(Request $request): array
     {
-        $user = $request->user();
+        return $this->removeAvatar($request->user());
+    }
 
+    private function removeAvatar(User $user): array
+    {
         if ($user->avatar_path !== null) {
             $this->files->delete($user->avatar_path);
             $user->forceFill(['avatar_path' => null])->save();

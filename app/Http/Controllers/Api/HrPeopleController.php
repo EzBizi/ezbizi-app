@@ -651,6 +651,10 @@ class HrPeopleController extends Controller
 
         $actor = $request->user();
 
+        if (is_string($request->input('gender'))) {
+            $request->merge(['gender' => mb_strtolower(trim($request->input('gender')))]);
+        }
+
         $input = $request->validate([
             'role_id' => ['sometimes', 'required', 'uuid', Rule::exists('roles', 'id')
                 ->where('organization_id', $this->tenant->idOrFail())],
@@ -680,7 +684,9 @@ class HrPeopleController extends Controller
             'state' => ['sometimes', 'nullable', 'string', 'max:64'],
             'postal_code' => ['sometimes', 'nullable', 'string', 'max:20'],
             'country' => ['sometimes', 'nullable', 'string', 'max:100'],
-            'gender' => ['sometimes', 'nullable', 'string', 'max:40'],
+            // A pick from `hr.gender_options` (Jose, 2026-11-06), any case.
+            'gender' => ['sometimes', 'nullable', 'string', Rule::in(array_column(
+                (array) app(SettingsResolver::class)->get('hr.gender_options', $user->organization), 'value'))],
             'date_of_birth' => ['sometimes', 'nullable', 'date', 'before:today'],
 
             // The day they started. Not a `users` column — it is the earliest
@@ -945,6 +951,7 @@ class HrPeopleController extends Controller
             'address' => $user->address,
             ...$user->addressParts(),
             'gender' => $user->gender,
+            'gender_options' => app(SettingsResolver::class)->get('hr.gender_options', $user->organization),
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on' => $answer['started_on'],
 
