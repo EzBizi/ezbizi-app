@@ -132,7 +132,16 @@ class BookingBotTest extends TestCase
         $this->assertSame(Lead::STATUS_BOOKED, $lead->fresh()->status);
     }
 
+    /** Asked on a Friday too (2026-11-06): "friday" is next Friday, not the Saturday after today. */
     public function test_friday_instead_moves_the_offer_to_a_friday(): void
+    {
+        foreach (['2026-11-04 15:00:00', '2026-11-06 15:00:00'] as $now) {
+            $this->travelTo(\Carbon\CarbonImmutable::parse($now, 'UTC'));
+            $this->askFridayInstead();
+        }
+    }
+
+    private function askFridayInstead(): void
     {
         $t = $this->provisionTenant('A1-Group');
         $lead = $this->lead($t);
