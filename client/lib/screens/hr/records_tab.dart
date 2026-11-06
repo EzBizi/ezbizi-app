@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/contracts.dart';
+import '../../core/files.dart';
 import '../../core/hr.dart';
 import '../../core/onboarding.dart';
 import '../../core/phone_numbers.dart';
@@ -17,11 +18,13 @@ import '../../widgets/async_body.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
+import '../../widgets/logo_cropper.dart';
 import '../../widgets/not_filled_in.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
+import '../../widgets/user_avatar.dart';
 import '../../widgets/work_schedule_panel.dart';
 import 'onboarding_form.dart';
 import 'training_card.dart';
@@ -661,10 +664,10 @@ class _RecordsTabState extends State<RecordsTab> {
 }
 
 class _Initials extends StatelessWidget {
-  const _Initials(this.name, {this.size = 34});
+  const _Initials(this.name);
 
   final String name;
-  final double size;
+  static const double size = 34;
 
   @override
   Widget build(BuildContext context) {
@@ -925,6 +928,25 @@ class _PersonRecordState extends State<_PersonRecord> {
 
   static bool _isEmptyList(Object? value) => value is List && value.isEmpty;
 
+  /// Change photo: a SidePanel to upload or remove, then the record reloads
+  /// for the new avatar_version.
+  Future<void> _changePhoto() async {
+    final changed = await showSidePanel<bool>(
+      context,
+      builder: (_) => _PhotoPanel(
+        api: widget.api,
+        personId: widget.personId,
+        name: _person['name'] as String? ?? '',
+        hasAvatar: _person['has_avatar'] == true,
+        version: _person['avatar_version']?.toString() ?? '',
+      ),
+    );
+    if (changed == true && mounted) {
+      await _reload();
+      widget.onChanged();
+    }
+  }
+
   Widget _header(BuildContext context) {
     final theme = Theme.of(context);
     final roleName = (_person['role'] as Map<String, dynamic>?)?['name'];
@@ -942,7 +964,23 @@ class _PersonRecordState extends State<_PersonRecord> {
               icon: const Icon(Icons.arrow_back),
               onPressed: widget.onBack,
             ),
-          _Initials(_person['name'] as String? ?? '', size: 48),
+          // Their photo, which HR can set (design 186, Jose 2026-11-06).
+          Tooltip(
+            message: _noEdit == null ? 'Change photo' : '',
+            child: InkWell(
+              key: const ValueKey('hr-photo'),
+              customBorder: const CircleBorder(),
+              onTap: _noEdit == null ? _changePhoto : null,
+              child: UserAvatar(
+                api: widget.api,
+                userId: widget.personId,
+                name: _person['name'] as String? ?? '',
+                radius: 24,
+                hasAvatar: _person['has_avatar'] == true,
+                version: _person['avatar_version']?.toString() ?? '',
+              ),
+            ),
+          ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -1650,9 +1688,73 @@ class _PersonalSectionState extends State<_PersonalSection> {
     _bornDay.text = _born ?? '';
   }
 
+  /// Gender is picked, not typed (Jose, 2026-11-06). A value saved before the
+  /// picker stays selectable so opening a record never rewrites it.
+  static const _fallbackGenders = [
+    ('male', 'Male'),
+    ('female', 'Female'),
+    ('prefer_not_to_answer', 'Prefers not to answer'),
+  ];
+
+  /// The organization's choices from `gender_options`; a stored value that is
+  /// none of them is offered as itself, so it shows as is.
+  List<(String, String)> _genderOptions(String stored) {
+    final raw = widget.person['gender_options'];
+    final options = raw is List && raw.isNotEmpty
+        ? [
+            for (final o in raw)
+              if (o is Map)
+                ('${o['value'] ?? ''}', '${o['label'] ?? o['value'] ?? ''}'),
+          ]
+        : _fallbackGenders;
+    final known = _genderValue(stored, options) != null;
+
+    return [...options, if (stored.isNotEmpty && !known) (stored, stored)];
+  }
+
+  /// The option a stored value is, matched case-insensitively on value or
+  /// label: older rows hold "Male", newer ones "male".
+  String? _genderValue(String stored, [List<(String, String)>? options]) {
+    if (stored.isEmpty) return null;
+    final lower = stored.toLowerCase();
+    for (final o in options ?? _genderOptions(stored)) {
+      if (o.$1.toLowerCase() == lower || o.$2.toLowerCase() == lower) {
+        return o.$1;
+      }
+    }
+
+    return null;
+  }
+
+  String _genderLabel(String stored) {
+    final value = _genderValue(stored);
+    for (final o in _genderOptions(stored)) {
+      if (o.$1 == value) return o.$2;
+    }
+
+    return stored;
+  }
+
+  Future<void> _copy(String value) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(const SnackBar(content: Text('Copied.')));
+  }
+
+  /// The copy button every field ends in (design 186).
+  Widget _copyButton(String key, String Function() value) => IconButton(
+    key: ValueKey('hr-copy:$key'),
+    tooltip: 'Copy',
+    icon: const Icon(Icons.copy_outlined, size: 18),
+    onPressed: () => _copy(value()),
+  );
+
   @override
   Widget build(BuildContext context) {
     final editable = widget.noEdit == null;
+    final gender = _fields['gender']!.text.trim();
 
     Widget text(String key, String label, {int lines = 1}) => TextField(
       controller: _fields[key],
@@ -1667,7 +1769,11 @@ class _PersonalSectionState extends State<_PersonalSection> {
       // fields (Jose, 2026-09-29, "like we do on marketing SEO").
       decoration: notFilledIn(
         context,
-        InputDecoration(labelText: label, border: const OutlineInputBorder()),
+        InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          suffixIcon: _copyButton(key, () => _fields[key]!.text.trim()),
+        ),
         empty: _personalBoxes.contains(key) && _blank(_fields[key]!.text),
       ),
     );
@@ -1712,9 +1818,34 @@ class _PersonalSectionState extends State<_PersonalSection> {
             firstDate: DateTime(1900),
             lastDate: DateTime.now().subtract(const Duration(days: 1)),
             flagEmpty: true,
+            // Full width, so the row has no gap (Jose, 2026-11-06).
+            fill: true,
+            trailing: _copyButton('date_of_birth', () => _bornDay.text),
             onChanged: (v) => setState(() => _born = v.isEmpty ? null : v),
           ),
-          text('gender', 'Gender'),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: SearchPickerField<String>(
+                  key: const ValueKey('hr-gender'),
+                  label: 'Gender',
+                  hint: 'Not filled in',
+                  border: const OutlineInputBorder(),
+                  value: _genderValue(gender),
+                  options: [
+                    for (final o in _genderOptions(gender))
+                      SearchOption(value: o.$1, label: o.$2),
+                  ],
+                  allowClear: true,
+                  onChanged: editable
+                      ? (v) => setState(() => _fields['gender']!.text = v ?? '')
+                      : null,
+                ),
+              ),
+              _copyButton('gender', () => _genderLabel(gender)),
+            ],
+          ),
         ),
         const SizedBox(height: 14),
         _Field(
@@ -1722,7 +1853,15 @@ class _PersonalSectionState extends State<_PersonalSection> {
           why:
               'They sign in with this, so it is theirs to change under Your '
               'account — changing it from here could lock them out.',
-          child: Text(widget.person['email']?.toString() ?? ''),
+          child: Row(
+            children: [
+              Expanded(child: Text(widget.person['email']?.toString() ?? '')),
+              _copyButton(
+                'email',
+                () => widget.person['email']?.toString() ?? '',
+              ),
+            ],
+          ),
         ),
         if (editable)
           _SaveBar(
@@ -1935,6 +2074,164 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
 }
 
 /// Two fields side by side when there is room, stacked when there is not.
+/// Upload or remove somebody's photo (design 186). Pops true on a change.
+class _PhotoPanel extends StatefulWidget {
+  const _PhotoPanel({
+    required this.api,
+    required this.personId,
+    required this.name,
+    required this.hasAvatar,
+    required this.version,
+  });
+
+  final ApiClient api;
+  final String personId;
+  final String name;
+  final bool hasAvatar;
+  final String version;
+
+  @override
+  State<_PhotoPanel> createState() => _PhotoPanelState();
+}
+
+class _PhotoPanelState extends State<_PhotoPanel> {
+  String? _error;
+  bool _busy = false;
+  bool _confirmRemove = false;
+
+  String get _path => '/hr/people/${widget.personId}/avatar';
+
+  /// Pick, crop to the circle, upload, as Your account does.
+  Future<void> _upload() async {
+    final picked = await Files.pickImage();
+    if (picked == null || !mounted) return;
+    final cropped = await showSidePanel<Uint8List>(
+      context,
+      builder: (_) => LogoCropper(
+        bytes: Uint8List.fromList(picked.bytes),
+        shapes: const {
+          'square': {
+            'width': 512,
+            'height': 512,
+            'label': 'Photo',
+            'help': 'Drag to choose what sits inside the circle.',
+          },
+        },
+      ),
+    );
+    if (cropped == null || !mounted) return;
+    setState(() => _busy = true);
+    final response = await widget.api.postFile(
+      _path,
+      'photo',
+      'avatar.png',
+      cropped,
+    );
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() {
+        _busy = false;
+        _error = response.reason;
+      });
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  Future<void> _remove() async {
+    setState(() => _busy = true);
+    final response = await widget.api.delete(_path);
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() {
+        _busy = false;
+        _error = response.message;
+      });
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return SidePanel(
+      title: '${widget.name}’s photo',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: UserAvatar(
+              api: widget.api,
+              userId: widget.personId,
+              name: widget.name,
+              radius: 60,
+              hasAvatar: widget.hasAvatar,
+              version: widget.version,
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (_error != null) ...[
+            ErrorNote(_error!),
+            const SizedBox(height: 12),
+          ],
+          FilledButton.icon(
+            key: const ValueKey('hr-photo-upload'),
+            onPressed: _busy ? null : _upload,
+            icon: const Icon(Icons.upload_outlined),
+            label: Text(
+              widget.hasAvatar ? 'Upload a new photo' : 'Upload a photo',
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'JPG, PNG or WebP, up to 5 MB.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          if (widget.hasAvatar) ...[
+            const SizedBox(height: 16),
+            // An inline two-step; red only here.
+            if (!_confirmRemove)
+              TextButton(
+                key: const ValueKey('hr-photo-remove'),
+                style: TextButton.styleFrom(foregroundColor: scheme.error),
+                onPressed: _busy
+                    ? null
+                    : () => setState(() => _confirmRemove = true),
+                child: const Text('Remove photo'),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Remove it? Their initials show instead.',
+                      style: TextStyle(color: scheme.error),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _confirmRemove = false),
+                    child: const Text('Keep'),
+                  ),
+                  FilledButton(
+                    key: const ValueKey('hr-photo-remove-confirm'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: scheme.error,
+                      foregroundColor: scheme.onError,
+                    ),
+                    onPressed: _busy ? null : _remove,
+                    child: const Text('Remove'),
+                  ),
+                ],
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _Pair extends StatelessWidget {
   const _Pair(this.left, this.right);
 
