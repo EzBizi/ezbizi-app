@@ -23,7 +23,9 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Which boards exist, and which ones a person sees and may write.
  *
- * Every company, franchise and person has exactly one board. `ensureFor` is
+ * Every top-level company, its franchises and every person has exactly one
+ * board; a Sub Company and its franchises have none (Jose, 2026-11-06), see
+ * `hasPlaceBoard`. Older Sub Company boards are hidden, not deleted. `ensureFor` is
  * idempotent and is called from the model `created` events (AppServiceProvider)
  * and from `ezbizi:backfill-task-boards`.
  *
@@ -51,6 +53,30 @@ class TaskBoards
     ];
 
     public function __construct(private readonly TenantContext $tenant) {}
+
+    /**
+     * A company keeps a board only when it is top-level; a franchise only when
+     * its company is (Jose, 2026-11-06: A-1 Chimney and A-1 Chimney - Texas
+     * do, Sub Company Ace Fireplace does not).
+     */
+    public static function hasPlaceBoard(Company|Franchise $place): bool
+    {
+        $company = $place instanceof Company ? $place
+            : Company::query()->withoutGlobalScopes()->find($place->company_id);
+
+        return $company !== null && $company->parent_company_id === null;
+    }
+
+    /** Hides the boards of Sub Companies and their franchises. */
+    private function withoutSubCompanyBoards(Builder $query): Builder
+    {
+        $subCompanies = Company::query()->whereNotNull('parent_company_id')->select('id');
+
+        return $query
+            ->whereNot(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)->whereIn('company_id', $subCompanies))
+            ->whereNot(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)
+                ->whereIn('franchise_id', Franchise::query()->whereIn('company_id', $subCompanies)->select('id')));
+    }
 
     public function ensureFor(Company|Franchise|User $owner): TaskBoard
     {
@@ -336,13 +362,13 @@ class TaskBoards
                 ->whereIn('franchise_id', Assignment::query()->where('user_id', $user->getKey())->whereNotNull('assigned_franchise_id')->select('assigned_franchise_id')));
 
         if (! $user->hasPermission('tasks.view')) {
-            return TaskBoard::query()->where($mine);
+            return $this->withoutSubCompanyBoards(TaskBoard::query()->where($mine));
         }
 
         [$companyIds, $franchiseIds] = $this->placesInView($user);
         $all = $user->hasPermission('tasks.view_all');
 
-        return TaskBoard::query()->where(fn (Builder $q) => $q
+        return $this->withoutSubCompanyBoards(TaskBoard::query())->where(fn (Builder $q) => $q
             ->where($mine)
             // tasks.view_all: everybody's personal board.
             ->when($all, fn (Builder $e) => $e->orWhere('kind', TaskBoard::KIND_USER))
