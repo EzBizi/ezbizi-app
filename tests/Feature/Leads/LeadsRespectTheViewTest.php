@@ -166,6 +166,30 @@ class LeadsRespectTheViewTest extends TestCase
         $this->assertEqualsCanonicalizing(['Branch caller', 'Company caller'], $names);
     }
 
+    /**
+     * Listed means workable. Analorena (A-1 Chimney only) saw an EzBizi Page
+     * enquiry filed at organization level and was refused its status change.
+     */
+    public function test_an_enquiry_listed_from_inside_a_company_can_be_changed_there(): void
+    {
+        $t       = $this->provisionTenant('A1-Group');
+        $sibling = $this->inTenant($t['org'], fn () => Company::create([
+            'organization_id' => $t['org']->getKey(),
+            'name'            => 'A1 Garage Doors',
+        ]));
+        $everybody = $this->lead($t, null, null, 'Page enquiry');
+        $theirs    = $this->lead($t, $sibling, null, 'Garage caller');
+        $branch    = $this->userWithRole($t, 'Dispatcher', ['leads.view', 'leads.edit', 'leads.local_services.view'], onlyAt: $t['franchise']);
+
+        $this->signedInAs($branch)->patchJson('/api/v1/leads/'.$everybody->getKey(), ['status' => Lead::STATUS_ARCHIVED])->assertOk();
+        // The control: a sibling company's lead is still out of reach.
+        $this->signedInAs($branch)->patchJson('/api/v1/leads/'.$theirs->getKey(), ['status' => Lead::STATUS_ARCHIVED])->assertForbidden();
+
+        // The owner standing in a company view, the other half of the same refusal.
+        $this->signedInAs($t['admin'])->withHeader('X-EzBizi-View', 'company:'.$t['company']->getKey())
+            ->patchJson('/api/v1/leads/'.$everybody->getKey(), ['status' => Lead::STATUS_NEW])->assertOk();
+    }
+
     /** With no header at all, nothing is narrowed and nothing is lost. */
     public function test_the_organization_view_is_still_everything(): void
     {
