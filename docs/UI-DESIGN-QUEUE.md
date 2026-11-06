@@ -5335,3 +5335,7 @@ Jose 11-06: "I'm also thinking if it would not be best to always put the tags at
 ### 188 · HR › Records › Employment: works at several places — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-places-layouts.html`)
 
 Client by UI/UX; server HR 17fb4c40e. Jose via the desk: show current access as a clear list with Add place / remove, plus what the role grants. A "Works at" card: one row per place (Company · Branch) with ×, inline red two-step remove, the last place shows HR's 422 sentence instead; Add place opens the SidePanel search picker from GET hr/people/scope-options; under it, the role and that it applies at every place.
+
+### 190 · HR › Records › Training tab — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-training-tab-layouts.html`)
+
+Jose 11-06 on the Work tab: "this can definitely be shown in a better way, use green and red as well for clock in - out times"; on Training: "same here". Three equal tinted KPI tiles; an aligned table Course | Status (green Passed / amber Due / red Failed-Overdue) | Score bar | Completed | Retake by; empty state; the footnote rewritten plainly. Client by UI/UX (`client/lib/screens/hr/training_card.dart`).
