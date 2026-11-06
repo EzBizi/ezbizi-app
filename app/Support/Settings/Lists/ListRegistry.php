@@ -96,9 +96,9 @@ final class ListRegistry
             // The daily and weekly WhatsApp texts (Jose, 2026-11-06: "order of report by states").
             new ListDefinition(
                 key: 'reports.locations', label: 'Report locations, in order', module: 'reports',
-                columns: [['key' => 'branch', 'label' => 'Branch'], ['key' => 'code', 'label' => 'State code (as Meta campaigns name it)']],
-                help: 'The order the WhatsApp report texts list branches in; branches not here come after, by name. '
-                    .'A Meta campaign with no branch counts toward the branch its state code names here.',
+                columns: [['key' => 'branch', 'label' => 'Branch'], ['key' => 'code', 'label' => 'Codes in Meta campaign names, comma-separated (TX, DFW)']],
+                help: 'The branches the WhatsApp report texts list, in this order; a branch not here is listed only when it has '
+                    .'something to show. A Meta campaign with no branch counts toward the branch whose code is its state or a word of its name.',
                 editPermission: 'reports.settings',
             ),
             ...array_map(fn (array $list) => new ListDefinition(

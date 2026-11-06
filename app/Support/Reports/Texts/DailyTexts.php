@@ -63,11 +63,14 @@ final class DailyTexts
     /** @param list<string>|null $branches */
     public function render(string $kind, Organization $organization, CarbonImmutable $day, ?array $branches = null): string
     {
+        $this->locations = array_flip(array_map(fn (array $row) => mb_strtolower(trim((string) ($row['value']['branch'] ?? $row['key']))),
+            app(BusinessLists::class)->rows('reports.locations')));
         $list = $this->ordered(Franchise::query()->where('is_active', true)
             ->when($branches !== null, fn ($q) => $q->whereIn('id', $branches))
             ->orderBy('name')->get());
-        // One company's branches read as "Texas"; several companies' need theirs.
-        $this->name = $list->pluck('company_id')->unique()->count() > 1 ? fn (Franchise $b) => BranchName::of($b) : fn (Franchise $b) => (string) $b->name;
+        // One company's branches read as "Texas"; several companies' need theirs, unless the business listed it by name.
+        $several = $list->pluck('company_id')->unique()->count() > 1;
+        $this->name = fn (Franchise $b) => ! $several || ($this->locations !== [] && $this->listed($b)) ? (string) $b->name : BranchName::of($b);
 
         return match ($kind) {
             'ppc' => $this->ppc($list, $day),
@@ -96,13 +99,19 @@ final class DailyTexts
     /** @var \Closure(Franchise): string */
     private \Closure $name;
 
+    /** @var array<string, int> reports.locations: lower-cased branch name => position */
+    private array $locations = [];
+
     /** In the business's location order; branches it does not list after, by name. */
     private function ordered(Collection $branches): Collection
     {
-        $order = array_flip(array_map(fn (array $row) => mb_strtolower(trim((string) ($row['value']['branch'] ?? $row['key']))),
-            app(BusinessLists::class)->rows('reports.locations')));
+        return $branches->sortBy(fn (Franchise $b) => [$this->locations[mb_strtolower(trim((string) $b->name))] ?? PHP_INT_MAX, $b->name])->values();
+    }
 
-        return $branches->sortBy(fn (Franchise $b) => [$order[mb_strtolower(trim((string) $b->name))] ?? PHP_INT_MAX, $b->name])->values();
+    /** A branch the business lists (or every branch, when it lists none): an unlisted one is shown only with something to show. */
+    private function listed(Franchise $branch): bool
+    {
+        return $this->locations === [] || isset($this->locations[mb_strtolower(trim((string) $branch->name))]);
     }
 
     /** Payments received per location (Workiz's Payments, by payment date), and the total. */
@@ -112,6 +121,9 @@ final class DailyTexts
         $total = 0;
         foreach ($branches as $branch) {
             $cents = (int) round((float) ReportJobs::payments((string) $branch->getKey())->whereBetween('starts_at', self::range($from, $to))->sum('amount') * 100);
+            if ($cents === 0 && ! $this->listed($branch)) {
+                continue;
+            }
             $lines[] = '• *'.($this->name)($branch).'*: '.self::money($cents);
             $total += $cents;
         }
@@ -132,6 +144,9 @@ final class DailyTexts
         foreach ($branches as $branch) {
             $n = ReportJobs::jobs((string) $branch->getKey())->whereBetween('j.booked_at', self::range($from, $to))->get()
                 ->reject(fn ($job) => self::tagged($job->tags, $skip))->count();
+            if ($n === 0 && ! $this->listed($branch)) {
+                continue;
+            }
             $lines[] = '• *'.($this->name)($branch).'*: '.$n;
             $total += $n;
         }
@@ -173,17 +188,34 @@ final class DailyTexts
 
     /**
      * Facebook spend and lead forms per location, against the jobs from Meta's
-     * source. A campaign counts toward its branch, else the branch its state
-     * code names (reports.locations); the rest are said, not dropped.
+     * source. A campaign counts toward its branch, else the branch whose code
+     * (reports.locations: "TX, DFW") is its state or a word of its name; the
+     * rest are said, not dropped.
      * ponytail: active is "spent in the dates"; Meta's live status is an API
      * call per account, worth it if paused-today campaigns ever matter.
      */
     private function metaAds(Collection $branches, CarbonImmutable $from, CarbonImmutable $to): string
     {
         $byName = $branches->keyBy(fn (Franchise $b) => mb_strtolower(trim((string) $b->name)));
-        $codes = collect(app(BusinessLists::class)->rows('reports.locations'))
-            ->mapWithKeys(fn (array $row) => [mb_strtoupper(trim((string) ($row['value']['code'] ?? ''))) => $byName->get(mb_strtolower(trim((string) ($row['value']['branch'] ?? $row['key']))))?->getKey()])
-            ->filter();
+        $codes = [];
+        foreach (app(BusinessLists::class)->rows('reports.locations') as $row) {
+            $id = $byName->get(mb_strtolower(trim((string) ($row['value']['branch'] ?? $row['key']))))?->getKey();
+            foreach (array_filter(array_map('trim', explode(',', (string) ($row['value']['code'] ?? '')))) as $code) {
+                $codes[mb_strtoupper($code)] ??= (string) $id;
+            }
+        }
+        $place = function (array $c) use ($codes): string {
+            if (($c['franchise_id'] ?? null) !== null) {
+                return (string) $c['franchise_id'];
+            }
+            foreach ($codes as $code => $id) {
+                if ($code === mb_strtoupper((string) $c['state']) || preg_match('/\b'.preg_quote($code, '/').'\b/iu', (string) $c['name'])) {
+                    return $id;
+                }
+            }
+
+            return '';
+        };
         $ours = $branches->keyBy(fn (Franchise $b) => (string) $b->getKey());
         $per = [];
         $elsewhere = ['spend' => 0, 'campaigns' => 0];
@@ -191,7 +223,7 @@ final class DailyTexts
             if ($c['spend_minor'] <= 0) {
                 continue;
             }
-            $id = (string) ($c['franchise_id'] ?? $codes->get(mb_strtoupper(trim((string) $c['state']))) ?? '');
+            $id = $place($c);
             if (! $ours->has($id)) {
                 $elsewhere['spend'] += $c['spend_minor'];
                 $elsewhere['campaigns']++;
@@ -200,7 +232,7 @@ final class DailyTexts
             }
             $per[$id] ??= ['spend' => 0, 'forms' => 0];
             $per[$id]['spend'] += $c['spend_minor'];
-            $per[$id]['forms'] += $c['leads'];
+            $per[$id]['forms'] += $c['forms'];
         }
 
         $source = MarketingReport::sourceOf('meta');
@@ -225,7 +257,7 @@ final class DailyTexts
         }
         if ($elsewhere['campaigns'] > 0) {
             $lines[] = '_'.$elsewhere['campaigns'].' other '.($elsewhere['campaigns'] === 1 ? 'campaign' : 'campaigns').' spent '
-                .self::money($elsewhere['spend']).': no branch here, or no state code in Report locations._';
+                .self::money($elsewhere['spend']).': no branch here, or no code of theirs in Report locations._';
         }
 
         return implode("\n", $lines);
@@ -259,12 +291,13 @@ final class DailyTexts
             return $head."\n\nNo calls answered.";
         }
 
+        // Workiz and the phones spell a name as they like: "Nelly Escobar" is the user "Nelly escobar".
         $roles = User::query()->with('role:id,name')->whereIn('name', array_keys($people))->get()
-            ->mapWithKeys(fn (User $u) => [$u->name => (string) $u->role?->name]);
+            ->mapWithKeys(fn (User $u) => [mb_strtolower($u->name) => (string) $u->role?->name]);
         $order = array_map(fn (array $row) => (string) ($row['value']['role'] ?? $row['key']), app(BusinessLists::class)->rows('reports.dispatcher_roles'));
         $groups = [];
         foreach ($people as $person => $p) {
-            $role = $roles->get($person, '');
+            $role = $roles->get(mb_strtolower((string) $person), '');
             $groups[in_array($role, $order, true) ? $role : 'Others'][$person] = $p;
         }
 
@@ -553,12 +586,14 @@ final class DailyTexts
         foreach ($branches as $branch) {
             $mine = $jobs->where('franchise_id', $branch->getKey());
             if ($mine->isEmpty()) {
-                $empty[] = BranchName::of($branch);
+                if ($this->listed($branch)) {
+                    $empty[] = ($this->name)($branch);
+                }
 
                 continue;
             }
             $lines[] = '';
-            $lines[] = '*'.BranchName::of($branch).' — '.$plural($mine->count()).'*';
+            $lines[] = '*'.($this->name)($branch).' — '.$plural($mine->count()).'*';
             $byTech = $mine->flatMap(fn ($j) => $crew->get($j->id, collect())->pluck('name'))->countBy()->sortKeys();
             foreach ($byTech as $name => $n) {
                 $lines[] = '• '.$name.' — '.$plural($n);

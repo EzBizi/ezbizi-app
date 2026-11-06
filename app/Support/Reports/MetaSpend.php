@@ -28,12 +28,12 @@ final class MetaSpend
             ->when($category, fn ($w, $cat) => $cat === 'none' ? $w->whereNull('c.service_group_id') : $w->where('c.service_group_id', $cat))
             ->groupBy('c.id', 'c.name', 'c.state', 'c.service_group_id', 'g.name', 'f.name', 'c.franchise_id')
             ->selectRaw('c.id, c.name, c.state, c.service_group_id, g.name category, f.name branch, c.franchise_id,
-                    round(sum(i.spend) * 100) spend_minor, sum(i.leads) leads, sum(i.clicks) clicks, sum(i.impressions) impressions')
+                    round(sum(i.spend) * 100) spend_minor, sum(i.leads) leads, sum(i.forms) forms, sum(i.clicks) clicks, sum(i.impressions) impressions')
             ->orderByDesc('spend_minor')
             ->get()
             ->map(fn ($r) => [
                 'id' => $r->id, 'name' => $r->name, 'state' => $r->state, 'category' => $r->category,
-                'branch' => $r->branch, 'franchise_id' => $r->franchise_id, 'spend_minor' => (int) $r->spend_minor, 'leads' => (int) $r->leads,
+                'branch' => $r->branch, 'franchise_id' => $r->franchise_id, 'spend_minor' => (int) $r->spend_minor, 'leads' => (int) $r->leads, 'forms' => (int) $r->forms,
                 'cost_per_lead_minor' => $r->leads > 0 ? intdiv((int) $r->spend_minor, (int) $r->leads) : null,
                 'clicks' => (int) $r->clicks, 'impressions' => (int) $r->impressions,
             ])
