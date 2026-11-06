@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
@@ -343,6 +344,10 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
               const SizedBox(height: 12),
               _prefixSentence(context),
             ],
+            if (_extras['payments'] case {'configured': true}) ...[
+              const SizedBox(height: 12),
+              _paymentsSentence(context),
+            ],
           ],
         ),
       ],
@@ -578,6 +583,57 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
         ),
     ],
   );
+
+  /// Card and bank payments: the company's own Stripe account. Once it can
+  /// take charges, every invoice it sends carries a Pay link.
+  Widget _paymentsSentence(BuildContext context) {
+    final p = _extras['payments'] as Map;
+    final live = p['charges_enabled'] == true;
+    final started = p['stripe_account_id'] != null;
+    final theme = Theme.of(context);
+    return Wrap(
+      key: const ValueKey('invoice-setting-payments'),
+      spacing: 8,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          live
+              ? 'Customers can pay online by card or bank transfer: every invoice carries a Pay link.'
+              : 'Let customers pay invoices online by card or bank transfer.',
+        ),
+        if (live && p['payouts_enabled'] != true)
+          Text(
+            'Stripe still needs something before it can pay out to your bank.',
+            style: TextStyle(color: theme.colorScheme.error),
+          ),
+        if (p['may_connect'] == true && (!live || p['payouts_enabled'] != true))
+          FilledButton(
+            key: const ValueKey('invoice-payments-connect'),
+            onPressed: _busy ? null : _connectStripe,
+            child: Text(started ? 'Continue Stripe setup' : 'Connect Stripe'),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _connectStripe() async {
+    setState(() => _busy = true);
+    final r = await widget.api.post('/invoices/payments-account/onboarding', {
+      'company_id': _company,
+    });
+    if (!mounted) return;
+    setState(() => _busy = false);
+    final data = r.ok ? r.body['data'] : null;
+    final url = data is Map ? data['url'] as String? : null;
+    if (url == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
 
   /// Which place these settings are for: the organization (from an
   /// organization view) or one of the companies in view.
