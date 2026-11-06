@@ -1079,6 +1079,15 @@ class _PersonRecordState extends State<_PersonRecord> {
     ),
     'employment' => _EmploymentSection(
       key: ValueKey('employment-$_version'),
+      api: widget.api,
+      personId: widget.personId,
+      onPlaces: (record) {
+        setState(() {
+          _person = record;
+          _version++;
+        });
+        widget.onChanged();
+      },
       person: _person,
       options: widget.options,
       cannotChangeRole: widget.cannotChangeRole,
@@ -1878,6 +1887,9 @@ class _PersonalSectionState extends State<_PersonalSection> {
 class _EmploymentSection extends StatefulWidget {
   const _EmploymentSection({
     super.key,
+    required this.api,
+    required this.personId,
+    required this.onPlaces,
     required this.person,
     required this.options,
     required this.cannotChangeRole,
@@ -1886,6 +1898,11 @@ class _EmploymentSection extends StatefulWidget {
     required this.onSave,
   });
 
+  final ApiClient api;
+  final String personId;
+
+  /// The record the places endpoints answer with (design 188).
+  final ValueChanged<Map<String, dynamic>> onPlaces;
   final Map<String, dynamic> person;
   final AssignmentOptions options;
   final String? cannotChangeRole;
@@ -1903,19 +1920,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
   bool get _savedActive => widget.person['is_active'] != false;
   String? get _savedStart => widget.person['started_on']?.toString();
 
-  /// Where they work as `type:id`, when it is one place; null for none or
-  /// several, which the picker shows as text until somebody picks one.
-  String? get _savedPlace {
-    final rows = (widget.person['assignments'] as List<dynamic>? ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .toList();
-    return rows.length == 1
-        ? '${rows.single['type']}:${rows.single['scope_id']}'
-        : null;
-  }
-
   late String? _role = _savedRole;
-  late String? _place = _savedPlace;
   late bool _active = _savedActive;
   late String? _start = _savedStart;
   late final _startDay = TextEditingController(text: _savedStart ?? '');
@@ -1930,10 +1935,6 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
     if (_role != _savedRole && _role != null) 'role_id': _role,
     if (_active != _savedActive) 'is_active': _active,
     if (_start != _savedStart && _start != null) 'started_on': _start,
-    if (_place != _savedPlace && _place != null) ...{
-      'scope_type': _place!.split(':').first,
-      'scope_id': _place!.split(':').last,
-    },
   };
 
   @override
@@ -2016,45 +2017,15 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
           ),
         ),
         const SizedBox(height: 14),
-        // Editable (Mia, 2026-10-02: "assigning andy to A1-Group instead so
-        // she has full access"). Only places the editor reaches are offered,
-        // the same list the invitation uses, and the server checks it again.
-        if (editable && widget.options.scopes.isNotEmpty)
-          SearchPickerField<String>(
-            key: const ValueKey('hr-works-at'),
-            value: _place,
-            label: 'Works at',
-            hint: _RecordsTabState._where(widget.person).isEmpty
-                ? null
-                : _RecordsTabState._where(widget.person),
-            helperText:
-                'Everything beneath it comes with it: a company covers its '
-                'franchises, the organization covers every company. Moving '
-                'them replaces where they were.',
-            helperMaxLines: 3,
-            border: const OutlineInputBorder(),
-            options: [
-              for (final scope in widget.options.scopes)
-                SearchOption(
-                  value: scope.value,
-                  label: scope.isActive
-                      ? scope.pathLabel
-                      : '${scope.pathLabel} — deactivated',
-                  enabled: scope.isActive,
-                ),
-            ],
-            onChanged: (value) => setState(() => _place = value),
-          )
-        else
-          _Field(
-            label: 'Works at',
-            why: 'Set when they were invited.',
-            child: Text(
-              _RecordsTabState._where(widget.person).isEmpty
-                  ? '—'
-                  : _RecordsTabState._where(widget.person),
-            ),
-          ),
+        // Several places, added and removed one at a time (design 188).
+        _WorksAt(
+          api: widget.api,
+          personId: widget.personId,
+          person: widget.person,
+          options: widget.options,
+          editable: editable,
+          onPlaces: widget.onPlaces,
+        ),
         if (editable)
           _SaveBar(
             label: 'Save employment',
@@ -2062,7 +2033,6 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
             onSave: () => widget.onSave(_change),
             onDiscard: () => setState(() {
               _role = _savedRole;
-              _place = _savedPlace;
               _active = _savedActive;
               _start = _savedStart;
               _startDay.text = _savedStart ?? '';
@@ -2074,6 +2044,205 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
 }
 
 /// Two fields side by side when there is room, stacked when there is not.
+/// Where somebody works, one row per place (design 188): Add place and an
+/// inline two-step remove. The server refuses their last place with its own
+/// sentence, so that row says it instead of offering ×.
+class _WorksAt extends StatefulWidget {
+  const _WorksAt({
+    required this.api,
+    required this.personId,
+    required this.person,
+    required this.options,
+    required this.editable,
+    required this.onPlaces,
+  });
+
+  final ApiClient api;
+  final String personId;
+  final Map<String, dynamic> person;
+  final AssignmentOptions options;
+  final bool editable;
+  final ValueChanged<Map<String, dynamic>> onPlaces;
+
+  static const lastPlace =
+      'This is the only place they work. Add another first.';
+
+  @override
+  State<_WorksAt> createState() => _WorksAtState();
+}
+
+class _WorksAtState extends State<_WorksAt> {
+  String? _confirming;
+  bool _busy = false;
+  String? _error;
+
+  List<Map<String, dynamic>> get _places =>
+      (widget.person['assignments'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
+  static String _label(Map<String, dynamic> place) {
+    final name = place['name']?.toString() ?? '';
+    final company = place['company']?.toString() ?? '';
+    return company.isEmpty ? name : '$company · $name';
+  }
+
+  static String _kind(Map<String, dynamic> place) => switch (place['type']) {
+    'organization' => 'Organization · covers every company',
+    'company' => 'Company · covers its branches',
+    _ => 'Branch',
+  };
+
+  Future<void> _send(Future<ApiResponse> call) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final response = await call;
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _confirming = null;
+      if (!response.ok) _error = response.reason;
+    });
+    if (response.ok) {
+      widget.onPlaces(Map<String, dynamic>.from(response.data as Map));
+    }
+  }
+
+  Future<void> _add() async {
+    final have = {for (final p in _places) '${p['type']}:${p['scope_id']}'};
+    final picked = await showSearchPicker<String>(
+      context,
+      title: 'Add place',
+      options: [
+        for (final scope in widget.options.scopes)
+          if (!have.contains(scope.value))
+            SearchOption(
+              value: scope.value,
+              label: scope.isActive
+                  ? scope.pathLabel
+                  : '${scope.pathLabel} — deactivated',
+              enabled: scope.isActive,
+            ),
+      ],
+    );
+    if (picked == null || !mounted) return;
+    await _send(
+      widget.api.post('/hr/people/${widget.personId}/places', {
+        'scope_type': picked.split(':').first,
+        'scope_id': picked.split(':').last,
+      }),
+    );
+  }
+
+  Widget? _trailing(ThemeData theme, Map<String, dynamic> place, int count) {
+    if (!widget.editable || count == 1) return null;
+    final id = place['id']?.toString();
+    if (_confirming != id) {
+      return IconButton(
+        key: ValueKey('hr-place-x:$id'),
+        tooltip: 'Remove this place',
+        icon: const Icon(Icons.close, size: 18),
+        onPressed: _busy ? null : () => setState(() => _confirming = id),
+      );
+    }
+
+    return Wrap(
+      spacing: 4,
+      children: [
+        FilledButton(
+          key: ValueKey('hr-place-remove:$id'),
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.error,
+            foregroundColor: theme.colorScheme.onError,
+          ),
+          onPressed: _busy
+              ? null
+              : () => _send(
+                  widget.api.delete('/hr/people/${widget.personId}/places/$id'),
+                ),
+          child: const Text('Remove'),
+        ),
+        TextButton(
+          onPressed: () => setState(() => _confirming = null),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final places = _places;
+    final role = (widget.person['role'] as Map<String, dynamic>?)?['name'];
+
+    return Card(
+      key: const ValueKey('hr-works-at'),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Works at', style: theme.textTheme.titleSmall),
+                ),
+                if (widget.editable && widget.options.scopes.isNotEmpty)
+                  TextButton.icon(
+                    key: const ValueKey('hr-add-place'),
+                    onPressed: _busy ? null : _add,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add place'),
+                  ),
+              ],
+            ),
+            if (places.isEmpty) const Text('—'),
+            for (final place in places)
+              ListTile(
+                key: ValueKey('hr-place:${place['id']}'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  place['type'] == 'franchise'
+                      ? Icons.storefront_outlined
+                      : Icons.account_tree_outlined,
+                  size: 20,
+                ),
+                title: Text(
+                  _label(place),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  places.length == 1 && widget.editable
+                      ? _WorksAt.lastPlace
+                      : _kind(place),
+                ),
+                trailing: _trailing(theme, place, places.length),
+              ),
+            if (_error != null) ErrorNote(_error!),
+            if (role != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, right: 8),
+                child: Text(
+                  'Their role, $role, applies at every place above. A company '
+                  'covers its branches; the organization covers every company.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Upload or remove somebody's photo (design 186). Pops true on a change.
 class _PhotoPanel extends StatefulWidget {
   const _PhotoPanel({
