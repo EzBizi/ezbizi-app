@@ -13,6 +13,15 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0542', date: '6 Nov 2026', items: [
+      'Scheduling > Availability: picking a ZIP from the suggestions runs the full check, map included',
+      'Scheduling > Availability: tap any other open day to see that day’s best window and technicians',
+      'HR > Records > Personal: every field has its copy button inside the box, and date fields are full width everywhere',
+      'HR > Records > Training: green, amber and red status with score bars and clear columns',
+      'Work schedules: clock-in in green, clock-out in red, a day bar with daily and weekly hours, and days off shown',
+      'Marketing: a post deleted from YouTube after it went out reads "Posted · deleted from YouTube"',
+      'Leads: a new caller on RingCentral counts as a new lead',
+    ]),
     VersionRelease(version: '0.0.0541', date: '6 Nov 2026', items: [
       'HR > Records > Employment: a person can work at several companies or franchises at once, and the tab lists everywhere they have access',
       'Leads: a lead that belongs to the whole organization can be changed by anyone who can see it and edit leads',
