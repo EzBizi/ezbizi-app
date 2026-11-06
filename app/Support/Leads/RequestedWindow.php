@@ -15,8 +15,15 @@ final class RequestedWindow
 {
     private const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
-    /** @return ?array{start: string, end: string} Y-m-d, inclusive */
-    public static function from(string $text, CarbonImmutable $today): ?array
+    /**
+     * $earliest: the first day that can be booked. A day named alone that falls
+     * before it means the next one - "friday" said on a Friday to the booking
+     * bot, which offers from tomorrow, is next Friday, not a Saturday
+     * (2026-11-06).
+     *
+     * @return ?array{start: string, end: string} Y-m-d, inclusive
+     */
+    public static function from(string $text, CarbonImmutable $today, ?CarbonImmutable $earliest = null): ?array
     {
         $t = mb_strtolower($text);
         $range = fn (CarbonImmutable $a, CarbonImmutable $b) => $b->lt($a) ? null : ['start' => $a->toDateString(), 'end' => $b->toDateString()];
@@ -41,15 +48,18 @@ final class RequestedWindow
             (bool) preg_match('/\bthis weekend\b/', $t) => $range($next('saturday'), $next('saturday')->addDay()),
             (bool) preg_match('/\bnext week\b/', $t) => $range($today->modify('next monday'), $today->modify('next monday')->addDays(6)),
             (bool) preg_match('/\bthis week\b/', $t) => $range($today, $today->endOfWeek()),
-            default => self::namedDay($t, $next),
+            default => self::namedDay($t, $next, $earliest),
         };
     }
 
-    private static function namedDay(string $t, \Closure $next): ?array
+    private static function namedDay(string $t, \Closure $next, ?CarbonImmutable $earliest): ?array
     {
         foreach (self::DAYS as $day) {
             if (preg_match('/\b'.$day.'\b/', $t)) {
                 $d = $next($day);
+                if ($earliest !== null && $d->lt($earliest)) {
+                    $d = $d->addWeek();
+                }
 
                 return ['start' => $d->toDateString(), 'end' => $d->toDateString()];
             }

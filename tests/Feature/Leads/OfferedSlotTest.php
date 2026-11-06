@@ -26,6 +26,9 @@ class OfferedSlotTest extends TestCase
         $this->assertSame(['start' => '2026-10-19', 'end' => '2026-10-25'], RequestedWindow::from('sometime next week', $wed));
         $this->assertSame(['start' => '2026-10-17', 'end' => '2026-10-18'], RequestedWindow::from('this weekend please', $wed));
         $this->assertSame(['start' => '2026-10-14', 'end' => '2026-10-14'], RequestedWindow::from('wednesday', $wed), 'today, not next week');
+        // Where today cannot be booked (the booking bot offers from tomorrow), it is next week's.
+        $this->assertSame(['start' => '2026-10-21', 'end' => '2026-10-21'], RequestedWindow::from('wednesday', $wed, $wed->addDay()));
+        $this->assertSame(['start' => '2026-10-16', 'end' => '2026-10-16'], RequestedWindow::from('Friday works', $wed, $wed->addDay()));
         $this->assertNull(RequestedWindow::from('How much is a sweep?', $wed));
     }
 
