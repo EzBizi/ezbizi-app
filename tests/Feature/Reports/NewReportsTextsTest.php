@@ -79,6 +79,8 @@ class NewReportsTextsTest extends TestCase
         $this->record($this->nj, 'payment', 'P2', '2026-11-07 23:30:00', 50.5);
         $this->record($this->nj, 'payment', 'P3', '2026-11-08 00:10:00', 999);
         $this->record($this->t['franchise'], 'payment', 'P4', '2026-11-07 12:00:00', 20);
+        $this->inTenant($this->t['org'], fn () => Franchise::query()->create(['organization_id' => $this->t['org']->id,
+            'company_id' => $this->t['company']->id, 'name' => 'Zero Town', 'timezone' => 'America/New_York', 'currency' => 'USD', 'is_active' => true]));
 
         $text = $this->text('revenue_collected');
 
@@ -86,6 +88,8 @@ class NewReportsTextsTest extends TestCase
         $this->assertStringContainsString("• *New Jersey*: $150.50\n• *".$this->t['franchise']->name.'*: $20.00', $text);
         $this->assertStringContainsString('*TOTAL: $170.50*', $text);
         $this->assertStringNotContainsString('999', $text);
+        // Not listed and nothing collected: not a line of $0.00.
+        $this->assertStringNotContainsString('Zero Town', $text);
     }
 
     public function test_jobs_created_leave_out_paid_estimated_however_workiz_decorates_it(): void
@@ -119,19 +123,20 @@ class NewReportsTextsTest extends TestCase
         $this->assertStringContainsString('• *TOTAL*: spent $300.00 · 2 jobs', $text);
     }
 
-    public function test_meta_ads_place_a_campaign_by_its_state_code_and_count_forms(): void
+    public function test_meta_ads_place_a_campaign_by_its_state_or_a_city_in_its_name_and_count_forms(): void
     {
+        DB::table('business_list_items')->where('list_key', 'reports.locations')->update(['value' => json_encode(['branch' => 'New Jersey', 'code' => 'NJ, Newark'])]);
         $this->inTenant($this->t['org'], function () {
             $c = new SocialConnection;
             $c->forceFill(['organization_id' => $this->t['org']->id, 'scope_type' => SocialConnection::SCOPE_ORGANIZATION, 'scope_id' => $this->t['org']->id,
                 'provider' => SocialProvider::FacebookAds->value, 'remote_id' => 'act_1', 'display_name' => 'Meta']);
             $c->connect(['access_token' => 't']);
             $c->save();
-            foreach ([['C1', 'NJ', 80.0, 4], ['C2', 'TX', 25.0, 1], ['C3', 'NJ', 0.0, 0]] as [$id, $state, $spend, $leads]) {
+            foreach ([['C1', 'NJ', 80.0, 4], ['C2', 'TX', 25.0, 1], ['C3', 'NJ', 0.0, 0], ['A1 - Meta Leads - Newark', null, 20.0, 2]] as [$id, $state, $spend, $forms]) {
                 DB::table('meta_ad_campaigns')->insert(['id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id, 'connection_id' => $c->id,
                     'campaign_id' => $id, 'name' => $id, 'state' => $state, 'created_at' => now(), 'updated_at' => now()]);
                 DB::table('meta_ad_insights')->insert(['id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id, 'connection_id' => $c->id,
-                    'date' => '2026-11-08', 'campaign_id' => $id, 'adset_id' => 'A'.$id, 'region' => '', 'spend' => $spend, 'leads' => $leads,
+                    'date' => '2026-11-08', 'campaign_id' => $id, 'adset_id' => 'A'.$id, 'region' => '', 'spend' => $spend, 'leads' => 999, 'forms' => $forms,
                     'created_at' => now(), 'updated_at' => now()]);
             }
         });
@@ -139,13 +144,14 @@ class NewReportsTextsTest extends TestCase
 
         $text = $this->text('evening');
 
-        $this->assertStringContainsString('• *New Jersey*: spent $80.00 · 1 job · $80.00 per job · 4 forms', $text);
+        $this->assertStringContainsString('• *New Jersey*: spent $100.00 · 1 job · $100.00 per job · 6 forms', $text);
         $this->assertStringContainsString('1 other campaign spent $25.00', $text);
     }
 
     public function test_weekly_dispatchers_list_dispatchers_before_remote_dispatchers(): void
     {
-        foreach (['Rina' => 'Remote Dispatcher', 'Dov' => 'Dispatcher'] as $name => $role) {
+        // The user is "dov"; Workiz and the phones say "Dov".
+        foreach (['Rina' => 'Remote Dispatcher', 'dov' => 'Dispatcher'] as $name => $role) {
             $user = $this->userWithRole($this->t, $role, [], strtolower($name).'@alpha.test');
             $this->inTenant($this->t['org'], fn () => $user->forceFill(['name' => $name])->save());
         }

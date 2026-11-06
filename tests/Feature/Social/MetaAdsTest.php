@@ -86,7 +86,7 @@ class MetaAdsTest extends TestCase
         $row = fn (?string $region) => array_filter([
             'date_start' => '2026-10-10', 'campaign_id' => '900', 'adset_id' => '77', 'adset_name' => 'Houston',
             'spend' => '12.50', 'impressions' => '1000', 'clicks' => '20', 'account_currency' => 'USD',
-            'actions' => [['action_type' => 'link_click', 'value' => '20'], ['action_type' => 'lead', 'value' => '3']],
+            'actions' => [['action_type' => 'link_click', 'value' => '20'], ['action_type' => 'lead', 'value' => '3'], ['action_type' => 'onsite_conversion.lead_grouped', 'value' => '2']],
             'region' => $region,
         ]);
 
@@ -106,6 +106,8 @@ class MetaAdsTest extends TestCase
         $this->assertSame('12.50', (string) $rows[0]->spend);
         // "lead", not every action: 3, not 23.
         $this->assertSame(3, (int) $rows[0]->leads);
+        // Instant forms alone, for the report texts: the pixel's "leads" are not forms.
+        $this->assertSame(2, (int) $rows[0]->forms);
 
         // Reports' read of totals, in cents.
         $ads = app(MetaAdInsights::class);
