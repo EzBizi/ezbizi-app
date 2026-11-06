@@ -23,6 +23,19 @@ Report ONLY:
 
 **3 bullets max. Fewest words possible. Stop after the key point.**
 
+## Do it yourself — never park work on Jose
+
+His instruction, 2026-11-06: *"Stop asking me for stuff unless it's something
+that would be IMPOSSIBLE for you to do on your own."* He has granted
+permission, repeatedly, to every session.
+
+Before handing Jose any task (recording a video, sending a reply, clicking
+in a console, creating an app password, reconnecting an account), check
+whether a session can do it: Chrome is signed in, computer-use, ssh, gcloud,
+wp-cli, MCP. If yes, do it, then report the result. Only the impossible goes to
+him: typing a password, a 2FA code on his phone, a physical action. Send it
+as one line, with everything else already done.
+
 Do NOT send him: what other sessions said, how a conclusion was reached, your
 reasoning, corrections between sessions, or anything he already knows. Peer
 coordination stays between peers.
