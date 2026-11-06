@@ -32,6 +32,7 @@ class AddressFields extends StatefulWidget {
     this.enabled = true,
     this.flagEmpty = false,
     this.dense = true,
+    this.copy,
   });
 
   final ApiClient api;
@@ -52,6 +53,10 @@ class AddressFields extends StatefulWidget {
   /// As [AddressLookup.dense]: false for a form whose other boxes are the
   /// theme's own.
   final bool dense;
+
+  /// A copy button for a box, by its field key (address_line1, city…); null
+  /// leaves every box as it was (HR, design 186).
+  final Widget Function(String field, TextEditingController box)? copy;
 
   @override
   State<AddressFields> createState() => _AddressFieldsState();
@@ -97,17 +102,25 @@ class _AddressFieldsState extends State<AddressFields> {
 
   /// A box's decoration, amber and "Not filled in" when [flagEmpty] and it
   /// is empty.
-  InputDecoration _box(TextEditingController controller, String label) =>
-      notFilledIn(
-        context,
-        _plain(label),
-        empty: widget.flagEmpty && controller.text.trim().isEmpty,
-      );
+  InputDecoration _box(
+    TextEditingController controller,
+    String label,
+    String field,
+  ) => notFilledIn(
+    context,
+    _plain(label, controller, field),
+    empty: widget.flagEmpty && controller.text.trim().isEmpty,
+  );
 
-  InputDecoration _plain(String label) => InputDecoration(
+  InputDecoration _plain(
+    String label,
+    TextEditingController controller,
+    String field,
+  ) => InputDecoration(
     border: widget.dense ? const OutlineInputBorder() : null,
     isDense: widget.dense,
     labelText: label,
+    suffixIcon: widget.copy?.call(field, controller),
   );
 
   @override
@@ -125,13 +138,17 @@ class _AddressFieldsState extends State<AddressFields> {
         TextField(
           controller: widget.line1,
           enabled: widget.enabled,
-          decoration: _box(widget.line1, 'Street'),
+          decoration: _box(widget.line1, 'Street', 'address_line1'),
         ),
         const SizedBox(height: 10),
         TextField(
           controller: widget.line2,
           enabled: widget.enabled,
-          decoration: _plain('Suite, unit, floor'),
+          decoration: _plain(
+            'Suite, unit, floor',
+            widget.line2,
+            'address_line2',
+          ),
         ),
         const SizedBox(height: 10),
         Row(
@@ -140,7 +157,7 @@ class _AddressFieldsState extends State<AddressFields> {
             const SizedBox(width: 10),
             // A fixed width, not a share of the row: on a phone the share was
             // narrower than the box's own padding and the ST label vanished.
-            SizedBox(width: 80, child: _state()),
+            SizedBox(width: widget.copy == null ? 80 : 120, child: _state()),
             if (widget.country == null) ...[
               const SizedBox(width: 10),
               Expanded(flex: 2, child: _postal()),
@@ -156,7 +173,7 @@ class _AddressFieldsState extends State<AddressFields> {
                 child: TextField(
                   controller: country,
                   enabled: widget.enabled,
-                  decoration: _box(country, 'Country'),
+                  decoration: _box(country, 'Country', 'country'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -171,7 +188,7 @@ class _AddressFieldsState extends State<AddressFields> {
   Widget _city() => TextField(
     controller: widget.city,
     enabled: widget.enabled,
-    decoration: _box(widget.city, 'City'),
+    decoration: _box(widget.city, 'City', 'city'),
   );
 
   Widget _state() => TextField(
@@ -187,13 +204,14 @@ class _AddressFieldsState extends State<AddressFields> {
     decoration: _box(
       widget.state,
       'ST',
+      'state',
     ).copyWith(counterText: '', hintText: widget.flagEmpty ? '' : null),
   );
 
   Widget _postal() => TextField(
     controller: widget.postal,
     enabled: widget.enabled,
-    decoration: _box(widget.postal, 'ZIP'),
+    decoration: _box(widget.postal, 'ZIP', 'postal_code'),
   );
 }
 
