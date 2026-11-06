@@ -1,3 +1,4 @@
+import '../../widgets/work_schedule_card.dart';
 import '../../widgets/list_search.dart';
 import 'dart:async';
 
@@ -1114,7 +1115,6 @@ class _PersonRecordState extends State<_PersonRecord> {
   // ── Work: saved as it is changed ─────────────────────────────────
 
   Widget _work(BuildContext context) {
-    final theme = Theme.of(context);
     final noEdit = _noEdit;
     final schedule = _person['work_schedule'];
     final days = schedule is Map && schedule['days'] is Map
@@ -1126,14 +1126,20 @@ class _PersonRecordState extends State<_PersonRecord> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (noEdit != null) ...[ErrorNote(noEdit), const SizedBox(height: 12)],
-        _Field(
-          label: UiStrings.t('time_clock.work_schedule'),
-          empty: schedule == null,
-          child: Text(
-            _describeSchedule(days),
-            style: theme.textTheme.bodyMedium,
+        // The same card as Your account and Work Hours (design 189).
+        if (schedule is Map)
+          WorkScheduleCard(
+            schedule: Map<String, dynamic>.from(schedule),
+            canEdit: false,
+            onEdit: () {},
+          )
+        else
+          // None written: amber "Not filled in", as an empty Personal box is.
+          _Field(
+            label: UiStrings.t('time_clock.work_schedule'),
+            empty: true,
+            child: const SizedBox(),
           ),
-        ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
           key: const ValueKey('tour-hr-record-schedule'),
@@ -1161,29 +1167,6 @@ class _PersonRecordState extends State<_PersonRecord> {
         ),
       ],
     );
-  }
-
-  static String _describeSchedule(Map<String, dynamic>? days) {
-    if (days == null) return 'No schedule set.';
-
-    const names = {
-      'monday': 'Monday',
-      'tuesday': 'Tuesday',
-      'wednesday': 'Wednesday',
-      'thursday': 'Thursday',
-      'friday': 'Friday',
-      'saturday': 'Saturday',
-      'sunday': 'Sunday',
-    };
-
-    final lines = [
-      for (final entry in names.entries)
-        if (days[entry.key] is Map)
-          '${entry.value}  ${(days[entry.key] as Map)['start']} – '
-              '${(days[entry.key] as Map)['end']}',
-    ];
-
-    return lines.isEmpty ? 'Every day off.' : lines.join('\n');
   }
 
   Future<void> _editSchedule(Map<String, dynamic>? days) async {
