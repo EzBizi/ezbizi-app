@@ -270,6 +270,11 @@ use Illuminate\Support\Facades\Route;
 Route::post('v1/client-issues', [ClientIssuesController::class, 'store'])
     ->middleware('throttle:60,1');
 
+// The public API reference www.ezbizi.com/developers/ renders, generated from
+// the routes a key may call (Jose, 2026-11-06). Paths only, no tenant data.
+Route::get('v1/openapi.json', \App\Http\Controllers\Api\OpenApiController::class)
+    ->middleware('throttle:60,1');
+
 Route::prefix('v1/auth')->group(function () {
     // The front door (§3, TODO #10). One request, one transaction: the person,
     // the organization, its first company and that company's first franchise.

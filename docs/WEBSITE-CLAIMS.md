@@ -3369,3 +3369,35 @@ LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1
 Desk (11-05): 0.0.0539 is LIVE (`7305be3c3`), so the schedule sentence above is now load-bearing, not
 pre-emptive; nothing merged today touched Training, ring groups, Scheduled Jobs, LSA ingest or
 publishers (no row counts taken).
+
+## 2026-11-06: `/developers/` and `/developers/reference/` published (Jose, via the desk)
+
+Jose asked (relayed by the deploy desk) for a public developer section in the shape of the one
+he built for Memberly: a guide page and a Scalar reference. New WP pages 22 (`developers`) and 23
+(`reference`, child of 22). Footer link "Developers" on `/` and `/download/`; sitemap +2 entries.
+
+- **The reference is generated, never hand-written.** `GET /api/v1/openapi.json`
+  (`OpenApiController`, public, throttle 60/min) is built from `McpController::routes()`, the
+  table `list_endpoints` reads, so the blocked prefixes (auth, staff, mcp, me/api-keys,
+  me/sessions) never appear; test `test_the_public_reference_lists_what_list_endpoints_lists_…`.
+  The page fetches `/ezbizi-api.json` on www (CSP `connect-src 'self'`); the websites box copies
+  the app's spec there hourly (ezbizi_ftp crontab, `refresh-api-spec.sh`, keeps the last good
+  copy). Until the endpoint is released the seed copy is one generated locally from main
+  (734 paths, 989 operations).
+- **No key is ever typed into www**: Scalar test requests and client button hidden, no proxy, no
+  telemetry. App CORS still allows only app/dev origins — do not add www to make "try it" work.
+- **Load-bearing on `/developers/`** (re-check if these move): levels Viewer = GET, Editor = no
+  DELETE, Full = all (`EnforceApiKeyAccess`); role grants `api_keys.view/edit/delete`; no key may
+  touch password/2FA/SMS codes/sessions/keys/account deletion; keys never idle out, end on revoke
+  or password reset; MCP 120/min (`routes/api.php` `mcp` throttle) and no general per-key limit;
+  error codes `api_key_*`, `permission_denied`, `subscription_inactive` (402); webhook signature
+  = hex HMAC-SHA256 of `timestamp.body` (`OutboundWebhook`); "Not yet: OAuth, SSE" (`McpController`
+  docblock). If OAuth lands, the claude.ai/ChatGPT note goes false.
+- **Checked, and deliberately left alone:** the reference lists every tenant route, so it names
+  modules on the do-not list (Training, WhatsApp, invoices…) as paths. That is a route table,
+  not a capability claim; the forbidden-terms gate is for page copy. The spec currently has none
+  of the four terms anyway.
+
+Gate: forbidden-terms (LINE-split) over `/`, `/download/`, `/developers/`, `/developers/reference/`
+ok - 4 terms, none present. MCP/API tests 23/23 (`ApiKeysAndMcpTest`, private schema).
+
