@@ -3366,4 +3366,6 @@ the websites box. `www/` not updated (frozen at the 11-02 import).
 
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) over the 8
 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
-Desk asked about 0.0.0539 timing and the do-not rows; no answer by the time of writing.
+Desk (11-05): 0.0.0539 is LIVE (`7305be3c3`), so the schedule sentence above is now load-bearing, not
+pre-emptive; nothing merged today touched Training, ring groups, Scheduled Jobs, LSA ingest or
+publishers (no row counts taken).
