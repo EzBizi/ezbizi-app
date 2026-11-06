@@ -5339,3 +5339,7 @@ Client by UI/UX; server HR 17fb4c40e. Jose via the desk: show current access as 
 ### 190 · HR › Records › Training tab — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-training-tab-layouts.html`)
 
 Jose 11-06 on the Work tab: "this can definitely be shown in a better way, use green and red as well for clock in - out times"; on Training: "same here". Three equal tinted KPI tiles; an aligned table Course | Status (green Passed / amber Due / red Failed-Overdue) | Score bar | Completed | Retake by; empty state; the footnote rewritten plainly. Client by UI/UX (`client/lib/screens/hr/training_card.dart`).
+
+### 189 · HR › Work: work schedule — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-work-schedule-layouts.html`)
+
+Client by UI/UX. Jose 11-06: "this can definitely be shown in a better way, use green and red as well for clock in - out times". All seven days as rows (a day off reads "Off" instead of vanishing), green in chip (Tone.ok), red out chip (Tone.bad; his ruling for this screen), a 24 h day bar, hours per day and a weekly total. Times through DisplayFormats.formatWallClock. Phone drops the bar.
