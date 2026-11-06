@@ -565,6 +565,21 @@ return [
         'retire_deleted' => (bool) env('WORKIZ_RETIRE_DELETED', false),
     ],
 
+    // Payments: Stripe Connect, Standard accounts (Jose 2026-11-06), direct
+    // charges on the invoicing company's own account
+    // (App\Support\Payments\StripeGateway). Unset secret: invoices carry no
+    // Pay link and connecting says "not set up on this server yet".
+    'stripe' => [
+        'secret' => env('STRIPE_SECRET', ''),
+        // Optional: no platform (non-Connect) endpoint exists today.
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET', ''),
+        'connect_webhook_secret' => env('STRIPE_CONNECT_WEBHOOK_SECRET', ''),
+        // `full` (Standard, chosen) or `express` (EzBizi carries losses).
+        'connect_dashboard' => env('STRIPE_CONNECT_DASHBOARD', 'full'),
+        // EzBizi's cut of each payment, percent; 0 takes nothing.
+        'application_fee_percent' => (float) env('STRIPE_APPLICATION_FEE_PERCENT', 0),
+    ],
+
     // The Grok Build CLI's home on the box, signed in to Jose's Grok
     // subscription (App\Support\Ai\GrokCli). Unset: nothing uses it.
     // The AI behind GrokCli (AiProvider): grok, claude, or auto (Grok when
