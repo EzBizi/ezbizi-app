@@ -1252,6 +1252,20 @@ class ActionRunner
 
         $text = $this->interpolate($message, $event, $subject);
 
+        // Skips, not failures, so the count cannot switch the rule off: a lead
+        // with no online booking drops a one-line "book here" message whole,
+        // and a company with no cleared line has nothing to text from (health
+        // sweep 2026-11-06: 15 such failures in a day on Triplex's rule).
+        $skip = trim($text) === ''
+            ? 'Every line of this message needs a field this enquiry does not have (a '
+                .'booking link, with no booking page or open area for their ZIP), so nothing was sent.'
+            : ($bySms && app(LeadTexts::class)->line($subject) === null
+                ? "No texting line is cleared to send for this lead's company, so nothing was sent."
+                : null);
+        if ($skip !== null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $skip];
+        }
+
         try {
             $bySms
                 ? app(LeadTexts::class)->send($subject, $text, automatic: true)
