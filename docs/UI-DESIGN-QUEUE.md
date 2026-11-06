@@ -5331,3 +5331,7 @@ Client by UI/UX; server by HR. Jose 11-06 (relayed by Website Changes): Gender a
 ### 187 · Lists: tags line up beside the time (Phone › Recent calls, Leads inbox) — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/list-tags-right-layouts.html`)
 
 Jose 11-06: "I'm also thinking if it would not be best to always put the tags at the opposite side, like for example in this scenario moving all the tabs to the left side of the time, so they all line up. same on leads as well. i feel it would be a lot cleaner." Option 1: fixed-width right-aligned tag column just left of the time; lead tags (status, Customer, Facebook, Lead/Teammate) in it, max 2 then "+N"; message chips (Text, Call, Chat, Form) stay on line 2 before the preview. Phone: pills right-aligned under the time.
+
+### 188 · HR › Records › Employment: works at several places — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-places-layouts.html`)
+
+Client by UI/UX; server HR 17fb4c40e. Jose via the desk: show current access as a clear list with Add place / remove, plus what the role grants. A "Works at" card: one row per place (Company · Branch) with ×, inline red two-step remove, the last place shows HR's 422 sentence instead; Add place opens the SidePanel search picker from GET hr/people/scope-options; under it, the role and that it applies at every place.
