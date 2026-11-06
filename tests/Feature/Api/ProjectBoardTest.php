@@ -42,6 +42,12 @@ class ProjectBoardTest extends TestCase
         $this->assertSame('7003', $row['workiz_id']);
         $this->assertSame('Alpha F1', $row['franchise']);
         $this->assertArrayHasKey('total', $row);
+
+        // The dashboard glance counts what the board counts, and nothing of Beta's.
+        $data = app(\App\Support\Dashboard\Glances\ProjectBoardGlance::class)
+            ->resolve($alpha['admin'], \App\Support\Dashboard\DashboardPeriod::for($alpha['admin']), [])->data;
+        $this->assertSame('3 open jobs.', $data['sentence']);
+        $this->assertSame([1, 1, 1, 0, 0, 1], array_column($data['figures'], 'value'));
     }
 
     public function test_the_franchise_filter_narrows_and_refuses_one_out_of_view(): void

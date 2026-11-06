@@ -10,6 +10,7 @@ use App\Support\Dashboard\Glances\CustomersGlance;
 use App\Support\Dashboard\Glances\EmailGlance;
 use App\Support\Dashboard\Glances\FieldGlance;
 use App\Support\Dashboard\Glances\FleetGlance;
+use App\Support\Dashboard\Glances\ProjectBoardGlance;
 use App\Support\Dashboard\Glances\HrGlance;
 use App\Support\Dashboard\Glances\InspectionGlance;
 use App\Support\Dashboard\Glances\InventoryGlance;
@@ -44,7 +45,7 @@ class GlanceRegistry
      */
     public const ORDER = [
         // work_hours beside hr, where its sidebar entry sits (2026-09-24).
-        'hr', 'work_hours', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
+        'hr', 'work_hours', 'customers', 'jobs', 'project_board', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         // Sales before Leads, where its sidebar entry sits (2026-10-14).
         'services', 'leads',
@@ -217,6 +218,7 @@ class GlanceRegistry
         WorkHoursGlance::class,
         CustomersGlance::class,
         JobsGlance::class,
+        ProjectBoardGlance::class,
         InspectionGlance::class,
         FleetGlance::class,
         InventoryGlance::class,
