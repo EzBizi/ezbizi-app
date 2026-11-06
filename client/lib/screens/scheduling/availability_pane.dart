@@ -261,9 +261,14 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     _search.text = label;
     setState(() => _suggestions = []);
 
+    // A zip is asked as a zip even though it names its area: asking the area
+    // lost the zip, and with it the map and the nearby-day suggestion
+    // (Jose, 2026-11-06: picking from the list did nothing Check did).
     final areaId = s['area_id'] as String?;
     await _run(
-      areaId != null
+      s['type'] == 'zip'
+          ? {'zip': label}
+          : areaId != null
           ? {'area_id': areaId}
           : s['type'] == 'city'
           ? {'city': label}
