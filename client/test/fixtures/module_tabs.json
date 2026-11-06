@@ -272,6 +272,19 @@
             "parent": "reports",
             "tabs": []
         },
+        "project_board": {
+            "label": "Project Management",
+            "parent": null,
+            "tabs": [
+                "Unscheduled",
+                "Ready to Schedule",
+                "Scheduled",
+                "In Progress",
+                "Done Waiting Payment",
+                "Complete",
+                "Settings"
+            ]
+        },
         "project_management": {
             "label": "Project Management - 1",
             "parent": null,
@@ -592,6 +605,7 @@
         "phone.users.view",
         "phone.view",
         "profit_loss.view",
+        "project_board.view",
         "project_management.view",
         "project_management_2.view",
         "reports.build",

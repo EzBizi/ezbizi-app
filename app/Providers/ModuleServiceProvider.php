@@ -1514,6 +1514,29 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * Project Management (Jose, 2026-11-06): built from scratch after
+             * both earlier ones were deleted. Six sub-tabs of jobs, a job's
+             * place from unscheduled to complete; which statuses make each is
+             * the organization's (project_board.tabs). It only reads.
+             */
+            new ModuleDefinition(
+                key: 'project_board',
+                label: 'Project Management',
+                actions: ['view'],
+                tabs: [
+                    new TabDefinition('unscheduled', 'Unscheduled', action: 'view'),
+                    new TabDefinition('ready_to_schedule', 'Ready to Schedule', action: 'view'),
+                    new TabDefinition('scheduled', 'Scheduled', action: 'view'),
+                    new TabDefinition('in_progress', 'In Progress', action: 'view'),
+                    new TabDefinition('done_waiting_payment', 'Done Waiting Payment', action: 'view'),
+                    new TabDefinition('complete', 'Complete', action: 'view'),
+                    new TabDefinition('settings', 'Settings', action: 'view'),
+                ],
+                automationExemptBecause: 'It changes nothing; Jobs raises every event about the jobs it lists.',
+                auditExemptBecause: 'It changes nothing.',
+            ),
+
+            /*
              * Scheduling — how much work a service area can take, per day.
              *
              * THIS COMMENT USED TO SAY "a shell ... no table, no endpoint and
