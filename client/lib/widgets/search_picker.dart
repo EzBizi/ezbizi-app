@@ -89,11 +89,7 @@ class SearchPickerField<T> extends StatelessWidget {
     this.allowClear = false,
     this.searchFrom = 8,
     this.create,
-    this.trailing,
   });
-
-  /// Drawn before the arrow inside the field, e.g. a copy button.
-  final Widget? trailing;
 
   final T? value;
   final List<SearchOption<T>> options;
@@ -190,16 +186,9 @@ class SearchPickerField<T> extends StatelessWidget {
           suffixIconConstraints: isDense
               ? const BoxConstraints(minWidth: 40, minHeight: 24)
               : null,
-          suffixIcon: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ?trailing,
-              Icon(
-                Icons.arrow_drop_down,
-                color: enabled ? scheme.onSurfaceVariant : theme.disabledColor,
-              ),
-              if (trailing != null) const SizedBox(width: 8),
-            ],
+          suffixIcon: Icon(
+            Icons.arrow_drop_down,
+            color: enabled ? scheme.onSurfaceVariant : theme.disabledColor,
           ),
         ),
         // Empty only when there is no hint either. An empty decorator draws
