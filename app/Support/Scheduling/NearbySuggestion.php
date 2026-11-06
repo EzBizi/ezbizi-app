@@ -50,9 +50,14 @@ final class NearbySuggestion
     ) {}
 
     /** @return array<string, mixed> */
-    public function for(ServiceArea $area, string $zip, CarbonImmutable $from): array
+    public function for(ServiceArea $area, string $zip, CarbonImmutable $from, ?string $date = null): array
     {
         $look = $this->load($area, $from);
+        // One day only: the customer cannot take the suggested day and asked
+        // for another (Jose, 2026-11-06) — that day's earliest and best window.
+        if ($date !== null) {
+            $look['days'] = $look['days']->where('date', $date)->values();
+        }
         $origin = $this->centre($area->organization_id, $zip);
         $out = ['radius_miles' => $look['radius'], 'days' => $look['span'], 'origin' => $origin, 'earliest' => null, 'suggested' => null];
 

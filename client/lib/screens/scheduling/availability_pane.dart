@@ -372,10 +372,10 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
 
   /// Asked beside the availability, not instead of it: a failure here only
   /// means no cards and no map, never a broken answer.
-  Future<void> _askSuggestion(String zip, int ticket) async {
+  Future<void> _askSuggestion(String zip, int ticket, {String? date}) async {
     final response = await widget.api.get(
       '/scheduling/availability/suggestion',
-      {'zip': zip},
+      {'zip': zip, 'date': ?date},
     );
     if (!mounted || ticket != _request) return;
     final data = response.ok ? response.body['data'] : null;
@@ -742,15 +742,32 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
                       children: [
                         SizedBox(
                           width: 92,
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              _shortDate(day['date'] as String),
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
+                          // Another day the customer can take: its own
+                          // suggestion, the way the first one was worked out
+                          // (Jose, 2026-11-06).
+                          child: _suggestionZip == null
+                              ? Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Text(
+                                    _shortDate(day['date'] as String),
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                )
+                              : TextButton(
+                                  key: ValueKey('availability-day-${day['date']}'),
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    alignment: Alignment.centerLeft,
+                                  ),
+                                  onPressed: () => _askSuggestion(
+                                    _suggestionZip!,
+                                    _request,
+                                    date: day['date'] as String,
+                                  ),
+                                  child: Text(_shortDate(day['date'] as String)),
+                                ),
                         ),
                         Expanded(child: _windowRow(day)),
                       ],
