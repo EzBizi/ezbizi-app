@@ -1380,7 +1380,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'brought in line there.',
                         executionType: 'job.set',
                     ),
-                    // Jose's Project Management rules (2026-10-21), through Workiz's writer.
+                    // Jose, 2026-10-21: through Workiz's writer.
                     new ActionDefinition(
                         key: 'job.workiz_update',
                         label: 'Update the job in Workiz',
@@ -1460,61 +1460,6 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * Project Management (Jose, 2026-10-21): every job waiting on an
-             * estimate, as a timeline with its cancel clock. Its own sidebar
-             * module ("This Project Management should be its own tab, not a
-             * sub tab of Jobs"). It reads Jobs' records and events, and writes
-             * nothing of its own.
-             */
-            new ModuleDefinition(
-                key: 'project_management',
-                // "- 1" beside its rebuild, Project Management - 2 (Jose, 2026-10-26).
-                label: 'Project Management - 1',
-                actions: ['view'],
-                // Jose, 2026-11-02: never without Jobs. It shows every job
-                // waiting on an estimate and who paid, which Jobs guards.
-                actionRequires: ['view' => ['jobs.view']],
-                /*
-                 * Overview | Jobs | Assignments | Repair team | Rules | Logs |
-                 * Settings (UI queue 127, 139, 141, 143, 144). All are the one grant the
-                 * module always was: naming `view` mints no permission, so no role
-                 * gains or loses a tab, and Settings' writes stay the settings
-                 * API's to refuse. Overview was "Dashboard" and keeps its key; Jobs
-                 * was "Pending Jobs" and keeps `pending`. Repair team (design 144)
-                 * is Reports and Table merged, under Reports' key; `table` is
-                 * retired, and as it minted nothing no grant moves and no
-                 * migration is needed. It reads Financials' repair report, so the
-                 * client also hides it without financials.bases.view. Rules
-                 * (design 144) reads GET jobs/project-management/rules, the same grant.
-                 */
-                tabs: [
-                    new TabDefinition('dashboard', 'Overview', action: 'view'),
-                    new TabDefinition('pending', 'Jobs', action: 'view'),
-                    // Assignments (design 143): Action 1's Task Board cards by technician, the same grant.
-                    new TabDefinition('assignments', 'Assignments', action: 'view'),
-                    new TabDefinition('reports', 'Repair team', action: 'view'),
-                    new TabDefinition('rules', 'Rules', action: 'view'),
-                    // Logs (UI queue 139): what rules and people changed, the same grant.
-                    new TabDefinition('logs', 'Logs', action: 'view'),
-                    new TabDefinition('settings', 'Settings', action: 'view'),
-                ],
-                automationExemptBecause: 'It reads jobs and their events; Jobs raises every event a rule could use.',
-                auditExemptBecause: 'It changes nothing; every change it shows was audited by Jobs.',
-            ),
-
-            /*
-             * Project Management - 2 (Jose, 2026-10-26): Project Management
-             * rebuilt from scratch beside the first, to compare the two. For
-             * now one list, the jobs done pending approval.
-             */
-            new ModuleDefinition(
-                key: 'project_management_2',
-                label: 'Project Management - 2',
-                actions: ['view'],
-                automationExemptBecause: 'Its one write, Submit, raises the job\'s own job.updated and job.status_changed.',
-                auditExemptBecause: 'Its one write, Submit, is a job status change, audited as job.updated like any job edit.',
-            ),
-
             /*
              * Project Management (Jose, 2026-11-06): built from scratch after
              * both earlier ones were deleted. Six sub-tabs of jobs, a job's

@@ -179,10 +179,7 @@ class RolesApiTest extends TestCase
         //            Other people's recordings are listed and played only in
         //            the Recordings tab, so listen without the tab is a grant
         //            nothing can spend; the requirement describes the product.
-        //   project_management  `view` requires `jobs.view` (Jose,
-        //            2026-11-02): it lists every job waiting on an estimate
-        //            and who paid, which a role without Jobs must not see.
-        $argued = ['estimates', 'field', 'project_management', 'reports', 'work_hours'];
+        $argued = ['estimates', 'field', 'reports', 'work_hours'];
 
         $declaring = [];
 

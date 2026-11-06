@@ -15,7 +15,7 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * The writes Jose's Project Management rules make (Automations, 2026-10-21),
+ * The writes Jose's rules make (Automations, 2026-10-21),
  * shaped as measured on NY's test job 900018655 on 2026-10-20.
  */
 class WorkizJobStatusAndTagsTest extends TestCase

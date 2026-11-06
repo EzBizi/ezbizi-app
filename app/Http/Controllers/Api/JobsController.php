@@ -109,11 +109,7 @@ class JobsController extends Controller
             'tag.*' => ['string', 'max:100'],
             'job_type' => ['nullable', 'max:30'],
             'job_type.*' => ['string', 'max:100'],
-            // Project Management's facts (2026-10-22).
-            'review_reason' => ['nullable', 'max:30'],
-            'review_reason.*' => ['string', 'max:100'],
             'external' => ['nullable', 'boolean'],
-            'needs_second_visit' => ['nullable', 'boolean'],
             // "How many jobs were created yesterday at Ace" (Jose, 2026-11-03, on
             // WhatsApp): days in the asker's `timezone`, and one company's branches.
             'created_from' => ['nullable', 'date_format:Y-m-d'],
@@ -196,9 +192,7 @@ class JobsController extends Controller
                     }
                 }))
                 ->when((array) $request->query('job_type', []), fn ($q, $types) => $q->whereIn('job_type', $types))
-                ->when((array) $request->query('review_reason', []), fn ($q, $reasons) => $q->whereIn('review_reason', $reasons))
                 ->when($request->has('external'), fn ($q) => $request->boolean('external') ? $q->whereNotNull('external_company') : $q->whereNull('external_company'))
-                ->when($request->has('needs_second_visit'), fn ($q) => $q->where('needs_second_visit', $request->boolean('needs_second_visit')))
                 ->when($request->query('assigned_role_id'), fn ($q, $id) => $q->where('assigned_role_id', $id))
                 // `none`: the jobs no area holds, the picker's "Not placed".
                 ->when($where ? $request->query('service_area_id') : null, fn ($q, $id) => $id === 'none'
@@ -407,7 +401,7 @@ class JobsController extends Controller
         return response()->json([
             'data' => $this->present($job, detailed: true, money: $this->seesMoney($request)),
             // The pickers' words wherever a job is opened from, not only the list
-            // (Project Management, a customer's jobs).
+            // (a customer's jobs).
             'meta' => ['labels' => $this->labelsIn(ViewScope::forUser($request->user())->franchiseIds())],
         ]);
     }
@@ -726,12 +720,8 @@ class JobsController extends Controller
             'tags' => ['nullable', 'array', 'max:30'],
             'tags.*' => ['nullable', 'string', 'max:100'],
 
-            // Project Management (Jose, 2026-10-22). A reason from the
-            // organization's own list; the outside company's name, null for us.
-            'review_reason' => ['nullable', 'string', Rule::in(array_column(
-                (array) app(SettingsResolver::class)->get('jobs.review_reasons', ViewScope::forUser(request()->user())->settingsScope()), 'value'))],
+            // The outside company's name, null for us (Jose, 2026-10-22).
             'external_company' => ['nullable', 'string', 'max:150'],
-            'needs_second_visit' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -834,9 +824,7 @@ class JobsController extends Controller
             // Who opened it and when (Jose, 2026-10-27): native, Workiz's for a mirrored job (backfilled).
             'created_at' => $job->created_at?->toIso8601String(),
             'created_by' => $job->created_by_label === null ? null : ['user_id' => $job->created_by_user_id, 'name' => $job->created_by_label],
-            'review_reason' => $job->review_reason,
             'external_company' => $job->external_company,
-            'needs_second_visit' => (bool) $job->needs_second_visit,
         ];
 
         if (! $detailed) {

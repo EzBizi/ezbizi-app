@@ -150,7 +150,6 @@ Columns: location — value — business meaning — freq — suggested home.
 | Location | Value | Business thing | Freq | Home |
 |---|---|---|---|---|
 | `app/Support/Workiz/WorkizJobWriter.php:393` | statuses incl. `done pending approval` | Workiz tenant statuses | S | Read from Workiz lists (`WorkizRecords::LISTS` sub_status) |
-| `app/Http/Controllers/Api/ProjectManagement2Controller.php:29` | `STATUS = 'done pending approval'` | PM status | S | Existing `jobs.pm_scope_statuses` |
 | `app/Console/Commands/SyncWorkizJobs.php:412` | `CLOSED = Done, Canceled` | Closed statuses | R | Existing `jobs.cancelled_statuses` / `earned_statuses` |
 | `app/Support/Jobs/EstimateAging.php:20` | `DAYS = 30` | Estimate aging threshold | S | Setting (statuses already a setting) |
 | `app/Support/Workiz/WorkizRecords.php:25` | `SINCE = 2023-01-01` | Import start date | R | Workiz connection field |

@@ -1084,7 +1084,7 @@ class SettingRegistry
              */
             /*
              * Which statuses mean "waiting on the customer's decision", for
-             * `job.estimate_aging` (Jose's Project Management rule 2,
+             * `job.estimate_aging` (Jose's rule 2,
              * 2026-10-21). Empty by default: nothing ages until somebody says
              * which of the organization's own words mean waiting.
              */
@@ -1098,79 +1098,6 @@ class SettingRegistry
                     .'estimate, and what has been paid. Automations can act on it, for example '
                     .'cancelling after 30 days with nothing paid.',
             ),
-            /*
-             * Project Management's stages (Jose, 2026-10-22: "as you
-             * recommend"): each one statuses, plus whether it is scheduled
-             * and whether money is due. Unmapped stages hold nothing.
-             * [{key, statuses[], scheduled: bool|null, due: bool|null}].
-             */
-            new SettingDefinition(
-                key: 'jobs.pm_stages', label: 'Project Management stages',
-                type: SettingDefinition::TYPE_JSON,
-                default: [],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Which statuses, scheduled or not, money due or not, make each stage.',
-            ),
-            /*
-             * Which jobs Project Management is about at all (Shoval, 2026-10-22:
-             * "Only open jobs ... and only ones that are partly paid deposits").
-             */
-            new SettingDefinition(
-                key: 'jobs.pm_scope_statuses', label: 'Project Management shows jobs in these statuses',
-                type: SettingDefinition::TYPE_JSON,
-                default: [],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Empty: every status.',
-            ),
-            /*
-             * Project Management - 2's two statuses, and the cancel countdown,
-             * in the organization's own words (Jose, 2026-11-04: no business
-             * values in code).
-             */
-            new SettingDefinition(
-                key: 'jobs.pm2_pending_status', label: 'Project Management - 2 lists jobs in this status',
-                type: SettingDefinition::TYPE_STRING, default: 'done pending approval',
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'Its Submit button moves them on to the status below.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm2_submitted_status', label: 'Project Management - 2 submits jobs to this status',
-                type: SettingDefinition::TYPE_STRING, default: 'Submitted',
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'Spelled as your statuses spell it.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.estimate_deadline_days', label: 'Days a job waits on its estimate before it is cancelled',
-                type: SettingDefinition::TYPE_INT, default: 30,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'The countdown Project Management shows. Keep it the same as your cancelling rule.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_partly_paid_only', label: 'Project Management shows only partly paid jobs',
-                type: SettingDefinition::TYPE_BOOL, default: false,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Something paid and money still due: a deposit.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_task_group', label: 'Task Board group Project Management shows',
-                type: SettingDefinition::TYPE_STRING, default: 'Project Management',
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'The group, by name, on each branch board where rules leave project cards.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_redo_words', label: 'Tags or job types that mean a redo',
-                type: SettingDefinition::TYPE_JSON,
-                default: [],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Any case. A job with one of these as a tag or as its type is a redo.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_dispute_words', label: 'Tags that mean a dispute',
-                type: SettingDefinition::TYPE_JSON,
-                default: [],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Any case. A job with one of these as a tag is in dispute.',
-            ),
             new SettingDefinition(
                 key: 'ads.lsa_warn_days', label: 'Warn before a Local Services licence or insurance expires (days)',
                 type: SettingDefinition::TYPE_INT, default: 30,
@@ -1183,49 +1110,8 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 help: 'How long a booking link texted or emailed to a lead keeps working.',
             ),
-            new SettingDefinition(
-                key: 'jobs.pm_stopped_days', label: 'Payments count as stopped after (days)',
-                type: SettingDefinition::TYPE_INT, default: 30,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'A partly paid job with money still due and no payment for this many days.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_warn_days', label: 'Warn when a paid job has not started after (days)',
-                type: SettingDefinition::TYPE_INT, default: 10,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Counted from the first payment while the job is still waiting to start.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_warning_email', label: 'Send the paid-not-started warning to',
-                type: SettingDefinition::TYPE_STRING, default: '',
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'One email address. Empty sends nothing.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_cost_alert_percent', label: 'Highlight cost from gross sales above (%)',
-                type: SettingDefinition::TYPE_INT, default: 15,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'The repair-team report shows the percentage in red above this.',
-            ),
             /*
-             * Why a job waits for review, for Project Management (Jose,
-             * 2026-10-22: "need to order parts, need measurements, looking
-             * for contractor"). The organization's own list.
-             */
-            new SettingDefinition(
-                key: 'jobs.review_reasons', label: 'Reasons a job waits for review',
-                type: SettingDefinition::TYPE_LIST,
-                default: [
-                    ['value' => 'order_parts', 'label' => 'Need to order parts'],
-                    ['value' => 'measurements', 'label' => 'Need measurements'],
-                    ['value' => 'contractor', 'label' => 'Looking for a contractor'],
-                ],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Shown on a job in Project Management, and a filter there.',
-            ),
-            /*
-             * Which statuses mean cancelled, for Project Management's
-             * "Cancellations" (2026-10-22). Empty: none counted, nothing guessed.
+             * Which statuses mean cancelled (2026-10-22). Empty: none counted, nothing guessed.
              */
             new SettingDefinition(
                 key: 'jobs.cancelled_statuses', label: 'Statuses that mean the job was cancelled',
@@ -1233,7 +1119,7 @@ class SettingRegistry
                 choicesFrom: 'jobs.statuses',
                 default: [],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Project Management counts a job as cancelled when it moves into one of these.',
+                help: 'A job counts as cancelled when it moves into one of these.',
             ),
             new SettingDefinition(
                 key: 'jobs.earned_statuses', label: 'Statuses that mean the money is earned',
