@@ -4492,6 +4492,17 @@ class _PostOutcome extends StatelessWidget {
       );
     }
 
+    // Published, then deleted from EzBizi: it did go out.
+    final removed = withStatus('removed');
+    if (sent.isEmpty && removed.isNotEmpty && failed.isEmpty) {
+      return (
+        Icons.delete_outline,
+        Tone.neutral,
+        'Posted · deleted from ${_names(removed)}',
+        'It was published, then deleted from EzBizi.',
+      );
+    }
+
     if (sent.isEmpty) {
       return (
         Icons.error_outline,
