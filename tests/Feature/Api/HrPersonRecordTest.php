@@ -509,4 +509,36 @@ class HrPersonRecordTest extends TestCase
             ->assertOk()
             ->json('data');
     }
+
+    /** Several places at once (Jose, 2026-11-06); never zero, audited, reach-checked. */
+    public function test_a_person_works_at_several_places(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view'], onlyAt: $t['franchise']);
+        $second = $this->extraFranchise($t, 'Second');
+        $url = "/api/v1/hr/people/{$person->id}/places";
+
+        $places = $this->signedInAs($t['admin'])->postJson($url, ['scope_type' => 'franchise', 'scope_id' => $second->id])
+            ->assertOk()->json('data.assignments');
+        $this->assertCount(2, $places);
+        $this->assertSame($t['company']->name, collect($places)->firstWhere('scope_id', $second->id)['company']);
+        // What they reach is the union of both places.
+        $this->assertEqualsCanonicalizing([$t['franchise']->id, $second->id], $this->inTenant($t['org'], fn () => $person->fresh()->reachableFranchises()->pluck('id')->all()));
+
+        // Adding the same place twice writes nothing.
+        $this->signedInAs($t['admin'])->postJson($url, ['scope_type' => 'franchise', 'scope_id' => $second->id])
+            ->assertOk()->assertJsonCount(2, 'data.assignments');
+
+        $first = collect($places)->firstWhere('scope_id', $t['franchise']->id)['id'];
+        $this->signedInAs($t['admin'])->deleteJson("$url/$first")->assertOk()->assertJsonCount(1, 'data.assignments');
+        $last = $this->inTenant($t['org'], fn () => $person->fresh()->assignments()->value('id'));
+        $this->signedInAs($t['admin'])->deleteJson("$url/$last")->assertUnprocessable();
+
+        // Someone without hr edit cannot add places.
+        $this->signedInAs($person)->postJson("/api/v1/hr/people/{$t['admin']->id}/places",
+            ['scope_type' => 'franchise', 'scope_id' => $second->id])->assertForbidden();
+
+        $this->assertDatabaseHas('audit_events', ['action' => 'user.assignment_added']);
+        $this->assertDatabaseHas('audit_events', ['action' => 'user.assignment_removed']);
+    }
 }

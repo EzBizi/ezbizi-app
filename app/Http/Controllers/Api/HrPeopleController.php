@@ -947,7 +947,8 @@ class HrPeopleController extends Controller
         $this->audit->log('data.record_read', $user);
 
         $user->load('role:id,name', 'assignments.assignedCompany:id,name',
-            'assignments.assignedFranchise:id,name');
+            'assignments.assignedFranchise:id,name,company_id',
+            'assignments.assignedFranchise.company:id,name');
 
         $pto = app(PtoPolicy::class);
         $answer = $pto->for($user);
@@ -1258,6 +1259,66 @@ class HrPeopleController extends Controller
         return $empty + ($started ? 0 : 1) + ($person->work_schedule === null ? 1 : 0);
     }
 
+    /**
+     * POST /api/v1/hr/people/{user}/places — one more place they work (Jose,
+     * 2026-11-06: "assign people to more than 1 company"). Adds beside the
+     * others; reach is already the union of every place (ScopeReach).
+     */
+    public function addPlace(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('update', $user);
+        $actor = $request->user();
+        $input = $request->validate([
+            'scope_type' => ['required', Rule::in(ScopeReach::TYPES)],
+            'scope_id' => ['required', 'uuid'],
+        ]);
+        $this->reach->assertCovers($actor, $input['scope_type'], $input['scope_id']);
+
+        $column = 'assigned_'.$input['scope_type'].'_id';
+        if (! $user->assignments()->where($column, $input['scope_id'])->exists()) {
+            Assignment::create([
+                'organization_id' => $user->organization_id,
+                'user_id' => $user->getKey(),
+                $column => $input['scope_id'],
+            ]);
+            $this->audit->log('user.assignment_added', $user, metadata: [
+                'type' => $input['scope_type'], 'id' => $input['scope_id'],
+            ], actor: $actor);
+        }
+
+        return $this->placesOf($user, $actor);
+    }
+
+    /** DELETE /api/v1/hr/people/{user}/places/{assignment} — never their last one. */
+    public function removePlace(Request $request, User $user, string $assignment): JsonResponse
+    {
+        $this->authorize('update', $user);
+        $actor = $request->user();
+        $row = $user->assignments()->whereKey($assignment)->firstOrFail();
+
+        if (! $this->reach->coversAssignment($actor, $row)) {
+            abort(403, 'That place is outside what you reach.');
+        }
+        if ($user->assignments()->count() === 1) {
+            throw ValidationException::withMessages(['assignment' => 'This is the only place they work. Add another first.']);
+        }
+
+        $row->delete();
+        $this->audit->log('user.assignment_removed', $user, metadata: [
+            'type' => $row->scopeType(), 'id' => $row->scopeId(),
+        ], actor: $actor);
+
+        return $this->placesOf($user, $actor);
+    }
+
+    private function placesOf(User $user, User $actor): JsonResponse
+    {
+        $user->load('role:id,name', 'assignments.assignedCompany:id,name',
+            'assignments.assignedFranchise.company:id,name');
+
+        return response()->json(['data' => $this->present($user, $actor)]);
+    }
+
     private function present(User $person, User $actor): array
     {
         return [
@@ -1286,6 +1347,8 @@ class HrPeopleController extends Controller
                         Assignment::SCOPE_COMPANY => $a->assignedCompany?->name,
                         Assignment::SCOPE_FRANCHISE => $a->assignedFranchise?->name,
                     },
+                    // The franchise's company, for a "company › franchise" chip.
+                    'company' => $a->assignedFranchise?->company?->name,
                 ])->values()->all(),
             'joined_at' => $person->created_at?->toIso8601String(),
             'work_schedule' => $person->work_schedule,
