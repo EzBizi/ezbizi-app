@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\DB;
 final class MarketingReport
 {
     /** Workiz job source => the Google Ads channel that pays for it, until the business edits its list. */
-    public const PAID = ['LS Ads' => 'lsa', 'PPC' => 'ppc'];
+    public const PAID = ['LS Ads' => 'lsa', 'PPC' => 'ppc', 'Meta' => 'meta'];
 
     /** @return array<string, string> job source => channel (lsa or ppc), as the business has it (Settings › Lists) */
     public static function paid(): array

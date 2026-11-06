@@ -704,6 +704,20 @@ Route::get('v1/invoices/shared/{invoice}', [\App\Http\Controllers\Api\InvoicesCo
     ->whereUuid('invoice')
     ->name('invoice.shared');
 
+// Invoices paid online (Payments, Jose 2026-11-06). The Pay link is signed;
+// the webhook's Stripe signature is its authentication; the pages mark
+// nothing. Under /api because nginx gives every other path to Flutter.
+Route::get('v1/invoices/pay/{invoice}', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'pay'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->whereUuid('invoice')
+    ->name('invoice.pay');
+Route::post('v1/payments/stripe/webhook', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'webhook'])
+    ->middleware('throttle:600,1')
+    ->name('payments.stripe.webhook');
+Route::get('v1/payments/pages/{page}', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'pages'])
+    ->middleware('throttle:60,1')
+    ->name('payments.pages');
+
 // An inspection report's PDF for places that cannot sign in (a Workiz job);
 // the signed link is the permission. See InspectionReport::shareUrl.
 Route::get('v1/inspections/shared/{report}', [InspectionReportsController::class, 'shared'])
@@ -915,6 +929,7 @@ Route::prefix('v1')
         Route::post('jobs/book', [\App\Http\Controllers\Api\JobBookingController::class, 'store']);
         Route::post('jobs/{job}/book/workiz', [\App\Http\Controllers\Api\JobBookingController::class, 'retryWorkiz']);
         Route::apiResource('jobs', JobsController::class);
+        Route::get('project-board/jobs', [\App\Http\Controllers\Api\ProjectBoardController::class, 'jobs']);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
@@ -965,6 +980,10 @@ Route::prefix('v1')
         Route::get('memberships/plans', [MembershipsController::class, 'plans']);
         Route::post('memberships/plans', [MembershipsController::class, 'storePlan']);
         Route::patch('memberships/plans/{plan}', [MembershipsController::class, 'updatePlan']);
+        // Memberships > Promotions (Jose, 2026-11-06).
+        Route::get('memberships/promotions', [\App\Http\Controllers\Api\PromotionsController::class, 'index']);
+        Route::get('memberships/promotions/preview', [\App\Http\Controllers\Api\PromotionsController::class, 'preview']);
+        Route::post('memberships/promotions', [\App\Http\Controllers\Api\PromotionsController::class, 'store']);
         Route::apiResource('memberships', MembershipsController::class)->except('show');
 
         // drivers before {vehicle} so the literal path is not captured as an id
@@ -1154,6 +1173,8 @@ Route::prefix('v1')
             Route::post('send', 'send');
             Route::post('send-preview', 'preview');
             Route::get('settings', 'settings');
+            Route::get('payments-account', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'account']);
+            Route::post('payments-account/onboarding', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'onboarding']);
             Route::get('/', 'index');
             Route::get('{invoice}', 'show');
             Route::patch('{invoice}', 'update');

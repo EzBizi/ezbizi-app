@@ -273,6 +273,7 @@ class ActionRunner
                 'ringcentral' => 'RingCentral call',
                 'ez_calls' => 'EZ call',
                 'ez_texts' => 'EZ text',
+                'promotions' => 'promotion reply',
             ],
             'status' => [
                 'new' => 'New',
@@ -3707,8 +3708,12 @@ class ActionRunner
         // was refused on theirs. Their own board only when there is no place.
         $owner = (($scope['type'] ?? null) === 'franchise' ? Franchise::query()->find($scope['id'] ?? null) : null)
             ?? (($scope['type'] ?? null) === 'company' ? Company::query()->find($scope['id'] ?? null) : null)
-            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null)
-            ?? $assignee;
+            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null);
+        // A Sub Company and its franchises have no board (Jose, 2026-11-06).
+        if ($owner !== null && ! TaskBoards::hasPlaceBoard($owner)) {
+            $owner = null;
+        }
+        $owner ??= $assignee;
 
         if ($owner === null) {
             return ['type' => 'task.create', 'ok' => false, 'detail' => 'No board to put the task on: give it to somebody, or use a trigger about a place.'];

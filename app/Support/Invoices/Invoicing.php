@@ -324,10 +324,11 @@ final class Invoicing
             'html' => (new InvoiceMail($group, $columns, (string) $issuer->name, $subject))->content()->htmlString];
     }
 
-    public function recordPayment(User $user, Invoice $invoice, array $payment): InvoicePayment
+    /** $user is null when the money recorded itself (a Stripe webhook). */
+    public function recordPayment(?User $user, Invoice $invoice, array $payment): InvoicePayment
     {
         $this->mustBe($invoice, ['approved', 'sent', 'paid'], 'Payments go against an approved or sent invoice.');
-        $made = $invoice->payments()->create($payment + ['recorded_by_user_id' => $user->id]);
+        $made = $invoice->payments()->create($payment + ['recorded_by_user_id' => $user?->id]);
         $this->audit->log('invoice.payment_recorded', $invoice, metadata: $made->only('kind', 'paid_on', 'amount_cents', 'method'), actor: $user);
 
         $invoice->load('payments');

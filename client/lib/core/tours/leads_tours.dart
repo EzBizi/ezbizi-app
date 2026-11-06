@@ -574,6 +574,30 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
+  'leads/Promotions': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'Promotions',
+        body:
+            'Answers to the promotion texts sent from Memberships. Your reply '
+            'goes back as a text from the same line.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'Promotions',
+        body:
+            'Answers to the promotion texts sent from Memberships. Your reply '
+            'goes back as a text from the same line.',
+      ),
+      TourStep(
+        anchor: 'leads-list',
+        title: 'The text and the answer',
+        body: 'Each lead shows the promotion text and what the customer wrote.',
+      ),
+    ],
+  ),
   'leads/EZ Texts': Tour(
     version: 2,
     steps: [
@@ -947,6 +971,32 @@ const Map<String, Tour> leadsTours = {
         anchor: 'member-cancel',
         title: 'Cancel membership',
         body: 'Ends this membership, after asking once.',
+      ),
+    ],
+  ),
+  'customers/Memberships/Promotions': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'promotions-dates',
+        title: 'Pick the jobs',
+        body:
+            'The dates of the Done jobs whose customers get the text. It '
+            'shows how many will be texted before anything is sent.',
+      ),
+      TourStep(
+        anchor: 'promotions-body',
+        title: 'The message',
+        body:
+            'Edit the text. First names and the company name are filled in '
+            'for each customer, and the opt-out line is added.',
+      ),
+      TourStep(
+        anchor: 'promotions-send',
+        title: 'Send',
+        body:
+            'Press twice to send. One text per phone; numbers that replied '
+            'STOP are skipped. Answers arrive in Leads, Promotions.',
       ),
     ],
   ),

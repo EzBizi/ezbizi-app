@@ -984,6 +984,65 @@ class SettingRegistry
     {
         return [
             /*
+             * Project Management's six sub-tabs (Jose, 2026-11-06): each one's
+             * job statuses, in any case, and for a split by date, scheduled
+             * true or false. Defaults read from A-1's Workiz statuses.
+             */
+            new SettingDefinition(
+                key: 'project_board.tabs', label: 'Project Management: statuses on each sub-tab',
+                type: SettingDefinition::TYPE_JSON,
+                default: [
+                    'unscheduled' => ['statuses' => ['Pending'], 'scheduled' => false],
+                    'ready_to_schedule' => ['statuses' => ['Submitted']],
+                    'scheduled' => ['statuses' => ['Pending', 'scheduled'], 'scheduled' => true],
+                    'in_progress' => ['statuses' => ['In progress', 'in_progress']],
+                    'done_waiting_payment' => ['statuses' => ['done pending approval']],
+                    'complete' => ['statuses' => ['Done', 'completed']],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'A sub-tab with no statuses lists nothing.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.part_tags', label: 'Project Management: job tags that are a part status',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['WAITING PARTS', 'PARTS ORDERED', 'PARTS RECEIVED'],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Shown in the Part Status column.',
+            ),
+            /*
+             * The table itself (Jose, 2026-11-06: "nothing hardcoded"): each
+             * column's name, order (the list's), whether it shows, and whether
+             * its values draw as coloured labels.
+             */
+            new SettingDefinition(
+                key: 'project_board.columns', label: 'Project Management: columns',
+                type: SettingDefinition::TYPE_JSON,
+                default: [
+                    ['key' => 'number', 'label' => 'EzBizi ID', 'visible' => true, 'as_label' => false],
+                    ['key' => 'workiz_id', 'label' => 'Workiz ID', 'visible' => true, 'as_label' => false],
+                    ['key' => 'customer', 'label' => 'Client Name', 'visible' => true, 'as_label' => false],
+                    ['key' => 'franchise', 'label' => 'Area', 'visible' => true, 'as_label' => false],
+                    ['key' => 'status', 'label' => 'Job Status', 'visible' => true, 'as_label' => true],
+                    ['key' => 'job_type', 'label' => 'Job Type', 'visible' => true, 'as_label' => false],
+                    ['key' => 'part_status', 'label' => 'Part Status', 'visible' => true, 'as_label' => true],
+                    ['key' => 'paid', 'label' => 'Paid Amount', 'visible' => true, 'as_label' => false],
+                    ['key' => 'pending', 'label' => 'Pending Amount', 'visible' => true, 'as_label' => false],
+                    ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
+                    ['key' => 'created', 'label' => 'Date of Creation', 'visible' => true, 'as_label' => false],
+                    ['key' => 'scheduled', 'label' => 'Scheduled Date', 'visible' => true, 'as_label' => false],
+                    ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'In the order shown. A column without Financials hides its amounts anyway.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.labels', label: 'Project Management: label colours',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['part_status' => ['WAITING PARTS' => 'caution', 'PARTS ORDERED' => 'info', 'PARTS RECEIVED' => 'ok']],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Per column, each value and its colour: neutral, info, caution, review, ok or bad. A value not listed is neutral; Job Status unlisted keeps its usual colour.',
+            ),
+            /*
              * The permitted job statuses.
              *
              * Data, not an enum column: an organization wanting its own word for

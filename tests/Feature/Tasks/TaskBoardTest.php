@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Support\Tasks\TaskBoards;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Tests\Concerns\BuildsTenants;
@@ -35,6 +36,35 @@ class TaskBoardTest extends TestCase
             Artisan::call('ezbizi:backfill-task-boards');
             $this->assertSame(3, TaskBoard::query()->count());
         });
+    }
+
+    public function test_a_sub_company_and_its_branches_get_no_board_while_a_franchise_still_does(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        [$ace, $aceF1, $texas] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $ace = Company::create(['organization_id' => $tenant['org']->id, 'parent_company_id' => $tenant['company']->id, 'name' => 'Ace Fireplace', 'is_active' => true]);
+            $aceF1 = Franchise::create(['company_id' => $ace->id, 'name' => 'Ace F1']);
+            $texas = Franchise::create(['company_id' => $tenant['company']->id, 'name' => 'Alpha - Texas']);
+
+            return [$ace, $aceF1, $texas];
+        });
+
+        $this->inTenant($tenant['org'], function () use ($ace, $aceF1, $texas) {
+            Artisan::call('ezbizi:backfill-task-boards');
+            $this->assertFalse(TaskBoard::query()->where('kind', 'company')->where('company_id', $ace->id)->exists());
+            $this->assertFalse(TaskBoard::query()->where('kind', 'franchise')->where('franchise_id', $aceF1->id)->exists());
+            $this->assertTrue(TaskBoard::query()->where('kind', 'franchise')->where('franchise_id', $texas->id)->exists());
+        });
+
+        // A board made before the rule is hidden, not deleted.
+        $old = $this->inTenant($tenant['org'], fn () => app(TaskBoards::class)->ensureFor($ace));
+        $admin = $this->userWithRole($tenant, 'Lister', ['tasks.view', 'tasks.view_all']);
+        $names = collect($this->signedInAs($admin)->getJson('/api/v1/task-boards')->assertOk()->json('data'))->pluck('name');
+        $this->assertContains('Alpha Co', $names);
+        $this->assertContains('Alpha - Texas', $names);
+        $this->assertNotContains('Ace Fireplace', $names);
+        $this->assertNotContains('Ace F1', $names);
+        $this->inTenant($tenant['org'], fn () => $this->assertTrue(TaskBoard::query()->whereKey($old->id)->exists()));
     }
 
     public function test_boards_follow_the_current_view_and_never_show_a_sibling_company(): void

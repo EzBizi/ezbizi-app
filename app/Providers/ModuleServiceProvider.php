@@ -1206,6 +1206,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('dashboard', 'Dashboard'),
                     new TabDefinition('members', 'Members'),
                     new TabDefinition('settings', 'Settings'),
+                    // Texts to the customers of Done jobs (Jose, 2026-11-06).
+                    new TabDefinition('promotions', 'Promotions'),
                 ],
                 triggers: [
                     new TriggerDefinition(
@@ -1455,6 +1457,30 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A customer accepted an estimate. The usual next step is booking the work.',
                     ),
                 ],
+            ),
+
+            /*
+            /*
+             * Project Management (Jose, 2026-11-06): built from scratch after
+             * both earlier ones were deleted. Six sub-tabs of jobs, a job's
+             * place from unscheduled to complete; which statuses make each is
+             * the organization's (project_board.tabs). It only reads.
+             */
+            new ModuleDefinition(
+                key: 'project_board',
+                label: 'Project Management',
+                actions: ['view'],
+                tabs: [
+                    new TabDefinition('unscheduled', 'Unscheduled', action: 'view'),
+                    new TabDefinition('ready_to_schedule', 'Ready to Schedule', action: 'view'),
+                    new TabDefinition('scheduled', 'Scheduled', action: 'view'),
+                    new TabDefinition('in_progress', 'In Progress', action: 'view'),
+                    new TabDefinition('done_waiting_payment', 'Done Waiting Payment', action: 'view'),
+                    new TabDefinition('complete', 'Complete', action: 'view'),
+                    new TabDefinition('settings', 'Settings', action: 'view'),
+                ],
+                automationExemptBecause: 'It changes nothing; Jobs raises every event about the jobs it lists.',
+                auditExemptBecause: 'It changes nothing.',
             ),
 
             /*
@@ -2950,6 +2976,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('facebook', 'Messenger'),
                     new TabDefinition('instagram', 'Instagram'),
                     new TabDefinition('workiz', 'Workiz'),
+                    // Answers to Memberships > Promotions texts (Jose, 2026-11-06).
+                    new TabDefinition('promotions', 'Promotions'),
                     new TabDefinition('whatsapp', 'WhatsApp'),
                     new TabDefinition('ringcentral', 'RC Calls'),
                     // Calls and texts to EzBizi's own lines (Jose, 2026-10-16).

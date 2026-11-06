@@ -33,7 +33,7 @@ final class AdsCost
      *     refused: list<array{account: string, because: string}>,
      * }
      */
-    public function forBranch(Franchise $branch, CarbonImmutable $from, CarbonImmutable $to): array
+    public function forBranch(Franchise $branch, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly = false): array
     {
         $total = ['lsa' => ['cost_minor' => 0, 'clicks' => 0, 'conversions' => 0.0]];
         $total['ppc'] = $total['lsa'];
@@ -51,9 +51,9 @@ final class AdsCost
         foreach ($accounts as $account) {
             try {
                 $cost = Cache::remember(
-                    "ads-cost:{$account->getKey()}:{$from->toDateString()}:{$to->toDateString()}",
+                    "ads-cost:{$account->getKey()}:{$from->toDateString()}:{$to->toDateString()}".($activeOnly ? ':active' : ''),
                     now()->endOfDay(),
-                    fn () => $this->performance->channelCost($account, Carbon::parse($from), Carbon::parse($to)),
+                    fn () => $this->performance->channelCost($account, Carbon::parse($from), Carbon::parse($to), $activeOnly),
                 );
             } catch (RuntimeException $e) {
                 $total['refused'][] = ['account' => (string) $account->display_name, 'because' => $e->getMessage()];

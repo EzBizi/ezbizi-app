@@ -880,6 +880,160 @@ const Map<String, Tour> operationsTours = {
       _jobMaterials,
     ],
   ),
+  // ── Project Management (project_board, Jose 2026-11-06) ──────────────
+  'project_board': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'Unscheduled: jobs waiting, with no date yet. Which statuses each sub-tab lists is in Settings.',
+      ),
+      TourStep(
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
+      ),
+      TourStep(
+        anchor: 'project-board-search',
+        title: 'Search',
+        body:
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/Ready to Schedule': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'Ready to Schedule: jobs ready to book. Which statuses each sub-tab lists is in Settings.',
+      ),
+      TourStep(
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
+      ),
+      TourStep(
+        anchor: 'project-board-search',
+        title: 'Search',
+        body:
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/Scheduled': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'Scheduled: jobs waiting, with a date. Which statuses each sub-tab lists is in Settings.',
+      ),
+      TourStep(
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
+      ),
+      TourStep(
+        anchor: 'project-board-search',
+        title: 'Search',
+        body:
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/In Progress': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'In Progress: jobs under way. Which statuses each sub-tab lists is in Settings.',
+      ),
+      TourStep(
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
+      ),
+      TourStep(
+        anchor: 'project-board-search',
+        title: 'Search',
+        body:
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/Done Waiting Payment': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'Done Waiting Payment: work done, money still to come. Which statuses each sub-tab lists is in Settings.',
+      ),
+      TourStep(
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
+      ),
+      TourStep(
+        anchor: 'project-board-search',
+        title: 'Search',
+        body:
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/Complete': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'Complete: finished jobs. Which statuses each sub-tab lists is in Settings.',
+      ),
+      TourStep(
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
+      ),
+      TourStep(
+        anchor: 'project-board-search',
+        title: 'Search',
+        body:
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/Settings': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-columns',
+        title: 'Columns',
+        body: 'Rename, drag to reorder, show or hide, and draw as labels.',
+      ),
+      TourStep(
+        anchor: 'project-board-part-tags',
+        title: 'Part status',
+        body: 'The job tags shown in the Part Status column.',
+      ),
+      TourStep(
+        anchor: 'project-board-save',
+        title: 'Save',
+        body:
+            'Saves for this company: columns, label colours, sub-tabs and part tags.',
+      ),
+    ],
+  ),
   // The open job's own strip, with Estimates beside Jobs and without.
   'jobs/Jobs/Job': _jobPanelJob,
   'jobs/Job': _jobPanelJob,
