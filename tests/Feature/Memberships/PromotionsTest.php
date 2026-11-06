@@ -1,0 +1,116 @@
+<?php
+
+namespace Tests\Feature\Memberships;
+
+use App\Jobs\SendPromotion;
+use App\Models\AutomationEvent;
+use App\Models\Customer;
+use App\Models\Job;
+use App\Models\Lead;
+use App\Models\LeadConversation;
+use App\Models\PhoneConnection;
+use App\Models\PhoneNumber;
+use App\Models\Promotion;
+use App\Support\Phone\FakeTwilioGateway;
+use App\Support\Phone\SmsConsent;
+use App\Support\Phone\TwilioGateway;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+use Twilio\Security\RequestValidator;
+
+/**
+ * Memberships > Promotions (Jose, 2026-11-06): a text to the customers of the
+ * Done jobs in a date range, once per phone, never to a STOP, and the answer
+ * lands in Leads > Promotions.
+ */
+class PromotionsTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    public function test_done_jobs_in_the_dates_are_texted_once_per_phone_and_a_reply_is_a_promotions_lead(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        [$connection, $token] = $this->inTenant($t['org'], function () use ($t) {
+            // Done is earned_at, stamped by the company's earned statuses; set here directly.
+            $job = fn (string $when, string $name, string $phone, bool $done = true) => DB::table('jobs')->where('id', Job::factory()->create([
+                'franchise_id' => $t['franchise']->id, 'scheduled_for' => $when, 'status' => $done ? 'Done' : 'Submitted',
+                'customer_id' => Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => $name, 'phone' => $phone])->id,
+            ])->id)->update(['earned_at' => $done ? $when : null]);
+            $job('2025-08-01 09:00:00', 'dana reyes', '+12035550001');
+            $job('2025-07-03 09:00:00', 'Dana R', '(203) 555-0001');      // the same phone: one text
+            $job('2025-09-01 09:00:00', 'Stopped Sam', '+12035550002');   // replied STOP before
+            $job('2025-12-01 09:00:00', 'Late Lou', '+12035550003');      // outside the dates
+            $job('2025-08-02 09:00:00', 'Booked Bea', '+12035550004', false);   // not Done
+            $job('2025-08-03 09:00:00', 'No Phone', '');
+            DB::table('sms_opt_outs')->insert(['organization_id' => $t['org']->id, 'e164' => '+12035550002', 'keyword' => 'STOP', 'created_at' => now()]);
+            $token = 'sms-auth-token';
+            $connection = PhoneConnection::factory()->create(['scope_type' => PhoneConnection::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id, 'auth_token' => $token]);
+            PhoneNumber::factory()->create(['connection_id' => $connection->id, 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id, 'e164' => '+18555550100', 'sms_outbound_allowed' => true]);
+
+            return [$connection, $token];
+        });
+        $as = $this->signedInAs($t['admin']);
+        $range = ['from' => '2025-07-01', 'to' => '2025-11-30'];
+
+        $as->getJson('/api/v1/memberships/promotions/preview?'.http_build_query($range))->assertOk()
+            ->assertJsonPath('data.recipients', 1)->assertJsonPath('data.opted_out', 1)
+            ->assertJsonPath('data.sample.0.phone', '+12035550001');
+
+        Queue::fake();
+        $as->postJson('/api/v1/memberships/promotions', $range + ['body' => 'Hi {first_name}, {company} here: $299 chimney sweep & inspection. Reply to book.'])
+            ->assertStatus(202)->assertJsonPath('data.recipients', 1);
+        Queue::assertPushed(SendPromotion::class);
+        $id = $this->inTenant($t['org'], fn () => Promotion::query()->sole()->id);
+        app()->call([new SendPromotion($id), 'handle']);
+        app()->call([new SendPromotion($id), 'handle']);   // a rerun texts nobody twice
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+        $sends = collect($gateway->calls)->where('method', 'sendMessage')->values();
+        $this->assertCount(1, $sends);
+        $this->assertSame(['+18555550100', '+12035550001', "Hi Dana, {$t['company']->name} here: \$299 chimney sweep & inspection. Reply to book.\n".SmsConsent::FOOTER],
+            array_slice($sends[0]['args'], 1, 3));
+        $as->getJson('/api/v1/memberships/promotions')->assertOk()
+            ->assertJsonPath('data.0.sent', 1)->assertJsonPath('data.0.replies', 0);
+
+        // The answer opens a Promotions lead with the text it answers; the next answer joins it; STOP opens nothing.
+        $url = url('/api/v1/phone/sms/'.$t['org']->id.'/'.$connection->id);
+        $inbound = fn (string $sid, string $from, string $body) => $this->signed($url, ['MessageSid' => $sid, 'AccountSid' => 'AC'.str_repeat('a', 32),
+            'From' => $from, 'To' => '+18555550100', 'Body' => $body, 'SmsStatus' => 'received'], $token)->assertOk();
+        $inbound('SM1', '+12035550001', 'Yes, next week works');
+        $inbound('SM2', '+12035550001', 'Mornings please');
+        $inbound('SM3', '+12035550003', 'STOP');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $lead = Lead::query()->sole();
+            $this->assertSame([Lead::SOURCE_PROMOTIONS, 'dana reyes', $t['franchise']->id], [$lead->source, $lead->contact_name, $lead->franchise_id]);
+            $this->assertSame(['ADVERTISER', 'CONSUMER', 'CONSUMER'],
+                LeadConversation::query()->where('lead_id', $lead->id)->orderBy('occurred_at')->orderBy('created_at')->pluck('participant')->all());
+            $this->assertSame(1, AutomationEvent::query()->where('event_key', 'lead.received')->count());
+        });
+        $as->getJson('/api/v1/memberships/promotions')->assertJsonPath('data.0.replies', 1);
+        $as->getJson('/api/v1/leads?source=promotions')->assertOk()->assertJsonCount(1, 'data');
+    }
+
+    public function test_the_tab_opens_it_and_sending_needs_edit(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $range = ['from' => '2025-07-01', 'to' => '2025-11-30'];
+        $none = $this->userWithRole($t, 'Office', ['memberships.view', 'memberships.edit']);
+        $this->signedInAs($none)->getJson('/api/v1/memberships/promotions/preview?'.http_build_query($range))->assertForbidden();
+
+        $looker = $this->userWithRole($t, 'Looker', ['memberships.view', 'memberships.promotions.view']);
+        $this->signedInAs($looker)->getJson('/api/v1/memberships/promotions/preview?'.http_build_query($range))->assertOk();
+        $this->signedInAs($looker)->postJson('/api/v1/memberships/promotions', $range + ['body' => 'Hi'])->assertForbidden();
+    }
+
+    private function signed(string $url, array $params, string $token)
+    {
+        return $this->post($url, $params, ['X-Twilio-Signature' => (new RequestValidator($token))->computeSignature($url, $params)]);
+    }
+}

@@ -207,6 +207,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // tag (Jose, 2026-11-02; design 166). Picked inside it by _metaSources.
     ('meta', 'Meta'),
     ('workiz', 'Workiz'),
+    // Answers to Memberships › Promotions texts (Jose, 2026-11-06).
+    ('promotions', 'Promotions'),
   ];
 
   /// The rail tabs that hold several sources, each its own permission tick
@@ -270,6 +272,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // which is the difference this whole source turns on - no thread, no
     // reply, and absent from the Unreplied filter. A ledger, not a message.
     Icons.assignment_outlined,
+    Icons.campaign_outlined, // Promotions: answers to a promotion text
   ];
 
   /// The sources this person was granted, with their icons - Jose,
@@ -847,6 +850,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       'ringcentral': 'RC Calls',
       'ez_calls': 'EZ Calls',
       'ez_texts': 'EZ Texts',
+      'promotions': 'Promotions',
       'bad_rating': 'Bad Ratings',
     }[_pick ?? _source];
     return tab == null ? body : OpenTabMark(tab, child: body);
@@ -2595,6 +2599,7 @@ String sourceBadgeWord(String? source) => switch (source) {
   'ringcentral' => 'RC Call',
   'ez_calls' => 'EZ Call',
   'ez_texts' => 'EZ Text',
+  'promotions' => 'Promotion',
   _ => 'Google',
 };
 

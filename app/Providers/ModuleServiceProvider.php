@@ -1206,6 +1206,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('dashboard', 'Dashboard'),
                     new TabDefinition('members', 'Members'),
                     new TabDefinition('settings', 'Settings'),
+                    // Texts to the customers of Done jobs (Jose, 2026-11-06).
+                    new TabDefinition('promotions', 'Promotions'),
                 ],
                 triggers: [
                     new TriggerDefinition(
@@ -3006,6 +3008,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('facebook', 'Messenger'),
                     new TabDefinition('instagram', 'Instagram'),
                     new TabDefinition('workiz', 'Workiz'),
+                    // Answers to Memberships > Promotions texts (Jose, 2026-11-06).
+                    new TabDefinition('promotions', 'Promotions'),
                     new TabDefinition('whatsapp', 'WhatsApp'),
                     new TabDefinition('ringcentral', 'RC Calls'),
                     // Calls and texts to EzBizi's own lines (Jose, 2026-10-16).

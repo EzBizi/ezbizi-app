@@ -126,6 +126,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCE_EZ_TEXTS = 'ez_texts';
 
     /**
+     * A customer's answer to a promotion text sent from Memberships >
+     * Promotions (Jose, 2026-11-06). Opened by Promotions::absorbReply,
+     * answered by text on the thread like an EZ Text.
+     */
+    public const SOURCE_PROMOTIONS = 'promotions';
+
+    /**
      * The sources that arrive THROUGH a connected account.
      *
      * Not a list of "external" sources: the website is external too. It is the
@@ -191,6 +198,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_RINGCENTRAL,
         self::SOURCE_EZ_CALLS,
         self::SOURCE_EZ_TEXTS,
+        self::SOURCE_PROMOTIONS,
     ];
 
     /**
@@ -292,6 +300,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_FACEBOOK,
         self::SOURCE_INSTAGRAM,
         self::SOURCE_WORKIZ,
+        self::SOURCE_PROMOTIONS,
         self::SOURCE_WHATSAPP,
         self::SOURCE_RINGCENTRAL,
         self::SOURCE_EZ_CALLS,

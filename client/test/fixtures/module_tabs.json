@@ -196,6 +196,7 @@
                 "Messenger",
                 "Instagram",
                 "Workiz",
+                "Promotions",
                 "WhatsApp",
                 "RC Calls",
                 "EZ Calls",
@@ -220,7 +221,8 @@
             "tabs": [
                 "Dashboard",
                 "Members",
-                "Settings"
+                "Settings",
+                "Promotions"
             ]
         },
         "monitoring": {
@@ -535,6 +537,7 @@
         "leads.instagram.view",
         "leads.local_services.view",
         "leads.manage",
+        "leads.promotions.view",
         "leads.reclassify",
         "leads.ringcentral.view",
         "leads.thumbtack.view",
@@ -556,6 +559,7 @@
         "memberships.delete",
         "memberships.edit",
         "memberships.members.view",
+        "memberships.promotions.view",
         "memberships.settings.view",
         "memberships.view",
         "monitoring.cameras.manage",
