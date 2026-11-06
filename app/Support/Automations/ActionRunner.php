@@ -273,6 +273,7 @@ class ActionRunner
                 'ringcentral' => 'RingCentral call',
                 'ez_calls' => 'EZ call',
                 'ez_texts' => 'EZ text',
+                'promotions' => 'promotion reply',
             ],
             'status' => [
                 'new' => 'New',

@@ -6,6 +6,7 @@ import '../../widgets/tab_bar_like.dart';
 import '../customers_screen.dart';
 import 'memberships_dashboard.dart';
 import 'memberships_members.dart';
+import 'memberships_promotions.dart';
 import 'memberships_settings.dart';
 
 /// Customers with its Memberships pane beside it (Jose, 2026-10-05).
@@ -103,6 +104,8 @@ class _MembershipsScreenState extends State<MembershipsScreen> {
       ('members', 'Members', Icons.groups_outlined),
     if (_may('memberships.settings.view'))
       ('settings', 'Settings', Icons.tune),
+    if (_may('memberships.promotions.view'))
+      ('promotions', 'Promotions', Icons.campaign_outlined),
   ];
 
   @override
@@ -155,6 +158,10 @@ class _MembershipsScreenState extends State<MembershipsScreen> {
                 session: widget.session,
               ),
               'members' => MembershipsMembers(
+                api: widget.api,
+                session: widget.session,
+              ),
+              'promotions' => MembershipsPromotions(
                 api: widget.api,
                 session: widget.session,
               ),

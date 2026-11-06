@@ -3272,7 +3272,7 @@ String sourceWord(String? source) => switch (source) {
   'whatsapp' => 'WhatsApp',
   'workiz' => 'Workiz',
   'ringcentral' => 'RingCentral',
-  'ez_calls' || 'ez_texts' => 'EzBizi',
+  'ez_calls' || 'ez_texts' || 'promotions' => 'EzBizi',
   _ => 'Google Ads',
 };
 
