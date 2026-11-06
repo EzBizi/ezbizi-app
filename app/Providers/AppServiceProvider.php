@@ -130,8 +130,9 @@ class AppServiceProvider extends ServiceProvider
             ));
         }
 
-        // A call or a form has no chat: the answer is a text (SmsLeadReplies).
-        foreach ([Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_WEBSITE_FORM] as $source) {
+        // A call, a form or an online booking has no chat: the answer is a
+        // text (SmsLeadReplies; bookings added 2026-11-06, lead parity audit).
+        foreach ([Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_BOOKING] as $source) {
             $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new \App\Support\Leads\SmsLeadReplies(
                 $source,
                 $app->make(\App\Support\Leads\LeadTexts::class),
@@ -150,6 +151,7 @@ class AppServiceProvider extends ServiceProvider
                 'lead-reply-channel.ez_calls',
                 'lead-reply-channel.ringcentral',
                 'lead-reply-channel.website_form',
+                'lead-reply-channel.website_booking',
             ],
             LeadReplies::TAG,
         );
