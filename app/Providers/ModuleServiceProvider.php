@@ -3117,8 +3117,10 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Three hours after the automatic first reply, the same day, when the '
                             .'customer has not written since and no person has replied. Raised once '
                             .'per lead, ever, and never on a booked or archived lead or a complaint. '
-                            .'It carries the source, the kind of lead, the name, first_name and a '
-                            .'ready greeting ("Hi Mark", or "Hey" with no name) for the follow-up.',
+                            .'It carries the source, the kind of lead, the name, first_name, a '
+                            .'ready greeting ("Hi Mark", or "Hi there" with no name) for the '
+                            .'follow-up, and not_booked_call: true when the call was not booked '
+                            .'and the after-call rule has already had its turn.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.customer_replied',

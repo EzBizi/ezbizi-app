@@ -47,6 +47,7 @@ class BookPrefill {
     this.state = '',
     this.postal = '',
     this.title = '',
+    this.description = '',
     this.jobSource,
     this.matches = const [],
   });
@@ -55,26 +56,47 @@ class BookPrefill {
   /// source is a hint: it is used only when one of the branch's job sources
   /// reads the same.
   /// [matches] are `customer_matches`: with any, nobody is chosen for you.
+  ///
+  /// Everything the lead holds carries over (Jose, 2026-11-05): the address
+  /// Google checked ([details]' `checked_address`) before one parsed from a
+  /// form, the branch whose areas cover its ZIP ([bookFranchiseId]) when
+  /// the lead names none, and its summary as the description.
   factory BookPrefill.fromLead(
     Map<String, dynamic> lead, {
     List<String> said = const [],
     List<Map<String, dynamic>> matches = const [],
+    Map<String, dynamic>? details,
+    String? bookFranchiseId,
   }) {
     final form = addressFromForm(said);
+    final checked = details?['checked_address'] as Map?;
+    final exact = checked?['exact'] == true;
+    String pick(Object? google, String fromForm, [Object? stored]) =>
+        exact && google is String && google.isNotEmpty
+        ? google
+        : fromForm.isNotEmpty
+        ? fromForm
+        : (stored is String ? stored : '');
     return BookPrefill(
       leadId: lead['id'] as String?,
-      franchiseId: (lead['franchise'] as Map?)?['id'] as String?,
+      franchiseId:
+          ((lead['franchise'] as Map?)?['id'] as String?) ?? bookFranchiseId,
       name: (lead['contact_name'] as String?) ?? '',
       phone: (lead['phone'] as String?) ?? '',
       email: (lead['email'] as String?) ?? '',
-      line1: form.line1,
+      line1: pick(checked?['line1'], form.line1, lead['address']),
       line2: form.line2,
-      city: form.city,
-      state: form.state,
-      postal: form.postal.isNotEmpty
-          ? form.postal
-          : (lead['postal_code'] as String?) ?? '',
-      title: humaniseService(lead['service'] as String?) ?? '',
+      city: pick(checked?['city'], form.city, lead['city']),
+      state: pick(checked?['state'], form.state),
+      postal: pick(
+        checked?['zip'],
+        form.postal,
+        lead['postal_code'] ?? details?['zip'],
+      ),
+      title:
+          humaniseService(lead['service'] as String?) ??
+          ((lead['job_type'] as String?) ?? ''),
+      description: (lead['summary'] as String?) ?? '',
       jobSource: humaniseService(lead['source'] as String?),
       matches: matches,
     );
@@ -86,6 +108,9 @@ class BookPrefill {
   final String name, phone, email;
   final String line1, line2, city, state, postal;
   final String title;
+
+  /// The job's description: a lead's summary.
+  final String description;
   final String? jobSource;
   final List<Map<String, dynamic>> matches;
 }
@@ -179,7 +204,7 @@ class _BookJobPanelState extends State<BookJobPanel> {
   String? _status;
   String? _jobType;
   String? _jobSource;
-  final _description = TextEditingController();
+  late final _description = TextEditingController(text: _p.description);
   String? _externalCompany;
   final Map<String, String> _custom = {};
 
@@ -994,7 +1019,8 @@ class _BookJobPanelState extends State<BookJobPanel> {
           key: const ValueKey('book-area'),
           value: _areaId,
           label: 'Service area',
-          helperText: _zip.isEmpty
+          // No branch yet means no areas were asked for, not that none covers it.
+          helperText: _zip.isEmpty || _franchiseId == null
               ? null
               : matching == 0
               ? 'No area covers $_zip'

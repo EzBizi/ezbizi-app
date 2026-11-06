@@ -155,8 +155,8 @@ class MailboxesController extends Controller
                  * needing a server address must want credentials typed in. That
                  * guess broke in the direction that costs most.
                  *
-                 * `imap` was removed from PHP core in 8.4 and this box runs
-                 * 8.4.24, so ImapMailboxReader cannot open a socket here at all.
+                 * (History: `imap` left PHP core in 8.4, so a reader built on it
+                 * could not run here; ImapMailboxReader now speaks IMAP itself.)
                  * But IMAP has `needs_host: true`, so it was given a live
                  * password form — asking somebody for the password to their real
                  * mailbox, and storing it, for a connection that could never be

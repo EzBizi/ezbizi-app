@@ -1065,6 +1065,28 @@ void main() {
     expect(find.text('Not available here'), findsNothing);
   });
 
+  testWidgets('a @gmail.com address fills the Gmail servers, so it is the '
+      'address and an app password (Jose, 11-05: like A1 Tools)', (tester) async {
+    await _pump(tester, _handler(imapUsable: true));
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add an inbox'));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Mail service'),
+    );
+    await _tap(tester, find.text('IMAP').last);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Address'),
+      'acehomecaretx@gmail.com',
+    );
+    await tester.pump();
+
+    expect(find.widgetWithText(TextFormField, 'imap.gmail.com'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'smtp.gmail.com'), findsOneWidget);
+  });
+
   // ── connecting by signing in ───────────────────────────────────
 
   /// The pair to "says what is missing instead of offering a button". Same

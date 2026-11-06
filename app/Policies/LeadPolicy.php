@@ -46,8 +46,22 @@ class LeadPolicy
         return $this->ofAVisibleSource($user, $row) ?? $this->reachMayView($user, $row);
     }
 
+    /*
+     * A lead filed at organization level - both columns null, every lead from
+     * an organization-scoped connection - is listed in every view and to
+     * everybody who can see the tab (LeadsController::scopeToReader). The
+     * catalog write rule wanted organization reach AND the organization view,
+     * so the row was shown and then refused: Analorena, 2026-11-06, A-1
+     * Chimney only, could not change an EzBizi Page enquiry in her own list.
+     * Who may see it may work it; deleting stays on the reach rule.
+     */
     public function update(User $user, Model $row): Response
     {
+        if ($row instanceof Lead && $row->company_id === null && $row->franchise_id === null
+            && $row->organization_id === $user->organization_id && $user->hasPermission('leads.edit')) {
+            return $this->ofAVisibleSource($user, $row) ?? Response::allow();
+        }
+
         return $this->ofAVisibleSource($user, $row) ?? $this->reachMayUpdate($user, $row);
     }
 

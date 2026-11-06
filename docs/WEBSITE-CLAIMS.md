@@ -98,7 +98,7 @@ touches apps, monitoring, social, Google or mail.
 | "Facebook Pages, Instagram and Threads send today" · TikTok "rebuilt to TikTok's Direct Post rules … not yet proven" (was "drafts, not the profile" until 2026-10-12: `TIKTOK_DIRECT_POST` is `true` on production since `4f8ee29b`, and its only row is a refusal) · Pinterest "posting waits on Pinterest" · LinkedIn/YouTube/X/Bluesky "newly built and not yet proven" | `/`, `/social-media/` | **`Publishers::for()` is NECESSARY, NOT SUFFICIENT — it passed for Pinterest while Pinterest refused every Pin.** Since 2026-10-09 all nine return a publisher. Also run, on the box: `social_post_targets` JOIN `social_connections` grouped by `provider, status`, and read `failure` on the newest rows. **Pull** a network on a network refusal in `failure`; **add** one only on a `sent` row from a real tenant connection that did not go through a sandbox. Pinterest inverts when `services.pinterest.sandbox_token` is unset AND a `sent` row follows. Was two, corrected upward to five on 2026-09-02, down to four on 2026-10-09. |
 | "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
 | "A Google Business Profile can be connected to read and answer reviews" — **REMOVED 2026-09-22** | `/` ×3 | `app/Services/Reviews/BusinessProfileReviews.php` — its own docblock: *"The Business Profile APIs ship at 0 QPM and stay there until Google approves an access application. Every call here will fail until that lands."* The replacement sentence is true while that stays so. **What would let it back:** Google granting Business Profile quota, which `08c2b82e` puts no earlier than **2026-10-24** — the application was REFUSED on the 60-day verified-listing rule and the profile verified 2026-08-25. Re-read the docblock, not this row. |
-| "There are two writes to Google" (reply to a text enquiry; pause or resume a campaign) · "does not create or remove campaigns, or change anything … other than pausing or resuming it" · "No rule or schedule does it" | `/google-ads-api/` | Every Google Ads/LSA `->post(` in `app/`: `grep -rn "googleAds\|localServices:\|:mutate" app --include=*.php`. Today: `LocalServicesLeads` `appendLeadConversation` and `CampaignPerformance::setStatus` `campaigns:mutate` (`updateMask: status`). **Went false on 2026-09-24** (`5b27593b` added pause/enable) and was caught 09-30: the page said "one write" and "does not … pause campaigns" for six days, on the page Google's API reviewer reads. A third endpoint, a mask wider than `status`, or an automation action/command calling `setStatus` falsifies it. |
+| "There are two writes to Google" (reply to a text enquiry; pause or resume a campaign, by a person or at on/off times a person set — "No rule or schedule does it" REMOVED 2026-11-05 for `ad_schedules`) · "does not create or remove campaigns, or change anything … other than pausing or resuming it" · "calls and bookings are never replied to through Google" | `/google-ads-api/` | Every Google Ads/LSA `->post(` in `app/`: `grep -rn "googleAds\|localServices:\|:mutate" app --include=*.php`. Today: `LocalServicesLeads` `appendLeadConversation` and `CampaignPerformance::setStatus` `campaigns:mutate` (`updateMask: status`). **Went false on 2026-09-24** (`5b27593b` added pause/enable) and was caught 09-30: the page said "one write" and "does not … pause campaigns" for six days, on the page Google's API reviewer reads. A third endpoint, a mask wider than `status`, or an automation action/command calling `setStatus` falsifies it. |
 | "an automated first reply: a message the customer wrote themselves" · "EzBizi supplies no wording of its own" | `/google-ads-api/` | **NEW 2026-11-03, true today by usage only.** `lead.book_by_chat` (`3c56384c6`, live in 0.0.0525) is an automation step that answers a Local Services text with EzBizi's own template lines (`BookingBot::next`: address, service, an open window, "we are holding") through `replyToLead(..., automatic: true)`, on every customer message, after Grok reads the thread. **Test:** active automations whose active version's `actions` contain `book_by_chat` (production 2026-11-03: **0**, 0 runs). The first such rule makes both sentences false on a page filed with Google — the page is the Google API module's and Jose's call, not this check's; flag it, do not rewrite it. `/privacy/` "A draft is never sent on its own" survives (the bot sends templates, not drafts) but its Leads purpose list does not name reading the thread for an address, service and a yes. |
 | "watch a machine live and take control of it, and … browse the files on it and download them — reading only … each folder opened and file downloaded recorded" · "watching a screen or browsing its files shows no notice" | `/privacy/` | `app/Http/Controllers/Api/Monitoring/FilesController.php` (ops `list`/`download` only; audit `monitoring.files.listed` / `.downloaded` per path; grant `monitoring.files.view`) and `client/lib/core/file_access_service.dart` (no notice drawn). Added 2026-10-02 after `0.0.0348` shipped it. An upload/rename/delete op, or audit moving to once-per-session, falsifies it; a notice on the machine falsifies the second clause in the reassuring direction. |
 | "An organization can also have EzBizi send mail on its behalf" | `/privacy/` | The automation actions that send. Corrected in `0.0.0240` after two days wrong — the previous sentence promised the opposite. |
@@ -3334,3 +3334,70 @@ the edit; no WP page had changed since the 11-03 run.
 
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) over the 8
 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
+
+## 2026-11-05: 0.0.0531-0.0.0538 live, and three sentences were false or about to be
+
+Production `/download/windows.json` 0.0.0538 at `fa411af62`; 0.0.0539 (`ccc4992c5`, ad on/off
+schedules) on main, not live. All 8 live pages matched their WP post_content before the edits.
+Backups of every page's post_content / `_ezb_head` and `sitemap.xml`: `~/ezb-wp-bak-20261105/` on
+the websites box. `www/` not updated (frozen at the 11-02 import).
+
+- **`/google-ads-api/` "No rule or schedule does it"** goes false when 0.0.0539 deploys:
+  `ezbizi:ad-schedules` (every minute) calls `CampaignPerformance::setStatus` at the times an
+  `ads_performance.manage` holder set, audited `by=schedule`. Rewritten to be true before and after
+  the deploy: a person presses Pause/Resume "or sets days and times for the campaign to be switched
+  on and off"; audit "the person or the schedule that made it"; table row "or at the on and off
+  times a person set for it". Status only, so "nothing else" still holds.
+- **`/google-ads-api/` "calls and bookings are never replied to"** was false since 0.0.0531
+  (`b7d7a6e47`): the not-booked rule texts a Local Services caller from the company's cleared line
+  (skipped 71 of 125 before the fix, so it runs). Now "never replied to through Google; a caller can
+  instead be sent a text from the customer's own phone line, by an automation rule the customer set
+  up". "Two writes to Google" still true (Twilio, not Google).
+- **`/privacy/` xAI list** missed the Leads proofreader (`bdc83ca79`, `leads.proofread` default
+  true): the reply being typed goes to Grok (Bedrock/Anthropic when on) for spelling/grammar
+  fixes, offered and never sent by itself. Added to the xAI item. Anthropic fallback sentence
+  already covers Bedrock.
+- Dates: Last updated / `dateModified` / sitemap lastmod 11-05 on both pages.
+- One Google sign-in for Business Profile, Ads and YouTube (`6262b4928`) asks only the ticked
+  products' scopes, so the YouTube "read-only … used once" sentence was not re-read against it —
+  **owed**: confirm the combined callback does not read the channel for a non-YouTube connect.
+  Meta catch-up, Facebook client accounts, Integrations redesign, Gmail IMAP fill, Ads under
+  Marketing: no sentence touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) over the 8
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
+Desk (11-05): 0.0.0539 is LIVE (`7305be3c3`), so the schedule sentence above is now load-bearing, not
+pre-emptive; nothing merged today touched Training, ring groups, Scheduled Jobs, LSA ingest or
+publishers (no row counts taken).
+
+## 2026-11-06: `/developers/` and `/developers/reference/` published (Jose, via the desk)
+
+Jose asked (relayed by the deploy desk) for a public developer section in the shape of the one
+he built for Memberly: a guide page and a Scalar reference. New WP pages 22 (`developers`) and 23
+(`reference`, child of 22). Footer link "Developers" on `/` and `/download/`; sitemap +2 entries.
+
+- **The reference is generated, never hand-written.** `GET /api/v1/openapi.json`
+  (`OpenApiController`, public, throttle 60/min) is built from `McpController::routes()`, the
+  table `list_endpoints` reads, so the blocked prefixes (auth, staff, mcp, me/api-keys,
+  me/sessions) never appear; test `test_the_public_reference_lists_what_list_endpoints_lists_…`.
+  The page fetches `/ezbizi-api.json` on www (CSP `connect-src 'self'`); the websites box copies
+  the app's spec there hourly (ezbizi_ftp crontab, `refresh-api-spec.sh`, keeps the last good
+  copy). Until the endpoint is released the seed copy is one generated locally from main
+  (734 paths, 989 operations).
+- **No key is ever typed into www**: Scalar test requests and client button hidden, no proxy, no
+  telemetry. App CORS still allows only app/dev origins — do not add www to make "try it" work.
+- **Load-bearing on `/developers/`** (re-check if these move): levels Viewer = GET, Editor = no
+  DELETE, Full = all (`EnforceApiKeyAccess`); role grants `api_keys.view/edit/delete`; no key may
+  touch password/2FA/SMS codes/sessions/keys/account deletion; keys never idle out, end on revoke
+  or password reset; MCP 120/min (`routes/api.php` `mcp` throttle) and no general per-key limit;
+  error codes `api_key_*`, `permission_denied`, `subscription_inactive` (402); webhook signature
+  = hex HMAC-SHA256 of `timestamp.body` (`OutboundWebhook`); "Not yet: OAuth, SSE" (`McpController`
+  docblock). If OAuth lands, the claude.ai/ChatGPT note goes false.
+- **Checked, and deliberately left alone:** the reference lists every tenant route, so it names
+  modules on the do-not list (Training, WhatsApp, invoices…) as paths. That is a route table,
+  not a capability claim; the forbidden-terms gate is for page copy. The spec currently has none
+  of the four terms anyway.
+
+Gate: forbidden-terms (LINE-split) over `/`, `/download/`, `/developers/`, `/developers/reference/`
+ok - 4 terms, none present. MCP/API tests 23/23 (`ApiKeysAndMcpTest`, private schema).
+

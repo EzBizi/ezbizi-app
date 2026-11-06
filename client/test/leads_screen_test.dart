@@ -77,6 +77,70 @@ void main() {
     expect(find.text('Marcus Bell'), findsOneWidget);
   });
 
+  /// Jose, 2026-11-05: a notification for A1 Garage Doors opened while the
+  /// view was on Ace Fireplace, and every reply was refused as out of view.
+  testWidgets('a notification for another company moves the view there', (
+    tester,
+  ) async {
+    final inCompany = {
+      ..._me,
+      'scope': {'type': 'company', 'id': 'co-1', 'label': 'Everdoors', 'path': ['Everdoors']},
+      'companies': [
+        {'id': 'co-1', 'name': 'Everdoors', 'parent_company_id': null},
+        {'id': 'co-2', 'name': 'Garage Doors', 'parent_company_id': null},
+      ],
+    };
+    Map<String, dynamic> at(String company, [String id = 'lead-2']) => {
+      ..._lead(id, id == 'lead-2' ? 'Dana Whitfield' : 'Ruth Okafor'),
+      'company': {'id': company, 'name': company},
+    };
+    Map<String, dynamic> viewing(String company) => {
+      ...inCompany,
+      'scope': {'type': 'company', 'id': company, 'label': company, 'path': [company]},
+    };
+    Future<void> remount(String company, List<Map<String, dynamic>> leads, String? open) async {
+      await tester.pumpWidget(const SizedBox());
+      await _pump(
+        tester,
+        leads: leads,
+        connections: _connected,
+        initialLeadId: open,
+        me: viewing(company),
+      );
+    }
+
+    // Leads opened the ordinary way first, as between two notifications: an
+    // earlier test opened lead-2 too.
+    await remount('co-1', const [], null);
+    final leads = [_lead('lead-1', 'Marcus Bell'), at('co-2')];
+    await remount('co-1', leads, 'lead-2');
+    expect(_preferences, [
+      {'navigation.scope': 'company:co-2'},
+    ]);
+
+    // The switch's own remount opens the lead there.
+    await remount('co-2', leads, 'lead-2');
+    expect(_preferences, isEmpty);
+    expect(find.text('Dana Whitfield'), findsNWidgets(2));
+
+    // Then another company picked by hand: the shell hands over the same
+    // lead, and it must neither switch back nor stay selected (Jose,
+    // 2026-11-05: switching company unselects).
+    await remount('co-1', leads, 'lead-2');
+    expect(_preferences, isEmpty);
+    expect(find.text('Dana Whitfield'), findsOneWidget, reason: 'not selected');
+
+    // A notification lead the view already covers moves nothing, and a
+    // company picked afterwards does not snap back to it either.
+    final here = [_lead('lead-1', 'Marcus Bell'), at('co-1', 'lead-3')];
+    await remount('co-1', here, 'lead-3');
+    expect(_preferences, isEmpty);
+    expect(find.text('Ruth Okafor'), findsNWidgets(2));
+    await remount('co-2', here, 'lead-3');
+    expect(_preferences, isEmpty);
+    expect(find.text('Ruth Okafor'), findsOneWidget, reason: 'not selected');
+  });
+
   testWidgets('search runs as you type, without Enter', (tester) async {
     await _pump(
       tester,
@@ -1832,7 +1896,8 @@ void _conversationRowTests() {
   });
 
   /// Phone audit 2026-11-04: beside the name the chips clipped to "Rep" and
-  /// the names to 8 letters. On a phone they get their own line.
+  /// the names to 8 letters. On a phone they go on line 2, under the time
+  /// (design 187).
   testWidgets('on a phone a row puts its chips under the name', (
     tester,
   ) async {
@@ -1848,13 +1913,55 @@ void _conversationRowTests() {
       size: const Size(390, 844),
     );
 
-    expect(find.byKey(const ValueKey('lead-chips-line-lead-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lead-chips-lead-1')), findsOneWidget);
     final name = tester.getRect(find.text('Christopher Wellington').first);
     final badge = tester.getRect(
       find.byKey(const ValueKey('reply-badge-lead-1')),
     );
     expect(badge.top, greaterThan(name.bottom - 1));
     expect(name.width, greaterThan(150));
+    expect(tester.takeException(), isNull);
+  });
+
+  /// Design 187 (Jose, 2026-11-06: "moving all the tabs to the left side of
+  /// the time, so they all line up"): one straight edge down the list, two
+  /// tags at most, then "+N".
+  testWidgets("a row's tags line up beside the time, two then +N", (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [
+        {
+          ..._lead('lead-1', 'Ann Lee', canReply: true),
+          'customer': {'id': 'c1'},
+          'status': 'booked',
+        },
+        {
+          ..._lead('lead-2', 'Christopher Wellington'),
+          'status': 'completed',
+          'received_at': '2026-01-02T09:00:00Z',
+        },
+      ],
+      connections: _connected,
+    );
+
+    Rect at(String key) => tester.getRect(find.byKey(ValueKey(key)));
+    expect(at('lead-tags-lead-1').right, at('lead-tags-lead-2').right);
+    // Line 2's source and channel line up under the time as well.
+    expect(at('lead-chips-lead-1').right, at('lead-chips-lead-2').right);
+    expect(
+      at('source-badge-lead-1').left,
+      greaterThan(at('lead-tags-lead-1').left - 1),
+    );
+    expect(
+      at('status-pill-lead-1').right,
+      lessThan(at('lead-tags-lead-1').right),
+    );
+    // Booked, Customer, then Awaiting reply behind "+N".
+    expect(find.byKey(const ValueKey('customer-badge-lead-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('reply-badge-lead-1')), findsNothing);
+    expect(find.textContaining(RegExp(r'^\+\d$')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -2048,6 +2155,7 @@ Future<void> _pump(
   Size size = const Size(1200, 900),
   String? initialSource,
   String? initialLeadId,
+  Map<String, dynamic> me = _me,
   Map<String, dynamic> preferences = const {},
   Map<String, int> unreadBySource = const {},
 }) async {
@@ -2184,7 +2292,7 @@ Future<void> _pump(
         return http.Response(
           jsonEncode({
             'data': {
-              ..._me,
+              ...me,
               'permissions': permissions,
               'preferences': preferences,
             },

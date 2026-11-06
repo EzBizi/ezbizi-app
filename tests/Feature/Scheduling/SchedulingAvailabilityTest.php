@@ -909,6 +909,14 @@ class SchedulingAvailabilityTest extends TestCase
         ]);
         $this->assertEqualsWithDelta(32.788, $data['origin']['latitude'], 0.002, 'The centre of the zip from its jobs.');
 
+        // The customer cannot take the 12th and asks for the 5th: that day's own suggestion (Jose, 2026-11-06).
+        $day = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201&date=2026-10-05')->assertOk()->json('data');
+        $this->assertSame(['2026-10-05', '2026-10-05'], [$day['for_date'], $day['earliest']['date']]);
+        $this->assertNull($day['suggested'], 'Nothing nearby on the 5th, so no better window that day.');
+        $this->assertSame('2026-10-12', $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201&date=2026-10-12')->json('data.suggested.date'));
+
         // A wider radius from Settings changes nothing here, a 1-mile one still
         // finds the job, and nothing nearby means no suggestion at all.
         app(TenantContext::class)->set($tenant['org']);

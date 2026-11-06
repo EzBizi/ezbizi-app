@@ -31,7 +31,8 @@ final class AddressCheck
         $place = self::place($address, $zip);
 
         // The shape Leads and Scheduling read; coordinates are geocode's.
-        return $place === null ? null : array_intersect_key($place, array_flip(['address', 'zip', 'exact']));
+        // line1, city and state fill the Book form's fields (Jose, 2026-11-05).
+        return $place === null ? null : array_intersect_key($place, array_flip(['address', 'zip', 'exact', 'line1', 'city', 'state']));
     }
 
     /**
@@ -47,7 +48,7 @@ final class AddressCheck
             return null;
         }
 
-        return Cache::remember('address-check:v2:'.sha1(strtolower($query)), now()->addDays(30), function () use ($key, $query) {
+        return Cache::remember('address-check:v3:'.sha1(strtolower($query)), now()->addDays(30), function () use ($key, $query) {
             try {
                 $response = Http::timeout(8)->get('https://maps.googleapis.com/maps/api/geocode/json', [
                     'address' => $query,
@@ -63,12 +64,16 @@ final class AddressCheck
                 return null;
             }
 
-            $zip = collect($result['address_components'] ?? [])
-                ->first(fn ($c) => in_array('postal_code', $c['types'] ?? [], true))['short_name'] ?? null;
+            $part = fn (string $type) => collect($result['address_components'] ?? [])
+                ->first(fn ($c) => in_array($type, $c['types'] ?? [], true))['short_name'] ?? null;
+            $zip = $part('postal_code');
 
             return [
                 'address' => (string) ($result['formatted_address'] ?? ''),
                 'zip' => $zip,
+                'line1' => trim(($part('street_number') ?? '').' '.($part('route') ?? '')) ?: null,
+                'city' => $part('locality') ?? $part('sublocality') ?? $part('postal_town'),
+                'state' => $part('administrative_area_level_1'),
                 'lat' => isset($result['geometry']['location']['lat']) ? (float) $result['geometry']['location']['lat'] : null,
                 'lng' => isset($result['geometry']['location']['lng']) ? (float) $result['geometry']['location']['lng'] : null,
                 // A street address Google placed exactly, not a town centre or

@@ -115,8 +115,8 @@ class UnattendedReplyIsChannelSpecificTest extends TestCase
             return [
                 $make(Lead::SOURCE_LOCAL_SERVICES, $connection, 'L-1'),
                 $make(Lead::SOURCE_WEBSITE_CHAT, null, 'chat-1'),
-                // A source with no channel at all (a form has one since 2026-11-03: a text).
-                $make(Lead::SOURCE_WEBSITE_BOOKING, null, 'booking-1'),
+                // A source with no channel at all (a form has one since 2026-11-03, a booking since 11-06: a text).
+                $make(Lead::SOURCE_WORKIZ, null, 'workiz-1'),
             ];
         });
 

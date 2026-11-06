@@ -112,25 +112,53 @@ final class FacebookAdsOAuth implements SocialOAuth
     public function identify(SocialOAuthGrant $grant): array
     {
         $accounts = [];
-        $url = 'https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/me/adaccounts';
-        $query = ['fields' => 'id,name,currency', 'limit' => 100, 'access_token' => $grant->accessToken];
+        $read = function (string $edge, string $fields = 'id,name,currency') use ($grant): array {
+            $url = 'https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/'.$edge;
+            $query = ['fields' => $fields, 'limit' => 100, 'access_token' => $grant->accessToken];
+            $rows = [];
 
-        // ponytail: 20 pages of 100 is far past any A-1 portfolio.
-        for ($page = 0; $page < 20 && $url !== null; $page++) {
-            $body = $this->get($url, $query);
-            $query = [];
-
-            foreach ((array) ($body['data'] ?? []) as $row) {
-                $id = is_array($row) ? trim((string) ($row['id'] ?? '')) : '';
-
-                if ($id !== '') {
-                    $name = trim((string) ($row['name'] ?? '')) ?: $id;
-                    $accounts[] = new SocialAccount($id, $name, isset($row['currency']) ? (string) $row['currency'] : null);
-                }
+            // ponytail: 20 pages of 100 is far past any A-1 portfolio.
+            for ($page = 0; $page < 20 && $url !== null; $page++) {
+                $body = $this->get($url, $query);
+                $query = [];
+                $rows = [...$rows, ...array_filter((array) ($body['data'] ?? []), 'is_array')];
+                $url = is_string($body['paging']['next'] ?? null) ? $body['paging']['next'] : null;
             }
 
-            $url = is_string($body['paging']['next'] ?? null) ? $body['paging']['next'] : null;
+            return $rows;
+        };
+
+        $rows = $read('me/adaccounts');
+
+        /*
+         * An ad account shared with a Business portfolio rather than with the
+         * person: a partner share lands on the business (client_ad_accounts),
+         * and /me/adaccounts never lists it. A-1 Chimney's account reached
+         * EzBizi exactly that way on 2026-11-05 and the connect said "cannot
+         * read any ad accounts". business_management is what reads these.
+         * Optional, like the portfolio Pages: an unticked business costs only
+         * its own accounts.
+         */
+        try {
+            foreach ($read('me/businesses', 'id') as $business) {
+                foreach (['owned_ad_accounts', 'client_ad_accounts'] as $edge) {
+                    $rows = [...$rows, ...$read($business['id'].'/'.$edge)];
+                }
+            }
+        } catch (SocialOAuthRefused) {
+            // The person's own accounts above still connect.
         }
+
+        foreach ($rows as $row) {
+            $id = trim((string) ($row['id'] ?? ''));
+
+            if ($id !== '' && ! isset($accounts[$id])) {
+                $name = trim((string) ($row['name'] ?? '')) ?: $id;
+                $accounts[$id] = new SocialAccount($id, $name, isset($row['currency']) ? (string) $row['currency'] : null);
+            }
+        }
+
+        $accounts = array_values($accounts);
 
         if ($accounts === []) {
             throw SocialOAuthRefused::unidentified(
@@ -150,7 +178,11 @@ final class FacebookAdsOAuth implements SocialOAuth
     private function get(string $url, array $query): array
     {
         try {
-            $response = Http::timeout(self::TIMEOUT)->get($url, $query);
+            // Meta's next link carries every parameter, cursor and token included;
+            // a query array, even an empty one, would replace them all.
+            $response = $query === []
+                ? Http::timeout(self::TIMEOUT)->get($url)
+                : Http::timeout(self::TIMEOUT)->get($url, $query);
         } catch (ConnectionException) {
             throw SocialOAuthRefused::exchangeFailed('Facebook Ads');
         }

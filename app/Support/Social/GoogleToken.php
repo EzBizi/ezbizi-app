@@ -108,6 +108,9 @@ final class GoogleToken
          * credential change on that row. Rodrigo can revoke it at any time;
          * the refresh then fails as invalid_grant and the row reads broken.
          */
+        // A row made by the one Google sign-in renews through the client that
+        // signed it in, whichever product it is (Jose, 2026-11-05).
+        $service = $connection->credentials['oauth_service'] ?? $service;
         $own = $connection->credentials['client_id'] ?? null;
         $clientId = is_string($own) && $own !== '' ? $own : config("services.{$service}.client_id");
         $secret = is_string($own) && $own !== ''
@@ -240,6 +243,8 @@ final class GoogleToken
         return new SocialOAuthGrant(
             accessToken: $access,
             refreshToken: $refresh,
+            // What the person left ticked: Google lets each scope be unticked.
+            scopes: array_values(array_filter(explode(' ', (string) $response->json('scope')))),
             expiresIn: is_numeric($response->json('expires_in'))
                 ? (int) $response->json('expires_in')
                 : null,

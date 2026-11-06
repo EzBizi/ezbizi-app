@@ -43,7 +43,14 @@ void main() {
       find.byKey(const ValueKey('connect-card:sending_server')),
       findsOneWidget,
     );
-    expect(find.textContaining('Email · 0 of 1'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:email')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('integrations-section:available')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an empty in_effect is also "not connected", and still drawn', (

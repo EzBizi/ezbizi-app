@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/list_table.dart';
 import '../../widgets/book_job_panel.dart';
+import '../../widgets/proofread_hint.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../customers/customer_detail_panel.dart';
@@ -353,6 +354,7 @@ class _CallTabState extends State<CallTab> {
 
     await _loadUnread();
 
+    if (!mounted) return;
     if (presence.ok) {
       setState(() {
         _teammates = [
@@ -360,7 +362,7 @@ class _CallTabState extends State<CallTab> {
             if (row is Map<String, dynamic>) _Teammate.fromJson(row),
         ];
         for (final row in _teammates) {
-          if (row.userId == widget.session.me!.id) {
+          if (row.userId == widget.session.me?.id) {
             _dnd = row.state == 'dnd';
           }
         }
@@ -2023,6 +2025,12 @@ class _CallTabState extends State<CallTab> {
                 minLines: 1,
                 maxLines: 3,
                 onChanged: (_) => setState(() {}),
+              ),
+              // "Did you mean" (Jose, 2026-11-05), as in Leads.
+              ProofreadHint(
+                api: widget.api,
+                controller: _body,
+                path: '/proofread',
               ),
               const SizedBox(height: 8),
               Align(

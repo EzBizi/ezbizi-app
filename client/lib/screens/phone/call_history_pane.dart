@@ -381,17 +381,6 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
               ),
             ),
           ],
-          if (row.peerName != null || row.callerKind == 'colleague') ...[
-            const SizedBox(width: 6),
-            const StatusPill('Teammate'),
-          ] else if (row.customerId != null ||
-              row.callerKind == 'customer') ...[
-            const SizedBox(width: 6),
-            const StatusPill('Customer', tone: Tone.info),
-          ] else if (row.callerKind == 'lead') ...[
-            const SizedBox(width: 6),
-            const StatusPill('Lead', tone: Tone.review),
-          ],
         ],
       ),
       subtitle: Text(
@@ -404,12 +393,44 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      // WHEN, right-aligned. Under a day heading the clock is enough.
-      trailing: Text(
-        at == null ? '' : _clock(at),
-        style: theme.textTheme.bodySmall?.copyWith(color: muted),
-      ),
+      // WHEN, right-aligned. Under a day heading the clock is enough. The tag
+      // sits in a fixed column just left of it so tags line up down the list
+      // (design 187); on a phone it goes under the time instead.
+      trailing: _whenAndTag(row, at, muted, theme),
       onTap: peer.startsWith('+') ? () => widget.onPick(peer) : null,
+    );
+  }
+
+  Widget _whenAndTag(CallRow row, DateTime? at, Color muted, ThemeData theme) {
+    final when = Text(
+      at == null ? '' : _clock(at),
+      style: theme.textTheme.bodySmall?.copyWith(color: muted),
+    );
+    final tag = row.peerName != null || row.callerKind == 'colleague'
+        ? const StatusPill('Teammate')
+        : row.customerId != null || row.callerKind == 'customer'
+        ? const StatusPill('Customer', tone: Tone.info)
+        : row.callerKind == 'lead'
+        ? const StatusPill('Lead', tone: Tone.review)
+        : null;
+    if (MediaQuery.sizeOf(context).width < 480) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [when, ?tag],
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 88,
+          child: Align(alignment: Alignment.centerRight, child: tag),
+        ),
+        const SizedBox(width: 8),
+        when,
+      ],
     );
   }
 
