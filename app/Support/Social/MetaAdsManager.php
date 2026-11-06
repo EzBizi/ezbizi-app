@@ -49,7 +49,8 @@ final class MetaAdsManager
                 'spend' => (float) ($row['spend'] ?? 0),
                 'impressions' => (int) ($row['impressions'] ?? 0),
                 'clicks' => (int) ($row['clicks'] ?? 0),
-                'leads' => MetaAdInsights::leads((array) ($row['actions'] ?? [])),
+                // Instant forms only: A-1's pixel "Lead" fired ~5,760 times for 3 real bookings (NJ, 11-06).
+                'leads' => MetaAdInsights::leads((array) ($row['actions'] ?? []), 'onsite_conversion.lead_grouped'),
             ];
             foreach (['campaign_id', 'adset_id', 'ad_id'] as $key) {
                 $id = (string) ($row[$key] ?? '');
