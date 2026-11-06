@@ -15,6 +15,8 @@ class VersionHistory {
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0540', date: '6 Nov 2026', items: [
       'Developers: the public API reference at ezbizi.com/developers now updates itself from the app',
+      "HR > Records > Personal: gender is picked from a list you edit in settings, every field has a copy button, and you can upload or remove the person's photo",
+      'Phone > Recent calls: the Lead, Customer and Teammate tags line up beside the time',
     ]),
     VersionRelease(version: '0.0.0539', date: '5 Nov 2026', items: [
       'Marketing > Ads: give any Meta or Google campaign a schedule and it turns itself on and off on the days and times you pick',
