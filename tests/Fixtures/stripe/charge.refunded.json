@@ -1,0 +1,135 @@
+{
+    "id": "evt_3UQCsMRmextN9BKZ0ig8Zr7g",
+    "object": "event",
+    "account": "acct_1UQCZLRmextN9BKZ",
+    "api_version": "2026-09-30.endive",
+    "context": "acct_1UQCZLRmextN9BKZ",
+    "created": 1791925488,
+    "data": {
+        "object": {
+            "id": "ch_3UQCsMRmextN9BKZ0V852Ed7",
+            "object": "charge",
+            "amount": 12500,
+            "amount_captured": 12500,
+            "amount_refunded": 2500,
+            "application": "ca_VR4YIzahqD4G7Ulv77qoCo7PGNuoXOuE",
+            "application_fee": "fee_1UQCsNRmextN9BKZ1edFpCl6",
+            "application_fee_amount": 313,
+            "balance_transaction": "txn_3UQCsMRmextN9BKZ0SyuQgXl",
+            "billing_details": {
+                "address": {
+                    "city": null,
+                    "country": null,
+                    "line1": null,
+                    "line2": null,
+                    "postal_code": null,
+                    "state": null
+                },
+                "email": null,
+                "name": null,
+                "phone": null,
+                "tax_id": null
+            },
+            "calculated_statement_descriptor": "TEST ACCOUNT",
+            "captured": true,
+            "created": 1791925487,
+            "currency": "usd",
+            "customer": null,
+            "description": null,
+            "destination": null,
+            "dispute": null,
+            "disputed": false,
+            "failure_balance_transaction": null,
+            "failure_code": null,
+            "failure_message": null,
+            "fraud_details": [],
+            "livemode": false,
+            "metadata": [],
+            "on_behalf_of": null,
+            "order": null,
+            "outcome": {
+                "advice_code": null,
+                "network_advice_code": null,
+                "network_decline_code": null,
+                "network_status": "approved_by_network",
+                "reason": null,
+                "risk_level": "normal",
+                "risk_score": 49,
+                "seller_message": "Payment complete.",
+                "type": "authorized"
+            },
+            "paid": true,
+            "payment_intent": "pi_3UQCsMRmextN9BKZ0B49Rvwg",
+            "payment_method": "pm_1UQCsMRmextN9BKZOljHUt8J",
+            "payment_method_details": {
+                "card": {
+                    "amount_authorized": 12500,
+                    "authorization_code": "379642",
+                    "brand": "visa",
+                    "checks": {
+                        "address_line1_check": null,
+                        "address_postal_code_check": null,
+                        "cvc_check": "pass"
+                    },
+                    "country": "US",
+                    "electronic_commerce_indicator": "07",
+                    "exp_month": 10,
+                    "exp_year": 2027,
+                    "extended_authorization": {
+                        "status": "disabled"
+                    },
+                    "fingerprint": "5qhYs4m2zWMwg3wt",
+                    "funding": "credit",
+                    "incremental_authorization": {
+                        "status": "unavailable"
+                    },
+                    "installments": null,
+                    "last4": "4242",
+                    "mandate": null,
+                    "multicapture": {
+                        "status": "unavailable"
+                    },
+                    "network": "visa",
+                    "network_token": {
+                        "used": false
+                    },
+                    "network_transaction_id": "115101120549990",
+                    "overcapture": {
+                        "maximum_amount_capturable": 12500,
+                        "status": "unavailable"
+                    },
+                    "regulated_status": "unregulated",
+                    "three_d_secure": null,
+                    "transaction_link_id": null,
+                    "wallet": null
+                },
+                "type": "card"
+            },
+            "radar_options": [],
+            "receipt_email": null,
+            "receipt_number": null,
+            "receipt_url": "https://pay.stripe.com/receipts/payment/CAcaFwoVYWNjdF8xVVFDWkxSbWV4dE45QktaKPC5utYGMgYASzK1H-Y6LBa4xY8Kc6WcvQ7H1tDTxgeGXo4csXfeABVDI_WnX5O1WNsQzVi-dxg6_pjA",
+            "refunded": false,
+            "review": null,
+            "shipping": null,
+            "source": null,
+            "source_transfer": null,
+            "statement_descriptor": null,
+            "statement_descriptor_suffix": null,
+            "status": "succeeded",
+            "transfer_data": null,
+            "transfer_group": null
+        },
+        "previous_attributes": {
+            "amount_refunded": 0,
+            "receipt_url": "https://pay.stripe.com/receipts/payment/CAcaFwoVYWNjdF8xVVFDWkxSbWV4dE45QktaKPC5utYGMgZOdIjTkro6LBbEaLL787HQS-t22SbRJeQ_01k2QvLxmCjDCAWaRh_cvKfvOFG7Z_AVN2i2"
+        }
+    },
+    "livemode": false,
+    "pending_webhooks": 1,
+    "request": {
+        "id": "req_qR6OjsWP93nSBN",
+        "idempotency_key": "a672ca49-18b7-43c6-8c28-b11f69e5524c"
+    },
+    "type": "charge.refunded"
+}

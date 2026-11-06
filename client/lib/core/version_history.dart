@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0543', date: '6 Nov 2026', items: [
+      'Reports: new report texts on WhatsApp: revenue collected at 1 AM, an evening summary at 8 PM with jobs created and Google and Meta ads, and a weekly report on Sunday at 8 PM',
+      'Settings: branch order, excluded tags and dispatcher roles for reports are editable lists',
+      'Financials > Invoices: groundwork for paying invoices online with each company’s own Stripe account (switched on later)',
+      'Windows: fixed a media playback error in the recording player',
+    ]),
     VersionRelease(version: '0.0.0542', date: '6 Nov 2026', items: [
       'Scheduling > Availability: picking a ZIP from the suggestions runs the full check, map included',
       'Scheduling > Availability: tap any other open day to see that day’s best window and technicians',

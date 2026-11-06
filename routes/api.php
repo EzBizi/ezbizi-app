@@ -704,6 +704,20 @@ Route::get('v1/invoices/shared/{invoice}', [\App\Http\Controllers\Api\InvoicesCo
     ->whereUuid('invoice')
     ->name('invoice.shared');
 
+// Invoices paid online (Payments, Jose 2026-11-06). The Pay link is signed;
+// the webhook's Stripe signature is its authentication; the pages mark
+// nothing. Under /api because nginx gives every other path to Flutter.
+Route::get('v1/invoices/pay/{invoice}', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'pay'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->whereUuid('invoice')
+    ->name('invoice.pay');
+Route::post('v1/payments/stripe/webhook', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'webhook'])
+    ->middleware('throttle:600,1')
+    ->name('payments.stripe.webhook');
+Route::get('v1/payments/pages/{page}', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'pages'])
+    ->middleware('throttle:60,1')
+    ->name('payments.pages');
+
 // An inspection report's PDF for places that cannot sign in (a Workiz job);
 // the signed link is the permission. See InspectionReport::shareUrl.
 Route::get('v1/inspections/shared/{report}', [InspectionReportsController::class, 'shared'])
@@ -1164,6 +1178,8 @@ Route::prefix('v1')
             Route::post('send', 'send');
             Route::post('send-preview', 'preview');
             Route::get('settings', 'settings');
+            Route::get('payments-account', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'account']);
+            Route::post('payments-account/onboarding', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'onboarding']);
             Route::get('/', 'index');
             Route::get('{invoice}', 'show');
             Route::patch('{invoice}', 'update');
