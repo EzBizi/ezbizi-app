@@ -128,6 +128,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(asked, ['availability zip=06611', 'suggestion zip=06611']);
+
+    // The customer cannot take that day and asks for the 12th: the 12th's
+    // own suggestion (Jose, 2026-11-06).
+    await tester.tap(find.byKey(const ValueKey('availability-day-2026-10-12')));
+    await tester.pumpAndSettle();
+    expect(asked.last, 'suggestion zip=06611&date=2026-10-12');
   });
 
   testWidgets('an address is asked as an address and shows where it landed', (
