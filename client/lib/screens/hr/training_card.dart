@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/tag.dart';
@@ -168,34 +169,59 @@ class _TrainingCardState extends State<TrainingCard> {
     int of(Set<_State> states) =>
         rows.where((r) => states.contains(r.state)).length;
 
-    Widget cell(int n, String label, {bool bad = false}) => Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: bad
-            ? BoxDecoration(
-                border: Border.all(color: scheme.error),
-                borderRadius: BorderRadius.circular(8),
-              )
-            : null,
-        child: Column(
-          children: [
-            Text(
-              '$n',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: bad ? scheme.error : null,
-                fontWeight: FontWeight.w700,
-              ),
+    // Design 190: equal tiles, each with a tinted icon, so the strip reads by
+    // colour before it is read by number.
+    Widget cell(int n, String label, IconData icon, Tone tone) {
+      final tint = ToneColours.of(context, tone);
+
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: tone == Tone.bad ? scheme.error : scheme.outlineVariant,
             ),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: bad ? scheme.error : scheme.outline,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: tint.fill,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(icon, size: 18, color: tint.ink),
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$n',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            color: tone == Tone.bad ? scheme.error : null,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }
 
     return Row(
       key: TrainingCard.countsKey,
@@ -205,16 +231,24 @@ class _TrainingCardState extends State<TrainingCard> {
         cell(
           of({_State.lapsed, _State.notPassed}),
           'Needs a pass',
-          bad: of({_State.lapsed, _State.notPassed}) > 0,
+          Icons.priority_high,
+          of({_State.lapsed, _State.notPassed}) > 0 ? Tone.bad : Tone.neutral,
         ),
-        const SizedBox(width: 8),
-        cell(of({_State.notStarted, _State.inProgress}), 'Outstanding'),
-        const SizedBox(width: 8),
-        cell(of({_State.passed}), 'Passed'),
+        const SizedBox(width: 12),
+        cell(
+          of({_State.notStarted, _State.inProgress}),
+          'Outstanding',
+          Icons.schedule,
+          Tone.neutral,
+        ),
+        const SizedBox(width: 12),
+        cell(of({_State.passed}), 'Passed', Icons.check, Tone.ok),
       ],
     );
   }
 
+  /// Design 190: aligned columns (course, status, score, then the dates) so
+  /// the pills and the scores can be compared down the card.
   Widget _line(BuildContext context, _Row row) {
     final theme = Theme.of(context);
 
@@ -223,26 +257,56 @@ class _TrainingCardState extends State<TrainingCard> {
       child: Row(
         children: [
           Expanded(
+            flex: 3,
             child: Text(
               row.title,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium,
             ),
           ),
-          Tag(row.state.label, warn: row.state.bad),
-          if (row.detail.isNotEmpty) ...[
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                row.detail,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
-                ),
+          SizedBox(
+            width: 150,
+            child: Align(alignment: Alignment.centerLeft, child: _tag(row)),
+          ),
+          SizedBox(width: 110, child: _score(context, row)),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 2,
+            child: Text(
+              row.detail,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.outline,
               ),
             ),
-          ],
+          ),
         ],
+      ),
+    );
+  }
+
+  /// Green passed, amber lapsed, red not passed (design 190).
+  Widget _tag(_Row row) => Tag(
+    row.state.label,
+    good: row.state == _State.passed,
+    warn: row.state == _State.lapsed,
+    bad: row.state == _State.notPassed,
+  );
+
+  /// A bar for a test's score; nothing for a guide.
+  Widget _score(BuildContext context, _Row row) {
+    final score = row.score;
+    if (score == null) return const SizedBox.shrink();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: LinearProgressIndicator(
+        value: (score / 100).clamp(0, 1).toDouble(),
+        minHeight: 6,
+        backgroundColor: ToneColours.of(context, Tone.neutral).fill,
+        color: row.state == _State.notPassed
+            ? Theme.of(context).colorScheme.error
+            : EzBiziTheme.clockIn(context),
       ),
     );
   }
@@ -270,7 +334,7 @@ class _TrainingCardState extends State<TrainingCard> {
           // than the card, and a row that runs off the edge hides the date.
           Row(
             children: [
-              Flexible(child: Tag(row.state.label, warn: row.state.bad)),
+              Flexible(child: _tag(row)),
               if (row.detail.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Flexible(
@@ -361,10 +425,16 @@ class _TrainingCardState extends State<TrainingCard> {
             if (score != null) '$score%',
             if (expires != null) 'runs out $expires',
           ].join(' · '),
+          score: score is num ? score : null,
         );
       }
       if (json['passed'] == false) {
-        return _Row(title, _State.notPassed, score == null ? '' : '$score%');
+        return _Row(
+          title,
+          _State.notPassed,
+          score == null ? '' : '$score%',
+          score: score is num ? score : null,
+        );
       }
       return _Row(title, _State.notStarted, '');
     }
@@ -412,9 +482,12 @@ enum _State {
 }
 
 class _Row {
-  const _Row(this.title, this.state, this.detail);
+  const _Row(this.title, this.state, this.detail, {this.score});
 
   final String title;
   final _State state;
   final String detail;
+
+  /// A test's percentage, for the bar; null for a guide.
+  final num? score;
 }

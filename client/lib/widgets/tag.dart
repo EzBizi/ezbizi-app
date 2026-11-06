@@ -4,7 +4,13 @@ import '../core/theme.dart';
 
 /// A small state label beside a name — "Demo", "Read only", "Disabled".
 class Tag extends StatelessWidget {
-  const Tag(this.label, {super.key, this.warn = false, this.good = false});
+  const Tag(
+    this.label, {
+    super.key,
+    this.warn = false,
+    this.good = false,
+    this.bad = false,
+  });
 
   final String label;
 
@@ -20,17 +26,23 @@ class Tag extends StatelessWidget {
   /// Ignored when [warn] is set: a tag cannot be both.
   final bool good;
 
+  /// A problem, such as "Not passed". Wins over [warn] and [good].
+  final bool bad;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final caution = ToneColours.of(context, Tone.caution);
+    final problem = ToneColours.of(context, Tone.bad);
 
     return Padding(
       padding: const EdgeInsets.only(left: 8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: warn
+          color: bad
+              ? problem.fill
+              : warn
               ? caution.fill
               : good
               ? EzBiziTheme.clockIn(context).withValues(alpha: 0.14)
@@ -46,7 +58,9 @@ class Tag extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: warn
+            color: bad
+                ? problem.ink
+                : warn
                 ? caution.ink
                 : good
                 ? EzBiziTheme.clockIn(context)
