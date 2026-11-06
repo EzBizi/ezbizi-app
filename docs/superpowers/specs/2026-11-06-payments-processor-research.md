@@ -74,6 +74,10 @@ With no paying tenants yet, **"full" carries no cost and no liability**, and it 
 one config value on the branch (`services.stripe.connect_dashboard`). Recommend
 "full" now and Express (or a payfac) once EzBizi wants to price payments itself.
 
+**Decided — Jose, 2026-11-06: "Stripe (Standard, $0)".** Connected accounts are
+created with the full Stripe Dashboard; Stripe collects fees and carries losses.
+This replaces the 2026-10-13 Express pick.
+
 ## Build order
 
 1. **Port `session/payments` onto Invoices** — keep `StripeGateway`, `PaymentAccount`,
