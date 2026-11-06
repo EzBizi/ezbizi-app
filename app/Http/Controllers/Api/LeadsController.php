@@ -441,7 +441,7 @@ class LeadsController extends Controller
         // the page (8 ms on production's 7,869 customers), so a known caller
         // is shown by name. Jose, 2026-09-28.
         $customers = $user->hasPermission('customers.view')
-            ? $this->customersByNumber(array_map(fn (Lead $l) => $l->phone_digits, $leads->items()))
+            ? $this->customersFor($leads->items())
             : [];
 
         $viewers = LeadPresence::others(array_map(fn (Lead $l) => (string) $l->id, $leads->items()), $user);
@@ -457,7 +457,7 @@ class LeadsController extends Controller
                 'viewers' => $viewers[(string) $l->id] ?? [],
                 'last_contact_ad_question' => isset($adAsked[$l->id]) && $l->last_contact_at !== null
                     && Carbon::parse($adAsked[$l->id])->equalTo($l->last_contact_at),
-                'customer' => ($c = $customers[self::tenDigits($l->phone_digits)] ?? null) === null
+                'customer' => ($c = $customers[(string) $l->id] ?? null) === null
                     ? null
                     : ['id' => $c->id, 'number' => $c->number, 'name' => $c->name],
             ], $leads->items()),
@@ -735,7 +735,7 @@ class LeadsController extends Controller
         $digits = $lead->phone_digits;
 
         if ($digits === null || strlen($digits) < 7) {
-            return collect();
+            return collect(array_filter([$this->customersFor([$lead])[(string) $lead->id] ?? null]));
         }
 
         // Google sends +1 216 555 0100; a customer typed in by hand may be
@@ -751,7 +751,74 @@ class LeadsController extends Controller
             )
             ->orderBy('name')
             ->limit(3)
-            ->get();
+            ->get()
+            ->whenEmpty(fn () => collect(array_filter([$this->customersFor([$lead])[(string) $lead->id] ?? null])));
+    }
+
+    /**
+     * The customer each lead already is, on every source (Jose, 2026-11-06:
+     * "All the leads should, like this things need to be basic"): by the
+     * lead's phone, then a phone or email the customer wrote, then the lead's
+     * own email. Never by name alone - that would attach the wrong Jane Doe.
+     * The thread is read only for leads their phone did not match.
+     *
+     * @param  list<Lead>  $leads
+     * @return array<string, Customer> by lead id
+     */
+    private function customersFor(array $leads): array
+    {
+        // phone_digits is filled by the importers; a lead written another way may carry only phone.
+        $digits = fn (Lead $l) => $l->phone_digits ?? (preg_replace('/\D/', '', (string) $l->phone) ?: null);
+        $byNumber = $this->customersByNumber(array_map($digits, $leads));
+        $found = [];
+        $rest = [];
+        foreach ($leads as $l) {
+            ($c = $byNumber[self::tenDigits($digits($l))] ?? null) !== null
+                ? $found[(string) $l->id] = $c
+                : $rest[] = $l;
+        }
+        if ($rest === []) {
+            return $found;
+        }
+
+        $texts = LeadConversation::query()
+            ->whereIn('lead_id', array_map(fn (Lead $l) => $l->id, $rest))
+            ->where('participant', LeadConversation::FROM_CONSUMER)
+            ->where('channel', '!=', LeadConversation::CHANNEL_PHONE_CALL)
+            ->whereNotNull('text')
+            ->orderBy('occurred_at')
+            ->get(['lead_id', 'text'])
+            ->groupBy('lead_id');
+        $written = [];
+        foreach ($rest as $l) {
+            $w = LeadDetails::contacts($texts->get($l->id)?->pluck('text')->all() ?? []);
+            $written[(string) $l->id] = [$w['phone'], array_values(array_unique(array_filter([
+                $w['email'], strtolower(trim((string) $l->email)) ?: null,
+            ])))];
+        }
+
+        $phones = $this->customersByNumber(array_column($written, 0));
+        $emails = Customer::query()
+            ->whereIn(DB::raw('LOWER(email)'), array_values(array_unique(array_merge(...array_column($written, 1)))) ?: [''])
+            ->orderBy('name')
+            ->get()
+            ->reduce(function (array $by, Customer $c) {
+                $by[strtolower((string) $c->email)] ??= $c;
+
+                return $by;
+            }, []);
+
+        foreach ($written as $id => [$phone, $mails]) {
+            $c = $phones[self::tenDigits($phone)] ?? null;
+            foreach ($mails as $mail) {
+                $c ??= $emails[$mail] ?? null;
+            }
+            if ($c !== null) {
+                $found[$id] = $c;
+            }
+        }
+
+        return $found;
     }
 
     /**

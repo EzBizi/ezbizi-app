@@ -36,6 +36,30 @@ final class LeadDetails
         return ['name' => $name, 'address' => $address, 'zip' => $zip];
     }
 
+    /**
+     * The phone and email the customer wrote, newest first: how a Messenger
+     * or Instagram lead, which arrives with neither, is told apart as an
+     * existing customer (Jose, 2026-11-06).
+     *
+     * @param  list<string>  $texts  the customer's messages, oldest first
+     * @return array{phone: ?string, email: ?string} phone as digits, email lower-cased
+     */
+    public static function contacts(array $texts): array
+    {
+        $phone = $email = null;
+
+        foreach (array_reverse($texts) as $text) {
+            if ($email === null && preg_match('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', $text, $m)) {
+                $email = strtolower($m[0]);
+            }
+            if ($phone === null && preg_match('/(?<!\d)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)/', $text, $m)) {
+                $phone = preg_replace('/\D/', '', $m[0]);
+            }
+        }
+
+        return ['phone' => $phone, 'email' => $email];
+    }
+
     /** "215 Lakeview Dr Michigan City Indiana" -> "215 Lakeview Dr Michigan City Indiana". */
     public static function address(string $text): ?string
     {
