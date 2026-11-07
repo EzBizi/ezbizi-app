@@ -41,69 +41,82 @@ final class AppAsk
         $started = microtime(true);
         $left = fn () => $timeout - (int) ceil(microtime(true) - $started);
         $today = now('America/New_York');
-
-        $plan = fn (string $retry) => GrokCli::ask(
-            // The CLI is an agent: without this line it planned "grep" calls on the codebase (prod, 2026-10-14).
-            'You have NO tools and cannot read code or files: only choose from the ENDPOINTS list below. '
-            .'You help a staff member of a home-services business get information from their CRM, EzBizi. '
+        $call = [
+            'type' => 'object',
+            'properties' => ['path' => ['type' => 'string'], 'query' => ['type' => 'string']],
+            'required' => ['path', 'query'],
+            'additionalProperties' => false,
+        ];
+        // An assistant, not a menu (Jose, 2026-11-05: "allow it free reign to look at
+        // information ... depending on who talks to it"): it reads as many rounds as it
+        // needs, as the asker, and always says something - small talk included.
+        $about = 'You are the EzBizi assistant for a staff member of a home-services business, '
+            .'with read access to their CRM as them (their permissions apply). You have NO tools and cannot '
+            .'read code or files: you read the CRM only by asking for GET paths from the list. '
             .self::business($viewer, true)
-            ."Today is {$today->toDateString()} ({$today->format('l')}), America/New_York. Pick at most "
-            .self::MAX_CALLS.' GET endpoints (path relative to api/v1, with {placeholders} filled in, and '
-            .'query parameters, using only the names listed in brackets after each endpoint, as a query '
-            .'string such as when=upcoming&today=2026-10-15) that would answer the question. If none '
-            ."would, return no calls.\n\nENDPOINTS:\n".self::catalogue()."\n\nQUESTION: ".$question.$retry,
+            ."Today is {$today->toDateString()} ({$today->format('l')}), America/New_York. "
+            .'A path is relative to api/v1 with {placeholders} filled in; query parameters use only the '
+            .'names in brackets after each path, as a query string such as when=upcoming&today=2026-10-15. '
+            .'Search broadly: a phone number or name can be a customer, a lead, a call or a job; a company '
+            .'or branch means its id; "all companies" means each of them. ';
+
+        $plan = GrokCli::ask(
+            $about.'Pick up to '.self::MAX_CALLS.' paths to start with. If the message needs no data '
+            .'(a greeting, thanks, a general question), return no calls and write the reply.'
+            ."\n".GrokCli::WHATSAPP_STYLE."\n\nENDPOINTS:\n".self::catalogue()."\n\nQUESTION: ".$question,
             [
                 'type' => 'object',
-                'properties' => ['calls' => ['type' => 'array', 'items' => [
-                    'type' => 'object',
-                    'properties' => ['path' => ['type' => 'string'], 'query' => ['type' => 'string']],
-                    'required' => ['path', 'query'],
-                    'additionalProperties' => false,
-                ]]],
+                'properties' => ['calls' => ['type' => 'array', 'items' => $call], 'reply' => ['type' => 'string']],
                 'required' => ['calls'],
                 'additionalProperties' => false,
             ],
             max(10, min(30, $left() - 25)),
         );
 
-        // One retry when every call failed: the app's own error ("The selected
-        // when is invalid.") tells Grok which value to change (prod, 2026-10-14).
-        $retry = '';
-        for ($attempt = 0; $attempt < 2; $attempt++) {
-            $calls = array_slice((array) ($plan($retry)['calls'] ?? []), 0, self::MAX_CALLS);
-            if ($calls === []) {
-                return null;
+        $calls = array_slice((array) ($plan['calls'] ?? []), 0, self::MAX_CALLS);
+        if ($calls === []) {
+            $reply = trim((string) ($plan['reply'] ?? ''));
+
+            return $reply === '' ? null : $reply;
+        }
+
+        // ponytail: 4 rounds of 3 reads; more when an answer measurably needs them.
+        $data = [];
+        for ($round = 0; $round < 4; $round++) {
+            // Keyed with the query: the same path read per company is several answers.
+            foreach ($calls as $c) {
+                $q = ltrim((string) ($c['query'] ?? ''), '?');
+                $data[trim((string) ($c['path'] ?? ''), '/').($q === '' ? '' : '?'.$q)] = current(self::fetch($viewer, [$c]));
             }
-            $results = self::fetch($viewer, $calls);
-            $failed = array_filter($results, fn ($r) => is_string($r) && str_starts_with($r, 'HTTP '));
-            if (count($failed) < count($results) || $left() < 35) {
+            if ($left() < 15) {
                 break;
             }
-            $retry = "\n\nYOUR LAST CALLS FAILED - fix the query and try again:\n"
-                .json_encode(array_map(null, $calls, array_values($results)), JSON_UNESCAPED_SLASHES);
+            $last = $round === 3 || $left() < 55;   // the answer over a full DATA needs ~25 s (prod 11-05: 19 s timed out)
+            $a = GrokCli::ask(
+                $about.'Answer from the DATA below. Never invent names, numbers or dates; if the data '
+                .'only partly answers, say what it shows and what it does not. '
+                .($last ? '' : 'If you need more data first (a failed read, another company, a different '
+                    .'filter, the next page), return up to '.self::MAX_CALLS.' more calls from the PATHS list '
+                    .'and leave reply empty. ')
+                ."\n".GrokCli::WHATSAPP_STYLE."\n\nQUESTION: {$question}\n\n"
+                .($last ? '' : "PATHS:\n".self::catalogue()."\n\n")
+                ."DATA:\n".json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                [
+                    'type' => 'object',
+                    'properties' => ['reply' => ['type' => 'string'], 'calls' => ['type' => 'array', 'items' => $call]],
+                    'required' => ['reply'],
+                    'additionalProperties' => false,
+                ],
+                max(10, $left() - 5),
+            );
+            $reply = trim((string) ($a['reply'] ?? ''));
+            $calls = $last ? [] : array_slice((array) ($a['calls'] ?? []), 0, self::MAX_CALLS);
+            if ($calls === []) {
+                return $reply === '' ? null : $reply;
+            }
         }
-        if ($results === [] || $left() < 10) {
-            return null;
-        }
 
-        $a = GrokCli::ask(
-            "Answer the staff member's question from this data from their CRM. ".self::business($viewer, true)
-            .'Only state what the data '
-            .'shows; if it does not answer the question, set answered to false. Never invent names, '
-            ."numbers or dates.\n".GrokCli::WHATSAPP_STYLE."\n\nQUESTION: {$question}\n\nDATA:\n"
-            .json_encode($results, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-            [
-                'type' => 'object',
-                'properties' => ['answered' => ['type' => 'boolean'], 'reply' => ['type' => 'string']],
-                'required' => ['answered', 'reply'],
-                'additionalProperties' => false,
-            ],
-            $left() - 5,
-        );
-
-        $reply = trim((string) ($a['reply'] ?? ''));
-
-        return ($a['answered'] ?? false) === true && $reply !== '' ? $reply : null;
+        return null;
     }
 
     /**
