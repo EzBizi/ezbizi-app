@@ -313,8 +313,10 @@ class ThumbtackLeadIngestionTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $this->connection($t);
+        // Recent: the costs command re-reads only leads received in the last 60 days.
+        $createdAt = now()->subDay()->utc()->format('Y-m-d\TH:i:s\Z');
         $negotiation = fn (string $state) => [
-            'negotiationID' => 'neg-1', 'createdAt' => '2026-09-08T14:30:00Z',
+            'negotiationID' => 'neg-1', 'createdAt' => $createdAt,
             'customer' => ['firstName' => 'Ada', 'lastName' => 'Sweep', 'phone' => '+15552345678'],
             'request' => ['category' => ['name' => 'Chimney Cleaning'], 'location' => ['state' => 'NJ', 'zipCode' => '08108']],
             'leadPrice' => '$14.90', 'chargeState' => $state,
