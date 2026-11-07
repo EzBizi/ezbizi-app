@@ -19,8 +19,13 @@ use Illuminate\Support\Str;
  */
 final class BookingLink
 {
-    /** How long the link works. */
-    public const DAYS = 14;
+    /** How long the link works: Settings `leads.booking_link_days` (Jose, 2026-11-04). */
+    private static function days(Lead $lead): int
+    {
+        $organization = \App\Models\Organization::withoutGlobalScopes()->find($lead->organization_id);
+
+        return (int) ($organization === null ? 14 : app(\App\Support\Settings\SettingsResolver::class)->get('leads.booking_link_days', $organization));
+    }
 
     /** e.g. https://www.angisweep.com/b/Ab3xK9m, on the booking page's own site. */
     public static function forLead(Lead $lead, string $bookingPage): string
@@ -66,7 +71,7 @@ final class BookingLink
             $code = Str::random(7);
         } while (BookingCode::query()->withoutGlobalScopes()->whereKey($code)->exists());
 
-        BookingCode::create(['code' => $code, 'lead_id' => $lead->getKey(), 'expires_at' => now()->addDays(self::DAYS)]);
+        BookingCode::create(['code' => $code, 'lead_id' => $lead->getKey(), 'expires_at' => now()->addDays(self::days($lead))]);
 
         return $code;
     }
@@ -74,7 +79,7 @@ final class BookingLink
     /** The older signed token: lead.expires.mac. Still read by leadId; no longer minted. */
     public static function signed(Lead $lead): string
     {
-        $body = $lead->getKey().'.'.now()->addDays(self::DAYS)->timestamp;
+        $body = $lead->getKey().'.'.now()->addDays(self::days($lead))->timestamp;
 
         return $body.'.'.self::mac($body);
     }

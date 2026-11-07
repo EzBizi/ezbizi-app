@@ -108,6 +108,9 @@ class AutomationEngine
                 $scope = $event->scope_snapshot ?? EventScope::capture($subject);
                 if ($event->version_ids === null) {
                     $ids = Automation::query()->where('trigger_key', $event->event_key)
+                        // A clock event is its own rule's (the rule is the subject), not every scheduled rule's:
+                        // 8 PM's tick sent the 1 AM, 8 AM and Sunday reports too (2026-11-06).
+                        ->when($event->event_key === 'automation.schedule_reached', fn ($q) => $q->whereKey($event->subject_id))
                         ->where('is_active', true)->whereNull('disabled_at')->whereNotNull('active_version_id')
                         ->get()->filter(fn (Automation $a) => $a->coversScope(
                             $scope['type'], $scope['id'], companyChain: $scope['company_chain'],

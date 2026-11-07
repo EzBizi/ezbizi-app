@@ -9,6 +9,7 @@ use App\Models\FinancialChargeSheetRow;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Models\Organization;
+use App\Models\PaymentAccount;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Invoices\InvoiceChannels;
@@ -352,6 +353,10 @@ class InvoicesController extends Controller
             'channels' => array_map(fn ($c) => $channels->readiness($c, $issuer) + ['chosen' => in_array($c, $channels->chosen($issuer), true)], InvoiceChannels::ALL),
             'sms_numbers' => $channels->textingNumbers($issuer)->map(fn ($n) => ['id' => $n->id, 'e164' => $n->e164, 'label' => $n->label])->values(),
             'mailbox' => ($m = $channels->mailbox($issuer)) ? ['id' => $m->id, 'address' => $m->address] : null,
+            // Card and bank payments: a company's own Stripe account (InvoicePaymentsController).
+            'payments' => $issuer instanceof Company ? ['configured' => (string) config('services.stripe.secret') !== '',
+                'may_connect' => $user->hasPermission('invoices.approve')]
+                + (PaymentAccount::query()->where('company_id', $issuer->id)->first()?->present() ?? ['stripe_account_id' => null]) : null,
         ]]);
     }
 

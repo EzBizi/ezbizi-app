@@ -1387,6 +1387,20 @@ class ProjectWorkizRecordsTest extends TestCase
     }
 
     /** The booker at another house, and the placeholder address staff share, are not the same person. */
+    /** Customers, 11-04: the placeholder streets are the org's own list, not a constant. */
+    public function test_a_street_the_org_lists_as_a_placeholder_is_never_matched(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->pat($tenant, $tenant['franchise']->id);
+        $this->inTenant($tenant['org'], fn () => \App\Models\BusinessListItem::create(['organization_id' => $tenant['org']->id,
+            'list_key' => 'customers.placeholder_streets', 'item_key' => '1 Example Street', 'value' => [], 'sort' => 0, 'active' => true]));
+        $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame(2, $this->inTenant($tenant['org'], fn () => Customer::query()->count()), 'created, not adopted at the listed street');
+    }
+
     public function test_another_postal_code_or_a_placeholder_street_is_a_new_customer(): void
     {
         $tenant = $this->provisionTenant('Alpha');

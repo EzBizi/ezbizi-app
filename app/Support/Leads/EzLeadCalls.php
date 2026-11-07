@@ -11,6 +11,7 @@ use App\Models\PhoneNumber;
 use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Phone\NumberNames;
+use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -37,8 +38,6 @@ final class EzLeadCalls
     public const CALL = 'ez_call_';
 
     public const TEXT = 'ez_text_';
-
-    private const ANNOUNCE_WITHIN_MINUTES = 60;
 
     private const WORDS = [
         RingCentralLeadCalls::POSSIBLE_SPAM => 'Possible spam',
@@ -160,7 +159,7 @@ final class EzLeadCalls
             }
 
             if (($outcome === RingCentralLeadCalls::MISSED || $outcome === RingCentralLeadCalls::VOICEMAIL)
-                && $at->gte(CarbonImmutable::now()->subMinutes(self::ANNOUNCE_WITHIN_MINUTES))) {
+                && $at->gte(CarbonImmutable::now()->subMinutes((int) SettingsResolver::forOrganization('leads.announce_minutes', $lead->organization_id)))) {
                 $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => [
                     'phone' => $lead->phone,
                     'contact_name' => $lead->contact_name,

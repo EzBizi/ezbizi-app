@@ -27,7 +27,7 @@ class SchedulingWarnOverbooking extends Command
     /** The trigger the warning email's automation listens on. */
     public const TRIGGER = 'scheduling.overbooking_found';
 
-    protected $signature = 'scheduling:warn-overbooking';
+    protected $signature = 'scheduling:warn-overbooking {--now : Ignore the hour setting (for a manual run)}';
 
     protected $description = 'Raise the overbooking trigger for areas with no spot left for the next 10 days or more';
 
@@ -37,15 +37,19 @@ class SchedulingWarnOverbooking extends Command
 
         foreach (Organization::query()->whereIn('id', $ids)->get() as $organization) {
             $tenant->run($organization, function () use ($organization, $events) {
-                $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $organization));
+                $zone = (string) app(SettingsResolver::class)->get('timezone', $organization);
+                if (! $this->option('now') && (int) CarbonImmutable::now($zone)->format('G') !== (int) app(SettingsResolver::class)->get('scheduling.overbooking_hour', $organization)) {
+                    return;
+                }
+                $from = Openings::tomorrow($zone);
                 $areas = ServiceArea::query()->get();
                 $check = app(Overbooking::class);
 
-                // Only the areas full for Overbooking::FULL_DAYS or more
+                // Only the areas full for Overbooking::fullDays() or more
                 // (Shoval, 2026-10-05: so ads there can be paused). Overbooked
                 // days are Scheduling › Overbooking's and the dashboard's, not
                 // the email's.
-                $full = $check->fullyBooked($areas, $from, Overbooking::FULL_DAYS);
+                $full = $check->fullyBooked($areas, $from, Overbooking::fullDays());
 
                 if ($full === []) {
                     return;
@@ -57,10 +61,10 @@ class SchedulingWarnOverbooking extends Command
                     'summary' => self::summary($full, $from->subDay()),
                     'fully_booked_areas' => count($full),
                     'from' => $from->toDateString(),
-                    'to' => $from->addDays(Overbooking::FULL_DAYS - 1)->toDateString(),
+                    'to' => $from->addDays(Overbooking::fullDays() - 1)->toDateString(),
                 ]]);
 
-                $this->line("{$organization->name}: ".count($full).' fully booked for '.Overbooking::FULL_DAYS.'+ days');
+                $this->line("{$organization->name}: ".count($full).' fully booked for '.Overbooking::fullDays().'+ days');
             });
         }
 
@@ -70,7 +74,7 @@ class SchedulingWarnOverbooking extends Command
     /**
      * The warning as Markdown (UI queue 39: Jose wanted it "more formatted ...
      * not just text"): every area with no spot left for the next
-     * Overbooking::FULL_DAYS days or more, the one furthest out first, with
+     * Overbooking::fullDays() days or more, the one furthest out first, with
      * its next opening and how far away that is. The trigger declares
      * `summary` EzBizi-composed, so an email renders this as structure; the
      * email's text part takes the marks back out. Names are escaped: they are
@@ -81,7 +85,7 @@ class SchedulingWarnOverbooking extends Command
     public static function summary(array $full, CarbonImmutable $today): string
     {
         $name = fn (?string $s) => ActionRunner::escapeMarkdown((string) $s);
-        $lines = ['## FULLY BOOKED for '.Overbooking::FULL_DAYS.' days or more', ''];
+        $lines = ['## FULLY BOOKED for '.Overbooking::fullDays().' days or more', ''];
 
         $rows = collect($full)->sortByDesc(fn ($r) => $r['next_opening'] ?? '9999-12-31');
         foreach ($rows as $r) {

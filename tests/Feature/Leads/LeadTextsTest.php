@@ -60,13 +60,13 @@ class LeadTextsTest extends TestCase
             ->assertJsonPath('data.cannot_reply_because', null);
     }
 
-    /** Jose, 2026-11-03: a call or a form is answered by a text, kept on the lead (the not-booked recovery text). */
+    /** Jose, 2026-11-03: a call, a form or an online booking is answered by a text, kept on the lead (the not-booked recovery text). */
     public function test_a_call_or_a_form_is_answered_by_a_text_on_its_thread(): void
     {
         $t = $this->provisionTenant();
         $this->line($t, true);
 
-        foreach ([Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_WEBSITE_FORM] as $source) {
+        foreach ([Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_BOOKING] as $source) {
             $lead = $this->lead($t, '+15553334444', $source);
             $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertJsonPath('data.can_reply', true);
             $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/messages", ['text' => 'Still need that sweep?'])->assertSuccessful();
@@ -80,7 +80,7 @@ class LeadTextsTest extends TestCase
 
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
-        $this->assertCount(2, collect($gateway->calls)->where('method', 'sendMessage'));
+        $this->assertCount(3, collect($gateway->calls)->where('method', 'sendMessage'));
     }
 
     public function test_no_cleared_line_is_said_plainly(): void

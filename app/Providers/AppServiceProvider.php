@@ -122,7 +122,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind('lead-reply-channel.whatsapp', WhatsAppReplies::class);
 
         // EZ Texts and EZ Calls: a text back from the EzBizi line (2026-10-16).
-        foreach ([Lead::SOURCE_EZ_TEXTS, Lead::SOURCE_EZ_CALLS] as $source) {
+        foreach ([Lead::SOURCE_EZ_TEXTS, Lead::SOURCE_EZ_CALLS, Lead::SOURCE_PROMOTIONS] as $source) {
             $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new \App\Support\Leads\EzTextReplies(
                 $source,
                 $app->make(\App\Support\Phone\PhoneTexts::class),
@@ -130,8 +130,9 @@ class AppServiceProvider extends ServiceProvider
             ));
         }
 
-        // A call or a form has no chat: the answer is a text (SmsLeadReplies).
-        foreach ([Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_WEBSITE_FORM] as $source) {
+        // A call, a form or an online booking has no chat: the answer is a
+        // text (SmsLeadReplies; bookings added 2026-11-06, lead parity audit).
+        foreach ([Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_BOOKING] as $source) {
             $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new \App\Support\Leads\SmsLeadReplies(
                 $source,
                 $app->make(\App\Support\Leads\LeadTexts::class),
@@ -148,8 +149,10 @@ class AppServiceProvider extends ServiceProvider
                 'lead-reply-channel.whatsapp',
                 'lead-reply-channel.ez_texts',
                 'lead-reply-channel.ez_calls',
+                'lead-reply-channel.promotions',
                 'lead-reply-channel.ringcentral',
                 'lead-reply-channel.website_form',
+                'lead-reply-channel.website_booking',
             ],
             LeadReplies::TAG,
         );
@@ -279,7 +282,12 @@ class AppServiceProvider extends ServiceProvider
         // Task Board: every company, franchise and person gets their own board
         // the moment they exist (ezbizi:backfill-task-boards covers older rows).
         foreach ([Company::class, Franchise::class, User::class] as $owner) {
-            $owner::created(fn ($model) => app(TaskBoards::class)->ensureFor($model));
+            // A Sub Company and its franchises get none (Jose, 2026-11-06).
+            $owner::created(function ($model) {
+                if ($model instanceof User || TaskBoards::hasPlaceBoard($model)) {
+                    app(TaskBoards::class)->ensureFor($model);
+                }
+            });
         }
 
         /*

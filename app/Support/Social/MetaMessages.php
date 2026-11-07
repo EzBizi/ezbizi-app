@@ -345,6 +345,84 @@ final class MetaMessages
     }
 
     /**
+     * Messages a Page or Instagram account received while EzBizi was not
+     * listening - the gap a disconnect leaves, or a webhook Meta never
+     * delivered - replayed through absorb() from Meta's own conversation
+     * history (Jose, 2026-11-05: 37 Messenger enquiries missed while the
+     * A1 Chimney Page was disconnected; "recovery should be automatic").
+     *
+     * Only customer messages newer than $since and not already stored: a
+     * stored message is skipped before absorb(), whose store would overwrite
+     * its attachments with this text-only copy. Inside the tenant.
+     */
+    public function catchUp(SocialConnection $connection, Carbon $since): int
+    {
+        $instagram = $connection->provider === SocialProvider::InstagramProfessional->value;
+        $token = $connection->credentials['access_token'] ?? null;
+        $source = $this->sourceFor($instagram ? 'instagram' : 'page');
+
+        if (! is_string($token) || $token === '' || $source === null) {
+            return 0;
+        }
+
+        $url = $instagram
+            ? 'https://graph.instagram.com/v21.0/me/conversations'
+            : WhatsAppCloud::endpoint().'/'.$connection->remote_id.'/conversations';
+        $query = [
+            'platform' => $instagram ? 'instagram' : 'messenger',
+            'fields' => 'updated_time,messages.limit(25){id,from,message,created_time}',
+            'limit' => 50,
+            'access_token' => $token,
+        ];
+        $stored = 0;
+
+        // ponytail: 10 pages of 50 conversations, newest first; a gap longer than that needs a wider sweep.
+        for ($page = 0; $page < 10 && is_string($url); $page++) {
+            // Meta's next link carries every parameter; a query array would replace them.
+            $response = $query === [] ? Http::timeout(self::TIMEOUT)->get($url) : Http::timeout(self::TIMEOUT)->get($url, $query);
+
+            if ($response->failed()) {
+                Log::warning('Meta conversation catch-up refused.', [
+                    'connection_id' => $connection->getKey(),
+                    'reason' => $response->json('error.message'),
+                ]);
+                break;
+            }
+
+            $query = [];
+            $url = $response->json('paging.next');
+
+            foreach ((array) $response->json('data', []) as $conversation) {
+                // Newest first: the first one older than $since ends the sweep.
+                if (isset($conversation['updated_time']) && Carbon::parse($conversation['updated_time'])->lt($since)) {
+                    $url = null;
+                    break;
+                }
+
+                foreach (array_reverse((array) ($conversation['messages']['data'] ?? [])) as $message) {
+                    $from = (string) ($message['from']['id'] ?? '');
+                    $mid = (string) ($message['id'] ?? '');
+
+                    if ($from === '' || $from === (string) $connection->remote_id || $mid === ''
+                        || ! isset($message['created_time']) || Carbon::parse($message['created_time'])->lt($since)
+                        || LeadConversation::query()->where('remote_id', $mid)->exists()) {
+                        continue;
+                    }
+
+                    $stored += (int) $this->absorb([
+                        'sender' => ['id' => $from],
+                        'recipient' => ['id' => $connection->remote_id],
+                        'timestamp' => Carbon::parse($message['created_time'])->getTimestampMs(),
+                        'message' => ['mid' => $mid, 'text' => (string) ($message['message'] ?? '')],
+                    ], $connection, $source);
+                }
+            }
+        }
+
+        return $stored;
+    }
+
+    /**
      * A Click-to-Messenger / Instagram ad's context as a lead referral, or null.
      *
      * @param  array<string, mixed>  $event
@@ -487,6 +565,15 @@ final class MetaMessages
             Log::warning('Meta refused a reply.', ['status' => $response->status(),
                 'provider' => $connection->provider] + array_intersect_key((array) $response->json('error'),
                     array_flip(['code', 'error_subcode', 'type', 'message', 'error_user_msg'])));
+
+            // 551/1545041: blocked the Page or left; 100/2018001: no such user.
+            // Permanent, so the screen says so with a 422 rather than a 502
+            // (health sweep, 2026-11-05: 7 of 8 refusals were these).
+            $code = [(int) $response->json('error.code'), (int) $response->json('error.error_subcode')];
+            if ($code[0] === 551 || $code === [100, 2018001]) {
+                throw new RuntimeException('This person cannot receive messages from this account any more, so the '
+                    .'reply was not sent. Call or text them instead.', 422);
+            }
 
             throw new RuntimeException((string) ($response->json('error.error_user_msg')
                 ?? $response->json('error.message')

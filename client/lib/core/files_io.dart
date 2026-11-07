@@ -71,8 +71,14 @@ List<fs.XTypeGroup> acceptGroups(String accept) {
 
   if (extensions.isEmpty) return const <fs.XTypeGroup>[];
 
+  // iOS refuses a group without UTIs; public.data lets any file through there
+  // and the extensions still filter on every other platform.
   return [
-    fs.XTypeGroup(label: 'Allowed files', extensions: extensions.toList()),
+    fs.XTypeGroup(
+      label: 'Allowed files',
+      extensions: extensions.toList(),
+      uniformTypeIdentifiers: const ['public.data'],
+    ),
   ];
 }
 
@@ -84,7 +90,11 @@ Future<PickedBytes?> _openBytes(List<fs.XTypeGroup> groups) async {
 }
 
 Future<PickedBytes?> pickImage() => _openBytes(const [
-  fs.XTypeGroup(label: 'Images', extensions: _imageExtensions),
+  fs.XTypeGroup(
+    label: 'Images',
+    extensions: _imageExtensions,
+    uniformTypeIdentifiers: ['public.image'],
+  ),
 ]);
 
 Future<PickedBytes?> pickBytes({String accept = ''}) =>

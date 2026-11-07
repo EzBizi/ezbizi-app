@@ -401,30 +401,6 @@ final class AutomationTemplates
             // Jose, 2026-10-20: "this should all be set on automations so i can
             // decide for myself". Off until he adds the inboxes (address in ...)
             // and senders (from_address / from_domain) and switches it on.
-            // Jose's Project Management rules (2026-10-21), off until he switches them on.
-            [
-                'key' => 'pm-payment-on-done-pending-approval',
-                'name' => 'Payment on Done Pending Approval: Submitted and deposit tags',
-                'description' => 'When a payment lands on a job waiting for approval, moves it to Submitted in Workiz '
-                    .'and sets its tags to Deposit Received and Dont Change Tech (other tags are removed). '
-                    .'Add "fully_paid is true" or "fully_paid is false" to act only on full or partial payments.',
-                'trigger_key' => 'job.payment_received',
-                'conditions' => ['all' => [['field' => 'status', 'op' => 'eq', 'value' => 'done pending approval']]],
-                'actions' => [['type' => 'workiz.job_update', 'status' => 'Submitted', 'tags' => 'Deposit Received, Dont Change Tech']],
-            ],
-            [
-                'key' => 'pm-estimate-declined-after-30-days',
-                'name' => '30 days without payment: Canceled, Estimate Declined',
-                'description' => 'Once a day: a job waiting for approval whose latest estimate is 30 or more days old '
-                    .'and has nothing paid is canceled in Workiz with the sub-status Estimate Declined. Needs '
-                    .'"done pending approval" in Settings, Jobs, statuses that wait on an estimate.',
-                'trigger_key' => 'job.estimate_aging',
-                'conditions' => ['all' => [
-                    ['field' => 'days_since_estimate', 'op' => 'gte', 'value' => '30'],
-                    ['field' => 'paid_total', 'op' => 'eq', 'value' => '0'],
-                ]],
-                'actions' => [['type' => 'workiz.job_update', 'status' => 'Canceled', 'sub_status' => 'Estimate Declined']],
-            ],
             [
                 'key' => 'email-closed-office-reply',
                 'name' => 'Email: reply when the office is closed',

@@ -34,9 +34,14 @@ Schedule::command('ezbizi:check-connection-health')->dailyAt('06:40')->withoutOv
 Schedule::command('ezbizi:time-clock-approval-reminders')->everyFifteenMinutes()->withoutOverlapping(10);
 Schedule::command('ezbizi:pto-daily-triggers')->dailyAt('07:10')->withoutOverlapping(30);
 
-// Yesterday's RingCentral call log into the Experimental report's cache, so a
-// week or a month opens without waiting on RingCentral's rate limit.
-Schedule::command('ezbizi:warm-call-log')->dailyAt('02:30')->withoutOverlapping(30);
+// Every RingCentral account's finished days kept for the reports, so a week or
+// a month opens without waiting on RingCentral's rate limit (CALLS-504: hourly,
+// as 02:30 UTC is still yesterday in New York).
+Schedule::command('ezbizi:warm-call-log')->hourlyAt(7)->withoutOverlapping(60);
+// Meta enquiries a webhook never brought (Jose, 2026-11-05: "recovery should be automatic").
+Schedule::command('ezbizi:meta-catch-up')->hourlyAt(23)->withoutOverlapping(60);
+// Campaigns on and off at their set times (Jose, 2026-11-05).
+Schedule::command('ezbizi:ad-schedules')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverlapping(5);
 // Yesterday's calls AI read as booked with no Workiz job (AiBookedNoJob).
 // A-1's Airtable copied into EzBizi for the reports (A1 Leads takeover, 2026-10-16); about 8 s.
@@ -265,15 +270,12 @@ Schedule::command('scheduling:build-zip-map')->everyFiveMinutes()->withoutOverla
  * `scheduling.overbooking_found` where a service area is overbooked or fully
  * booked in the next 7 days. The email itself is an automation on it.
  */
-Schedule::command('scheduling:warn-overbooking')->dailyAt('07:00')->timezone('America/New_York');
+// Hourly; each organization's own scheduling.overbooking_hour, in its own timezone, picks the run.
+Schedule::command('scheduling:warn-overbooking')->hourlyAt(0);
 Schedule::command('scheduling:warn-underfilled')->hourlyAt(2);
-// job.estimate_aging, once a day (Jose's Project Management rule 2, 2026-10-21).
+// job.estimate_aging, once a day (Jose, 2026-10-21).
 Schedule::command('jobs:emit-estimate-aging')->dailyAt('08:10')->timezone('America/New_York')->withoutOverlapping(60);
 // Mirrored jobs keep Workiz's type, sub-status and tags where nobody set them (review 2026-11-02: 2,174 jobs had none).
-// The paid-not-started warning (Jose, 2026-10-22): daily, to each company's address.
-Schedule::command('jobs:warn-paid-not-started')->dailyAt('08:20')->timezone('America/New_York')->withoutOverlapping(60);
-// Project Management - 2's Submitted tab keeps its jobs for good (Jose, 2026-11-02): each move is copied before its event expires.
-Schedule::command('project-management-2:record-submissions')->everyMinute()->withoutOverlapping(5);
 
 // A month before a membership year ends (Customers › Memberships).
 Schedule::command('memberships:remind-renewals')->dailyAt('09:00')->timezone('America/New_York');

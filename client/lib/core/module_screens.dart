@@ -22,9 +22,8 @@ import '../screens/reviews_screen.dart';
 import '../screens/customer_experience_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/profit_loss_screen.dart';
-import '../screens/project_management_2_screen.dart';
-import '../screens/project_management_screen.dart';
 import '../screens/phone_screen.dart';
+import '../screens/project_board_screen.dart';
 import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
 import '../screens/company_screen.dart';
@@ -76,16 +75,10 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.construction_outlined,
     (api, session) => JobsScreen(api: api, session: session),
   ),
-  // Its own module since 2026-10-21 (Jose: "its own tab, not a sub tab of
-  // Jobs"), with the timeline mark it had as a Jobs tab.
-  'project_management': ModuleScreen(
-    Icons.timeline_outlined,
-    (api, session) => ProjectManagementScreen(api: api, session: session),
-  ),
-  // Project Management rebuilt from scratch beside the first (Jose, 2026-10-26).
-  'project_management_2': ModuleScreen(
-    Icons.view_timeline_outlined,
-    (api, session) => ProjectManagement2Screen(api: api, session: session),
+  // Project Management, built from scratch (Jose, 2026-11-06).
+  'project_board': ModuleScreen(
+    Icons.view_kanban_outlined,
+    (api, session) => ProjectBoardScreen(api: api, session: session),
   ),
   'scheduling': ModuleScreen(
     Icons.calendar_month_outlined,

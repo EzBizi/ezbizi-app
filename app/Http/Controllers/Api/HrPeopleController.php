@@ -651,6 +651,17 @@ class HrPeopleController extends Controller
 
         $actor = $request->user();
 
+        // The stored value or its label, any case ("Prefers not to answer" → prefer_not_to_answer).
+        if (is_string($request->input('gender'))) {
+            $typed = mb_strtolower(trim($request->input('gender')));
+            foreach ((array) app(SettingsResolver::class)->get('hr.gender_options', $user->organization) as $option) {
+                if ($typed === mb_strtolower((string) $option['label'])) {
+                    $typed = (string) $option['value'];
+                }
+            }
+            $request->merge(['gender' => $typed]);
+        }
+
         $input = $request->validate([
             'role_id' => ['sometimes', 'required', 'uuid', Rule::exists('roles', 'id')
                 ->where('organization_id', $this->tenant->idOrFail())],
@@ -680,7 +691,9 @@ class HrPeopleController extends Controller
             'state' => ['sometimes', 'nullable', 'string', 'max:64'],
             'postal_code' => ['sometimes', 'nullable', 'string', 'max:20'],
             'country' => ['sometimes', 'nullable', 'string', 'max:100'],
-            'gender' => ['sometimes', 'nullable', 'string', 'max:40'],
+            // A pick from `hr.gender_options` (Jose, 2026-11-06), any case.
+            'gender' => ['sometimes', 'nullable', 'string', Rule::in(array_column(
+                (array) app(SettingsResolver::class)->get('hr.gender_options', $user->organization), 'value'))],
             'date_of_birth' => ['sometimes', 'nullable', 'date', 'before:today'],
 
             // The day they started. Not a `users` column — it is the earliest
@@ -934,7 +947,8 @@ class HrPeopleController extends Controller
         $this->audit->log('data.record_read', $user);
 
         $user->load('role:id,name', 'assignments.assignedCompany:id,name',
-            'assignments.assignedFranchise:id,name');
+            'assignments.assignedFranchise:id,name,company_id',
+            'assignments.assignedFranchise.company:id,name');
 
         $pto = app(PtoPolicy::class);
         $answer = $pto->for($user);
@@ -945,6 +959,7 @@ class HrPeopleController extends Controller
             'address' => $user->address,
             ...$user->addressParts(),
             'gender' => $user->gender,
+            'gender_options' => app(SettingsResolver::class)->get('hr.gender_options', $user->organization),
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on' => $answer['started_on'],
 
@@ -1244,6 +1259,66 @@ class HrPeopleController extends Controller
         return $empty + ($started ? 0 : 1) + ($person->work_schedule === null ? 1 : 0);
     }
 
+    /**
+     * POST /api/v1/hr/people/{user}/places — one more place they work (Jose,
+     * 2026-11-06: "assign people to more than 1 company"). Adds beside the
+     * others; reach is already the union of every place (ScopeReach).
+     */
+    public function addPlace(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('update', $user);
+        $actor = $request->user();
+        $input = $request->validate([
+            'scope_type' => ['required', Rule::in(ScopeReach::TYPES)],
+            'scope_id' => ['required', 'uuid'],
+        ]);
+        $this->reach->assertCovers($actor, $input['scope_type'], $input['scope_id']);
+
+        $column = 'assigned_'.$input['scope_type'].'_id';
+        if (! $user->assignments()->where($column, $input['scope_id'])->exists()) {
+            Assignment::create([
+                'organization_id' => $user->organization_id,
+                'user_id' => $user->getKey(),
+                $column => $input['scope_id'],
+            ]);
+            $this->audit->log('user.assignment_added', $user, metadata: [
+                'type' => $input['scope_type'], 'id' => $input['scope_id'],
+            ], actor: $actor);
+        }
+
+        return $this->placesOf($user, $actor);
+    }
+
+    /** DELETE /api/v1/hr/people/{user}/places/{assignment} — never their last one. */
+    public function removePlace(Request $request, User $user, string $assignment): JsonResponse
+    {
+        $this->authorize('update', $user);
+        $actor = $request->user();
+        $row = $user->assignments()->whereKey($assignment)->firstOrFail();
+
+        if (! $this->reach->coversAssignment($actor, $row)) {
+            abort(403, 'That place is outside what you reach.');
+        }
+        if ($user->assignments()->count() === 1) {
+            throw ValidationException::withMessages(['assignment' => 'This is the only place they work. Add another first.']);
+        }
+
+        $row->delete();
+        $this->audit->log('user.assignment_removed', $user, metadata: [
+            'type' => $row->scopeType(), 'id' => $row->scopeId(),
+        ], actor: $actor);
+
+        return $this->placesOf($user, $actor);
+    }
+
+    private function placesOf(User $user, User $actor): JsonResponse
+    {
+        $user->load('role:id,name', 'assignments.assignedCompany:id,name',
+            'assignments.assignedFranchise.company:id,name');
+
+        return response()->json(['data' => $this->present($user, $actor)]);
+    }
+
     private function present(User $person, User $actor): array
     {
         return [
@@ -1252,6 +1327,9 @@ class HrPeopleController extends Controller
             'first_name' => $person->first_name,
             'last_name' => $person->last_name,
             'email' => $person->email,
+            'has_avatar' => $person->avatar_path !== null,
+            // Changes with every new picture, for the client's image cache.
+            'avatar_version' => $person->avatar_path === null ? null : substr(md5($person->avatar_path), 0, 12),
             'is_active' => $person->is_active,
             'role' => [
                 'id' => $person->role_id,
@@ -1269,6 +1347,8 @@ class HrPeopleController extends Controller
                         Assignment::SCOPE_COMPANY => $a->assignedCompany?->name,
                         Assignment::SCOPE_FRANCHISE => $a->assignedFranchise?->name,
                     },
+                    // The franchise's company, for a "company › franchise" chip.
+                    'company' => $a->assignedFranchise?->company?->name,
                 ])->values()->all(),
             'joined_at' => $person->created_at?->toIso8601String(),
             'work_schedule' => $person->work_schedule,

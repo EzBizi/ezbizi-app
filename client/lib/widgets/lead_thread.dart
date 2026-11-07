@@ -25,6 +25,7 @@ import 'async_body.dart';
 import 'book_job_panel.dart';
 import 'lead_edit_panel.dart';
 import 'lead_source_details.dart';
+import 'proofread_hint.dart';
 import 'side_panel.dart';
 import 'search_picker.dart';
 import 'status_pill.dart';
@@ -234,6 +235,10 @@ class _LeadThreadState extends State<LeadThread> {
 
   /// A draft is offered only where a reply can go and the model is on.
   bool _canSuggest = false;
+
+  /// "Did you mean" under the box (ProofreadHint); off where the business
+  /// switched leads.proofread off.
+  bool _canProofread = false;
 
   /// Canned replies beside Send, already filled in for this customer and
   /// brand (`leads.reply_templates`). A tap puts the text in the box to read
@@ -464,6 +469,7 @@ class _LeadThreadState extends State<LeadThread> {
       _canReply = data['can_reply'] == true;
       _cannotReplyBecause = data['cannot_reply_because'] as String?;
       _canSuggest = data['can_suggest'] == true;
+      _canProofread = data['can_proofread'] == true;
       _templates = (data['reply_templates'] as List? ?? const [])
           .cast<Map<String, dynamic>>();
       _customer = data['customer'] as Map<String, dynamic>?;
@@ -1128,6 +1134,8 @@ class _LeadThreadState extends State<LeadThread> {
       prefill: BookPrefill.fromLead(
         _lead,
         matches: _matches,
+        details: _details,
+        bookFranchiseId: _loaded?['book_franchise_id'] as String?,
         said: [
           for (final c in _conversations)
             if (c['from'] != 'ADVERTISER' && c['text'] is String)
@@ -1579,6 +1587,12 @@ class _LeadThreadState extends State<LeadThread> {
               label: Text(_sending ? 'Sending…' : 'Send'),
             ),
           ],
+        ),
+        ProofreadHint(
+          api: widget.api,
+          controller: _compose,
+          path: '/leads/${widget.lead['id']}/proofread',
+          enabled: _canProofread,
         ),
       ],
     ),
@@ -3258,7 +3272,7 @@ String sourceWord(String? source) => switch (source) {
   'whatsapp' => 'WhatsApp',
   'workiz' => 'Workiz',
   'ringcentral' => 'RingCentral',
-  'ez_calls' || 'ez_texts' => 'EzBizi',
+  'ez_calls' || 'ez_texts' || 'promotions' => 'EzBizi',
   _ => 'Google Ads',
 };
 

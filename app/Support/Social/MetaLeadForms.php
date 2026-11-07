@@ -33,6 +33,40 @@ final class MetaLeadForms
     public function __construct(private readonly EventEmitter $events) {}
 
     /**
+     * Lead-ad forms submitted while EzBizi was not listening, read from each of
+     * the Page's forms and made into leads through absorb(), which skips one
+     * already made. Inside the tenant.
+     */
+    public function catchUp(SocialConnection $page, Carbon $since): int
+    {
+        $graph = 'https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/';
+        $token = $page->credentials['access_token'] ?? '';
+        $made = 0;
+
+        // ponytail: the first 100 forms, and 100 leads a form since $since.
+        foreach ((array) Http::timeout(self::TIMEOUT)->get($graph.$page->remote_id.'/leadgen_forms', [
+            'fields' => 'id', 'limit' => 100, 'access_token' => $token,
+        ])->json('data', []) as $form) {
+            $leads = Http::timeout(self::TIMEOUT)->get($graph.$form['id'].'/leads', [
+                'fields' => 'id',
+                'limit' => 100,
+                'filtering' => json_encode([['field' => 'time_created', 'operator' => 'GREATER_THAN', 'value' => $since->getTimestamp()]]),
+                'access_token' => $token,
+            ])->json('data', []);
+
+            foreach ((array) $leads as $lead) {
+                try {
+                    $made += (int) $this->absorb(['leadgen_id' => (string) $lead['id'], 'form_id' => (string) $form['id']], $page);
+                } catch (RuntimeException) {
+                    // Asked again on the next run.
+                }
+            }
+        }
+
+        return $made;
+    }
+
+    /**
      * One `leadgen` change. True when it made a lead.
      *
      * @param  array<string, mixed>  $value

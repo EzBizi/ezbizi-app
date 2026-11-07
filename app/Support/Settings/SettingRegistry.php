@@ -2,6 +2,8 @@
 
 namespace App\Support\Settings;
 
+use App\Models\TimeClockDay;
+
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
@@ -277,6 +279,23 @@ class SettingRegistry
     private function operations(): array
     {
         return [
+            // Fleet's "due soon" window (Jose, 2026-11-04: every business value
+            // editable). Read by FleetSummary::soonDays/soonMiles everywhere
+            // Fleet says soon: the list chips, the General tab, the glance.
+            new SettingDefinition(
+                key: 'fleet.soon_days', label: 'Fleet: due soon within (days)',
+                type: SettingDefinition::TYPE_INT, default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                section: 'Fleet',
+                help: 'Service, registration, inspection and insurance dates this close count as due soon.',
+            ),
+            new SettingDefinition(
+                key: 'fleet.soon_miles', label: 'Fleet: service due soon within (miles)',
+                type: SettingDefinition::TYPE_INT, default: 500,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                section: 'Fleet',
+                help: 'A vehicle this many miles from its next service counts as due soon.',
+            ),
             new SettingDefinition(
                 key: 'ops.business_hours', label: 'Business hours',
                 type: SettingDefinition::TYPE_HOURS,
@@ -919,6 +938,37 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 help: 'Complements the owning-franchise tag (§5.2).',
             ),
+            // Jose, 11-04: no hard-coded business values (Memberships' link lifetimes).
+            new SettingDefinition(
+                key: 'customers.join_link_days', label: 'Membership sign-up links last (days)',
+                type: SettingDefinition::TYPE_INT, default: 60,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'How long the sign-up link in a membership offer keeps working.',
+            ),
+            new SettingDefinition(
+                key: 'customers.review_link_days', label: 'Review links last (days)',
+                type: SettingDefinition::TYPE_INT, default: 90,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'How long the review link sent after a job keeps knowing who the customer is.',
+            ),
+            new SettingDefinition(
+                key: 'customers.membership_reminder_days', label: 'Membership renewal reminder (days before the year ends)',
+                type: SettingDefinition::TYPE_INT, default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'When the "Renewal due" trigger fires for a member.',
+            ),
+            new SettingDefinition(
+                key: 'customers.membership_follow_up_days', label: 'Membership follow-up when no visit is booked (days after the reminder)',
+                type: SettingDefinition::TYPE_INT, default: 14,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'When the "No visit date" trigger fires so staff can call.',
+            ),
+            new SettingDefinition(
+                key: 'customers.membership_visit_months', label: 'Membership visit can be booked up to (months after the year ends)',
+                type: SettingDefinition::TYPE_INT, default: 6,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'The latest day a member can pick for their next visit.',
+            ),
         ];
     }
 
@@ -933,6 +983,65 @@ class SettingRegistry
     private function jobs(): array
     {
         return [
+            /*
+             * Project Management's six sub-tabs (Jose, 2026-11-06): each one's
+             * job statuses, in any case, and for a split by date, scheduled
+             * true or false. Defaults read from A-1's Workiz statuses.
+             */
+            new SettingDefinition(
+                key: 'project_board.tabs', label: 'Project Management: statuses on each sub-tab',
+                type: SettingDefinition::TYPE_JSON,
+                default: [
+                    'unscheduled' => ['statuses' => ['Pending'], 'scheduled' => false],
+                    'ready_to_schedule' => ['statuses' => ['Submitted']],
+                    'scheduled' => ['statuses' => ['Pending', 'scheduled'], 'scheduled' => true],
+                    'in_progress' => ['statuses' => ['In progress', 'in_progress']],
+                    'done_waiting_payment' => ['statuses' => ['done pending approval']],
+                    'complete' => ['statuses' => ['Done', 'completed']],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'A sub-tab with no statuses lists nothing.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.part_tags', label: 'Project Management: job tags that are a part status',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['WAITING PARTS', 'PARTS ORDERED', 'PARTS RECEIVED'],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Shown in the Part Status column.',
+            ),
+            /*
+             * The table itself (Jose, 2026-11-06: "nothing hardcoded"): each
+             * column's name, order (the list's), whether it shows, and whether
+             * its values draw as coloured labels.
+             */
+            new SettingDefinition(
+                key: 'project_board.columns', label: 'Project Management: columns',
+                type: SettingDefinition::TYPE_JSON,
+                default: [
+                    ['key' => 'number', 'label' => 'EzBizi ID', 'visible' => true, 'as_label' => false],
+                    ['key' => 'workiz_id', 'label' => 'Workiz ID', 'visible' => true, 'as_label' => false],
+                    ['key' => 'customer', 'label' => 'Client Name', 'visible' => true, 'as_label' => false],
+                    ['key' => 'franchise', 'label' => 'Area', 'visible' => true, 'as_label' => false],
+                    ['key' => 'status', 'label' => 'Job Status', 'visible' => true, 'as_label' => true],
+                    ['key' => 'job_type', 'label' => 'Job Type', 'visible' => true, 'as_label' => false],
+                    ['key' => 'part_status', 'label' => 'Part Status', 'visible' => true, 'as_label' => true],
+                    ['key' => 'paid', 'label' => 'Paid Amount', 'visible' => true, 'as_label' => false],
+                    ['key' => 'pending', 'label' => 'Pending Amount', 'visible' => true, 'as_label' => false],
+                    ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
+                    ['key' => 'created', 'label' => 'Date of Creation', 'visible' => true, 'as_label' => false],
+                    ['key' => 'scheduled', 'label' => 'Scheduled Date', 'visible' => true, 'as_label' => false],
+                    ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'In the order shown. A column without Financials hides its amounts anyway.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.labels', label: 'Project Management: label colours',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['part_status' => ['WAITING PARTS' => 'caution', 'PARTS ORDERED' => 'info', 'PARTS RECEIVED' => 'ok']],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Per column, each value and its colour: neutral, info, caution, review, ok or bad. A value not listed is neutral; Job Status unlisted keeps its usual colour.',
+            ),
             /*
              * The permitted job statuses.
              *
@@ -975,7 +1084,7 @@ class SettingRegistry
              */
             /*
              * Which statuses mean "waiting on the customer's decision", for
-             * `job.estimate_aging` (Jose's Project Management rule 2,
+             * `job.estimate_aging` (Jose's rule 2,
              * 2026-10-21). Empty by default: nothing ages until somebody says
              * which of the organization's own words mean waiting.
              */
@@ -989,99 +1098,20 @@ class SettingRegistry
                     .'estimate, and what has been paid. Automations can act on it, for example '
                     .'cancelling after 30 days with nothing paid.',
             ),
-            /*
-             * Project Management's stages (Jose, 2026-10-22: "as you
-             * recommend"): each one statuses, plus whether it is scheduled
-             * and whether money is due. Unmapped stages hold nothing.
-             * [{key, statuses[], scheduled: bool|null, due: bool|null}].
-             */
             new SettingDefinition(
-                key: 'jobs.pm_stages', label: 'Project Management stages',
-                type: SettingDefinition::TYPE_JSON,
-                default: [],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Which statuses, scheduled or not, money due or not, make each stage.',
-            ),
-            /*
-             * Which jobs Project Management is about at all (Shoval, 2026-10-22:
-             * "Only open jobs ... and only ones that are partly paid deposits").
-             */
-            new SettingDefinition(
-                key: 'jobs.pm_scope_statuses', label: 'Project Management shows jobs in these statuses',
-                type: SettingDefinition::TYPE_JSON,
-                default: [],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Empty: every status.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_partly_paid_only', label: 'Project Management shows only partly paid jobs',
-                type: SettingDefinition::TYPE_BOOL, default: false,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Something paid and money still due: a deposit.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_task_group', label: 'Task Board group Project Management shows',
-                type: SettingDefinition::TYPE_STRING, default: 'Project Management',
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'The group, by name, on each branch board where rules leave project cards.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_redo_words', label: 'Tags or job types that mean a redo',
-                type: SettingDefinition::TYPE_JSON,
-                default: [],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Any case. A job with one of these as a tag or as its type is a redo.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_dispute_words', label: 'Tags that mean a dispute',
-                type: SettingDefinition::TYPE_JSON,
-                default: [],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Any case. A job with one of these as a tag is in dispute.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_stopped_days', label: 'Payments count as stopped after (days)',
+                key: 'ads.lsa_warn_days', label: 'Warn before a Local Services licence or insurance expires (days)',
                 type: SettingDefinition::TYPE_INT, default: 30,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'A partly paid job with money still due and no payment for this many days.',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Ads › Local Services flags a document this many days before it expires.',
             ),
             new SettingDefinition(
-                key: 'jobs.pm_warn_days', label: 'Warn when a paid job has not started after (days)',
-                type: SettingDefinition::TYPE_INT, default: 10,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Counted from the first payment while the job is still waiting to start.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_warning_email', label: 'Send the paid-not-started warning to',
-                type: SettingDefinition::TYPE_STRING, default: '',
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'One email address. Empty sends nothing.',
-            ),
-            new SettingDefinition(
-                key: 'jobs.pm_cost_alert_percent', label: 'Highlight cost from gross sales above (%)',
-                type: SettingDefinition::TYPE_INT, default: 15,
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'The repair-team report shows the percentage in red above this.',
+                key: 'leads.booking_link_days', label: 'Booking links work for (days)',
+                type: SettingDefinition::TYPE_INT, default: 14,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'How long a booking link texted or emailed to a lead keeps working.',
             ),
             /*
-             * Why a job waits for review, for Project Management (Jose,
-             * 2026-10-22: "need to order parts, need measurements, looking
-             * for contractor"). The organization's own list.
-             */
-            new SettingDefinition(
-                key: 'jobs.review_reasons', label: 'Reasons a job waits for review',
-                type: SettingDefinition::TYPE_LIST,
-                default: [
-                    ['value' => 'order_parts', 'label' => 'Need to order parts'],
-                    ['value' => 'measurements', 'label' => 'Need measurements'],
-                    ['value' => 'contractor', 'label' => 'Looking for a contractor'],
-                ],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Shown on a job in Project Management, and a filter there.',
-            ),
-            /*
-             * Which statuses mean cancelled, for Project Management's
-             * "Cancellations" (2026-10-22). Empty: none counted, nothing guessed.
+             * Which statuses mean cancelled (2026-10-22). Empty: none counted, nothing guessed.
              */
             new SettingDefinition(
                 key: 'jobs.cancelled_statuses', label: 'Statuses that mean the job was cancelled',
@@ -1089,7 +1119,7 @@ class SettingRegistry
                 choicesFrom: 'jobs.statuses',
                 default: [],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Project Management counts a job as cancelled when it moves into one of these.',
+                help: 'A job counts as cancelled when it moves into one of these.',
             ),
             new SettingDefinition(
                 key: 'jobs.earned_statuses', label: 'Statuses that mean the money is earned',
@@ -1300,6 +1330,73 @@ class SettingRegistry
                 help: 'A card with the caller and Accept or Ignore, which can be dragged out of '
                     .'the way. The strip at the top of the screen appears either way.',
             ),
+            // Line checks (Jose, 2026-11-04: every business value editable, no code constants).
+            new SettingDefinition(
+                key: 'phone.audit_alert_emails',
+                label: 'Phone check alerts go to',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'Emails, separated by commas, of the people told when the nightly line check or the test call finds a '
+                    .'problem. They also get it on WhatsApp once the alert template is approved. Empty: nobody.',
+            ),
+            new SettingDefinition(
+                key: 'phone.audit_call_from',
+                label: 'Test calls come from',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'One of your numbers, like +18559553322, that rings your other lines every two '
+                    .'weeks after hours to check they answer. Empty: no test calls.',
+            ),
+            new SettingDefinition(
+                key: 'phone.voice_elsewhere_ok',
+                label: 'Lines whose calls go elsewhere on purpose',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'Numbers separated by commas, like +18559553322, the line check should not warn about when their '
+                    .'calls are answered outside EzBizi. Texts are still checked.',
+            ),
+            new SettingDefinition(
+                key: 'phone.ringcentral_companies',
+                label: 'RingCentral line names by company',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'For missed-call alerts: a RingCentral line whose name starts with the text is that '
+                    .'company\'s. Text is the start of the line name, name is the company.',
+            ),
+            new SettingDefinition(
+                key: 'phone.missed_call_fresh_minutes',
+                label: 'Missed-call alerts: newer than (minutes)',
+                type: SettingDefinition::TYPE_INT,
+                default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'An older missed call is history, not news, and raises no alert.',
+            ),
+            new SettingDefinition(
+                key: 'phone.queue_wait_greeting',
+                label: 'Hold message opening',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'Thank you for waiting.',
+                editPermission: 'phone.edit',
+                help: 'Said to a caller on hold before their place in line.',
+            ),
+            new SettingDefinition(
+                key: 'phone.request_cooldown_days',
+                label: 'Days before a declined number request can be asked again',
+                type: SettingDefinition::TYPE_INT,
+                default: 7,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'phone.edit',
+                help: 'Counted from the decision. Approved requests are not affected.',
+            ),
         ];
     }
 
@@ -1370,6 +1467,42 @@ class SettingRegistry
             $enum('scheduling.reschedule_max_after_miles', 'Re-Scheduling: nearest job after the move within', 10, [2, 5, 10, 15, 20, 30],
                 fn ($v) => "{$v} miles",
                 'A move is suggested only when it puts the job this close to other booked work.'),
+            // Business values once in code (Jose, 2026-11-04: "everything editable").
+            new SettingDefinition(
+                key: 'scheduling.free_statuses', label: 'Job statuses that free a spot',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'canceled', 'label' => 'Canceled'],
+                    ['value' => 'cancelled', 'label' => 'Cancelled'],
+                    ['value' => 'done', 'label' => 'Done'],
+                    ['value' => 'done pending approval', 'label' => 'Done pending approval'],
+                ],
+                help: 'A job in one of these statuses holds no spot in its window. Every other status does.',
+            ),
+            new SettingDefinition(
+                key: 'scheduling.excluded_tags', label: 'Job tags that free a spot',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'deposit received', 'label' => 'Deposit received'],
+                    ['value' => 'deposit recieved', 'label' => 'Deposit recieved'],
+                ],
+                help: 'A job carrying one of these tags holds no spot (matched ignoring case).',
+            ),
+            new SettingDefinition(
+                key: 'scheduling.full_days', label: 'Fully booked means no spot for',
+                type: SettingDefinition::TYPE_INT, default: 10,
+                help: 'Days in a row with no spot before an area counts as fully booked (the morning email, Overbooking and the dashboard).',
+            ),
+            new SettingDefinition(
+                key: 'scheduling.offer_horizon_days', label: 'Earlier-opening text: look at jobs booked up to',
+                type: SettingDefinition::TYPE_INT, default: 21,
+                help: 'Days after the open day whose customers can be offered it.',
+            ),
+            new SettingDefinition(
+                key: 'scheduling.offer_not_again_days', label: 'Earlier-opening text: do not offer the same job again for',
+                type: SettingDefinition::TYPE_INT, default: 30,
+                help: 'Days before a job that was offered an opening can be offered another.',
+            ),
             new SettingDefinition(
                 key: 'scheduling.underfilled_include', label: 'Include in the empty-spots report',
                 type: SettingDefinition::TYPE_BOOL, default: true,
@@ -1390,6 +1523,9 @@ class SettingRegistry
             $enum('scheduling.underfilled_min_empty', 'Tomorrow under-filled: list areas with at least', 2, [1, 2, 3, 5, 10],
                 fn ($v) => $v === 1 ? '1 empty spot' : "{$v} empty spots",
                 'Areas with fewer empty spots tomorrow are left out of the Tomorrow under-filled trigger and its email.'),
+            $enum('scheduling.overbooking_hour', 'Fully booked: check at', 7, range(5, 12),
+                fn ($v) => CarbonImmutable::createFromTime($v)->format('g A'),
+                'When the fully-booked warning is raised. Who gets the email is the automation rule on it.'),
             $enum('scheduling.underfilled_hour', 'Tomorrow under-filled: check at', 16, range(6, 21),
                 fn ($v) => CarbonImmutable::createFromTime($v)->format('g A').' the day before',
                 'When Tomorrow under-filled is raised. Who gets the email is the automation rule on it.'),
@@ -1536,6 +1672,29 @@ class SettingRegistry
                 help: 'The queue a caller reaches by choosing "existing customer" in your phone menu. '
                     .'Their calls are tagged Existing client. Empty: none are.',
             ),
+            // Reports' numbers, out of code constants (Jose, 2026-11-04: every
+            // business value editable in the app and over the API).
+            new SettingDefinition(
+                key: 'reports.scoring_min_calls',
+                label: 'Scored calls before a person is ranked',
+                type: SettingDefinition::TYPE_INT,
+                default: 3,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'reports.scoring_weights',
+                help: 'Fewer than this many scored calls in the dates and Scoring shows the person '
+                    .'unranked, and they get no AI review. The same number of new-client calls '
+                    .'before their conversion counts in their score.',
+            ),
+            new SettingDefinition(
+                key: 'reports.call_lookback_days',
+                label: 'Days of jobs a call is matched against',
+                type: SettingDefinition::TYPE_INT,
+                default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'reports.handles',
+                help: 'How far back the call reports read Workiz jobs: a caller with an open job from '
+                    .'this window is an existing job, not a lost booking.',
+            ),
             // A1 Leads takeover, 2026-10-16: one switch that stops every call
             // to Google for a business (GoogleToken refuses the token).
             new SettingDefinition(
@@ -1548,6 +1707,106 @@ class SettingRegistry
                 help: 'On: EzBizi stops talking to Google for this business - Local Services leads, '
                     .'Ads, Business Profile and reviews - until it is switched off. Nothing is '
                     .'disconnected; syncs say they are paused.',
+            ),
+            // Jose, 2026-11-04: every business value editable in the app and
+            // over the API, none a code constant. Read through SettingsResolver::forOrganization().
+            new SettingDefinition(
+                key: 'leads.reply_overdue_minutes',
+                min: 1,
+                label: 'A reply is overdue after (minutes)',
+                type: SettingDefinition::TYPE_INT,
+                default: 10,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'A customer waiting this long for an answer turns their lead red and raises Reply overdue.',
+            ),
+            new SettingDefinition(
+                key: 'leads.follow_up_hours',
+                min: 1,
+                label: 'Follow up a quiet customer after (hours)',
+                type: SettingDefinition::TYPE_INT,
+                default: 3,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'How long after the first automatic reply a customer who said nothing more gets the one follow-up, the same day.',
+            ),
+            new SettingDefinition(
+                key: 'leads.auto_answer_minutes',
+                min: 1,
+                label: 'Answer automatically only messages newer than (minutes)',
+                type: SettingDefinition::TYPE_INT,
+                default: 60,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'An older message, imported late, is left for a person.',
+            ),
+            new SettingDefinition(
+                key: 'leads.sync_failing_hours',
+                min: 1,
+                label: 'Flag a Google Ads connection as failing after (hours)',
+                type: SettingDefinition::TYPE_INT,
+                default: 6,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'A connected account not read for this long shows as failing on Leads.',
+            ),
+            new SettingDefinition(
+                key: 'leads.same_person_days',
+                min: 1,
+                label: 'A repeat caller is the same lead for (days)',
+                type: SettingDefinition::TYPE_INT,
+                default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'A call from a number with a lead this recent lands on that lead instead of a new one.',
+            ),
+            new SettingDefinition(
+                key: 'leads.announce_minutes',
+                min: 1,
+                label: 'Announce a missed call only within (minutes)',
+                type: SettingDefinition::TYPE_INT,
+                default: 60,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'An older missed call or voicemail, read late, is filed without a Missed call alert.',
+            ),
+            new SettingDefinition(
+                key: 'leads.workiz_skip_sources',
+                label: 'Workiz lead sources EzBizi already reads',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['LS Ads', 'Local Services', 'Thumbtack'],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'A Workiz lead whose source contains one of these (any case, spaces ignored) is not '
+                    .'imported, because it already arrives on its own.',
+            ),
+            new SettingDefinition(
+                key: 'leads.greeting_named',
+                label: 'Greeting with a name',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'Hi {first}',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.edit',
+                help: '{{greeting}} in a message when the customer gave a name; {first} is their first name.',
+            ),
+            new SettingDefinition(
+                key: 'leads.greeting_unnamed',
+                label: 'Greeting without a name',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'Hi there',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.edit',
+                help: '{{greeting}} in a message when the customer gave no name.',
+            ),
+            new SettingDefinition(
+                key: 'leads.proofread',
+                label: 'Suggest spelling and grammar fixes',
+                type: SettingDefinition::TYPE_BOOL,
+                default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'While a lead reply or a text is typed, AI offers a corrected version under the '
+                    .'box. It is only used if somebody taps it (Jose, 2026-11-05).',
             ),
         ];
     }
@@ -1703,6 +1962,17 @@ class SettingRegistry
             // Jose, 2026-10-05: "a final approval is pending from the employer
             // who sent it out ... this also should be toggable".
             new SettingDefinition(
+                key: 'hr.gender_options', label: 'Gender choices',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'male', 'label' => 'Male'],
+                    ['value' => 'female', 'label' => 'Female'],
+                    ['value' => 'prefer_not_to_answer', 'label' => 'Prefers not to answer'],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: "What HR picks from for someone's gender under Records › Personal (Jose, 2026-11-06).",
+            ),
+            new SettingDefinition(
                 key: 'hr.onboarding_approval',
                 label: 'Approve onboardings before access',
                 type: SettingDefinition::TYPE_BOOL,
@@ -1712,6 +1982,18 @@ class SettingRegistry
                     .'whoever sent it, or an Administrator. Until then the new starter sees only '
                     .'their paperwork.',
             ),
+            new SettingDefinition(
+                key: 'hr.alerts.expiring_days', label: 'Warn about expiring certifications (days ahead)',
+                type: SettingDefinition::TYPE_INT, default: 60,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'The HR dashboard lists certifications that expire within this many days.',
+            ),
+            new SettingDefinition(
+                key: 'hr.alerts.quiet_days', label: 'Invitation counts as stalled after (days)',
+                type: SettingDefinition::TYPE_INT, default: 3,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'An invitation nobody opened for this many days shows on the HR dashboard.',
+            ),
         ];
     }
 
@@ -1720,6 +2002,12 @@ class SettingRegistry
         $orgOnly = [SettingDefinition::SCOPE_ORGANIZATION];
 
         return [
+            new SettingDefinition(
+                key: 'time_clock.day_tags', section: 'Clock in and lock screen', label: 'Day tags',
+                type: SettingDefinition::TYPE_LIST, default: TimeClockDay::DEFAULT_TAGS,
+                allowedScopes: $orgOnly,
+                help: 'What HR can mark a working day as in Work Hours. Stored as is what days keep.',
+            ),
             new SettingDefinition(
                 key: 'time_clock.enabled',
                 section: 'Clock in and lock screen',
@@ -2188,6 +2476,12 @@ class SettingRegistry
                 help: 'When on, changes made in EzBizi to a job that is also in Workiz (status, tags, '
                     .'time, technicians, description, custom fields) are written to Workiz too, a few '
                     .'seconds later. Turn it off for a branch that no longer uses Workiz.',
+            ),
+            new SettingDefinition(
+                key: 'workiz.import_since', label: 'Read Workiz records from',
+                type: SettingDefinition::TYPE_STRING, default: '2023-01-01',
+                help: 'The first day (YYYY-MM-DD) a full read of Workiz invoices, payments, estimates '
+                    .'and timesheets starts from. Later reads only fetch what changed.',
             ),
         ];
     }

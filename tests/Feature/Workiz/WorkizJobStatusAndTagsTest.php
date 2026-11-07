@@ -15,7 +15,7 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * The writes Jose's Project Management rules make (Automations, 2026-10-21),
+ * The writes Jose's rules make (Automations, 2026-10-21),
  * shaped as measured on NY's test job 900018655 on 2026-10-20.
  */
 class WorkizJobStatusAndTagsTest extends TestCase
@@ -41,8 +41,14 @@ class WorkizJobStatusAndTagsTest extends TestCase
             $c->connect(['api_token' => 'v2key_NY', 'refresh_token' => 'v2key_NY', 'api_version' => 'v2']);
             $c->save();
             WorkizJob::land($c, WorkizV2::job(array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1'])));
+            $first = WorkizJob::query()->sole();
+            // The account's own statuses, as the mirror knows them: a sub-status's parent, and a status a job carries.
+            \App\Models\WorkizRecord::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $c->id, 'type' => 'sub_status',
+                'remote_id' => 'JSS-9', 'payload' => ['name' => 'Estimate Declined', 'parentName' => 'Canceled'], 'synced_at' => now()]);
+            WorkizJob::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $c->id, 'remote_id' => 'OTHER1',
+                'status' => 'done pending approval', 'payload' => [], 'synced_at' => now()]);
 
-            return WorkizJob::query()->sole();
+            return $first;
         });
     }
 
@@ -63,6 +69,16 @@ class WorkizJobStatusAndTagsTest extends TestCase
 
         Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['status'] === 'Canceled' && $r['subStatusId'] === 'JSS-9');
         $this->assertSame('Canceled', $this->inTenant($this->t['org'], fn () => $this->job->fresh()->status));
+    }
+
+    /** Jose 11-04: the statuses are the account's own, not a list in code: EzBizi's word goes up as the account spells it. */
+    public function test_a_status_goes_up_in_the_accounts_own_spelling(): void
+    {
+        Http::fake(['api.workiz.com/crm/api/v2/jobs/JOB-1' => Http::response(array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1']))]);
+
+        $this->inTenant($this->t['org'], fn () => $this->writer()->setStatus($this->job, 'Done Pending Approval'));
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['status'] === 'done pending approval');
     }
 
     public function test_workizs_own_refusal_is_thrown_as_it_reads(): void

@@ -2,55 +2,34 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 
 /**
- * GET /api/v1/places/counties?state=Florida&q=brow: US county names in one
- * state, for a contract's "County for disputes" once its state is chosen
+ * GET /api/v1/places/counties?state=Massachusetts[&q=suf]: every county of one
+ * US state, for a contract's "County for disputes" once its state is chosen
  * (Jose, 2026-10-01: "state being first so the county adapts to the chosen
- * state"). Photon, the source AddressLookupController uses; no key, and the
- * client never talks to it directly.
+ * state").
+ *
+ * From resources/data/us-counties.json, built from the Census Bureau's 2020
+ * county file (national_county2020.txt) with "County", "Parish" and "Borough"
+ * dropped. It replaced a Photon search that could not find Suffolk County,
+ * Massachusetts (Merav, 2026-11-05: "If I put Massachusetts it will give me
+ * the options"). No outside call: the list is the whole answer.
  */
 class CountyLookupController extends Controller
 {
-    public const UNAVAILABLE = 'County suggestions are not answering right now. Type the county in yourself.';
-
     public function __invoke(Request $request): JsonResponse
     {
+        static $counties = null;
+        $counties ??= json_decode((string) file_get_contents(resource_path('data/us-counties.json')), true);
+
         $state = trim((string) $request->query('state', ''));
-        $query = trim((string) $request->query('q', ''));
+        $query = mb_strtolower(trim((string) $request->query('q', '')));
+        $names = collect($counties)->first(fn ($list, $name) => strcasecmp($name, $state) === 0) ?? [];
 
-        if ($state === '' || $query === '') {
-            return response()->json(['data' => []]);
-        }
-
-        // Photon unreachable or slow: no suggestions and a sentence, never a 500.
-        try {
-            $response = Http::timeout(4)
-                ->withHeaders(['User-Agent' => 'EzBizi/address-lookup (https://ezbizi.com; development@ezbizi.com)'])
-                ->get('https://photon.komoot.io/api/', [
-                    'q' => "{$query}, {$state}",
-                    'layer' => 'county',
-                    'limit' => 10,
-                    'lang' => 'en',
-                ]);
-        } catch (ConnectionException|RequestException) {
-            return response()->json(['data' => [], 'message' => self::UNAVAILABLE]);
-        }
-
-        $names = collect($response->successful() ? ($response->json('features') ?? []) : [])
-            ->map(fn ($f) => is_array($f) ? ($f['properties'] ?? []) : [])
-            ->filter(fn (array $p) => ($p['countrycode'] ?? '') === 'US'
-                && strcasecmp((string) ($p['state'] ?? ''), $state) === 0)
-            ->map(fn (array $p) => trim(preg_replace('/\s+(County|Parish|Borough)$/i', '', (string) ($p['name'] ?? ''))))
-            ->filter()
-            ->unique()
-            ->values();
-
-        return response()->json(['data' => $names]);
+        return response()->json(['data' => array_values(array_filter(
+            $names, fn (string $n) => $query === '' || str_contains(mb_strtolower($n), $query),
+        ))]);
     }
 }

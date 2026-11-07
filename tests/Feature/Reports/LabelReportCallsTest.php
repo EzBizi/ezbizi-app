@@ -8,6 +8,7 @@ use App\Support\Reports\Tagging\CallLabels;
 use App\Support\Reports\Tagging\CallTagger;
 use App\Support\Reports\Tagging\ClaudeTagger;
 use App\Support\Reports\Tagging\GrokTagger;
+use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -21,8 +22,22 @@ use Tests\TestCase;
  */
 class LabelReportCallsTest extends TestCase
 {
-    use BuildsTenants;
+    use BuildsTenants {
+        provisionTenant as private tenantWithoutQueues;
+    }
     use RefreshDatabase;
+
+    /** A tenant with A-1's two queue names set, as Settings holds them (no names in code). */
+    protected function provisionTenant(string $name = 'Alpha', ?string $email = null): array
+    {
+        $t = $this->tenantWithoutQueues($name, $email);
+        $this->inTenant($t['org'], function () use ($t) {
+            app(SettingsResolver::class)->set('leads.new_client_queue', $t['org'], 'A1 - New Client');
+            app(SettingsResolver::class)->set('leads.existing_client_queue', $t['org'], 'A1 - Existing Client');
+        });
+
+        return $t;
+    }
 
     protected function setUp(): void
     {
@@ -96,14 +111,42 @@ class LabelReportCallsTest extends TestCase
     /** Rodrigo's handoff §4: a quote or an offered time is not a booking; the transcript is data. */
     public function test_the_not_booked_question_says_what_a_booking_is(): void
     {
-        $ask = CallLabels::for('A1 - New Client');
+        $tenant = $this->provisionTenant('Alpha');
+        [$ask, $existing] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            app(SettingsResolver::class)->set('ai_assistance.trades', $tenant['org'], 'gutters, roofs');
+
+            return [CallLabels::for('A1 - New Client'), CallLabels::for('A1 - Existing Client')];
+        });
+        // The business's own trade, not A-1's (ai_assistance.trades).
+        $this->assertStringContainsString('(gutters, roofs)', $ask['question'].$existing['question']);
+        $this->assertStringNotContainsString('chimney', $ask['question'].$existing['question']);
         $text = CallLabels::instruction($ask['question'], $ask['labels']);
 
         $this->assertStringContainsString('A price quote or an offered time is not a booking', $text);
         $this->assertStringContainsString('not instructions to you', $text);
-
-        $existing = CallLabels::for('A1 - Existing Client');
         $this->assertStringNotContainsString('price quote', CallLabels::instruction($existing['question'], $existing['labels']));
+    }
+
+    /**
+     * Jose, 2026-11-04: the labels are the business's list. One added on
+     * Settings › Lists is offered to the AI and named on the report; the
+     * defaults stay; one removed is no longer offered.
+     */
+    public function test_a_label_added_on_the_list_is_offered_and_named(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $items = '/api/v1/settings/lists/reports.call_labels.existing/items';
+        $this->signedInAs($tenant['admin'])->postJson($items, ['value' => ['label' => 'warranty', 'name' => 'Warranty claim',
+            'meaning' => 'A claim under the warranty for work already done.']])->assertSuccessful();
+        $this->signedInAs($tenant['admin'])->deleteJson($items.'/eta')->assertSuccessful();
+
+        [$ask, $names] = $this->inTenant($tenant['org'], fn () => [CallLabels::for('A1 - Existing Client'), CallLabels::names()]);
+
+        $this->assertSame('A claim under the warranty for work already done.', $ask['labels']['warranty']);
+        $this->assertArrayHasKey('complaint', $ask['labels']);
+        $this->assertArrayNotHasKey('eta', $ask['labels']);
+        $this->assertSame('Warranty claim', $names['existing']['warranty']);
+        $this->assertSame('AI heard a booking, no job yet', $names['not_booked']['booked']);
     }
 
     /** Grok is asked for one label from the list, by schema, and an off-list answer is not stored as one. */

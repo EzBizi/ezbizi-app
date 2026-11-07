@@ -254,7 +254,7 @@ class TimeClockStats
             'on_time_rate' => self::rate($n['on_time'], $n['late']),
             'average_in' => self::clockOf($inMinutes, $timeFormat),
             'average_out' => self::clockOf($outMinutes, $timeFormat),
-            'tags' => collect(TimeClockDay::TAGS)->mapWithKeys(fn (string $t) => [$t => $records->where('tag', $t)->count()])->all(),
+            'tags' => collect(TimeClockDay::tagValuesFor($person->organization))->mapWithKeys(fn (string $t) => [$t => $records->where('tag', $t)->count()])->all(),
             // Newest first, as General lists them.
             ...($withDays ? ['days' => array_reverse($days)] : []),
             '_late_minutes' => $lateMinutes,

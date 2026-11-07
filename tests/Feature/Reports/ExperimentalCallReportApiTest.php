@@ -30,8 +30,22 @@ use Tests\TestCase;
  */
 class ExperimentalCallReportApiTest extends TestCase
 {
-    use BuildsTenants;
+    use BuildsTenants {
+        provisionTenant as private tenantWithoutQueues;
+    }
     use RefreshDatabase;
+
+    /** A tenant with A-1's two queue names set, as Settings holds them (no names in code). */
+    protected function provisionTenant(string $name = 'Alpha', ?string $email = null): array
+    {
+        $t = $this->tenantWithoutQueues($name, $email);
+        $this->inTenant($t['org'], function () use ($t) {
+            app(SettingsResolver::class)->set('leads.new_client_queue', $t['org'], 'A1 - New Client');
+            app(SettingsResolver::class)->set('leads.existing_client_queue', $t['org'], 'A1 - Existing Client');
+        });
+
+        return $t;
+    }
 
     // ── the gate ─────────────────────────────────────────────────
 

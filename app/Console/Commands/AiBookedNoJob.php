@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Http\Controllers\Api\ExperimentalCallReportController;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\CallReportLabel;
@@ -10,6 +9,7 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
+use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -39,7 +39,7 @@ class AiBookedNoJob extends Command
         $found = $tenant->run($organization, function () use ($calls, $workiz, $reconcile, $day) {
             $report = $reconcile->forRange(
                 $calls->forPeriod($day, $day->endOfDay()),
-                $workiz->storedAll($day->subDays(ExperimentalCallReportController::LOOKBACK_DAYS)->toDateString())['jobs'],
+                $workiz->storedAll($day->subDays(ReportView::lookbackDays())->toDateString())['jobs'],
                 $day->toDateString(),
                 $day->toDateString(),
                 CallReportConversion::query()->pluck('call_id')->all(),

@@ -534,6 +534,28 @@ void main() {
       expect(patch.$3, {'scope_type': 'company', 'scope_id': 'co-2'});
     });
 
+    testWidgets('Settings: a company connects its own Stripe account', (
+      tester,
+    ) async {
+      final api = await _pump(tester);
+      await _openInvoices(tester, sub: 'Settings');
+      expect(
+        find.byKey(const ValueKey('invoice-payments-connect')),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const ValueKey('invoice-setting-place')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Springfield Gutters').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Connect Stripe'));
+      await tester.pumpAndSettle();
+      expect(api.sent('POST', '/invoices/payments-account/onboarding').single, {
+        'company_id': 'co-2',
+      });
+      expect(find.text('Stripe refused: test'), findsOneWidget);
+    });
+
     testWidgets('the pane: phones are editable beside the emails until sent', (
       tester,
     ) async {
@@ -1147,8 +1169,24 @@ Future<_Api> _pump(
             {'id': 'pn1', 'e164': '+15555550101', 'label': 'Main line'},
           ],
           'mailbox': {'id': 'mb1', 'address': 'billing@brightside.example'},
+          'payments': request.url.queryParameters['company_id'] == null
+              ? null
+              : {
+                  'configured': true,
+                  'may_connect': true,
+                  'stripe_account_id': null,
+                  'charges_enabled': false,
+                },
         },
       });
+    }
+    if (path.endsWith('/invoices/payments-account/onboarding')) {
+      return json({
+        'message': 'Stripe refused: test',
+        'errors': {
+          'company_id': ['Stripe refused: test'],
+        },
+      }, 422);
     }
     if (path.endsWith('/api/v1/settings')) {
       Map<String, dynamic> s(String key, Object? value, {List? options}) => {

@@ -177,7 +177,7 @@ class ActionRunner
             // column directly, so calling it "Price" here would invite exactly
             // that mistake through the other door.
             'amount_minor' => 'Amount in cents',
-            // Jose's Project Management rules (Jobs, cff7eceae, 2026-10-20).
+            // Jobs, cff7eceae, 2026-10-20.
             'job_type' => 'Job type',
             'sub_status' => 'Sub-status',
             // One tag in or out, never replace-all, so two rules cannot erase each other's.
@@ -273,6 +273,7 @@ class ActionRunner
                 'ringcentral' => 'RingCentral call',
                 'ez_calls' => 'EZ call',
                 'ez_texts' => 'EZ text',
+                'promotions' => 'promotion reply',
             ],
             'status' => [
                 'new' => 'New',
@@ -723,7 +724,7 @@ class ActionRunner
      * not have, is left alone.
      */
     /**
-     * Jose's Project Management rules (2026-10-21): status, sub-status and
+     * Jose, 2026-10-21: status, sub-status and
      * "set tags to" on the job's Workiz copy, through WorkizJobWriter, which
      * resolves each account's own names and ids and audits what it removed.
      */
@@ -1231,10 +1232,18 @@ class ActionRunner
             ];
         }
 
-        // A call Google takes no text for, or a channel gone: the enquiry is
-        // the wrong kind, not the rule broken, so it skips like Not connected
-        // does and the failure count cannot switch the rule off.
-        if (! $this->leadReplies->canReply($subject)) {
+        // Google takes no text against a call, so the reply goes by SMS from
+        // the cleared line instead: skipping left 71 of 125 not-booked
+        // customers with nothing (Jose via Desk, 2026-11-04).
+        $bySms = ! $this->leadReplies->canReply($subject)
+            && $subject->source === Lead::SOURCE_LOCAL_SERVICES
+            && $subject->lead_type !== 'MESSAGE'
+            && Lead::e164($subject->phone) !== null;
+
+        // A channel gone: the enquiry is the wrong kind, not the rule broken,
+        // so it skips like Not connected does and the failure count cannot
+        // switch the rule off.
+        if (! $bySms && ! $this->leadReplies->canReply($subject)) {
             return [
                 'type' => $type, 'ok' => true, 'skipped' => true,
                 'detail' => $this->leadReplies->whyNot($subject)
@@ -1244,8 +1253,24 @@ class ActionRunner
 
         $text = $this->interpolate($message, $event, $subject);
 
+        // Skips, not failures, so the count cannot switch the rule off: a lead
+        // with no online booking drops a one-line "book here" message whole,
+        // and a company with no cleared line has nothing to text from (health
+        // sweep 2026-11-06: 15 such failures in a day on Triplex's rule).
+        $skip = trim($text) === ''
+            ? 'Every line of this message needs a field this enquiry does not have (a '
+                .'booking link, with no booking page or open area for their ZIP), so nothing was sent.'
+            : ($bySms && app(LeadTexts::class)->line($subject) === null
+                ? "No texting line is cleared to send for this lead's company, so nothing was sent."
+                : null);
+        if ($skip !== null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $skip];
+        }
+
         try {
-            $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
+            $bySms
+                ? app(LeadTexts::class)->send($subject, $text, automatic: true)
+                : $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
         }
@@ -1265,8 +1290,8 @@ class ActionRunner
         return [
             'type' => $type,
             'ok' => true,
-            'detail' => 'Replied in the chat. It is recorded as automatic, so the enquiry still '
-                .'shows as awaiting a reply.',
+            'detail' => ($bySms ? 'Texted the customer, as Google takes no reply to a call.' : 'Replied in the chat.')
+                .' It is recorded as automatic, so the enquiry still shows as awaiting a reply.',
         ];
     }
 
@@ -3683,8 +3708,12 @@ class ActionRunner
         // was refused on theirs. Their own board only when there is no place.
         $owner = (($scope['type'] ?? null) === 'franchise' ? Franchise::query()->find($scope['id'] ?? null) : null)
             ?? (($scope['type'] ?? null) === 'company' ? Company::query()->find($scope['id'] ?? null) : null)
-            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null)
-            ?? $assignee;
+            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null);
+        // A Sub Company and its franchises have no board (Jose, 2026-11-06).
+        if ($owner !== null && ! TaskBoards::hasPlaceBoard($owner)) {
+            $owner = null;
+        }
+        $owner ??= $assignee;
 
         if ($owner === null) {
             return ['type' => 'task.create', 'ok' => false, 'detail' => 'No board to put the task on: give it to somebody, or use a trigger about a place.'];
@@ -3710,7 +3739,7 @@ class ActionRunner
 
         return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
             // A rule's group is made on the branch's board the first time it is
-            // needed (2026-10-22: PM Action 1's "Project Management" group was on
+            // needed (2026-10-22: a rule's group was on
             // no board). By name, any case; a person's API call still refuses an unknown one.
             if ($group !== '' && ! $board->groups()->get()->contains(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower($group))) {
                 $board->groups()->create(['organization_id' => $board->organization_id, 'name' => $group,

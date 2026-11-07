@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Support\Leads\AddressCheck;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
+use App\Support\Leads\AddressCheck;
 use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Reschedules;
@@ -64,7 +64,7 @@ class SchedulingAvailabilityController extends Controller
     public function suggestion(Request $request): JsonResponse
     {
         $this->authorize('viewAny', ServiceArea::class);
-        $data = $request->validate(['zip' => ['required', 'string', 'max:16']]);
+        $data = $request->validate(['zip' => ['required', 'string', 'max:16'], 'date' => ['nullable', 'date_format:Y-m-d']]);
         $zip = $this->zip5((string) $data['zip']);
         $area = $this->areaForZip($zip, ViewScope::forUser($request->user())->franchiseIds());
 
@@ -74,8 +74,8 @@ class SchedulingAvailabilityController extends Controller
 
         $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $request->user()->organization));
 
-        return response()->json(['data' => ['area_id' => $area->id, 'area_name' => $area->name]
-            + app(NearbySuggestion::class)->for($area, $zip, $from)]);
+        return response()->json(['data' => ['area_id' => $area->id, 'area_name' => $area->name, 'for_date' => $data['date'] ?? null]
+            + app(NearbySuggestion::class)->for($area, $zip, $from, $data['date'] ?? null)]);
     }
 
     /**

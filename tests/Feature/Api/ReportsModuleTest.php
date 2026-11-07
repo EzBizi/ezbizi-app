@@ -7,13 +7,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Google Ads is a tab inside Reports.
+ * Ads (Google and Meta campaigns) is a tab inside Marketing, not Reports.
  *
- * Jose's call, 2026-09-15, having been shown it under Marketing: "It is clearly
- * not supposed to be in Marketing. Move it to Reports in a new tab called
- * Google Ads." Marketing is what the business SAYS about itself - its listing,
- * its reviews, its posts. What that costs is a measurement, and measurements
- * live in Reports.
+ * Jose put it in Reports on 2026-09-15 and moved it back on 2026-11-05: "it's
+ * not a report, but ads management which should go on marketing".
  *
  * Pinned because Marketing had a test for exactly this and Reports did not, so
  * a module could be moved into or out of Reports with nothing going red. That
@@ -25,20 +22,20 @@ class ReportsModuleTest extends TestCase
 
     private const MODULE = 'reports';
 
-    public function test_google_ads_is_drawn_inside_reports(): void
+    public function test_ads_is_drawn_inside_marketing_not_reports(): void
     {
         $registry = app(ModuleRegistry::class);
 
         $this->assertSame(
-            ['ads_performance', 'profit_loss'],
+            ['profit_loss'],
             array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
             'Registry order is the tab order, so this is the order of the strip.',
         );
 
         $this->assertSame(
-            'Google Ads',
-            $registry->get('ads_performance')?->label,
-            'The tab is named for the thing it reports on, not for the metric.',
+            ['marketing', 'Ads'],
+            [$registry->get('ads_performance')?->parent, $registry->get('ads_performance')?->label],
+            'Ads management is Marketing; the tab holds Google and Meta, so neither name hides the other.',
         );
 
         $this->assertNull(

@@ -2,7 +2,8 @@ import 'dart:async';
 
 import '../../core/api_client.dart';
 import 'consent_window_io.dart'
-    if (dart.library.js_interop) 'consent_window_web.dart' as impl;
+    if (dart.library.js_interop) 'consent_window_web.dart'
+    as impl;
 
 /// The mail service's own sign-in screen, opened in a window of its own.
 ///
@@ -94,6 +95,9 @@ Future<Timer?> runConsentFlow({
   required void Function(String? error) onEnd,
   required Future<void> Function() onConnected,
   void Function(String url)? onUrl,
+  // What to ask for, e.g. `{products: [...]}` (UI queue 183). Empty asks for
+  // everything, as every caller before it did.
+  Map<String, dynamic> body = const {},
 }) async {
   // Opened BEFORE the first await, deliberately. A window opened after an async
   // gap is not attributable to the click any more, and every browser blocks it.
@@ -110,7 +114,7 @@ Future<Timer?> runConsentFlow({
 
   onStart();
 
-  final response = await api.post(startPath, const {});
+  final response = await api.post(startPath, body);
 
   if (!isMounted()) {
     window.close();
@@ -177,7 +181,9 @@ Future<Timer?> runConsentFlow({
       timer.cancel();
       window.close();
       // The server's own sentence about why, not "something went wrong".
-      onEnd(message is String && message.isNotEmpty ? message : refusedFallback);
+      onEnd(
+        message is String && message.isNotEmpty ? message : refusedFallback,
+      );
     }
   });
 }

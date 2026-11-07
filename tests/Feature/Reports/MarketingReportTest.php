@@ -75,6 +75,24 @@ class MarketingReportTest extends TestCase
         $this->assertFalse($by->has('PPC'));
     }
 
+    /** Jose, 2026-11-04: which job source an ad channel pays for is the business's list, not "PPC" in code. */
+    public function test_a_paid_source_set_on_the_list_carries_that_channels_cost(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $f = $t['franchise'];
+        $this->signedInAs($t['admin'])->postJson('/api/v1/settings/lists/reports.paid_sources/items',
+            ['value' => ['source' => 'Google Search', 'channel' => 'PPC']])->assertSuccessful();
+        $this->signedInAs($t['admin'])->deleteJson('/api/v1/settings/lists/reports.paid_sources/items/PPC')->assertSuccessful();
+
+        $rows = $this->inTenant($t['org'], fn () => app(MarketingReport::class)
+            ->withCost(fn () => ['ppc' => ['cost_minor' => 12300, 'clicks' => 9, 'conversions' => 1]])
+            ->rows(Franchise::query()->find($f->id), '2026-09-21', '2026-09-27'));
+        $by = collect($rows)->keyBy('source');
+
+        $this->assertSame(12300, $by['Google Search']['cost_minor']);
+        $this->assertFalse($by->has('PPC'));
+    }
+
     public function test_it_needs_the_profit_and_loss_permission(): void
     {
         $t = $this->provisionTenant('Alpha');

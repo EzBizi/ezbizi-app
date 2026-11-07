@@ -191,6 +191,43 @@ class SocialNetworkOAuthTest extends TestCase
         $this->assertSame(['facebook_ads:act_777', 'facebook_page:111'], $rows);
     }
 
+    public function test_an_ad_account_shared_with_the_business_connects_too(): void
+    {
+        // A-1 Chimney, 2026-11-05: the account was shared with the EzBizi
+        // business as a partner, so /me/adaccounts never listed it.
+        $t = $this->provisionTenant('A1-Group');
+
+        $url = $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/social/facebook/start')
+            ->assertOk()->json('data.authorization_url');
+
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+        Http::fake(function (Request $request) {
+            $url = $request->url();
+
+            return match (true) {
+                str_contains($url, 'oauth/access_token') => Http::response(['access_token' => 'a-user-token']),
+                str_contains($url, '/me/adaccounts') => Http::response(['data' => []]),
+                str_contains($url, '/me/businesses') => Http::response(['data' => [['id' => 'biz-1']]]),
+                str_contains($url, '/biz-1/client_ad_accounts') => Http::response(['data' => [['id' => 'act_932', 'name' => 'A1 Chimney', 'currency' => 'USD']]]),
+                str_contains($url, '/biz-1/owned_ad_accounts') => Http::response(['data' => [['id' => 'act_932', 'name' => 'A1 Chimney']]]),
+                str_contains($url, '/me/accounts') => Http::response(['data' => [['id' => '111', 'name' => 'A-1 Chimney', 'access_token' => 'page-token-111']]]),
+                str_contains($url, '/me?') || str_ends_with(parse_url($url, PHP_URL_PATH) ?: '', '/me') => Http::response(['id' => 'meta-user-abc']),
+                str_contains($url, '/subscribed_apps') => Http::response(['success' => true]),
+                default => Http::response(['data' => []]),
+            };
+        });
+
+        $this->get('/api/v1/social/facebook/callback?code=an-auth-code&state='.$query['state'])->assertOk();
+
+        $rows = $this->inTenant($t['org'], fn () => SocialConnection::query()->orderBy('provider')->get(['provider', 'remote_id'])
+            ->map(fn ($c) => $c->provider.':'.$c->remote_id)->all());
+
+        // Owned and shared both list it: connected once.
+        $this->assertSame(['facebook_ads:act_932', 'facebook_page:111'], $rows);
+    }
+
     public function test_pages_held_through_a_business_portfolio_are_offered_once_each(): void
     {
         $t = $this->provisionTenant('A1-Group');

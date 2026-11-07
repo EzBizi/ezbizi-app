@@ -127,6 +127,7 @@ use App\Http\Controllers\Api\ScoringReportController;
 use App\Http\Controllers\Api\StaffBotMenusController;
 use App\Http\Controllers\Api\ThumbtackReportController;
 use App\Http\Controllers\Api\ProfitLossController;
+use App\Http\Controllers\Api\ProofreadController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
@@ -267,6 +268,11 @@ use Illuminate\Support\Facades\Route;
 // there is one and rate-limits per person or address; this throttle is only
 // the outer fence.
 Route::post('v1/client-issues', [ClientIssuesController::class, 'store'])
+    ->middleware('throttle:60,1');
+
+// The public API reference www.ezbizi.com/developers/ renders, generated from
+// the routes a key may call (Jose, 2026-11-06). Paths only, no tenant data.
+Route::get('v1/openapi.json', \App\Http\Controllers\Api\OpenApiController::class)
     ->middleware('throttle:60,1');
 
 Route::prefix('v1/auth')->group(function () {
@@ -698,6 +704,20 @@ Route::get('v1/invoices/shared/{invoice}', [\App\Http\Controllers\Api\InvoicesCo
     ->whereUuid('invoice')
     ->name('invoice.shared');
 
+// Invoices paid online (Payments, Jose 2026-11-06). The Pay link is signed;
+// the webhook's Stripe signature is its authentication; the pages mark
+// nothing. Under /api because nginx gives every other path to Flutter.
+Route::get('v1/invoices/pay/{invoice}', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'pay'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->whereUuid('invoice')
+    ->name('invoice.pay');
+Route::post('v1/payments/stripe/webhook', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'webhook'])
+    ->middleware('throttle:600,1')
+    ->name('payments.stripe.webhook');
+Route::get('v1/payments/pages/{page}', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'pages'])
+    ->middleware('throttle:60,1')
+    ->name('payments.pages');
+
 // An inspection report's PDF for places that cannot sign in (a Workiz job);
 // the signed link is the permission. See InspectionReport::shareUrl.
 Route::get('v1/inspections/shared/{report}', [InspectionReportsController::class, 'shared'])
@@ -904,21 +924,12 @@ Route::prefix('v1')
         // Each branch's Workiz notes on the customer, read live, never copied.
         Route::get('customers/{customer}/workiz-notes', CustomerWorkizNotesController::class);
 
-        // Before the resource, or 'project-management' reads as a job id.
+        // Before the resource, or 'book' reads as a job id.
         Route::get('jobs/book/options', [\App\Http\Controllers\Api\JobBookingController::class, 'options']);
         Route::post('jobs/book', [\App\Http\Controllers\Api\JobBookingController::class, 'store']);
         Route::post('jobs/{job}/book/workiz', [\App\Http\Controllers\Api\JobBookingController::class, 'retryWorkiz']);
-        Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
-        Route::get('jobs/project-management/stats', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stats']);
-        Route::get('jobs/project-management/jobs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stageJobs']);
-        Route::get('jobs/project-management/overview', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'overview']);
-        Route::get('jobs/project-management/cards', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'cards']);
-        Route::get('jobs/project-management/rules', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'rules']);
-        Route::get('jobs/project-management/logs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'logs']);
         Route::apiResource('jobs', JobsController::class);
-        Route::get('project-management-2/jobs', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'jobs']);
-        Route::get('project-management-2/jobs/{id}', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'job'])->whereUuid('id');
-        Route::post('project-management-2/jobs/{id}/submit', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'submit'])->whereUuid('id');
+        Route::get('project-board/jobs', [\App\Http\Controllers\Api\ProjectBoardController::class, 'jobs']);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
@@ -969,6 +980,10 @@ Route::prefix('v1')
         Route::get('memberships/plans', [MembershipsController::class, 'plans']);
         Route::post('memberships/plans', [MembershipsController::class, 'storePlan']);
         Route::patch('memberships/plans/{plan}', [MembershipsController::class, 'updatePlan']);
+        // Memberships > Promotions (Jose, 2026-11-06).
+        Route::get('memberships/promotions', [\App\Http\Controllers\Api\PromotionsController::class, 'index']);
+        Route::get('memberships/promotions/preview', [\App\Http\Controllers\Api\PromotionsController::class, 'preview']);
+        Route::post('memberships/promotions', [\App\Http\Controllers\Api\PromotionsController::class, 'store']);
         Route::apiResource('memberships', MembershipsController::class)->except('show');
 
         // drivers before {vehicle} so the literal path is not captured as an id
@@ -1015,6 +1030,9 @@ Route::prefix('v1')
         Route::get('meta-ads/tree', [\App\Http\Controllers\Api\MetaAdsController::class, 'tree']);
         Route::post('meta-ads/status', [\App\Http\Controllers\Api\MetaAdsController::class, 'setStatus']);
         Route::post('meta-ads/budget', [\App\Http\Controllers\Api\MetaAdsController::class, 'setBudget']);
+        Route::get('ad-schedules', [\App\Http\Controllers\Api\AdSchedulesController::class, 'index']);
+        Route::put('ad-schedules', [\App\Http\Controllers\Api\AdSchedulesController::class, 'save']);
+        Route::delete('ad-schedules/{schedule}', [\App\Http\Controllers\Api\AdSchedulesController::class, 'destroy']);
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
@@ -1114,6 +1132,7 @@ Route::prefix('v1')
         Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
         Route::post('leads/{lead}/suggest-reply', [LeadsController::class, 'suggestReply']);
+        Route::post('leads/{lead}/proofread', [LeadsController::class, 'proofread']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
         Route::post('leads/{lead}/follow-up-handled', [LeadsController::class, 'followUpHandled']);
         Route::post('leads/{lead}/reclassify', [LeadsController::class, 'reclassify']);
@@ -1154,6 +1173,8 @@ Route::prefix('v1')
             Route::post('send', 'send');
             Route::post('send-preview', 'preview');
             Route::get('settings', 'settings');
+            Route::get('payments-account', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'account']);
+            Route::post('payments-account/onboarding', [\App\Http\Controllers\Api\InvoicePaymentsController::class, 'onboarding']);
             Route::get('/', 'index');
             Route::get('{invoice}', 'show');
             Route::patch('{invoice}', 'update');
@@ -2153,6 +2174,10 @@ Route::prefix('v1')
         // lives next to the person rather than in a privacy module of its own.
         Route::get('hr/people/{user}/consents', [HrPeopleController::class, 'consents']);
         Route::patch('hr/people/{user}', [HrPeopleController::class, 'update']);
+        Route::post('hr/people/{user}/avatar', [ProfileController::class, 'uploadAvatarFor']);
+        Route::post('hr/people/{user}/places', [HrPeopleController::class, 'addPlace']);
+        Route::delete('hr/people/{user}/places/{assignment}', [HrPeopleController::class, 'removePlace']);
+        Route::delete('hr/people/{user}/avatar', [ProfileController::class, 'destroyAvatarFor']);
         // Their weekday schedule (design 2026-09-08 §10.3). Zone is the caller's view.
         Route::patch('hr/people/{user}/schedule', [HrPeopleController::class, 'updateSchedule']);
 
@@ -3344,6 +3369,16 @@ Route::prefix('v1')
         Route::post('alerts', [\App\Http\Controllers\Api\AlertsController::class, 'send']);
 
         // ── Settings (§6) ────────────────────────────────────────
+        // Settings › Lists (2026-11-04): a business's own lists, a row per call.
+        // Reading follows the Settings tab; each write checks its list's own
+        // edit permission in the controller.
+        Route::middleware('permission:organizations.settings.view')->group(function () {
+            Route::get('settings/lists', [\App\Http\Controllers\Api\BusinessListsController::class, 'index']);
+            Route::post('settings/lists/{list}/items', [\App\Http\Controllers\Api\BusinessListsController::class, 'store']);
+            Route::patch('settings/lists/{list}/items/{item}', [\App\Http\Controllers\Api\BusinessListsController::class, 'update']);
+            Route::delete('settings/lists/{list}/items/{item}', [\App\Http\Controllers\Api\BusinessListsController::class, 'destroy']);
+            Route::post('settings/lists/{list}/reset', [\App\Http\Controllers\Api\BusinessListsController::class, 'reset']);
+        });
         // Settings › Pending: what each place in view is missing (2026-10-26).
         // Gated on organizations.edit, which every fill-in needs at the least.
         Route::get('settings/pending', [\App\Http\Controllers\Api\PendingSettingsController::class, 'index'])
@@ -3372,6 +3407,9 @@ Route::prefix('v1')
         Route::get('mail/sending-server', [SendingServersController::class, 'show']);
         Route::put('mail/sending-server', [SendingServersController::class, 'connect']);
         Route::delete('mail/sending-server', [SendingServersController::class, 'disconnect']);
+
+        // "Did you mean" for a composer with no lead behind it (Phone's texts).
+        Route::post('proofread', ProofreadController::class)->middleware('throttle:60,1');
 
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)

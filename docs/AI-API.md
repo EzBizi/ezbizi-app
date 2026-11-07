@@ -48,6 +48,16 @@ claude mcp add --transport http ezbizi https://app.ezbizi.com/api/v1/mcp --heade
 
 Not yet: OAuth (claude.ai and ChatGPT connectors require it), SSE streaming.
 
+## Public reference
+
+`GET /api/v1/openapi.json` (no auth, `OpenApiController`) is OpenAPI 3.1 built
+from `McpController::routes()`, the same table `list_endpoints` reads; each
+operation carries `x-key-level` (viewer/editor/full). The websites box copies it
+hourly (`/var/www/vhosts/ezbizi.com/refresh-api-spec.sh`, ezbizi_ftp's crontab,
+keeps the last good copy) to `www.ezbizi.com/ezbizi-api.json`, which
+`/developers/reference/` (WordPress page, Scalar) renders. Guides:
+`/developers/`.
+
 ## Webhooks
 
 Already built as an automation action: **Automations → any trigger → Call a

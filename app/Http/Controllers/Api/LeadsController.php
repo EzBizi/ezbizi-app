@@ -11,6 +11,7 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\ServiceArea;
+use App\Models\ServiceAreaZip;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Models\WebBooking;
@@ -308,7 +309,7 @@ class LeadsController extends Controller
             $query->where('leads.status', Lead::STATUS_NEW)
                 ->whereNotIn('leads.source', Lead::SOURCES_NO_REPLY_OWED)
                 ->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
-                ->where('leads.last_contact_at', '<=', now()->subMinutes(Lead::REPLY_OVERDUE_AFTER_MINUTES))
+                ->where('leads.last_contact_at', '<=', now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes')))
                 ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_LOCAL_SERVICES)
                     ->orWhere('leads.lead_type', 'MESSAGE'))
                 ->where(fn ($q) => $q->whereNotIn('leads.source', Lead::SOURCES_VIA_CONNECTION)
@@ -440,7 +441,7 @@ class LeadsController extends Controller
         // the page (8 ms on production's 7,869 customers), so a known caller
         // is shown by name. Jose, 2026-09-28.
         $customers = $user->hasPermission('customers.view')
-            ? $this->customersByNumber(array_map(fn (Lead $l) => $l->phone_digits, $leads->items()))
+            ? $this->customersFor($leads->items())
             : [];
 
         $viewers = LeadPresence::others(array_map(fn (Lead $l) => (string) $l->id, $leads->items()), $user);
@@ -456,7 +457,7 @@ class LeadsController extends Controller
                 'viewers' => $viewers[(string) $l->id] ?? [],
                 'last_contact_ad_question' => isset($adAsked[$l->id]) && $l->last_contact_at !== null
                     && Carbon::parse($adAsked[$l->id])->equalTo($l->last_contact_at),
-                'customer' => ($c = $customers[self::tenDigits($l->phone_digits)] ?? null) === null
+                'customer' => ($c = $customers[(string) $l->id] ?? null) === null
                     ? null
                     : ['id' => $c->id, 'number' => $c->number, 'name' => $c->name],
             ], $leads->items()),
@@ -546,6 +547,18 @@ class LeadsController extends Controller
         $data['details']['checked_address'] = $checked;
         $data['details']['zip'] ??= $checked['zip'] ?? null;
 
+        // The branch to book into when the lead names none: the one in its
+        // company whose service areas cover its ZIP (Jose, 2026-11-05: Kristen,
+        // 06820, left Franchise blank and "No area covers 06820").
+        $zip = substr(preg_replace('/\D/', '', (string) ($data['details']['zip'] ?? $lead->postal_code)), 0, 5);
+        $covering = strlen($zip) === 5 && $lead->franchise_id === null
+            ? ServiceAreaZip::query()->where('zip', $zip)
+                ->whereIn('franchise_id', Franchise::query()
+                    ->when($lead->company_id !== null, fn ($q) => $q->where('company_id', $lead->company_id))->pluck('id'))
+                ->distinct()->pluck('franchise_id')
+            : collect();
+        $data['book_franchise_id'] = $lead->franchise_id ?? ($covering->count() === 1 ? $covering->first() : null);
+
         // Whether a reply can go anywhere, and when it cannot, WHY — in the
         // refusing channel's own words. The screen used to carry one sentence
         // for every source, and it named Google; the first Thumbtack enquiry
@@ -574,7 +587,7 @@ class LeadsController extends Controller
         )->map(fn ($t) => [
             'name' => (string) ($t['label'] ?? $t),
             'text' => strtr((string) ($t['value'] ?? $t), [
-                '{{greeting}}' => $first === null ? 'Hi there' : "Hi {$first}",
+                '{{greeting}}' => Lead::greeting($first, $lead->organization_id),
                 '{{company}}' => (string) ($lead->company?->name ?? request()->user()->organization->name),
                 '{{missing}}' => $missingText,
                 '{{availability}}' => str_contains((string) ($t['value'] ?? ''), '{{availability}}')
@@ -585,6 +598,9 @@ class LeadsController extends Controller
 
         // A draft is offered only where a reply can go and the model is on.
         $data['can_suggest'] = $data['can_reply'] && $this->insights->enabled();
+        // The composer's "Did you mean" (leads.proofread, Jose 2026-11-05).
+        $data['can_proofread'] = $data['can_suggest']
+            && (bool) SettingsResolver::forOrganization('leads.proofread', $lead->organization_id);
 
         // Customers this number already belongs to, so booking can attach to
         // one instead of making a second Jane Doe. Same digits-only match the
@@ -719,7 +735,7 @@ class LeadsController extends Controller
         $digits = $lead->phone_digits;
 
         if ($digits === null || strlen($digits) < 7) {
-            return collect();
+            return collect(array_filter([$this->customersFor([$lead])[(string) $lead->id] ?? null]));
         }
 
         // Google sends +1 216 555 0100; a customer typed in by hand may be
@@ -735,7 +751,74 @@ class LeadsController extends Controller
             )
             ->orderBy('name')
             ->limit(3)
-            ->get();
+            ->get()
+            ->whenEmpty(fn () => collect(array_filter([$this->customersFor([$lead])[(string) $lead->id] ?? null])));
+    }
+
+    /**
+     * The customer each lead already is, on every source (Jose, 2026-11-06:
+     * "All the leads should, like this things need to be basic"): by the
+     * lead's phone, then a phone or email the customer wrote, then the lead's
+     * own email. Never by name alone - that would attach the wrong Jane Doe.
+     * The thread is read only for leads their phone did not match.
+     *
+     * @param  list<Lead>  $leads
+     * @return array<string, Customer> by lead id
+     */
+    private function customersFor(array $leads): array
+    {
+        // phone_digits is filled by the importers; a lead written another way may carry only phone.
+        $digits = fn (Lead $l) => $l->phone_digits ?? (preg_replace('/\D/', '', (string) $l->phone) ?: null);
+        $byNumber = $this->customersByNumber(array_map($digits, $leads));
+        $found = [];
+        $rest = [];
+        foreach ($leads as $l) {
+            ($c = $byNumber[self::tenDigits($digits($l))] ?? null) !== null
+                ? $found[(string) $l->id] = $c
+                : $rest[] = $l;
+        }
+        if ($rest === []) {
+            return $found;
+        }
+
+        $texts = LeadConversation::query()
+            ->whereIn('lead_id', array_map(fn (Lead $l) => $l->id, $rest))
+            ->where('participant', LeadConversation::FROM_CONSUMER)
+            ->where('channel', '!=', LeadConversation::CHANNEL_PHONE_CALL)
+            ->whereNotNull('text')
+            ->orderBy('occurred_at')
+            ->get(['lead_id', 'text'])
+            ->groupBy('lead_id');
+        $written = [];
+        foreach ($rest as $l) {
+            $w = LeadDetails::contacts($texts->get($l->id)?->pluck('text')->all() ?? []);
+            $written[(string) $l->id] = [$w['phone'], array_values(array_unique(array_filter([
+                $w['email'], strtolower(trim((string) $l->email)) ?: null,
+            ])))];
+        }
+
+        $phones = $this->customersByNumber(array_column($written, 0));
+        $emails = Customer::query()
+            ->whereIn(DB::raw('LOWER(email)'), array_values(array_unique(array_merge(...array_column($written, 1)))) ?: [''])
+            ->orderBy('name')
+            ->get()
+            ->reduce(function (array $by, Customer $c) {
+                $by[strtolower((string) $c->email)] ??= $c;
+
+                return $by;
+            }, []);
+
+        foreach ($written as $id => [$phone, $mails]) {
+            $c = $phones[self::tenDigits($phone)] ?? null;
+            foreach ($mails as $mail) {
+                $c ??= $emails[$mail] ?? null;
+            }
+            if ($c !== null) {
+                $found[$id] = $c;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -1247,6 +1330,21 @@ class LeadsController extends Controller
     }
 
     /**
+     * POST /api/v1/leads/{lead}/proofread {text}: the draft with its clear
+     * spelling and grammar fixed, or null. Offered, never sent by itself.
+     */
+    public function proofread(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        $text = $request->validate(['text' => ['required', 'string', 'max:1000']])['text'];
+
+        $on = $this->insights->enabled()
+            && (bool) SettingsResolver::forOrganization('leads.proofread', $lead->organization_id);
+
+        return response()->json(['data' => ['suggestion' => $on ? $this->insights->proofread($lead, $text) : null]]);
+    }
+
+    /**
      * POST /api/v1/leads/{lead}/messages
      *
      * Reply to the enquirer. The message goes through Google into the chat
@@ -1348,8 +1446,9 @@ class LeadsController extends Controller
             $row = $channel->send($lead, $text);
         } catch (RuntimeException $e) {
             // The provider refused, with a sentence written for the screen.
-            // Only the provider can act on it, so 502.
-            abort(Response::HTTP_BAD_GATEWAY, $e->getMessage());
+            // Only the provider can act on it, so 502 - unless the channel
+            // marked it permanent (422), which no retry will change.
+            abort($e->getCode() === Response::HTTP_UNPROCESSABLE_ENTITY ? $e->getCode() : Response::HTTP_BAD_GATEWAY, $e->getMessage());
         }
 
         $this->audit->log('lead.replied', $lead, [
@@ -1868,13 +1967,11 @@ class LeadsController extends Controller
     /**
      * "Connected" while nothing is being read. A Google Ads account is read
      * every few minutes and each read stamps `last_reached_at`; one that has
-     * not been reached in SYNC_FAILING_AFTER_HOURS is failing every read
+     * not been reached in leads.sync_failing_hours is failing every read
      * (2026-09-30: a row with no lasting permission stayed "connected" while
      * every tick refused it). Thumbtack is pushed to us, not read, so its
      * stamp says nothing and it never counts.
      */
-    private const SYNC_FAILING_AFTER_HOURS = 6;
-
     private static function syncFailing(SocialConnection $c): bool
     {
         if ($c->provider !== SocialProvider::GoogleAds->value || $c->status !== SocialConnection::STATUS_CONNECTED) {
@@ -1883,7 +1980,7 @@ class LeadsController extends Controller
 
         $since = $c->last_reached_at ?? $c->created_at;
 
-        return $since !== null && $since->lt(now()->subHours(self::SYNC_FAILING_AFTER_HOURS));
+        return $since !== null && $since->lt(now()->subHours((int) SettingsResolver::forOrganization('leads.sync_failing_hours', $c->organization_id)));
     }
 
     /**

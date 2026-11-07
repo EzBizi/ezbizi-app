@@ -10,6 +10,7 @@ use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
 use App\Support\Leads\LeadReplies;
 use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Carbon;
 
@@ -166,8 +167,8 @@ final class LeadsGlance extends DescribedGlance
             $soon = $owed->count() - $overdue;
             $attention = array_values(array_filter([
                 $overdue === 0 ? null : GlancePayload::attention('bad', $overdue === 1
-                    ? '1 customer waiting over '.Lead::REPLY_OVERDUE_AFTER_MINUTES.' minutes for a reply'
-                    : "{$overdue} customers waiting over ".Lead::REPLY_OVERDUE_AFTER_MINUTES.' minutes for a reply'),
+                    ? '1 customer waiting over '.SettingsResolver::forOrganization('leads.reply_overdue_minutes').' minutes for a reply'
+                    : "{$overdue} customers waiting over ".SettingsResolver::forOrganization('leads.reply_overdue_minutes').' minutes for a reply'),
                 $soon === 0 ? null : GlancePayload::attention('caution', $soon === 1
                     ? '1 customer waiting for a reply'
                     : "{$soon} customers waiting for a reply"),

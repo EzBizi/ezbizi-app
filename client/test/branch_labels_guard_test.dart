@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Jose, 2026-10-22, on the Project Management › Reports branch picker
+/// Jose, 2026-10-22, on a Reports branch picker
 /// listing "Main" ten times: *"you always keep forgetting about this issue"*.
 ///
 /// A branch picker labels each branch "Company · Branch"

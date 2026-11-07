@@ -437,7 +437,9 @@ class ProjectWorkizRecords extends Command
         $name = $client->name ?: $client->company;
         $norm = fn (?string $value) => mb_strtolower(preg_replace('/\s+/u', ' ', trim((string) $value)));
         $zip = fn (?string $value) => substr(preg_replace('/\D+/', '', (string) $value), 0, 5);
-        $placeholder = fn (?string $street) => in_array(WorkizTwins::street($street), WorkizTwins::PLACEHOLDER_STREETS, true);
+        // The org's list (Customers, 11-04: no constants), in the same street form as the match.
+        $streets = array_map(fn (string $s) => WorkizTwins::street($s), Customer::placeholders('customers.placeholder_streets'));
+        $placeholder = fn (?string $street) => in_array(WorkizTwins::street($street), $streets, true);
 
         if ($phone === null || preg_match('/^\+1\d{10}$/', $phone) !== 1 || ($name ?? '') === '' || $placeholder($client->address)) {
             return $none;

@@ -170,7 +170,7 @@ class HoursController extends Controller
 
         $tz = $franchise->timezone;
 
-        return is_string($tz) && $tz !== '' ? $tz : 'America/New_York';
+        return is_string($tz) && $tz !== '' ? $tz : \App\Support\Settings\OrgTimezone::of();
     }
 
     /** @return array<string, mixed> */

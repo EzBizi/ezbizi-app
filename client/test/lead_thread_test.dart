@@ -831,6 +831,40 @@ void main() {
     expect(_sent, isEmpty, reason: 'a draft is not a send');
   });
 
+  /// Jose, 2026-11-05: "Yes, I call you right away". The fix is offered
+  /// under the box and goes in only when tapped; nothing is sent.
+  testWidgets('a clear mistake is offered as "Did you mean", never sent', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      proofread: "Yes, I'll call you right away",
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('reply-box')),
+      'Yes, I call you right away',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('reply-proofread')), findsNothing);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reply-proofread')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('reply-proofread')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('reply-box')))
+          .controller!
+          .text,
+      "Yes, I'll call you right away",
+    );
+    expect(_sent, isEmpty);
+  });
+
   // UI queue 77: what AI wrote says so, until a person changes it.
   testWidgets("a suggestion is marked as AI's until the words change", (
     tester,
@@ -1407,6 +1441,7 @@ Future<void> _pump(
   String? conflictOnce,
   bool bookable = false,
   Map<String, dynamic>? offer,
+  String? proofread,
 }) async {
   _sent.clear();
   _booked.clear();
@@ -1419,6 +1454,16 @@ Future<void> _pump(
 
   final api = ApiClient(
     client: MockClient((request) async {
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/proofread')) {
+        return http.Response(
+          jsonEncode({
+            'data': {'suggestion': proofread},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
       if (request.method == 'POST' &&
           request.url.path.endsWith('/suggest-reply')) {
         return http.Response(
@@ -1550,6 +1595,7 @@ Future<void> _pump(
               'can_reply': canReply,
               'cannot_reply_because': cannotReplyBecause,
               'can_suggest': suggestion != null,
+              'can_proofread': proofread != null,
               'customer': customer,
               'details': details,
               'viewers': viewers,

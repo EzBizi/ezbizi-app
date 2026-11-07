@@ -119,7 +119,7 @@ class Customer extends Model implements HoldsPersonalData
     {
         $normal = strtolower(trim((string) $email));
 
-        return $normal === '' || in_array($normal, self::PLACEHOLDER_EMAILS, true)
+        return $normal === '' || in_array($normal, self::placeholders('customers.placeholder_emails'), true)
             ? null
             : trim((string) $email);
     }
@@ -142,7 +142,27 @@ class Customer extends Model implements HoldsPersonalData
 
         $national = strlen($digits) === 11 && $digits[0] === '1' ? substr($digits, 1) : $digits;
 
-        return in_array($national, self::PLACEHOLDER_PHONES, true) ? null : trim((string) $phone);
+        return in_array($national, self::placeholders('customers.placeholder_phones'), true) ? null : trim((string) $phone);
+    }
+
+    /**
+     * A business list of placeholders (Settings › Lists), lower-cased. The
+     * constants above are only its defaults (Jose, 2026-11-04: every business
+     * value editable). Memoized per org for the request or job, because the
+     * importers call this once per row.
+     */
+    public static function placeholders(string $list): array
+    {
+        return self::placeholderList($list, app(\App\Support\Tenancy\TenantContext::class)->id());
+    }
+
+    private static function placeholderList(string $list, ?string $organizationId): array
+    {
+        // once() keys on the closure's captured variables, so the org must be one.
+        return once(fn () => $organizationId === false ? [] : array_map(
+            fn (array $row) => mb_strtolower(trim((string) $row['key'])),
+            app(\App\Support\Settings\Lists\BusinessLists::class)->rows($list),
+        ));
     }
 
     // ── §9 data inventory ────────────────────────────────────────

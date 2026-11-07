@@ -10,6 +10,7 @@ import '../widgets/tab_bar_like.dart';
 import 'organization_screen.dart';
 import 'roles_screen.dart';
 import 'settings/activity_screen.dart';
+import 'settings/lists_screen.dart';
 import 'settings/integrations_screen.dart';
 import 'settings/settings_hub.dart';
 
@@ -116,6 +117,14 @@ class _SettingsShellState extends State<SettingsShell> {
         ),
       // Who did what in this view (A1 Leads takeover, 2026-10-16). Its own
       // module grant, like Roles, because the log is not a setting.
+      // A business's own lists (design 181, 2026-11-04).
+      if (me.can('organizations.settings.view'))
+        (
+          'lists',
+          'Lists',
+          Icons.list_alt_outlined,
+          () => ListsScreen(api: widget.api),
+        ),
       if (me.can('audit.view'))
         (
           'activity',

@@ -40,7 +40,7 @@ final class AppAsk
     {
         $started = microtime(true);
         $left = fn () => $timeout - (int) ceil(microtime(true) - $started);
-        $today = now('America/New_York');
+        $today = now(\App\Support\Settings\OrgTimezone::of());
         $call = [
             'type' => 'object',
             'properties' => ['path' => ['type' => 'string'], 'query' => ['type' => 'string']],
@@ -54,7 +54,7 @@ final class AppAsk
             .'with read access to their CRM as them (their permissions apply). You have NO tools and cannot '
             .'read code or files: you read the CRM only by asking for GET paths from the list. '
             .self::business($viewer, true)
-            ."Today is {$today->toDateString()} ({$today->format('l')}), America/New_York. "
+            ."Today is {$today->toDateString()} ({$today->format('l')}), {$today->getTimezone()->getName()}. "
             .'A path is relative to api/v1 with {placeholders} filled in; query parameters use only the '
             .'names in brackets after each path, as a query string such as when=upcoming&today=2026-10-15. '
             .'Search broadly: a phone number or name can be a customer, a lead, a call or a job; a company '

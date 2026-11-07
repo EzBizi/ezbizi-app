@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ExperimentalCallReportController;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\User;
+use App\Support\Reports\ReportView;
 use Carbon\CarbonImmutable;
 
 /**
@@ -44,7 +45,7 @@ class PerformancePeople
         }
 
         $jobs = $this->workiz->allAccounts() !== []
-            ? $this->workiz->storedAll($start->subDays(ExperimentalCallReportController::LOOKBACK_DAYS)->toDateString())['jobs']
+            ? $this->workiz->storedAll($start->subDays(ReportView::lookbackDays())->toDateString())['jobs']
             : [];
 
         $report = $this->reconcile->forRange(

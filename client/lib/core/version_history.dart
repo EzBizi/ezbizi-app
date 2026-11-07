@@ -13,6 +13,107 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0546', date: '7 Nov 2026', items: [
+      'AI assistant (WhatsApp and the AI tab): looks things up across the app with your own permissions and answers from what it finds',
+    ]),
+    VersionRelease(version: '0.0.0545', date: '6 Nov 2026', items: [
+      'Automations: a scheduled rule now runs only at its own time; report texts no longer arrive early or twice',
+      'Reports: a branch with no jobs no longer prints an extra \$0 line',
+    ]),
+    VersionRelease(version: '0.0.0544', date: '6 Nov 2026', items: [
+      'Project Management: rebuilt from scratch with Unscheduled, Ready to Schedule, Scheduled, In Progress, Done Waiting Payment and Complete, a franchise filter, and a Settings tab for columns, labels, colours and statuses',
+      'The old Project Management 1 and 2 are removed',
+      'Customers > Memberships > Promotions: text past Done-job customers with an editable message; replies arrive in Leads > Promotions',
+      'Task Board: sub-companies and their branches no longer get a company board',
+      'Dashboard: a Project Management box with job counts per stage',
+      'Meta ads: cost per lead counts instant-form leads only, in Marketing and Reports',
+    ]),
+    VersionRelease(version: '0.0.0543', date: '6 Nov 2026', items: [
+      'Reports: new report texts on WhatsApp: revenue collected at 1 AM, an evening summary at 8 PM with jobs created and Google and Meta ads, and a weekly report on Sunday at 8 PM',
+      'Settings: branch order, excluded tags and dispatcher roles for reports are editable lists',
+      'Financials > Invoices: groundwork for paying invoices online with each company’s own Stripe account (switched on later)',
+      'Windows: fixed a media playback error in the recording player',
+    ]),
+    VersionRelease(version: '0.0.0542', date: '6 Nov 2026', items: [
+      'Scheduling > Availability: picking a ZIP from the suggestions runs the full check, map included',
+      'Scheduling > Availability: tap any other open day to see that day’s best window and technicians',
+      'HR > Records > Personal: every field has its copy button inside the box, and date fields are full width everywhere',
+      'HR > Records > Training: green, amber and red status with score bars and clear columns',
+      'Work schedules: clock-in in green, clock-out in red, a day bar with daily and weekly hours, and days off shown',
+      'Marketing: a post deleted from YouTube after it went out reads "Posted · deleted from YouTube"',
+      'Leads: a new caller on RingCentral counts as a new lead',
+    ]),
+    VersionRelease(version: '0.0.0541', date: '6 Nov 2026', items: [
+      'HR > Records > Employment: a person can work at several companies or franchises at once, and the tab lists everywhere they have access',
+      'Leads: a lead that belongs to the whole organization can be changed by anyone who can see it and edit leads',
+    ]),
+    VersionRelease(version: '0.0.0540', date: '6 Nov 2026', items: [
+      'Developers: the public API reference at ezbizi.com/developers now updates itself from the app',
+      "HR > Records > Personal: gender is picked from a list you edit in settings, every field has a copy button, and you can upload or remove the person's photo",
+      'Phone > Recent calls: the Lead, Customer and Teammate tags line up beside the time',
+      'Leads: you can answer an online booking with a text',
+      'Booking chat: asking for "Friday instead" on a Friday now offers next Friday',
+      'Automations: a reply with no booking link or no texting line is skipped instead of failing',
+    ]),
+    VersionRelease(version: '0.0.0539', date: '5 Nov 2026', items: [
+      'Marketing > Ads: give any Meta or Google campaign a schedule and it turns itself on and off on the days and times you pick',
+    ]),
+    VersionRelease(version: '0.0.0538', date: '5 Nov 2026', items: [
+      'Messenger and Instagram messages missed while a Page was disconnected are recovered automatically on reconnect, and checked again every hour',
+      'Leads: switching company unselects the open lead instead of switching you back',
+      'Scheduling > Locations: Business Profiles that only list a service area show their city instead of a blank address',
+      'Integrations: each provider screen has one header and one list',
+    ]),
+    VersionRelease(version: '0.0.0537', date: '5 Nov 2026', items: [
+      'Facebook Ads: ad accounts a business manages for a client now connect, not only your own',
+      'Facebook Ads: long campaign histories load in full instead of stopping after the first page',
+    ]),
+    VersionRelease(version: '0.0.0536', date: '5 Nov 2026', items: [
+      'Integrations redesigned: one card per sign-in, and you choose what to connect before signing in',
+      'One Google sign-in now covers Business Profile, Ads and YouTube; one Facebook sign-in covers pages and ad accounts',
+      'Leads: opening a lead from a notification switches to its company first',
+      'Leads: Book a job fills the address, branch, service area and job details from the lead',
+      'Leads and Phone: the message box suggests spelling and grammar fixes you can tap to apply',
+      'Scheduling > Locations: addresses come from your Google Business Profiles, with the website list as backup',
+    ]),
+    VersionRelease(version: '0.0.0535', date: '5 Nov 2026', items: [
+      'Messages: when Meta cannot deliver to a person you see a plain sentence, not an error',
+      'Phone: the Call tab no longer crashes when you leave it while it loads',
+      'iOS: picking a profile photo works again',
+      'An automation email that the mail server turns away no longer leaves a broken connection behind for the emails after it',
+      'Reports: the call log refreshes every hour for every phone account, so the call report loads faster',
+      'Marketing: new Ads section for Google and Meta campaigns (moved from Reports)',
+      'Onboarding: County for disputes lists every county in the chosen state, with search',
+      'Email: adding a Gmail address needs only an app password; the server settings fill in',
+    ]),
+    VersionRelease(version: '0.0.0534', date: '5 Nov 2026', items: [
+      'Leads: a caller who already got the after-call text is not texted again when they go quiet',
+    ]),
+    VersionRelease(version: '0.0.0533', date: '5 Nov 2026', items: [
+      'Settings > Lists: report call labels and paid lead sources can be edited',
+    ]),
+    VersionRelease(version: '0.0.0532', date: '5 Nov 2026', items: [
+      'Reports: new and existing client queues come from Leads settings',
+      'Reports: call labels and coaching use your trade from settings',
+    ]),
+    VersionRelease(version: '0.0.0531', date: '4 Nov 2026', items: [
+      'Leads: callers from Google get the after-call text by SMS from your line',
+    ]),
+    VersionRelease(version: '0.0.0530', date: '4 Nov 2026', items: [
+      'Leads: reply-overdue and follow-up timings and greetings are now settings you can change',
+      'Settings > Lists: Restore defaults asks before resetting; lists with 3+ columns stack on a phone',
+    ]),
+    VersionRelease(
+      version: '0.0.0529',
+      date: '4 Nov 2026',
+      items: [
+        'Settings › Lists: business lists such as staff name pairs and placeholder emails, phones and streets are edited here, no update needed.',
+        'Many business values moved from code into Settings: phone alerts, link lifetimes, scheduling rules, fleet due-soon window, HR alert windows, day tags, membership reminders, project management statuses, AI and WhatsApp options.',
+        'Times follow each company time zone setting instead of assuming Eastern.',
+        'Reports: phone names match Workiz names automatically; staff name pairs are editable in Settings › Lists.',
+        'Workiz: job status names come from each branch own Workiz account.',
+      ],
+    ),
     VersionRelease(
       version: '0.0.0528',
       date: '4 Nov 2026',

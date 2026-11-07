@@ -45,9 +45,8 @@ class PhoneServiceRequest extends Model implements StatesRetention
      * A cooling-off, not a punishment: it exists so a decision that took real
      * thought is not re-litigated the same afternoon. It starts at the DECISION,
      * not the request, and it only blocks asking again — nothing already
-     * approved is affected.
+     * approved is affected. How long: setting phone.request_cooldown_days.
      */
-    public const COOLDOWN_DAYS = 7;
 
     /** Monthly call volume, as bands rather than a number nobody can estimate. */
     public const VOLUMES = [
@@ -120,6 +119,6 @@ class PhoneServiceRequest extends Model implements StatesRetention
             return null;
         }
 
-        return $this->decided_at->copy()->addDays(self::COOLDOWN_DAYS);
+        return $this->decided_at->copy()->addDays((int) app(\App\Support\Settings\SettingsResolver::class)->get('phone.request_cooldown_days', Organization::query()->withoutGlobalScopes()->findOrFail($this->organization_id)));
     }
 }

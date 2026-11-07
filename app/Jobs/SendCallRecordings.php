@@ -49,7 +49,7 @@ class SendCallRecordings implements ShouldQueue
                 ['type' => 'text', 'text' => ['preview_url' => false, 'body' => $body]], $body);
 
             try {
-                $ask = CallRecordingsRequest::read($this->text, CarbonImmutable::now('America/New_York'));
+                $ask = CallRecordingsRequest::read($this->text, CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of()));
             } catch (RuntimeException) {
                 $say("\u{26A0}\u{FE0F} I couldn't read that just now. Try again in a minute.");
 
@@ -66,7 +66,7 @@ class SendCallRecordings implements ShouldQueue
                 return;
             }
 
-            $zone = 'America/New_York';
+            $zone = \App\Support\Settings\OrgTimezone::of();
             $calls = array_values(array_filter(
                 $log->forPeriod(CarbonImmutable::parse($ask['from'], $zone), CarbonImmutable::parse($ask['to'], $zone)->endOfDay(), outbound: true),
                 fn (array $c) => in_array($ask['phone'], [NumberNames::lastTen($c['from'] ?? null), NumberNames::lastTen($c['to_number'] ?? null)], true),

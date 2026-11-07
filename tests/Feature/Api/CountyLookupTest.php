@@ -7,33 +7,26 @@ use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
-/** The county picker under a chosen state (Jose, 2026-10-01). */
+/** The county picker under a chosen state (Jose, 2026-10-01; Census list since 2026-11-05). */
 class CountyLookupTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
 
-    public function test_counties_come_from_the_chosen_state_only_without_the_word_county(): void
+    public function test_a_state_gives_its_whole_county_list_and_q_filters_it(): void
     {
+        Http::preventStrayRequests();
         $t = $this->provisionTenant('Alpha');
-        $county = fn (string $name, string $state, string $cc = 'US') => ['properties' => [
-            'name' => $name, 'state' => $state, 'countrycode' => $cc,
-        ]];
-        Http::fake(['photon.komoot.io/*' => Http::response(['features' => [
-            $county('Broward County', 'Florida'),
-            $county('Broward', 'Florida'),
-            $county('Brown County', 'Texas'),
-        ]])]);
 
-        $this->signedInAs($t['admin'])->getJson('/api/v1/places/counties?state=Florida&q=brow')
+        // Merav's case: Suffolk, Massachusetts, which the old search never found.
+        $all = $this->signedInAs($t['admin'])->getJson('/api/v1/places/counties?state=Massachusetts')->assertOk()->json('data');
+        $this->assertCount(14, $all);
+        $this->assertContains('Suffolk', $all);
+
+        $this->signedInAs($t['admin'])->getJson('/api/v1/places/counties?state=florida&q=brow')
             ->assertOk()->assertExactJson(['data' => ['Broward']]);
 
-        Http::assertSent(fn ($r) => str_contains(urldecode($r->url()), 'q=brow, Florida')
-            && str_contains($r->url(), 'layer=county'));
-
-        // No state chosen yet: nothing to offer, and nothing asked of Photon.
         $this->signedInAs($t['admin'])->getJson('/api/v1/places/counties?q=brow')
             ->assertOk()->assertExactJson(['data' => []]);
-        Http::assertSentCount(1);
     }
 }

@@ -20,6 +20,7 @@ class PhoneLineAuditTest extends TestCase
         $twilio = new FakeTwilioGateway;
         $this->app->instance(TwilioGateway::class, $twilio);
         $t = $this->provisionTenant();
+        $this->inTenant($t['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('phone.voice_elsewhere_ok', $t['org'], '+18559553322'));
         $host = rtrim((string) config('app.url'), '/');
 
         $this->inTenant($t['org'], function () use ($t) {

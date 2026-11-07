@@ -306,6 +306,43 @@ class LeadInsights
         return $draft === '' ? null : mb_substr($draft, 0, 1000);
     }
 
+    /**
+     * The draft with its clear spelling and grammar mistakes fixed, or null
+     * when it has none (Jose, 2026-11-05: "Yes, I call you right away").
+     * Never sent by itself: the composer offers it and a person taps it.
+     */
+    public function proofread(?Lead $lead, string $text): ?string
+    {
+        $text = trim($text);
+
+        if (mb_strlen($text) < 3 || ! $this->enabled()) {
+            return null;
+        }
+
+        $brief = 'Fix only clear spelling and grammar mistakes in this text message from a '
+            .'home-services business to a customer. Keep its words, tone, names, numbers, '
+            .'emoji and line breaks; do not rephrase, shorten or add anything. If nothing '
+            .'is clearly wrong, return it unchanged.';
+
+        if (! $this->bedrock()) {
+            try {
+                $json = GrokCli::about($lead, fn () => GrokCli::ask(
+                    $brief."\n\nText:\n".$text,
+                    ['type' => 'object', 'properties' => ['fixed' => ['type' => 'string']], 'required' => ['fixed'], 'additionalProperties' => false],
+                ));
+            } catch (Throwable $e) {
+                Log::warning('Grok did not proofread a reply.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);
+
+                return null;
+            }
+            $fixed = trim((string) ($json['fixed'] ?? ''));
+        } else {
+            $fixed = trim($this->ask($brief.' Answer with the text only.', $text));
+        }
+
+        return $fixed === '' || $fixed === $text || mb_strlen($fixed) > 2 * mb_strlen($text) ? null : $fixed;
+    }
+
     /** The conversation as the model reads it: who said what, oldest first, capped. */
     private function thread(Lead $lead): string
     {

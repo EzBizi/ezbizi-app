@@ -43,10 +43,13 @@ class BusinessLocation extends Model implements HoldsPersonalData, StatesRetenti
     use HasUuids;
 
     /** Google's word for the state of a listing. */
-    public const VERIFIED   = 'VERIFIED';
+    public const VERIFIED = 'VERIFIED';
+
     public const UNVERIFIED = 'UNVERIFIED';
-    public const SUSPENDED  = 'SUSPENDED';
-    public const DUPLICATE  = 'DUPLICATE';
+
+    public const SUSPENDED = 'SUSPENDED';
+
+    public const DUPLICATE = 'DUPLICATE';
 
     public static function retention(): RetentionPolicy
     {
@@ -104,18 +107,19 @@ class BusinessLocation extends Model implements HoldsPersonalData, StatesRetenti
         'organization_id', 'company_id', 'franchise_id', 'connection_id',
         'remote_name', 'account_name', 'title', 'phone', 'website',
         'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country',
-        'primary_category', 'verification_state', 'is_published', 'hours', 'synced_at',
+        'primary_category', 'verification_state', 'is_published', 'hours', 'service_places', 'synced_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'hours'        => 'array',
+            'hours' => 'array',
+            'service_places' => 'array',
             'is_published' => 'boolean',
             'auto_reply' => 'boolean',
             'auto_post' => 'boolean',
             'not_listed_since' => 'datetime',
-            'synced_at'    => 'datetime',
+            'synced_at' => 'datetime',
         ];
     }
 

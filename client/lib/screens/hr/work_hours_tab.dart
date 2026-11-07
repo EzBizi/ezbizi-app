@@ -1096,7 +1096,7 @@ class _DayCard extends StatelessWidget {
                       if (tag != null) ...[
                         const SizedBox(width: 8),
                         _Chip(
-                          text: UiStrings.t('time_clock.tag.$tag'),
+                          text: _tagLabel(tag),
                           colour: _tagColour(context, tag),
                         ),
                       ],
@@ -1461,6 +1461,14 @@ class _Week {
   }
 
   static _Week? from(Map<String, dynamic>? json) {
+    final tags = json?['day_tags'];
+    if (tags is List) {
+      _tags = [
+        for (final t in tags)
+          if (t is Map && t['value'] is String)
+            (value: t['value'] as String, label: t['label'] as String?),
+      ];
+    }
     if (json == null) return null;
 
     final start = '${json['week_start'] ?? ''}';
@@ -2045,7 +2053,19 @@ class _EditTimesDialogState extends State<_EditTimesDialog> {
   }
 }
 
-const _tags = ['office', 'home', 'absent', 'sick', 'holiday', 'vacation'];
+// The organization's `time_clock.day_tags`, as the last week loaded sent
+// them. A null label is a default one, shown in the app's own language.
+// ponytail: file-level, adopted by _Week.from; move onto _Week if a second
+// screen ever shows two organizations' weeks at once.
+var _tags = <({String value, String? label})>[
+  for (final v in ['office', 'home', 'absent', 'sick', 'holiday', 'vacation'])
+    (value: v, label: null),
+];
+
+String _tagLabel(String tag) =>
+    _tags.where((t) => t.value == tag).firstOrNull?.label ??
+    UiStrings.maybe('time_clock.tag.$tag') ??
+    tag;
 
 /// Returns `{'tag': …}` (null clears), or null when cancelled.
 Future<Map<String, dynamic>?> _chooseTag(
@@ -2059,7 +2079,7 @@ Future<Map<String, dynamic>?> _chooseTag(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final tag in [null, ..._tags])
+          for (final tag in [null, ..._tags.map((t) => t.value)])
             InkWell(
               onTap: () =>
                   Navigator.of(context).pop(<String, dynamic>{'tag': tag}),
@@ -2077,7 +2097,7 @@ Future<Map<String, dynamic>?> _chooseTag(
                     Text(
                       tag == null
                           ? UiStrings.t('time_clock.no_tag')
-                          : UiStrings.t('time_clock.tag.$tag'),
+                          : _tagLabel(tag),
                     ),
                   ],
                 ),

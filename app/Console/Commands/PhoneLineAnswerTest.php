@@ -31,18 +31,41 @@ class PhoneLineAnswerTest extends Command
 
     public function handle(TwilioGateway $twilio): int
     {
-        $account = (string) config('services.twilio.audit_call_account_sid');
-        $from = (string) config('services.twilio.audit_call_from');
         // Listen a few seconds after the line picks up, then leave.
         $twiml = '<Response><Pause length="6"/><Hangup/></Response>';
+        $total = 0;
+        $failed = 0;
 
-        $lines = PhoneNumber::query()->withoutGlobalScopes()
+        // Each organization rings its own lines from its own test number (phone.audit_call_from).
+        $byOrganization = PhoneNumber::query()->withoutGlobalScopes()
             ->whereIn('connection_id', PhoneConnection::query()->withoutGlobalScopes()->where('status', PhoneConnection::STATUS_CONNECTED)->select('id'))
-            ->where('e164', '!=', $from)
             ->get()
-            ->filter(fn ($n) => $this->option('all') || self::due(now(self::zone((string) $n->organization_id))))
-            ->unique('e164');
+            ->groupBy('organization_id');
 
+        foreach ($byOrganization as $organizationId => $numbers) {
+            $organization = \App\Models\Organization::query()->find($organizationId);
+            $from = $organization === null ? '' : trim((string) PhoneAuditAlert::setting($organization, 'phone.audit_call_from'));
+            $caller = $numbers->firstWhere('e164', $from);
+            if ($caller === null) {
+                continue;
+            }
+            $account = (string) ($caller->account_sid ?: PhoneConnection::query()->withoutGlobalScopes()->whereKey($caller->connection_id)->value('account_sid'));
+            $lines = $numbers->where('e164', '!=', $from)
+                ->filter(fn ($n) => $this->option('all') || self::due(now(self::zone((string) $organizationId))))
+                ->unique('e164');
+            $issues = $this->ring($twilio, $account, $from, $twiml, $lines);
+            PhoneAuditAlert::send($organization, 'line answer test', $issues);
+            $total += $lines->count();
+            $failed += count($issues);
+        }
+        $this->info("{$total} lines rung, {$failed} failed.");
+
+        return self::SUCCESS;
+    }
+
+    /** @return list<string> */
+    private function ring(TwilioGateway $twilio, string $account, string $from, string $twiml, \Illuminate\Support\Collection $lines): array
+    {
         $calls = [];
         $issues = [];
         foreach ($lines as $line) {
@@ -77,10 +100,8 @@ class PhoneLineAnswerTest extends Command
         foreach ($issues as $issue) {
             $this->warn($issue);
         }
-        PhoneAuditAlert::send('line answer test', $issues);
-        $this->info(count($lines).' lines rung, '.count($issues).' failed.');
 
-        return self::SUCCESS;
+        return $issues;
     }
 
     private static function ringsNobody(PhoneNumber $line): bool
