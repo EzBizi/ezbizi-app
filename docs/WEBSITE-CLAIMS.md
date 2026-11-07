@@ -3401,3 +3401,23 @@ he built for Memberly: a guide page and a Scalar reference. New WP pages 22 (`de
 Gate: forbidden-terms (LINE-split) over `/`, `/download/`, `/developers/`, `/developers/reference/`
 ok - 4 terms, none present. MCP/API tests 23/23 (`ApiKeysAndMcpTest`, private schema).
 
+
+## 2026-11-07 (run 11-06 evening): 0.0.0540-0.0.0542 live, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0542 at `94a3e89d0`. All 10 live pages match their WP
+post_content (only block markers and theme-rewritten logo `src` differ); pages 5, 10, 11 untouched
+since the 11-02 import, 4/6/22/23 last written by the 11-06 developers publish.
+
+- **`/developers/` reference is now the released spec, not a local seed.** `GET /api/v1/openapi.json`
+  shipped in 0.0.0540 (`9aec70f44`); www `/ezbizi-api.json` (refreshed 23:17 UTC by the hourly
+  `refresh-api-spec.sh`) is byte-identical to it, 739 paths. The 11-06 "until the endpoint is
+  released" caveat is closed.
+- Website bookings answered by a text (`57737e4de`): an EzBizi `website_booking` lead, not a Google
+  channel, so `/google-ads-api/`'s "never replied to through Google" still holds.
+- RingCentral callers raise `lead.received`, HR Training tab redesign (tense rule unaffected), HR
+  several places, Social "Posted · deleted", Scheduling Availability, Payments plan (research only,
+  no processor shipped): no sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms
+(LINE-split) over the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0502. Desk asked for the diff and do-not rows; answer not in before this commit.
