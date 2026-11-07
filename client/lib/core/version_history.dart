@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0548', date: '7 Nov 2026', items: [
+      'AI assistant: a slow help-library lookup no longer stops it from answering',
+    ]),
     VersionRelease(version: '0.0.0547', date: '7 Nov 2026', items: [
       'AI assistant: answers big questions faster and retries once if a lookup fails',
     ]),
