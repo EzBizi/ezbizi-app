@@ -68,6 +68,11 @@ final class DailyTexts
         $list = $this->ordered(Franchise::query()->where('is_active', true)
             ->when($branches !== null, fn ($q) => $q->whereIn('id', $branches))
             ->orderBy('name')->get());
+        // A listed name is one branch: the parent company's, when a sub company has an (empty) "Texas" too.
+        $this->claimed = $list->loadMissing('company')->filter(fn (Franchise $b) => isset($this->locations[mb_strtolower(trim((string) $b->name))]))
+            ->sortBy(fn (Franchise $b) => $b->company?->parent_company_id !== null)
+            ->unique(fn (Franchise $b) => mb_strtolower(trim((string) $b->name)))
+            ->mapWithKeys(fn (Franchise $b) => [$b->getKey() => true])->all();
         // One company's branches read as "Texas"; several companies' need theirs, unless the business listed it by name.
         $several = $list->pluck('company_id')->unique()->count() > 1;
         $this->name = fn (Franchise $b) => ! $several || ($this->locations !== [] && $this->listed($b)) ? (string) $b->name : BranchName::of($b);
@@ -102,6 +107,9 @@ final class DailyTexts
     /** @var array<string, int> reports.locations: lower-cased branch name => position */
     private array $locations = [];
 
+    /** @var array<string, true> the branch each listed name stands for, by id */
+    private array $claimed = [];
+
     /** In the business's location order; branches it does not list after, by name. */
     private function ordered(Collection $branches): Collection
     {
@@ -111,7 +119,7 @@ final class DailyTexts
     /** A branch the business lists (or every branch, when it lists none): an unlisted one is shown only with something to show. */
     private function listed(Franchise $branch): bool
     {
-        return $this->locations === [] || isset($this->locations[mb_strtolower(trim((string) $branch->name))]);
+        return $this->locations === [] || isset($this->claimed[$branch->getKey()]);
     }
 
     /** Payments received per location (Workiz's Payments, by payment date), and the total. */

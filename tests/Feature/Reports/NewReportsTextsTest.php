@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
@@ -90,6 +91,21 @@ class NewReportsTextsTest extends TestCase
         $this->assertStringNotContainsString('999', $text);
         // Not listed and nothing collected: not a line of $0.00.
         $this->assertStringNotContainsString('Zero Town', $text);
+    }
+
+    public function test_a_sub_companys_empty_branch_of_a_listed_name_is_not_a_second_line(): void
+    {
+        // A-1's sister brands carry empty branches named "Texas" too.
+        $this->inTenant($this->t['org'], fn () => Franchise::query()->create(['organization_id' => $this->t['org']->id,
+            'company_id' => Company::query()->create(['organization_id' => $this->t['org']->id, 'parent_company_id' => $this->t['company']->id,
+                'name' => 'Sister', 'is_active' => true])->id,
+            'name' => 'New Jersey', 'timezone' => 'America/New_York', 'currency' => 'USD', 'is_active' => true]));
+        $this->record($this->nj, 'payment', 'P1', '2026-11-07 10:00:00', 100);
+
+        $text = $this->text('revenue_collected');
+
+        $this->assertStringContainsString('• *New Jersey*: $100.00', $text);
+        $this->assertSame(1, substr_count($text, 'New Jersey'));
     }
 
     public function test_jobs_created_leave_out_paid_estimated_however_workiz_decorates_it(): void
