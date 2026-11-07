@@ -3402,7 +3402,7 @@ Gate: forbidden-terms (LINE-split) over `/`, `/download/`, `/developers/`, `/dev
 ok - 4 terms, none present. MCP/API tests 23/23 (`ApiKeysAndMcpTest`, private schema).
 
 
-## 2026-11-07 (run 11-06 evening): 0.0.0540-0.0.0542 live, nothing on the site went false
+## 2026-11-06 (evening): 0.0.0540-0.0.0542 live, nothing on the site went false
 
 Production `/download/windows.json` 0.0.0542 at `94a3e89d0`. All 10 live pages match their WP
 post_content (only block markers and theme-rewritten logo `src` differ); pages 5, 10, 11 untouched
