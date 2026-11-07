@@ -9,7 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
-/** Jose's Project Management rules (2026-10-20): sub-status, job type, and one tag in or out. */
+/** Jose, 2026-10-20: sub-status, job type, and one tag in or out. */
 class JobLabelFieldsTest extends TestCase
 {
     use BuildsTenants;

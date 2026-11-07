@@ -448,7 +448,7 @@ final class WorkizJobWriter
     }
 
     /**
-     * Take the job off Workiz's schedule (Jose's Project Management Action 1,
+     * Take the job off Workiz's schedule (Jose's Action 1,
      * 2026-10-22: payment in, time removed). Measured on NY's test job
      * 900018655: PUT {isScheduled: false} clears date and endDate; a null or
      * empty date is refused.

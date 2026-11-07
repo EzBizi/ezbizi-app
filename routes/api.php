@@ -924,21 +924,12 @@ Route::prefix('v1')
         // Each branch's Workiz notes on the customer, read live, never copied.
         Route::get('customers/{customer}/workiz-notes', CustomerWorkizNotesController::class);
 
-        // Before the resource, or 'project-management' reads as a job id.
+        // Before the resource, or 'book' reads as a job id.
         Route::get('jobs/book/options', [\App\Http\Controllers\Api\JobBookingController::class, 'options']);
         Route::post('jobs/book', [\App\Http\Controllers\Api\JobBookingController::class, 'store']);
         Route::post('jobs/{job}/book/workiz', [\App\Http\Controllers\Api\JobBookingController::class, 'retryWorkiz']);
-        Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
-        Route::get('jobs/project-management/stats', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stats']);
-        Route::get('jobs/project-management/jobs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stageJobs']);
-        Route::get('jobs/project-management/overview', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'overview']);
-        Route::get('jobs/project-management/cards', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'cards']);
-        Route::get('jobs/project-management/rules', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'rules']);
-        Route::get('jobs/project-management/logs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'logs']);
         Route::apiResource('jobs', JobsController::class);
-        Route::get('project-management-2/jobs', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'jobs']);
-        Route::get('project-management-2/jobs/{id}', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'job'])->whereUuid('id');
-        Route::post('project-management-2/jobs/{id}/submit', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'submit'])->whereUuid('id');
+        Route::get('project-board/jobs', [\App\Http\Controllers\Api\ProjectBoardController::class, 'jobs']);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
@@ -989,6 +980,10 @@ Route::prefix('v1')
         Route::get('memberships/plans', [MembershipsController::class, 'plans']);
         Route::post('memberships/plans', [MembershipsController::class, 'storePlan']);
         Route::patch('memberships/plans/{plan}', [MembershipsController::class, 'updatePlan']);
+        // Memberships > Promotions (Jose, 2026-11-06).
+        Route::get('memberships/promotions', [\App\Http\Controllers\Api\PromotionsController::class, 'index']);
+        Route::get('memberships/promotions/preview', [\App\Http\Controllers\Api\PromotionsController::class, 'preview']);
+        Route::post('memberships/promotions', [\App\Http\Controllers\Api\PromotionsController::class, 'store']);
         Route::apiResource('memberships', MembershipsController::class)->except('show');
 
         // drivers before {vehicle} so the literal path is not captured as an id

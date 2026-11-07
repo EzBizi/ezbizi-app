@@ -48,8 +48,8 @@ class MetaAdsControlTest extends TestCase
         $row = $this->account($t);
         Http::fake([
             'graph.facebook.com/*/act_111/insights*' => Http::response(['data' => [
-                ['campaign_id' => '1', 'adset_id' => '11', 'ad_id' => '111', 'spend' => '30.00', 'impressions' => '1000', 'clicks' => '10', 'actions' => [['action_type' => 'lead', 'value' => '2']]],
-                ['campaign_id' => '1', 'adset_id' => '11', 'ad_id' => '112', 'spend' => '20.50', 'impressions' => '500', 'clicks' => '5', 'actions' => [['action_type' => 'lead', 'value' => '1']]],
+                ['campaign_id' => '1', 'adset_id' => '11', 'ad_id' => '111', 'spend' => '30.00', 'impressions' => '1000', 'clicks' => '10', 'actions' => [['action_type' => 'lead', 'value' => '9'], ['action_type' => 'onsite_conversion.lead_grouped', 'value' => '2']]],
+                ['campaign_id' => '1', 'adset_id' => '11', 'ad_id' => '112', 'spend' => '20.50', 'impressions' => '500', 'clicks' => '5', 'actions' => [['action_type' => 'lead', 'value' => '9'], ['action_type' => 'onsite_conversion.lead_grouped', 'value' => '1']]],
             ]]),
             'graph.facebook.com/*/act_111/adsets*' => Http::response(['data' => [
                 ['id' => '11', 'name' => 'Atlanta 25mi', 'status' => 'ACTIVE', 'effective_status' => 'ACTIVE', 'daily_budget' => '5000', 'campaign_id' => '1'],

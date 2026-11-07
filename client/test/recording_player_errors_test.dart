@@ -58,6 +58,8 @@ void main() {
 
       await sub.cancel();
       player.dispose();
+      // Let dispose reach the mocked channel before tearDown unmocks it.
+      await pumpEventQueue();
     },
   );
 }

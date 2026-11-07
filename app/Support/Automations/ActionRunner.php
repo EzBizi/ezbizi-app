@@ -177,7 +177,7 @@ class ActionRunner
             // column directly, so calling it "Price" here would invite exactly
             // that mistake through the other door.
             'amount_minor' => 'Amount in cents',
-            // Jose's Project Management rules (Jobs, cff7eceae, 2026-10-20).
+            // Jobs, cff7eceae, 2026-10-20.
             'job_type' => 'Job type',
             'sub_status' => 'Sub-status',
             // One tag in or out, never replace-all, so two rules cannot erase each other's.
@@ -273,6 +273,7 @@ class ActionRunner
                 'ringcentral' => 'RingCentral call',
                 'ez_calls' => 'EZ call',
                 'ez_texts' => 'EZ text',
+                'promotions' => 'promotion reply',
             ],
             'status' => [
                 'new' => 'New',
@@ -723,7 +724,7 @@ class ActionRunner
      * not have, is left alone.
      */
     /**
-     * Jose's Project Management rules (2026-10-21): status, sub-status and
+     * Jose, 2026-10-21: status, sub-status and
      * "set tags to" on the job's Workiz copy, through WorkizJobWriter, which
      * resolves each account's own names and ids and audits what it removed.
      */
@@ -3707,8 +3708,12 @@ class ActionRunner
         // was refused on theirs. Their own board only when there is no place.
         $owner = (($scope['type'] ?? null) === 'franchise' ? Franchise::query()->find($scope['id'] ?? null) : null)
             ?? (($scope['type'] ?? null) === 'company' ? Company::query()->find($scope['id'] ?? null) : null)
-            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null)
-            ?? $assignee;
+            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null);
+        // A Sub Company and its franchises have no board (Jose, 2026-11-06).
+        if ($owner !== null && ! TaskBoards::hasPlaceBoard($owner)) {
+            $owner = null;
+        }
+        $owner ??= $assignee;
 
         if ($owner === null) {
             return ['type' => 'task.create', 'ok' => false, 'detail' => 'No board to put the task on: give it to somebody, or use a trigger about a place.'];
@@ -3734,7 +3739,7 @@ class ActionRunner
 
         return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
             // A rule's group is made on the branch's board the first time it is
-            // needed (2026-10-22: PM Action 1's "Project Management" group was on
+            // needed (2026-10-22: a rule's group was on
             // no board). By name, any case; a person's API call still refuses an unknown one.
             if ($group !== '' && ! $board->groups()->get()->contains(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower($group))) {
                 $board->groups()->create(['organization_id' => $board->organization_id, 'name' => $group,

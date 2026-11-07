@@ -74,8 +74,6 @@ class _JobsScreenState extends State<JobsScreen> {
 
   /// Jobs or Estimates (queue 32). Estimates are money: their own permission
   /// and the Financials toggle. With only Jobs there is no bar at all.
-  /// Project Management was a third tab until 2026-10-21; it is its own
-  /// module now (project_management_screen.dart).
   String _tab = 'jobs';
 
   /// A tab is built on its first open, so it fetches nothing before anyone

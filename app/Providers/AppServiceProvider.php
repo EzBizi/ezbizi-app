@@ -122,7 +122,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind('lead-reply-channel.whatsapp', WhatsAppReplies::class);
 
         // EZ Texts and EZ Calls: a text back from the EzBizi line (2026-10-16).
-        foreach ([Lead::SOURCE_EZ_TEXTS, Lead::SOURCE_EZ_CALLS] as $source) {
+        foreach ([Lead::SOURCE_EZ_TEXTS, Lead::SOURCE_EZ_CALLS, Lead::SOURCE_PROMOTIONS] as $source) {
             $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new \App\Support\Leads\EzTextReplies(
                 $source,
                 $app->make(\App\Support\Phone\PhoneTexts::class),
@@ -149,6 +149,7 @@ class AppServiceProvider extends ServiceProvider
                 'lead-reply-channel.whatsapp',
                 'lead-reply-channel.ez_texts',
                 'lead-reply-channel.ez_calls',
+                'lead-reply-channel.promotions',
                 'lead-reply-channel.ringcentral',
                 'lead-reply-channel.website_form',
                 'lead-reply-channel.website_booking',
@@ -281,7 +282,12 @@ class AppServiceProvider extends ServiceProvider
         // Task Board: every company, franchise and person gets their own board
         // the moment they exist (ezbizi:backfill-task-boards covers older rows).
         foreach ([Company::class, Franchise::class, User::class] as $owner) {
-            $owner::created(fn ($model) => app(TaskBoards::class)->ensureFor($model));
+            // A Sub Company and its franchises get none (Jose, 2026-11-06).
+            $owner::created(function ($model) {
+                if ($model instanceof User || TaskBoards::hasPlaceBoard($model)) {
+                    app(TaskBoards::class)->ensureFor($model);
+                }
+            });
         }
 
         /*
