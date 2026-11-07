@@ -78,7 +78,8 @@ final class StaffAnswer
         }
 
         try {
-            $library = $left() >= 10 ? app(AssistantBrain::class)->aiAnswer($user, $organization, $question, min(35, $left()), forWhatsApp: true) : null;
+            // 15 s: a 2-3 s step that hung to its 35 s timeout starved the app read (prod 11-07).
+            $library = $left() >= 10 ? app(AssistantBrain::class)->aiAnswer($user, $organization, $question, min(15, $left()), forWhatsApp: true) : null;
             if ($library !== null) {
                 return ['source' => self::LIBRARY, 'reply' => (string) $library['reply'], 'entry_ids' => $library['entry_ids'] ?? [], 'tech' => null];
             }
