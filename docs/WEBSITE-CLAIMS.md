@@ -3420,4 +3420,26 @@ since the 11-02 import, 4/6/22/23 last written by the 11-06 developers publish.
 
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms
 (LINE-split) over the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple
-`resultCount` 1, 0.0.0502. Desk asked for the diff and do-not rows; answer not in before this commit.
+`resultCount` 1, 0.0.0502. 
+**Desk (11-06 evening):** 0.0.0543 (`1c56f5bfd`) is also live; 0.0.0544 (`f53a26020`) was cutting.
+Training: 0542 UI only. Ring groups, Scheduled Jobs, LSA ingest, publishers: no release touched them
+(desk took no row counts; not measured here either). Re-read against both releases, no page edited:
+
+- **Stripe Connect invoice payments (0543): dormant, with no keys on production.** No payer data reaches
+  Stripe, so `/privacy/` naming no Stripe is still true. **Trigger:** the day Stripe keys land on prod or
+  a company connects, `/privacy/` must name Stripe (payer data goes to it), and the invoices do-not row
+  needs a fresh look. `invoic`/`bill` stay gate terms.
+- **Promotions (0544): a business texts its own past Done-job customers from its line, with STOP.**
+  `/terms/` "never marketing … we do not send offers, news or promotions by text" is about EzBizi's own
+  sign-in-code texts (its own number, account holders only), so it still holds; the tenant clause
+  "not … unsolicited marketing calls or messages" is a duty on the customer and stays consistent. No
+  page says a business cannot text its customers. Do not add a Promotions card until a real send is counted.
+- **Project Management 1/2 removed, project-board/jobs added (0544):** `/developers/` prose names no
+  project endpoint; the reference re-reads the app's spec hourly, so it follows the deploy unedited.
+
+Separately (relayed by the desk, Jose's word to the Website Changes session): Toula Elwell / Itzhak
+Swarch off every site's Team page. That session cleaned 48 sites; re-measured all 138 WP installs on
+the websites box (posts + postmeta): one leftover, calla1.com page 149 `post_content` (the
+Elementor fallback; the rendered page already showed neither). Removed (backup
+`~/swarch-bak-20261106/` on the websites box). Remaining matches are the town "Ponchatoula". The 9
+SiteGround-era domains not served from the websites box: live pages, 0 matches.
