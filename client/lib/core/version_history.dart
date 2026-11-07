@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0545', date: '6 Nov 2026', items: [
+      'Automations: a scheduled rule now runs only at its own time; report texts no longer arrive early or twice',
+      'Reports: a branch with no jobs no longer prints an extra $0 line',
+    ]),
     VersionRelease(version: '0.0.0544', date: '6 Nov 2026', items: [
       'Project Management: rebuilt from scratch with Unscheduled, Ready to Schedule, Scheduled, In Progress, Done Waiting Payment and Complete, a franchise filter, and a Settings tab for columns, labels, colours and statuses',
       'The old Project Management 1 and 2 are removed',
