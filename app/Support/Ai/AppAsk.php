@@ -60,7 +60,20 @@ final class AppAsk
             .'Search broadly: a phone number or name can be a customer, a lead, a call or a job; a company '
             .'or branch means its id; "all companies" means each of them. ';
 
-        $plan = GrokCli::ask(
+        // One retry: the CLI now and then stops on "max turns reached" (prod 11-07, leads this week).
+        $ask = function (string $prompt, array $schema, int $timeout) use ($left) {
+            try {
+                return GrokCli::ask($prompt, $schema, $timeout);
+            } catch (\RuntimeException $e) {
+                if ($left() < 25) {
+                    throw $e;
+                }
+
+                return GrokCli::ask($prompt, $schema, min($timeout, $left() - 10));
+            }
+        };
+
+        $plan = $ask(
             $about.'Pick up to '.self::MAX_CALLS.' paths to start with. If the message needs no data '
             .'(a greeting, thanks, a general question), return no calls and write the reply.'
             ."\n".GrokCli::WHATSAPP_STYLE."\n\nENDPOINTS:\n".self::catalogue()."\n\nQUESTION: ".$question,
@@ -92,7 +105,7 @@ final class AppAsk
                 break;
             }
             $last = $round === 3 || $left() < 55;   // the answer over a full DATA needs ~25 s (prod 11-05: 19 s timed out)
-            $a = GrokCli::ask(
+            $a = $ask(
                 $about.'Answer from the DATA below. Never invent names, numbers or dates; if the data '
                 .'only partly answers, say what it shows and what it does not. '
                 .($last ? '' : 'If you need more data first (a failed read, another company, a different '
@@ -100,14 +113,16 @@ final class AppAsk
                     .'and leave reply empty. ')
                 ."\n".GrokCli::WHATSAPP_STYLE."\n\nQUESTION: {$question}\n\n"
                 .($last ? '' : "PATHS:\n".self::catalogue()."\n\n")
-                ."DATA:\n".json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                // ponytail: 40k chars of DATA; a fuller read took 53 s and timed out (prod 11-07).
+                ."DATA:\n".mb_substr(json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 0, 40000),
                 [
                     'type' => 'object',
                     'properties' => ['reply' => ['type' => 'string'], 'calls' => ['type' => 'array', 'items' => $call]],
                     'required' => ['reply'],
                     'additionalProperties' => false,
                 ],
-                max(10, $left() - 5),
+                // A round that may ask for more leaves time for the answer after it.
+                max(10, $last ? $left() - 5 : min(30, $left() - 30)),
             );
             $reply = trim((string) ($a['reply'] ?? ''));
             $calls = $last ? [] : array_slice((array) ($a['calls'] ?? []), 0, self::MAX_CALLS);
