@@ -4,8 +4,10 @@ namespace Tests\Feature\Api;
 
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
 use App\Services\Organizations\ProvisionOrganization;
+use App\Support\Automations\AutomationEngine;
 use App\Support\Automations\AutomationSchedule;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -208,6 +210,30 @@ class AutomationScheduleTest extends TestCase
                 $automation->fresh()->automationScope(),
                 'a franchise rule must answer its own franchise, not the whole organization',
             );
+        });
+    }
+
+    /**
+     * One rule's tick runs that rule only. Matching on the trigger alone ran
+     * every scheduled rule in scope at every rule's time: A-1's 8 PM report
+     * brought the 1 AM, 8 AM and Sunday ones with it (2026-11-06).
+     */
+    public function test_a_rules_tick_runs_that_rule_and_no_other_scheduled_rule(): void
+    {
+        $due = $this->scheduledRule(['kind' => 'daily', 'time' => '20:00', 'timezone' => 'America/New_York']);
+        $later = $this->scheduledRule(['kind' => 'daily', 'time' => '01:00', 'timezone' => 'America/New_York']);
+        $this->inTenant(function () use ($due, $later) {
+            $due->forceFill(['next_run_at' => now()->subMinute(), 'is_active' => true])->save();
+            $later->forceFill(['next_run_at' => now()->addHours(5), 'is_active' => true])->save();
+        });
+
+        $this->artisan('ezbizi:dispatch-due-automations')->assertExitCode(0);
+
+        $this->inTenant(function () use ($due) {
+            $event = AutomationEvent::where('event_key', 'automation.schedule_reached')->firstOrFail();
+            app(AutomationEngine::class)->deliver($event->fresh());
+
+            $this->assertSame([$due->getKey()], AutomationRun::where('event_id', $event->id)->pluck('automation_id')->all());
         });
     }
 
