@@ -3443,3 +3443,21 @@ the websites box (posts + postmeta): one leftover, calla1.com page 149 `post_con
 Elementor fallback; the rendered page already showed neither). Removed (backup
 `~/swarch-bak-20261106/` on the websites box). Remaining matches are the town "Ponchatoula". The 9
 SiteGround-era domains not served from the websites box: live pages, 0 matches.
+
+## 2026-11-07: 0.0.0544-0.0.0548 live, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0548 at `c035699e5`. No WP page modified since the 11-06
+runs (newest `post_modified_gmt` 2026-11-06 13:58); all 10 live pages match their post_content
+(only theme-rewritten logo `src` differ). www `/ezbizi-api.json` byte-identical to the app's
+`/api/v1/openapi.json`.
+
+- **AI assistant reads in rounds (`d47831939`, `030be6215`, `f374ee43b`):** same `GrokCli`, same
+  as-the-asker GETs, Library still tried first, so `/privacy/`'s "records that person may see"
+  and xAI list still hold. No new destination.
+- Project Management rebuilt (`project_board`), Task Board off for Sub Companies, Meta cost per
+  lead from instant forms, report-text branch names, schedule-tick fix: no page names any of them.
+- Promotions (0544) and Stripe Connect (0543): unchanged from the 11-06 triggers; not re-counted.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms
+(LINE-split) over the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0502. Desk asked (do-not rows, Stripe keys); no answer before commit.
