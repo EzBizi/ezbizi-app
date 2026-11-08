@@ -3460,4 +3460,5 @@ runs (newest `post_modified_gmt` 2026-11-06 13:58); all 10 live pages match thei
 
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms
 (LINE-split) over the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple
-`resultCount` 1, 0.0.0502. Desk asked (do-not rows, Stripe keys); no answer before commit.
+`resultCount` 1, 0.0.0502. Desk (11-07): 0544-0548 all live; nothing on Training, ring groups, Scheduled Jobs, LSA or
+publishers (no row counts); no STRIPE keys in prod `.env`, no company connected, so `/privacy/` unchanged.
