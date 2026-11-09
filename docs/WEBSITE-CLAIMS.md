@@ -3473,5 +3473,6 @@ is byte-identical to the app's `/api/v1/openapi.json`.
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms
 (LINE-split) over the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple
 `resultCount` 1, 0.0.0502. Desk asked (11-08) for anything live since 0548 and for row counts on the
-do-not rows; no answer had arrived when this was written. Nothing above depends on its answer.
+do-not rows. Desk (11-08): confirmed nothing shipped since 0548. Training, ring groups, Scheduled Jobs,
+LSA and publishers are untouched; Stripe keys on prod 0 and no connected company, so `/privacy/` is unchanged.
 Note for the next run: on the websites box wp-cli needs `/opt/plesk/php/8.4/bin/php /usr/local/bin/wp --path=/var/www/vhosts/ezbizi.com/httpdocs`, because `ubuntu` cannot `cd` into the docroot and there is no `php` on PATH.
