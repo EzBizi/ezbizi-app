@@ -302,6 +302,15 @@ class PhoneTokenTest extends TestCase
                 'state' => PhonePresence::STATE_ON_CALL,
             ]);
 
+            // A removed person's row stays behind; Team must not list it (Jose 11-09).
+            $gone = $this->userWithRole($t, 'Removed', ['phone.view']);
+            $gone->forceFill(['is_active' => false, 'name' => 'Removed account'])->save();
+            PhonePresence::query()->create([
+                'connection_id' => $connection->id,
+                'user_id' => $gone->id,
+                'state' => PhonePresence::STATE_REGISTERED,
+            ]);
+
             return $connection;
         });
 
