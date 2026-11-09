@@ -208,8 +208,12 @@ void reviewLinkTests() {
     expect(find.text('3 · 50%'), findsOneWidget, reason: 'reviewed of google');
     expect(
       find.textContaining(
-        'exact 1 · likely 1 · possible 1 · without a click 1 · 4.7 ★',
+        'exact 1 · likely 1 · confirmed 1 · without a click 1 · 4.7 ★',
       ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('+4 possible matches, confirm in Reviews'),
       findsOneWidget,
     );
     expect(find.textContaining('counted since'), findsOneWidget);
@@ -415,7 +419,13 @@ MockClientHandler _handler({List<String>? reachable, bool withLeads = false}) {
             'reviewed': 3,
           },
           'reviewed': {
-            'by': {'exact': 1, 'likely': 1, 'possible': 1, 'without_click': 1},
+            'by': {
+              'exact': 1,
+              'likely': 1,
+              'confirmed': 1,
+              'possible': 4,
+              'without_click': 1,
+            },
             'stars': 4.67,
           },
           'by_branch': [

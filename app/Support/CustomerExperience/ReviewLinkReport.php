@@ -26,7 +26,7 @@ final class ReviewLinkReport
     public const COUNTS = ['sent', 'opened', 'happy', 'sad', 'submitted', 'google', 'reviewed'];
 
     /** How "reviewed" splits, and the stars behind it (Jose, 2026-11-09). */
-    public const REVIEWED = ['exact', 'likely', 'possible', 'without_click', 'stars'];
+    public const REVIEWED = ['exact', 'likely', 'confirmed', 'possible', 'without_click', 'stars'];
 
     /** @return array<string, mixed> */
     public function build(User $user, CarbonInterface $from, CarbonInterface $to, array $franchiseIds): array
@@ -57,9 +57,15 @@ final class ReviewLinkReport
             ->where('m.status', '!=', 'rejected')
             ->whereBetween('m.sent_at', [$from, $to])
             ->whereIn('j.franchise_id', $franchiseIds)
-            ->selectRaw("j.franchise_id, j.performed_by_user_id, 'reviewed' as kind, count(*) as n,
-                sum(m.confidence = 'exact') as exact, sum(m.confidence = 'likely') as likely, sum(m.confidence = 'possible') as possible,
-                sum(not m.clicked) as without_click, sum(v.rating) as stars");
+            // Counted: exact and likely, plus a possible one a person confirmed (Jose, 2026-11-09).
+            // An unconfirmed possible is shown beside it, never in it.
+            ->selectRaw("j.franchise_id, j.performed_by_user_id, 'reviewed' as kind,
+                sum(m.confidence != 'possible' or m.status = 'confirmed') as n,
+                sum(m.confidence = 'exact') as exact, sum(m.confidence = 'likely') as likely,
+                sum(m.confidence = 'possible' and m.status = 'confirmed') as confirmed,
+                sum(m.confidence = 'possible' and m.status != 'confirmed') as possible,
+                sum((m.confidence != 'possible' or m.status = 'confirmed') and not m.clicked) as without_click,
+                sum(case when m.confidence != 'possible' or m.status = 'confirmed' then v.rating else 0 end) as stars");
 
         $rows = collect($this->grouped($sent))->concat($this->grouped($events))->concat($this->grouped($matches));
 
