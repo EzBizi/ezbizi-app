@@ -3,7 +3,9 @@
 namespace App\Support\Tasks;
 
 use App\Http\Controllers\Api\TasksController;
+use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\Task;
 use App\Models\TaskAssignee;
 use App\Models\TaskBoard;
@@ -597,58 +599,11 @@ class TaskWriter
                 continue;
             }
 
-            $row = ['value_text' => null, 'value_number' => null, 'value_date' => null, 'value_user_id' => null];
-            $ok = true;
-            $why = '';
-
-            switch ($column->type) {
-                case 'text':
-                    $ok = is_string($value) && mb_strlen($value) <= 5000;
-                    $why = 'Text, up to 5000 characters.';
-                    $row['value_text'] = $value;
-                    break;
-                case 'number':
-                    $ok = (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value)))
-                        && abs((float) $value) < 1e11;
-                    $why = 'This column takes a number.';
-                    $row['value_number'] = $ok ? (float) $value : null;
-                    break;
-                case 'date':
-                    $ok = is_string($value) && \DateTime::createFromFormat('!Y-m-d', $value)?->format('Y-m-d') === $value;
-                    $why = 'A date as YYYY-MM-DD.';
-                    $row['value_date'] = $value;
-                    break;
-                case 'person':
-                    $assignable ??= app(TaskBoards::class)->assignable($task->board)->pluck('id')->all();
-                    $ok = in_array($value, $assignable, true);
-                    $why = 'That person cannot be named on this board.';
-                    $row['value_user_id'] = $value;
-                    // A card's Technician is its job's (Jose, 2026-10-22): the job takes it first, or nothing is saved.
-                    if ($ok && JobTechnicianSync::isTechnicianColumn($column)) {
-                        JobTechnicianSync::toJob($task, $value, $key);
-                    }
-                    break;
-                case 'timeline':
-                    $day = fn ($d) => is_string($d) && \DateTime::createFromFormat('!Y-m-d', $d)?->format('Y-m-d') === $d;
-                    $ok = is_array($value) && $day($value['from'] ?? null) && $day($value['to'] ?? null) && $value['from'] <= $value['to'];
-                    $why = 'A range as {from, to}, YYYY-MM-DD, from no later than to.';
-                    $row['value_date'] = $ok ? $value['from'] : null;
-                    $row['value_text'] = $ok ? $value['to'] : null;
-                    break;
-                case 'formula':
-                    // Worked out from the other columns where it is shown; nothing to store.
-                    $ok = false;
-                    $why = 'A formula column works itself out.';
-                    break;
-                case 'checkbox':
-                    $ok = in_array($value, [true, false, 0, 1, '0', '1'], true);
-                    $why = 'This column takes true or false.';
-                    $row['value_number'] = $ok && (bool) $value ? 1 : 0;
-                    break;
-                default: // status, dropdown: the option's id
-                    $ok = is_string($value) && in_array($value, array_column($column->options(), 'id'), true);
-                    $why = 'That is not one of this column\'s options.';
-                    $row['value_text'] = $value;
+            [$row, $why] = $this->encode($column, $value, $task->board, $assignable);
+            $ok = $row !== null;
+            // A card's Technician is its job's (Jose, 2026-10-22): the job takes it first, or nothing is saved.
+            if ($ok && $column->type === 'person' && JobTechnicianSync::isTechnicianColumn($column)) {
+                JobTechnicianSync::toJob($task, $value, $key);
             }
 
             if (! $ok) {
@@ -668,6 +623,130 @@ class TaskWriter
 
         // Ids only: a text value can hold anything somebody typed.
         $this->audit->log('task.values_changed', $task, metadata: ['column_ids' => array_keys($rows)], actor: $actor);
+    }
+
+    /**
+     * One value as its stored row for [column], or null with why not. The
+     * one place a type's rule lives: writing a task and converting a column
+     * to another type both come here.
+     *
+     * @param  list<string>|null  $assignable  filled on first use of a person column
+     * @return array{0: ?array<string, mixed>, 1: string}
+     */
+    public function encode(TaskColumn $column, mixed $value, TaskBoard $board, ?array &$assignable = null): array
+    {
+        $row = ['value_text' => null, 'value_number' => null, 'value_date' => null, 'value_user_id' => null];
+        $ok = true;
+        $why = '';
+        $string = fn (int $max) => is_string($value) && trim($value) !== '' && mb_strlen($value) <= $max;
+
+        switch ($column->type) {
+            case 'text':
+                $ok = is_string($value) && mb_strlen($value) <= 5000;
+                $why = 'Text, up to 5000 characters.';
+                $row['value_text'] = $value;
+                break;
+            case 'long_text':
+                $ok = is_string($value) && mb_strlen($value) <= 20000;
+                $why = 'Text, up to 20000 characters.';
+                $row['value_text'] = $value;
+                break;
+            case 'phone':
+                $digits = is_string($value) ? preg_replace('/\D/', '', $value) : '';
+                $ok = $string(40) && strlen($digits) >= 7 && strlen($digits) <= 15 && preg_match('/^[\d\s()+.\-]+$/', $value);
+                $why = 'A phone number, 7 to 15 digits.';
+                $row['value_text'] = $ok ? trim($value) : null;
+                break;
+            case 'email':
+                $ok = $string(254) && filter_var(trim($value), FILTER_VALIDATE_EMAIL) !== false;
+                $why = 'An email address.';
+                $row['value_text'] = $ok ? trim($value) : null;
+                break;
+            case 'url':
+                $ok = $string(2000) && filter_var(trim($value), FILTER_VALIDATE_URL) !== false && preg_match('#^https?://#i', trim($value));
+                $why = 'A web address starting http:// or https://.';
+                $row['value_text'] = $ok ? trim($value) : null;
+                break;
+            case 'datetime':
+                $ok = is_string($value) && (\DateTime::createFromFormat('!Y-m-d H:i', $value) ?: null)?->format('Y-m-d H:i') === $value;
+                $why = 'A date and time as YYYY-MM-DD HH:MM.';
+                $row['value_text'] = $value;
+                break;
+            case 'tags':
+                $ids = array_column($column->options(), 'id');
+                $ok = is_array($value) && array_is_list($value) && $value !== []
+                    && array_diff($value, $ids) === [] && count($value) === count(array_unique($value));
+                $why = 'A list of this column\'s options.';
+                $row['value_text'] = $ok ? json_encode(array_values($value)) : null;
+                break;
+            case 'link':
+                $ok = is_string($value) && self::linkOf($value) !== null;
+                $why = 'A customer or job, as customer:<id> or job:<id>.';
+                $row['value_text'] = $value;
+                break;
+            case 'number':
+            case 'currency':
+                $ok = (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value)))
+                    && abs((float) $value) < 1e11;
+                $why = 'This column takes a number.';
+                $row['value_number'] = $ok ? (float) $value : null;
+                break;
+            case 'date':
+                $ok = is_string($value) && \DateTime::createFromFormat('!Y-m-d', $value)?->format('Y-m-d') === $value;
+                $why = 'A date as YYYY-MM-DD.';
+                $row['value_date'] = $value;
+                break;
+            case 'person':
+                $assignable ??= app(TaskBoards::class)->assignable($board)->pluck('id')->all();
+                $ok = in_array($value, $assignable, true);
+                $why = 'That person cannot be named on this board.';
+                $row['value_user_id'] = $value;
+                break;
+            case 'timeline':
+                $day = fn ($d) => is_string($d) && \DateTime::createFromFormat('!Y-m-d', $d)?->format('Y-m-d') === $d;
+                $ok = is_array($value) && $day($value['from'] ?? null) && $day($value['to'] ?? null) && $value['from'] <= $value['to'];
+                $why = 'A range as {from, to}, YYYY-MM-DD, from no later than to.';
+                $row['value_date'] = $ok ? $value['from'] : null;
+                $row['value_text'] = $ok ? $value['to'] : null;
+                break;
+            case 'formula':
+                // Worked out from the other columns where it is shown; nothing to store.
+                $ok = false;
+                $why = 'A formula column works itself out.';
+                break;
+            case 'checkbox':
+                $ok = in_array($value, [true, false, 0, 1, '0', '1'], true);
+                $why = 'This column takes true or false.';
+                $row['value_number'] = $ok && (bool) $value ? 1 : 0;
+                break;
+            default: // status, dropdown: the option's id
+                $ok = is_string($value) && in_array($value, array_column($column->options(), 'id'), true);
+                $why = 'That is not one of this column\'s options.';
+                $row['value_text'] = $value;
+        }
+
+        return [$ok ? $row : null, $why];
+    }
+
+    /**
+     * A link value as {type, id, label}, or null when it names nothing in this
+     * organization. ponytail: one query per linked value; batch if boards grow.
+     *
+     * @return array{type: string, id: string, label: string}|null
+     */
+    public static function linkOf(?string $value): ?array
+    {
+        if (! is_string($value) || ! preg_match('/^(customer|job):([0-9a-f\-]{36})$/i', $value, $m)) {
+            return null;
+        }
+        $model = $m[1] === 'customer' ? Customer::query()->find($m[2]) : Job::query()->with('customer:id,name')->find($m[2]);
+        if ($model === null) {
+            return null;
+        }
+
+        return ['type' => $m[1], 'id' => $model->id, 'label' => $m[1] === 'customer'
+            ? (string) $model->name
+            : trim($model->number.' · '.($model->customer?->name ?? ''), ' ·')];
     }
 
     private function snapshot(Task $task): array

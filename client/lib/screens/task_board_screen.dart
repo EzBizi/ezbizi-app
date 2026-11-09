@@ -987,7 +987,122 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     if (mounted) await _load();
   }
 
-  Future<void> _editColumn(BoardColumn c) async {
+  /// A column's header menu (Jose, 2026-11-09, Monday-style): edit it,
+  /// change its type, move, hide or delete it, all from the header.
+  Widget _columnHeader(BoardColumn c, Widget title) {
+    final raw = (_board!['columns'] as List? ?? const [])
+        .whereType<Map>()
+        .firstWhere((x) => '${x['id']}' == c.id, orElse: () => const {});
+    final at = (raw['position'] as num?)?.toInt() ?? 0;
+    Future<void> patch(Map<String, dynamic> body) async {
+      final r = await widget.api.patch(
+        columnsPath('${_board!['id']}', c.id),
+        body,
+      );
+      if (!mounted) return;
+      if (!r.ok) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(r.reason)));
+      }
+      await _load();
+    }
+
+    return MenuAnchor(
+      menuChildren: [
+        MenuItemButton(
+          key: ValueKey('column-menu-edit-${c.id}'),
+          leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+          onPressed: () => _editColumn(c),
+          child: Text(
+            const {'status', 'dropdown', 'tags'}.contains(c.type)
+                ? 'Rename, labels and colours…'
+                : 'Rename and settings…',
+          ),
+        ),
+        SubmenuButton(
+          key: ValueKey('column-menu-type-${c.id}'),
+          leadingIcon: const Icon(Icons.swap_horiz, size: 18),
+          menuChildren: [
+            for (final (type, label, icon) in columnTypes)
+              if (type != c.type)
+                MenuItemButton(
+                  key: ValueKey('column-menu-type-${c.id}-$type'),
+                  leadingIcon: Icon(icon, size: 18),
+                  onPressed: () => _editColumn(c, type: type),
+                  child: Text(label),
+                ),
+          ],
+          child: Text('Type: ${columnTypeLabel(c.type)}'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.arrow_back, size: 18),
+          onPressed: () => patch({'position': (at - 1).clamp(0, 1000)}),
+          child: const Text('Move left'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.arrow_forward, size: 18),
+          onPressed: () => patch({'position': at + 1}),
+          child: const Text('Move right'),
+        ),
+        MenuItemButton(
+          key: ValueKey('column-menu-hide-${c.id}'),
+          leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
+          onPressed: () => patch({'hidden': true}),
+          child: const Text('Hide'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.delete_outline, size: 18),
+          onPressed: () => _editColumn(c),
+          child: const Text('Delete…'),
+        ),
+      ],
+      builder: (context, menu, _) => InkWell(
+        key: ValueKey('column-head-${c.id}'),
+        onTap: _canEdit ? () => menu.isOpen ? menu.close() : menu.open() : null,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Tooltip(message: c.name, child: title),
+        ),
+      ),
+    );
+  }
+
+  /// "+ Add tag" from a cell: the option joins the column, and its id comes
+  /// back so the cell can pick it.
+  Future<String?> _addOption(BoardColumn c, String label) async {
+    final raw = (_board!['columns'] as List? ?? const [])
+        .whereType<Map>()
+        .firstWhere((x) => '${x['id']}' == c.id, orElse: () => const {});
+    final settings = {...((raw['settings'] as Map?) ?? const {})};
+    final options = [...((settings['options'] as List?) ?? const [])];
+    final existing = options.whereType<Map>().where(
+      (o) => '${o['label']}'.toLowerCase() == label.toLowerCase(),
+    );
+    if (existing.isNotEmpty) return '${existing.first['id']}';
+    options.add({
+      'label': label,
+      'colour': swatches[options.length % swatches.length],
+    });
+    final r = await widget.api.patch(columnsPath('${_board!['id']}', c.id), {
+      'settings': {...settings, 'options': options},
+    });
+    if (!mounted) return null;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return null;
+    }
+    await _load();
+    final saved = (((r.data as Map?)?['settings'] as Map?)?['options'] as List?)
+        ?.whereType<Map>()
+        .where((o) => '${o['label']}' == label)
+        .firstOrNull;
+    return saved == null ? null : '${saved['id']}';
+  }
+
+  Future<void> _editColumn(BoardColumn c, {String? type}) async {
     final raw = (_board!['columns'] as List? ?? const [])
         .whereType<Map>()
         .firstWhere((x) => '${x['id']}' == c.id, orElse: () => const {});
@@ -997,6 +1112,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         api: widget.api,
         boardId: '${_board!['id']}',
         type: c.type,
+        newType: type,
         column: c,
         raw: raw.cast<String, dynamic>(),
         others: boardColumns(_board),
@@ -1890,18 +2006,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             if (shown('created')) b('created', _widths.created),
             if (shown('due')) b('due', _widths.due),
             for (final c in boardColumns(_board))
-              _cell(
-                context,
-                _widths.custom,
-                InkWell(
-                  key: ValueKey('column-head-${c.id}'),
-                  onTap: _canEdit ? () => _editColumn(c) : null,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Tooltip(message: c.name, child: h(c.name)),
-                  ),
-                ),
-              ),
+              _cell(context, _widths.custom, _columnHeader(c, h(c.name))),
             if (shown('about')) b('about', _widths.about),
             if (shown('updates')) b('updates', _widths.updates),
             if (_canEdit)
@@ -2072,6 +2177,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           onChanged: _canEdit
                               ? (v) => _setValue(t, c.id, v)
                               : null,
+                          onAddOption: _canEdit
+                              ? (label) => _addOption(c, label)
+                              : null,
+                          onEditOptions: _canEdit ? () => _editColumn(c) : null,
                         ),
                       )
                     : _cell(
@@ -2085,6 +2194,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           onChanged: _canEdit
                               ? (v) => _setValue(t, c.id, v)
                               : null,
+                          onAddOption: _canEdit
+                              ? (label) => _addOption(c, label)
+                              : null,
+                          onEditOptions: _canEdit ? () => _editColumn(c) : null,
                         ),
                       ),
               if (shown('about'))
@@ -3097,6 +3210,7 @@ class _TaskPanelState extends State<_TaskPanel> {
               value: columnValue(task, c),
               people: people,
               formats: widget.formats,
+              api: widget.api,
               onChanged: _canEdit
                   ? (v) => _patch({
                       'values': {c.id: v},
