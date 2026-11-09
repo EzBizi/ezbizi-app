@@ -1754,10 +1754,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   Future<void> _boardAction(String action) async {
-    final r = await widget.api.post(
-      '/task-boards/${_board!['id']}/$action',
-      const {},
-    );
+    final id = _board!['id'];
+    // Literal paths, so the route guard can match each one.
+    final path = switch (action) {
+      'archive' => '/task-boards/$id/archive',
+      'unarchive' => '/task-boards/$id/unarchive',
+      _ => '/task-boards/$id/restore',
+    };
+    final r = await widget.api.post(path, const {});
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
