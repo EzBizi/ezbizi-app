@@ -1452,9 +1452,7 @@ class _SiteDetailState extends State<_SiteDetail> {
             color: theme.colorScheme.outline,
           ),
           filled: false,
-          helperText: notNeeded
-              ? 'Not needed for this site'
-              : isInheriting
+          helperText: isInheriting
               ? 'From ${_primaryHost ?? 'the primary site'}'
               : (field['hint'] as String).isEmpty
                   ? null
@@ -1470,31 +1468,29 @@ class _SiteDetailState extends State<_SiteDetail> {
     }
 
     // Jose, 2026-11-09: a field the site has no use for (a-1chimney.com has no
-    // street address) is marked resolved instead of staying amber.
-    final toggle = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Checkbox(
-          value: notNeeded,
-          visualDensity: VisualDensity.compact,
-          onChanged: widget.canEdit
-              ? (v) => setState(
-                  () => v == true ? _notNeeded.add(key) : _notNeeded.remove(key),
-                )
-              : null,
-        ),
-        Text('Not needed for this site', style: theme.textTheme.bodySmall),
-      ],
+    // street address) is marked resolved instead of staying amber. Beside the
+    // shortcode, not under the box: below it read as part of the next field.
+    final toggle = Tooltip(
+      message: notNeeded
+          ? 'Not needed for this site (tap to need it again)'
+          : 'Not needed for this site',
+      child: IconButton(
+        isSelected: notNeeded,
+        visualDensity: VisualDensity.compact,
+        icon: const Icon(Icons.remove_circle_outline),
+        selectedIcon: const Icon(Icons.remove_circle),
+        onPressed: widget.canEdit
+            ? () => setState(
+                () => notNeeded ? _notNeeded.remove(key) : _notNeeded.add(key),
+              )
+            : null,
+      ),
     );
 
-    return _withShortcode(
-      theme,
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [input, toggle],
-      ),
+    return withShortcode(
+      input,
       field['shortcode'] as String,
+      trailing: toggle,
     );
   }
 
