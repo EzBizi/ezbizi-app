@@ -41,7 +41,7 @@ use RuntimeException;
  * sweep deletes it. ponytail: release on success if Google proves to fetch
  * during the create.
  */
-final class GoogleBusinessProfilePublisher implements DeletesPosts, SocialPublisher
+final class GoogleBusinessProfilePublisher implements DeletesPosts, LinksToPosts, SocialPublisher
 {
     private const TIMEOUT = 30;
 
@@ -111,6 +111,14 @@ final class GoogleBusinessProfilePublisher implements DeletesPosts, SocialPublis
             BusinessProfileOAuth::LEGACY_V4.'/'.ltrim($location, '/').'/localPosts', ['pageSize' => $pageSize]));
 
         return array_values((array) $response->json('localPosts', []));
+    }
+
+    /** LinksToPosts: the post's own `searchUrl`, the page Google shows it on. */
+    public function permalink(SocialConnection $connection, string $remoteId): ?string
+    {
+        $url = $this->send($connection, fn ($http) => $http->get(BusinessProfileOAuth::LEGACY_V4.'/'.$remoteId))->json('searchUrl');
+
+        return is_string($url) && $url !== '' ? $url : null;
     }
 
     /** DeletesPosts: the composer's "Delete from Google". */

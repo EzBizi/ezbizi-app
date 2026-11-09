@@ -827,7 +827,7 @@ void main() {
               'body': 'A look inside a flue camera inspection',
             },
             {
-              ..._landed('sent'),
+              ..._landed('sent', url: 'https://www.pinterest.com/pin/9/'),
               'id': 's1',
               'body': 'Chimney season is here',
             },
@@ -861,6 +861,12 @@ void main() {
       expect(find.textContaining('That account has no boards.'), findsOneWidget);
       expect(find.byKey(const ValueKey('social-retry-f1')), findsOneWidget);
       expect(find.byKey(const ValueKey('social-retry-s1')), findsNothing);
+      // A sent post opens where it went out, from the timeline itself.
+      expect(
+        find.byKey(const ValueKey('social-open-s1-target-1')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Open post on Pinterest'), findsOneWidget);
       expect(find.widgetWithText(StatusPill, 'Scheduled'), findsOneWidget);
 
       // A post waiting for approval has not gone out: never "Sent".
@@ -2422,6 +2428,26 @@ void main() {
 
       expect(find.text('Saved'), findsOneWidget,
           reason: 'A newsletter is open and saved; the state must show.');
+    });
+
+    testWidgets('a block written as HTML is drawn, not described', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: EmailBlockView(
+              block: {'type': 'text', 'html': '<p>Hand-made sweep offer</p>'},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Hand-made sweep offer', findRichText: true),
+        findsOneWidget,
+      );
     });
 
     testWidgets('the preview is given the height its viewer needs', (

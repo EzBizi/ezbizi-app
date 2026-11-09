@@ -281,6 +281,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         ),
         if (!_htmlMode)
           FilterChip(
+            tooltip: 'Shows the email exactly as the server will send it',
             label: const Text('Server preview'),
             selected: _serverPreview,
             onSelected: (on) => setState(() {
@@ -349,7 +350,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       alignment: Alignment.topCenter,
       child: SizedBox(
         width: _phone ? 375 : double.infinity,
-        child: MessageHtmlView(html: widget.previewHtml),
+        child: MessageHtmlView(html: widget.previewHtml, ownHtml: true),
       ),
     );
   }

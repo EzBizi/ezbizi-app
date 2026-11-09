@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_html/flutter_html.dart';
 
 import '../../core/theme.dart';
 
@@ -258,18 +259,10 @@ class EmailBlockView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Kept exactly as typed on the server; its HTML is not drawn here.
+    // Kept exactly as typed on the server; drawn here close enough to edit
+    // by, and exactly under Server preview.
     if (isHandWritten(block)) {
-      return _row(
-        const Text(
-          'This block was written as HTML. Turn on Server preview to see it.',
-          style: TextStyle(
-            fontSize: 13,
-            fontStyle: FontStyle.italic,
-            color: EmailInk.footerInk,
-          ),
-        ),
-      );
+      return _row(Html(data: block['html'] as String));
     }
 
     final align = _align(block);
