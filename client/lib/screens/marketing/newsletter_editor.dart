@@ -212,11 +212,15 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     final adding = !_locked && !_htmlMode;
     final buttons = [
       for (final kind in BlockKind.values)
-        OutlinedButton.icon(
-          onPressed: adding ? () => _add(kind) : null,
-          icon: Icon(kind.icon, size: 16),
-          label: Text(kind.label),
-          style: wrap ? null : OutlinedButton.styleFrom(alignment: Alignment.centerLeft),
+        _dragNew(
+          kind,
+          adding,
+          OutlinedButton.icon(
+            onPressed: adding ? () => _add(kind) : null,
+            icon: Icon(kind.icon, size: 16),
+            label: Text(kind.label),
+            style: wrap ? null : OutlinedButton.styleFrom(alignment: Alignment.centerLeft),
+          ),
         ),
     ];
 
@@ -250,16 +254,38 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     );
   }
 
-  /// A new block goes under the selected one, or at the end, and is selected
-  /// so its fields are open where it landed.
-  void _add(BlockKind kind) {
+  /// A new block goes where it was dropped, else under the selected one, or at
+  /// the end, and is selected so its fields are open where it landed.
+  void _add(BlockKind kind, [int? dropped]) {
     setState(() {
-      final at = _selected == null ? widget.blocks.length : _selected! + 1;
+      final at = dropped ?? (_selected == null ? widget.blocks.length : _selected! + 1);
       widget.blocks.insert(at, kind.blank());
       _selected = at;
       _serverPreview = false;
     });
     widget.onChanged();
+  }
+
+  /// A palette button that can also be dragged into the email, landing above
+  /// the block it is dropped on (or at the end, on the footer).
+  Widget _dragNew(BlockKind kind, bool adding, Widget button) {
+    if (!adding) return button;
+    return Draggable<BlockKind>(
+      key: Key('newsletter-add-${kind.name}'),
+      data: kind,
+      feedback: Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [Icon(kind.icon, size: 16), const SizedBox(width: 6), Text(kind.label)],
+          ),
+        ),
+      ),
+      child: button,
+    );
   }
 
   // ── middle: the email ────────────────────────────────────────
@@ -316,6 +342,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         selected: _selected,
         onSelect: _locked ? null : (i) => setState(() => _selected = i),
         editorFor: _locked ? null : (i) => _inPlace(context, i),
+        onReorder: _locked ? null : _move,
+        onDropNew: _locked ? null : _add,
       );
       body = bounded
           ? Expanded(child: SingleChildScrollView(child: email))
