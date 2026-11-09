@@ -75,14 +75,16 @@ void main() {
               'status': 'Pending',
               'part_status': 'WAITING PARTS',
               'required': 'Crown Repair',
+              'tags': ['VIP', 'DEPOSIT'],
             },
           ],
           'meta': {
             'total': 1,
             'last_page': 1,
             'counts': {'unscheduled': 1},
-            'franchises': [
-              {'id': 'f-1', 'name': 'Ohio', 'company': 'Brightside'},
+            'places': [
+              {'value': 'company:c-1', 'label': 'Brightside', 'depth': 0},
+              {'value': 'f-1', 'label': 'Brightside · Ohio', 'depth': 1},
             ],
             'columns': [
               {'key': 'customer', 'label': 'Client', 'visible': true},
@@ -94,6 +96,12 @@ void main() {
                 'as_label': true,
               },
               {'key': 'required', 'label': 'Required', 'visible': true},
+              {
+                'key': 'tags',
+                'label': 'Tags',
+                'visible': true,
+                'as_label': true,
+              },
             ],
             'labels': {
               'part_status': {'WAITING PARTS': 'caution'},
@@ -127,6 +135,8 @@ void main() {
       find.widgetWithText(StatusPill, 'WAITING PARTS'),
     );
     expect(pill.tone, Tone.caution);
+    // Tags: one chip per tag.
+    expect(find.widgetWithText(StatusPill, 'VIP'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('project-board-franchise')));
     await tester.pumpAndSettle();
@@ -150,6 +160,7 @@ void main() {
       'Pending, On Hold',
     );
     await tester.ensureVisible(find.byKey(const Key('project-board-save')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('project-board-save')));
     await tester.pumpAndSettle();
 

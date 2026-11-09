@@ -38,6 +38,7 @@ class ProjectBoardTest extends TestCase
         $row = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=ready_to_schedule')
             ->assertOk()->assertJsonPath('meta.counts.unscheduled', 1)->json('data.0');
         $this->assertSame('WAITING PARTS', $row['part_status']);
+        $this->assertSame(['WAITING PARTS', 'DEPOSIT'], $row['tags']);
         $this->assertSame('Crown Repair, Damper Cap x2', $row['required']);
         $this->assertSame('7003', $row['workiz_id']);
         $this->assertSame('Alpha F1', $row['franchise']);
@@ -59,6 +60,12 @@ class ProjectBoardTest extends TestCase
         $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?franchise_id='.$alpha['franchise']->id)
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('meta.franchises.0.id', $alpha['franchise']->id)->assertJsonPath('meta.franchises.0.company', 'Alpha Co');
         $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?franchise_id='.$beta['franchise']->id)->assertForbidden();
+        // The filter in hierarchy order: the company, then its franchises.
+        $company = $alpha['franchise']->company_id;
+        $places = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs')->json('meta.places');
+        $this->assertSame([['company:'.$company, 0], [$alpha['franchise']->id, 1]], array_map(fn ($p) => [$p['value'], $p['depth']], $places));
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?company_id='.$company)->assertOk()->assertJsonCount(1, 'data');
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?company_id='.$beta['franchise']->company_id)->assertForbidden();
         $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?q=ann')->assertOk()->assertJsonCount(1, 'data');
         $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?q=nobody')->assertOk()->assertJsonCount(0, 'data');
     }
