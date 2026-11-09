@@ -366,7 +366,37 @@ class User extends Authenticatable implements HoldsPersonalData
             return false;
         }
 
-        return $this->role?->hasPermission($key) ?? false;
+        return ($this->role?->hasPermission($key) ?? false)
+            || in_array($key, $this->personalGrantKeys(), true);
+    }
+
+    /** The same question, answered by the role alone -- no per-person grant counted. */
+    public function roleAllows(string $key): bool
+    {
+        if (! $this->is_active || $this->awaitingOnboardingApproval()) {
+            return false;
+        }
+
+        return app(ModuleAvailability::class)->isPermissionAvailable($key, $this->organization)
+            && ($this->role?->hasPermission($key) ?? false);
+    }
+
+    /**
+     * Permissions a person holds because somebody gave them an inbox by name.
+     *
+     * Jose, 2026-11-09: "if she can see the email she should be able to assign
+     * someone to it, and that person in turn should see it." So an inbox given
+     * to a person opens the Email tab for them even when their role has no
+     * Email -- and {@see \App\Support\Email\MailboxAccess} lets them into
+     * THAT inbox only, whatever their branch or role.
+     *
+     * @return list<string>
+     */
+    public function personalGrantKeys(): array
+    {
+        $holds = MailboxGrant::query()->where('user_id', $this->getKey())->exists();
+
+        return $holds ? [\App\Support\Email\MailboxAccess::READ, 'email.inbox.view'] : [];
     }
 
     /**

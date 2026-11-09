@@ -140,11 +140,37 @@ final class MailboxAccess
      */
     public function readable(User $user): Collection
     {
-        if (! $user->hasPermission(self::READ)) {
-            return collect();
+        $own = $user->is_active ? $this->givenByName($user) : collect();
+
+        if (! $user->roleAllows(self::READ) && ! $user->isAdministrator()) {
+            return $own;
         }
 
-        return $this->granted($user)->filter(fn (Mailbox $m) => $this->reaches($user, $m))->values();
+        return $this->granted($user)->filter(fn (Mailbox $m) => $this->reaches($user, $m))
+            ->concat($own)->unique('id')->sortBy('address')->values();
+    }
+
+    /**
+     * Inboxes given to this person by name. Each opens whatever their role,
+     * branch or view (Jose, 2026-11-09: "that person in turn should see it");
+     * the grant is for that inbox only and widens nothing else.
+     *
+     * @return Collection<int, Mailbox>
+     */
+    public function givenByName(User $user): Collection
+    {
+        return Mailbox::query()
+            ->whereIn('id', MailboxGrant::query()->where('user_id', $user->getKey())->select('mailbox_id'))
+            ->orderBy('address')
+            ->get();
+    }
+
+    public function isGivenByName(User $user, Mailbox $mailbox): bool
+    {
+        return MailboxGrant::query()
+            ->where('user_id', $user->getKey())
+            ->where('mailbox_id', $mailbox->getKey())
+            ->exists();
     }
 
     /**
@@ -183,7 +209,12 @@ final class MailboxAccess
      */
     public function readRefusal(User $user, Mailbox $mailbox, string $act): ?string
     {
-        if (! $user->hasPermission(self::READ)) {
+        // Given to them by name: open, whatever their role, branch or view.
+        if ($user->is_active && $this->isGivenByName($user, $mailbox)) {
+            return null;
+        }
+
+        if (! $user->roleAllows(self::READ) && ! $user->isAdministrator()) {
             return Refusal::permission($act)->message();
         }
 
