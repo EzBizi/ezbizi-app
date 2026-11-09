@@ -1629,6 +1629,22 @@ class _TimelineRow extends StatelessWidget {
                                   style: small,
                                 ),
                               ),
+                              // Where it went out, one tap from the timeline.
+                              if (target.status == 'sent' && target.url != null)
+                                IconButton(
+                                  key: ValueKey(
+                                    'social-open-${post.id}-${target.id}',
+                                  ),
+                                  tooltip:
+                                      'Open post on ${target.providerLabel}',
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 16,
+                                  onPressed: () => launchUrl(
+                                    Uri.parse(target.url!),
+                                    mode: LaunchMode.externalApplication,
+                                  ),
+                                  icon: const Icon(Icons.open_in_new),
+                                ),
                             ],
                           ),
                     ],

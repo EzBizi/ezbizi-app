@@ -59,6 +59,18 @@ class GoogleBusinessProfilePublisherTest extends TestCase
             && $r['callToAction'] === ['actionType' => 'CALL']);
     }
 
+    public function test_a_post_links_to_the_page_google_shows_it_on(): void
+    {
+        $t = $this->provisionTenant();
+        $c = $this->connected($t, ['locations/222']);
+        $this->fake(['mybusiness.googleapis.com/v4/accounts/111/locations/222/localPosts/9' => Http::response(['searchUrl' => 'https://local.google.com/place?id=1&use=posts'])]);
+
+        $url = $this->inTenant($t['org'], fn () => Publishers::for(SocialProvider::GoogleBusinessProfile)
+            ->permalink($c, 'accounts/111/locations/222/localPosts/9'));
+
+        $this->assertSame('https://local.google.com/place?id=1&use=posts', $url);
+    }
+
     public function test_what_it_cannot_do_is_said_before_google_is_asked(): void
     {
         $t = $this->provisionTenant();
