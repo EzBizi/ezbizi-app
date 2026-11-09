@@ -2072,6 +2072,8 @@ Route::prefix('v1')
         Route::middleware('permission:work_hours.approve')->group(function () {
             Route::post('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'store']);
             Route::post('hr/time-clock/approvals/all', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'approveAll']);
+            Route::post('hr/time-clock/approvals/excuse', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'excuse']);
+            Route::post('hr/time-clock/approvals/hours', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'hours']);
             Route::post('hr/time-clock/approvals/shifts/{shift}/adjust', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'adjust']);
         });
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\TimeClockShift;
 use App\Models\User;
+use App\Support\Audit\AuditLogger;
 use App\Support\TimeClock\TimeClock;
 use App\Support\TimeClock\TimeClockApprovals;
 use Illuminate\Http\JsonResponse;
@@ -72,6 +73,40 @@ class TimeClockApprovalsController extends Controller
         $day = Carbon::parse($shift->clocked_in_at)->timezone($tz)->toDateString();
 
         return response()->json(['data' => $this->approvals->day($request->user(), $day)]);
+    }
+
+    /** POST /api/v1/hr/time-clock/approvals/excuse {user_id, date}: a no-show excused. */
+    public function excuse(Request $request): JsonResponse
+    {
+        $data = $request->validate(['user_id' => ['required', 'string'], 'date' => ['required', 'date_format:Y-m-d']]);
+        $this->approvals->excuse($request->user(), User::query()->findOrFail($data['user_id']), $data['date']);
+
+        return response()->json(['data' => $this->approvals->day($request->user(), $data['date'])]);
+    }
+
+    /**
+     * POST /api/v1/hr/time-clock/approvals/hours {user_id, date, clocked_in_at, clocked_out_at, reason}:
+     * a no-show who worked and forgot to clock in. The added shift is then approvable.
+     */
+    public function hours(Request $request, TimeClock $clock): JsonResponse
+    {
+        $data = $request->validate([
+            'user_id' => ['required', 'string'],
+            'date' => ['required', 'date_format:Y-m-d'],
+            'clocked_in_at' => ['required', 'date'],
+            'clocked_out_at' => ['required', 'date', 'after:clocked_in_at'],
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+        $tz = $clock->viewTimezone($request->user());
+        $shift = $clock->addShift(
+            $request->user(),
+            User::query()->findOrFail($data['user_id']),
+            Carbon::parse($data['clocked_in_at'], $tz)->utc(),
+            Carbon::parse($data['clocked_out_at'], $tz)->utc(),
+        );
+        app(AuditLogger::class)->log('time_clock.hours_added', $shift, metadata: ['reason' => trim($data['reason'])]);
+
+        return response()->json(['data' => $this->approvals->day($request->user(), $data['date'])]);
     }
 
     /** POST /api/v1/hr/time-clock/approvals/all {date} */
