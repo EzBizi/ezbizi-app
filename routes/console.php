@@ -377,6 +377,8 @@ Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30
 
 // Every Twilio line still routes to us; numbers added, removed or repointed.
 Schedule::command('ezbizi:phone-line-audit')->dailyAt('04:30')->withoutOverlapping(30);
+// New and reactivated people get an extension within the hour (Jose, 2026-11-09).
+Schedule::command('ezbizi:phone-assign-extensions')->hourly()->withoutOverlapping(10);
 // Hourly at :30; the command rings each line only at 21:30 on an even-week Monday in its own zone (after hours: voicemail, nobody rung).
 Schedule::command('ezbizi:phone-line-answer-test')->hourlyAt(30)->withoutOverlapping(30);
 
