@@ -19,6 +19,7 @@ import '../widgets/status_pill.dart';
 import 'task_board_automate.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
+import '../widgets/list_filters.dart';
 import 'task_board_move.dart';
 import 'task_board_people.dart';
 import 'task_board_plan_views.dart';
@@ -275,6 +276,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   String _query = '';
   final Set<String?> _folded = {};
 
+  /// Filter, sort and person filter in force, and the saved view they came
+  /// from, if any (Jose, 2026-11-09).
+  ListQuery _filter = const ListQuery();
+  String? _savedView;
+
   /// Tasks with their subtasks open under them (UI queue 84).
   final Set<String> _expanded = {};
 
@@ -382,6 +388,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       if (_board?['id'] != id) {
         _board = null;
         _loading = true;
+        _filter = const ListQuery();
+        _savedView = null;
       }
     });
     final res = await widget.api.get('/task-boards/$id');
@@ -429,15 +437,236 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final ids = (_board?['groups'] as List? ?? const [])
         .map((g) => (g as Map)['id'])
         .toSet();
-    return [
+    return _filter.sorted([
       for (final t in _tasks)
         if (t['parent_task_id'] == null &&
             (groupId == null
                 ? !ids.contains(_groupOf(t))
                 : _groupOf(t) == groupId))
           t,
+    ], _filterFields);
+  }
+
+  // ── Filter, sort, person and saved views (Jose, 2026-11-09) ──────────
+
+  List<_Json> get _views =>
+      (_board?['views'] as List? ?? const []).whereType<_Json>().toList();
+
+  Future<void> _openFilter() async {
+    final next = await showSidePanel<ListQuery>(
+      context,
+      builder: (_) =>
+          FilterPanel(fields: _filterFields.values.toList(), view: _filter),
+    );
+    if (next != null && mounted) setState(() => _filter = next);
+  }
+
+  void _pickView(_Json? v) => setState(() {
+    _savedView = v?['id'] as String?;
+    _filter = v == null
+        ? const ListQuery()
+        : ListQuery.fromJson(v['config'] as Map?);
+  });
+
+  /// "Save as new view", or the current one's changes; a name asked in a panel.
+  Future<void> _saveView({required bool asNew}) async {
+    final boardId = '${_board!['id']}';
+    if (!asNew && _savedView != null) {
+      final r = await widget.api.patch(
+        '/task-boards/$boardId/views/$_savedView',
+        {'config': _filter.toJson()},
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.ok ? 'View saved.' : r.reason)));
+      if (r.ok) await _open(_selected);
+      return;
+    }
+    final name = TextEditingController();
+    var shared = false;
+    final ok = await showSidePanel<bool>(
+      context,
+      builder: (panel) => StatefulBuilder(
+        builder: (panel, set) => SidePanel(
+          title: 'Save as a new view',
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(panel).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('view-save'),
+              onPressed: () => Navigator.of(panel).pop(true),
+              child: const Text('Save view'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                key: const Key('view-name'),
+                controller: name,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (_canEdit)
+                SwitchListTile(
+                  key: const Key('view-shared'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Everyone on this board sees it'),
+                  value: shared,
+                  onChanged: (v) => set(() => shared = v),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (ok != true || name.text.trim().isEmpty || !mounted) return;
+    final r = await widget.api.post('/task-boards/$boardId/views', {
+      'name': name.text.trim(),
+      'shared': shared,
+      'config': _filter.toJson(),
+    });
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    _savedView = (r.data as Map?)?['id'] as String?;
+    await _open(_selected);
+  }
+
+  Future<void> _deleteView() async {
+    final id = _savedView;
+    if (id == null) return;
+    final r = await widget.api.delete(
+      '/task-boards/${_board!['id']}/views/$id',
+    );
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    _pickView(null);
+    await _open(_selected);
+  }
+
+  /// The toolbar's Views · Person · Filter, monday's order.
+  List<Widget> _filterTools() {
+    final views = _views;
+    final current = views.where((v) => v['id'] == _savedView).firstOrNull;
+    final saved = current == null
+        ? null
+        : ListQuery.fromJson(current['config'] as Map?).toJson().toString();
+    final changed = saved != null && saved != _filter.toJson().toString();
+    final count = _filter.filters.length + _filter.sort.length;
+    return [
+      MenuAnchor(
+        menuChildren: [
+          MenuItemButton(
+            key: const Key('view-main'),
+            onPressed: () => _pickView(null),
+            child: const Text('Main table'),
+          ),
+          for (final v in views)
+            MenuItemButton(
+              key: ValueKey('view-${v['id']}'),
+              leadingIcon: Icon(
+                v['shared'] == true
+                    ? Icons.groups_outlined
+                    : Icons.person_outline,
+                size: 18,
+              ),
+              onPressed: () => _pickView(v),
+              child: Text('${v['name']}'),
+            ),
+          const Divider(height: 8),
+          if (current != null && changed)
+            MenuItemButton(
+              key: const Key('view-update'),
+              onPressed: () => _saveView(asNew: false),
+              child: Text('Save changes to "${current['name']}"'),
+            ),
+          MenuItemButton(
+            key: const Key('view-save-new'),
+            onPressed: _filter.isEmpty ? null : () => _saveView(asNew: true),
+            child: const Text('Save as new view…'),
+          ),
+          if (current != null)
+            MenuItemButton(
+              key: const Key('view-delete'),
+              onPressed: _deleteView,
+              child: Text('Delete "${current['name']}"'),
+            ),
+        ],
+        builder: (context, menu, _) => OutlinedButton.icon(
+          key: const Key('tasks-views'),
+          onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+          icon: const Icon(Icons.bookmarks_outlined, size: 18),
+          label: Text(
+            '${current?['name'] ?? 'Main table'}${changed ? ' *' : ''}',
+          ),
+        ),
+      ),
+      MenuAnchor(
+        menuChildren: [
+          if (widget.session.me case final me?)
+            CheckboxMenuButton(
+              key: const Key('person-me'),
+              value: _filter.people.contains(me.id),
+              closeOnActivate: false,
+              onChanged: (_) => _togglePerson(me.id),
+              child: const Text('Me'),
+            ),
+          for (final e in _people.entries)
+            if (e.key != widget.session.me?.id)
+              CheckboxMenuButton(
+                key: ValueKey('person-${e.key}'),
+                value: _filter.people.contains(e.key),
+                closeOnActivate: false,
+                onChanged: (_) => _togglePerson(e.key),
+                child: Text(e.value),
+              ),
+        ],
+        builder: (context, menu, _) => OutlinedButton.icon(
+          key: const Key('tasks-person'),
+          onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+          icon: const Icon(Icons.person_search_outlined, size: 18),
+          label: Text(
+            _filter.people.isEmpty
+                ? 'Person'
+                : 'Person · ${_filter.people.length}',
+          ),
+        ),
+      ),
+      OutlinedButton.icon(
+        key: const Key('tasks-filter'),
+        onPressed: _openFilter,
+        icon: const Icon(Icons.filter_list, size: 18),
+        label: Text(count == 0 ? 'Filter / Sort' : 'Filter / Sort · $count'),
+      ),
     ];
   }
+
+  void _togglePerson(String id) => setState(
+    () => _filter = _filter.copyWith(
+      people: _filter.people.contains(id)
+          ? [
+              for (final p in _filter.people)
+                if (p != id) p,
+            ]
+          : [..._filter.people, id],
+    ),
+  );
 
   /// The group a row sits in here. A branch task shown on its company board
   /// (rolled_up_from) sits in this board's group of the same name.
@@ -679,8 +908,92 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
   }
 
-  /// Search reads the task, its owner, its status and what it is about.
+  /// What the filter and sort can read: the built-in columns, then the
+  /// board's own.
+  Map<String, FilterField> get _filterFields {
+    final board = _board;
+    if (board == null) return const {};
+    final people = [for (final e in _people.entries) (e.key, e.value)];
+    final out = <FilterField>[
+      (
+        key: 'title',
+        label: 'Task',
+        kind: 'text',
+        options: const [],
+        read: (t) => t['title'],
+      ),
+      (
+        key: 'status',
+        label: _builtinLabel(board, 'status'),
+        kind: 'options',
+        options: [for (final s in _statuses(board)) (s.id, s.name)],
+        read: (t) => _statusOf(t),
+      ),
+      (
+        key: 'owner',
+        label: _builtinLabel(board, 'owner'),
+        kind: 'people',
+        options: people,
+        read: (t) => _ownerIds(t),
+      ),
+      (
+        key: 'due',
+        label: _builtinLabel(board, 'due'),
+        kind: 'date',
+        options: const [],
+        read: (t) => t['due_on'],
+      ),
+      (
+        key: 'created',
+        label: _builtinLabel(board, 'created'),
+        kind: 'date',
+        options: const [],
+        read: (t) => t['created_at'],
+      ),
+      for (final c in boardColumns(board))
+        (
+          key: c.id,
+          label: c.name,
+          kind: switch (c.type) {
+            'number' || 'currency' || 'formula' => 'number',
+            'date' || 'datetime' || 'timeline' => 'date',
+            'status' || 'dropdown' || 'tags' => 'options',
+            'person' => 'people',
+            'checkbox' => 'checkbox',
+            _ => 'text',
+          },
+          options: c.type == 'person'
+              ? people
+              : [for (final o in c.options) (o.id, o.label)],
+          read: (t) {
+            final v = columnValue(t, c);
+            return switch (c.type) {
+              'timeline' => (v as Map?)?['from'],
+              'link' => (v as Map?)?['label'],
+              _ => v,
+            };
+          },
+        ),
+    ];
+    return {for (final f in out) f.key: f};
+  }
+
+  /// Every owner's id, for the person filter.
+  List<String> _ownerIds(_Json t) {
+    final ids = [
+      for (final o in (t['owners'] as List? ?? const []))
+        if (o is Map && o['id'] != null) '${o['id']}',
+    ];
+    final one = (t['owner'] as Map?)?['id'];
+    return ids.isNotEmpty ? ids : [if (one != null) '$one'];
+  }
+
+  /// Search reads the task, its owner, its status and what it is about; the
+  /// filter and person filter go first.
   bool _matches(_Json t) {
+    if (!_filter.isEmpty && !_filter.matches(t, _filterFields, _ownerIds(t))) {
+      return false;
+    }
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return true;
     return [
@@ -1484,6 +1797,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
+          if (_board != null) ..._filterTools(),
           // On a phone the rest of the toolbar folds behind one button: all
           // pinned, it left about 300 px for tasks (phone audit 2026-11-04,
           // Section 4 #4).
