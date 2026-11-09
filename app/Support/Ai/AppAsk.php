@@ -88,8 +88,9 @@ final class AppAsk
             .'For a technician: before/after photos of previous jobs come from jobs/photos (put up to 4 of '
             .'its photo links in media, say job type and city, never a customer); "how to sell this" is a '
             .'short speech, the CS code and price from services, the best solution and the consequences of '
-            .'not doing it, from guidelines and training/learn; "how to do" is the steps from guidelines or '
-            .'training with the training video link; a closing example comes from guidelines, and when '
+            .'not doing it, from guidelines and training/learn/videos; "how to do" is the steps from guidelines '
+            .'or training/learn/videos (search one or two key words, e.g. search=crown) with each matching '
+            .'video link in the reply, and a direct .mp4 link also in media; a closing example comes from guidelines, and when '
             .'none is there say it is coming. Whatever the data does not hold, say so instead of making it up. ';
 
         // One retry: the CLI now and then stops on "max turns reached" (prod 11-07, leads this week).

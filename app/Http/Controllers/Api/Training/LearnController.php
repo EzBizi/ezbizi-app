@@ -132,6 +132,40 @@ class LearnController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/v1/training/learn/videos - every video in the guides this person
+     * may read, with its screen's title and text, so the assistant can answer
+     * "how do I do X" with the right clip (Jose, 2026-11-09).
+     */
+    public function videos(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $this->authorizeLearner($user);
+        $search = mb_strtolower(trim((string) $request->validate(['search' => ['nullable', 'string', 'max:100']])['search'] ?? ''));
+
+        $out = [];
+        foreach ($this->readableGuides($user, ViewScope::forUser($user)) as $guide) {
+            foreach (\App\Support\Training\GuideScreens::topics($guide) as $t) {
+                $text = \App\Support\Training\GuideScreens::plainText($t['topic']);
+                foreach ($t['topic']['blocks'] as $block) {
+                    $url = (string) ($block['url'] ?? '');
+                    if (($block['type'] ?? null) !== 'video' || $url === '') {
+                        continue;
+                    }
+                    $row = ['guide' => $guide->title, 'chapter' => $t['chapter'], 'title' => $t['title'],
+                        'text' => mb_substr(trim(str_replace($url, '', $text)), 0, 300), 'video' => $url];
+                    // ponytail: every word must appear; a ranked search when 134 clips outgrow it.
+                    $hay = mb_strtolower(implode(' ', [$guide->title, $t['chapter'], $t['title'], $row['text']]));
+                    if ($search === '' || collect(preg_split('/\s+/', $search))->every(fn ($w) => str_contains($hay, $w))) {
+                        $out[] = $row;
+                    }
+                }
+            }
+        }
+
+        return response()->json(['data' => $out, 'total' => count($out)]);
+    }
+
     /** GET /api/v1/training/learn/tests/{test} */
     public function showTest(Request $request, string $test): JsonResponse
     {

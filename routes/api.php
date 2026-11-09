@@ -1806,6 +1806,7 @@ Route::prefix('v1')
         // The learner-facing read (task 6) — `training.view`, not `.manage`;
         // see LearnController's docblock for the answer-key trust boundary.
         Route::get('training/learn', [TrainingLearnController::class, 'index']);
+        Route::get('training/learn/videos', [TrainingLearnController::class, 'videos']);
         Route::get('training/learn/tests/{test}', [TrainingLearnController::class, 'showTest']);
         // Marking a submitted test (task 8) — same `training.view` gate; the
         // gate, the pass mark, the retake cap and the expiry date are all
