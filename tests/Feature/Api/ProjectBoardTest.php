@@ -44,6 +44,11 @@ class ProjectBoardTest extends TestCase
         $this->assertSame('Alpha F1', $row['franchise']);
         $this->assertArrayHasKey('total', $row);
 
+        // The Settings pickers offer the company's real statuses and tags.
+        $options = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/options')->assertOk()->json('data');
+        $this->assertSame('Pending', $options['statuses'][0]);
+        $this->assertEqualsCanonicalizing(['WAITING PARTS', 'DEPOSIT'], $options['tags']);
+
         // The dashboard glance counts what the board counts, and nothing of Beta's.
         $data = app(\App\Support\Dashboard\Glances\ProjectBoardGlance::class)
             ->resolve($alpha['admin'], \App\Support\Dashboard\DashboardPeriod::for($alpha['admin']), [])->data;

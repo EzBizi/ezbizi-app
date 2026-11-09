@@ -64,6 +64,14 @@ void main() {
           });
         }
         if (request.method == 'PATCH') return _json({'data': {}});
+        if (path.endsWith('/project-board/options')) {
+          return _json({
+            'data': {
+              'statuses': ['Pending', 'On Hold'],
+              'tags': ['WAITING PARTS', 'VIP'],
+            },
+          });
+        }
         return _json({
           'data': [
             {
@@ -155,13 +163,37 @@ void main() {
 
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('project-board-statuses:unscheduled')),
-      'Pending, On Hold',
+    // Statuses are the company's real ones, picked as chips.
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('project-board-statuses:unscheduled')),
+        matching: find.text('On Hold'),
+      ),
     );
-    await tester.ensureVisible(find.byKey(const Key('project-board-save')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('project-board-save')));
+    // A colour is a swatch, previewed on the label itself.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('project-board-swatch:part_status:0:bad')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('project-board-swatch:part_status:0:bad')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widgetList<StatusPill>(
+            find.widgetWithText(StatusPill, 'WAITING PARTS'),
+          )
+          .last
+          .tone,
+      Tone.bad,
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('project-board-save:tabs')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('project-board-save:tabs')));
     await tester.pumpAndSettle();
 
     final tabs = requests.firstWhere(
