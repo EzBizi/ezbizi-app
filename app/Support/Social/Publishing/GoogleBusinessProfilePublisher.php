@@ -36,10 +36,11 @@ use RuntimeException;
  * ── The photo ────────────────────────────────────────────────────
  *
  * Google takes a picture only by URL (`media[].sourceUrl`), so it goes through
- * MediaHandoff like Instagram's. Not released after the call: when Google
- * fetches it is not documented, so the handoff lives its signed hour and the
- * sweep deletes it. ponytail: release on success if Google proves to fetch
- * during the create.
+ * MediaHandoff like Instagram's. Not released after a successful call: when
+ * Google fetches it is not documented, so the handoff lives its signed hour
+ * and the sweep deletes it. A refused call releases it at once, since Google
+ * will never fetch it. ponytail: release on success too if Google proves to
+ * fetch during the create.
  */
 final class GoogleBusinessProfilePublisher implements DeletesPosts, LinksToPosts, SocialPublisher
 {
@@ -85,12 +86,22 @@ final class GoogleBusinessProfilePublisher implements DeletesPosts, LinksToPosts
             ]);
         }
 
+        $handoff = null;
         if ($post->kind() === SocialMediaKind::Image) {
-            $body['media'] = [['mediaFormat' => 'PHOTO', 'sourceUrl' => MediaHandoff::hold($post)->url]];
+            $handoff = MediaHandoff::hold($post);
+            $body['media'] = [['mediaFormat' => 'PHOTO', 'sourceUrl' => $handoff->url]];
         }
 
-        $created = $this->send($connection, fn ($http) => $http->post(
-            BusinessProfileOAuth::LEGACY_V4.'/'.$this->location($connection, $post).'/localPosts', $body));
+        try {
+            $created = $this->send($connection, fn ($http) => $http->post(
+                BusinessProfileOAuth::LEGACY_V4.'/'.$this->location($connection, $post).'/localPosts', $body));
+        } catch (\Throwable $e) {
+            // Refused: Google will never fetch it, so the photo stops being
+            // fetchable now. A post that went through keeps its handoff (above).
+            $handoff?->release();
+
+            throw $e;
+        }
 
         $name = (string) ($created->json('name') ?? '');
         if ($name === '') {

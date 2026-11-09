@@ -110,7 +110,8 @@ class _PostQueueViewState extends State<PostQueueView> {
         return;
       }
       _notice = approve
-          ? 'Sent to Google: ${_name(r)}.'
+          ? 'Approved. Sending to Google; the result shows in '
+                'Marketing › Social.'
           : 'Dropped: ${_name(r)}.';
       final i = _shown.indexWhere((x) => x['id'] == r['id']);
       _rows!.removeWhere((x) => x['id'] == r['id']);

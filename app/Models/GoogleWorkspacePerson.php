@@ -22,11 +22,11 @@ class GoogleWorkspacePerson extends Model implements StatesRetention
 
     protected $table = 'google_workspace_people';
 
-    protected $fillable = ['google_workspace_connection_id', 'address', 'user_id', 'signature_html', 'signature_applied_at'];
+    protected $fillable = ['google_workspace_connection_id', 'address', 'user_id', 'signature_html', 'signature_applied_at', 'signature_template_id', 'fields', 'signature_applied_hash'];
 
     protected function casts(): array
     {
-        return ['signature_applied_at' => 'datetime'];
+        return ['signature_applied_at' => 'datetime', 'fields' => 'array'];
     }
 
     public static function retention(): RetentionPolicy

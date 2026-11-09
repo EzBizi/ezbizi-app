@@ -38,6 +38,29 @@ class GoogleBusinessProfilePublisherTest extends TestCase
         });
     }
 
+    /** Bug review 2026-11-09 #13: a refused photo post stops being fetchable at once. */
+    public function test_a_refused_photo_post_releases_its_handoff(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        \Illuminate\Support\Facades\URL::forceScheme('https');
+        \Illuminate\Support\Facades\URL::forceRootUrl('https://app.ezbizi.com');
+        $t = $this->provisionTenant();
+        $c = $this->connected($t, ['locations/222']);
+        $this->fake(['mybusiness.googleapis.com/v4/accounts/111/locations/222/localPosts' => Http::response(['error' => ['message' => 'Quota exceeded']], 429)]);
+        $photo = tempnam(sys_get_temp_dir(), 'gbp').'.jpg';
+        file_put_contents($photo, 'JPEGBYTES');
+
+        try {
+            $this->inTenant($t['org'], fn () => Publishers::for(SocialProvider::GoogleBusinessProfile)
+                ->publish($c, new PostPayload('Chimney season is here.', filePath: $photo)));
+            $this->fail('A refused post came back as sent.');
+        } catch (SocialPublishFailed) {
+        }
+
+        Http::assertSent(fn (Request $r) => isset($r['media']));
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles('social-handoff'));
+    }
+
     private function fake(array $routes): void
     {
         config(['services.business_profile.client_id' => 'cid', 'services.business_profile.client_secret' => 'cs']);
