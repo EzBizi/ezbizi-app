@@ -343,10 +343,10 @@ class GoogleWorkspaceManagementTest extends TestCase
         $this->fakeGoogle();
         $base = $this->base($t, $c);
         $ana  = 'ana@'.self::DOMAIN;
-        $html = '{{name}}{{#mobile}} | M {{mobile}}{{/mobile}}{{#extension}} x{{extension}}{{/extension}}{{#title}} | {{title}}{{/title}}';
+        $html = '{{name}}{{#mobile}} | M {{mobile}}{{/mobile}}{{^mobile}} (no mobile){{/mobile}}{{#extension}} x{{extension}}{{/extension}}{{#title}} | {{title}}{{/title}}';
 
         $this->signedInAs($t['admin'])->postJson($base.'/signatures/preview', ['address' => $ana, 'html' => $html])
-            ->assertJsonPath('data.html', 'Ana Directory | Dispatcher');
+            ->assertJsonPath('data.html', 'Ana Directory (no mobile) | Dispatcher');
 
         $this->signedInAs($t['admin'])->putJson($base.'/people/'.$ana.'/fields', ['fields' => [
             'mobile' => '555-0111', 'title' => 'Head of Dispatch', 'nonsense' => 'x',

@@ -249,8 +249,9 @@ final class WorkspaceSignatures
         // {{#mobile}}...{{/mobile}} is kept only when that value is there, so an
         // empty field drops its whole line instead of leaving a label behind.
         $template = preg_replace_callback(
-            '/\{\{#\s*([a-z_]+)\s*\}\}(.*?)\{\{\/\s*\1\s*\}\}/s',
-            fn (array $m) => trim($values[$m[1]] ?? '') === '' ? '' : $m[2],
+            '/\{\{([#^])\s*([a-z_]+)\s*\}\}(.*?)\{\{\/\s*\2\s*\}\}/s',
+            // {{^photo_url}} is the opposite: kept only when the value is missing.
+            fn (array $m) => (trim($values[$m[2]] ?? '') === '') === ($m[1] === '^') ? $m[3] : '',
             $template,
         ) ?? $template;
 
