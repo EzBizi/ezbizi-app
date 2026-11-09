@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Task;
+use App\Models\TaskActivity;
 use App\Models\TaskAssignee;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
@@ -125,6 +126,7 @@ class TaskWriter
     public function update(Task $task, array $input, ?User $actor): Task
     {
         return DB::transaction(function () use ($task, $input, $actor) {
+            $seen = $this->readable($task);
             $owners = $this->ownersFrom($task->board, $input, $this->ownerIds($task));
             if (empty($input['group_id']) && isset($input['group'])) {
                 $input['group_id'] = $this->groupIdFrom($task->board, $input);
@@ -169,6 +171,7 @@ class TaskWriter
                 if ($ownersChanged) {
                     $this->syncLinked($task, [], false, true, $actor);
                 }
+                $this->recordChanges($task, $seen, $actor);
 
                 return $task;
             }
@@ -194,9 +197,48 @@ class TaskWriter
                 ]);
             }
             $this->syncLinked($task, $synced, $statusChanged, $ownersChanged, $actor);
+            $this->recordChanges($task, $seen, $actor);
 
             return $task;
         });
+    }
+
+    /**
+     * The task's own fields as the board shows them, for its Activity log.
+     *
+     * @return array<string, array{0: string, 1: ?string}>
+     */
+    private function readable(Task $task): array
+    {
+        $task->unsetRelation('statusRow')->unsetRelation('group');
+        $owners = TaskAssignee::query()->where('task_id', $task->id)->orderBy('position')
+            ->join('users', 'users.id', '=', 'task_assignees.user_id')->pluck('users.name')->implode(', ');
+
+        return [
+            'title' => ['Task', $task->title],
+            'status' => ['Status', $task->statusRow?->name ?? $task->status],
+            'owner' => ['Owner', $owners !== '' ? $owners : null],
+            'due' => ['Due date', $task->due_on?->toDateString()],
+            'group' => ['Group', $task->group?->name],
+        ];
+    }
+
+    /** One Activity row per field that changed since [seen]. */
+    private function recordChanges(Task $task, array $seen, ?User $actor): void
+    {
+        foreach ($this->readable($task) as $field => [$label, $now]) {
+            if (($seen[$field][1] ?? null) !== $now) {
+                $this->activity($task, $field, $label, $seen[$field][1] ?? null, $now, $actor);
+            }
+        }
+    }
+
+    private function activity(Task $task, string $field, string $label, ?string $from, ?string $to, ?User $actor): void
+    {
+        TaskActivity::query()->create([
+            'organization_id' => $task->organization_id, 'task_id' => $task->id, 'user_id' => $actor?->id,
+            'field' => mb_substr($field, 0, 64), 'label' => mb_substr($label, 0, 120), 'from' => $from, 'to' => $to,
+        ]);
     }
 
     /**
@@ -612,6 +654,9 @@ class TaskWriter
             $rows[$column->id] = $row;
         }
 
+        $was = TaskColumnValue::query()->with('column')->where('task_id', $task->id)
+            ->whereIn('column_id', array_keys($rows))->get()->keyBy('column_id');
+
         foreach ($rows as $columnId => $row) {
             $row === null
                 ? TaskColumnValue::query()->where('task_id', $task->id)->where('column_id', $columnId)->delete()
@@ -621,8 +666,18 @@ class TaskWriter
                 );
         }
 
-        // Ids only: a text value can hold anything somebody typed.
+        // Ids only: a text value can hold anything somebody typed. The words
+        // go to the task's own Activity log, which erasure reaches.
         $this->audit->log('task.values_changed', $task, metadata: ['column_ids' => array_keys($rows)], actor: $actor);
+        $now = TaskColumnValue::query()->with('column')->where('task_id', $task->id)
+            ->whereIn('column_id', array_keys($rows))->get()->keyBy('column_id');
+        foreach (array_keys($rows) as $columnId) {
+            $from = $was->has($columnId) ? ColumnConverter::words($columns[$columnId], $was[$columnId]) : null;
+            $to = $now->has($columnId) ? ColumnConverter::words($columns[$columnId], $now[$columnId]) : null;
+            if ($from !== $to) {
+                $this->activity($task, $columnId, $columns[$columnId]->name, $from, $to, $actor);
+            }
+        }
     }
 
     /**

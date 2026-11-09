@@ -111,6 +111,10 @@ class TaskBoardsController extends Controller
             'kind' => $taskBoard->kind,
             'name' => $taskBoard->name,
             'visibility' => $taskBoard->visibility,
+            'edit_mode' => $taskBoard->edit_mode ?? 'everyone',
+            'can_set_edit_mode' => $this->boards->canManage($user, $taskBoard),
+            // In assignee mode: whether this person may change any task, not only their own.
+            'can_edit_all' => ($taskBoard->edit_mode ?? 'everyone') !== 'assignee' || $this->boards->canManage($user, $taskBoard),
             'my_role' => $this->boards->roleOf($user, $taskBoard),
             'members_count' => count($people = $this->effectiveMembers($taskBoard)),
             // The first four people on it, owners first, for the header avatars.
@@ -182,7 +186,13 @@ class TaskBoardsController extends Controller
      */
     public function update(Request $request, TaskBoard $taskBoard): JsonResponse
     {
-        if ($request->hasAny(['name', 'visibility']) || ! $request->has('builtin_columns')) {
+        if ($request->hasAny(['name', 'visibility'])) {
+            $this->authorizeManage($request->user(), $taskBoard);
+        } elseif ($request->has('edit_mode')) {
+            // Automatic boards too: A-1's busiest place board is the one that needs it.
+            $this->authorize('view', $taskBoard);
+            abort_unless($this->boards->canManage($request->user(), $taskBoard), 403, 'Only an owner of this board or an Administrator can do that.');
+        } elseif (! $request->has('builtin_columns')) {
             $this->authorizeManage($request->user(), $taskBoard);
         } else {
             $this->authorize('update', $taskBoard);
@@ -190,6 +200,7 @@ class TaskBoardsController extends Controller
         $input = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'visibility' => ['sometimes', 'required', Rule::in([TaskBoard::MAIN, TaskBoard::PRIVATE])],
+            'edit_mode' => ['sometimes', 'required', Rule::in(['everyone', 'assignee'])],
             'builtin_columns' => ['sometimes', 'array:'.implode(',', array_keys(TaskBoard::BUILTIN_COLUMNS))],
             'builtin_columns.*' => ['array:label,visible'],
             'builtin_columns.*.label' => ['sometimes', 'string', 'min:1', 'max:60'],

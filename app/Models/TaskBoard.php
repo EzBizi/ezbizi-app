@@ -38,7 +38,7 @@ class TaskBoard extends Model implements StatesRetention
 
     public const PRIVATE = 'private';
 
-    protected $fillable = ['organization_id', 'kind', 'company_id', 'franchise_id', 'owner_user_id', 'created_by_user_id', 'name', 'visibility', 'auto_key', 'builtin_columns'];
+    protected $fillable = ['organization_id', 'kind', 'company_id', 'franchise_id', 'owner_user_id', 'created_by_user_id', 'name', 'visibility', 'auto_key', 'builtin_columns', 'edit_mode'];
 
     /**
      * The built-in columns a board can relabel or hide (Jose, 2026-10-20):

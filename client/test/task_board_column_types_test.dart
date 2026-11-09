@@ -47,8 +47,9 @@ void main() {
         width: 240,
         child: ColumnCell(
           column: column('tags', const [
-            (id: 'a', label: 'Complaint', colour: null),
-            (id: 'b', label: 'Bad Review', colour: null),
+            (id: 'a', label: 'Complaint', colour: null, retired: false),
+            (id: 'b', label: 'Bad Review', colour: null, retired: false),
+            (id: 'r', label: 'Old', colour: null, retired: true),
           ]),
           value: const ['a'],
           people: const {},
@@ -69,6 +70,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('column-option-c1-b')).first);
     await tester.pumpAndSettle();
     expect(changes.last, ['a', 'b']);
+    // A retired tag is not offered.
+    expect(find.byKey(const ValueKey('column-option-c1-r')), findsNothing);
 
     await tester.enterText(
       find.byKey(const ValueKey('column-option-new-c1')),

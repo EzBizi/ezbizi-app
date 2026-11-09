@@ -1672,7 +1672,34 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         label: const Text('Statuses…'),
       ),
     if (_canEdit && _board?['builtin_columns'] is Map) _columnsControl(),
+    // Assignee mode (Jose, 2026-11-09, monday's NW board).
+    if (_board?['can_set_edit_mode'] == true)
+      FilterChip(
+        key: const Key('tasks-edit-mode'),
+        avatar: const Icon(Icons.lock_person_outlined, size: 18),
+        showCheckmark: false,
+        label: const Text('Only assignees edit'),
+        tooltip:
+            'On: each person changes only the tasks assigned to them or that '
+            'they made. Owners and Administrators still change everything.',
+        selected: _board?['edit_mode'] == 'assignee',
+        onSelected: (on) => _setEditMode(on ? 'assignee' : 'everyone'),
+      ),
   ];
+
+  Future<void> _setEditMode(String mode) async {
+    final r = await widget.api.patch('/task-boards/${_board!['id']}', {
+      'edit_mode': mode,
+    });
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    await _open(_selected);
+  }
 
   /// Who is on the board, on EVERY board (Jose could not find People: it
   /// showed on boards made with New board only), with its faces when the
@@ -3014,6 +3041,19 @@ class _TaskPanelState extends State<_TaskPanel> {
     });
   }
 
+  /// The task's Activity log, newest first; null until asked for.
+  List<_Json>? _activity;
+
+  Future<void> _loadActivity() async {
+    final r = await widget.api.get('/tasks/${widget.taskId}/activity');
+    if (!mounted) return;
+    setState(
+      () => _activity = r.ok && r.data is List
+          ? (r.data as List).whereType<_Json>().toList()
+          : const [],
+    );
+  }
+
   Future<void> _patch(_Json body) async {
     final res = await widget.api.patch('/tasks/${widget.taskId}', body);
     if (!mounted) return;
@@ -3026,6 +3066,8 @@ class _TaskPanelState extends State<_TaskPanel> {
       // The answer has no updates in it; keep the ones on screen.
       _task = {...res.body['data'] as _Json, 'updates': _task!['updates']};
     });
+    // An open Activity log shows the change just made.
+    if (res.ok && _activity != null) await _loadActivity();
   }
 
   Future<void> _attach() async {
@@ -3364,6 +3406,57 @@ class _TaskPanelState extends State<_TaskPanel> {
                   : null,
             ),
           ),
+        // Activity log (Jose, 2026-11-09, monday's): loaded when opened.
+        ExpansionTile(
+          key: const Key('task-activity'),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          title: Text(
+            'Activity',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          onExpansionChanged: (open) {
+            if (open && _activity == null) _loadActivity();
+          },
+          children: [
+            if (_activity == null)
+              const LinearProgressIndicator()
+            else if (_activity!.isEmpty)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text('No changes yet.', style: muted),
+              )
+            else
+              for (final a in _activity!)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '${a['who'] ?? 'An automation'}  ',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        TextSpan(
+                          text:
+                              '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
+                        ),
+                        TextSpan(
+                          text: formatStamp(
+                            a['at'],
+                            '',
+                            formats: widget.formats,
+                          ),
+                          style: muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+        ),
         const Divider(height: 24),
         Text(
           updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',

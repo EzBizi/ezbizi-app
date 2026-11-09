@@ -159,6 +159,20 @@ class TaskBoardCustomizationTest extends TestCase
             ->assertJsonPath("data.values.{$link}.label", 'Ann Smith');
     }
 
+    public function test_a_retired_label_stays_on_its_tasks(): void
+    {
+        $col = $this->api()->postJson("/api/v1/task-boards/{$this->board->id}/columns", ['name' => 'Reason', 'type' => 'dropdown',
+            'settings' => ['options' => [['label' => 'Parts'], ['label' => 'Spam']]]])->assertCreated()->json('data');
+        [$parts, $spam] = array_column($col['settings']['options'], 'id');
+        $id = $this->newTask(['values' => [$col['id'] => $spam]]);
+
+        $options = [['id' => $parts, 'label' => 'Parts'], ['id' => $spam, 'label' => 'Spam', 'retired' => true]];
+        $this->api()->patchJson("/api/v1/task-boards/{$this->board->id}/columns/{$col['id']}", ['settings' => ['options' => $options]])
+            ->assertOk()->assertJsonPath('data.settings.options.1.retired', true)
+            ->assertJsonMissingPath('data.settings.options.0.retired');
+        $this->api()->getJson("/api/v1/tasks/{$id}")->assertJsonPath("data.values.{$col['id']}", $spam);
+    }
+
     public function test_a_type_change_warns_before_it_clears_values_and_makes_labels_options(): void
     {
         $text = $this->api()->postJson("/api/v1/task-boards/{$this->board->id}/columns", ['name' => 'Kind', 'type' => 'text'])

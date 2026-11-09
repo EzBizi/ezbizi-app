@@ -14,7 +14,9 @@ import '../widgets/side_panel.dart';
 /// etc."). Seven types: text, number, status, date, person, dropdown and
 /// checkbox. A task's values are `{column_id: value}`; a status or dropdown
 /// value is the option's id.
-typedef ColumnOption = ({String id, String label, Color? colour});
+/// [retired]: kept on the tasks that have it, out of every picker (monday's
+/// deactivated label, Jose 2026-11-09).
+typedef ColumnOption = ({String id, String label, Color? colour, bool retired});
 
 typedef BoardColumn = ({
   String id,
@@ -90,6 +92,7 @@ List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
               colour: o['colour'] is String
                   ? ColourField.parse(o['colour'] as String)
                   : null,
+              retired: o['retired'] == true,
             ),
         ],
       ),
@@ -445,12 +448,13 @@ class ColumnCell extends StatelessWidget {
         return MenuAnchor(
           menuChildren: [
             for (final o in column.options)
-              MenuItemButton(
-                key: ValueKey('column-option-${column.id}-${o.id}'),
-                leadingIcon: _dot(o.colour, theme),
-                onPressed: () => onChanged?.call(o.id),
-                child: Text(o.label),
-              ),
+              if (!o.retired || o.id == v)
+                MenuItemButton(
+                  key: ValueKey('column-option-${column.id}-${o.id}'),
+                  leadingIcon: _dot(o.colour, theme),
+                  onPressed: () => onChanged?.call(o.id),
+                  child: Text(o.label),
+                ),
             if (v != null)
               MenuItemButton(
                 onPressed: () => onChanged?.call(null),
@@ -499,20 +503,21 @@ class ColumnCell extends StatelessWidget {
         return MenuAnchor(
           menuChildren: [
             for (final o in column.options)
-              CheckboxMenuButton(
-                key: ValueKey('column-option-${column.id}-${o.id}'),
-                value: ids.contains(o.id),
-                closeOnActivate: false,
-                onChanged: (on) {
-                  final next = [
-                    for (final id in ids)
-                      if (id != o.id) id,
-                    if (on == true) o.id,
-                  ];
-                  onChanged?.call(next.isEmpty ? null : next);
-                },
-                child: Text(o.label),
-              ),
+              if (!o.retired || ids.contains(o.id))
+                CheckboxMenuButton(
+                  key: ValueKey('column-option-${column.id}-${o.id}'),
+                  value: ids.contains(o.id),
+                  closeOnActivate: false,
+                  onChanged: (on) {
+                    final next = [
+                      for (final id in ids)
+                        if (id != o.id) id,
+                      if (on == true) o.id,
+                    ];
+                    onChanged?.call(next.isEmpty ? null : next);
+                  },
+                  child: Text(o.label),
+                ),
             ..._optionTools(theme, (id) => onChanged?.call([...ids, ?id])),
           ],
           builder: (context, menu, _) => InkWell(
@@ -742,7 +747,8 @@ class _ColumnEditorState extends State<ColumnEditor> {
               ]
             : [
                 for (final o in c.options)
-                  SearchOption<String>(value: o.id, label: o.label),
+                  if (!o.retired || o.id == widget.value)
+                    SearchOption<String>(value: o.id, label: o.label),
               ];
         return SearchPickerField<String>(
           key: key,
@@ -763,21 +769,22 @@ class _ColumnEditorState extends State<ColumnEditor> {
           runSpacing: 6,
           children: [
             for (final o in c.options)
-              FilterChip(
-                key: ValueKey('column-editor-${c.id}-${o.id}'),
-                label: Text(o.label),
-                selected: ids.contains(o.id),
-                onSelected: editable
-                    ? (on) {
-                        final next = [
-                          for (final id in ids)
-                            if (id != o.id) id,
-                          if (on) o.id,
-                        ];
-                        widget.onChanged!(next.isEmpty ? null : next);
-                      }
-                    : null,
-              ),
+              if (!o.retired || ids.contains(o.id))
+                FilterChip(
+                  key: ValueKey('column-editor-${c.id}-${o.id}'),
+                  label: Text(o.label),
+                  selected: ids.contains(o.id),
+                  onSelected: editable
+                      ? (on) {
+                          final next = [
+                            for (final id in ids)
+                              if (id != o.id) id,
+                            if (on) o.id,
+                          ];
+                          widget.onChanged!(next.isEmpty ? null : next);
+                        }
+                      : null,
+                ),
           ],
         );
       case 'link':
@@ -1114,13 +1121,16 @@ class _ColumnPanelState extends State<ColumnPanel> {
     setState(() {});
   }
 
-  late final List<({TextEditingController label, String colour, String? id})>
+  late final List<
+    ({TextEditingController label, String colour, String? id, bool retired})
+  >
   _options = [
     for (final o in widget.column?.options ?? const <ColumnOption>[])
       (
         label: TextEditingController(text: o.label),
         colour: o.colour == null ? swatches.first : ColourField.hex(o.colour!),
         id: o.id,
+        retired: o.retired,
       ),
   ];
   bool _saving = false;
@@ -1151,7 +1161,12 @@ class _ColumnPanelState extends State<ColumnPanel> {
       'options': [
         for (final o in _options)
           if (o.label.text.trim().isNotEmpty)
-            {'id': ?o.id, 'label': o.label.text.trim(), 'colour': o.colour},
+            {
+              'id': ?o.id,
+              'label': o.label.text.trim(),
+              'colour': o.colour,
+              if (o.retired) 'retired': true,
+            },
       ],
   };
 
@@ -1405,6 +1420,7 @@ class _ColumnPanelState extends State<ColumnPanel> {
                           label: o.label,
                           colour: hex,
                           id: o.id,
+                          retired: o.retired,
                         ),
                       ),
                     ),
@@ -1420,7 +1436,27 @@ class _ColumnPanelState extends State<ColumnPanel> {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Remove',
+                      key: ValueKey('column-option-retire-$i'),
+                      tooltip: o.retired
+                          ? 'Retired: kept on old tasks, not offered. Bring back'
+                          : 'Retire: keep it on old tasks, stop offering it',
+                      isSelected: o.retired,
+                      icon: const Icon(Icons.visibility_outlined, size: 18),
+                      selectedIcon: const Icon(
+                        Icons.visibility_off_outlined,
+                        size: 18,
+                      ),
+                      onPressed: () => setState(
+                        () => _options[i] = (
+                          label: o.label,
+                          colour: o.colour,
+                          id: o.id,
+                          retired: !o.retired,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete (clears it from every task)',
                       icon: const Icon(Icons.close, size: 18),
                       onPressed: () => setState(() => _options.removeAt(i)),
                     ),
@@ -1436,6 +1472,7 @@ class _ColumnPanelState extends State<ColumnPanel> {
                     label: TextEditingController(),
                     colour: swatches[_options.length % swatches.length],
                     id: null,
+                    retired: false,
                   )),
                 ),
                 icon: const Icon(Icons.add, size: 18),
