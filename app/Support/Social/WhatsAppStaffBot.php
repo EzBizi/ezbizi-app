@@ -765,6 +765,26 @@ final class WhatsAppStaffBot
             StaffAnswer::APP => $found['reply']."\n\n_From EzBizi, read by AI with your access._",
             default => $found['reply']."\n\n_Answered by AI from the Library._",
         }, preview: false);
+        $this->media($number, $to, $found['media'] ?? []);
+    }
+
+    /**
+     * Photos and clips after the text, one a message, fetched by Meta from the
+     * link (Cloud API: an mp4 up to 16 MB goes as video; a bigger one Meta
+     * refuses on the webhook, and the link is in the text already).
+     *
+     * @param  list<string>  $links
+     */
+    private function media(WhatsAppNumber $number, string $to, array $links): void
+    {
+        foreach ($links as $link) {
+            $type = str_ends_with(strtolower($link), '.mp4') ? 'video' : 'image';
+            try {
+                $this->cloud->replyFreeForm($number, $to, ['type' => $type, $type => ['link' => $link]], $link);
+            } catch (\RuntimeException $e) {
+                report($e);
+            }
+        }
     }
 
     public static function isCommand(string $query): bool
@@ -872,14 +892,18 @@ final class WhatsAppStaffBot
     public function appReply(WhatsAppNumber $number, string $to, User $viewer, string $query): void
     {
         try {
-            $reply = AppAsk::answer($viewer, $query);
+            $app = AppAsk::answerWithMedia($viewer, $query);
         } catch (\RuntimeException) {
-            $reply = null;
+            $app = null;
         }
 
-        $reply === null
-            ? $this->nothingMatched($number, $to, $viewer, $query)
-            : $this->text($number, $to, $reply."\n\n_From EzBizi, read by AI with your access._", preview: false);
+        if ($app === null) {
+            $this->nothingMatched($number, $to, $viewer, $query);
+
+            return;
+        }
+        $this->text($number, $to, $app['reply']."\n\n_From EzBizi, read by AI with your access._", preview: false);
+        $this->media($number, $to, $app['media']);
     }
 
     /** AnswerWhatsAppWithTech's half: the tech assistant's answer, a photo read when one came. */

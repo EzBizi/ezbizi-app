@@ -45,7 +45,7 @@ final class StaffAnswer
 
     /**
      * @param  array<string, string>  $files  a photo, for the Tech Assistant only
-     * @return array{source: string, reply: string, entry_ids: list<string>, tech: ?array}|null
+     * @return array{source: string, reply: string, entry_ids: list<string>, tech: ?array, media?: list<string>}|null
      *
      * @throws \RuntimeException when every step that ran failed rather than found nothing
      */
@@ -88,9 +88,9 @@ final class StaffAnswer
         }
 
         try {
-            $reply = $left() >= 20 ? AppAsk::answer($user, $question, $left() - 5) : null;
-            if ($reply !== null) {
-                return ['source' => self::APP, 'reply' => $reply, 'entry_ids' => [], 'tech' => null];
+            $app = $left() >= 20 ? AppAsk::answerWithMedia($user, $question, $left() - 5) : null;
+            if ($app !== null) {
+                return ['source' => self::APP, 'reply' => $app['reply'], 'entry_ids' => [], 'tech' => null, 'media' => $app['media']];
             }
         } catch (\RuntimeException $e) {
             $failed = $e;
