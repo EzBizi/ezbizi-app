@@ -344,7 +344,10 @@ class TaskBoardSettingsController extends Controller
                 throw ValidationException::withMessages(["settings.options.{$i}.id" => 'Two options share an id.']);
             }
             $colour = $o['colour'] ?? null;
-            $out[$id] = ['id' => $id, 'label' => trim($label), 'colour' => is_string($colour) ? mb_substr($colour, 0, 16) : null];
+            $out[$id] = ['id' => $id, 'label' => trim($label), 'colour' => is_string($colour) ? mb_substr($colour, 0, 16) : null]
+                // Retired (Jose, 2026-11-09, monday's deactivated label): kept on
+                // the tasks that have it, left out of every picker.
+                + (($o['retired'] ?? false) === true ? ['retired' => true] : []);
         }
 
         return array_values($out);

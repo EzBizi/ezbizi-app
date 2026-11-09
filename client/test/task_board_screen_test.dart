@@ -106,6 +106,20 @@ void main() {
             },
           });
         }
+        if (path.endsWith('/activity')) {
+          return json({
+            'data': [
+              {
+                'id': 'a1',
+                'at': '2026-11-09T15:00:00Z',
+                'who': 'Omar Feld',
+                'label': 'Status',
+                'from': 'Working on it',
+                'to': 'Stuck',
+              },
+            ],
+          });
+        }
         if (path == '/task-boards') {
           return json({
             'data': [
@@ -383,6 +397,14 @@ void main() {
     expect(find.text('Automation "Liner job booked"'), findsOneWidget);
     expect(find.text('Late'), findsOneWidget);
 
+    // Activity: who changed what, from and to (Jose, 2026-11-09).
+    await tester.ensureVisible(find.byKey(const Key('task-activity')));
+    await tester.tap(find.byKey(const Key('task-activity')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Status: Working on it → Stuck'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('task-activity')));
+    await tester.pumpAndSettle();
+
     await tester.tap(
       find.byKey(const ValueKey('task-panel-status-working_on_it')),
     );
@@ -393,6 +415,8 @@ void main() {
       find.byKey(const Key('task-update-body')),
       'Elgin has them.',
     );
+    await tester.ensureVisible(find.byKey(const Key('task-update-post')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('task-update-post')));
     await tester.pumpAndSettle();
     sent(log.last, 'POST', '/tasks/t2/updates', {'body': 'Elgin has them.'});

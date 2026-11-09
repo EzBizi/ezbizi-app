@@ -44,7 +44,7 @@ class ColumnConverter
     }
 
     /** The value as a person reads it, or null when there is nothing to carry. */
-    private function words(TaskColumn $column, TaskColumnValue $v): ?string
+    public static function words(TaskColumn $column, TaskColumnValue $v): ?string
     {
         $value = TasksController::valueOf($v);
         $label = fn (string $id) => collect($column->options())->firstWhere('id', $id)['label'] ?? null;

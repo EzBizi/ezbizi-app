@@ -336,6 +336,17 @@ class TasksController extends Controller
         ];
     }
 
+    /** GET tasks/{task}/activity: its Activity log, newest first (Jose, 2026-11-09). */
+    public function activity(Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+
+        return response()->json(['data' => \App\Models\TaskActivity::query()->where('task_id', $task->id)
+            ->with('user:id,name')->latest('created_at')->limit(200)->get()
+            ->map(fn ($a) => ['id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->user?->name,
+                'field' => $a->field, 'label' => $a->label, 'from' => $a->from, 'to' => $a->to])->values()]);
+    }
+
     /** A stored value as the client reads it, by its column's type. */
     public static function valueOf(TaskColumnValue $v): mixed
     {
