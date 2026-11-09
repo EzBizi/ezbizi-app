@@ -16,6 +16,7 @@ import 'templates_pane.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/shortcode_button.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/social_network_mark.dart';
 import '../../widgets/tab_bar_like.dart';
 import 'hours.dart';
 import 'hours_bulk.dart';
@@ -1447,6 +1448,13 @@ class _SiteDetailState extends State<_SiteDetail> {
           // publishes is legible without pretending somebody typed it — in
           // italics, which nothing typed ever is.
           hintText: isInheriting ? inherited : null,
+          // Social links wear their network's mark (Jose, 2026-11-09).
+          prefixIcon: field['section'] == 'social'
+              ? Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: SocialNetworkMark(network: key, size: 20),
+                )
+              : null,
           hintStyle: theme.textTheme.bodyMedium?.copyWith(
             fontStyle: FontStyle.italic,
             color: theme.colorScheme.outline,

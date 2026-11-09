@@ -49,6 +49,19 @@ class SocialNetworkMark extends StatelessWidget {
     'airtable': 'assets/social/airtable.svg',
     'whatsapp': 'assets/social/whatsapp.svg',
     'telegram': 'assets/social/telegram.svg',
+
+    // Web Management's Social links fields, keyed as SeoFields keys them
+    // (Jose, 2026-11-09: each network's logo in its field).
+    'facebook': 'assets/social/facebook.svg',
+    'instagram': 'assets/social/instagram.svg',
+    'twitter': 'assets/social/x.svg',
+    'google_business': 'assets/social/google.svg',
+    'yelp': 'assets/social/yelp.svg',
+    'bbb': 'assets/social/bbb.svg',
+    'nextdoor': 'assets/social/nextdoor.svg',
+    'houzz': 'assets/social/houzz.svg',
+    'angi': 'assets/social/angi.svg',
+    'homeadvisor': 'assets/social/homeadvisor.svg',
   };
 
   @override
