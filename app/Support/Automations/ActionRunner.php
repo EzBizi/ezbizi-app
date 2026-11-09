@@ -3834,7 +3834,9 @@ class ActionRunner
         if (trim($text) === '') {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nothing to report today, so nothing was sent.'];
         }
-        $title = DailyTexts::KINDS[$kind].' · '.$day->format('M j');
+        // A company's rule says whose report it is (Ace Fireplace's daily beside A-1's, 2026-11-09).
+        $company = $automation->scope_type === 'company' ? Company::query()->find($automation->scope_id)?->name : null;
+        $title = ($company === null ? '' : $company.' · ').DailyTexts::KINDS[$kind].' · '.$day->format('M j');
 
         // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
         $sent = self::deliverReportText((string) ($action['from'] ?? ''), self::idList($action['user_ids'] ?? []),

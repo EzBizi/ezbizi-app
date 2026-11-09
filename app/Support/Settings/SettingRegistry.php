@@ -1292,13 +1292,13 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'ai_assistance.report_template',
-                label: 'WhatsApp template for a report text',
+                label: 'WhatsApp template for a report',
                 type: SettingDefinition::TYPE_STRING,
-                default: 'report_statement',
+                default: 'report_document',
                 allowedScopes: $orgOnly,
                 editPermission: 'ai_assistance.manage',
-                help: 'An approved template with a document header and one value, the report\'s title. '
-                    .'Every scheduled report text goes as a PDF in it, so it arrives whether or not the person wrote in the last 24 hours.',
+                help: 'An approved template on the Reports number with a document header and two values: the report, and who it is for. '
+                    .'Every report goes as a file in it (a text as a PDF), so it arrives whether or not the person wrote in the last 24 hours.',
             ),
             new SettingDefinition(
                 key: 'ai_assistance.results_words',

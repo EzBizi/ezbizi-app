@@ -94,16 +94,14 @@ class WhatsAppGroupsTest extends TestCase
 
         $this->assertSame(2, $this->deliver());
 
+        // 2026-11-09: outside the window the report itself goes, as a PDF in the document template; nothing is held.
         $byTo = collect($this->sent)->keyBy('to');
         $this->assertSame('NJ: 50 jobs', $byTo['13055550101']['text']['body']);
-        $this->assertSame('automation_alert', $byTo['13055550102']['template']['name']);
-        $this->assertSame('A1 NJ Same-Day Report', $byTo['13055550102']['template']['components'][0]['parameters'][0]['text']);
-        $this->assertCount(2, $this->sent);
-
-        $this->assertSame(
-            ['13055550102'],
-            WhatsAppPendingReport::query()->withoutGlobalScopes()->whereNull('delivered_at')->pluck('counterparty')->all(),
-        );
+        $this->assertSame('report_document', $byTo['13055550102']['template']['name']);
+        $this->assertSame('document', $byTo['13055550102']['template']['components'][0]['parameters'][0]['type']);
+        $this->assertSame('A1 NJ Same-Day Report', $byTo['13055550102']['template']['components'][1]['parameters'][0]['text']);
+        $this->assertCount(3, $this->sent, 'the text, the one upload, the template');
+        $this->assertSame(0, WhatsAppPendingReport::query()->withoutGlobalScopes()->count());
     }
 
     /** 2026-11-09: 93 of 107 report texts sat behind "reply to get it"; each now goes as a PDF in the document template. */
@@ -126,7 +124,7 @@ class WhatsAppGroupsTest extends TestCase
         $templates = collect($this->sent)->where('type', 'template')->values();
         $this->assertSame(['13055550101', '13055550102'], $templates->pluck('to')->all());
         $this->assertCount(0, collect($this->sent)->where('type', 'text'));
-        $this->assertSame('report_statement', $templates[0]['template']['name']);
+        $this->assertSame('report_document', $templates[0]['template']['name']);
         $this->assertSame(['type' => 'document', 'document' => ['id' => 'MEDIA-1', 'filename' => 'revenue-collected-nov-9.pdf']],
             $templates[0]['template']['components'][0]['parameters'][0]);
         $this->assertSame('Revenue collected · Nov 9', $templates[0]['template']['components'][1]['parameters'][0]['text']);
@@ -147,10 +145,9 @@ class WhatsAppGroupsTest extends TestCase
 
     public function test_show_report_delivers_what_was_held_and_nothing_else(): void
     {
-        $group = $this->group();
-        $this->member($group, '(305) 555-0102');
-        $this->deliver();
-        $this->sent = [];
+        // Held before 2026-11-09, when reports stopped waiting behind a notice.
+        $this->inTenant($this->t['org'], fn () => WhatsAppPendingReport::create(['organization_id' => $this->t['org']->id,
+            'phone_number_id' => self::NUMBER, 'counterparty' => '13055550102', 'body' => 'NJ: 50 jobs']));
 
         $this->inbound(['type' => 'button', 'button' => ['text' => 'Show report', 'payload' => 'Show report']])->assertOk();
 
