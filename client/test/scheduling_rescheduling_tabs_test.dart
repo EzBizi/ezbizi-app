@@ -11,59 +11,59 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Scheduling › Re-Scheduling holds Rescheduling Availability (Booked vs
-/// available) and AI rescheduling suggestions; Overbooking is overbooked days
-/// only (Jose, 2026-10-26).
+/// Scheduling › Re-Scheduling (Jose, 2026-11-09): one tab, sub-tabs
+/// Overbooking, Underbooking (booked vs available) and AI suggestions, all on
+/// `scheduling.rescheduling.view`. There is no top-level Overbooking tab.
 void main() {
-  const both = [
-    'scheduling.view',
-    'scheduling.overbooking.view',
-    'scheduling.rescheduling.view',
-  ];
+  const grant = ['scheduling.view', 'scheduling.rescheduling.view'];
 
   tearDown(() => DeepLinks.pending.value = null);
 
-  testWidgets('Re-Scheduling draws both sub-tabs, Availability first', (
-    tester,
-  ) async {
-    final gets = await _pump(tester, both);
-    await tester.tap(find.text('Re-Scheduling'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'one Re-Scheduling tab: Overbooking, Underbooking, AI suggestions',
+    (tester) async {
+      final gets = await _pump(tester, grant);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('tour-scheduling-tabs')),
+          matching: find.text('Overbooking'),
+        ),
+        findsNothing,
+        reason: 'no top-level tab',
+      );
+      await tester.tap(find.text('Re-Scheduling'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Rescheduling Availability'), findsOneWidget);
-    expect(find.text('AI rescheduling suggestions'), findsOneWidget);
-    expect(find.byKey(const ValueKey('tour-booked-day')), findsOneWidget);
-    expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isTrue);
+      final sub = find.byKey(
+        const ValueKey('tour-scheduling-rescheduling-segments'),
+      );
+      for (final label in ['Overbooking', 'Underbooking', 'AI suggestions']) {
+        expect(
+          find.descendant(of: sub, matching: find.text(label)),
+          findsOneWidget,
+        );
+      }
+      expect(
+        gets.any((u) => u.path.endsWith('/scheduling/overbooking')),
+        isTrue,
+        reason: 'Overbooking first',
+      );
+      expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isFalse);
 
-    await tester.tap(find.text('AI rescheduling suggestions'));
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('tour-booked-day')).hitTestable(),
-      findsNothing,
-    );
-    expect(find.byType(ReschedulingPane), findsOneWidget);
-  });
+      await tester.tap(find.text('Underbooking'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('tour-booked-day')), findsOneWidget);
+      expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isTrue);
 
-  testWidgets('Overbooking has no segment: overbooked days only', (
-    tester,
-  ) async {
-    final gets = await _pump(tester, both);
-    await tester.tap(find.text('Overbooking').first);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Booked vs available'), findsNothing);
-    expect(find.text('Overbooked days'), findsNothing);
-    expect(
-      find.byKey(const ValueKey('tour-scheduling-overbooking-segments')),
-      findsNothing,
-    );
-    expect(find.text('Rescheduling Availability'), findsNothing);
-    expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isFalse);
-  });
+      await tester.tap(find.text('AI suggestions'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ReschedulingPane), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'the old /scheduling/overbooking?date= link opens Re-Scheduling > '
-    'Rescheduling Availability on that day',
+    'Underbooking on that day',
     (tester) async {
       DeepLinks.open(
         DeepLinks.fromUri(
@@ -72,9 +72,8 @@ void main() {
           ),
         )!,
       );
-      final gets = await _pump(tester, both);
+      final gets = await _pump(tester, grant);
 
-      expect(find.text('Rescheduling Availability'), findsOneWidget);
       expect(
         gets
             .where((u) => u.path.endsWith('/overbooking/fill'))
@@ -86,36 +85,17 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Re-Scheduling-only access still gets Rescheduling Availability',
-    (tester) async {
-      final gets = await _pump(tester, const [
-        'scheduling.view',
-        'scheduling.rescheduling.view',
-      ]);
+  testWidgets('without the grant there is no Re-Scheduling', (tester) async {
+    final gets = await _pump(tester, const [
+      'scheduling.view',
+      'scheduling.availability.view',
+    ]);
 
-      expect(find.text('Overbooking'), findsNothing);
-      expect(find.text('Rescheduling Availability'), findsOneWidget);
-      expect(find.text('AI rescheduling suggestions'), findsOneWidget);
-      expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isTrue);
-    },
-  );
+    expect(find.text('Re-Scheduling'), findsNothing);
+    expect(gets.any((u) => u.path.contains('/overbooking')), isFalse);
+  });
 
-  testWidgets(
-    'with neither grant there is no Re-Scheduling and no availability',
-    (tester) async {
-      final gets = await _pump(tester, const [
-        'scheduling.view',
-        'scheduling.availability.view',
-      ]);
-
-      expect(find.text('Re-Scheduling'), findsNothing);
-      expect(find.text('Rescheduling Availability'), findsNothing);
-      expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isFalse);
-    },
-  );
-
-  testWidgets('phone 390x844: both sub-tabs, no overflow', (tester) async {
+  testWidgets('phone 390x844: every sub-tab, no overflow', (tester) async {
     final errors = <FlutterErrorDetails>[];
     final previous = FlutterError.onError;
     FlutterError.onError = errors.add;
@@ -128,12 +108,13 @@ void main() {
         ),
       )!,
     );
-    await _pump(tester, both, size: const Size(390, 844));
-    expect(find.text('Rescheduling Availability'), findsOneWidget);
-    await tester.ensureVisible(find.text('AI rescheduling suggestions'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('AI rescheduling suggestions'));
-    await tester.pumpAndSettle();
+    await _pump(tester, grant, size: const Size(390, 844));
+    for (final label in ['Overbooking', 'AI suggestions']) {
+      await tester.ensureVisible(find.text(label));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+    }
     expect(
       errors,
       isEmpty,

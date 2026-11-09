@@ -1516,6 +1516,12 @@ class SettingRegistry
             ),
             // "An earlier opening" texts from Scheduling › Overbooking (Shoval, 2026-10-26).
             new SettingDefinition(
+                key: 'scheduling.overbooked_offer_message', label: 'Overbooked-day text',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'Hi {name}, {company} is very busy on {booked}. Would {date}, {window} work for you instead? Reply YES and we will move your appointment.',
+                help: 'Sent from Re-Scheduling › Overbooking to customers on a day booked past what it takes. {name}, {company}, {booked} (their day), {date} and {window} (the day offered).',
+            ),
+            new SettingDefinition(
                 key: 'scheduling.offer_message', label: 'Earlier-opening text',
                 type: SettingDefinition::TYPE_STRING,
                 default: 'Hi {name}, {company} has an earlier opening on {date}, {window}. Reply YES if you would like it and we will move your appointment.',

@@ -77,8 +77,8 @@ class SchedulingLocationsTest extends TestCase
                 'organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id, 'connection_id' => $gbp->id,
                 'remote_name' => 'locations/'.bin2hex(random_bytes(4)), 'title' => 'A1 Chimney', 'verification_state' => 'VERIFIED', ...$a,
             ]);
-            // Same place as the Dallas website row, with Google's current phone.
-            $listing(['address_line1' => '11836 Judd Ct', 'city' => 'Dallas', 'state' => 'TX', 'postal_code' => '75243', 'phone' => '(469) 000-1111']);
+            // Same place as the Dallas website row, spelled out ("Court" for "Ct"), with Google's current phone.
+            $listing(['address_line1' => '11836 Judd Court #330', 'city' => 'Dallas', 'state' => 'TX', 'postal_code' => '75243', 'phone' => '(469) 000-1111']);
             // A service-area listing (no public address) whose phone is the Houston row's: Houston stays as the website has it.
             $listing(['phone' => '(469) 454-0303']);
         });
@@ -111,9 +111,9 @@ class SchedulingLocationsTest extends TestCase
 
         $rows = collect($this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/locations')->assertOk()->json('data'))->keyBy('name');
 
-        $this->assertSame(['A1 Chimney · Warren, MI', 'Dallas', 'Houston'], $rows->keys()->sort()->values()->all());
-        $this->assertSame(['Warren', 'MI', ['Warren, MI, USA', 'Detroit, MI, USA']],
-            [$rows['A1 Chimney · Warren, MI']['city'], $rows['A1 Chimney · Warren, MI']['state'], $rows['A1 Chimney · Warren, MI']['service_places']]);
+        $this->assertSame(['Dallas', 'Houston', 'Warren'], $rows->keys()->sort()->values()->all(), 'The place alone: the company is drawn beside it.');
+        $this->assertSame(['MI', ['Warren, MI, USA', 'Detroit, MI, USA'], 'Warren, MI; Detroit, MI'],
+            [$rows['Warren']['state'], $rows['Warren']['service_places'], $rows['Warren']['service_area']], 'Serves: where Google says it works.');
         $this->assertSame('1 Houston St', $rows['Houston']['address_line1'], 'The filled row stands; the empty one is gone.');
     }
 

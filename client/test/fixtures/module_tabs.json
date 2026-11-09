@@ -317,7 +317,6 @@
             "tabs": [
                 "Availability",
                 "Schedule",
-                "Overbooking",
                 "Re-Scheduling",
                 "Routing",
                 "Helpers",
@@ -623,7 +622,6 @@
         "scheduling.edit",
         "scheduling.helpers.view",
         "scheduling.locations.view",
-        "scheduling.overbooking.view",
         "scheduling.rescheduling.view",
         "scheduling.routing.view",
         "scheduling.schedule.view",

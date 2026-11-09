@@ -1526,11 +1526,11 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('availability', 'Availability'),
                     new TabDefinition('schedule', 'Schedule'),
-                    // Jose, 2026-09-29: "a new tab on scheduling that warns me
-                    // about all the overbookings call it Overbooking".
-                    new TabDefinition('overbooking', 'Overbooking'),
-                    // Jose, 2026-10-13: booked jobs that would sit better on
-                    // another day, beside other work (App\Support\Scheduling\Reschedules).
+                    // One tab since 2026-11-09 (Jose): Re-Scheduling, with
+                    // Overbooking (was its own tab, 2026-09-29), Underbooking
+                    // (booked vs available, earlier-opening offers) and the AI
+                    // suggestions (App\Support\Scheduling\Reschedules) under it.
+                    // Roles that held Overbooking were granted this tab.
                     new TabDefinition('rescheduling', 'Re-Scheduling'),
                     // Jose, 2026-10-14: a route per technician (capacity / 6),
                     // opened in Google Maps (App\Support\Scheduling\Routes).

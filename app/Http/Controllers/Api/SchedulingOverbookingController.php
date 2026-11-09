@@ -15,6 +15,7 @@ use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Scheduling › Overbooking (Jose, 2026-09-29: "a new tab on scheduling that
@@ -97,7 +98,7 @@ class SchedulingOverbookingController extends Controller
     {
         [$area, $date] = $this->offerTarget($request);
 
-        return response()->json(['data' => $offers->preview($area, $date)]);
+        return response()->json(['data' => $offers->preview($area, $date, $this->kind($request))]);
     }
 
     /** POST /scheduling/overbooking/offers/send {area_id, date, job_ids} (scheduling.edit) */
@@ -107,7 +108,14 @@ class SchedulingOverbookingController extends Controller
         [$area, $date] = $this->offerTarget($request);
         $ids = $request->validate(['job_ids' => ['required', 'array', 'min:1'], 'job_ids.*' => ['uuid']])['job_ids'];
 
-        return response()->json(['data' => $offers->send($area, $date, $ids, $request->user())]);
+        return response()->json(['data' => $offers->send($area, $date, $ids, $request->user(), $this->kind($request))]);
+    }
+
+    /** `kind`: underbooked (an open spot, the default) or overbooked (move off a full day). */
+    private function kind(Request $request): string
+    {
+        return $request->validate(['kind' => ['nullable', Rule::in([RescheduleOffers::UNDERBOOKED, RescheduleOffers::OVERBOOKED])]])['kind']
+            ?? RescheduleOffers::UNDERBOOKED;
     }
 
     /** GET /scheduling/reschedule-offers?lead_id= : the offer a lead's thread is about, if any */

@@ -750,7 +750,7 @@ class SchedulingAvailabilityTest extends TestCase
             ->assertJsonPath('data.0.sent_automatically', true)
             ->assertJsonPath('data.0.sent_by.0.name', 'Morning overbooking mail');
 
-        $reader = $this->userWithRole($tenant, 'Dispatcher', ['scheduling.view', 'scheduling.overbooking.view']);
+        $reader = $this->userWithRole($tenant, 'Dispatcher', ['scheduling.view', 'scheduling.rescheduling.view']);
         $body = $this->signedInAs($reader)->getJson('/api/v1/scheduling/reports')
             ->assertOk()
             ->assertJsonPath('data.0.sent_automatically', true)
