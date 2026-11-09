@@ -25,6 +25,7 @@ import 'async_body.dart';
 import 'book_job_panel.dart';
 import 'lead_edit_panel.dart';
 import 'lead_source_details.dart';
+import 'mention_field.dart';
 import 'proofread_hint.dart';
 import 'side_panel.dart';
 import 'search_picker.dart';
@@ -72,6 +73,7 @@ class LeadThread extends StatefulWidget {
     this.onReplied,
     this.onStar,
     this.onNote,
+    this.noteMentions,
     this.session,
     this.onBooked,
     this.onHidden,
@@ -110,6 +112,10 @@ class LeadThread extends StatefulWidget {
   /// the save was refused.
   final Future<Map<String, dynamic>?> Function(bool starred)? onStar;
   final Future<Map<String, dynamic>?> Function(String? note)? onNote;
+
+  /// Who the note box @mentioned, read by [onNote]'s owner on save (monday
+  /// port, 2026-11-09). Null: no @ picker.
+  final MentionController? noteMentions;
 
   /// Needed to book (the franchise list, the display formats, the job
   /// panel). Book is drawn only when both this and [onBooked] are given.
@@ -301,6 +307,15 @@ class _LeadThreadState extends State<LeadThread> {
   void initState() {
     super.initState();
     _load();
+    // Its note is read now (unread notes, monday port 2026-11-09).
+    if ((widget.lead['unread_notes'] as num? ?? 0) > 0) {
+      unawaited(
+        widget.api.post('/note-reads', {
+          'type': 'lead',
+          'id': widget.lead['id'],
+        }),
+      );
+    }
     _poll = Timer.periodic(
       _isLiveChat ? const Duration(seconds: 3) : _pollEvery,
       (_) => _load(quiet: true),
@@ -326,6 +341,17 @@ class _LeadThreadState extends State<LeadThread> {
     if (!mounted || fresh == null) return;
     setState(() => _lead = fresh);
   }
+
+  Widget _withMentions(Widget box) => widget.noteMentions == null
+      ? box
+      : MentionField(
+          api: widget.api,
+          type: 'lead',
+          id: '${widget.lead['id']}',
+          controller: _note,
+          mentions: widget.noteMentions!,
+          child: box,
+        );
 
   Future<void> _saveNote() async {
     setState(() => _savingNote = true);
@@ -1959,17 +1985,19 @@ class _LeadThreadState extends State<LeadThread> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
-              key: const ValueKey('note-box'),
-              controller: _note,
-              minLines: 1,
-              maxLines: 4,
-              autofocus: true,
-              enabled: !_savingNote,
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: 'A note for whoever picks this up next',
-                border: OutlineInputBorder(),
+            _withMentions(
+              TextField(
+                key: const ValueKey('note-box'),
+                controller: _note,
+                minLines: 1,
+                maxLines: 4,
+                autofocus: true,
+                enabled: !_savingNote,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'A note for whoever picks this up next (@ to mention)',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
             const SizedBox(height: 6),

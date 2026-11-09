@@ -106,6 +106,10 @@ class TaskBoardsController extends Controller
             ->orderBy('created_at')
             ->get();
 
+        $unread = \App\Support\Notes\NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
+            $tasks->concat($rolled)->map(fn (Task $t) => (string) $t->id)->all(), (string) $user->id);
+        $present = fn (Task $t) => TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0];
+
         return response()->json(['data' => [
             'id' => $taskBoard->id,
             'kind' => $taskBoard->kind,
@@ -134,8 +138,8 @@ class TaskBoardsController extends Controller
             'views' => TaskBoardViewsController::visible($taskBoard, $user->id),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
             'assignable' => $this->boards->assignable($taskBoard)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
-            'tasks' => $tasks->map(fn (Task $t) => TasksController::present($t))
-                ->concat($rolled->map(fn (Task $t) => TasksController::present($t) + ['rolled_up_from' => [
+            'tasks' => $tasks->map($present)
+                ->concat($rolled->map(fn (Task $t) => $present($t) + ['rolled_up_from' => [
                     'board_id' => $t->board_id,
                     'board_name' => $sources[$t->board_id]->name,
                     // The client files it under this board's group of the same name.

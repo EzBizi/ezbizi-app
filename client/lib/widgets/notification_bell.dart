@@ -478,7 +478,7 @@ class _NotificationBellState extends State<NotificationBell>
     String? last;
     for (final n in _items) {
       if (_unreadOnly && n['read_at'] != null) continue;
-      if (_show == 'assigned' && n['kind'] != 'assigned') continue;
+      if (_show != 'all' && n['kind'] != _show) continue;
       final b = bucket(n['created_at']);
       if (b != last) {
         rows.add(last = b);
@@ -562,6 +562,10 @@ class _NotificationBellState extends State<NotificationBell>
                       key: const Key('notifications-show'),
                       segments: const [
                         ButtonSegment(value: 'all', label: Text('All')),
+                        ButtonSegment(
+                          value: 'mentioned',
+                          label: Text('Mentioned'),
+                        ),
                         ButtonSegment(
                           value: 'assigned',
                           label: Text('Assigned to me'),

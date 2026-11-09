@@ -450,6 +450,9 @@ class LeadsController extends Controller
         $viewers = LeadPresence::others(array_map(fn (Lead $l) => (string) $l->id, $leads->items()), $user);
 
         // The preview is an ad's preset question (Meta's is_ad_question): the list says so in muted text.
+        $unreadNotes = \App\Support\Notes\NoteActivity::unreadLeadNotes(
+            array_map(fn (Lead $l) => (string) $l->id, $leads->items()), (string) $user->getKey());
+
         $adAsked = LeadConversation::query()->whereIn('lead_id', array_map(fn (Lead $l) => $l->id, $leads->items()))
             ->where('is_ad_question', true)->selectRaw('lead_id, MAX(occurred_at) as at')->groupBy('lead_id')->pluck('at', 'lead_id');
 
@@ -458,6 +461,7 @@ class LeadsController extends Controller
                 ...$this->present($l),
                 // Who else has it open right now (Jose, 2026-09-29).
                 'viewers' => $viewers[(string) $l->id] ?? [],
+                'unread_notes' => $unreadNotes[(string) $l->id] ?? 0,
                 'last_contact_ad_question' => isset($adAsked[$l->id]) && $l->last_contact_at !== null
                     && Carbon::parse($adAsked[$l->id])->equalTo($l->last_contact_at),
                 'customer' => ($c = $customers[(string) $l->id] ?? null) === null
@@ -1598,6 +1602,8 @@ class LeadsController extends Controller
             'status' => ['sometimes', 'string', Rule::in(Lead::STATUSES)],
             'starred' => ['sometimes', 'boolean'],
             'note' => ['sometimes', 'nullable', 'string', 'max:4000'],
+            'mentions' => ['sometimes', 'array', 'max:50'],
+            'mentions.*' => ['uuid'],
             'contact_name' => ['sometimes', 'nullable', 'string', 'max:191'],
             'postal_code' => ['sometimes', 'nullable', 'string', 'max:10'],
             'classification' => ['sometimes', 'nullable', 'string', Rule::in(['BOOK', 'SUPPORT', 'ARCHIVE'])],
@@ -1639,6 +1645,9 @@ class LeadsController extends Controller
                 $lead->note = $note;
                 $lead->note_by_user_id = $note === null ? null : $request->user()->getKey();
                 $lead->note_updated_at = $note === null ? null : now();
+                // @mentions (monday port, 2026-11-09), cleared with the note.
+                $lead->note_mentions = $note === null ? null
+                    : (app(\App\Support\Notes\NoteActivity::class)->mention($lead, $input['mentions'] ?? [], $request->user(), $note) ?: null);
             }
         }
 

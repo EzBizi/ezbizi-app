@@ -1,5 +1,6 @@
 import '../core/deep_links.dart';
 import '../widgets/list_search.dart';
+import '../widgets/mention_field.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -1012,6 +1013,10 @@ class _JobsScreenState extends State<JobsScreen> {
               const SizedBox(width: 6),
               Flexible(child: JobTypeLabel(jobType(job)!)),
             ],
+            if (_unreadMark(job) case final mark?) ...[
+              const SizedBox(width: 10),
+              mark,
+            ],
           ],
         ),
       ),
@@ -1127,6 +1132,24 @@ class _JobsScreenState extends State<JobsScreen> {
     );
   }
 
+  /// Notes somebody else wrote since this person last opened the job's notes
+  /// (monday port, 2026-11-09); null when there are none.
+  Widget? _unreadMark(Map<String, dynamic> job) {
+    if ((job['unread_notes'] as num? ?? 0) <= 0) return null;
+    return Tooltip(
+      message: 'New notes',
+      child: unreadNotesBadge(
+        Icon(
+          Icons.sticky_note_2_outlined,
+          size: 16,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        job['unread_notes'],
+        key: ValueKey('job-unread-${job['id']}'),
+      ),
+    );
+  }
+
   Widget _tile(BuildContext context, Map<String, dynamic> job) {
     final role = (job['assigned_role'] as Map?)?['name'] as String?;
 
@@ -1147,10 +1170,17 @@ class _JobsScreenState extends State<JobsScreen> {
         tone: toneForJobStatus('${job['status'] ?? ''}'),
       ),
       // Phone 4: the type, then the first tag and "+N".
-      footer: jobType(job) == null && jobTags(job).isEmpty
+      footer:
+          jobType(job) == null &&
+              jobTags(job).isEmpty &&
+              _unreadMark(job) == null
           ? null
           : Row(
               children: [
+                if (_unreadMark(job) case final mark?) ...[
+                  mark,
+                  const SizedBox(width: 10),
+                ],
                 if (jobType(job) != null)
                   Flexible(child: JobTypeLabel(jobType(job)!)),
                 if (jobTags(job).isNotEmpty)

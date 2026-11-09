@@ -284,9 +284,8 @@ class NotificationsController extends Controller
                 'id' => $notification->subject_id,
             ],
             'meta' => $this->destination($notification, $events),
-            // The inbox's "Assigned to me" tab (monday port, 2026-11-09): the
-            // event that sent it handed this person something. There is no
-            // @mention anywhere in EzBizi yet, so no "mentioned" kind either.
+            // The inbox's "Assigned to me" and "Mentioned" tabs (monday port,
+            // 2026-11-09): handed this person something, or @mentioned them.
             'kind' => $this->kindOf($notification, $events),
             // Jose, 2026-10-22: the panel and the desktop toast lead with the
             // same "EzBizi - Company - Branch" as the push and the mail.
@@ -298,6 +297,10 @@ class NotificationsController extends Controller
 
     private function kindOf(Notification $notification, $events): ?string
     {
+        if ($notification->source === 'mention') {
+            return 'mentioned';
+        }
+
         $key = $notification->event_id === null ? null : $events->get($notification->event_id)?->event_key;
 
         return $key !== null && preg_match('/\.(assigned|assign|assign_to_user|assignment_added)$/', $key) ? 'assigned' : null;
@@ -321,6 +324,8 @@ class NotificationsController extends Controller
     private const SUBJECT_MODULES = [
         Suggestion::class => 'suggestions',
         Lead::class => 'leads',
+        \App\Models\Job::class => 'jobs',
+        \App\Models\Task::class => 'tasks',
         TimeClockCorrectionRequest::class => 'work_hours',
         TimeClockDayApproval::class => 'work_hours',
         PtoRequest::class => 'work_hours',

@@ -9,6 +9,7 @@ import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/async_body.dart';
+import '../widgets/mention_field.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/ai_mark.dart';
 import '../widgets/lead_source_details.dart';
@@ -75,6 +76,9 @@ class LeadsScreen extends StatefulWidget {
 }
 
 class _LeadsScreenState extends State<LeadsScreen> {
+  /// Who the open lead's note box @mentioned (monday port, 2026-11-09).
+  final _noteMentions = MentionController();
+
   final _search = TextEditingController();
 
   /// Search runs as you type, a third of a second after the last keystroke.
@@ -1766,6 +1770,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
             onReplied: _load,
             onStar: (on) => _mark(lead, starred: on),
             onNote: (text) => _mark(lead, note: text, clearNote: text == null),
+            noteMentions: _noteMentions,
             session: widget.session,
             onBooked: _booked,
             onHidden: () async {
@@ -1834,10 +1839,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
     String? note,
     bool clearNote = false,
   }) async {
+    final mentions = note == null ? const <String>[] : _noteMentions.ids(note);
     final response = await widget.api.patch('/leads/${lead['id']}', {
       'starred': ?starred,
       if (note != null || clearNote) 'note': note,
+      if (mentions.isNotEmpty) 'mentions': mentions,
     });
+    _noteMentions.clear();
     if (!mounted) return null;
     if (!response.ok) {
       setState(() => _notice = response.message);
@@ -1947,6 +1955,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       onStar: (on) => _mark(selected, starred: on),
                       onNote: (text) =>
                           _mark(selected, note: text, clearNote: text == null),
+                      noteMentions: _noteMentions,
                       session: widget.session,
                       onBooked: _booked,
                       onHidden: _load,
@@ -2214,11 +2223,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
               'Note · ${(lead['note_by'] as Map)['name']}',
             '${lead['note']}',
           ].join('\n'),
-          child: Icon(
-            Icons.sticky_note_2,
-            key: ValueKey('note-mark-$id'),
-            size: 17,
-            color: ToneColours.of(context, Tone.caution).ink,
+          child: unreadNotesBadge(
+            Icon(
+              Icons.sticky_note_2,
+              key: ValueKey('note-mark-$id'),
+              size: 17,
+              color: ToneColours.of(context, Tone.caution).ink,
+            ),
+            lead['unread_notes'],
+            key: ValueKey('note-unread-$id'),
           ),
         ),
       // Waited too long: the customer spoke last over ten
