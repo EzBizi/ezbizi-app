@@ -541,4 +541,20 @@ class HrPersonRecordTest extends TestCase
         $this->assertDatabaseHas('audit_events', ['action' => 'user.assignment_added']);
         $this->assertDatabaseHas('audit_events', ['action' => 'user.assignment_removed']);
     }
+
+    /** Everyone view: active A-Z, then inactive A-Z (Jose, 2026-11-09). */
+    public function test_inactive_people_sort_after_active_ones(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $aaron = $this->userWithRole($t, 'Aaron', ['customers.view']);
+        $zed = $this->userWithRole($t, 'Zed', ['customers.view']);
+        $this->inTenant($t['org'], function () use ($aaron, $zed) {
+            $aaron->forceFill(['name' => 'Aaron Gone', 'is_active' => false])->save();
+            $zed->forceFill(['name' => 'Zed Here'])->save();
+        });
+
+        $names = array_column($this->signedInAs($t['admin'])->getJson('/api/v1/hr/people')->assertOk()->json('data'), 'name');
+        $this->assertLessThan(array_search('Aaron Gone', $names), array_search('Zed Here', $names));
+        $this->assertSame('Aaron Gone', end($names));
+    }
 }
