@@ -275,6 +275,11 @@ Route::post('v1/client-issues', [ClientIssuesController::class, 'store'])
 Route::get('v1/openapi.json', \App\Http\Controllers\Api\OpenApiController::class)
     ->middleware('throttle:60,1');
 
+// Signature pictures (2026-11-09): Gmail fetches them from every inbox a
+// signed mail reaches, so they are public. Random 40-character names.
+Route::get('v1/signature-photos/{name}', [\App\Http\Controllers\Api\GoogleWorkspaceManagementController::class, 'photo'])
+    ->middleware('throttle:120,1');
+
 Route::prefix('v1/auth')->group(function () {
     // The front door (§3, TODO #10). One request, one transaction: the person,
     // the organization, its first company and that company's first franchise.
@@ -2951,6 +2956,13 @@ Route::prefix('v1')
             Route::put('email/workspaces/{connection}/signature-template', [GoogleWorkspaceManagementController::class, 'setTemplate']);
             Route::post('email/workspaces/{connection}/signatures/preview', [GoogleWorkspaceManagementController::class, 'preview']);
             Route::post('email/workspaces/{connection}/signatures/apply', [GoogleWorkspaceManagementController::class, 'apply']);
+            Route::put('email/workspaces/{connection}/signatures/assign', [GoogleWorkspaceManagementController::class, 'assign']);
+            Route::post('email/workspaces/{connection}/signature-templates', [GoogleWorkspaceManagementController::class, 'storeTemplate']);
+            Route::put('email/workspaces/{connection}/signature-templates/{template}', [GoogleWorkspaceManagementController::class, 'updateTemplate']);
+            Route::delete('email/workspaces/{connection}/signature-templates/{template}', [GoogleWorkspaceManagementController::class, 'destroyTemplate']);
+            Route::put('email/workspaces/{connection}/signature-default', [GoogleWorkspaceManagementController::class, 'setDefault']);
+            Route::put('email/workspaces/{connection}/people/{address}/fields', [GoogleWorkspaceManagementController::class, 'setFields']);
+            Route::post('email/workspaces/{connection}/people/{address}/photo', [GoogleWorkspaceManagementController::class, 'uploadPhoto']);
         });
 
         /*

@@ -291,6 +291,93 @@ class GoogleWorkspaceManagementTest extends TestCase
             && $r['signature'] === 'Template');
     }
 
+    /** Several named templates; a default for everyone, another for selected people; deleting one sends them back. */
+    public function test_templates_have_a_default_and_can_be_assigned_to_selected_people(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $c = $this->connect($t);
+        $this->fakeGoogle();
+        $base = $this->base($t, $c);
+        $ana  = 'ana@'.self::DOMAIN;
+        $nj   = 'office@nj.'.self::DOMAIN;
+
+        $standard = $this->signedInAs($t['admin'])->postJson($base.'/signature-templates', [
+            'name' => 'A-1 standard', 'html' => 'Standard {{name}}', 'design' => ['layout' => 'photo_left'],
+        ])->assertCreated()->json('data.id');
+        $short = $this->signedInAs($t['admin'])->postJson($base.'/signature-templates', [
+            'name' => 'Short reply', 'html' => 'Short {{first_name}}',
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($t['admin'])->putJson($base.'/signature-default', ['template_id' => $standard])->assertOk();
+        $this->signedInAs($t['admin'])->putJson($base.'/signatures/assign', ['addresses' => [$ana], 'template_id' => $short])->assertOk();
+
+        $data   = $this->signedInAs($t['admin'])->getJson($base.'/people')->assertOk()->json('data');
+        $people = collect($data['people'])->keyBy('address');
+        $this->assertSame(['A-1 standard', 'Short reply'], array_column($data['templates'], 'name'));
+        $this->assertTrue(collect($data['templates'])->firstWhere('id', $standard)['is_default']);
+        $this->assertSame(['layout' => 'photo_left'], collect($data['templates'])->firstWhere('id', $standard)['design']);
+        $this->assertSame(['kind' => 'template', 'id' => $short, 'name' => 'Short reply'], $people[$ana]['using']);
+        $this->assertSame('default', $people[$nj]['using']['kind']);
+
+        $this->signedInAs($t['admin'])->postJson($base.'/signatures/apply', ['addresses' => [$ana, $nj]])->assertOk()->assertJsonPath('data.set', 2);
+        Http::assertSent(fn (Request $r) => $r->method() === 'PATCH' && str_contains($r->url(), rawurlencode($ana)) && $r['signature'] === 'Short Ana');
+        Http::assertSent(fn (Request $r) => $r->method() === 'PATCH' && str_contains($r->url(), rawurlencode($nj)) && $r['signature'] === 'Standard NJ Office');
+
+        // Pushed and unchanged reads "current"; editing the template makes it "changed".
+        $people = collect($this->signedInAs($t['admin'])->getJson($base.'/people')->json('data.people'))->keyBy('address');
+        $this->assertSame('current', $people[$ana]['pushed']);
+        $this->signedInAs($t['admin'])->putJson($base.'/signature-templates/'.$short, ['html' => 'Shorter {{first_name}}'])->assertOk();
+        $people = collect($this->signedInAs($t['admin'])->getJson($base.'/people')->json('data.people'))->keyBy('address');
+        $this->assertSame('changed', $people[$ana]['pushed']);
+
+        $this->signedInAs($t['admin'])->deleteJson($base.'/signature-templates/'.$short)->assertOk();
+        $people = collect($this->signedInAs($t['admin'])->getJson($base.'/people')->json('data.people'))->keyBy('address');
+        $this->assertSame('default', $people[$ana]['using']['kind'], 'A deleted template left its people pointing at nothing.');
+    }
+
+    /** An empty field drops its whole {{#...}} block; a person's own values fill the rest. */
+    public function test_an_empty_field_hides_its_line_and_person_fields_fill_the_template(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $c = $this->connect($t);
+        $this->fakeGoogle();
+        $base = $this->base($t, $c);
+        $ana  = 'ana@'.self::DOMAIN;
+        $html = '{{name}}{{#mobile}} | M {{mobile}}{{/mobile}}{{^mobile}} (no mobile){{/mobile}}{{#extension}} x{{extension}}{{/extension}}{{#title}} | {{title}}{{/title}}';
+
+        $this->signedInAs($t['admin'])->postJson($base.'/signatures/preview', ['address' => $ana, 'html' => $html])
+            ->assertJsonPath('data.html', 'Ana Directory (no mobile) | Dispatcher');
+
+        $this->signedInAs($t['admin'])->putJson($base.'/people/'.$ana.'/fields', ['fields' => [
+            'mobile' => '555-0111', 'title' => 'Head of Dispatch', 'nonsense' => 'x',
+        ]])->assertOk();
+
+        $this->signedInAs($t['admin'])->postJson($base.'/signatures/preview', ['address' => $ana, 'html' => $html])
+            ->assertJsonPath('data.html', 'Ana Directory | M 555-0111 | Head of Dispatch');
+
+        $this->signedInAs($t['admin'])->putJson($base.'/people/'.$ana.'/fields', ['fields' => ['mobile' => '']])->assertOk();
+        $this->assertSame(['title' => 'Head of Dispatch'], $this->inTenant($t['org'], fn () => GoogleWorkspacePerson::query()
+            ->where('address', $ana)->first()->fields));
+    }
+
+    /** A signature photo is uploaded per person and served publicly, since Gmail fetches it. */
+    public function test_a_signature_photo_is_uploaded_and_served_without_signing_in(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $t = $this->provisionTenant('A1-Group');
+        $c = $this->connect($t);
+        $this->fakeGoogle();
+
+        $url = $this->signedInAs($t['admin'])->post($this->base($t, $c).'/people/ana@'.self::DOMAIN.'/photo', [
+            'photo' => \Illuminate\Http\UploadedFile::fake()->image('me.jpg', 200, 200),
+        ], ['Accept' => 'application/json'])->assertOk()->json('data.photo_url');
+
+        $this->assertMatchesRegularExpression('#/api/v1/signature-photos/[A-Za-z0-9]{40}\.jpg$#', $url);
+        $this->app['auth']->forgetGuards();
+        $this->get(parse_url($url, PHP_URL_PATH))->assertOk();
+        $this->get('/api/v1/signature-photos/..%2F..%2F.env')->assertNotFound();
+    }
+
     public function test_managing_needs_email_edit_and_an_address_on_the_domain(): void
     {
         $t = $this->provisionTenant('A1-Group');
