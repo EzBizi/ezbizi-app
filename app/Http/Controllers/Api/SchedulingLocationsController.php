@@ -140,7 +140,7 @@ class SchedulingLocationsController extends Controller
         $scope = ViewScope::forUser($request->user());
         $companies = Company::query()->pluck('name', 'id');
         $areas = $this->zipAreas($request);
-        $place = fn (?string $street, ?string $zip) => mb_strtolower(trim((string) $street)).'|'.$this->zip5($zip);
+        $place = fn (?string $street, ?string $zip) => $this->street($street).'|'.$this->zip5($zip);
         $digits = fn (?string $phone) => substr((string) preg_replace('/\D+/', '', (string) $phone), -10);
 
         $web = WebLocation::query()
@@ -181,7 +181,9 @@ class SchedulingLocationsController extends Controller
             $city = $b->city ?: (count($served) >= 2 ? $served[0] : null);
             $state = $b->state ?: (count($served) >= 3 && strlen($served[1]) === 2 ? $served[1] : null);
             $rows->push(['source' => 'google_business_profile', 'id' => $b->id,
-                'name' => $match?->name ?? trim($b->title.($city ? ' · '.$city.($state ? ', '.$state : '') : '')),
+                // The company is drawn beside it, so the place alone (Jose, 2026-11-09:
+                // "A1 Chimney · Rhode Island" read twice in the selected row).
+                'name' => $match?->name ?? ($city ?: $b->title),
                 'company_id' => $b->company_id, 'address_line1' => $b->address_line1, 'address_line2' => $b->address_line2,
                 'city' => $city, 'state' => $state, 'postal_code' => $b->postal_code, 'service_places' => $b->service_places ?? [],
                 'phone' => $b->phone ?: $match?->phone,
@@ -210,7 +212,9 @@ class SchedulingLocationsController extends Controller
                     'company' => ['id' => $companyId, 'name' => $companies[$companyId] ?? null],
                     'latitude' => $r['latitude'] === null ? null : (float) $r['latitude'],
                     'longitude' => $r['longitude'] === null ? null : (float) $r['longitude'],
-                    'service_area' => $area === null ? null : trim(($area->franchise?->name ?? '').' › '.$area->name, ' ›'),
+                    // No area holds its zip (a service-area listing has none): where Google says it works.
+                    'service_area' => $area !== null ? trim(($area->franchise?->name ?? '').' › '.$area->name, ' ›')
+                        : (collect($r['service_places'] ?? [])->map(fn ($p) => preg_replace('/,\s*USA$/', '', (string) $p))->take(3)->implode('; ') ?: null),
                     'area' => $area === null ? null : ['id' => $area->id, 'name' => $area->name],
                 ]];
             })
@@ -232,6 +236,18 @@ class SchedulingLocationsController extends Controller
     private function areaForZip(string $zip, Request $request): ?ServiceArea
     {
         return $this->zipAreas($request)[$this->zip5($zip)] ?? null;
+    }
+
+    /** A street as one comparable key: "473 Washington Avenue" and "473 Washington Ave." are one place. */
+    private function street(?string $raw): string
+    {
+        $s = mb_strtolower((string) $raw);
+        $s = preg_replace('/\s*(#|\bsuite\b|\bste\b|\bunit\b|\bapt\b).*$/', '', $s);
+        $s = preg_replace('/[^a-z0-9 ]+/', ' ', (string) $s);
+        $words = ['avenue' => 'ave', 'street' => 'st', 'road' => 'rd', 'drive' => 'dr', 'boulevard' => 'blvd', 'lane' => 'ln',
+            'court' => 'ct', 'place' => 'pl', 'parkway' => 'pkwy', 'highway' => 'hwy', 'north' => 'n', 'south' => 's', 'east' => 'e', 'west' => 'w'];
+
+        return implode(' ', array_map(fn ($w) => $words[$w] ?? $w, preg_split('/\s+/', trim((string) $s)) ?: []));
     }
 
     /** First five digits, a New England zip's lost leading zero restored. */
