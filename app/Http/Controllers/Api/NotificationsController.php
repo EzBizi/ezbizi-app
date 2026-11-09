@@ -20,6 +20,7 @@ use App\Support\Modules\ModuleRegistry;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Notifications\PushSender;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -206,15 +207,26 @@ class NotificationsController extends Controller
 
         $user = $request->user();
 
-        $device = DeviceToken::withoutGlobalScopes()->where('token', $data['token'])->first()
-            ?? new DeviceToken(['token' => $data['token'], 'created_at' => now()]);
+        $claim = function () use ($data, $user): void {
+            $device = DeviceToken::withoutGlobalScopes()->where('token', $data['token'])->first()
+                ?? new DeviceToken(['token' => $data['token'], 'created_at' => now()]);
 
-        $device->forceFill([
-            'organization_id' => $user->organization_id,
-            'user_id' => $user->getKey(),
-            'platform' => $data['platform'],
-            'last_registered_at' => now(),
-        ])->save();
+            $device->forceFill([
+                'organization_id' => $user->organization_id,
+                'user_id' => $user->getKey(),
+                'platform' => $data['platform'],
+                'last_registered_at' => now(),
+            ])->save();
+        };
+
+        // Two registrations of one token can both miss the lookup and both
+        // insert; the loser hit the unique index as a 500 in production. The
+        // row exists by then, so a second pass finds it and takes it over.
+        try {
+            $claim();
+        } catch (UniqueConstraintViolationException) {
+            $claim();
+        }
 
         return response()->json(['data' => ['registered' => true]]);
     }
