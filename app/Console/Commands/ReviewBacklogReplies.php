@@ -41,8 +41,22 @@ class ReviewBacklogReplies extends Command
             $said = ReviewReply::query()->where('status', ReviewReply::STATUS_PUBLISHED)->pluck('body')
                 ->map(fn ($b) => self::norm($b))->flip()->all();
 
+            // A review whose profile is disconnected cannot be answered: mark its draft once and skip it,
+            // one summary line instead of an error per review (desk, 2026-11-09: 25 errors a day).
+            $connected = fn ($q) => $q->whereHas('connection', fn ($c) => $c->where('status', \App\Models\SocialConnection::STATUS_CONNECTED));
+            $blocked = ReviewReply::query()->where('drafted_by', ReviewReply::BY_AUTOMATION)->where('status', '!=', ReviewReply::STATUS_PUBLISHED)
+                ->whereHas('review', fn ($r) => $r->whereDoesntHave('connection', fn ($c) => $c->where('status', \App\Models\SocialConnection::STATUS_CONNECTED)))
+                ->where(fn ($q) => $q->whereNull('failure_reason')->orWhere('failure_reason', '!=', self::BLOCKED))
+                ->update(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => self::BLOCKED]);
+            $skipped = Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '>=', 4)
+                ->whereDoesntHave('connection', fn ($c) => $c->where('status', \App\Models\SocialConnection::STATUS_CONNECTED))
+                ->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED))->count();
+            if ($skipped > 0) {
+                $this->line("{$org->name}: {$skipped} reviews skipped, their Business Profile is disconnected ({$blocked} drafts marked)");
+            }
+
             $done = 0;
-            Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '>=', 4)
+            Review::query()->where('source', Review::SOURCE_GOOGLE)->where('rating', '>=', 4)->where($connected)
                 ->where(fn ($q) => collect($listings)->each(fn ($l) => $q->orWhere('location_name', 'like', '%'.addcslashes($l, '%_'))))
                 ->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED)
                     ->orWhere('drafted_by', '!=', ReviewReply::BY_AUTOMATION))
@@ -89,6 +103,8 @@ class ReviewBacklogReplies extends Command
 
         return self::SUCCESS;
     }
+
+    public const BLOCKED = 'Blocked: profile disconnected';
 
     private static function norm(?string $body): string
     {

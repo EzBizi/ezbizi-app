@@ -98,10 +98,28 @@ final class WhatsAppGroups
     {
         $group = WhatsAppGroup::query()->where('purpose', $purpose)->first();
         $number = $this->numberFor($purpose);
+
+        if ($group === null || $number === null
+            || ! $group->members()->where('users.id', $user->getKey())->where('is_active', true)->exists()) {
+            return 0;
+        }
+
+        return $this->deliverDocumentsToUser($number, $user, $title, $documents);
+    }
+
+    /**
+     * Files to one person from this number, no group asked: now inside the
+     * 24-hour window, otherwise held behind one "report ready" template. A
+     * document may name its `type` (an Excel export); PDF otherwise.
+     *
+     * @param  list<array{title: string, pdf: string, filename: string, type?: string}>  $documents
+     * @return int how many were sent or queued; 0 when the person has no usable phone
+     */
+    public function deliverDocumentsToUser(WhatsAppNumber $number, User $user, string $title, array $documents): int
+    {
         $e164 = ThumbtackAssociatePhoneNumbers::e164((string) $user->phone);
 
-        if ($group === null || $number === null || $e164 === null || $documents === []
-            || ! $group->members()->where('users.id', $user->getKey())->where('is_active', true)->exists()) {
+        if ($e164 === null || $documents === []) {
             return 0;
         }
 
@@ -109,7 +127,7 @@ final class WhatsAppGroups
         $open = $this->windowOpen($number, $to);
 
         foreach ($documents as $d) {
-            $mediaId = $this->upload($number, $d['pdf'], $d['filename']);
+            $mediaId = $this->upload($number, $d['pdf'], $d['filename'], $d['type'] ?? 'application/pdf');
             $message = ['type' => 'document', 'document' => ['id' => $mediaId, 'filename' => $d['filename'], 'caption' => "\u{1F4C4} *".$d['title'].'*']];
 
             $open
@@ -197,11 +215,21 @@ final class WhatsAppGroups
         return $reached;
     }
 
+    /**
+     * Members one to one hear from the Reports number (Jose, 2026-11-09: "make
+     * all the Reports use the Reports Number"); a real Meta group lives on the
+     * number that made it, so it keeps that one.
+     */
     private function numberFor(string $purpose): ?WhatsAppNumber
     {
-        $phoneNumberId = WhatsAppGroup::query()->where('purpose', $purpose)->value('phone_number_id');
+        $group = WhatsAppGroup::query()->where('purpose', $purpose)->first();
 
-        return $phoneNumberId === null ? null : WhatsAppNumber::query()->where('phone_number_id', $phoneNumberId)->first();
+        if ($group === null) {
+            return null;
+        }
+
+        return ($group->remote_id === null ? WhatsAppNumber::forPurpose('reports') : null)
+            ?? WhatsAppNumber::query()->where('phone_number_id', $group->phone_number_id)->first();
     }
 
     /** Hands a file to Meta and returns its media id. */

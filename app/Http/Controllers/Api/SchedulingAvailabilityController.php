@@ -280,7 +280,7 @@ class SchedulingAvailabilityController extends Controller
                 'resolved' => $resolved,
                 'basis' => 'remaining',
                 'from' => $from->toDateString(),
-                'areas' => $areas->map(function (ServiceArea $area) use ($from, $franchises) {
+                'areas' => $areas->map(function (ServiceArea $area) use ($from, $franchises, $data) {
                     $this->authorize('view', $area);
 
                     $configured = Openings::hasCapacity($area);
@@ -298,7 +298,7 @@ class SchedulingAvailabilityController extends Controller
                         'closed' => $next['closed'] ?? [],
                         'none_because' => $next['none_because'] ?? null,
                         // The branch's physical office, for the caller asking where we are.
-                        'office' => BranchOffice::for($area),
+                        'office' => BranchOffice::for($area, isset($data['zip']) ? $this->zip5((string) $data['zip']) : null),
                     ];
                 })->values()->all(),
             ],

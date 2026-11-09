@@ -3858,7 +3858,9 @@ class ActionRunner
      */
     public static function deliverReportText(string $from, array $userIds, ?string $scopeType, ?string $scopeId, string $title, string $text, ?string $once = null): int|string
     {
-        $number = WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
+        // The Reports number when there is one, whatever the rule names (Jose, 2026-11-09).
+        $number = WhatsAppNumber::forPurpose('reports')
+            ?? WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
         if ($number === null) {
             return 'This organization has no WhatsApp number to send from.';
         }

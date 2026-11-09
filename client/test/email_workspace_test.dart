@@ -97,6 +97,14 @@ void main() {
     expect(html, contains('>A-1</strong>'));
     expect(html, contains('{{^photo_url}}'));
     expect(find.byKey(const ValueKey('sig-preview-html')), findsOne);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('sig-preview-html')),
+        matching: find.textContaining('Dana Reyes', findRichText: true),
+      ),
+      findsWidgets,
+      reason: 'The signature table was not drawn.',
+    );
 
     await tester.enterText(
       find.byKey(const ValueKey('sig-name')),
@@ -888,7 +896,8 @@ class _Server {
         'data': {
           'address': body?['address'],
           'html':
-              '<b>Dana Reyes</b><br>Office manager · Brightside Home Services',
+              // Tables, as the builder makes them: the renderer once drew none.
+              '<table><tr><td><b>Dana Reyes</b></td></tr></table>',
         },
       });
     }

@@ -1566,7 +1566,7 @@ function ezbizi_cta_shortcode($atts) {
         $text = __('Learn more', 'ezbizi');
     } else {
         $href = '#ezbizi-form';
-        $text = __('Get a free estimate', 'ezbizi');
+        $text = __('Book a visit', 'ezbizi');
     }
 
     // The number, address or link itself, when that is what the button says.

@@ -87,6 +87,20 @@ class SendRequestedReport implements ShouldQueue
 
             preg_match('/filename="([^"]+)"/', (string) $file->headers->get('Content-Disposition'), $m);
             $name = $m[1] ?? 'report.'.$ask['format'];
+            $title = pathinfo($name, PATHINFO_FILENAME);
+
+            // Reports come from the Reports number (Jose, 2026-11-09); this chat says where.
+            // No phone on their profile and it comes here instead.
+            $reports = WhatsAppNumber::forPurpose('reports');
+            if ($reports !== null && $reports->isNot($number) && app(WhatsAppGroups::class)->deliverDocumentsToUser($reports, $user, $title, [[
+                'title' => $title, 'pdf' => (string) $file->getContent(), 'filename' => $name,
+                'type' => (string) $file->headers->get('Content-Type'),
+            ]]) > 0) {
+                $say("\u{1F4C4} Sent from the Reports number, {$reports->display_number}.");
+
+                return;
+            }
+
             $id = app(WhatsAppGroups::class)->upload($number, (string) $file->getContent(), $name, (string) $file->headers->get('Content-Type'));
             $cloud->replyFreeForm($number, $this->to, ['type' => 'document', 'document' => ['id' => $id, 'filename' => $name, 'caption' => "\u{1F4C4} *".pathinfo($name, PATHINFO_FILENAME).'*']], $name);
         });

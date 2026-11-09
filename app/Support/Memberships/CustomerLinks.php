@@ -199,6 +199,9 @@ final class CustomerLinks
     {
         $organization = \App\Models\Organization::query()->withoutGlobalScopes()->findOrFail($customer->organization_id);
 
-        return max(1, (int) app(\App\Support\Settings\SettingsResolver::class)->get($key, $organization));
+        // Inside the customer's organization: a link is built from jobs, public
+        // pages and commands too, and Setting refuses an unscoped read.
+        return max(1, (int) app(\App\Support\Tenancy\TenantContext::class)->run($organization,
+            fn () => app(\App\Support\Settings\SettingsResolver::class)->get($key, $organization)));
     }
 }

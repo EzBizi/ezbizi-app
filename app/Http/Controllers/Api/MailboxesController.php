@@ -736,8 +736,8 @@ class MailboxesController extends Controller
             return response()->json(['message' => 'That person is not an active member of this organization.'], 422);
         }
 
-        if (($why = $this->whyCannotBeGiven($person, $mailbox)) !== null) {
-            return response()->json(['message' => $why], 422);
+        if ($person->isAdministrator()) {
+            return response()->json(['message' => $person->name.' is an Administrator and already opens every inbox.'], 422);
         }
 
         if ($this->inboxes->givePerson($mailbox, $person)) {
@@ -847,22 +847,20 @@ class MailboxesController extends Controller
         }
     }
 
-    /** Why adding this person would not let them open the inbox, or null if it would. */
-    private function whyCannotBeGiven(User $person, Mailbox $mailbox): ?string
+    /**
+     * Why this person would NOT open the inbox without being given it by name,
+     * or null when they would anyway. Shown beside them in the picker; it no
+     * longer stops anybody being added (Jose, 2026-11-09: "make it so we can
+     * assign whoever she wants").
+     */
+    private function onlyThroughThisGrant(User $person, Mailbox $mailbox): ?string
     {
-        if ($person->isAdministrator()) {
-            return $person->name.' is an Administrator and already opens every inbox.';
-        }
-
-        if (! $person->hasPermission(MailboxAccess::READ) || ! $person->hasPermission('email.inbox.view')) {
-            return $person->name.'\'s role does not include the Email Inbox tab, so adding them '
-                .'would not let them open it. Somebody who can edit roles can add the tab to '
-                .'their role first.';
+        if (! $person->roleAllows(MailboxAccess::READ) || ! $person->roleAllows('email.inbox.view')) {
+            return 'Gets Email through this grant: their role has no Email.';
         }
 
         if (! $this->access->reaches($person, $mailbox)) {
-            return $mailbox->address.' belongs to a part of the business '.$person->name
-                .' is not assigned to, so adding them would not let them open it.';
+            return 'Gets this inbox through this grant: it is outside their branch.';
         }
 
         return null;
@@ -874,13 +872,14 @@ class MailboxesController extends Controller
         $given = $this->inboxes->peopleOn($mailbox);
         $givenIds = $given->pluck('id')->all();
 
+        // Every active member but the Administrators, who open every inbox already.
         $candidates = User::query()
             ->where('organization_id', $mailbox->organization_id)
             ->where('is_active', true)
             ->whereNotIn('id', $givenIds)
             ->orderBy('name')
             ->get()
-            ->filter(fn (User $u) => $this->whyCannotBeGiven($u, $mailbox) === null)
+            ->reject(fn (User $u) => $u->isAdministrator())
             ->values();
 
         $person = fn (User $u) => ['id' => $u->getKey(), 'name' => $u->name, 'email' => $u->email];
@@ -889,7 +888,9 @@ class MailboxesController extends Controller
             'people'     => $given->map($person)->values()->all(),
             'roles'      => $this->inboxes->rolesOn($mailbox)
                 ->map(fn ($r) => ['id' => $r->getKey(), 'name' => $r->name])->values()->all(),
-            'candidates' => $candidates->map($person)->all(),
+            // Everyone can be given it (Eve, 2026-11-09: "I can't add anyone");
+            // `note` says when this grant is the only reason they would see it.
+            'candidates' => $candidates->map(fn (User $u) => [...$person($u), 'note' => $this->onlyThroughThisGrant($u, $mailbox)])->all(),
         ];
     }
 

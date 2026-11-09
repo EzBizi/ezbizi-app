@@ -266,6 +266,37 @@ void main() {
     expect(calls, contains('DELETE /api/v1/email/mailboxes/mb-1/people/u-ana'));
   });
 
+  testWidgets('anybody on staff can be picked; the note says when the grant '
+      'is what lets them in (Jose 11-09)', (tester) async {
+    final calls = <String>[];
+    await _pump(tester, _handler(
+      mailboxes: [_row(id: 'mb-1', address: 'info@a-1chimney.com')],
+      people: const {
+        'people': [],
+        'roles': [],
+        'candidates': [
+          {
+            'id': 'u-lucas',
+            'name': 'Lucas Snyder',
+            'email': 'lucas@a1.test',
+            'note': 'Gets this inbox through this grant: it is outside their branch.',
+          },
+        ],
+      },
+      onRequest: (method, path, body) {
+        if (method == 'POST' && path.contains('/people')) {
+          calls.add('${body?['user_id']}');
+        }
+      },
+    ));
+    await _openSettings(tester);
+
+    await _tap(tester, find.text('Add a person'));
+    expect(find.textContaining('through this grant'), findsOneWidget);
+    await _tap(tester, find.text('Lucas Snyder'));
+    expect(calls, ['u-lucas']);
+  });
+
   // The control: somebody who may not manage the inbox is not shown the
   // section at all, and is not made to fetch it — the server would refuse.
   testWidgets('somebody who cannot manage an inbox is not shown who can open it', (

@@ -280,14 +280,30 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
   Widget _reviewedDetail(BuildContext context, Map? d) {
     final by = (d?['by'] as Map?) ?? const {};
     int n(String k) => (by[k] as num?)?.toInt() ?? 0;
+    final small = Theme.of(context).textTheme.bodySmall;
+    // Only exact and likely count, plus possible ones a person confirmed
+    // (Jose, 2026-11-09); the rest of the possible ones are shown beside.
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Text(
-        'Reviewed, matched by name: exact ${n('exact')} · likely ${n('likely')} · '
-        'possible ${n('possible')} · without a click ${n('without_click')}'
-        '${_stars(d?['stars'])}. Confirm or reject a match on the review.',
-        key: const Key('review-links-reviewed-detail'),
-        style: Theme.of(context).textTheme.bodySmall,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Reviewed, matched by name: exact ${n('exact')} · likely ${n('likely')}'
+            '${n('confirmed') > 0 ? ' · confirmed ${n('confirmed')}' : ''}'
+            ' · without a click ${n('without_click')}${_stars(d?['stars'])}.',
+            key: const Key('review-links-reviewed-detail'),
+            style: small,
+          ),
+          if (n('possible') > 0)
+            Text(
+              '+${n('possible')} possible matches, confirm in Reviews',
+              key: const Key('review-links-possible'),
+              style: small?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
       ),
     );
   }

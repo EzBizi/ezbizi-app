@@ -64,8 +64,15 @@ class _ShortcodeButtonState extends State<ShortcodeButton> {
 ///
 /// 460 is where a field row plus the chip stops fitting without the chip
 /// wrapping mid-code, which reads as a broken control rather than a narrow one.
-Widget withShortcode(Widget input, String code) {
-  final chip = ShortcodeButton(code: code);
+Widget withShortcode(Widget input, String code, {Widget? trailing}) {
+  // A control that belongs to the field (SEO's "Not needed" toggle) sits
+  // beside the chip, so it stays on the field's row (Jose, 2026-11-09).
+  final chip = trailing == null
+      ? ShortcodeButton(code: code)
+      : Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [ShortcodeButton(code: code), trailing],
+        );
 
   return LayoutBuilder(
     builder: (context, constraints) => constraints.maxWidth >= 460
