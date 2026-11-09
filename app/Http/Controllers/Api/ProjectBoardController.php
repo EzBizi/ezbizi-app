@@ -79,7 +79,7 @@ class ProjectBoardController extends Controller
             'meta' => $this->pageMeta($page) + [
                 'franchises' => $franchises->map(fn (Franchise $f) => ['id' => $f->id, 'name' => $f->name, 'company' => $f->company?->name])->values(),
                 // How the table is drawn, and where its Settings sub-tab saves.
-                'columns' => array_values((array) $settings->get('project_board.columns', $place)),
+                'columns' => $this->columns((array) $settings->get('project_board.columns', $place)),
                 'labels' => (object) $settings->get('project_board.labels', $place),
                 'settings_scope' => ['scope_type' => $place instanceof \App\Models\Company ? 'company' : 'organization', 'scope_id' => $place->getKey()],
             ] +($page->currentPage() > 1 ? [] : ['counts' => collect(self::TABS)
@@ -101,6 +101,21 @@ class ProjectBoardController extends Controller
         $rules = (array) $settings->get('project_board.tabs', $place);
 
         return collect(self::TABS)->mapWithKeys(fn (string $t) => [$t => $this->tab(Job::query()->whereIn('franchise_id', $reach), $rules[$t] ?? [])->count()])->all();
+    }
+
+    /**
+     * The company's saved columns, then any column added since it saved
+     * (Tags, 2026-11-09), so a new column reaches companies that customised.
+     *
+     * @param  list<array{key: string}>  $saved
+     * @return list<array<string, mixed>>
+     */
+    private function columns(array $saved): array
+    {
+        $keys = array_column($saved, 'key');
+        $defaults = (array) app(\App\Support\Settings\SettingRegistry::class)->get('project_board.columns')->default;
+
+        return [...array_values($saved), ...array_values(array_filter($defaults, fn ($c) => ! in_array($c['key'], $keys, true)))];
     }
 
     /**
@@ -139,6 +154,7 @@ class ProjectBoardController extends Controller
             'franchise'     => $job->franchise?->name,
             'status'        => $job->franchise ? Job::labelFor((string) $job->status, $job->franchise) : $job->status,
             'job_type'      => $job->job_type,
+            'tags'          => array_values((array) ($job->tags ?? [])),
             // Part status: the job's tags that the organization names as part
             // tags (project_board.part_tags), e.g. WAITING PARTS.
             'part_status'   => collect($job->tags ?? [])->filter(fn ($t) => in_array(mb_strtolower(trim((string) $t)), $partTags, true))->values()->implode(', ') ?: null,

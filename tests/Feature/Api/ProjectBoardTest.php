@@ -38,6 +38,7 @@ class ProjectBoardTest extends TestCase
         $row = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=ready_to_schedule')
             ->assertOk()->assertJsonPath('meta.counts.unscheduled', 1)->json('data.0');
         $this->assertSame('WAITING PARTS', $row['part_status']);
+        $this->assertSame(['WAITING PARTS', 'DEPOSIT'], $row['tags']);
         $this->assertSame('Crown Repair, Damper Cap x2', $row['required']);
         $this->assertSame('7003', $row['workiz_id']);
         $this->assertSame('Alpha F1', $row['franchise']);

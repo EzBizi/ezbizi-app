@@ -248,11 +248,16 @@ class ListTable extends StatelessWidget {
 
         Widget cell(int i, Widget child) => Expanded(
           flex: columns[i].flex,
-          child: Align(
-            alignment: columns[i].end
-                ? Alignment.centerRight
-                : Alignment.centerLeft,
-            child: child,
+          // A gutter between columns, so a right-aligned amount never
+          // runs into the left-aligned column after it.
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Align(
+              alignment: columns[i].end
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: child,
+            ),
           ),
         );
 

@@ -168,6 +168,30 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
             : '—',
       );
     }
+    if (value is List) {
+      // Tags: one chip each, coloured like any label column.
+      if (value.isEmpty) return const Text('—');
+      final named = (_labels[key] as Map?) ?? const {};
+      return Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          for (final t in value)
+            StatusPill(
+              '$t',
+              tone:
+                  Tone.values
+                      .where(
+                        (tone) =>
+                            tone.name ==
+                            '${named.entries.where((e) => '${e.key}'.toLowerCase() == '$t'.toLowerCase()).firstOrNull?.value}',
+                      )
+                      .firstOrNull ??
+                  Tone.neutral,
+            ),
+        ],
+      );
+    }
     final text = key == 'created' || key == 'scheduled'
         ? _date(value)
         : (value == null || '$value'.isEmpty ? '—' : '$value');
@@ -293,7 +317,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
                         for (final c in columns)
                           ListColumn(
                             '${c['label'] ?? c['key']}',
-                            flex: c['key'] == 'required' ? 4 : 2,
+                            flex: c['key'] == 'required' || c['key'] == 'tags'
+                                ? 4
+                                : 2,
                             end: _moneyKeys.contains(c['key']),
                           ),
                       ],

@@ -1025,6 +1025,7 @@ class SettingRegistry
                     ['key' => 'status', 'label' => 'Job Status', 'visible' => true, 'as_label' => true],
                     ['key' => 'job_type', 'label' => 'Job Type', 'visible' => true, 'as_label' => false],
                     ['key' => 'part_status', 'label' => 'Part Status', 'visible' => true, 'as_label' => true],
+                    ['key' => 'tags', 'label' => 'Tags', 'visible' => true, 'as_label' => true],
                     ['key' => 'paid', 'label' => 'Paid Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'pending', 'label' => 'Pending Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
