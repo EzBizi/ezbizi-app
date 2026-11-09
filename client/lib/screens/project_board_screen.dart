@@ -396,6 +396,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
   };
   final Map<String, List<String>> _statuses = {};
   final Map<String, bool?> _scheduled = {};
+  final Map<String, List<String>> _tabTags = {};
+  final Map<String, bool> _anyTag = {};
   List<String> _partTags = [];
 
   /// The company's real job statuses and tags, most used first.
@@ -447,6 +449,10 @@ class _BoardSettingsState extends State<_BoardSettings> {
           for (final s in (rule['statuses'] as List?) ?? const []) '$s',
         ];
         _scheduled[key] = rule['scheduled'] as bool?;
+        _tabTags[key] = [
+          for (final t in (rule['tags'] as List?) ?? const []) '$t',
+        ];
+        _anyTag[key] = rule['tags_mode'] == 'any';
       }
       _partTags = [
         for (final t in (byKey['project_board.part_tags'] as List?) ?? const [])
@@ -728,7 +734,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
         _card(
           'tabs',
           'Sub-tabs',
-          'Which job statuses each sub-tab lists, and whether the job must have a scheduled date.',
+          'What puts a job on each sub-tab: its status, its tags, and its scheduled date. A sub-tab with no status chosen lists nothing.',
           [
             for (final (key, name, _) in _tabs)
               Padding(
@@ -771,10 +777,42 @@ class _BoardSettingsState extends State<_BoardSettings> {
                       ],
                     ),
                     const SizedBox(height: 6),
+                    Text('Status is one of', style: theme.textTheme.bodySmall),
+                    const SizedBox(height: 4),
                     _chips(
                       'project-board-statuses:$key',
                       _knownStatuses,
                       _statuses[key]!,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text('Tags: has', style: theme.textTheme.bodySmall),
+                        const SizedBox(width: 8),
+                        DropdownMenu<bool>(
+                          key: ValueKey('project-board-tags-mode:$key'),
+                          enableFilter: true,
+                          requestFocusOnTap: true,
+                          width: 140,
+                          initialSelection: _anyTag[key] ?? false,
+                          onSelected: (v) => _anyTag[key] = v ?? false,
+                          dropdownMenuEntries: const [
+                            DropdownMenuEntry(value: false, label: 'all of'),
+                            DropdownMenuEntry(value: true, label: 'any of'),
+                          ],
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'these (none chosen: tags do not matter)',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    _chips(
+                      'project-board-tab-tags:$key',
+                      _knownTags,
+                      _tabTags[key]!,
                     ),
                   ],
                 ),
@@ -785,6 +823,10 @@ class _BoardSettingsState extends State<_BoardSettings> {
               for (final (key, _, _) in _tabs)
                 key: {
                   'statuses': _statuses[key]!,
+                  if (_tabTags[key]!.isNotEmpty) ...{
+                    'tags': _tabTags[key]!,
+                    'tags_mode': _anyTag[key] == true ? 'any' : 'all',
+                  },
                   if (_scheduled[key] != null) 'scheduled': _scheduled[key]!,
                 },
             },

@@ -186,7 +186,10 @@ class ProjectBoardController extends Controller
      * A sub-tab's rule: its statuses (any case), and optionally whether the job
      * has a date (scheduled: true / false). No statuses: nothing, never everything.
      *
-     * @param  array{statuses?: list<string>, scheduled?: bool}  $rule
+     * Required tags (Jose, 2026-11-09): the job carries all of them, or any
+     * one with tags_mode "any".
+     *
+     * @param  array{statuses?: list<string>, tags?: list<string>, tags_mode?: string, scheduled?: bool}  $rule
      */
     private function tab(Builder $jobs, array $rule): Builder
     {
@@ -195,6 +198,15 @@ class ProjectBoardController extends Controller
             return $jobs->whereRaw('1 = 0');
         }
         $jobs->whereIn(DB::raw('LOWER(TRIM(status))'), $statuses);
+        $tags = array_values(array_filter(array_map(fn ($t) => trim((string) $t), (array) ($rule['tags'] ?? []))));
+        if ($tags !== []) {
+            $any = ($rule['tags_mode'] ?? 'all') === 'any';
+            $jobs->where(function (Builder $q) use ($tags, $any) {
+                foreach ($tags as $tag) {
+                    $any ? $q->orWhereJsonContains('tags', $tag) : $q->whereJsonContains('tags', $tag);
+                }
+            });
+        }
 
         return match ($rule['scheduled'] ?? null) {
             true => $jobs->whereNotNull('scheduled_for'),
