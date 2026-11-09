@@ -23,6 +23,7 @@ class VersionHistory {
       'Email: the signature preview draws the full signature',
       'Review links: Reviewed counts only sure matches; possible ones wait for confirmation',
       'Newsletter: drag blocks to reorder them, and drag new blocks in from Add a block',
+      'Roles & Permissions: tabs nest exactly as the app shows them, every box is named after its tab, and a box that also needs another permission says so',
     ]),
     VersionRelease(version: '0.0.0551', date: '9 Nov 2026', items: [
       'Email: anyone can be given an inbox by name and then sees it, whatever their role or branch; the picker lists everyone',
