@@ -94,6 +94,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   /// One of them was saved, so the list behind has something new to show
   /// whichever way the panel closes.
   bool _patched = false;
+
   /// The job's own photos and files (queue 119), loaded beside the job so
   /// the tab can count them before it is opened.
   late final JobAttachments _files = JobAttachments(
@@ -492,7 +493,84 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     _done(true);
   }
 
+  /// Deleting a job cannot be undone (Jose, 2026-11-09): a first panel that
+  /// names the job, then a second where the job number is typed back.
+  Future<bool> _confirmDelete() async {
+    final row = _row ?? const <String, dynamic>{};
+    final number = '${row['number'] ?? ''}';
+    final client = '${(row['customer'] as Map?)?['name'] ?? 'No client'}';
+    final money = JobMoney.of(row['money']);
+    final total = money == null
+        ? null
+        : formatMoney(money.total, currency: money.currency);
+
+    final first = await showSidePanel<bool>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Delete $number?',
+        actions: [
+          TextButton(
+            key: const Key('job-delete-keep'),
+            onPressed: () => Navigator.of(panel).pop(false),
+            child: const Text('Keep it'),
+          ),
+          FilledButton(
+            key: const Key('job-delete-continue'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(panel).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(panel).pop(true),
+            child: const Text('Continue'),
+          ),
+        ],
+        child: Text(
+          [
+            '$number · $client${total == null ? '' : ' · $total'}',
+            'The job, its lines, notes and files are deleted. This cannot be undone.',
+          ].join('\n\n'),
+        ),
+      ),
+    );
+    if (first != true || !mounted) return false;
+
+    final typed = TextEditingController();
+    final second = await showSidePanel<bool>(
+      context,
+      builder: (panel) => StatefulBuilder(
+        builder: (panel, setPanel) => SidePanel(
+          title: 'Delete permanently',
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(panel).pop(false),
+              child: const Text('Keep it'),
+            ),
+            FilledButton(
+              key: const Key('job-delete-confirm'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(panel).colorScheme.error,
+              ),
+              onPressed: typed.text.trim() == number
+                  ? () => Navigator.of(panel).pop(true)
+                  : null,
+              child: const Text('Yes, delete permanently'),
+            ),
+          ],
+          child: TextField(
+            key: const Key('job-delete-number'),
+            controller: typed,
+            autofocus: true,
+            onChanged: (_) => setPanel(() {}),
+            decoration: InputDecoration(labelText: 'Type $number to delete it'),
+          ),
+        ),
+      ),
+    );
+    // ponytail: left to the GC; disposing here races the panel's exit animation.
+    return second == true;
+  }
+
   Future<void> _delete() async {
+    if (!await _confirmDelete() || !mounted) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -564,7 +642,11 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   /// The tabs: Money for a reader with Financials on a job Workiz has, and
   /// Photos & files on every job, since any job can be given its own (queue
   /// 119), counting the job's own and Workiz's together.
-  Widget _tabbed(BuildContext context, Map<String, dynamic>? row, bool editable) {
+  Widget _tabbed(
+    BuildContext context,
+    Map<String, dynamic>? row,
+    bool editable,
+  ) {
     final money = JobMoney.of(row?['money']);
     final extras = WorkizExtras.of(row?['workiz']);
     final files = extras?.files ?? const [];
@@ -699,155 +781,146 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     final fields = extras?.fields ?? const [];
 
     return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (row != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                if (row != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        // The pill the list shows, so a job reads the same
-                        // colour open as it did in its row.
-                        StatusPill(
-                          row['status_label'] as String? ??
-                              row['status'] as String,
-                          tone: toneForJobStatus(row['status'] as String),
-                        ),
-                        if (customer?['owned_by_this_franchise'] == false)
-                          const Tag('Shared customer', warn: true),
-                        // The same amber mark as its row in the list, so an
-                        // unplaced job reads the same open as closed.
-                        if (_areaChoices.isNotEmpty && _areaId == null)
-                          const NotPlacedMark(),
-                      ],
-                    ),
-                  ),
-                if (_notes.isNotEmpty) _latestNote(context, _notes.first),
-                // What Workiz says the job IS, before anything to edit
-                // (queue 58). Its money moved to the Money tab.
-                if (fields.isNotEmpty) WorkizFacts(fields: fields),
-                TextField(
-                  controller: _title,
-                  decoration: const InputDecoration(
-                    labelText: 'What is the job',
-                  ),
-                  enabled: editable,
+                // The pill the list shows, so a job reads the same
+                // colour open as it did in its row.
+                StatusPill(
+                  row['status_label'] as String? ?? row['status'] as String,
+                  tone: toneForJobStatus(row['status'] as String),
                 ),
-                if (row != null) ...[
-                  const SizedBox(height: 10),
-                  _tagsLine(editable),
-                ],
-                const SizedBox(height: 12),
-                _statusLine(editable),
-                // Only when the franchise has areas to offer: a franchise with
-                // none has no question to ask.
-                if (_areaChoices.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  SearchPickerField<String?>(
-                    key: const Key('job-service-area'),
-                    value: _areaId,
-                    label: 'Service area',
-                    hint: 'Not placed',
-                    helperText: _areaId == null
-                        ? 'Which of ${franchise?['name'] ?? 'the franchise'}\'s '
-                              '${_areaChoices.length} areas is this job in?'
-                        : null,
-                    options: [
-                      const SearchOption<String?>(
-                        value: null,
-                        label: 'Not placed',
-                        detail: 'Leave it for somebody to place',
-                      ),
-                      for (final a in _areaChoices)
-                        SearchOption<String?>(value: a.id, label: a.name),
-                    ],
-                    onChanged: editable
-                        ? (v) {
-                            setState(() => _areaId = v);
-                            _markDirty();
-                          }
-                        : null,
-                  ),
-                ],
-                const SizedBox(height: 12),
-                CalendarDayField(
-                  controller: _scheduled,
-                  label: 'Scheduled for',
-                  helper: 'Empty means not dated yet.',
-                  formats: _me.display,
-                  withTime: true,
-                  enabled: editable,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _duration,
-                  decoration: const InputDecoration(
-                    labelText: 'Duration',
-                    helperText: 'Minutes. Optional.',
-                  ),
-                  keyboardType: TextInputType.number,
-                  enabled: editable,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _description,
-                  decoration: const InputDecoration(labelText: 'Description'),
-                  minLines: 2,
-                  maxLines: 6,
-                  enabled: editable,
-                ),
-                if (row != null) ...[
-                  const SizedBox(height: 20),
-                  const Divider(),
-                  const SizedBox(height: 16),
-                  JobLinesTab(
-                    key: const ValueKey('tour-jobs-job-work'),
-                    api: widget.api,
-                    jobId: widget.id,
-                    job: row,
-                    editable: editable,
-                    refusalReason: _editRefusal,
-                    onChanged: (fresh) => setState(() => _row = fresh),
-                    money: _me.can('jobs.financials'),
-                  ),
-                ],
-                if (row != null && row['materials'] is List) ...[
-                  const SizedBox(height: 20),
-                  const Divider(),
-                  const SizedBox(height: 16),
-                  _Materials(rows: row['materials'] as List),
-                ],
-                if (row != null && row['inspections'] is List) ...[
-                  const SizedBox(height: 20),
-                  const Divider(),
-                  const SizedBox(height: 16),
-                  _Inspections(rows: row['inspections'] as List),
-                ],
-                const SizedBox(height: 20),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Refused(
-                    reason: _deleteRefusal,
-                    child: OutlinedButton(
-                      // Red: it destroys the record (phone audit 2026-11-04).
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Theme.of(context).colorScheme.error,
-                      ),
-                      onPressed: (_deleteRefusal == null && !_busy && !_loading)
-                          ? _delete
-                          : null,
-                      child: const Text('Delete'),
-                    ),
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  ErrorNote(_error!),
-                ],
+                if (customer?['owned_by_this_franchise'] == false)
+                  const Tag('Shared customer', warn: true),
+                // The same amber mark as its row in the list, so an
+                // unplaced job reads the same open as closed.
+                if (_areaChoices.isNotEmpty && _areaId == null)
+                  const NotPlacedMark(),
               ],
-            );
+            ),
+          ),
+        if (_notes.isNotEmpty) _latestNote(context, _notes.first),
+        // What Workiz says the job IS, before anything to edit
+        // (queue 58). Its money moved to the Money tab.
+        if (fields.isNotEmpty) WorkizFacts(fields: fields),
+        TextField(
+          controller: _title,
+          decoration: const InputDecoration(labelText: 'What is the job'),
+          enabled: editable,
+        ),
+        if (row != null) ...[const SizedBox(height: 10), _tagsLine(editable)],
+        const SizedBox(height: 12),
+        _statusLine(editable),
+        // Only when the franchise has areas to offer: a franchise with
+        // none has no question to ask.
+        if (_areaChoices.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SearchPickerField<String?>(
+            key: const Key('job-service-area'),
+            value: _areaId,
+            label: 'Service area',
+            hint: 'Not placed',
+            helperText: _areaId == null
+                ? 'Which of ${franchise?['name'] ?? 'the franchise'}\'s '
+                      '${_areaChoices.length} areas is this job in?'
+                : null,
+            options: [
+              const SearchOption<String?>(
+                value: null,
+                label: 'Not placed',
+                detail: 'Leave it for somebody to place',
+              ),
+              for (final a in _areaChoices)
+                SearchOption<String?>(value: a.id, label: a.name),
+            ],
+            onChanged: editable
+                ? (v) {
+                    setState(() => _areaId = v);
+                    _markDirty();
+                  }
+                : null,
+          ),
+        ],
+        const SizedBox(height: 12),
+        CalendarDayField(
+          controller: _scheduled,
+          label: 'Scheduled for',
+          helper: 'Empty means not dated yet.',
+          formats: _me.display,
+          withTime: true,
+          enabled: editable,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _duration,
+          decoration: const InputDecoration(
+            labelText: 'Duration',
+            helperText: 'Minutes. Optional.',
+          ),
+          keyboardType: TextInputType.number,
+          enabled: editable,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _description,
+          decoration: const InputDecoration(labelText: 'Description'),
+          minLines: 2,
+          maxLines: 6,
+          enabled: editable,
+        ),
+        if (row != null) ...[
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 16),
+          JobLinesTab(
+            key: const ValueKey('tour-jobs-job-work'),
+            api: widget.api,
+            jobId: widget.id,
+            job: row,
+            editable: editable,
+            refusalReason: _editRefusal,
+            onChanged: (fresh) => setState(() => _row = fresh),
+            money: _me.can('jobs.financials'),
+          ),
+        ],
+        if (row != null && row['materials'] is List) ...[
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 16),
+          _Materials(rows: row['materials'] as List),
+        ],
+        if (row != null && row['inspections'] is List) ...[
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 16),
+          _Inspections(rows: row['inspections'] as List),
+        ],
+        const SizedBox(height: 20),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Refused(
+            reason: _deleteRefusal,
+            child: OutlinedButton(
+              // Red: it destroys the record (phone audit 2026-11-04).
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: (_deleteRefusal == null && !_busy && !_loading)
+                  ? _delete
+                  : null,
+              child: const Text('Delete'),
+            ),
+          ),
+        ),
+        if (_error != null) ...[const SizedBox(height: 14), ErrorNote(_error!)],
+      ],
+    );
   }
 }
 
@@ -910,11 +983,12 @@ class _Materials extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text('${row['item'] ?? 'Unnamed item'}'),
-                  ),
+                  Expanded(child: Text('${row['item'] ?? 'Unnamed item'}')),
                   const SizedBox(width: 12),
-                  Text('${row['qty'] ?? ''}', style: theme.textTheme.bodyMedium),
+                  Text(
+                    '${row['qty'] ?? ''}',
+                    style: theme.textTheme.bodyMedium,
+                  ),
                   const SizedBox(width: 12),
                   Text(
                     '${row['issued_on'] ?? ''}',
@@ -1082,7 +1156,9 @@ class _MoneyCard extends StatelessWidget {
                 value,
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: tone == null ? null : ToneColours.of(context, tone).ink,
+                  color: tone == null
+                      ? null
+                      : ToneColours.of(context, tone).ink,
                 ),
               ),
             ),
