@@ -25,7 +25,9 @@ class TaskUpdate extends Model implements HoldsPersonalData
     use HasAttachments;
     use HasUuids;
 
-    protected $fillable = ['organization_id', 'task_id', 'user_id', 'body'];
+    protected $fillable = ['organization_id', 'task_id', 'user_id', 'body', 'mentions'];
+
+    protected $casts = ['mentions' => 'array'];
 
     public function task(): BelongsTo
     {

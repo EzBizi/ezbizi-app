@@ -986,6 +986,9 @@ Route::prefix('v1')
         // alone would be an id oracle across franchises.
         Route::post('jobs/{job}/lines', [JobLinesController::class, 'store']);
         Route::post('jobs/{job}/notes', [\App\Http\Controllers\Api\JobNotesController::class, 'store']);
+        // @mentions and unread notes on jobs, leads and tasks (monday port, 2026-11-09).
+        Route::get('mentionable', [\App\Http\Controllers\Api\NoteActivityController::class, 'mentionable']);
+        Route::post('note-reads', [\App\Http\Controllers\Api\NoteActivityController::class, 'read']);
         Route::patch('jobs/{job}/lines/{line}', [JobLinesController::class, 'update']);
         Route::delete('jobs/{job}/lines/{line}', [JobLinesController::class, 'destroy']);
 

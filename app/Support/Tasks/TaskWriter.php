@@ -430,14 +430,15 @@ class TaskWriter
         });
     }
 
-    public function comment(Task $task, User $author, string $body): TaskUpdate
+    public function comment(Task $task, User $author, string $body, array $mentions = []): TaskUpdate
     {
-        return DB::transaction(function () use ($task, $author, $body) {
+        return DB::transaction(function () use ($task, $author, $body, $mentions) {
             $update = TaskUpdate::query()->create([
                 'organization_id' => $task->organization_id,
                 'task_id' => $task->id,
                 'user_id' => $author->getKey(),
                 'body' => $body,
+                'mentions' => $mentions ?: null,
             ]);
             $this->audit->log('task.update_posted', $task, actor: $author);
 

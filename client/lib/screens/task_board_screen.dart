@@ -21,6 +21,7 @@ import 'task_board_columns.dart';
 import 'task_board_files.dart';
 import '../widgets/list_filters.dart';
 import '../widgets/list_toolbar.dart';
+import '../widgets/mention_field.dart';
 import 'task_board_move.dart';
 import 'task_board_people.dart';
 import 'task_board_plan_views.dart';
@@ -1380,6 +1381,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         board: _board!,
         where: '${group['name']}',
         people: people,
+        unreadNotes: (task['unread_notes'] as num? ?? 0).toInt(),
       ),
     );
     if (mounted) await _load();
@@ -2397,10 +2399,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                       ? const SizedBox.shrink()
                       : Row(
                           children: [
-                            Icon(
-                              Icons.chat_bubble_outline,
-                              size: 14,
-                              color: theme.colorScheme.onSurfaceVariant,
+                            unreadNotesBadge(
+                              Icon(
+                                Icons.chat_bubble_outline,
+                                size: 14,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              t['unread_notes'],
+                              key: ValueKey('task-unread-${t['id']}'),
                             ),
                             const SizedBox(width: 4),
                             Text('$updates'),
@@ -2973,11 +2979,15 @@ class _TaskPanel extends StatefulWidget {
     required this.board,
     required this.where,
     required this.people,
+    this.unreadNotes = 0,
   });
 
   final ApiClient api;
   final DisplayFormats formats;
   final String taskId;
+
+  /// Updates by others it has not read; opening it reads them.
+  final int unreadNotes;
   final _Json board;
 
   /// The group, under the board's name.
@@ -3005,6 +3015,7 @@ class _TaskPanelState extends State<_TaskPanel> {
   final _title = TextEditingController();
   final _due = TextEditingController();
   final _update = TextEditingController();
+  final _mentions = MentionController();
 
   bool get _canEdit => widget.board['can_edit'] == true;
 
@@ -3037,6 +3048,10 @@ class _TaskPanelState extends State<_TaskPanel> {
       }
       _task = res.body['data'] as _Json;
       _title.text = '${_task!['title']}';
+      // Its updates are read now (unread notes, monday port 2026-11-09).
+      if (widget.unreadNotes > 0) {
+        widget.api.post('/note-reads', {'type': 'task', 'id': widget.taskId});
+      }
       _due.text = _task!['due_on'] as String? ?? '';
     });
   }
@@ -3095,13 +3110,20 @@ class _TaskPanelState extends State<_TaskPanel> {
       _postError = null;
     });
     final path = '/tasks/${widget.taskId}/updates';
+    final mentions = _mentions.ids(body);
     final res = _files.isEmpty
-        ? await widget.api.post(path, {'body': body})
+        ? await widget.api.post(path, {
+            'body': body,
+            if (mentions.isNotEmpty) 'mentions': mentions,
+          })
         : await widget.api.postFiles(
             path,
             'files',
             List.of(_files),
-            fields: {if (body.isNotEmpty) 'body': body},
+            fields: {
+              if (body.isNotEmpty) 'body': body,
+              for (final (i, m) in mentions.indexed) 'mentions[$i]': m,
+            },
           );
     if (!mounted) return;
     setState(() {
@@ -3111,6 +3133,7 @@ class _TaskPanelState extends State<_TaskPanel> {
         return;
       }
       _update.clear();
+      _mentions.clear();
       _files.clear();
       _task = {
         ..._task!,
@@ -3517,14 +3540,21 @@ class _TaskPanelState extends State<_TaskPanel> {
           ),
         if (_canEdit) ...[
           const SizedBox(height: 4),
-          TextField(
-            key: const Key('task-update-body'),
+          MentionField(
+            api: widget.api,
+            type: 'task',
+            id: widget.taskId,
             controller: _update,
-            minLines: 2,
-            maxLines: 6,
-            decoration: const InputDecoration(
-              hintText: 'Write an update…',
-              border: OutlineInputBorder(),
+            mentions: _mentions,
+            child: TextField(
+              key: const Key('task-update-body'),
+              controller: _update,
+              minLines: 2,
+              maxLines: 6,
+              decoration: const InputDecoration(
+                hintText: 'Write an update… (@ to mention)',
+                border: OutlineInputBorder(),
+              ),
             ),
           ),
           if (_files.isNotEmpty) ...[

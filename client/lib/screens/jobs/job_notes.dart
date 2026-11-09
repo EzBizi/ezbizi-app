@@ -5,6 +5,7 @@ import '../../core/api_client.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/list_table.dart';
+import '../../widgets/mention_field.dart';
 import '../../widgets/refused.dart';
 
 /// A job's notes (UI queue 122; option 1 and phone 4): the box on top, the
@@ -48,6 +49,16 @@ class JobNotes extends StatefulWidget {
 class _JobNotesState extends State<JobNotes> {
   bool _sending = false;
   String? _error;
+  final _mentions = MentionController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Opening the notes reads them (unread notes, monday port 2026-11-09).
+    if (widget.notes.isNotEmpty) {
+      widget.api.post('/note-reads', {'type': 'job', 'id': widget.jobId});
+    }
+  }
 
   bool get _canAdd => widget.addRefusal == null && !_sending;
 
@@ -60,8 +71,10 @@ class _JobNotesState extends State<JobNotes> {
       _error = null;
     });
 
+    final mentions = _mentions.ids(body);
     final response = await widget.api.post('/jobs/${widget.jobId}/notes', {
       'body': body,
+      if (mentions.isNotEmpty) 'mentions': mentions,
     });
 
     if (!mounted) return;
@@ -75,6 +88,7 @@ class _JobNotesState extends State<JobNotes> {
     }
 
     widget.draft.clear();
+    _mentions.clear();
     setState(() => _sending = false);
     widget.onAdded(Map<String, dynamic>.from(response.data as Map));
   }
@@ -108,15 +122,22 @@ class _JobNotesState extends State<JobNotes> {
                   const SingleActivator(LogicalKeyboardKey.enter, meta: true):
                       _add,
                 },
-                child: TextField(
-                  key: const Key('job-note-box'),
+                child: MentionField(
+                  api: widget.api,
+                  type: 'job',
+                  id: widget.jobId,
                   controller: widget.draft,
-                  enabled: _canAdd,
-                  minLines: phone ? 2 : 3,
-                  maxLines: 8,
-                  keyboardType: TextInputType.multiline,
-                  decoration: const InputDecoration(
-                    hintText: 'Add a note for the team…',
+                  mentions: _mentions,
+                  child: TextField(
+                    key: const Key('job-note-box'),
+                    controller: widget.draft,
+                    enabled: _canAdd,
+                    minLines: phone ? 2 : 3,
+                    maxLines: 8,
+                    keyboardType: TextInputType.multiline,
+                    decoration: const InputDecoration(
+                      hintText: 'Add a note for the team… (@ to mention)',
+                    ),
                   ),
                 ),
               ),

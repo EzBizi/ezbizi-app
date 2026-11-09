@@ -387,8 +387,12 @@ class JobsController extends Controller
         $meta['statuses'] = array_values((array) app(SettingsResolver::class)
             ->get('jobs.statuses', ViewScope::forUser($request->user())->settingsScope()));
 
+        $unread = \App\Support\Notes\NoteActivity::unreadCounts('job', 'job_notes', 'job_id',
+            collect($jobs->items())->map(fn (Job $j) => (string) $j->getKey())->all(), (string) $request->user()->getKey());
+
         return response()->json([
-            'data' => collect($jobs->items())->map(fn (Job $j) => $this->present($j, money: $money)),
+            'data' => collect($jobs->items())->map(fn (Job $j) => $this->present($j, money: $money)
+                + ['unread_notes' => $unread[(string) $j->getKey()] ?? 0]),
             'meta' => $meta,
         ]);
     }
