@@ -813,6 +813,78 @@ void main() {
   /// UI queue 76 (Jose, 2026-10-12, "2 definitely"): Social opens on a
   /// dashboard whose timeline puts what is coming above each day's posts.
   group('the social dashboard', () {
+    // Bug review 2026-11-09 #7: a turned-down draft never went out.
+    testWidgets('a disapproved post reads Not posted, never Sent', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          posts: [
+            {
+              ..._landed('disapproved'),
+              'id': 'd1',
+              'body': 'Weekly Google post',
+            },
+          ],
+        ),
+      );
+
+      expect(find.widgetWithText(StatusPill, 'Not posted'), findsOneWidget);
+      expect(find.widgetWithText(StatusPill, 'Sent'), findsNothing);
+    });
+
+    // Bug review 2026-11-09 #9: fixing the words does not re-send the time,
+    // which the server would re-read; a moved time is sent.
+    testWidgets('editing only the words leaves the time out of the save', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [
+          {
+            ..._landed('scheduled', scheduledFor: '2099-03-04 09:00'),
+            'id': 'c1',
+            'body': 'Free inspection week',
+          },
+        ],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'PATCH') {
+          patches.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return _json({'data': {}});
+        }
+        return inner(request);
+      });
+
+      Future<void> edit(String? when) async {
+        await tester.tap(find.text('Free inspection week').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('social-post-edit')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('social-edit-body')),
+          'Free inspection week, all week',
+        );
+        if (when != null) {
+          await tester.enterText(find.byKey(const Key('social-edit-when')), when);
+        }
+        await tester.tap(find.byKey(const Key('social-edit-save')));
+        await tester.pumpAndSettle();
+      }
+
+      await edit(null);
+      expect(patches.last.containsKey('scheduled_for'), isFalse);
+      expect(patches.last['body'], 'Free inspection week, all week');
+
+      await edit('2099-03-05 10:00');
+      expect(patches.last['scheduled_for'], '2099-03-05 10:00');
+    });
+
     testWidgets('what is coming sits above today, and a refusal is said with '
         'its Retry', (tester) async {
       await _pumpSocial(
@@ -1581,6 +1653,103 @@ void main() {
       expect(sent?['library_item'], 'lib-1');
     });
 
+    // Bug review 2026-11-09 #6: a library video has no upload, so the post
+    // goes as JSON, and TikTok's choices must ride in it too.
+    testWidgets('a library video to TikTok carries the TikTok choices', (
+      tester,
+    ) async {
+      Map<String, dynamic>? sent;
+      final inner = _handler(canEdit: true, connections: const [_tiktokDirect]);
+      await _pumpSocial(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/social/library')) {
+          return _json({
+            'data': [
+              {
+                'id': 'lib-1',
+                'name': 'Truck at dawn',
+                'kind': 'video',
+                'size': 1000,
+                'scope_type': 'company',
+                'created_at': '2026-10-16T12:00:00Z',
+              },
+            ],
+          });
+        }
+        if (request.method == 'POST' && path.endsWith('/social/posts')) {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+        }
+        return inner(request);
+      });
+      await _openCompose(tester);
+
+      await tester.tap(find.byKey(const ValueKey('social-from-library')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-item-lib-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-use')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-7')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('tiktok-privacy-ezbizi_us')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Everyone').last);
+      await tester.pumpAndSettle();
+      expect(_publishRefusal(tester), isNull);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
+      await tester.pumpAndSettle();
+
+      final choices = (sent?['tiktok'] as Map<String, dynamic>?)?['conn-7'];
+      expect(choices, isA<Map<String, dynamic>>());
+      expect(choices['privacy_level'], 'PUBLIC_TO_EVERYONE');
+      expect(choices['allow_comment'], isFalse);
+    });
+
+    // Bug review 2026-11-09 #8: Pinterest's 800 and a ticked listing's
+    // Google 1500 are checked before Publish, like X's 280.
+    testWidgets('too long for Pinterest, or for a ticked listing, is refused', (
+      tester,
+    ) async {
+      final inner = _handler(canEdit: true, connections: const [_pinterestBoard]);
+      await _pumpSocial(tester, (request) async {
+        if (request.url.path.endsWith('/social/places')) {
+          return _json({
+            'data': [
+              {
+                'id': 'place-1',
+                'title': 'Brightside Home',
+                'label': 'Brightside Home · Springfield, IL',
+                'branch': 'Springfield',
+                'address': '14 Elm St, Springfield',
+                'connection_id': 'conn-g',
+                'state': 'verified',
+                'postable': true,
+              },
+            ],
+          });
+        }
+        return inner(request);
+      });
+      await _openCompose(tester);
+
+      final words = find.widgetWithText(TextField, 'What should go out?');
+      await tester.enterText(words, 'a' * 1501);
+      await tester.tap(find.byKey(const ValueKey('social-places-expand')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('social-place-place-1')));
+      await tester.pumpAndSettle();
+      expect(
+        _publishRefusal(tester),
+        contains('Google Business Profile takes 1500'),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('social-place-place-1')));
+      await tester.tap(find.widgetWithText(FilterChip, 'Everdoors Boards'));
+      await tester.pumpAndSettle();
+      expect(_publishRefusal(tester), contains('Pinterest takes 800'));
+    });
+
     testWidgets('the TikTok drafts detour is on the account, before Publish', (
       tester,
     ) async {
@@ -1918,12 +2087,12 @@ void main() {
       final x = tester.widget<Text>(find.byKey(const ValueKey('social-count-x')));
       expect(x.data, 'X 281/280');
       expect(x.style?.fontWeight, FontWeight.w700);
-      // Pinterest has no limit in the map: counted, never warned.
+      // Under Pinterest's 800: counted against it, not warned.
       expect(
         tester
             .widget<Text>(find.byKey(const ValueKey('social-count-pinterest')))
             .data,
-        'Pinterest 281',
+        'Pinterest 281/800',
       );
       expect(_publishRefusal(tester), contains('X takes 280 characters'));
       expect(
@@ -1966,7 +2135,10 @@ void main() {
       final pinterest = find.byKey(const ValueKey('social-likeness-pinterest'));
       expect(pinterest, findsOneWidget);
       expect(
-        find.descendant(of: pinterest, matching: find.text('14 characters')),
+        find.descendant(
+          of: pinterest,
+          matching: find.text('14 / 800 characters'),
+        ),
         findsOneWidget,
       );
 

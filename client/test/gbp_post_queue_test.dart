@@ -97,6 +97,12 @@ void main() {
       expect(jsonDecode(approve.body), {
         'body': 'Cold nights are coming. Book a sweep today.',
       });
+      // Approve only queues the send; it may still fail (bug review #17).
+      expect(find.textContaining('Sent to Google'), findsNothing);
+      expect(
+        find.textContaining('Approved. Sending to Google'),
+        findsOneWidget,
+      );
       expect(
         find.textContaining('Is your fireplace ready'),
         findsOneWidget,

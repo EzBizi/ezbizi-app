@@ -290,6 +290,9 @@ Schedule::command('scheduling:apply-scheduled-changes')->hourly()->withoutOverla
 
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
+// Instagram and Threads 60-day tokens, renewed while they still work (bug review 2026-11-09).
+Schedule::command('ezbizi:renew-meta-login-tokens')->dailyAt('04:20')->timezone('America/New_York')->withoutOverlapping(30);
+
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
 //
 // Every minute, and that is NOT the cadence. A mailbox is looked at every five

@@ -6,6 +6,7 @@ use App\Models\SocialConnection;
 use App\Support\Social\PinterestOAuth;
 use App\Support\Social\SocialMediaKind;
 use App\Support\Social\SocialOAuthRefused;
+use App\Support\Social\SocialProvider;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -39,6 +40,11 @@ final class PinterestPublisher implements DeletesPosts, LinksToPosts, SocialPubl
             throw new SocialPublishFailed($why);
         }
 
+        // Refused, never cut mid-sentence (the description's 800 characters).
+        if (($why = SocialProvider::Pinterest->refusesLength($post->body)) !== null) {
+            throw new SocialPublishFailed($why.' Nothing was posted.');
+        }
+
         $token = $this->token($connection);
         // The sandbox lists none of its boards back (measured 2026-10-09), so
         // it names one rather than searching.
@@ -52,7 +58,7 @@ final class PinterestPublisher implements DeletesPosts, LinksToPosts, SocialPubl
         $response = $this->call('post', '/pins', $token, [
             'board_id' => $board,
             'title' => $post->title !== null ? mb_substr($post->title, 0, 100) : null,
-            'description' => mb_substr($post->body, 0, 800),
+            'description' => $post->body,
             'media_source' => [
                 'source_type' => 'image_base64',
                 'content_type' => $post->mime(),

@@ -33,6 +33,10 @@ final class InstagramOAuth extends MetaLoginOAuth
 
     protected const LONG_GRANT = 'ig_exchange_token';
 
+    protected const REFRESH_URL = 'https://graph.instagram.com/refresh_access_token';
+
+    protected const REFRESH_GRANT = 'ig_refresh_token';
+
     protected const ME_URL = 'https://graph.instagram.com/v21.0/me';
 
     protected const ME_FIELDS = 'user_id,id,username,name';
