@@ -82,8 +82,9 @@ void main() {
             'total': 1,
             'last_page': 1,
             'counts': {'unscheduled': 1},
-            'franchises': [
-              {'id': 'f-1', 'name': 'Ohio', 'company': 'Brightside'},
+            'places': [
+              {'value': 'company:c-1', 'label': 'Brightside', 'depth': 0},
+              {'value': 'f-1', 'label': 'Brightside · Ohio', 'depth': 1},
             ],
             'columns': [
               {'key': 'customer', 'label': 'Client', 'visible': true},

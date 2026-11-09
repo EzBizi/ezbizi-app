@@ -98,7 +98,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
     final response = await widget.api.get('/project-board/jobs', {
       'tab': tab,
       'page': '$page',
-      'franchise_id': ?franchise,
+      if (franchise != null && franchise.startsWith('company:'))
+        'company_id': franchise.substring(8)
+      else
+        'franchise_id': ?franchise,
       if (q.isNotEmpty) 'q': q,
     });
     if (!mounted || franchise != _franchise || q != _q) return;
@@ -114,7 +117,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
       _total = meta['total'] as int? ?? _rows.length;
       _lastPage = meta['last_page'] as int? ?? 1;
       _counts = (meta['counts'] as Map?)?.cast<String, dynamic>() ?? _counts;
-      _franchises = _maps(meta['franchises']);
+      _franchises = _maps(meta['places']);
       _columns = _maps(meta['columns']);
       _labels = (meta['labels'] as Map?)?.cast<String, dynamic>() ?? const {};
       _scope = ((meta['settings_scope'] as Map?) ?? const {}).map(
@@ -282,12 +285,17 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
                             _pick(v == null || v.isEmpty ? null : v),
                         dropdownMenuEntries: [
                           const DropdownMenuEntry(value: '', label: 'All'),
+                          // Hierarchy order from the server, indented by level.
                           for (final f in _franchises)
                             DropdownMenuEntry(
-                              value: '${f['id']}',
-                              label: f['company'] == null
-                                  ? '${f['name']}'
-                                  : '${f['company']} · ${f['name']}',
+                              value: '${f['value']}',
+                              label: '${f['label']}',
+                              labelWidget: Padding(
+                                padding: EdgeInsets.only(
+                                  left: 16.0 * ((f['depth'] as int?) ?? 0),
+                                ),
+                                child: Text('${f['label']}'),
+                              ),
                             ),
                         ],
                       ),
