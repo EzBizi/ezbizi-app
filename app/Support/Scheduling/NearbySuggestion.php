@@ -52,12 +52,10 @@ final class NearbySuggestion
     /** @return array<string, mixed> */
     public function for(ServiceArea $area, string $zip, CarbonImmutable $from, ?string $date = null): array
     {
-        $look = $this->load($area, $from);
-        // One day only: the customer cannot take the suggested day and asked
-        // for another (Jose, 2026-11-06) — that day's earliest and best window.
-        if ($date !== null) {
-            $look['days'] = $look['days']->where('date', $date)->values();
-        }
+        // One day only: the customer cannot take the suggested day and picked
+        // another (Jose, 2026-11-06/09) — that day's windows and jobs, however
+        // far out, not the look-ahead from tomorrow.
+        $look = $date === null ? $this->load($area, $from) : $this->load($area, CarbonImmutable::parse($date), 1);
         $origin = $this->centre($area->organization_id, $zip);
         $out = ['radius_miles' => $look['radius'], 'days' => $look['span'], 'origin' => $origin, 'earliest' => null, 'suggested' => null];
 
@@ -124,11 +122,11 @@ final class NearbySuggestion
      *
      * @return array{radius: float, span: int, gap: int, franchise: ?Franchise, days: Collection, all_days: Collection, jobs: Collection}
      */
-    public function load(ServiceArea $area, CarbonImmutable $from): array
+    public function load(ServiceArea $area, CarbonImmutable $from, ?int $span = null): array
     {
         $franchise = Franchise::query()->find($area->franchise_id);
         $radius = (float) $this->settings->get(self::RADIUS, $franchise);
-        $span = (int) $this->settings->get(self::DAYS, $franchise);
+        $span ??= (int) $this->settings->get(self::DAYS, $franchise);
 
         return [
             'radius' => $radius,

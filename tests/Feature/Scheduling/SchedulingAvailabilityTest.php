@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\ServiceArea;
+use App\Models\WebLocation;
 use App\Models\WorkizJob;
 use App\Support\Scheduling\Openings;
 use App\Support\Tenancy\TenantContext;
@@ -198,6 +199,25 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame([2, 1], array_column($area['first']['windows'], 'remaining'));
         $this->assertCount(5, $area['after']);
         $this->assertSame('2026-10-12', $area['after'][0]['date']);
+    }
+
+    /** Jose, 2026-11-09: dispatchers are told where the branch's office is; most specific address first. */
+    public function test_the_answer_names_the_branch_office_or_says_there_is_none(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $office = fn () => $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/availability?zip=75201')->json('data.areas.0.office');
+
+        $this->assertNull($office(), 'Nothing on file: the screen says so.');
+
+        $this->inTenant($tenant['org'], fn () => $tenant['company']->update(['address_line1' => '1 Main St', 'city' => 'Dallas', 'state' => 'TX', 'postal_code' => '75201']));
+        $this->assertSame(['1 Main St, Dallas, TX 75201', 'company'], [$office()['line'], $office()['source']]);
+
+        // A website location inside the area is more specific than the company.
+        $this->inTenant($tenant['org'], fn () => WebLocation::create(['company_id' => $tenant['company']->id, 'name' => 'Dallas',
+            'address_line1' => '11836 Judd Ct', 'city' => 'Dallas', 'state' => 'TX', 'postal_code' => '75201']));
+        $this->assertSame('11836 Judd Ct, Dallas, TX 75201', $office()['line']);
+        $this->assertStringStartsWith('https://www.google.com/maps/search/?api=1&query=11836', $office()['maps_url']);
     }
 
     /**
@@ -916,6 +936,10 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertNull($day['suggested'], 'Nothing nearby on the 5th, so no better window that day.');
         $this->assertSame('2026-10-12', $this->signedInAs($tenant['admin'])
             ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201&date=2026-10-12')->json('data.suggested.date'));
+        // A day past the 14-day look-ahead still answers for itself (Jose, 2026-11-09: Dec 3 did nothing).
+        $far = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201&date=2026-12-07')->assertOk()->json('data');
+        $this->assertSame('2026-12-07', $far['earliest']['date']);
 
         // A wider radius from Settings changes nothing here, a 1-mile one still
         // finds the job, and nothing nearby means no suggestion at all.
