@@ -122,6 +122,7 @@ class ReviewLinkReportTest extends TestCase
             $review('Dana Whitfield', 5, 'a');   // exact, clicked
             $review('Marco R.', 4, 'b');         // likely, went straight to Google
             $review('Somebody Else', 5, 'c');    // nobody
+            $review('Lee', 3, 'd');              // possible: shown beside Reviewed, not in it
 
             return [$jobs[0], $jobs[1]];
         });
@@ -131,7 +132,7 @@ class ReviewLinkReportTest extends TestCase
 
         $data = $this->signedInAs($this->t['admin'])->getJson('/api/v1/customer-experience/review-links')->assertOk()->json('data');
         $this->assertSame(2, $data['totals']['reviewed'], 'once each, though matched twice');
-        $this->assertSame(['exact' => 1, 'likely' => 1, 'possible' => 0, 'without_click' => 1], $data['reviewed']['by']);
+        $this->assertSame(['exact' => 1, 'likely' => 1, 'confirmed' => 0, 'possible' => 1, 'without_click' => 1], $data['reviewed']['by']);
         $this->assertEquals(4.5, $data['reviewed']['stars']);
 
         $marco = \App\Models\Review::withoutGlobalScopes()->where('reviewer_name', 'Marco R.')->first();
@@ -139,6 +140,13 @@ class ReviewLinkReportTest extends TestCase
         $this->putJson("/api/v1/reviews/{$marco->id}/link-match", ['confirmed' => false])->assertOk()
             ->assertJsonPath('data.link_match.status', 'rejected')->assertJsonPath('data.customer', null);
         $this->assertSame(1, $this->getJson('/api/v1/customer-experience/review-links')->json('data.totals.reviewed'));
+
+        // Jose 2026-11-09: a possible match a person confirms moves into Reviewed.
+        $lee = \App\Models\Review::withoutGlobalScopes()->where('reviewer_name', 'Lee')->first();
+        $this->putJson("/api/v1/reviews/{$lee->id}/link-match", ['confirmed' => true])->assertOk();
+        $data = $this->getJson('/api/v1/customer-experience/review-links')->json('data');
+        $this->assertSame(2, $data['totals']['reviewed']);
+        $this->assertSame(['exact' => 1, 'likely' => 0, 'confirmed' => 1, 'possible' => 0, 'without_click' => 1], $data['reviewed']['by']);
     }
 
     public function test_names_score_exact_likely_possible_or_nothing(): void
