@@ -28,7 +28,7 @@ class BusinessProfilePostQueueTest extends TestCase
             $c->forceFill(['organization_id' => $t['org']->id, 'scope_type' => 'organization', 'scope_id' => $t['org']->id,
                 'provider' => 'google_business_profile', 'remote_id' => 'accounts/1', 'display_name' => 'GBP'])->save();
             $make = fn (string $l) => tap(new BusinessLocation, fn ($p) => $p->forceFill(['organization_id' => $t['org']->id,
-                'company_id' => $t['company']->id, 'connection_id' => $c->id, 'remote_name' => "locations/{$l}", 'title' => "L{$l}", 'city' => 'Dayton'])->save());
+                'company_id' => $t['company']->id, 'connection_id' => $c->id, 'remote_name' => "locations/{$l}", 'title' => "L{$l}", 'city' => 'Dayton', 'verification_state' => 'VERIFIED'])->save());
 
             return [$make('1'), $make('2')];
         });

@@ -122,6 +122,12 @@ class _NewsletterTabState extends State<NewsletterTab> {
   String? _saveError;
   Timer? _settleTimer;
 
+  /// The save under way, so Send can wait for it rather than race it.
+  Future<void>? _saveInFlight;
+
+  /// Counts edits, so a save knows whether something was typed while it ran.
+  int _edits = 0;
+
   _Newsletter? get _selected {
     for (final n in _all) {
       if (n.id == _selectedId) return n;
@@ -288,7 +294,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
     _subject.text = n.subject;
     _when.text = n.scheduledFor ?? '';
     _blocks = n.blocks.map((b) => Map<String, dynamic>.from(b)).toList();
-    _htmlOverride = null;
+    _htmlOverride = n.htmlOverride;
     _audienceId = n.audienceId;
     _dirty = false;
     _saveError = null;
@@ -301,14 +307,25 @@ class _NewsletterTabState extends State<NewsletterTab> {
   /// forgive — and because the preview has to come from a saved row, so the
   /// save was going to happen anyway.
   void _touched() {
+    _edits++;
     setState(() => _dirty = true);
     _settleTimer?.cancel();
     _settleTimer = Timer(_settle, _save);
   }
 
-  Future<void> _save() async {
+  /// One save at a time: a second call while one runs waits for that one.
+  Future<void> _save() {
+    final running = _saveInFlight;
+    if (running != null) return running;
+    final next = _saveNow().whenComplete(() => _saveInFlight = null);
+    _saveInFlight = next;
+    return next;
+  }
+
+  Future<void> _saveNow() async {
     final id = _selectedId;
-    if (id == null || _saving) return;
+    if (id == null) return;
+    final edits = _edits;
 
     setState(() {
       _saving = true;
@@ -318,7 +335,8 @@ class _NewsletterTabState extends State<NewsletterTab> {
     final response = await widget.api.put('/newsletters/$id', {
       'subject': _subject.text.trim().isEmpty ? 'Untitled' : _subject.text.trim(),
       'blocks': _blocks,
-      if (_htmlOverride != null) 'html_override': _htmlOverride,
+      // Always sent: the server keeps what it holds only when this is absent.
+      'html_override': _htmlOverride,
       'audience_id': _audienceId,
       'scheduled_for': _when.text.trim(),
     });
@@ -335,8 +353,13 @@ class _NewsletterTabState extends State<NewsletterTab> {
 
     setState(() {
       _saving = false;
-      _dirty = false;
+      // Typing during the save left something this save did not carry.
+      _dirty = _edits != edits;
     });
+    if (_dirty) {
+      _settleTimer?.cancel();
+      _settleTimer = Timer(_settle, _save);
+    }
 
     await _refreshPreview();
     await _reloadList();
@@ -687,6 +710,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
       when: _when,
       viewName: _viewName,
       company: widget.session.me?.organization.name ?? 'EzBizi',
+      initialHtml: _htmlOverride,
       scheduledTimezone: _selected?.scheduledTimezone,
       session: widget.session,
       sendingRefusedBecause: _sendingRefusedBecause,
@@ -729,9 +753,19 @@ class _NewsletterTabState extends State<NewsletterTab> {
 
     // Save first, or the mailing that goes out is the one before the last
     // sentence anybody typed.
+    // A save already running is waited for, then the latest text is saved
+    // again; a failed or incomplete save stops here rather than sending the
+    // older saved version.
     _settleTimer?.cancel();
+    await _saveInFlight;
+    if (!mounted) return;
     await _save();
     if (!mounted) return;
+    if (_saveError != null || _dirty) {
+      setState(() => _saveError ??=
+          'The latest changes are not saved yet, so nothing was sent. Try again.');
+      return;
+    }
 
     final go = await showSidePanel<bool>(
       context,
@@ -776,6 +810,7 @@ class _Newsletter {
     this.audienceId,
     this.scheduledFor,
     this.scheduledTimezone,
+    this.htmlOverride,
   });
 
   /// The same newsletter as the dashboard's table reads it.
@@ -787,6 +822,9 @@ class _Newsletter {
   final String status;
   final String? audienceId;
   final String? scheduledFor;
+
+  /// The whole-mailing HTML, when somebody wrote one instead of blocks.
+  final String? htmlOverride;
 
   /// The clock the SERVER filed that wall time against, which is not always
   /// the clock of the place named in the view. Above franchise scope it is the
@@ -811,6 +849,7 @@ class _Newsletter {
       audienceId: audience is Map ? audience['id'] as String? : null,
       scheduledFor: json['scheduled_for'] as String?,
       scheduledTimezone: json['scheduled_timezone'] as String?,
+      htmlOverride: json['html_override'] as String?,
       blocks: ((json['blocks'] as List<dynamic>?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .toList(),

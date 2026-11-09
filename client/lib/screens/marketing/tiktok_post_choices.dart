@@ -71,6 +71,17 @@ class TikTokChoice {
     return null;
   }
 
+  /// The same choices for a JSON body, as `tiktok: {<id>: {...}}`.
+  Map<String, Object> json() => {
+    'privacy_level': privacy ?? '',
+    'allow_comment': comment,
+    'allow_duet': duet,
+    'allow_stitch': stitch,
+    'disclose': disclose,
+    'your_brand': yourBrand,
+    'branded_content': branded,
+  };
+
   /// The multipart fields for `tiktok[<id>]`.
   Map<String, String> fields(String id) => {
     'tiktok[$id][privacy_level]': privacy ?? '',

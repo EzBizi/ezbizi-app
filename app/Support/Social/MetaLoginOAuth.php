@@ -109,6 +109,35 @@ abstract class MetaLoginOAuth implements SocialOAuth
         );
     }
 
+    /**
+     * A long-lived token, renewed for another 60 days before it dies. Meta
+     * gives these logins no refresh token: the live token itself is traded in
+     * (`ig_refresh_token` / `th_refresh_token`), and only while it still works,
+     * so RenewMetaLoginTokens does it daily well inside the window.
+     */
+    public function renew(string $longToken): SocialOAuthGrant
+    {
+        try {
+            $response = Http::timeout(self::TIMEOUT)->get(static::REFRESH_URL, [
+                'grant_type' => static::REFRESH_GRANT,
+                'access_token' => $longToken,
+            ]);
+        } catch (ConnectionException) {
+            throw SocialOAuthRefused::exchangeFailed(static::LABEL);
+        }
+
+        $access = $response->json('access_token');
+
+        if ($response->failed() || ! is_string($access) || $access === '') {
+            throw SocialOAuthRefused::exchangeFailed(static::LABEL);
+        }
+
+        return new SocialOAuthGrant(
+            accessToken: $access,
+            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
+        );
+    }
+
     public function identify(SocialOAuthGrant $grant): array
     {
         try {

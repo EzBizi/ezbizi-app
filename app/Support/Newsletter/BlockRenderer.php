@@ -44,6 +44,10 @@ class BlockRenderer
         return '<!DOCTYPE html>'
             .'<html><head><meta charset="utf-8">'
             .'<meta name="viewport" content="width=device-width,initial-scale=1">'
+            // Columns stack on a phone. The inline widths stay for clients that strip <style>.
+            .'<style>@media only screen and (max-width:620px){'
+            .'.ez-col{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box;}'
+            .'}</style>'
             .'</head>'
             .'<body style="margin:0;padding:0;background:#EDF1F4;">'
             .'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '

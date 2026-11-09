@@ -45,6 +45,7 @@ class NewsletterEditor extends StatefulWidget {
     required this.when,
     required this.viewName,
     required this.company,
+    this.initialHtml,
     required this.scheduledTimezone,
     required this.session,
     required this.sendingRefusedBecause,
@@ -68,6 +69,9 @@ class NewsletterEditor extends StatefulWidget {
 
   /// The name the footer carries, as the renderer writes it.
   final String company;
+
+  /// The custom HTML already saved, which opens the HTML box filled.
+  final String? initialHtml;
 
   /// The clock this mailing is already filed against, when it is already
   /// scheduled. Null on a draft, where nothing has picked a clock yet.
@@ -117,6 +121,11 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   void initState() {
     super.initState();
     _scheduling = widget.when.text.trim().isNotEmpty;
+    final html = widget.initialHtml ?? '';
+    if (html.isNotEmpty) {
+      _html.text = html;
+      _htmlMode = true;
+    }
   }
 
   @override
