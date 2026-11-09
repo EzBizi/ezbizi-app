@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0549', date: '9 Nov 2026', items: [
+      'Project Management: a Tags column, editable in Settings like the others',
+      'Project Management: the Franchise filter is ordered by company, its franchises, then each sub-company and its franchises; picking a company includes its sub-companies',
+      'Tables: amounts no longer run into the next column',
+    ]),
     VersionRelease(version: '0.0.0548', date: '7 Nov 2026', items: [
       'AI assistant: a slow help-library lookup no longer stops it from answering',
     ]),
