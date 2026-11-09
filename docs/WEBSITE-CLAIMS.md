@@ -3462,3 +3462,16 @@ Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbi
 (LINE-split) over the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple
 `resultCount` 1, 0.0.0502. Desk (11-07): 0544-0548 all live; nothing on Training, ring groups, Scheduled Jobs, LSA or
 publishers (no row counts); no STRIPE keys in prod `.env`, no company connected, so `/privacy/` unchanged.
+
+## 2026-11-08: nothing shipped, nothing on the site went false
+
+`main` and `origin/main` have no product commit since `c035699e5`, and production `/download/windows.json`
+still reads 0.0.0548 there. No WP page modified since 11-06 13:58 (`post_modified_gmt`). All 10 live
+pages match their post_content, apart from the logo `src` the theme rewrites. www `/ezbizi-api.json`
+is byte-identical to the app's `/api/v1/openapi.json`.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms
+(LINE-split) over the 10 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0502. Desk asked (11-08) for anything live since 0548 and for row counts on the
+do-not rows; no answer had arrived when this was written. Nothing above depends on its answer.
+Note for the next run: on the websites box wp-cli needs `/opt/plesk/php/8.4/bin/php /usr/local/bin/wp --path=/var/www/vhosts/ezbizi.com/httpdocs`, because `ubuntu` cannot `cd` into the docroot and there is no `php` on PATH.
