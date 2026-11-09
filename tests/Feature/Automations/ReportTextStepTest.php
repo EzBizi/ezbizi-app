@@ -37,7 +37,7 @@ class ReportTextStepTest extends TestCase
 
             $sent = app(ActionRunner::class)->run($step, $event, null, automation: $mine);
             $this->assertTrue($sent['ok'], $sent['detail']);
-            $this->assertSame([['13055550123', 'report_document']], WhatsAppMessage::query()->get()->map(fn ($m) => [$m->counterparty, $m->template_name])->all());
+            $this->assertSame([['13055550123', 'report_statement']], WhatsAppMessage::query()->get()->map(fn ($m) => [$m->counterparty, $m->template_name])->all());
             app(ActionRunner::class)->run($step, $event, null, automation: $mine);
             $this->assertSame(1, WhatsAppMessage::query()->count(), 'the same day is not sent twice');
 

@@ -44,6 +44,6 @@ class ReportDeliveryCheckTest extends TestCase
     {
         DB::table('whatsapp_messages')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id, 'phone_number_id' => '1309270845610102',
             'direction' => 'out', 'counterparty' => '13055550101', 'status' => $status, 'status_reason' => $reason, 'kind' => 'template',
-            'template_name' => 'report_document', 'idempotency_key' => $key, 'created_at' => now()->subMinutes($minutesAgo), 'updated_at' => now()]);
+            'template_name' => 'report_statement', 'idempotency_key' => $key, 'created_at' => now()->subMinutes($minutesAgo), 'updated_at' => now()]);
     }
 }

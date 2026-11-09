@@ -1294,7 +1294,7 @@ class SettingRegistry
                 key: 'ai_assistance.report_template',
                 label: 'WhatsApp template for a report text',
                 type: SettingDefinition::TYPE_STRING,
-                default: 'report_document',
+                default: 'report_statement',
                 allowedScopes: $orgOnly,
                 editPermission: 'ai_assistance.manage',
                 help: 'An approved template with a document header and one value, the report\'s title. '

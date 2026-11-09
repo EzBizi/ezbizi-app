@@ -126,7 +126,7 @@ class WhatsAppGroupsTest extends TestCase
         $templates = collect($this->sent)->where('type', 'template')->values();
         $this->assertSame(['13055550101', '13055550102'], $templates->pluck('to')->all());
         $this->assertCount(0, collect($this->sent)->where('type', 'text'));
-        $this->assertSame('report_document', $templates[0]['template']['name']);
+        $this->assertSame('report_statement', $templates[0]['template']['name']);
         $this->assertSame(['type' => 'document', 'document' => ['id' => 'MEDIA-1', 'filename' => 'revenue-collected-nov-9.pdf']],
             $templates[0]['template']['components'][0]['parameters'][0]);
         $this->assertSame('Revenue collected · Nov 9', $templates[0]['template']['components'][1]['parameters'][0]['text']);
