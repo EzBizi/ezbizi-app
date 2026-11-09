@@ -64,7 +64,8 @@ class WhatsAppGroupsController extends Controller
             'member_ids.*' => ['uuid'],
         ]);
 
-        $number = WhatsAppNumber::query()->where('phone_number_id', (string) config('services.meta.whatsapp_bot_number_id'))->first()
+        $number = WhatsAppNumber::forPurpose('reports')
+            ?? WhatsAppNumber::query()->where('phone_number_id', (string) config('services.meta.whatsapp_bot_number_id'))->first()
             ?? WhatsAppNumber::query()->first();
 
         if ($number === null) {
