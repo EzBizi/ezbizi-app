@@ -77,8 +77,9 @@ class _WindowsHtmlState extends State<_WindowsHtml> {
 
   @override
   Widget build(BuildContext context) {
-    if (_error != null)
+    if (_error != null) {
       return Center(child: Text(_error!, textAlign: TextAlign.center));
+    }
 
     return _ready
         ? wvw.Webview(_controller)
@@ -103,8 +104,9 @@ class _MobileHtmlState extends State<_MobileHtml> {
   @override
   void didUpdateWidget(_MobileHtml old) {
     super.didUpdateWidget(old);
-    if (old.html != widget.html)
+    if (old.html != widget.html) {
       unawaited(_controller.loadHtmlString(widget.html));
+    }
   }
 
   @override
