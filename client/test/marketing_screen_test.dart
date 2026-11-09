@@ -3177,6 +3177,60 @@ void main() {
       expect(find.descendant(of: block, matching: find.text('Winter sweeps')), findsOneWidget);
     });
 
+    testWidgets('dragging a block by its handle reorders it, and the save follows', (tester) async {
+      final saved = <Map<String, dynamic>>[];
+      final inner = _handler(canEdit: true, newsletters: const [_draftOfThree]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': _draftOfThree}));
+        }
+        return inner(request);
+      });
+
+      // The first block's handle, dragged below the third.
+      final handle = find.byKey(const Key('newsletter-block-handle-0'));
+      final third = tester.getBottomLeft(find.byKey(const Key('newsletter-block-2')));
+      final gesture = await tester.startGesture(tester.getCenter(handle));
+      await gesture.moveTo(tester.getCenter(handle) + const Offset(0, 10));
+      await tester.pump();
+      await gesture.moveTo(Offset(tester.getCenter(handle).dx, third.dy + 20));
+      await tester.pump(const Duration(milliseconds: 300));
+      await gesture.up();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(saved, isNotEmpty, reason: 'A drag must autosave.');
+      expect([for (final b in saved.last['blocks'] as List) b['text']], ['Two', 'Three', 'One']);
+    });
+
+    testWidgets('a block dragged from "Add a block" lands where it is dropped', (tester) async {
+      final saved = <Map<String, dynamic>>[];
+      final inner = _handler(canEdit: true, newsletters: const [_draftOfThree]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': _draftOfThree}));
+        }
+        return inner(request);
+      });
+
+      // Dropped on the second block: it goes above it, not at the end.
+      final source = tester.getCenter(find.byKey(const Key('newsletter-add-divider')));
+      final target = tester.getCenter(find.byKey(const Key('newsletter-block-1')));
+      final gesture = await tester.startGesture(source);
+      await gesture.moveTo(source + const Offset(20, 0));
+      await tester.pump();
+      await gesture.moveTo(target);
+      await tester.pump();
+      await gesture.up();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(saved, isNotEmpty, reason: 'A drop must autosave.');
+      expect([for (final b in saved.last['blocks'] as List) b['type']], ['text', 'divider', 'text', 'text']);
+    });
+
     testWidgets('Send stops with the error when the save before it fails', (tester) async {
       final posts = <String>[];
       final inner = _handler(canEdit: true, newsletters: const [_draft]);
@@ -3351,6 +3405,18 @@ const _draft = {
   'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
   'blocks': [
     {'type': 'heading', 'text': 'Autumn sweeps', 'align': 'left'},
+  ],
+};
+
+const _draftOfThree = {
+  'id': 'n-3',
+  'subject': 'Three blocks',
+  'status': 'draft',
+  'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+  'blocks': [
+    {'type': 'text', 'text': 'One', 'align': 'left'},
+    {'type': 'text', 'text': 'Two', 'align': 'left'},
+    {'type': 'text', 'text': 'Three', 'align': 'left'},
   ],
 };
 
