@@ -2064,4 +2064,43 @@ class HrOnboardingTest extends TestCase
 
         return $query['token'];
     }
+
+    /**
+     * Social Security card photo (Merav, 2026-11-09): a required sensitive file
+     * field, stored encrypted, served only as an audited reveal, and shown on the
+     * HR record as on file or missing.
+     */
+    public function test_the_social_security_card_photo_is_encrypted_and_a_reveal(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'ssn_card', 'label' => 'Social Security card photo', 'type' => 'file', 'filled_by' => 'employee', 'required' => true, 'sensitive' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+        $this->as($alpha['admin'])->getJson("/api/v1/hr/people/{$employee->id}")->assertJsonPath('data.ssn_card', 'missing');
+
+        $bytes = "%PDF-1.4 card front
+%%EOF
+";
+        $file = $this->as($employee)->postJson('/api/v1/attachments', [
+            'attachable_type' => 'onboardings', 'attachable_id' => $id,
+            'file' => UploadedFile::fake()->createWithContent('card.pdf', $bytes),
+        ])->assertCreated()->json('data.id');
+        $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['ssn_card' => $file]])->assertOk();
+
+        // Encrypted at rest: the stored bytes are not the card.
+        $row = $this->inTenant($alpha['org'], fn () => \App\Models\Attachment::query()->find($file));
+        $this->assertTrue($row->encrypted);
+        $this->assertStringNotContainsString('card front', (string) app(\App\Support\Files\FileStore::class)->contents($row->path, $row->disk));
+
+        // Someone who can open the onboarding but may not reveal gets nothing.
+        $reader = $this->userWithRole($alpha, 'Reader', ['hr.view']);
+        $this->as($reader)->get("/api/v1/attachments/{$file}")->assertForbidden();
+        $this->assertSame(0, $this->revealEvents($alpha)->count());
+
+        // HR gets the card, and the view is audited.
+        $this->assertSame($bytes, $this->as($alpha['admin'])->get("/api/v1/attachments/{$file}")->assertOk()->streamedContent());
+        $this->assertSame(1, $this->revealEvents($alpha)->count());
+
+        $this->as($alpha['admin'])->getJson("/api/v1/hr/people/{$employee->id}")->assertJsonPath('data.ssn_card', 'on_file');
+    }
 }

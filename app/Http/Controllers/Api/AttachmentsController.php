@@ -187,6 +187,20 @@ class AttachmentsController extends Controller
             ]);
         }
 
+        if ($attachment->encrypted) {
+            $bytes = $attachment->bytes();
+            abort_if($bytes === null, 404);
+            $inline = $request->boolean('inline') && in_array($attachment->mime, self::INLINE_MIMES, true);
+
+            return response()->streamDownload(fn () => print ($bytes),
+                str_replace(["", "
+", '"', chr(92)], '', basename($attachment->original_name)) ?: 'download', [
+                    'Content-Type' => $attachment->mime,
+                    'X-Content-Type-Options' => 'nosniff',
+                    'Cache-Control' => 'private, no-store',
+                ], $inline ? 'inline' : 'attachment');
+        }
+
         return $this->files->serve(
             $attachment->path,
             $attachment->disk,
