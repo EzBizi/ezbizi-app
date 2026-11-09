@@ -394,11 +394,15 @@ class _BoardSettingsState extends State<_BoardSettings> {
           (TextEditingController(text: '$v'), '$tone'),
       ],
   };
-  final Map<String, TextEditingController> _statuses = {};
+  final Map<String, List<String>> _statuses = {};
   final Map<String, bool?> _scheduled = {};
-  final _partTags = TextEditingController();
+  List<String> _partTags = [];
+
+  /// The company's real job statuses and tags, most used first.
+  List<String> _knownStatuses = const [];
+  List<String> _knownTags = const [];
   bool _ready = false;
-  bool _saving = false;
+  String? _saving;
   String? _error;
 
   @override
@@ -409,66 +413,61 @@ class _BoardSettingsState extends State<_BoardSettings> {
 
   @override
   void dispose() {
-    for (final c in _statuses.values) {
-      c.dispose();
-    }
     for (final list in _labels.values) {
       for (final (c, _) in list) {
         c.dispose();
       }
     }
-    _partTags.dispose();
     super.dispose();
   }
 
   Future<void> _read() async {
-    final r = await widget.api.get('/settings', widget.scope);
+    final (r, o) = await (
+      widget.api.get('/settings', widget.scope),
+      widget.api.get('/project-board/options'),
+    ).wait;
     if (!mounted) return;
     final byKey = {
       for (final s in (r.ok && r.data is List ? r.data as List : const []))
         '${(s as Map)['key']}': s['value'],
     };
     final tabs = (byKey['project_board.tabs'] as Map?) ?? const {};
+    final options = o.ok && o.data is Map ? o.data as Map : const {};
     setState(() {
       _error = r.ok ? null : r.message;
+      _knownStatuses = [
+        for (final s in (options['statuses'] as List?) ?? const []) '$s',
+      ];
+      _knownTags = [
+        for (final t in (options['tags'] as List?) ?? const []) '$t',
+      ];
       for (final (key, _, _) in _tabs) {
         final rule = (tabs[key] as Map?) ?? const {};
-        _statuses[key] = TextEditingController(
-          text: ((rule['statuses'] as List?) ?? const []).join(', '),
-        );
+        _statuses[key] = [
+          for (final s in (rule['statuses'] as List?) ?? const []) '$s',
+        ];
         _scheduled[key] = rule['scheduled'] as bool?;
       }
-      _partTags.text = ((byKey['project_board.part_tags'] as List?) ?? const [])
-          .join(', ');
+      _partTags = [
+        for (final t in (byKey['project_board.part_tags'] as List?) ?? const [])
+          '$t',
+      ];
+      // Job Status starts from the company's own statuses, not an empty list.
+      final status = _labels['status'];
+      if (status != null && status.isEmpty) {
+        for (final s in _knownStatuses) {
+          status.add((
+            TextEditingController(text: s),
+            toneForJobStatus(s).name,
+          ));
+        }
+      }
       _ready = true;
     });
   }
 
-  List<String> _split(String text) => [
-    for (final s in text.split(','))
-      if (s.trim().isNotEmpty) s.trim(),
-  ];
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    final values = <String, Object>{
-      'project_board.columns': _columns,
-      'project_board.labels': {
-        for (final MapEntry(:key, :value) in _labels.entries)
-          key: {
-            for (final (c, tone) in value)
-              if (c.text.trim().isNotEmpty) c.text.trim(): tone,
-          },
-      },
-      'project_board.tabs': {
-        for (final (key, _, _) in _tabs)
-          key: {
-            'statuses': _split(_statuses[key]!.text),
-            if (_scheduled[key] != null) 'scheduled': _scheduled[key]!,
-          },
-      },
-      'project_board.part_tags': _split(_partTags.text),
-    };
+  Future<void> _save(String card, Map<String, Object> values) async {
+    setState(() => _saving = card);
     String? failed;
     for (final MapEntry(:key, :value) in values.entries) {
       final r = await widget.api.patch('/settings/$key', {
@@ -477,196 +476,350 @@ class _BoardSettingsState extends State<_BoardSettings> {
       if (!r.ok) failed ??= r.message;
     }
     if (!mounted) return;
-    setState(() => _saving = false);
+    setState(() => _saving = null);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(failed ?? 'Project Management settings saved.')),
     );
     if (failed == null) widget.onSaved();
   }
 
+  Map<String, Object> _labelValues() => {
+    'project_board.labels': {
+      for (final MapEntry(:key, :value) in _labels.entries)
+        key: {
+          for (final (c, tone) in value)
+            if (c.text.trim().isNotEmpty) c.text.trim(): tone,
+        },
+    },
+  };
+
+  /// A titled card with its one-line explanation and its own Save.
+  Widget _card(
+    String id,
+    String title,
+    String explain,
+    List<Widget> body,
+    Map<String, Object> Function() values,
+  ) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.titleMedium),
+            Text(explain, style: theme.textTheme.bodySmall),
+            const SizedBox(height: 12),
+            ...body,
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                key: Key('project-board-save:$id'),
+                onPressed: _saving != null ? null : () => _save(id, values()),
+                child: Text(_saving == id ? 'Saving…' : 'Save'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Every known value as a chip, the chosen ones ticked; a chosen value the
+  /// company no longer uses stays listed so it can be unticked.
+  Widget _chips(String key, List<String> known, List<String> chosen) {
+    bool same(String a, String b) => a.toLowerCase() == b.toLowerCase();
+    return Wrap(
+      key: Key(key),
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final v in [
+          ...known,
+          ...chosen.where((c) => !known.any((k) => same(k, c))),
+        ])
+          FilterChip(
+            label: Text(v),
+            selected: chosen.any((c) => same(c, v)),
+            onSelected: (on) => setState(() {
+              chosen.removeWhere((c) => same(c, v));
+              if (on) chosen.add(v);
+            }),
+          ),
+      ],
+    );
+  }
+
+  Widget _labelRow(
+    String column,
+    int i,
+    TextEditingController text,
+    String tone,
+  ) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: text,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Value, as it reads',
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          for (final (t, name) in _swatches)
+            Tooltip(
+              message: name,
+              child: InkWell(
+                key: ValueKey('project-board-swatch:$column:$i:${t.name}'),
+                customBorder: const CircleBorder(),
+                onTap: () =>
+                    setState(() => _labels[column]![i] = (text, t.name)),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: ToneColours.of(context, t).ink,
+                    border: tone == t.name
+                        ? Border.all(
+                            color: theme.colorScheme.onSurface,
+                            width: 3,
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 180,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: StatusPill(
+                text.text.isEmpty ? 'Preview' : text.text,
+                tone:
+                    Tone.values.where((t) => t.name == tone).firstOrNull ??
+                    Tone.neutral,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Remove',
+            icon: const Icon(Icons.close),
+            onPressed: () => setState(() => _labels[column]!.removeAt(i)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_ready) return const LinearProgressIndicator();
     final theme = Theme.of(context);
-    final heading = theme.textTheme.titleMedium;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (_error != null) Text(_error!),
-        Text('Columns', style: heading),
-        Text(
-          'Drag to reorder. Label draws the values as coloured labels.',
-          style: theme.textTheme.bodySmall,
-        ),
-        ReorderableListView(
-          key: const Key('project-board-columns'),
-          shrinkWrap: true,
-          buildDefaultDragHandles: false,
-          physics: const NeverScrollableScrollPhysics(),
-          onReorder: (from, to) => setState(() {
-            final c = _columns.removeAt(from);
-            _columns.insert(to > from ? to - 1 : to, c);
-          }),
-          children: [
-            for (final (i, c) in _columns.indexed)
-              Row(
-                key: ValueKey('project-board-column:${c['key']}'),
-                children: [
-                  ReorderableDragStartListener(
-                    index: i,
-                    child: const Icon(Icons.drag_indicator),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextFormField(
-                      initialValue: '${c['label'] ?? ''}',
-                      decoration: InputDecoration(
-                        isDense: true,
-                        helperText: '${c['key']}',
+        _card(
+          'columns',
+          'Columns',
+          'Rename, drag to reorder, and choose which columns show.',
+          [
+            ReorderableListView(
+              key: const Key('project-board-columns'),
+              shrinkWrap: true,
+              buildDefaultDragHandles: false,
+              physics: const NeverScrollableScrollPhysics(),
+              onReorder: (from, to) => setState(() {
+                final c = _columns.removeAt(from);
+                _columns.insert(to > from ? to - 1 : to, c);
+              }),
+              children: [
+                for (final (i, c) in _columns.indexed)
+                  Row(
+                    key: ValueKey('project-board-column:${c['key']}'),
+                    children: [
+                      ReorderableDragStartListener(
+                        index: i,
+                        child: const Icon(Icons.drag_indicator),
                       ),
-                      onChanged: (v) => c['label'] = v,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text('Shown'),
-                  Switch(
-                    value: c['visible'] != false,
-                    onChanged: (v) => setState(() => c['visible'] = v),
-                  ),
-                  const Text('Label'),
-                  Checkbox(
-                    value: c['as_label'] == true,
-                    onChanged: (v) => setState(() {
-                      c['as_label'] = v == true;
-                      if (v == true) {
-                        _labels.putIfAbsent('${c['key']}', () => []);
-                      }
-                    }),
-                  ),
-                ],
-              ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        Text('Label colours', style: heading),
-        for (final c in _columns)
-          if (c['as_label'] == true) ...[
-            const SizedBox(height: 8),
-            Text(
-              '${c['label'] ?? c['key']}',
-              style: theme.textTheme.titleSmall,
-            ),
-            for (final (i, (text, tone))
-                in (_labels['${c['key']}'] ?? []).indexed)
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: text,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: 'Value, as it reads',
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: '${c['label'] ?? ''}',
+                          decoration: const InputDecoration(isDense: true),
+                          onChanged: (v) => c['label'] = v,
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  DropdownMenu<String>(
-                    enableFilter: true,
-                    requestFocusOnTap: true,
-                    initialSelection: tone,
-                    onSelected: (v) => setState(
-                      () => _labels['${c['key']}']![i] = (text, v ?? tone),
-                    ),
-                    dropdownMenuEntries: [
-                      for (final t in Tone.values)
-                        DropdownMenuEntry(value: t.name, label: t.name),
+                      const SizedBox(width: 8),
+                      const Text('Shown'),
+                      Switch(
+                        value: c['visible'] != false,
+                        onChanged: (v) => setState(() => c['visible'] = v),
+                      ),
+                      Tooltip(
+                        message:
+                            'Draw each value as a coloured chip. Pick the colours under Label colours.',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Checkbox(
+                              value: c['as_label'] == true,
+                              onChanged: (v) => setState(() {
+                                c['as_label'] = v == true;
+                                if (v == true) {
+                                  _labels.putIfAbsent('${c['key']}', () => []);
+                                }
+                              }),
+                            ),
+                            const Text('Show as coloured label'),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
-                  IconButton(
-                    tooltip: 'Remove',
-                    icon: const Icon(Icons.close),
-                    onPressed: () =>
-                        setState(() => _labels['${c['key']}']!.removeAt(i)),
-                  ),
-                ],
-              ),
-            TextButton.icon(
-              key: ValueKey('project-board-add-label:${c['key']}'),
-              onPressed: () => setState(
-                () => (_labels['${c['key']}'] ??= []).add((
-                  TextEditingController(),
-                  Tone.neutral.name,
-                )),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('Add value'),
-            ),
-          ],
-        const SizedBox(height: 24),
-        Text('Sub-tabs', style: heading),
-        Text(
-          'The job statuses each sub-tab lists, separated by commas.',
-          style: theme.textTheme.bodySmall,
-        ),
-        for (final (key, name, _) in _tabs)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Row(
-              children: [
-                SizedBox(width: 180, child: Text(name)),
-                Expanded(
-                  child: TextField(
-                    key: ValueKey('project-board-statuses:$key'),
-                    controller: _statuses[key],
-                    decoration: const InputDecoration(isDense: true),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                DropdownMenu<String>(
-                  enableFilter: true,
-                  requestFocusOnTap: true,
-                  label: const Text('Scheduled'),
-                  initialSelection: switch (_scheduled[key]) {
-                    true => 'yes',
-                    false => 'no',
-                    null => 'any',
-                  },
-                  onSelected: (v) => _scheduled[key] = switch (v) {
-                    'yes' => true,
-                    'no' => false,
-                    _ => null,
-                  },
-                  dropdownMenuEntries: const [
-                    DropdownMenuEntry(value: 'any', label: 'Either'),
-                    DropdownMenuEntry(value: 'yes', label: 'Has a date'),
-                    DropdownMenuEntry(value: 'no', label: 'No date'),
-                  ],
-                ),
               ],
             ),
-          ),
-        const SizedBox(height: 24),
-        Text('Part status tags', style: heading),
-        TextField(
-          key: const Key('project-board-part-tags'),
-          controller: _partTags,
-          decoration: const InputDecoration(
-            isDense: true,
-            helperText:
-                'Job tags shown in the Part Status column, separated by commas.',
-          ),
+          ],
+          () => {'project_board.columns': _columns, ..._labelValues()},
         ),
-        const SizedBox(height: 24),
-        FilledButton(
-          key: const Key('project-board-save'),
-          onPressed: _saving ? null : _save,
-          child: Text(_saving ? 'Saving…' : 'Save'),
+        _card(
+          'labels',
+          'Label colours',
+          'The colour each value gets in a column shown as coloured labels.',
+          [
+            for (final c in _columns)
+              if (c['as_label'] == true) ...[
+                Text(
+                  '${c['label'] ?? c['key']}',
+                  style: theme.textTheme.titleSmall,
+                ),
+                for (final (i, (text, tone))
+                    in (_labels['${c['key']}'] ?? []).indexed)
+                  _labelRow('${c['key']}', i, text, tone),
+                TextButton.icon(
+                  key: ValueKey('project-board-add-label:${c['key']}'),
+                  onPressed: () => setState(
+                    () => (_labels['${c['key']}'] ??= []).add((
+                      TextEditingController(),
+                      Tone.neutral.name,
+                    )),
+                  ),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add value'),
+                ),
+                const SizedBox(height: 8),
+              ],
+          ],
+          _labelValues,
+        ),
+        _card(
+          'tabs',
+          'Sub-tabs',
+          'Which job statuses each sub-tab lists, and whether the job must have a scheduled date.',
+          [
+            for (final (key, name, _) in _tabs)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(name, style: theme.textTheme.titleSmall),
+                        ),
+                        DropdownMenu<String>(
+                          enableFilter: true,
+                          requestFocusOnTap: true,
+                          width: 240,
+                          label: const Text('Scheduled date'),
+                          initialSelection: switch (_scheduled[key]) {
+                            true => 'yes',
+                            false => 'no',
+                            null => 'any',
+                          },
+                          onSelected: (v) => _scheduled[key] = switch (v) {
+                            'yes' => true,
+                            'no' => false,
+                            _ => null,
+                          },
+                          dropdownMenuEntries: const [
+                            DropdownMenuEntry(value: 'any', label: 'Any'),
+                            DropdownMenuEntry(
+                              value: 'yes',
+                              label: 'Must be set',
+                            ),
+                            DropdownMenuEntry(
+                              value: 'no',
+                              label: 'Must be empty',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    _chips(
+                      'project-board-statuses:$key',
+                      _knownStatuses,
+                      _statuses[key]!,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          () => {
+            'project_board.tabs': {
+              for (final (key, _, _) in _tabs)
+                key: {
+                  'statuses': _statuses[key]!,
+                  if (_scheduled[key] != null) 'scheduled': _scheduled[key]!,
+                },
+            },
+          },
+        ),
+        _card(
+          'parts',
+          'Part status',
+          'The job tags shown in the Part Status column.',
+          [
+            KeyedSubtree(
+              key: const Key('project-board-part-tags'),
+              child: _chips(
+                'project-board-part-tags-chips',
+                _knownTags,
+                _partTags,
+              ),
+            ),
+          ],
+          () => {'project_board.part_tags': _partTags},
         ),
       ],
     );
   }
 }
+
+/// The label colours, named as a person sees them.
+const _swatches = [
+  (Tone.neutral, 'Grey'),
+  (Tone.info, 'Blue'),
+  (Tone.caution, 'Amber'),
+  (Tone.review, 'Teal'),
+  (Tone.ok, 'Green'),
+  (Tone.bad, 'Red'),
+];
 
 List<Map<String, dynamic>> _maps(Object? list) => [
   for (final m in (list as List?) ?? const [])

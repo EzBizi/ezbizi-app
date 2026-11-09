@@ -930,6 +930,7 @@ Route::prefix('v1')
         Route::post('jobs/{job}/book/workiz', [\App\Http\Controllers\Api\JobBookingController::class, 'retryWorkiz']);
         Route::apiResource('jobs', JobsController::class);
         Route::get('project-board/jobs', [\App\Http\Controllers\Api\ProjectBoardController::class, 'jobs']);
+        Route::get('project-board/options', [\App\Http\Controllers\Api\ProjectBoardController::class, 'options']);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.

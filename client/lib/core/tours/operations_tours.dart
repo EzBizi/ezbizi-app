@@ -1019,18 +1019,13 @@ const Map<String, Tour> operationsTours = {
       TourStep(
         anchor: 'project-board-columns',
         title: 'Columns',
-        body: 'Rename, drag to reorder, show or hide, and draw as labels.',
+        body:
+            'Rename, drag to reorder, show or hide, and show as coloured labels. Each card has its own Save.',
       ),
       TourStep(
         anchor: 'project-board-part-tags',
         title: 'Part status',
         body: 'The job tags shown in the Part Status column.',
-      ),
-      TourStep(
-        anchor: 'project-board-save',
-        title: 'Save',
-        body:
-            'Saves for this company: columns, label colours, sub-tabs and part tags.',
       ),
     ],
   ),

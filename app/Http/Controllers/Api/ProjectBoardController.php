@@ -129,6 +129,27 @@ class ProjectBoardController extends Controller
         return [...array_values($saved), ...array_values(array_filter($defaults, fn ($c) => ! in_array($c['key'], $keys, true)))];
     }
 
+    /**
+     * GET /api/v1/project-board/options: the job statuses and tags in the
+     * viewer's reach, most used first, for the Settings pickers (Jose,
+     * 2026-11-09: pick real values, not typed text).
+     */
+    public function options(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_board.view') && $user->hasPermission('jobs.view'),
+            Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+        $jobs = fn () => Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds());
+
+        return response()->json(['data' => [
+            'statuses' => $jobs()->whereNotNull('status')->where('status', '!=', '')
+                ->groupBy('status')->orderByRaw('COUNT(*) DESC')->pluck('status')->values(),
+            // ponytail: reads every tagged job's tags; a tags table if this gets slow.
+            'tags' => $jobs()->whereNotNull('tags')->pluck('tags')->flatten()
+                ->map(fn ($t) => trim((string) $t))->filter()->countBy()->sortDesc()->keys()->values(),
+        ]]);
+    }
+
     /** @return list<string> the company and every company under it */
     private function descendants(\Illuminate\Support\Collection $companies, string $id): array
     {
