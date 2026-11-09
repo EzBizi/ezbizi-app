@@ -262,4 +262,13 @@ class MembershipsPublicTest extends TestCase
             $this->assertEqualsWithDelta(now()->addDays(5)->timestamp, (int) $q['expires'], 5);
         });
     }
+
+    public function test_a_link_can_be_built_outside_any_tenant(): void
+    {
+        // 2026-11-09 prod: "No tenant in context" from CustomerLinks::days().
+        $customer = $this->inTenant($this->t['org'], fn () => $this->customer->fresh());
+        app()->forgetInstance(\App\Support\Settings\SettingsResolver::class);   // no cached read to hide it
+        // No context at all, as in a queued job or a public page before it resolves.
+        $this->assertStringContainsString('/memberships/join/', CustomerLinks::joinUrl($customer));
+    }
 }
