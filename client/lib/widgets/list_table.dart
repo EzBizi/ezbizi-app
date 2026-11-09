@@ -225,6 +225,10 @@ class ListTable extends StatelessWidget {
     this.onTap,
     this.rowKey,
     this.footer,
+    this.height,
+    this.widths = const {},
+    this.onResize,
+    this.stickyFirstColumn = false,
   });
 
   final List<ListColumn> columns;
@@ -236,6 +240,26 @@ class ListTable extends StatelessWidget {
 
   /// Under the last row: a "load more", for instance.
   final Widget? footer;
+
+  /// Given, the rows scroll inside this height under a header that stays put
+  /// (monday port, desk 2026-11-09). Null: the table is as tall as its rows
+  /// and the page scrolls it, as before.
+  final double? height;
+
+  /// Column index => pixels, for columns somebody dragged. Others keep flex.
+  final Map<int, double> widths;
+
+  /// Given, each heading gets a drag edge; the caller saves the width
+  /// (see Me.listColumnWidths and the `lists.column_widths` preference).
+  final void Function(int column, double width)? onResize;
+
+  /// Keeps the first column in place while the rest scroll sideways, once
+  /// the dragged widths no longer fit. Rows are then one line, [rowHeight].
+  // ponytail: fixed row height so the two halves line up; measure rows if a
+  // sticky table ever needs wrapped cells.
+  final bool stickyFirstColumn;
+  static const double rowHeight = 52;
+  static const double flexUnit = 60;
   static const double stackBelow = 720;
 
   @override
@@ -246,11 +270,26 @@ class ListTable extends StatelessWidget {
       builder: (context, box) {
         final wide = box.maxWidth >= stackBelow;
 
-        Widget cell(int i, Widget child) => Expanded(
-          flex: columns[i].flex,
+        // Wider than the window once dragged: lay columns at fixed widths and
+        // scroll sideways.
+        final natural = [
+          for (var i = 0; i < columns.length; i++)
+            widths[i] ?? columns[i].flex * flexUnit,
+        ];
+        final scrolls =
+            wide &&
+            widths.isNotEmpty &&
+            natural.fold<double>(0, (a, b) => a + b) + 28 > box.maxWidth;
+
+        Widget sized(int i, Widget child) => scrolls || widths[i] != null
+            ? SizedBox(width: natural[i], child: child)
+            : Expanded(flex: columns[i].flex, child: child);
+
+        Widget cell(int i, Widget child) => sized(
+          i,
           // A gutter between columns, so a right-aligned amount never
           // runs into the left-aligned column after it.
-          child: Padding(
+          Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Align(
               alignment: columns[i].end
@@ -261,12 +300,13 @@ class ListTable extends StatelessWidget {
           ),
         );
 
-        Widget row(int r) {
+        Widget rowOf(int r, int from, int to) {
           final cells = rows[r];
           final body = wide
               ? Row(
                   children: [
-                    for (var i = 0; i < cells.length; i++) cell(i, cells[i]),
+                    for (var i = from; i < to && i < cells.length; i++)
+                      cell(i, cells[i]),
                   ],
                 )
               : Column(
@@ -313,7 +353,9 @@ class ListTable extends StatelessWidget {
             child: InkWell(
               onTap: onTap == null ? null : () => onTap!(r),
               child: Container(
-                constraints: const BoxConstraints(minHeight: 52),
+                constraints: scrolls
+                    ? const BoxConstraints.tightFor(height: rowHeight)
+                    : const BoxConstraints(minHeight: rowHeight),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 10,
@@ -329,7 +371,129 @@ class ListTable extends StatelessWidget {
           );
         }
 
-        return DecoratedBox(
+        Widget row(int r) => rowOf(r, 0, columns.length);
+
+        Widget headerRow(int from, int to) => Row(
+          children: [
+            for (var i = from; i < to; i++)
+              cell(
+                i,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        columns[i].label.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: columns[i].end ? TextAlign.end : null,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          letterSpacing: 0.8,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    if (onResize != null)
+                      _ResizeEdge(
+                        key: Key('list-resize-$i'),
+                        onDrag: (dx) =>
+                            onResize!(i, (natural[i] + dx).clamp(60.0, 800.0)),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        );
+
+        Widget headerBox(Widget child) => Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border(
+              bottom: BorderSide(color: EzBiziTheme.edge(context)),
+            ),
+          ),
+          child: child,
+        );
+
+        // Rows (and the header) for columns [from, to), one per row. Used
+        // whole, or split in two when the first column stays put.
+        Widget half(int from, int to, {required bool lazy}) {
+          final rowsWidget = lazy
+              ? Expanded(
+                  child: ListView.builder(
+                    itemCount: rows.length,
+                    itemBuilder: (context, r) => rowOf(r, from, to),
+                  ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var r = 0; r < rows.length; r++) rowOf(r, from, to),
+                  ],
+                );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
+            children: [if (wide) headerBox(headerRow(from, to)), rowsWidget],
+          );
+        }
+
+        Widget content;
+        final lazy = height != null;
+        if (!scrolls) {
+          content = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
+            children: [
+              if (wide) headerBox(headerRow(0, columns.length)),
+              if (lazy)
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: rows.length,
+                    itemBuilder: (context, r) => row(r),
+                  ),
+                )
+              else
+                for (var r = 0; r < rows.length; r++) row(r),
+            ],
+          );
+        } else {
+          // One vertical scroll drives both halves when lazy is off; with a
+          // height, each half is one scroll view kept in step.
+          final first = stickyFirstColumn ? 1 : 0;
+          final rest = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: natural.skip(first).fold<double>(0, (a, b) => a + b) + 28,
+              child: half(first, columns.length, lazy: false),
+            ),
+          );
+          content = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (first == 1)
+                SizedBox(
+                  width: natural[0] + 28,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        right: BorderSide(color: EzBiziTheme.edge(context)),
+                      ),
+                    ),
+                    child: half(0, 1, lazy: false),
+                  ),
+                ),
+              Expanded(child: rest),
+            ],
+          );
+          // ponytail: sideways tables scroll as one block under a height; a
+          // lazy split would need two synced controllers.
+          if (lazy) content = SingleChildScrollView(child: content);
+        }
+
+        final table = DecoratedBox(
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
@@ -339,47 +503,46 @@ class ListTable extends StatelessWidget {
             borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
               children: [
-                if (wide)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: EzBiziTheme.edge(context)),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        for (var i = 0; i < columns.length; i++)
-                          cell(
-                            i,
-                            Text(
-                              columns[i].label.toUpperCase(),
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                letterSpacing: 0.8,
-                                fontWeight: FontWeight.w700,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                for (var r = 0; r < rows.length; r++) row(r),
+                if (lazy) Expanded(child: content) else content,
                 ?footer,
               ],
             ),
           ),
         );
+
+        return lazy ? SizedBox(height: height, child: table) : table;
       },
     );
   }
 }
 
-/// A person's initials in a circle beside their name and a line under it.
+/// The few pixels at a heading's right edge that drag its column wider.
+class _ResizeEdge extends StatelessWidget {
+  const _ResizeEdge({super.key, required this.onDrag});
+
+  final ValueChanged<double> onDrag;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: (d) => onDrag(d.delta.dx),
+        child: SizedBox(
+          width: 10,
+          height: 28,
+          child: Center(
+            child: Container(width: 1, color: EzBiziTheme.edge(context)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class PersonCell extends StatelessWidget {
   const PersonCell({super.key, required this.name, this.sub});
 
