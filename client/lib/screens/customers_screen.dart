@@ -1,3 +1,4 @@
+import '../core/deep_links.dart';
 import '../widgets/list_search.dart';
 import 'dart:async';
 
@@ -150,10 +151,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
     super.initState();
     _load();
     _loadTags();
+    // A link to one customer (a notification, or /customers/{id} in the bar).
+    DeepLinks.pending.addListener(_takeLink);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _takeLink());
   }
 
   @override
   void dispose() {
+    DeepLinks.pending.removeListener(_takeLink);
     _search.dispose();
     _openDirty.dispose();
     super.dispose();
@@ -1065,6 +1070,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
       context,
       builder: (_) => _DuplicatesPanel(api: widget.api),
     );
+  }
+
+  /// Opens the customer a [DeepLink] names: beside the list when there is
+  /// room for it, over the list on a phone — the same two ways a tap opens one.
+  void _takeLink() {
+    if (!mounted || DeepLinks.pending.value?.module != 'customers') return;
+    final link = DeepLinks.take('customers')!;
+    final row = <String, dynamic>{'id': link.id};
+    if (MediaQuery.sizeOf(context).width >= _tableFrom) {
+      _dock(row);
+    } else {
+      _open(row);
+    }
   }
 
   /// Open beside the list. Refused while the open customer has unsaved

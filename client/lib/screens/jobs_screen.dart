@@ -1,3 +1,4 @@
+import '../core/deep_links.dart';
 import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -178,10 +179,14 @@ class _JobsScreenState extends State<JobsScreen> {
   void initState() {
     super.initState();
     _load();
+    // A link to one job (a notification, or /jobs/{id} typed in the bar).
+    DeepLinks.pending.addListener(_takeLink);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _takeLink());
   }
 
   @override
   void dispose() {
+    DeepLinks.pending.removeListener(_takeLink);
     _search.dispose();
     _openDirty.dispose();
     super.dispose();
@@ -1180,6 +1185,19 @@ class _JobsScreenState extends State<JobsScreen> {
     return wall == null
         ? null
         : widget.session.me!.display.formatTime(wall.hour, wall.minute);
+  }
+
+  /// Opens the job a [DeepLink] names: beside the list when there is room
+  /// for it, over the list on a phone — the same two ways a tap opens one.
+  void _takeLink() {
+    if (!mounted || DeepLinks.pending.value?.module != 'jobs') return;
+    final link = DeepLinks.take('jobs')!;
+    final row = <String, dynamic>{'id': link.id};
+    if (MediaQuery.sizeOf(context).width >= _tableFrom) {
+      _dock(row);
+    } else {
+      _openOver(row);
+    }
   }
 
   /// Open beside the list. Refused while the open job has unsaved changes:
