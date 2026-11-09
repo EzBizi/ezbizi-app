@@ -13,11 +13,21 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0550', date: '9 Nov 2026', items: [
+      'Project Management > Settings: clearer cards for columns, label colours (pick a colour), sub-tabs and part status, choosing from your real statuses and tags',
+      'Jobs: deleting a job asks twice, the second time you type the job number',
+      'Marketing: posts waiting for your approval are no longer counted as sent; the panel says where to approve them',
+      'Marketing: published posts link to the post on each network',
+      'Newsletter: Server preview shows the email exactly as it will be sent, with the company address and unsubscribe link',
+      'Pinterest: the connection renews itself instead of breaking after 30 days',
+      'Customer Experience: review sources show Thumbtack as connected for leads (Thumbtack does not share reviews)',
+      'Communication: removed accounts no longer show in Team, and everyone gets a phone extension automatically',
+      'Texts refused for a region say plainly that nothing was sent',
+    ]),
     VersionRelease(version: '0.0.0549', date: '9 Nov 2026', items: [
       'Project Management: a Tags column, editable in Settings like the others',
       'Project Management: the Franchise filter is ordered by company, its franchises, then each sub-company and its franchises; picking a company includes its sub-companies',
       'Tables: amounts no longer run into the next column',
-      'Project Management > Settings: clearer cards for columns, label colours (pick a colour), sub-tabs and part status, choosing from your real statuses and tags',
     ]),
     VersionRelease(version: '0.0.0548', date: '7 Nov 2026', items: [
       'AI assistant: a slow help-library lookup no longer stops it from answering',
