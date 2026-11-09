@@ -102,6 +102,83 @@ class MailchimpClient
         return $accepted;
     }
 
+    /**
+     * Put a newsletter's customers into one of the account's audiences, 500 per call.
+     *
+     * Batch subscribe (`POST /lists/{id}`) rather than one PUT per person: a
+     * PUT each took a 1,200-customer list past the worker's timeout. The
+     * subscription status applies to NEW members only: `update_existing` is
+     * false, so a member who unsubscribed or was cleaned at Mailchimp keeps that
+     * status. Mailchimp reports those as "already a member", which is not a
+     * refusal.
+     * https://mailchimp.com/developer/marketing/api/lists/batch-subscribe-or-unsubscribe/
+     *
+     * One bad address is reported per member and skipped; it does not stop the
+     * rest of the list.
+     *
+     * @param  array<int, array{email: string, first_name?: string, last_name?: string}>  $people
+     * @return list<string> the addresses Mailchimp refused, lowercased
+     */
+    public function batchSubscribe(string $apiKey, string $listId, array $people): array
+    {
+        $refused = [];
+        foreach (array_chunk($people, 500) as $chunk) {
+            $body = $this->call($apiKey, 'post', '/lists/'.rawurlencode($listId), [
+                'update_existing' => false,
+                'members' => array_map(fn (array $p) => [
+                    'email_address' => mb_strtolower(trim($p['email'])),
+                    'status' => 'subscribed',
+                    'merge_fields' => (object) array_filter([
+                        'FNAME' => $p['first_name'] ?? null,
+                        'LNAME' => $p['last_name'] ?? null,
+                    ], fn ($v) => $v !== null && $v !== ''),
+                ], $chunk),
+            ]);
+            foreach ((array) ($body['errors'] ?? []) as $error) {
+                if (($error['error_code'] ?? '') === 'ERROR_CONTACT_EXISTS') {
+                    continue;
+                }
+                $refused[] = mb_strtolower(trim((string) ($error['email_address'] ?? '')));
+            }
+        }
+
+        return array_values(array_unique(array_filter($refused)));
+    }
+
+    /**
+     * Addresses that left this list at Mailchimp: unsubscribed or cleaned.
+     *
+     * Only members Mailchimp itself reports in that status are returned.
+     *
+     * @return list<string> lowercased
+     */
+    public function leftMembers(string $apiKey, string $listId): array
+    {
+        $emails = [];
+        foreach (['unsubscribed', 'cleaned'] as $status) {
+            $offset = 0;
+            do {
+                $body = $this->call($apiKey, 'get', '/lists/'.rawurlencode($listId).'/members', [
+                    'status' => $status, 'count' => 1000, 'offset' => $offset,
+                    'fields' => 'members.email_address,members.status,total_items',
+                ]);
+                $members = $body['members'] ?? [];
+                if (! is_array($members) || ! isset($body['total_items'])) {
+                    throw new NewsletterSendFailed('Mailchimp did not return who unsubscribed. Nothing was sent.');
+                }
+                foreach ($members as $member) {
+                    $email = mb_strtolower(trim((string) ($member['email_address'] ?? '')));
+                    if (($member['status'] ?? '') === $status && $email !== '') {
+                        $emails[] = $email;
+                    }
+                }
+                $offset += count($members);
+            } while ($members !== [] && $offset < (int) $body['total_items']);
+        }
+
+        return array_values(array_unique($emails));
+    }
+
     /** @return list<string> Current subscribed addresses, all pages; other statuses stay excluded. */
     public function subscribedMembers(string $apiKey, string $listId): array
     {

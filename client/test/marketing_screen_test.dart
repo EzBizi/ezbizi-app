@@ -3005,6 +3005,49 @@ void main() {
       expect(find.descendant(of: block, matching: find.text('Winter sweeps')), findsOneWidget);
     });
 
+    testWidgets('Send stops with the error when the save before it fails', (tester) async {
+      final posts = <String>[];
+      final inner = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          return Future.value(_json({'message': 'That is not a time this can read.'}, 422));
+        }
+        if (request.method == 'POST') posts.add(request.url.path);
+        return inner(request);
+      });
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send now'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Send this newsletter?'), findsNothing,
+          reason: 'A failed save must not reach the confirm panel.');
+      expect(posts.where((p) => p.endsWith('/send')), isEmpty);
+      expect(find.textContaining('That is not a time this can read.'), findsWidgets);
+    });
+
+    testWidgets('saved custom HTML opens in the HTML box and is sent back on save', (tester) async {
+      final saved = <Map<String, dynamic>>[];
+      const custom = {..._draft, 'html_override': '<p>Mine</p>'};
+      final inner = _handler(canEdit: true, newsletters: const [custom]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': custom}));
+        }
+        return inner(request);
+      });
+
+      expect(find.text('Back to blocks'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '<p>Mine</p>'), findsOneWidget);
+
+      await tester.enterText(find.widgetWithText(TextField, 'Autumn sweeps').first, 'Renamed');
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(saved, isNotEmpty);
+      expect(saved.last['html_override'], '<p>Mine</p>');
+    });
+
     testWidgets('the dashboard lays out on a 375-point window', (tester) async {
       await _pumpNewsletter(
         tester,
