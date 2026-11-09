@@ -17,6 +17,7 @@ class VersionHistory {
       'Project Management: a Tags column, editable in Settings like the others',
       'Project Management: the Franchise filter is ordered by company, its franchises, then each sub-company and its franchises; picking a company includes its sub-companies',
       'Tables: amounts no longer run into the next column',
+      'Project Management > Settings: clearer cards for columns, label colours (pick a colour), sub-tabs and part status, choosing from your real statuses and tags',
     ]),
     VersionRelease(version: '0.0.0548', date: '7 Nov 2026', items: [
       'AI assistant: a slow help-library lookup no longer stops it from answering',
