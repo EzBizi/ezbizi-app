@@ -7,6 +7,7 @@ use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Support\Leads\AddressCheck;
+use App\Support\Scheduling\BranchOffice;
 use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Reschedules;
@@ -296,6 +297,8 @@ class SchedulingAvailabilityController extends Controller
                         'after' => $next['after'] ?? [],
                         'closed' => $next['closed'] ?? [],
                         'none_because' => $next['none_because'] ?? null,
+                        // The branch's physical office, for the caller asking where we are.
+                        'office' => BranchOffice::for($area),
                     ];
                 })->values()->all(),
             ],
