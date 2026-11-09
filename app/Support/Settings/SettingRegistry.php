@@ -991,16 +991,19 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'project_board.tabs', label: 'Project Management: statuses on each sub-tab',
                 type: SettingDefinition::TYPE_JSON,
+                // Every sub-tab starts empty until the company sets it (Jose,
+                // 2026-11-09), except the one rule he gave: Unscheduled is a
+                // Submitted job with DEPOSIT RECEIVED and no date, as in Workiz.
                 default: [
-                    'unscheduled' => ['statuses' => ['Pending'], 'scheduled' => false],
-                    'ready_to_schedule' => ['statuses' => ['Submitted']],
-                    'scheduled' => ['statuses' => ['Pending', 'scheduled'], 'scheduled' => true],
-                    'in_progress' => ['statuses' => ['In progress', 'in_progress']],
-                    'done_waiting_payment' => ['statuses' => ['done pending approval']],
-                    'complete' => ['statuses' => ['Done', 'completed']],
+                    'unscheduled' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED'], 'tags_mode' => 'all', 'scheduled' => false],
+                    'ready_to_schedule' => ['statuses' => []],
+                    'scheduled' => ['statuses' => []],
+                    'in_progress' => ['statuses' => []],
+                    'done_waiting_payment' => ['statuses' => []],
+                    'complete' => ['statuses' => []],
                 ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
-                help: 'A sub-tab with no statuses lists nothing.',
+                help: 'Per sub-tab: statuses (any of), tags (all of, or any of), and whether the job has a date. No statuses lists nothing.',
             ),
             new SettingDefinition(
                 key: 'project_board.part_tags', label: 'Project Management: job tags that are a part status',

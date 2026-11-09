@@ -22,6 +22,12 @@ class ProjectBoardTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
         $beta = $this->provisionTenant('Beta');
         $this->inTenant($beta['org'], fn () => $this->job($beta['franchise'], 'B-1', 'Pending'));
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('project_board.tabs', $alpha['org'], [
+            'unscheduled' => ['statuses' => ['Pending'], 'scheduled' => false],
+            'ready_to_schedule' => ['statuses' => ['Submitted']],
+            'scheduled' => ['statuses' => ['Pending'], 'scheduled' => true],
+            'complete' => ['statuses' => ['Done']],
+        ]));
         $ids = $this->inTenant($alpha['org'], fn () => [
             'unscheduled' => $this->job($alpha['franchise'], 'J-1', 'Pending'),
             'scheduled' => $this->job($alpha['franchise'], 'J-2', 'pending', '2026-11-10 09:00:00'),
@@ -60,7 +66,7 @@ class ProjectBoardTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $beta = $this->provisionTenant('Beta');
-        $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Pending'));
+        $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']));
 
         $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?franchise_id='.$alpha['franchise']->id)
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('meta.franchises.0.id', $alpha['franchise']->id)->assertJsonPath('meta.franchises.0.company', 'Alpha Co');
@@ -91,6 +97,28 @@ class ProjectBoardTest extends TestCase
 
         $this->signedInAs($this->userWithRole($alpha, 'Jobs only', ['jobs.view']))
             ->getJson('/api/v1/project-board/jobs')->assertForbidden();
+    }
+
+    public function test_unscheduled_by_default_is_submitted_with_deposit_and_no_date_and_tags_can_be_any(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $ids = $this->inTenant($alpha['org'], fn () => [
+            'hit' => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED', 'DONT CHANGE TECH']),
+            'no_tag' => $this->job($alpha['franchise'], 'J-2', 'Submitted'),
+            'dated' => $this->job($alpha['franchise'], 'J-3', 'Submitted', '2026-11-10 09:00:00', ['DEPOSIT RECEIVED']),
+            'vip' => $this->job($alpha['franchise'], 'J-4', 'Done', null, ['VIP']),
+        ]);
+
+        $page = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk();
+        $this->assertSame([$ids['hit']], array_column($page->json('data'), 'id'));
+        // Every other sub-tab starts empty, and the counts follow the rules.
+        $this->assertSame(['unscheduled' => 1, 'ready_to_schedule' => 0, 'scheduled' => 0, 'in_progress' => 0, 'done_waiting_payment' => 0, 'complete' => 0], $page->json('meta.counts'));
+
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('project_board.tabs', $alpha['org'], [
+            'complete' => ['statuses' => ['Done', 'Submitted'], 'tags' => ['VIP', 'DEPOSIT RECEIVED'], 'tags_mode' => 'any'],
+        ]));
+        $rows = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=complete')->assertOk()->json('data');
+        $this->assertEqualsCanonicalizing([$ids['hit'], $ids['dated'], $ids['vip']], array_column($rows, 'id'));
     }
 
     private function job(Franchise $franchise, string $number, string $status, ?string $at = null, array $tags = [], array $payload = []): string
