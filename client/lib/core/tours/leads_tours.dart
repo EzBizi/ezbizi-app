@@ -975,21 +975,45 @@ const Map<String, Tour> leadsTours = {
     ],
   ),
   'customers/Memberships/Promotions': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'promotions-dates',
         title: 'Pick the jobs',
         body:
-            'The dates of the Done jobs whose customers get the text. It '
-            'shows how many will be texted before anything is sent.',
+            'The dates of the Done jobs whose customers get the text: a '
+            'preset, or your own From and To.',
+      ),
+      TourStep(
+        anchor: 'promotions-filters',
+        title: 'Narrow it down',
+        body:
+            'Branch, job type, service, tags, amount, no job since a date, '
+            'and leave out open jobs or members. The count updates as you go.',
+      ),
+      TourStep(
+        anchor: 'promotions-list',
+        title: 'Everyone on the list',
+        body: 'Search it, and untick anyone who should not get the text.',
       ),
       TourStep(
         anchor: 'promotions-body',
         title: 'The message',
         body:
-            'Edit the text. First names and the company name are filled in '
-            'for each customer, and the opt-out line is added.',
+            'First names and the company name are filled in for each '
+            'customer, and the opt-out line is added.',
+      ),
+      TourStep(
+        anchor: 'promotions-phones',
+        title: 'How it looks',
+        body:
+            'The text on an Android phone and an iPhone, as the first '
+            'customer on the list gets it.',
+      ),
+      TourStep(
+        anchor: 'promotions-test',
+        title: 'Test it',
+        body: 'Send one text, marked TEST, to your own phone.',
       ),
       TourStep(
         anchor: 'promotions-send',

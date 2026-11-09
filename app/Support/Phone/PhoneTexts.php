@@ -36,7 +36,8 @@ final class PhoneTexts
     /**
      * @throws TextRefused when the line may not send, or Twilio refused
      */
-    public function send(PhoneNumber $number, string $to, string $body, bool $automated = false): PhoneMessage
+    /** @param  list<string>  $mediaUrls  pictures (MMS), public URLs Twilio fetches */
+    public function send(PhoneNumber $number, string $to, string $body, bool $automated = false, array $mediaUrls = []): PhoneMessage
     {
         if (! $number->sms_outbound_allowed) {
             throw new TextRefused(PhoneNumber::SMS_REFUSAL, 403);
@@ -51,7 +52,7 @@ final class PhoneTexts
         $body = SmsConsent::prepare($connection, $to, $body, $automated) ?? throw new TextRefused(SmsConsent::REFUSAL, 422);
 
         try {
-            $sent = $this->twilio->sendMessage($connection, $from, $to, $body, $number->account_sid);
+            $sent = $this->twilio->sendMessage($connection, $from, $to, $body, $number->account_sid, $mediaUrls);
         } catch (Throwable $e) {
             $reason = self::refusal($e) ?? ($e->getMessage() !== '' ? $e->getMessage() : 'Twilio refused to send from this phone line.');
             if (PhoneLineHealth::isLineBreakingFault(null, $e)) {

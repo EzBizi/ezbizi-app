@@ -259,9 +259,10 @@ final class HttpTwilioGateway implements TwilioGateway
         ];
     }
 
-    public function fetchIncoming(PhoneConnection $connection, string $incomingSid): array
+    public function fetchIncoming(PhoneConnection $connection, string $incomingSid, ?string $accountSid = null): array
     {
-        $number = $this->connectionClient($connection)
+        // A number held in a sub-account is only found there (404 otherwise).
+        $number = (filled($accountSid) ? $this->platformClientForAccount((string) $accountSid) : $this->connectionClient($connection))
             ->incomingPhoneNumbers($incomingSid)
             ->fetch();
 
@@ -715,7 +716,7 @@ final class HttpTwilioGateway implements TwilioGateway
         return ['sid' => (string) $response->json('sid')];
     }
 
-    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null): array
+    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null, array $mediaUrls = []): array
     {
         // A `From` only sends from the account holding it, so a number held
         // elsewhere in the tree sends as that account, signed by the parent.
@@ -726,7 +727,7 @@ final class HttpTwilioGateway implements TwilioGateway
         $message = $client->messages->create($to, [
             'from' => $from,
             'body' => $body,
-        ]);
+        ] + ($mediaUrls === [] ? [] : ['mediaUrl' => $mediaUrls]));
 
         return [
             'sid' => $message->sid,

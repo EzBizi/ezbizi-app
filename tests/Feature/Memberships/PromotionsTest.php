@@ -15,8 +15,11 @@ use App\Support\Phone\FakeTwilioGateway;
 use App\Support\Phone\SmsConsent;
 use App\Support\Phone\TwilioGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 use Twilio\Security\RequestValidator;
@@ -59,10 +62,11 @@ class PromotionsTest extends TestCase
 
         $as->getJson('/api/v1/memberships/promotions/preview?'.http_build_query($range))->assertOk()
             ->assertJsonPath('data.recipients', 1)->assertJsonPath('data.opted_out', 1)
-            ->assertJsonPath('data.sample.0.phone', '+12035550001');
+            ->assertJsonPath('data.rows.0.phone', '+12035550001')->assertJsonPath('data.rows.0.first_name', 'Dana')
+            ->assertJsonCount(2, 'data.rows.0.jobs')->assertJsonPath('data.senders.0.e164', '+18555550100')->assertJsonPath('data.senders.0.mms', true);
 
         Queue::fake();
-        $as->postJson('/api/v1/memberships/promotions', $range + ['body' => 'Hi {first_name}, {company} here: $299 chimney sweep & inspection. Reply to book.'])
+        $as->postJson('/api/v1/memberships/promotions', $range + ['phones' => ['+12035550001', '+12035550002'], 'body' => 'Hi {first_name}, {company} here: $299 chimney sweep & inspection. Reply to book.'])
             ->assertStatus(202)->assertJsonPath('data.recipients', 1);
         Queue::assertPushed(SendPromotion::class);
         $id = $this->inTenant($t['org'], fn () => Promotion::query()->sole()->id);
@@ -106,7 +110,76 @@ class PromotionsTest extends TestCase
 
         $looker = $this->userWithRole($t, 'Looker', ['memberships.view', 'memberships.promotions.view']);
         $this->signedInAs($looker)->getJson('/api/v1/memberships/promotions/preview?'.http_build_query($range))->assertOk();
-        $this->signedInAs($looker)->postJson('/api/v1/memberships/promotions', $range + ['body' => 'Hi'])->assertForbidden();
+        $this->signedInAs($looker)->postJson('/api/v1/memberships/promotions', $range + ['body' => 'Hi', 'phones' => ['+12035550001']])->assertForbidden();
+        $this->signedInAs($looker)->postJson('/api/v1/memberships/promotions/test', ['to' => '2035550001', 'body' => 'Hi', 'franchise_id' => $t['franchise']->id])->assertForbidden();
+    }
+
+    public function test_the_list_carries_its_filters_an_unticked_phone_is_not_texted_and_a_picture_goes_as_mms(): void
+    {
+        Storage::fake('local');
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $customer = fn (string $name, string $phone) => Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => $name, 'phone' => $phone]);
+            $job = fn (Customer $c, string $when, ?string $earned, string $status = 'Done') => DB::table('jobs')->where('id', Job::factory()->create([
+                'franchise_id' => $t['franchise']->id, 'customer_id' => $c->id, 'scheduled_for' => $when, 'status' => $status, 'job_type' => 'Chimney Sweep', 'tags' => ['VIP'],
+            ])->id)->update(['earned_at' => $earned]);
+            $ann = $customer('Ann Ash', '+12035550011');
+            $job($ann, '2025-08-01 09:00:00', '2025-08-01 09:00:00');
+            $job($ann, '2026-12-01 09:00:00', null, 'Scheduled');   // open, and her last job
+            $bo = $customer('Bo Birch', '+12035550012');
+            $job($bo, '2025-09-01 09:00:00', '2025-09-01 09:00:00');
+            $job($bo, '2026-01-01 09:00:00', null, 'Canceled');     // a cancelled job is no job
+            $connection = PhoneConnection::factory()->create(['scope_type' => PhoneConnection::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id]);
+            PhoneNumber::factory()->create(['connection_id' => $connection->id, 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id, 'e164' => '+18555550100', 'sms_outbound_allowed' => true]);
+        });
+        $as = $this->signedInAs($t['admin']);
+        $range = ['from' => '2025-07-01', 'to' => '2025-11-30'];
+
+        $rows = collect($as->getJson('/api/v1/memberships/promotions/preview?'.http_build_query($range))->assertOk()->json('data.rows'))->keyBy('phone');
+        $this->assertSame([true, '2026-12-01', 'Chimney Sweep', ['VIP']], [$rows['+12035550011']['open_job'], $rows['+12035550011']['last_job'],
+            $rows['+12035550011']['jobs'][0]['type'], $rows['+12035550011']['jobs'][0]['tags']]);
+        $this->assertSame([false, '2025-09-01', false], [$rows['+12035550012']['open_job'], $rows['+12035550012']['last_job'], $rows['+12035550012']['member']]);
+
+        $path = $as->post('/api/v1/memberships/promotions/media', ['image' => UploadedFile::fake()->image('sweep.png', 400, 300)])->assertCreated()->json('data.media_path');
+        $as->postJson('/api/v1/memberships/promotions', $range + ['phones' => ['+12035550011'], 'body' => 'Hi', 'media_path' => 'promotions/'.Str::uuid().'/x.png'])
+            ->assertStatus(422);   // another company's picture
+        Queue::fake();
+        $as->postJson('/api/v1/memberships/promotions', $range + ['phones' => ['+12035550012'], 'body' => 'Hi {first_name}', 'media_path' => $path])
+            ->assertStatus(202)->assertJsonPath('data.recipients', 1);
+        app()->call([new SendPromotion($this->inTenant($t['org'], fn () => Promotion::query()->sole()->id)), 'handle']);
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+        $sends = collect($gateway->calls)->where('method', 'sendMessage')->values();
+        $this->assertCount(1, $sends);   // Ann was unticked
+        $this->assertSame(['+12035550012', "Hi Bo\n".SmsConsent::FOOTER], array_slice($sends[0]['args'], 2, 2));
+        $url = last($sends[0]['args'])['media'][0];
+        $this->get($url)->assertOk()->assertHeader('Content-Type', 'image/png');
+        $this->get(preg_replace('/signature=\w+/', 'signature=x', $url))->assertForbidden();
+    }
+
+    public function test_a_test_send_goes_to_the_typed_number_marked_test_and_belongs_to_no_promotion(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $connection = PhoneConnection::factory()->create(['scope_type' => PhoneConnection::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id]);
+            PhoneNumber::factory()->create(['connection_id' => $connection->id, 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id, 'e164' => '+18555550100', 'sms_outbound_allowed' => true]);
+        });
+        $as = $this->signedInAs($t['admin']);
+
+        $as->postJson('/api/v1/memberships/promotions/test', ['to' => '(203) 555-0099', 'body' => 'Hi {first_name}, {company} here.',
+            'franchise_id' => $t['franchise']->id, 'first_name' => 'Dana', 'company' => 'A-1'])->assertOk()->assertJsonPath('data.to', '+12035550099');
+        $as->postJson('/api/v1/memberships/promotions/test', ['to' => 'nope', 'body' => 'Hi', 'franchise_id' => $t['franchise']->id])->assertUnprocessable();
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+        $sends = collect($gateway->calls)->where('method', 'sendMessage')->values();
+        $this->assertCount(1, $sends);
+        $this->assertSame(['+12035550099', "TEST: Hi Dana, A-1 here.\n".SmsConsent::FOOTER], array_slice($sends[0]['args'], 2, 2));
+        $this->inTenant($t['org'], fn () => $this->assertSame(0, Promotion::query()->count()));
+        $as->getJson('/api/v1/memberships/promotions')->assertOk()->assertJsonCount(0, 'data');
     }
 
     private function signed(string $url, array $params, string $token)
