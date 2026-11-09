@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:flutter_html_table/flutter_html_table.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/search_picker.dart';
@@ -950,6 +951,8 @@ class _PreviewFrame extends StatelessWidget {
                             Html(
                               key: const ValueKey('sig-preview-html'),
                               data: html!,
+                              // A signature is tables; the core renderer drops them.
+                              extensions: const [TableHtmlExtension()],
                               style: {
                                 'body': Style(
                                   margin: Margins.zero,
