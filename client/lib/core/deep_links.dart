@@ -74,8 +74,23 @@ class DeepLinks {
   /// date=Y-m-d` is the link in the day-before under-filled email
   /// (SchedulingWarnUnderfilled): Scheduling › Re-Scheduling › Rescheduling
   /// Availability on that day. The path stays as sent in old emails. Takes the URI so a test can hand it one.
+  static const _records = {
+    'jobs': 'job',
+    'leads': 'lead',
+    'customers': 'customer',
+  };
+
   static DeepLink? fromUri(Uri uri) {
     final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    // /jobs/{id}, /leads/{id}, /customers/{id}: one record, opened in its
+    // module's panel (monday port, 2026-11-09).
+    if (segments.length == 2 && _records.containsKey(segments[0])) {
+      return DeepLink(
+        module: segments[0],
+        type: _records[segments[0]]!,
+        id: segments[1],
+      );
+    }
     if (segments.length != 2 ||
         segments[0] != 'scheduling' ||
         segments[1] != 'overbooking') {

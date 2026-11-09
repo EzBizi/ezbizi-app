@@ -632,7 +632,15 @@ class _HomeShellState extends State<HomeShell> {
     _apply(widget.address?.path);
     // The day-before email's "Open Booked vs available" link carries its day
     // in the query, which the address bar's path drops (UI queue 147).
-    if (DeepLinks.fromUri(Uri.base) case final link?) DeepLinks.open(link);
+    // Leads opens one lead through its constructor (see [_screenFor]); every
+    // other module takes the link from [DeepLinks].
+    if (DeepLinks.fromUri(Uri.base) case final link?) {
+      if (link.module == 'leads') {
+        _leadsOpen = link.id;
+      } else {
+        DeepLinks.open(link);
+      }
+    }
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
       setState(() => _apply(path));
