@@ -179,7 +179,8 @@ class RolesApiTest extends TestCase
         //            Other people's recordings are listed and played only in
         //            the Recordings tab, so listen without the tab is a grant
         //            nothing can spend; the requirement describes the product.
-        $argued = ['estimates', 'field', 'reports', 'work_hours'];
+        // Roles audit 2026-11-09: the screens' own hidden requirements, declared.
+        $argued = ['company', 'estimates', 'field', 'guidelines', 'inspection', 'leads', 'organizations', 'project_board', 'reports', 'work_hours'];
 
         $declaring = [];
 

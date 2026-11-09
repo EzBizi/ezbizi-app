@@ -66,10 +66,11 @@ class ReportsModuleTest extends TestCase
         // delete: the figures are Google's and are not stored, and `manage` is
         // campaign STATUS only - its own grant, so that reading spend never
         // carries the power to switch it off.
+        // `manage` folded into ads_manager.manage (roles audit 2026-11-09).
         $this->assertSame(
-            ['view', 'manage'],
+            ['view'],
             $registry->get('ads_performance')?->actions,
-            'Google Ads reads spend and pauses or enables campaigns, and nothing else.',
+            'Google Ads reads spend, and nothing else.',
         );
 
         $this->assertNotContains(

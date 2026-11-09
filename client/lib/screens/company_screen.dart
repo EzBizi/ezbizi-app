@@ -41,7 +41,7 @@ class _CompanyScreenState extends State<CompanyScreen> {
   List<String> _steps = _stepLabels.keys.toList();
 
   bool _may(String tab) => widget.session.me?.can('company.$tab.view') ?? false;
-  bool get _canEdit => widget.session.me?.can('hr.edit') ?? false;
+  bool get _canEdit => widget.session.me?.can('company.edit') ?? false;
 
   @override
   void initState() {

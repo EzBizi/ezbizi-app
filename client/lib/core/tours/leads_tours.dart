@@ -5,7 +5,7 @@ import '../tab_tours.dart';
 /// reports_tours.dart for the pattern).
 ///
 /// Leads' sources are keyed by their names in the module's permission tabs:
-/// `leads/Messenger` is the source the rail calls Facebook. The rail is not a
+/// `leads/Facebook` is the Meta tab's Facebook source. The rail is not a
 /// TabBarLike, so these run once it says which source is open. Manage's own
 /// strip is one, so its tabs are `leads/Connections`, `leads/Templates`,
 /// `leads/Dashboard`, `leads/Stats` and `leads/Office hours`.
@@ -346,7 +346,7 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
-  'leads/Messenger': Tour(
+  'leads/Facebook': Tour(
     version: 2,
     steps: [
       TourStep(

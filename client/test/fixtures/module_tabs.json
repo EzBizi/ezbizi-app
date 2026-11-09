@@ -184,41 +184,58 @@
             "label": "Jobs",
             "parent": null,
             "tabs": [
-                "Work",
-                "Materials"
+                "Jobs"
             ]
         },
         "leads": {
             "label": "Leads",
             "parent": null,
             "tabs": [
-                "LS Call, LS Text and LS Booking",
+                "Google Local Services",
+                "RC Calls",
+                "EZ Calls",
+                "EZ Texts",
                 "Thumbtack",
                 "Chat",
                 "Forms",
                 "Bad Ratings",
                 "Online Booking",
-                "Messenger",
+                "Facebook",
                 "Instagram",
+                "WhatsApp",
                 "Workiz",
                 "Promotions",
-                "WhatsApp",
-                "RC Calls",
-                "EZ Calls",
-                "EZ Texts",
                 "Hidden"
-            ]
+            ],
+            "within": {
+                "RC Calls": "Calls",
+                "EZ Calls": "Calls",
+                "EZ Texts": "SMS Texts",
+                "Forms": "Forms",
+                "Facebook": "Meta",
+                "Instagram": "Meta",
+                "WhatsApp": "Meta",
+                "Hidden": "Manage"
+            }
         },
         "marketing": {
             "label": "Marketing",
             "parent": null,
             "tabs": [
+                "Social Media Management",
                 "Dashboard",
                 "Compose",
                 "Calendar",
                 "Accounts",
                 "QR Codes"
-            ]
+            ],
+            "within": {
+                "Dashboard": "Social Media Management",
+                "Compose": "Social Media Management",
+                "Calendar": "Social Media Management",
+                "Accounts": "Social Media Management",
+                "QR Codes": "Social Media Management"
+            }
         },
         "memberships": {
             "label": "Memberships",
@@ -257,7 +274,7 @@
             "parent": null,
             "tabs": [
                 "Organization",
-                "Settings",
+                "Preferences",
                 "Integrations",
                 "API activity"
             ]
@@ -384,7 +401,6 @@
     "permissions": [
         "ads_manager.manage",
         "ads_manager.view",
-        "ads_performance.manage",
         "ads_performance.view",
         "ai_assistance.ai.view",
         "ai_assistance.answers.view",
@@ -407,14 +423,13 @@
         "automations.edit",
         "automations.rules.view",
         "automations.view",
-        "business_profile.create",
-        "business_profile.delete",
         "business_profile.edit",
         "business_profile.view",
         "companies.create",
         "companies.delete",
         "companies.edit",
         "companies.view",
+        "company.edit",
         "company.kpis.view",
         "company.ownership.view",
         "company.processes.view",
@@ -517,6 +532,7 @@
         "invoices.edit",
         "invoices.invoices.view",
         "invoices.send",
+        "invoices.settings.view",
         "invoices.view",
         "jobs.create",
         "jobs.delete",
@@ -526,11 +542,8 @@
         "jobs.materials.view",
         "jobs.view",
         "leads.bad_rating.view",
-        "leads.create",
-        "leads.delete",
         "leads.dispatcher",
         "leads.edit",
-        "leads.export",
         "leads.ez_calls.view",
         "leads.ez_texts.view",
         "leads.facebook.view",
@@ -613,8 +626,6 @@
         "reports.thumbtack.view",
         "reports.view",
         "reports.workspace.view",
-        "reviews.create",
-        "reviews.delete",
         "reviews.edit",
         "reviews.manage",
         "reviews.publish",

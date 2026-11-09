@@ -160,7 +160,7 @@ void main() {
     'ads_manager.view',
     'ads_manager.manage',
     'ads_performance.view',
-    'ads_performance.manage',
+    'ads_manager.manage',
   ];
 
   testWidgets('a manager sets Mon–Fri 8 to 6 from the chip', (tester) async {

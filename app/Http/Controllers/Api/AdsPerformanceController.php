@@ -299,9 +299,9 @@ class AdsPerformanceController extends Controller
         $user = $request->user();
 
         abort_unless(
-            $user !== null && $user->hasPermission('ads_performance.manage'),
+            $user !== null && $user->hasPermission('ads_manager.manage'),
             Status::HTTP_FORBIDDEN,
-            'Pausing or enabling campaigns needs the Manage Google Ads permission.',
+            'Pausing or enabling campaigns needs the Ads › Manage permission.',
         );
 
         $input = $request->validate([

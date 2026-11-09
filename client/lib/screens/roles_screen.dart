@@ -1891,10 +1891,19 @@ class _RolePageState extends State<_RolePage> {
                   'Tabs',
                   'Which tabs inside ${module.label} this role may open.',
                 ),
-                for (final action in module.actions.where(
-                  (a) => a.tab && shown(a),
-                ))
-                  _actionRow(context, module, action, muted, live, constraints),
+                ..._tabRows(
+                  module,
+                  shown,
+                  theme,
+                  (action) => _actionRow(
+                    context,
+                    module,
+                    action,
+                    muted,
+                    live,
+                    constraints,
+                  ),
+                ),
                 _grantHeading(
                   theme,
                   'What they can do',
@@ -1913,6 +1922,48 @@ class _RolePageState extends State<_RolePage> {
         ..._inboxRows(module, theme, live: live, muted: muted),
       ],
     );
+  }
+
+  /// Tab rows nested the way the app draws them (Jose, 2026-11-09): a tab
+  /// inside another sits indented under it, and a group with no tick of its
+  /// own (Leads › Calls) gets its name as a small heading.
+  List<Widget> _tabRows(
+    PermissionModule module,
+    bool Function(PermissionAction) shown,
+    ThemeData theme,
+    Widget Function(PermissionAction) row,
+  ) {
+    final tabs = module.actions.where((a) => a.tab).toList();
+    final labels = {for (final a in tabs) a.label};
+    final rows = <Widget>[];
+    String? group;
+
+    for (final action in tabs.where(shown)) {
+      final within = action.within;
+      if (within != null && within != group && !labels.contains(within)) {
+        rows.add(
+          Padding(
+            key: ValueKey('tab-group:${module.key}:$within'),
+            padding: const EdgeInsets.fromLTRB(24, 8, 0, 2),
+            child: Text(within, style: theme.textTheme.labelMedium),
+          ),
+        );
+      }
+      group = within;
+      rows.add(
+        within == null
+            ? row(action)
+            : Padding(
+                key: ValueKey('tab-nested:${action.key}'),
+                padding: EdgeInsets.only(
+                  left: labels.contains(within) ? 24 : 40,
+                ),
+                child: row(action),
+              ),
+      );
+    }
+
+    return rows;
   }
 
   /// "Who has it": a few faces and names, and "+N" for the rest.

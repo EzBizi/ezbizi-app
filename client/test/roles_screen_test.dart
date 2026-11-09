@@ -1109,6 +1109,58 @@ void main() {
     expect(find.textContaining('Needs'), findsNothing);
   });
 
+  testWidgets('a tab inside another tab sits under it, as the app draws it', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [
+        _catalogueModule(
+          'marketing',
+          'Marketing',
+          actions: const [
+            ('view', 'Social Media Management'),
+            ('compose.view', 'Compose'),
+            ('ez_calls.view', 'EZ Calls'),
+            ('edit', 'Edit'),
+          ],
+          tabs: const ['view', 'compose.view', 'ez_calls.view'],
+          within: const {
+            'compose.view': 'Social Media Management',
+            'ez_calls.view': 'Calls',
+          },
+        ),
+      ],
+    );
+
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Marketing'));
+    await tester.pumpAndSettle();
+
+    // Under a tab that is a tick of its own: indented, no extra heading.
+    expect(
+      find.byKey(const ValueKey('tab-nested:marketing.compose.view')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('tab-group:marketing:Social Media Management')),
+      findsNothing,
+    );
+    // Under a group with no tick (Leads › Calls): its name as a heading.
+    expect(
+      find.byKey(const ValueKey('tab-group:marketing:Calls')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('tab-nested:marketing.view')),
+      findsNothing,
+    );
+  });
+
   testWidgets('a tick the module describes says what it lets someone do', (
     tester,
   ) async {
@@ -1798,6 +1850,7 @@ Map<String, dynamic> _catalogueModule(
   Map<String, List<String>> requires = const {},
   Map<String, String> descriptions = const {},
   List<String> tabs = const [],
+  Map<String, String> within = const {},
 }) => {
   'key': key,
   'label': label,
@@ -1820,6 +1873,7 @@ Map<String, dynamic> _catalogueModule(
         'requires': requires[action] ?? const <String>[],
         'description': ?descriptions[action],
         if (tabs.contains(action)) 'tab': true,
+        'within': ?within[action],
       },
   ],
   'inboxes': ?inboxes,

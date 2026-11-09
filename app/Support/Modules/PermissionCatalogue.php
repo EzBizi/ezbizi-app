@@ -151,10 +151,17 @@ class PermissionCatalogue
          * looking for a tab with another name on it is a failure with no error
          * attached to it.
          */
-        foreach ($module?->tabs ?? [] as $tab) {
-            if ($tab->action() === $action) {
-                return $tab->label;
-            }
+        // Several tabs on one action (Project Management's seven) name every
+        // one of them, not the first (roles audit 2026-11-09).
+        $labels = array_values(array_map(
+            fn (TabDefinition $tab) => $tab->label,
+            array_filter($module?->tabs ?? [], fn (TabDefinition $tab) => $tab->action() === $action),
+        ));
+
+        if ($labels !== []) {
+            $last = array_pop($labels);
+
+            return $labels === [] ? $last : implode(', ', $labels).' and '.$last;
         }
 
         return $module?->actionLabels[$action] ?? ucfirst(str_replace('_', ' ', $action));
@@ -299,6 +306,9 @@ class PermissionCatalogue
                     // quietly adding the missing key.
                     'requires'  => array_values($module->actionRequires[$action] ?? []),
                     'description' => $module->actionDescriptions[$action] ?? null,
+                    // The tab this one sits inside, by its label, so the
+                    // editor nests it the way the app draws it.
+                    'within'    => $this->withinLabel($module, $action),
                 ], $module->actions),
             ];
         }
@@ -322,6 +332,23 @@ class PermissionCatalogue
         });
 
         return array_values($modules);
+    }
+
+    private function withinLabel(ModuleDefinition $module, string $action): ?string
+    {
+        foreach ($module->tabs as $tab) {
+            if ($tab->action() === $action && $tab->within !== null) {
+                foreach ($module->tabs as $parent) {
+                    if ($parent->key === $tab->within) {
+                        return $parent->label;
+                    }
+                }
+
+                return $tab->within;
+            }
+        }
+
+        return null;
     }
 
     /**

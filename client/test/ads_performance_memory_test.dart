@@ -266,7 +266,7 @@ void main() {
     performance.add(json({'data': [report()], 'refused': <dynamic>[]}));
     performance.add(json({'data': [report()], 'refused': <dynamic>[]}));
 
-    await open(tester, client(permissions: const ['ads_performance.view', 'ads_performance.manage']));
+    await open(tester, client(permissions: const ['ads_performance.view', 'ads_manager.manage']));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
     await tester.pumpAndSettle();
@@ -313,7 +313,7 @@ void main() {
     };
     addTearDown(() => FlutterError.onError = previous);
 
-    await open(tester, client(permissions: const ['ads_performance.view', 'ads_performance.manage']));
+    await open(tester, client(permissions: const ['ads_performance.view', 'ads_manager.manage']));
     tester.view.physicalSize = const Size(375, 1400);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ads-account-c1')));

@@ -15,7 +15,7 @@ use Illuminate\Validation\Rule;
 /**
  * The ownership chart's data (Jose, 2026-11-03, design 175): who answers to
  * whom, who owns an area of a company or branch, and who owns each step of the
- * work. Reading is HR's `hr.view`; setting an owner is `hr.edit`, at a place
+ * work. Reading is HR's `hr.view`; setting an owner is `company.edit`, at a place
  * the editor reaches. Who answers to whom is set on the person
  * (PATCH hr/people/{user} reports_to_user_id).
  */
@@ -51,7 +51,7 @@ class OwnershipController extends Controller
     public function update(Request $request): JsonResponse
     {
         $actor = $request->user();
-        abort_unless($actor->hasPermission('hr.edit'), 403, Refusal::permission('change who owns what')->message());
+        abort_unless($actor->hasPermission('company.edit'), 403, Refusal::permission('change who owns what')->message());
 
         $input = $request->validate([
             'kind' => ['required', Rule::in(Ownership::KINDS)],

@@ -109,7 +109,7 @@ class AdSchedulesTest extends TestCase
         $this->signedInAs($this->userWithRole($t, 'Reader', ['ads_performance.view']))
             ->putJson('/api/v1/ad-schedules', $body)->assertForbidden();
 
-        $this->signedInAs($this->userWithRole($t, 'Marketing', ['ads_performance.view', 'ads_performance.manage']))
+        $this->signedInAs($this->userWithRole($t, 'Marketing', ['ads_performance.view', 'ads_manager.manage']))
             ->putJson('/api/v1/ad-schedules', $body)
             ->assertOk()->assertJsonPath('data.days', [1, 2, 3, 4, 5])->assertJsonPath('data.timezone', 'America/New_York');
 

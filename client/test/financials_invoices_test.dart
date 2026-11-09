@@ -1030,6 +1030,7 @@ Future<_Api> _pump(
                 if (!viewerOnly) ...[
                   'invoices.create',
                   'invoices.edit',
+                  'invoices.settings.view',
                   'invoices.delete',
                   'invoices.approve',
                   'invoices.send',
