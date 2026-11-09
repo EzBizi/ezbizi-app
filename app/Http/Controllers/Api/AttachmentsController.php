@@ -193,8 +193,7 @@ class AttachmentsController extends Controller
             $inline = $request->boolean('inline') && in_array($attachment->mime, self::INLINE_MIMES, true);
 
             return response()->streamDownload(fn () => print ($bytes),
-                str_replace(["", "
-", '"', chr(92)], '', basename($attachment->original_name)) ?: 'download', [
+                str_replace(["\r", "\n", '"', '\\'], '', basename($attachment->original_name)) ?: 'download', [
                     'Content-Type' => $attachment->mime,
                     'X-Content-Type-Options' => 'nosniff',
                     'Cache-Control' => 'private, no-store',
