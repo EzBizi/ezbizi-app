@@ -47,7 +47,9 @@ use Illuminate\Support\Facades\Cache;
  * `handles()` answers only for `services.meta.whatsapp_bot_number_id`. Without
  * that guard every inbound message on every WhatsApp number would be answered
  * by a robot - including EzBizi's own line, where a person is expected. Unset,
- * it answers for nothing, which is the right way to fail.
+ * it answers for nothing, which is the right way to fail. A number marked
+ * `purpose = support` answers too (Jose, 2026-11-09: Main is for the AI
+ * support questions).
  *
  * ── What it says is the business's, not this file's ──────────────
  *
@@ -91,7 +93,9 @@ final class WhatsAppStaffBot
     {
         $bot = (string) config('services.meta.whatsapp_bot_number_id');
 
-        return $bot !== '' && hash_equals($bot, $phoneNumberId);
+        return ($bot !== '' && hash_equals($bot, $phoneNumberId))
+            || WhatsAppNumber::query()->withoutGlobalScopes()
+                ->where('phone_number_id', $phoneNumberId)->where('purpose', 'support')->exists();
     }
 
     /**
