@@ -272,6 +272,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// A phone showing the boards tree in place of the board (UI queue 152, 4).
   bool _choosing = false;
 
+  /// Administrators' view of the personal boards of people who left
+  /// (Jose, 2026-11-09), and how many there are.
+  bool _archived = false;
+  int _archivedCount = 0;
+
+  Future<void> _toggleArchived() async {
+    setState(() {
+      _archived = !_archived;
+      _board = null;
+      _selected = 0;
+    });
+    await _load();
+  }
+
   /// table, kanban, calendar or timeline (design 178).
   String _view = 'table';
   String _query = '';
@@ -327,7 +341,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       _loading = _board == null;
       _error = null;
     });
-    final res = await widget.api.get('/task-boards');
+    final res = await widget.api.get(
+      '/task-boards',
+      _archived ? {'archived': '1'} : null,
+    );
     if (!mounted) return;
     if (!res.ok) {
       setState(() {
@@ -336,7 +353,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       });
       return;
     }
-    _boards = (res.body['data'] as List).cast<_Json>();
+    _boards = [
+      for (final b in (res.body['data'] as List).cast<_Json>())
+        // An archived board says what still needs handing over.
+        if (b['archived'] == true && (b['open_tasks'] as int? ?? 0) > 0)
+          {...b, 'name': '${b['name']} · ${b['open_tasks']} open to reassign'}
+        else
+          b,
+    ];
+    if (!_archived) {
+      _archivedCount =
+          ((res.body['meta'] as Map?)?['archived_count'] as int?) ?? 0;
+    }
     if (_boards.isEmpty) {
       setState(() => _loading = false);
       return;
@@ -390,6 +418,22 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         _filter = const ListQuery();
       }
     });
+    // A deleted board cannot be fetched: shown empty, its menu offers Restore.
+    if (_boards[index]['deleted'] == true) {
+      setState(() {
+        _loading = false;
+        _board = {
+          ..._boards[index],
+          'tasks': const [],
+          'groups': const [],
+          'columns': const [],
+          'statuses': const [],
+          'views': const [],
+          'can_edit': false,
+        };
+      });
+      return;
+    }
     final res = await widget.api.get('/task-boards/$id');
     if (!mounted || _boards[_selected]['id'] != id) return;
     setState(() {
@@ -1660,7 +1704,160 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// Folded away on a phone until asked for.
   bool _toolsOpen = false;
 
+  /// Archive, delete and restore (Jose, 2026-11-09: "I can't delete boards").
+  Widget _boardMenu() {
+    final board = _board!;
+    final deleted = board['deleted'] == true;
+    return MenuAnchor(
+      menuChildren: [
+        if (deleted)
+          MenuItemButton(
+            key: const Key('board-restore'),
+            leadingIcon: const Icon(Icons.restore, size: 18),
+            onPressed: () => _boardAction('restore'),
+            child: Text('Restore (until ${board['restore_until'] ?? ''})'),
+          )
+        else ...[
+          MenuItemButton(
+            key: const Key('board-archive'),
+            leadingIcon: Icon(
+              board['archived'] == true
+                  ? Icons.unarchive_outlined
+                  : Icons.archive_outlined,
+              size: 18,
+            ),
+            onPressed: () => _boardAction(
+              board['archived'] == true ? 'unarchive' : 'archive',
+            ),
+            child: Text(
+              board['archived'] == true ? 'Unarchive board' : 'Archive board',
+            ),
+          ),
+          if (board['can_delete'] == true)
+            MenuItemButton(
+              key: const Key('board-delete'),
+              leadingIcon: const Icon(Icons.delete_outline, size: 18),
+              onPressed: _deleteBoard,
+              child: const Text('Delete board…'),
+            ),
+        ],
+      ],
+      builder: (context, menu, _) => IconButton(
+        key: const Key('board-menu'),
+        tooltip: 'Board',
+        icon: const Icon(Icons.more_horiz),
+        onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+      ),
+    );
+  }
+
+  Future<void> _boardAction(String action) async {
+    final r = await widget.api.post(
+      '/task-boards/${_board!['id']}/$action',
+      const {},
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          !r.ok
+              ? r.reason
+              : switch (action) {
+                  'archive' => 'Board archived. Find it under Archived boards.',
+                  'unarchive' => 'Board is back in the list.',
+                  _ => 'Board restored.',
+                },
+        ),
+      ),
+    );
+    if (!r.ok) return;
+    setState(() {
+      _archived = false;
+      _board = null;
+      _selected = 0;
+    });
+    await _load();
+  }
+
+  /// Two steps, as a job's delete: what goes, then the name typed back.
+  Future<void> _deleteBoard() async {
+    final name = '${_board!['name']}';
+    final typed = TextEditingController();
+    final ok = await showSidePanel<bool>(
+      context,
+      builder: (panel) => StatefulBuilder(
+        builder: (panel, set) => SidePanel(
+          title: 'Delete $name?',
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(panel).pop(false),
+              child: const Text('Keep it'),
+            ),
+            FilledButton(
+              key: const Key('board-delete-confirm'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(panel).colorScheme.error,
+              ),
+              onPressed: typed.text.trim() == name.trim()
+                  ? () => Navigator.of(panel).pop(true)
+                  : null,
+              child: const Text('Delete board'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'The board and its tasks leave every list. You can restore it '
+                'from Archived boards for 30 days; after that it is gone.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                key: const Key('board-delete-name'),
+                controller: typed,
+                autofocus: true,
+                onChanged: (_) => set(() {}),
+                decoration: InputDecoration(
+                  labelText: 'Type $name to delete it',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final r = await widget.api.delete('/task-boards/${_board!['id']}', {
+      'confirm': name,
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(r.ok ? 'Board deleted.' : r.reason)));
+    if (!r.ok) return;
+    setState(() {
+      _board = null;
+      _selected = 0;
+    });
+    await _load();
+  }
+
   List<Widget> _moreTools({required bool phone}) => [
+    if (_board?['can_set_edit_mode'] == true || _board?['deleted'] == true)
+      _boardMenu(),
+    if (_archived || _archivedCount > 0)
+      OutlinedButton.icon(
+        key: const Key('tasks-archived'),
+        onPressed: _toggleArchived,
+        icon: Icon(
+          _archived ? Icons.arrow_back : Icons.inventory_2_outlined,
+          size: 18,
+        ),
+        label: Text(
+          _archived ? 'Back to boards' : 'Archived boards · $_archivedCount',
+        ),
+      ),
     if (_canEdit &&
         (_board?['statuses'] as List? ?? const []).any(
           (s) => s is Map && s.containsKey('id'),
