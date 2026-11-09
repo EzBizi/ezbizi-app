@@ -216,6 +216,31 @@ class PhoneSmsTest extends TestCase
         });
     }
 
+    /** Twilio's region refusal reads as a plain sentence (health sweep 11-09, a Puerto Rico number; Jose: we do not serve Puerto Rico, the permission stays off). */
+    public function test_a_region_refusal_reads_as_a_plain_sentence(): void
+    {
+        $t = $this->provisionTenant();
+        $desk = $this->userWithRole($t, 'Desk region', ['phone.view']);
+
+        $number = $this->inTenant($t['org'], function () use ($t, $desk) {
+            [, $number] = $this->openLine($t, e164: '+12035551005');
+            $number->update(['sms_outbound_allowed' => true]);
+            PhoneNumberGrant::create(['organization_id' => $t['org']->id, 'number_id' => $number->id, 'role_id' => $desk->role_id]);
+
+            return $number->fresh();
+        });
+
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+        $gateway->failSendMessageWith = "[HTTP 400] Unable to create record: Permission to send an SMS has not been enabled for the region indicated by the 'To' number: +17873700000";
+
+        $this->signedInAs($desk)->postJson('/api/v1/phone/messages', [
+            'number_id' => $number->id,
+            'to' => '+17873700000',
+            'body' => 'Hi',
+        ])->assertStatus(502)->assertJsonFragment(['message' => "Texts to that number's country are switched off on this phone account, so nothing was sent."]);
+    }
+
     /**
      * Jose, 2026-10-09: a thread with nobody filed on it read as a bare
      * number. The number is named by a customer with that phone first, then a

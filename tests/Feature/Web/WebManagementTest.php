@@ -470,6 +470,28 @@ class WebManagementTest extends TestCase
         $this->assertSame($counted - 3, $missing['nj.a-1chimney.com']);
     }
 
+    public function test_a_field_marked_not_needed_stops_counting_and_can_be_undone(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com')['data']['id'];
+        $count = fn () => collect($this->signedInAs($editor)->getJson('/api/v1/web/sites')->json('data'))->first()['missing'];
+        $before = $count();
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site}/values", ['not_needed' => ['city', 'postal_code']])
+            ->assertOk()->assertJsonPath('data.not_needed', ['city', 'postal_code']);
+        $this->assertSame($before - 2, $count());
+        $this->signedInAs($editor)->getJson("/api/v1/web/sites/{$site}/values")->assertJsonPath('data.not_needed', ['city', 'postal_code']);
+
+        // A save of values alone leaves the marks; an empty list clears them.
+        $this->setValues($editor, $site, ['phone' => '555-0100']);
+        $this->assertSame($before - 3, $count());
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site}/values", ['not_needed' => []])->assertOk();
+        $this->assertSame($before - 1, $count());
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site}/values", ['not_needed' => ['nonsense']])->assertStatus(422);
+    }
+
     // ── 7. §4: permissions and tenants ──────────────────────────────
 
     public function test_a_viewer_can_read_sites_and_cannot_change_them(): void

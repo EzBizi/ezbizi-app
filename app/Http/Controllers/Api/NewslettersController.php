@@ -12,6 +12,7 @@ use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Newsletter\BlockRenderer;
 use App\Support\Newsletter\NewsletterAccess;
+use App\Support\Newsletter\NewsletterIdentity;
 use App\Support\Newsletter\NewsletterSenders;
 use App\Support\Scoping\OwnedScope;
 use App\Support\Scoping\ViewScope;
@@ -83,6 +84,7 @@ class NewslettersController extends Controller
         $status = $request->query('status');
         $filter = in_array($status, [
             Newsletter::STATUS_DRAFT, Newsletter::STATUS_SCHEDULED, Newsletter::STATUS_SENT,
+            Newsletter::STATUS_FAILED,
         ], true) ? $status : null;
 
         $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
@@ -142,6 +144,7 @@ class NewslettersController extends Controller
             'drafts' => $all->where('status', Newsletter::STATUS_DRAFT)->count(),
             'scheduled' => $all->where('status', Newsletter::STATUS_SCHEDULED)->count(),
             'sent' => $sent->count(),
+            'failed' => $all->where('status', Newsletter::STATUS_FAILED)->count(),
 
             /*
              * Addresses the provider ACCEPTED, summed across every send. Not
@@ -233,9 +236,13 @@ class NewslettersController extends Controller
         $row->fill([
             'subject' => $data['subject'],
             'blocks' => $data['blocks'] ?? [],
-            'html_override' => $data['html_override'] ?? null,
             'newsletter_audience_id' => $this->audienceIdFor($user, $data['audience_id'] ?? null),
         ]);
+        // Only a request that names it changes the custom HTML; a save that
+        // leaves it out (an older client, the subject alone) keeps it.
+        if (array_key_exists('html_override', $data)) {
+            $row->html_override = $data['html_override'];
+        }
 
         $this->applySchedule($request, $row, $data['scheduled_for'] ?? null);
         $row->save();
@@ -337,6 +344,14 @@ class NewslettersController extends Controller
         if ($row->audience === null) {
             throw ValidationException::withMessages([
                 'audience_id' => 'Choose who this goes to before sending it.',
+            ]);
+        }
+
+        // The law asks every marketing email for a postal address, and the footer carries it.
+        if (trim(NewsletterIdentity::footer($row)['address']) === '') {
+            throw ValidationException::withMessages([
+                'subject' => 'This company has no postal address yet, and every newsletter must show one. '
+                    .'Add the address in Settings, then send.',
             ]);
         }
 
@@ -485,7 +500,7 @@ class NewslettersController extends Controller
             'blocks.*.type' => ['required_with:blocks', 'string', 'max:40'],
             'html_override' => ['nullable', 'string'],
             'audience_id' => ['nullable', 'string'],
-            'scheduled_for' => ['nullable', 'string', 'date_format:Y-m-d H:i'],
+            'scheduled_for' => ['nullable', 'string', 'date_format:Y-m-d H:i,Y-m-d H:i:s'],
         ], [
             'subject.required' => 'A newsletter needs a subject line — it is the first thing '
                 .'anybody sees.',
@@ -524,6 +539,13 @@ class NewslettersController extends Controller
             return;
         }
 
+        // The time already saved, sent back unchanged by an autosave, is kept as
+        // it is: a draft whose time has passed must still save its typo fixes.
+        if ($row->exists && is_string($row->scheduled_for)
+            && substr($row->scheduled_for, 0, 16) === substr(trim($wall), 0, 16)) {
+            return;
+        }
+
         $timezone = ViewTimezone::forUser($request->user());
         $moment = Carbon::parse($wall, $timezone);
 
@@ -544,10 +566,10 @@ class NewslettersController extends Controller
             return $row->html_override;
         }
 
-        return $this->renderer->render((array) ($row->blocks ?? []), [
-            'company' => (string) ($row->organization?->name ?? 'EzBizi'),
-            'address' => '',
-            'unsubscribe_url' => url('/api/v1/newsletter/unsubscribe/preview'),
+        // As SendNewsletter fills it, so the preview shows the real footer.
+        return $this->renderer->render((array) ($row->blocks ?? []), NewsletterIdentity::footer($row) + [
+            // APP_URL, not the request's host: a preview fetched via localhost said localhost.
+            'unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview',
         ]);
     }
 
@@ -566,14 +588,17 @@ class NewslettersController extends Controller
                 'name' => $n->audience->name,
                 'kind' => $n->audience->kind,
             ],
-            'scheduled_for' => $n->scheduled_for,
+            // The wall time as the composer writes it back, without seconds.
+            'scheduled_for' => is_string($n->scheduled_for) ? substr($n->scheduled_for, 0, 16) : null,
             'scheduled_timezone' => $n->scheduled_timezone,
             'author' => $n->author?->name,
             'has_html_override' => is_string($n->html_override) && $n->html_override !== '',
+            'html_override' => is_string($n->html_override) && $n->html_override !== '' ? $n->html_override : null,
             'last_send' => $send === null ? null : [
                 'status' => $send->status,
                 'recipients' => $send->recipients,
                 'failure' => $send->failure,
+                'notice' => $send->notice,
                 'sent_at' => $send->sent_at?->toIso8601String(),
             ],
             'created_at' => $n->created_at?->toIso8601String(),

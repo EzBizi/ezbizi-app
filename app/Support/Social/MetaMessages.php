@@ -518,7 +518,7 @@ final class MetaMessages
      *
      * @throws RuntimeException with a sentence for the screen
      */
-    public function send(SocialConnection $connection, string $recipientId, string $text): string
+    public function send(SocialConnection $connection, string $recipientId, string $text, ?string $tag = null): string
     {
         $credentials = $connection->credentials;
         $token = is_array($credentials) ? ($credentials['access_token'] ?? null) : null;
@@ -552,8 +552,10 @@ final class MetaMessages
                          * somebody answering a message a person sent, which is
                          * exactly what RESPONSE means.
                          */
-                        'messaging_type' => 'RESPONSE',
-                    ],
+                        'messaging_type' => $tag === null ? 'RESPONSE' : 'MESSAGE_TAG',
+                        // HUMAN_AGENT: a person answering 1-7 days after the
+                        // last message (MetaMessageReplies decides when).
+                    ] + ($tag === null ? [] : ['tag' => $tag]),
                 );
         } catch (ConnectionException) {
             throw new RuntimeException('Meta did not answer, so the reply was not sent.');

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** A promotion text sent to the customers of Done jobs (Jose, 2026-11-06). */
-#[Fillable(['organization_id', 'jobs_from', 'jobs_to', 'body', 'franchise_ids', 'recipients', 'sent', 'failed', 'sent_by', 'finished_at'])]
+#[Fillable(['organization_id', 'jobs_from', 'jobs_to', 'body', 'media_path', 'franchise_ids', 'phones', 'recipients', 'sent', 'failed', 'sent_by', 'finished_at'])]
 class Promotion extends Model implements StatesRetention
 {
     use BelongsToTenant;
@@ -19,7 +19,7 @@ class Promotion extends Model implements StatesRetention
 
     protected function casts(): array
     {
-        return ['jobs_from' => 'date:Y-m-d', 'jobs_to' => 'date:Y-m-d', 'franchise_ids' => 'array', 'finished_at' => 'datetime'];
+        return ['jobs_from' => 'date:Y-m-d', 'jobs_to' => 'date:Y-m-d', 'franchise_ids' => 'array', 'phones' => 'array', 'finished_at' => 'datetime'];
     }
 
     public function texts(): HasMany

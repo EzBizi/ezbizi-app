@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../screens/financials_screen.dart';
 import '../screens/ai_assistance_screen.dart';
 import '../screens/guidelines_screen.dart';
+import '../screens/ads_manager_screen.dart';
 import '../screens/ads_performance_screen.dart';
 import '../screens/automations_screen.dart';
 import '../screens/customers/memberships_screen.dart';
@@ -205,6 +206,12 @@ final Map<String, ModuleScreen> moduleScreens = {
   'ads_performance': ModuleScreen(
     Icons.show_chart_outlined,
     (api, session) => AdsPerformanceScreen(api: api, session: session),
+  ),
+  // A megaphone: Marketing › Ads is where advertising is switched and
+  // budgeted (Jose, 2026-11-09); the chart line above is its report.
+  'ads_manager': ModuleScreen(
+    Icons.campaign_outlined,
+    (api, session) => AdsManagerScreen(api: api, session: session),
   ),
   // A ledger, not a currency symbol or a chart. What the tab holds is a
   // business's own books read out of its accounting sheet - $ would say

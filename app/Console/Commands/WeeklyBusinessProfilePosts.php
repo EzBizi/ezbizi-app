@@ -52,6 +52,10 @@ class WeeklyBusinessProfilePosts extends Command
      */
     public static function draftFor(BusinessLocation $place): bool
     {
+        // Suspended, unverified or unpublished: Google would refuse or never show it.
+        if (! $place->isLive()) {
+            return false;
+        }
         $where = GoogleBusinessProfilePublisher::v4Name($place, $place->connection);
         $recent = SocialPostTarget::query()->where('options->gbp_location', $where)
             ->where('created_at', '>=', now()->subDays(90))->with('post')->latest()->get();

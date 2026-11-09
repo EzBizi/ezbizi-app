@@ -2525,6 +2525,22 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                       ),
+                      // The reply window, under the time (UI-UX, 2026-11-09):
+                      // "3h left", amber under 2h, "Window closed" after.
+                      if (replyWindowNote(lead['reply_window_ends_at'] as String?)
+                          case (final note, final tone)) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          note,
+                          key: ValueKey('lead-window-$id'),
+                          maxLines: 1,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: tone == Tone.caution
+                                ? ToneColours.of(context, Tone.caution).ink
+                                : theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                       // Under the time. A phone has no line-1 column, so
                       // its tags lead here (design 187, phone 4).
                       const SizedBox(width: 6),
@@ -2567,6 +2583,22 @@ class _LeadsScreenState extends State<LeadsScreen> {
       ),
     );
   }
+}
+
+/// The reply window's note and its tone: "45m left" or "3h left" in the
+/// thread's format, [Tone.caution] under two hours, "Window closed" once past
+/// (muted, never red). Null when the source has no window.
+(String, Tone?)? replyWindowNote(String? endsAt, [DateTime? now]) {
+  final ends = endsAt == null ? null : DateTime.tryParse(endsAt);
+  if (ends == null) return null;
+  final left = ends.difference(now ?? DateTime.now());
+  if (left <= Duration.zero) return ('Window closed', null);
+  final text = left.inMinutes < 60
+      ? '${left.inMinutes < 1 ? 1 : left.inMinutes}m left'
+      : left.inHours < 24
+      ? '${left.inHours}h left'
+      : '${left.inDays}d left';
+  return (text, left < const Duration(hours: 2) ? Tone.caution : null);
 }
 
 /// A row of chips, 6 apart (design 161: one line, never wrapped).

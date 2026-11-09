@@ -290,6 +290,9 @@ Schedule::command('scheduling:apply-scheduled-changes')->hourly()->withoutOverla
 
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
+// Instagram and Threads 60-day tokens, renewed while they still work (bug review 2026-11-09).
+Schedule::command('ezbizi:renew-meta-login-tokens')->dailyAt('04:20')->timezone('America/New_York')->withoutOverlapping(30);
+
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
 //
 // Every minute, and that is NOT the cadence. A mailbox is looked at every five
@@ -377,6 +380,8 @@ Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30
 
 // Every Twilio line still routes to us; numbers added, removed or repointed.
 Schedule::command('ezbizi:phone-line-audit')->dailyAt('04:30')->withoutOverlapping(30);
+// New and reactivated people get an extension within the hour (Jose, 2026-11-09).
+Schedule::command('ezbizi:phone-assign-extensions')->hourly()->withoutOverlapping(10);
 // Hourly at :30; the command rings each line only at 21:30 on an even-week Monday in its own zone (after hours: voicemail, nobody rung).
 Schedule::command('ezbizi:phone-line-answer-test')->hourlyAt(30)->withoutOverlapping(30);
 

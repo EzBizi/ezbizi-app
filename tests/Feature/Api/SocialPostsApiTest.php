@@ -504,6 +504,8 @@ class SocialPostsApiTest extends TestCase
             // Failed only at the sibling: here it reads as sent.
             $post([[$mine, 'sent'], [$theirs, 'failed']]);
             $post([[$theirs, 'failed']]);
+            // Waiting for approval has not gone out: Scheduled, never Sent.
+            $post([[$mine, 'awaiting_approval']]);
         });
 
         $this->lookingAt($t['admin'], 'company', $t['company']->id);
@@ -513,7 +515,7 @@ class SocialPostsApiTest extends TestCase
             ->getJson(self::ENDPOINT)
             ->assertOk()
             ->assertJsonCount(20, 'data')
-            ->assertJsonPath('meta.tiles', ['scheduled' => 1, 'sent' => 23, 'failed' => 1]);
+            ->assertJsonPath('meta.tiles', ['scheduled' => 2, 'sent' => 23, 'failed' => 1]);
 
         $failed = $this->signedInAs($admin)
             ->getJson(self::ENDPOINT.'?status=failed')
@@ -523,10 +525,13 @@ class SocialPostsApiTest extends TestCase
         $this->assertCount(1, $failed);
         $this->assertEqualsCanonicalizing(['sent', 'failed'], array_column($failed[0]['targets'], 'status'));
 
-        $this->signedInAs($admin)
+        // Two rows, in either order: the scheduled one and the one waiting for approval.
+        $scheduled = $this->signedInAs($admin)
             ->getJson(self::ENDPOINT.'?status=scheduled')
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.targets.0.status', 'scheduled');
+            ->assertJsonCount(2, 'data')
+            ->json('data');
+        $this->assertEqualsCanonicalizing(['scheduled', 'awaiting_approval'],
+            array_map(fn ($p) => $p['targets'][0]['status'], $scheduled));
 
         // An unknown status is ignored rather than emptying the list.
         $this->signedInAs($admin)

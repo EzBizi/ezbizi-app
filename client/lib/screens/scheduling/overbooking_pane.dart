@@ -1,3 +1,4 @@
+import 'offer_panel.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -16,10 +17,14 @@ class OverbookingPane extends StatefulWidget {
     required this.api,
     required this.visible,
     this.embedded = false,
+    this.canEdit = false,
   });
 
   final ApiClient api;
   final bool visible;
+
+  /// May text customers an offer to move (`scheduling.edit`; Jose, 2026-11-09).
+  final bool canEdit;
 
   /// Drawn inside another panel (Reports' Overbooking warning): the morning
   /// email's seven days only, with no heading, spans or scroll of its own.
@@ -35,6 +40,9 @@ class _OverbookingPaneState extends State<OverbookingPane> {
   /// with the request that fills it. A reload closes them: the list must be
   /// the count, and the count may have moved.
   final Map<String, Future<ApiResponse>> _opened = {};
+
+  /// Opened rows whose offer to move is showing.
+  final Set<String> _offering = {};
   static const _spans = [7, 14, 30, 60];
 
   int _days = 30;
@@ -532,8 +540,39 @@ class _OverbookingPaneState extends State<OverbookingPane> {
       detail: detail,
       pill: '${r['over']} over',
       open: request != null,
-      below: request == null ? null : _jobs(theme, request),
+      below: request == null
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _jobs(theme, request),
+                // An area's overbooked day: offer its customers the next day
+                // with room (Re-Scheduling › Overbooking, Jose 2026-11-09).
+                if (widget.canEdit && !franchise && !widget.embedded)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: _offering.contains(id)
+                        ? OfferPanel(
+                            key: ValueKey('offer-$id'),
+                            api: widget.api,
+                            areaId: '${r['area_id']}',
+                            date: r['date'] as String,
+                            kind: OfferKind.overbooked,
+                          )
+                        : Align(
+                            alignment: Alignment.centerLeft,
+                            child: OutlinedButton.icon(
+                              key: ValueKey('overbooked-offer-$id'),
+                              icon: const Icon(Icons.sms_outlined, size: 18),
+                              label: const Text('Offer a move'),
+                              onPressed: () => setState(() => _offering.add(id)),
+                            ),
+                          ),
+                  ),
+              ],
+            ),
       onTap: () => setState(() {
+        _offering.remove(id);
         if (_opened.remove(id) == null) {
           _opened[id] = widget.api.get('/scheduling/overbooking/jobs', {
             'date': r['date'] as String,

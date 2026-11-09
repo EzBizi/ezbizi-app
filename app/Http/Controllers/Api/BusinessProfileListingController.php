@@ -153,8 +153,10 @@ class BusinessProfileListingController extends Controller
         return response()->json(['data' => [
             $row(Review::SOURCE_GOOGLE, true, BusinessLocation::query()->max('synced_at')),
             $row(Review::SOURCE_EKOMI, (clone $ekomi)->exists(), $ekomi->max('last_reached_at')),
-            // ponytail: Thumbtack exposes no reviews API to partners; stays unconnected until it does.
-            ['source' => 'thumbtack', 'connected' => false, 'count' => 0, 'average' => null, 'last_sync' => null],
+            // Connected for leads, but Thumbtack shares no reviews with partners (Jose, 2026-11-09:
+            // "why does it say not connected when we do have a thumbtack connection").
+            ['source' => 'thumbtack', 'connected' => SocialConnection::query()->where('provider', SocialProvider::Thumbtack->value)->exists(),
+                'reviews_available' => false, 'count' => 0, 'average' => null, 'last_sync' => null],
         ], 'reply_rule_id' => $this->replyRuleId()]);
     }
 

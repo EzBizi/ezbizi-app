@@ -380,8 +380,21 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
-  'scheduling/Overbooking': Tour(
+  'scheduling/Re-Scheduling': Tour(
     version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-scheduling-rescheduling-segments',
+        title: 'Re-Scheduling',
+        body:
+            'Overbooking: days booked past what they take. Underbooking: open '
+            'spots, with texts offering them to customers booked later. AI '
+            'suggestions: jobs that would sit better beside other work.',
+      ),
+    ],
+  ),
+  'scheduling/Re-Scheduling/Overbooking': Tour(
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-scheduling-overbooking-counts',
@@ -407,8 +420,8 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
-  'scheduling/Re-Scheduling/Rescheduling Availability': Tour(
-    version: 2,
+  'scheduling/Re-Scheduling/Underbooking': Tour(
+    version: 3,
     steps: [
       TourStep(
         anchor: 'tour-booked-day',
@@ -432,8 +445,8 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
-  'scheduling/Re-Scheduling': Tour(
-    version: 1,
+  'scheduling/Re-Scheduling/AI suggestions': Tour(
+    version: 2,
     steps: [
       TourStep(
         anchor: 'rescheduling-list',

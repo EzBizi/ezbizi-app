@@ -859,7 +859,9 @@ class Me {
   /// The companies this person hears from; empty means all of them. Each
   /// covers its sub companies and branches (Bar, 2026-10-22).
   List<String> get notificationCompanies =>
-      (preferences['notifications.companies'] as List? ?? const []).whereType<String>().toList();
+      (preferences['notifications.companies'] as List? ?? const [])
+          .whereType<String>()
+          .toList();
 
   /// How wide the expanded sidebar is. Clamped on read as well as on write:
   /// a stored value from an older build, or one the server has since tightened
@@ -908,6 +910,17 @@ class Me {
 
   double get hrRecordsListWidth =>
       _width('hr.records.list_width', 300, 240, 900);
+
+  /// The columns this person dragged on the ListTable called [list]:
+  /// index => pixels, for ListTable.widths. Save with
+  /// setPreference('lists.column_widths', {...all, '$list:$i': px}).
+  Map<int, double> listColumnWidths(String list) => {
+    for (final e
+        in (preferences['lists.column_widths'] as Map? ?? const {}).entries)
+      if ('${e.key}'.startsWith('$list:') && e.value is num)
+        int.parse('${e.key}'.substring(list.length + 1)): (e.value as num)
+            .toDouble(),
+  };
 
   double _width(String key, double fallback, double min, double max) {
     final stored = preferences[key];

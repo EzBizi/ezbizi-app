@@ -41,6 +41,45 @@ class RescheduleOffersTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-10-26 10:00:00', 'America/New_York'));
     }
 
+    /** Jose, 2026-11-09: an overbooked day's customers are offered the next day with room, in their own words. */
+    public function test_an_overbooked_days_customers_are_offered_the_next_day_with_room(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        app(TenantContext::class)->set($t['org']);
+        $area = ServiceArea::create(['franchise_id' => $t['franchise']->id, 'name' => 'Dallas']);
+        foreach (range(0, 6) as $d) {
+            ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => $d, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 1]);
+        }
+        $job = fn (string $when, string $phone) => Job::factory()->create([
+            'franchise_id' => $t['franchise']->id, 'service_area_id' => $area->id, 'scheduled_for' => $when, 'status' => 'Submitted',
+            'customer_id' => Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Pat Lin', 'phone' => $phone])->id,
+        ]);
+        // Oct 27 takes 1 and holds 2; Oct 28 is full; Oct 29 has room.
+        $first = $job('2026-10-27 08:00:00', '+15553330011');
+        $second = $job('2026-10-27 09:00:00', '+15553330012');
+        $job('2026-10-28 08:00:00', '+15553330013');
+        PhoneNumber::factory()->create([
+            'connection_id' => PhoneConnection::factory()->create(['scope_type' => PhoneConnection::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id])->id,
+            'scope_type' => PhoneNumber::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id, 'e164' => '+12035551004', 'sms_outbound_allowed' => true,
+        ]);
+        $as = $this->signedInAs($t['admin']);
+        $target = ['area_id' => $area->id, 'date' => '2026-10-27', 'kind' => 'overbooked'];
+
+        $plan = $as->postJson('/api/v1/scheduling/overbooking/offers/preview', $target)->assertOk()->json('data');
+        $this->assertSame('2026-10-29', $plan['offer_date']);
+        $this->assertEqualsCanonicalizing([$first->id, $second->id], array_column($plan['candidates'], 'job_id'));
+        $this->assertStringContainsString('is very busy on {booked}', $plan['message']);
+
+        $as->postJson('/api/v1/scheduling/overbooking/offers/send', $target + ['job_ids' => [$second->id]])
+            ->assertOk()->assertJsonPath('data.sent', [$second->id]);
+        /** @var FakeTwilioGateway $gateway */
+        $gateway = $this->app->make(TwilioGateway::class);
+        $text = collect($gateway->calls)->where('method', 'sendMessage')->sole()['args'][3];
+        $this->assertStringContainsString('very busy on Tuesday, Oct 27. Would Thursday, Oct 29, 8:00 AM–11:00 AM work', $text);
+        app(TenantContext::class)->set($t['org']);
+        $this->assertSame('2026-10-29', SchedulingRescheduleOffer::query()->sole()->open_date->toDateString());
+    }
+
     public function test_later_customers_are_offered_the_open_day_once_and_replies_land_on_a_reschedule_lead(): void
     {
         $t = $this->provisionTenant('Alpha');
@@ -90,7 +129,7 @@ class RescheduleOffersTest extends TestCase
         $offer = $as->getJson('/api/v1/scheduling/reschedule-offers?lead_id='.$lead->id)->assertOk()
             ->assertJsonPath('data.start_time', '08:00')->assertJsonPath('data.can_move', true)->json('data');
         Queue::fake();
-        $viewer = $this->userWithRole($t, 'Viewer', ['scheduling.view', 'scheduling.overbooking.view']);
+        $viewer = $this->userWithRole($t, 'Viewer', ['scheduling.view', 'scheduling.rescheduling.view']);
         $this->signedInAs($viewer)->postJson("/api/v1/scheduling/reschedule-offers/{$offer['id']}/move")->assertForbidden();
         $as = $this->signedInAs($t['admin']);
         $as->postJson("/api/v1/scheduling/reschedule-offers/{$offer['id']}/move")->assertOk()
@@ -117,7 +156,7 @@ class RescheduleOffersTest extends TestCase
         $area = ServiceArea::create(['franchise_id' => $t['franchise']->id, 'name' => 'Dallas']);
         $target = ['area_id' => $area->id, 'date' => '2026-10-27', 'job_ids' => [$area->id]];
 
-        $viewer = $this->userWithRole($t, 'Dispatcher', ['scheduling.view', 'scheduling.overbooking.view']);
+        $viewer = $this->userWithRole($t, 'Dispatcher', ['scheduling.view', 'scheduling.rescheduling.view']);
         $this->signedInAs($viewer)->postJson('/api/v1/scheduling/overbooking/offers/send', $target)->assertForbidden();
 
         $this->travelTo(CarbonImmutable::parse('2026-10-26 21:30:00', 'America/New_York'));

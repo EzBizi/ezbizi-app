@@ -4,6 +4,7 @@ namespace App\Support\Social\Publishing;
 
 use App\Models\SocialConnection;
 use App\Support\Social\SocialMediaKind;
+use App\Support\Social\SocialProvider;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
@@ -68,6 +69,12 @@ final class ThreadsPublisher implements LinksToPosts, SocialPublisher
             throw new SocialPublishFailed('A thread with no words would be an empty post. Write something.');
         }
 
+        // Refused, never cut mid-sentence. The composer checks first; this
+        // holds for posts written before it did.
+        if (($why = SocialProvider::Threads->refusesLength($body)) !== null) {
+            throw new SocialPublishFailed($why.' Nothing was posted.');
+        }
+
         $token = $this->token($connection);
         $user = $connection->remote_id;
         $handoff = $kind === SocialMediaKind::Text ? null : MediaHandoff::hold($post);
@@ -116,9 +123,9 @@ final class ThreadsPublisher implements LinksToPosts, SocialPublisher
             },
             'image_url' => $kind === SocialMediaKind::Image ? $url : null,
             'video_url' => $kind === SocialMediaKind::Video ? $url : null,
-            // Threads counts by characters and stops at 500. On a media post
-            // the text is the caption, and an empty one is allowed.
-            'text' => $body === '' ? null : mb_substr($body, 0, 500),
+            // On a media post the text is the caption, and an empty one is
+            // allowed. Its 500-character limit is checked in publish().
+            'text' => $body === '' ? null : $body,
         ], fn ($value) => $value !== null));
 
         $id = $container['id'] ?? null;

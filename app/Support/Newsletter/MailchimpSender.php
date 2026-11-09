@@ -4,7 +4,9 @@ namespace App\Support\Newsletter;
 
 use App\Models\Newsletter;
 use App\Models\NewsletterAudience;
+use App\Models\NewsletterUnsubscribe;
 use App\Models\SocialConnection;
+use App\Support\Automations\EventEmitter;
 
 /**
  * A newsletter, as a Mailchimp campaign.
@@ -49,8 +51,16 @@ final class MailchimpSender
 
         // An EzBizi-held list has to reach Mailchimp before a campaign can go to
         // it. A Mailchimp-held one is already there and must not be written to.
+        $refused = [];
         if ($audience->kind === NewsletterAudience::KIND_CUSTOMERS && $people !== []) {
-            $this->mailchimp->syncMembers($key, $listId, $people);
+            // Who left at Mailchimp is recorded first, so nobody with an
+            // unsubscribe row is ever pushed as a new subscriber, on this list
+            // or any other.
+            $this->recordLeft($newsletter, $this->mailchimp->leftMembers($key, $listId));
+            $gone = NewsletterSenders::unsubscribedIn($newsletter);
+            $people = array_values(array_filter($people,
+                fn (array $p) => ! in_array(mb_strtolower(trim($p['email'])), $gone, true)));
+            $refused = $people === [] ? [] : $this->mailchimp->batchSubscribe($key, $listId, $people);
         }
 
         $gone = NewsletterSenders::unsubscribedIn($newsletter);
@@ -73,7 +83,7 @@ final class MailchimpSender
             $html = stripos($html, '</body>') === false ? $html.$footer : str_ireplace('</body>', $footer.'</body>', $html);
         }
 
-        $identity = $this->identityFor($connection);
+        $identity = $this->identityFor($connection, $newsletter);
 
         $result = $this->mailchimp->sendCampaign(
             $key,
@@ -91,17 +101,48 @@ final class MailchimpSender
             // the two can differ legitimately (somebody already unsubscribed at
             // their end). Theirs is the number that describes what was sent.
             'recipients' => $result['recipients'],
+            'refused' => count($refused),
         ];
     }
 
+    /**
+     * Opt-outs Mailchimp holds become EzBizi's own rows at the newsletter's
+     * scope, and each new one raises `newsletter.unsubscribed`.
+     *
+     * @param  list<string>  $emails
+     */
+    private function recordLeft(Newsletter $newsletter, array $emails): void
+    {
+        foreach ($emails as $email) {
+            $row = NewsletterUnsubscribe::query()->firstOrCreate(
+                [
+                    'organization_id' => $newsletter->organization_id,
+                    'scope_type' => $newsletter->scope_type,
+                    'scope_id' => $newsletter->scope_id,
+                    'email' => $email,
+                ],
+                ['unsubscribed_at' => now()],
+            );
+            if ($row->wasRecentlyCreated) {
+                app(EventEmitter::class)->emit('newsletter.unsubscribed', $newsletter, [
+                    'email' => $email,
+                    'subject' => $newsletter->subject,
+                    'audience' => $newsletter->audience?->name,
+                ]);
+            }
+        }
+    }
+
     /** @return array{from_name: string, reply_to: string} */
-    private function identityFor(SocialConnection $connection): array
+    private function identityFor(SocialConnection $connection, Newsletter $newsletter): array
     {
         $credentials = $connection->getAttribute('credentials');
         $email = is_array($credentials) ? (string) ($credentials['account_email'] ?? '') : '';
+        // The company the mailing is from, not whoever owns the Mailchimp login.
+        $company = NewsletterIdentity::footer($newsletter)['company'];
 
         return [
-            'from_name' => (string) ($connection->display_name ?: 'Newsletter'),
+            'from_name' => $company !== '' ? $company : (string) ($connection->display_name ?: 'Newsletter'),
             // Mailchimp requires a reply-to it recognises for the account, so
             // the address the key belongs to is the only one certain to work.
             // A tenant wanting a different one changes it in Mailchimp, where

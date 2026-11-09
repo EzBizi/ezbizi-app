@@ -5,8 +5,11 @@ namespace App\Support\Social;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
+use App\Support\Leads\ExplainsRefusal;
+use App\Support\Leads\HasReplyWindow;
 use App\Support\Leads\LeadReplyChannel;
 use App\Support\Leads\LeadThread;
+use Illuminate\Support\Carbon;
 use RuntimeException;
 
 /**
@@ -32,10 +35,17 @@ use RuntimeException;
  * creates the lead, so there is no history that predates our record. The
  * enquiry cannot exist without its first message.
  */
-final class MetaMessageReplies implements LeadReplyChannel
+final class MetaMessageReplies implements ExplainsRefusal, HasReplyWindow, LeadReplyChannel
 {
     /** Meta's standard messaging window. */
     private const WINDOW_HOURS = 24;
+
+    /**
+     * A PERSON may answer for 7 days with the HUMAN_AGENT tag, once Meta has
+     * approved the Human Agent feature for the app (services.meta.human_agent,
+     * off until then: Meta refuses the tag without it). A rule never may.
+     */
+    private const HUMAN_AGENT_HOURS = 168;
 
     public function __construct(
         private readonly string $source,
@@ -68,7 +78,9 @@ final class MetaMessageReplies implements LeadReplyChannel
 
     public function canReply(Lead $lead): bool
     {
-        return $this->connection($lead) !== null && $this->lastInboundWithinWindow($lead);
+        $connection = $this->connection($lead);
+
+        return $connection !== null && ! $this->withoutMessenger($connection) && $this->lastInboundWithinWindow($lead);
     }
 
     public function send(Lead $lead, string $text, bool $automatic = false): LeadConversation
@@ -82,14 +94,19 @@ final class MetaMessageReplies implements LeadReplyChannel
             );
         }
 
-        if (! $this->lastInboundWithinWindow($lead)) {
+        $tag = null;
+        if (! $this->lastInboundWithin($lead, self::WINDOW_HOURS)) {
+            $tag = ! $automatic && $this->humanAgent() && $this->lastInboundWithin($lead, self::HUMAN_AGENT_HOURS) ? 'HUMAN_AGENT' : null;
+        }
+
+        if (! $this->lastInboundWithin($lead, self::WINDOW_HOURS) && $tag === null) {
             throw new RuntimeException(
                 'Meta only allows a reply within '.self::WINDOW_HOURS.' hours of the last '
                 .'message from this person, and that has passed.'
             );
         }
 
-        $mid = $this->messages->send($connection, (string) $lead->remote_id, $text);
+        $mid = $this->messages->send($connection, (string) $lead->remote_id, $text, $tag);
 
         /*
          * The row is written AFTER the send, not before - the opposite of the
@@ -135,6 +152,70 @@ final class MetaMessageReplies implements LeadReplyChannel
             ->firstOrFail();
     }
 
+    /**
+     * Why not, in words the person at the desk can act on (Jose, 2026-11-09:
+     * the screen said only "This enquiry cannot be replied to right now" about
+     * an Instagram message two days old).
+     */
+    public function whyNot(Lead $lead): string
+    {
+        $network = $this->source === Lead::SOURCE_INSTAGRAM ? 'Instagram' : 'Facebook';
+        $connection = $this->connection($lead);
+
+        if ($connection === null) {
+            return "The {$network} account this enquiry came through is no longer connected. Connect it again in Settings › Integrations to reply.";
+        }
+
+        if ($this->withoutMessenger($connection)) {
+            return 'EzBizi was not given Messenger access when Facebook was connected. Add Messenger in Settings › Integrations › Facebook to reply.';
+        }
+
+        $ends = $this->replyWindowEndsAt($lead);
+
+        if ($ends === null) {
+            return 'There is no message from this person to reply to yet.';
+        }
+
+        return "{$network} only allows replies within ".($this->humanAgent() ? '7 days' : self::WINDOW_HOURS.' hours')." of the person's last message. "
+            .'Their last message was '.$ends->copy()->subHours($this->windowHours())->diffForHumans().'; you can reply again if they write back.';
+    }
+
+    public function replyWindowEndsAt(Lead $lead): ?Carbon
+    {
+        $last = LeadConversation::query()
+            ->where('lead_id', $lead->getKey())
+            ->where('participant', LeadConversation::FROM_CONSUMER)
+            ->max('occurred_at');
+
+        return $last === null ? null : Carbon::parse($last)->addHours($this->windowHours());
+    }
+
+    /** How long a person may answer: 24 hours, or 7 days with Human Agent. */
+    private function windowHours(): int
+    {
+        return $this->humanAgent() ? self::HUMAN_AGENT_HOURS : self::WINDOW_HOURS;
+    }
+
+    private function humanAgent(): bool
+    {
+        return (bool) config('services.meta.human_agent', false);
+    }
+
+    private function lastInboundWithin(Lead $lead, int $hours): bool
+    {
+        $ends = $this->replyWindowEndsAt($lead)?->subHours($this->windowHours())->addHours($hours);
+
+        return $ends !== null && now()->lt($ends);
+    }
+
+    /** A grant recorded since 2026-11-05 says what was ticked on Meta's screen; an older one is taken as whole. */
+    private function withoutMessenger(SocialConnection $connection): bool
+    {
+        $scopes = (array) ($connection->credentials['scopes'] ?? []);
+
+        return $this->source === Lead::SOURCE_FACEBOOK && $scopes !== [] && ! in_array('pages_messaging', $scopes, true);
+    }
+
     private function connection(Lead $lead): ?SocialConnection
     {
         if ($lead->connection_id === null) {
@@ -146,15 +227,8 @@ final class MetaMessageReplies implements LeadReplyChannel
 
     private function lastInboundWithinWindow(Lead $lead): bool
     {
-        $last = LeadConversation::query()
-            ->where('lead_id', $lead->getKey())
-            ->where('participant', LeadConversation::FROM_CONSUMER)
-            ->max('occurred_at');
+        $ends = $this->replyWindowEndsAt($lead);
 
-        if ($last === null) {
-            return false;
-        }
-
-        return now()->diffInHours($last, absolute: true) < self::WINDOW_HOURS;
+        return $ends !== null && now()->lt($ends);
     }
 }

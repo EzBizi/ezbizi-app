@@ -138,6 +138,20 @@ void main() {
     );
   });
 
+  test('only problems someone can act on need attention', () {
+    Map pc(String? status) => {
+      'specs': {'rgb_status': ?status},
+    };
+    expect(lightingStatus(pc('no_devices')).attention, isFalse);
+    expect(lightingStatus(pc(null)).attention, isFalse);
+    expect(lightingStatus(pc('ok')).attention, isFalse);
+    expect(lightingStatus(pc('engine_not_responding')).attention, isTrue);
+    expect(
+      lightingStatus(pc('brand_app_running:ASUS Armoury Crate')).attention,
+      isTrue,
+    );
+  });
+
   testWidgets('the swatch paints the colour the PC was set to', (tester) async {
     await _pump(tester);
     final row = find.byKey(const ValueKey('lighting-row-pc-ok'));

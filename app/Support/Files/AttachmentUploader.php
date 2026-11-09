@@ -38,16 +38,19 @@ final class AttachmentUploader
         $checksum = hash_file('sha256', $file->getRealPath());
         $mime = $file->getMimeType() ?: 'application/octet-stream';
         $disk = $this->files->defaultDisk();
-        $path = $this->files->put(
-            $file,
-            $this->files->directoryFor('attachments', $actor->organization_id),
-            $disk,
-        );
+        // Onboarding uploads hold identity documents (a Social Security card
+        // photo, Merav 2026-11-09), so they are encrypted at rest.
+        $encrypted = $subject instanceof \App\Models\Onboarding;
+        $directory = $this->files->directoryFor('attachments', $actor->organization_id);
+        $path = $encrypted
+            ? $this->files->putContents(\Illuminate\Support\Facades\Crypt::encryptString((string) file_get_contents($file->getRealPath())),
+                $directory, 'enc', $disk)
+            : $this->files->put($file, $directory, $disk);
 
         try {
             return DB::transaction(function () use (
                 $actor, $subject, $file, $attachableType, $prepareSubject,
-                $afterPersist, $size, $checksum, $mime, $disk, $path,
+                $afterPersist, $size, $checksum, $mime, $disk, $path, $encrypted,
             ): Attachment {
                 $target = $prepareSubject === null ? $subject : $prepareSubject();
                 if ($target->getAttribute('organization_id') !== $actor->organization_id) {
@@ -66,6 +69,7 @@ final class AttachmentUploader
                     'path' => $path,
                     'size_bytes' => $size,
                     'checksum' => $checksum,
+                    'encrypted' => $encrypted,
                 ])->save();
 
                 $this->audit->log('attachment.added', $attachment, metadata: [

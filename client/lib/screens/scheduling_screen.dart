@@ -10,7 +10,6 @@ import 'scheduling/booked_available_pane.dart';
 import 'scheduling/capacity_settings.dart';
 import 'scheduling/helpers_pane.dart';
 import 'scheduling/locations_pane.dart';
-import 'scheduling/overbooking_pane.dart';
 import 'scheduling/routing_pane.dart';
 import 'scheduling/schedule_pane.dart';
 import 'scheduling/technician_roster.dart';
@@ -98,12 +97,6 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       ),
     ),
     (
-      'overbooking',
-      'Overbooking',
-      Icons.warning_amber_outlined,
-      () => OverbookingPane(api: widget.api, visible: _visible('overbooking')),
-    ),
-    (
       'rescheduling',
       'Re-Scheduling',
       Icons.swap_horiz,
@@ -114,8 +107,6 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
         session: widget.session,
         visible: _visible('rescheduling'),
         canEdit: widget.session.me?.can('scheduling.edit') ?? false,
-        // The endpoints take either grant (a3f200840).
-        showAvailability: _mayOpen('overbooking') || _mayOpen('rescheduling'),
         linkDate: _linkDate,
         linkSerial: _linkSerial,
       ),

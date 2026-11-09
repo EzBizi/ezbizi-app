@@ -363,4 +363,15 @@ class PreferencesTest extends TestCase
         $this->assertSame(45, $stored['leads.list_percent']);
         $this->assertSame(900, $stored['hr.records.list_width'], 'Wider than any list needs is clamped.');
     }
+
+    public function test_list_column_widths_keep_slug_keys_and_drop_the_rest(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['lists.column_widths' => ['jobs.projects:2' => 5000, 'Bad Key' => 100, 'x:abc' => 90]],
+        ])->assertOk();
+
+        $stored = User::withoutGlobalScopes()->find($this->alpha['admin']->id)->preferences;
+
+        $this->assertSame(['jobs.projects:2' => 800], $stored['lists.column_widths']);
+    }
 }

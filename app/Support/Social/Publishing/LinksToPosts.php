@@ -9,7 +9,7 @@ use App\Models\SocialConnection;
  *
  * Its own interface rather than a SocialPublisher member: adding a method there
  * reds every publisher that has no link to give (TikTok and Google Business
- * Profile give none).
+ * (TikTok gives none).
  */
 interface LinksToPosts
 {

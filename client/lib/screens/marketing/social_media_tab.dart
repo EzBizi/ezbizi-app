@@ -498,9 +498,8 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   Future<void> _editPost(_SentPost post) async {
     final body = TextEditingController(text: post.body);
     final wall = post.scheduledFor ?? '';
-    final when = TextEditingController(
-      text: wall.length > 16 ? wall.substring(0, 16) : wall,
-    );
+    final shownWhen = wall.length > 16 ? wall.substring(0, 16) : wall;
+    final when = TextEditingController(text: shownWhen);
     final saved = await showSidePanel<bool>(
       context,
       builder: (panel) => SidePanel(
@@ -548,7 +547,10 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     await _act(
       widget.api.patch('/social/posts/${post.id}', {
         'body': body.text,
-        if (when.text.trim().isNotEmpty) 'scheduled_for': when.text.trim(),
+        // Only a moved time is sent: re-sending an unchanged one would be
+        // re-read as new (bug review 2026-11-09 #9).
+        if (when.text.trim().isNotEmpty && when.text.trim() != shownWhen)
+          'scheduled_for': when.text.trim(),
       }),
     );
   }
@@ -1416,7 +1418,12 @@ class _PostsDashboard extends StatelessWidget {
   }
 
   return switch (post.tone) {
+    Tone.neutral when post.wentNowhere => ('Not posted', Tone.neutral),
     Tone.neutral => ('Posting $sent of $total', Tone.neutral),
+    Tone.info when post.targets.any((t) => t.status == 'awaiting_approval') => (
+      'Waiting for approval',
+      Tone.info,
+    ),
     Tone.info => ('Scheduled', Tone.info),
     _ => ('Sent', Tone.ok),
   };
@@ -1625,12 +1632,30 @@ class _TimelineRow extends StatelessWidget {
                                   style: small,
                                 ),
                               ),
+                              // Where it went out, one tap from the timeline.
+                              if (target.status == 'sent' && target.url != null)
+                                IconButton(
+                                  key: ValueKey(
+                                    'social-open-${post.id}-${target.id}',
+                                  ),
+                                  tooltip:
+                                      'Open post on ${target.providerLabel}',
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 16,
+                                  onPressed: () => launchUrl(
+                                    Uri.parse(target.url!),
+                                    mode: LaunchMode.externalApplication,
+                                  ),
+                                  icon: const Icon(Icons.open_in_new),
+                                ),
                             ],
                           ),
                     ],
                   ),
                   // How far a post going out has got (UI queue 100).
-                  if (post.tone == Tone.neutral && post.targets.isNotEmpty)
+                  if (post.tone == Tone.neutral &&
+                      post.targets.isNotEmpty &&
+                      !post.wentNowhere)
                     Padding(
                       padding: const EdgeInsets.only(top: 6, right: 12),
                       child: LinearProgressIndicator(
@@ -1702,11 +1727,16 @@ class _TimelineRow extends StatelessWidget {
 /// (SocialPostsController::MAX_BODY) because most of these networks have no
 /// publisher yet. This is the warning before Publish, in the network's own
 /// number. A network missing here is counted without a limit.
+/// The same numbers as SocialProvider::maxBodyLength() on the server, which
+/// refuses (never cuts) a post over them.
 const Map<String, int> _bodyLimits = {
   'x': 280,
   'bluesky': 300,
+  'threads': 500,
+  'pinterest': 800,
   'linkedin': 3000,
   'instagram_professional': 2200,
+  'tiktok': 2200,
   'google_business_profile': 1500,
   'facebook_page': 63206,
 };
@@ -1861,6 +1891,13 @@ class _ComposeColumnState extends State<_ComposeColumn> {
         return '${account.providerLabel} takes $limit characters at most and '
             'this is $length. Shorten it, or untick ${account.providerLabel}.';
       }
+    }
+
+    // A ticked Business Profile listing is a Google post too.
+    final google = _bodyLimits['google_business_profile']!;
+    if (_pickedPlaces.isNotEmpty && length > google) {
+      return 'Google Business Profile takes $google characters at most and '
+          'this is $length. Shorten it, or untick the listings.';
     }
 
     return null;
@@ -2107,6 +2144,13 @@ class _ComposeColumnState extends State<_ComposeColumn> {
             'connections': _picked.toList(),
             'places': _pickedPlaces.toList(),
             if (_libraryItem != null) 'library_item': _libraryItem!['id'],
+            // TikTok's choices, nested: a JSON body is not parsed from
+            // `tiktok[id][field]` names the way a multipart one is.
+            if (_picked.any((id) => _tiktok[id] != null))
+              'tiktok': {
+                for (final id in _picked)
+                  if (_tiktok[id] != null) id: _tiktok[id]!.json(),
+              },
             if (_pickedPlaces.isNotEmpty && _cta != null) 'cta_type': _cta,
             if (_pickedPlaces.isNotEmpty && _cta != null && _cta != 'CALL')
               'cta_url': _ctaUrl.text.trim(),
@@ -3911,12 +3955,23 @@ class _SentPost {
   Tone get tone {
     if (targets.any((t) => t.status == 'failed')) return Tone.bad;
     if (targets.any((t) => t.status == 'queued')) return Tone.neutral;
-    if (targets.isNotEmpty && targets.every((t) => t.status == 'scheduled')) {
+    if (wentNowhere) return Tone.neutral;
+    // Waiting for approval has not gone out: it counts with Scheduled, not Sent.
+    if (targets.isNotEmpty &&
+        targets.every(
+          (t) => t.status == 'scheduled' || t.status == 'awaiting_approval',
+        )) {
       return Tone.info;
     }
 
     return Tone.ok;
   }
+
+  /// Nothing went out and nothing is on its way: every account was turned
+  /// down or taken back down. Not Sent (bug review 2026-11-09 #7).
+  bool get wentNowhere =>
+      targets.isNotEmpty &&
+      targets.every((t) => t.status == 'disapproved' || t.status == 'removed');
 
   /// The Posts tile it counts under, read as the server reads it
   /// (SocialPostsController::inStatus); null while it is still sending.
@@ -4709,7 +4764,7 @@ class _TargetLine extends StatelessWidget {
       'queued' => ('Posting…', Tone.neutral, Icons.hourglass_top),
       'scheduled' => ('Scheduled', Tone.info, Icons.schedule),
       'awaiting_approval' => (
-        'Waiting for approval in Reviews',
+        'Waiting for your approval in Customer Experience › Posts to approve',
         Tone.info,
         Icons.hourglass_empty,
       ),
@@ -4930,7 +4985,7 @@ class _PostChip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             child: Row(
               children: [
-                Icon(_toneIcon(post.tone), size: 11, color: colours.ink),
+                Icon(_postIcon(post), size: 11, color: colours.ink),
                 const SizedBox(width: 3),
                 Expanded(
                   child: Text(
@@ -5087,7 +5142,7 @@ class _AgendaRow extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(_toneIcon(post.tone), size: 20, color: colours.ink),
+                Icon(_postIcon(post), size: 20, color: colours.ink),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -5159,8 +5214,12 @@ IconData _toneIcon(Tone tone) => switch (tone) {
   _ => Icons.check_circle_outline,
 };
 
+IconData _postIcon(_SentPost post) =>
+    post.wentNowhere ? Icons.block : _toneIcon(post.tone);
+
 /// A post's state in a word or two.
 String _postWord(_SentPost post) => switch (post.tone) {
+  Tone.neutral when post.wentNowhere => 'not posted',
   Tone.bad => 'needs a look',
   Tone.neutral => 'posting…',
   Tone.info => 'scheduled',

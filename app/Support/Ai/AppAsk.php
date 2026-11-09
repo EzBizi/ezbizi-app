@@ -32,11 +32,36 @@ final class AppAsk
     /** @return string|null the WhatsApp reply, or null when the app holds no answer */
     public static function answer(User $viewer, string $question, int $timeout = 75): ?string
     {
+        return self::answerWithMedia($viewer, $question, $timeout)['reply'] ?? null;
+    }
+
+    /**
+     * The reply, and the photo or video links to send after it (a tech asking for
+     * before/after photos or a training clip, Jose 2026-11-09).
+     *
+     * @return array{reply: string, media: list<string>}|null
+     */
+    public static function answerWithMedia(User $viewer, string $question, int $timeout = 75): ?array
+    {
         // Traced as the asker's (GrokCli::about): their question and the data read as them.
         return GrokCli::about($viewer, fn () => self::answerAs($viewer, $question, $timeout));
     }
 
-    private static function answerAs(User $viewer, string $question, int $timeout): ?string
+    /**
+     * Only a link the asker's own reads returned, and only a photo or an mp4:
+     * the model can name a link, it cannot widen what the person may see.
+     *
+     * @return list<string>
+     */
+    public static function mediaFrom(mixed $media, string $data): array
+    {
+        return array_values(array_slice(array_unique(array_filter((array) $media, fn ($u) => is_string($u)
+            && preg_match('~^https://\S+\.(jpe?g|png|mp4)$~i', $u) === 1
+            && str_contains($data, $u))), 0, 4));
+    }
+
+    /** @return array{reply: string, media: list<string>}|null */
+    private static function answerAs(User $viewer, string $question, int $timeout): ?array
     {
         $started = microtime(true);
         $left = fn () => $timeout - (int) ceil(microtime(true) - $started);
@@ -58,7 +83,15 @@ final class AppAsk
             .'A path is relative to api/v1 with {placeholders} filled in; query parameters use only the '
             .'names in brackets after each path, as a query string such as when=upcoming&today=2026-10-15. '
             .'Search broadly: a phone number or name can be a customer, a lead, a call or a job; a company '
-            .'or branch means its id; "all companies" means each of them. ';
+            .'or branch means its id; "all companies" means each of them. '
+            // A technician's field questions (Jose, 2026-11-09), answered from what exists, never invented.
+            .'For a technician: before/after photos of previous jobs come from jobs/photos (put up to 4 of '
+            .'its photo links in media, say job type and city, never a customer); "how to sell this" is a '
+            .'short speech, the CS code and price from services, the best solution and the consequences of '
+            .'not doing it, from guidelines and training/learn/videos; "how to do" is the steps from guidelines '
+            .'or training/learn/videos (search one or two key words, e.g. search=crown) with each matching '
+            .'video link in the reply, and a direct .mp4 link also in media; a closing example comes from guidelines, and when '
+            .'none is there say it is coming. Whatever the data does not hold, say so instead of making it up. ';
 
         // One retry: the CLI now and then stops on "max turns reached" (prod 11-07, leads this week).
         $ask = function (string $prompt, array $schema, int $timeout) use ($left) {
@@ -90,7 +123,7 @@ final class AppAsk
         if ($calls === []) {
             $reply = trim((string) ($plan['reply'] ?? ''));
 
-            return $reply === '' ? null : $reply;
+            return $reply === '' ? null : ['reply' => $reply, 'media' => []];
         }
 
         // ponytail: 4 rounds of 3 reads; more when an answer measurably needs them.
@@ -117,7 +150,8 @@ final class AppAsk
                 ."DATA:\n".mb_substr(json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 0, 40000),
                 [
                     'type' => 'object',
-                    'properties' => ['reply' => ['type' => 'string'], 'calls' => ['type' => 'array', 'items' => $call]],
+                    'properties' => ['reply' => ['type' => 'string'], 'calls' => ['type' => 'array', 'items' => $call],
+                        'media' => ['type' => 'array', 'items' => ['type' => 'string']]],
                     'required' => ['reply'],
                     'additionalProperties' => false,
                 ],
@@ -127,7 +161,7 @@ final class AppAsk
             $reply = trim((string) ($a['reply'] ?? ''));
             $calls = $last ? [] : array_slice((array) ($a['calls'] ?? []), 0, self::MAX_CALLS);
             if ($calls === []) {
-                return $reply === '' ? null : $reply;
+                return $reply === '' ? null : ['reply' => $reply, 'media' => self::mediaFrom($a['media'] ?? [], json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE))];
             }
         }
 

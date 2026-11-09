@@ -299,6 +299,9 @@ class ExtensionsController extends Controller
 
         $connection = $connections->first();
 
+        // Anybody still without one gets the next free extension before the list is read.
+        \App\Support\Phone\ExtensionAssigner::assignMissing($request->user()->organization);
+
         $held = PhoneExtension::query()
             ->where('connection_id', $connection->id)
             ->get()

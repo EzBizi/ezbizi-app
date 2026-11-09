@@ -320,33 +320,31 @@ const Map<String, Tour> marketingTours = {
 
   // ── Ads ──────────────────────────────────────────────────────────
   'marketing/Ads': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
-        anchor: 'ads-refresh',
-        title: 'Read again',
-        body: 'Reads the figures from Google again.',
-      ),
-      TourStep(
-        anchor: 'ads-account-search',
-        title: 'Find an account',
-        body: 'Narrows the accounts as you type.',
-      ),
-      TourStep(
-        anchor: 'ads-accounts',
-        title: 'Accounts',
+        anchor: 'ads-source',
+        title: 'Google or Meta',
         body:
-            'Managers stand out in their own colour, above the accounts in them.',
+            'The same controls for both. The Google report is in '
+            'Reports › Google Ads.',
       ),
       TourStep(
-        anchor: 'ads-account-figures',
-        title: 'The account',
-        body: 'Cost, clicks and the rest, for the dates chosen.',
+        anchor: 'google-ads-range',
+        title: 'Dates',
+        body: 'What each campaign spent and brought in over these days.',
       ),
       TourStep(
-        anchor: 'ads-campaign-search',
+        anchor: 'google-ads-search',
         title: 'Find a campaign',
         body: 'Narrows the campaigns as you type.',
+      ),
+      TourStep(
+        anchor: 'google-ads-table',
+        title: 'Run them',
+        body:
+            'Switch a campaign on or off, schedule it, and change its daily '
+            'budget or bid target. Every change asks you to confirm first.',
       ),
     ],
   ),

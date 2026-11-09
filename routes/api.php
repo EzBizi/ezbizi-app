@@ -275,6 +275,11 @@ Route::post('v1/client-issues', [ClientIssuesController::class, 'store'])
 Route::get('v1/openapi.json', \App\Http\Controllers\Api\OpenApiController::class)
     ->middleware('throttle:60,1');
 
+// Signature pictures (2026-11-09): Gmail fetches them from every inbox a
+// signed mail reaches, so they are public. Random 40-character names.
+Route::get('v1/signature-photos/{name}', [\App\Http\Controllers\Api\GoogleWorkspaceManagementController::class, 'photo'])
+    ->middleware('throttle:120,1');
+
 Route::prefix('v1/auth')->group(function () {
     // The front door (§3, TODO #10). One request, one transaction: the person,
     // the organization, its first company and that company's first franchise.
@@ -447,6 +452,12 @@ Route::get('v1/training/media/{media}', [TrainingMediaController::class, 'show']
     ->middleware(['signed', 'throttle:300,1'])
     ->whereUuid('media')
     ->name('training.media');
+
+// A promotion's picture (MMS): Twilio fetches it by this signed link as each text goes.
+Route::get('v1/promotions/media/{path}', [\App\Http\Controllers\Api\PromotionsController::class, 'show'])
+    ->middleware(['signed', 'throttle:600,1'])
+    ->where('path', 'promotions/[0-9a-f-]{36}/[A-Za-z0-9]{20,64}\.(jpg|jpeg|png|gif)')
+    ->name('promotions.media');
 
 Route::get('v1/whatsapp/media/{phone}/{media}', \App\Http\Controllers\Api\WhatsAppMediaController::class)
     ->middleware(['signed', 'throttle:120,1'])
@@ -928,6 +939,7 @@ Route::prefix('v1')
         Route::get('jobs/book/options', [\App\Http\Controllers\Api\JobBookingController::class, 'options']);
         Route::post('jobs/book', [\App\Http\Controllers\Api\JobBookingController::class, 'store']);
         Route::post('jobs/{job}/book/workiz', [\App\Http\Controllers\Api\JobBookingController::class, 'retryWorkiz']);
+        Route::get('jobs/photos', \App\Http\Controllers\Api\JobPhotosController::class);
         Route::apiResource('jobs', JobsController::class);
         Route::get('project-board/jobs', [\App\Http\Controllers\Api\ProjectBoardController::class, 'jobs']);
         Route::get('project-board/options', [\App\Http\Controllers\Api\ProjectBoardController::class, 'options']);
@@ -988,6 +1000,8 @@ Route::prefix('v1')
         Route::get('memberships/promotions', [\App\Http\Controllers\Api\PromotionsController::class, 'index']);
         Route::get('memberships/promotions/preview', [\App\Http\Controllers\Api\PromotionsController::class, 'preview']);
         Route::post('memberships/promotions', [\App\Http\Controllers\Api\PromotionsController::class, 'store']);
+        Route::post('memberships/promotions/test', [\App\Http\Controllers\Api\PromotionsController::class, 'test']);
+        Route::post('memberships/promotions/media', [\App\Http\Controllers\Api\PromotionsController::class, 'upload']);
         Route::apiResource('memberships', MembershipsController::class)->except('show');
 
         // drivers before {vehicle} so the literal path is not captured as an id
@@ -1034,6 +1048,10 @@ Route::prefix('v1')
         Route::get('meta-ads/tree', [\App\Http\Controllers\Api\MetaAdsController::class, 'tree']);
         Route::post('meta-ads/status', [\App\Http\Controllers\Api\MetaAdsController::class, 'setStatus']);
         Route::post('meta-ads/budget', [\App\Http\Controllers\Api\MetaAdsController::class, 'setBudget']);
+        Route::get('ads-manager/google/campaigns', [\App\Http\Controllers\Api\GoogleAdsManagerController::class, 'campaigns']);
+        Route::post('ads-manager/google/status', [\App\Http\Controllers\Api\GoogleAdsManagerController::class, 'status']);
+        Route::post('ads-manager/google/budget', [\App\Http\Controllers\Api\GoogleAdsManagerController::class, 'budget']);
+        Route::post('ads-manager/google/target', [\App\Http\Controllers\Api\GoogleAdsManagerController::class, 'target']);
         Route::get('ad-schedules', [\App\Http\Controllers\Api\AdSchedulesController::class, 'index']);
         Route::put('ad-schedules', [\App\Http\Controllers\Api\AdSchedulesController::class, 'save']);
         Route::delete('ad-schedules/{schedule}', [\App\Http\Controllers\Api\AdSchedulesController::class, 'destroy']);
@@ -1135,6 +1153,7 @@ Route::prefix('v1')
         Route::get('leads/{lead}', [LeadsController::class, 'show']);
         Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
+        Route::post('leads/{lead}/whatsapp-template', [LeadsController::class, 'sendWhatsAppTemplate']);
         Route::post('leads/{lead}/suggest-reply', [LeadsController::class, 'suggestReply']);
         Route::post('leads/{lead}/proofread', [LeadsController::class, 'proofread']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
@@ -1660,14 +1679,15 @@ Route::prefix('v1')
             ->middleware('permission:scheduling.routing.view');
         Route::get('scheduling/reschedules', [SchedulingAvailabilityController::class, 'reschedules'])
             ->middleware('permission:scheduling.rescheduling.view');
-        Route::middleware('permission:scheduling.overbooking.view')->group(function () {
+        // Overbooking is a sub-tab of Re-Scheduling since 2026-11-09.
+        Route::middleware('permission:scheduling.rescheduling.view')->group(function () {
             Route::get('scheduling/overbooking', [SchedulingOverbookingController::class, 'show']);
             Route::get('scheduling/reports', [SchedulingOverbookingController::class, 'reports']);
         });
         // Booked vs available is drawn by Overbooking and by Re-Scheduling ›
         // Rescheduling Availability (Jose, 2026-10-26); sending offers also
         // needs scheduling.edit, checked in the controller.
-        Route::middleware('permission:scheduling.overbooking.view,scheduling.rescheduling.view')->group(function () {
+        Route::middleware('permission:scheduling.rescheduling.view')->group(function () {
             Route::get('scheduling/overbooking/jobs', [SchedulingOverbookingController::class, 'jobs']);
             Route::get('scheduling/overbooking/fill', [SchedulingOverbookingController::class, 'fill']);
             Route::post('scheduling/overbooking/offers/preview', [SchedulingOverbookingController::class, 'previewOffers']);
@@ -1809,6 +1829,7 @@ Route::prefix('v1')
         // The learner-facing read (task 6) — `training.view`, not `.manage`;
         // see LearnController's docblock for the answer-key trust boundary.
         Route::get('training/learn', [TrainingLearnController::class, 'index']);
+        Route::get('training/learn/videos', [TrainingLearnController::class, 'videos']);
         Route::get('training/learn/tests/{test}', [TrainingLearnController::class, 'showTest']);
         // Marking a submitted test (task 8) — same `training.view` gate; the
         // gate, the pass mark, the retake cap and the expiry date are all
@@ -2074,6 +2095,8 @@ Route::prefix('v1')
         Route::middleware('permission:work_hours.approve')->group(function () {
             Route::post('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'store']);
             Route::post('hr/time-clock/approvals/all', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'approveAll']);
+            Route::post('hr/time-clock/approvals/excuse', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'excuse']);
+            Route::post('hr/time-clock/approvals/hours', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'hours']);
             Route::post('hr/time-clock/approvals/shifts/{shift}/adjust', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'adjust']);
         });
 
@@ -2938,6 +2961,13 @@ Route::prefix('v1')
             Route::put('email/workspaces/{connection}/signature-template', [GoogleWorkspaceManagementController::class, 'setTemplate']);
             Route::post('email/workspaces/{connection}/signatures/preview', [GoogleWorkspaceManagementController::class, 'preview']);
             Route::post('email/workspaces/{connection}/signatures/apply', [GoogleWorkspaceManagementController::class, 'apply']);
+            Route::put('email/workspaces/{connection}/signatures/assign', [GoogleWorkspaceManagementController::class, 'assign']);
+            Route::post('email/workspaces/{connection}/signature-templates', [GoogleWorkspaceManagementController::class, 'storeTemplate']);
+            Route::put('email/workspaces/{connection}/signature-templates/{template}', [GoogleWorkspaceManagementController::class, 'updateTemplate']);
+            Route::delete('email/workspaces/{connection}/signature-templates/{template}', [GoogleWorkspaceManagementController::class, 'destroyTemplate']);
+            Route::put('email/workspaces/{connection}/signature-default', [GoogleWorkspaceManagementController::class, 'setDefault']);
+            Route::put('email/workspaces/{connection}/people/{address}/fields', [GoogleWorkspaceManagementController::class, 'setFields']);
+            Route::post('email/workspaces/{connection}/people/{address}/photo', [GoogleWorkspaceManagementController::class, 'uploadPhoto']);
         });
 
         /*

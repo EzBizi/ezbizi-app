@@ -5,7 +5,8 @@ import 'package:web/web.dart' as web;
 
 int _seq = 0;
 
-Widget buildMessageHtml(String html) => _MailIframe(html: html);
+Widget buildMessageHtml(String html, {bool ownHtml = false}) =>
+    _MailIframe(html: html);
 
 class _MailIframe extends StatefulWidget {
   const _MailIframe({required this.html});

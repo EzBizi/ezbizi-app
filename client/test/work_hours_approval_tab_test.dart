@@ -179,6 +179,47 @@ void main() {
     expect(find.byKey(const ValueKey('approval-adjust-u-1')), findsOneWidget);
   });
 
+  testWidgets('a no-show is No-show, excusable, and takes added hours', (
+    tester,
+  ) async {
+    final stub = _Stub();
+    await _pump(tester, stub);
+
+    final row = find.byKey(const ValueKey('approval-row-u-4'));
+    expect(
+      find.descendant(of: row, matching: find.text('No-show')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: row, matching: find.text('Waiting')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('approval-approve-u-4')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('approval-excuse-u-4')));
+    await tester.pumpAndSettle();
+    expect(stub.posts.last.$1, '/api/v1/hr/time-clock/approvals/excuse');
+    expect(stub.posts.last.$2, {'user_id': 'u-4', 'date': '2026-10-21'});
+
+    await tester.tap(find.byKey(const ValueKey('approval-add-hours-u-4')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('approval-adjust-reason')),
+      'Forgot to clock in.',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('approval-adjust-save')));
+    await tester.pumpAndSettle();
+    expect(stub.posts.last.$1, '/api/v1/hr/time-clock/approvals/hours');
+    expect(stub.posts.last.$2, {
+      'clocked_in_at': '2026-10-21 08:00',
+      'clocked_out_at': '2026-10-21 16:00',
+      'user_id': 'u-4',
+      'date': '2026-10-21',
+      'reason': 'Forgot to clock in.',
+    });
+  });
+
   testWidgets('without work_hours.approve the tab only reads', (tester) async {
     final stub = _Stub();
     await _pump(tester, stub, approve: false);
@@ -399,7 +440,11 @@ Map<String, dynamic> _day(String? date, {bool adjusted = false}) {
         'late_seconds': null,
         'early_seconds': null,
         'no_show': true,
-        'status': 'waiting',
+        'status': 'no_show',
+        'scheduled_local': {
+          'start': '2026-10-21 08:00',
+          'end': '2026-10-21 16:00',
+        },
         'approved_by': null,
         'approved_at': null,
         'adjustments': <Object>[],

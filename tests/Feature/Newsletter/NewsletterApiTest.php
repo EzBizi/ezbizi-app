@@ -154,6 +154,23 @@ class NewsletterApiTest extends TestCase
                 fn (string $m) => str_contains($m, 'Connect Mailchimp'));
     }
 
+    public function test_the_preview_footer_carries_the_address_and_the_app_url(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $t['org']->forceFill(['address' => '800 SE 4th Ave, Hallandale Beach FL'])->save();
+        config(['app.url' => 'https://app.example.test']);
+
+        $id = $this->signedInAs($t['admin'])
+            ->postJson(self::ENDPOINT, ['subject' => 'Footer'])
+            ->assertCreated()->json('data.id');
+
+        $html = (string) $this->signedInAs($t['admin'])
+            ->getJson(self::ENDPOINT."/{$id}/preview")->assertOk()->json('data.html');
+
+        $this->assertStringContainsString('800 SE 4th Ave, Hallandale Beach FL', $html);
+        $this->assertStringContainsString('https://app.example.test/api/v1/newsletter/unsubscribe/preview', $html);
+    }
+
     public function test_a_newsletter_with_no_audience_is_refused(): void
     {
         $t = $this->provisionTenant('A1-Group');
@@ -705,8 +722,8 @@ class NewsletterApiTest extends TestCase
             return $n;
         });
         Http::fake(function ($r) {
-            if ($r->method() === 'PUT' && str_contains($r->url(), '/members/')) {
-                return Http::response(['status' => 'unsubscribed']);
+            if ($r->method() === 'POST' && str_ends_with($r->url(), '/lists/list-1')) {
+                return Http::response(['errors' => [['email_address' => 'unsubscribed@example.com', 'error_code' => 'ERROR_CONTACT_EXISTS']]]);
             }
             if (str_contains($r->url(), '/members?')) {
                 return Http::response(['members' => [['email_address' => 'eligible@example.com'], ['email_address' => 'outsider@example.com']], 'total_items' => 2]);
@@ -723,7 +740,8 @@ class NewsletterApiTest extends TestCase
         $this->inTenant($t['org'], fn () => app(MailchimpSender::class)->send($connection, $n, '<p>Custom</p>', [
             ['email' => 'eligible@example.com'], ['email' => 'unsubscribed@example.com'],
         ]));
-        Http::assertSent(fn ($r) => $r->method() === 'PUT' && str_contains($r->url(), '/members/') && $r['status_if_new'] === 'subscribed' && ! isset($r['status']));
+        // Batch subscribe with update_existing false: the status applies to new members only.
+        Http::assertSent(fn ($r) => $r->method() === 'POST' && str_ends_with($r->url(), '/lists/list-1') && $r['update_existing'] === false);
         Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['eligible@example.com']);
         Http::assertSent(fn ($r) => str_ends_with($r->url(), '/content') && str_contains($r['html'], '*|UNSUB|*'));
     }
@@ -783,6 +801,8 @@ class NewsletterApiTest extends TestCase
     private function mailchimp(array $t): SocialConnection
     {
         return $this->inTenant($t['org'], function () use ($t) {
+            // A send refuses without a postal address for the footer.
+            $t['org']->forceFill(['address' => '1 Main St'])->save();
             $c = new SocialConnection;
             $c->forceFill([
                 'organization_id' => $t['org']->id,

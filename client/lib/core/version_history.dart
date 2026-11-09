@@ -13,6 +13,32 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0550', date: '9 Nov 2026', items: [
+      'Project Management > Settings: clearer cards for columns, label colours (pick a colour), sub-tabs and part status, choosing from your real statuses and tags',
+      'Jobs: deleting a job asks twice, the second time you type the job number',
+      'Marketing: posts waiting for your approval are no longer counted as sent; the panel says where to approve them',
+      'Marketing: published posts link to the post on each network',
+      'Newsletter: Server preview shows the email exactly as it will be sent, with the company address and unsubscribe link',
+      'Pinterest: the connection renews itself instead of breaking after 30 days',
+      'Customer Experience: review sources show Thumbtack as connected for leads (Thumbtack does not share reviews)',
+      'Communication: removed accounts no longer show in Team, and everyone gets a phone extension automatically',
+      'Texts refused for a region say plainly that nothing was sent',
+      'Scheduling: Overbooking and Underbooking are now sub-tabs of Re-Scheduling, and both can offer customers a move',
+      'Scheduling > Locations: duplicate branches are merged',
+      'Monitoring > Lighting: PCs without RGB lights no longer count as needing attention; a stuck lighting engine restarts itself',
+      'Project Management: each sub-tab is set by statuses, required tags and scheduled date; Unscheduled starts as Submitted + DEPOSIT RECEIVED + no date',
+      'Promotions: date presets, filters, the full list with untick, Android and iPhone previews, a test send and a picture',
+      'Task Board: add tags from the cell, new column types (phone, email, link, currency, date and time, tags, customer or job) and a column menu',
+      'Marketing > Ads: manage Google and Meta campaigns (on/off, schedule, daily budget, target), each change confirmed; the Google report is back in Reports',
+      'Web Management: a field can be marked Not needed for this site',
+      'Human Resources: inactive people are listed last',
+      'Work Hours: a no-show is not approvable; excuse it or add the hours',
+    ]),
+    VersionRelease(version: '0.0.0549', date: '9 Nov 2026', items: [
+      'Project Management: a Tags column, editable in Settings like the others',
+      'Project Management: the Franchise filter is ordered by company, its franchises, then each sub-company and its franchises; picking a company includes its sub-companies',
+      'Tables: amounts no longer run into the next column',
+    ]),
     VersionRelease(version: '0.0.0548', date: '7 Nov 2026', items: [
       'AI assistant: a slow help-library lookup no longer stops it from answering',
     ]),
