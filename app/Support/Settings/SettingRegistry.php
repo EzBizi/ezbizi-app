@@ -1291,6 +1291,16 @@ class SettingRegistry
                 help: 'The second value of the "report ready" template.',
             ),
             new SettingDefinition(
+                key: 'ai_assistance.report_template',
+                label: 'WhatsApp template for a report',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'report_document',
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'An approved template on the Reports number with a document header and two values: the report, and who it is for. '
+                    .'Every report goes as a file in it (a text as a PDF), so it arrives whether or not the person wrote in the last 24 hours.',
+            ),
+            new SettingDefinition(
                 key: 'ai_assistance.results_words',
                 label: 'Words that mark a results photo',
                 type: SettingDefinition::TYPE_LIST,

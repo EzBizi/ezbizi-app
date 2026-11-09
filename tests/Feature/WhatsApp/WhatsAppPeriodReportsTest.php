@@ -6,7 +6,6 @@ use App\Models\ReportBatchFile;
 use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
-use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppPendingReport;
 use App\Models\WhatsAppReportBatch;
 use App\Support\Social\WhatsAppGroups;
@@ -48,7 +47,8 @@ class WhatsAppPeriodReportsTest extends TestCase
         $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful();
         $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful(); // asked once
 
-        $this->assertSame(['document', 'text'], array_column($this->sent, 'type'));
+        // A file to one person goes as the document template (2026-11-09); the question, to someone talking to the line, as a text.
+        $this->assertSame(['template', 'text'], array_column($this->sent, 'type'));
         $this->assertSame(self::APPROVER, $this->sent[0]['to']);
         $this->assertStringContainsString('APPROVE', $this->sent[1]['text']['body']);
 
@@ -56,7 +56,7 @@ class WhatsAppPeriodReportsTest extends TestCase
         $this->inbound('Approved');
         $this->inbound('approve'); // a second yes sends nothing more
 
-        $documents = array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document'));
+        $documents = $this->files();
         $this->assertSame(['GROUP-DAILY', 'GROUP-FIN'], array_column($documents, 'to'));
         $this->assertNotNull(WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->approved_at);
         $this->assertSame($merav->id, WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->approved_by);
@@ -74,13 +74,13 @@ class WhatsAppPeriodReportsTest extends TestCase
         $this->sent = [];
         $this->inbound('Hold');
         $this->assertNotNull(WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->held_at);
-        $this->assertSame([], array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document')));
+        $this->assertSame([], $this->files());
         $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful();
-        $this->assertSame([], array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document')), 'a held batch is not previewed again');
+        $this->assertSame([], $this->files(), 'a held batch is not previewed again');
 
         $this->sent = [];
         $this->inbound('send separately');
-        $documents = array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document'));
+        $documents = $this->files();
         $this->assertCount(2, $documents, 'the branch PDF and the consolidated one');
         $this->assertSame([self::APPROVER, self::APPROVER], array_column($documents, 'to'));
         $this->assertNull(WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->approved_at, 'still not approved');
@@ -88,16 +88,16 @@ class WhatsAppPeriodReportsTest extends TestCase
         // Asked twice: sent once.
         $this->sent = [];
         $this->inbound('separately');
-        $this->assertSame([], array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document')));
+        $this->assertSame([], $this->files());
 
         $this->sent = [];
         $this->inbound('APPROVE');
-        $documents = array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document'));
+        $documents = $this->files();
         $this->assertSame(['GROUP-DAILY', 'GROUP-FIN'], array_column($documents, 'to'));
     }
 
-    /** Meta's review, 2026-10-19: only to a member, and one template for the lot outside the window. */
-    public function test_private_copies_go_only_to_a_member_with_one_template_outside_the_window(): void
+    /** Meta's review, 2026-10-19: only to a member; 2026-11-09: each PDF goes itself, outside the window too. */
+    public function test_private_copies_go_only_to_a_member_each_in_the_document_template(): void
     {
         $merav = $this->approvalSetUp();
         $this->inTenant($this->t['org'], fn () => WhatsAppMessage::query()->delete()); // no window open
@@ -109,8 +109,8 @@ class WhatsAppPeriodReportsTest extends TestCase
             $this->assertSame(0, $groups->deliverDocumentsToMember('approval', $stranger, 'Weekly', $docs), 'not a member');
             $this->sent = [];
             $this->assertSame(2, $groups->deliverDocumentsToMember('approval', $merav, 'Weekly', $docs));
-            $this->assertSame(['template'], array_column($this->sent, 'type'), 'one template, the PDFs queued behind it');
-            $this->assertSame(2, WhatsAppPendingReport::query()->count());
+            $this->assertSame(['template', 'template'], array_column($this->sent, 'type'), 'each PDF in the document template, nothing held');
+            $this->assertSame(0, WhatsAppPendingReport::query()->count());
         });
     }
 
@@ -138,27 +138,10 @@ class WhatsAppPeriodReportsTest extends TestCase
         $this->assertTrue(collect($this->uploads)->contains(fn ($b) => str_contains($b, '%PDF-THE-APPROVED-ONE')), 'sent the frozen file, not a rebuild');
     }
 
-    /** 2026-10-20: a report text to one person, now in the window and held behind one template outside it. */
-    public function test_a_text_to_one_person_waits_behind_the_template_outside_the_window(): void
+    /** @return list<array<string, mixed>> files sent: a document to a group, the document template to a person */
+    private function files(): array
     {
-        $merav = $this->approvalSetUp();
-        $groups = app(WhatsAppGroups::class);
-
-        $this->inTenant($this->t['org'], function () use ($groups, $merav) {
-            $number = WhatsAppNumber::query()->sole();
-            $this->sent = [];
-            $this->assertTrue($groups->deliverTextToUser($number, $merav, 'Technician sales', 'line 1
-line 2'));
-            $this->assertSame(['text'], array_column($this->sent, 'type'), 'inside the window: the text itself');
-
-            WhatsAppMessage::query()->delete();
-            $this->sent = [];
-            $this->assertTrue($groups->deliverTextToUser($number, $merav, 'Technician sales', 'line 1
-line 2'));
-            $this->assertSame(['template'], array_column($this->sent, 'type'));
-            $this->assertSame('line 1
-line 2', WhatsAppPendingReport::query()->sole()->body);
-        });
+        return array_values(array_filter($this->sent, fn ($m) => in_array($m['type'], ['document', 'template'], true)));
     }
 
     private function approvalSetUp(): User

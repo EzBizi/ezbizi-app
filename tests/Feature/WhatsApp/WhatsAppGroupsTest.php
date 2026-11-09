@@ -52,6 +52,7 @@ class WhatsAppGroupsTest extends TestCase
             return match (true) {
                 str_ends_with($request->url(), '/groups') => Http::response(['id' => 'GROUP-1']),
                 str_ends_with($request->url(), '/invite_link') => Http::response(['invite_link' => 'https://chat.whatsapp.com/ABC']),
+                str_ends_with($request->url(), '/media') => Http::response(['id' => 'MEDIA-1']),
                 default => Http::response(['messages' => [['id' => 'wamid.OUT'.$n]]]),
             };
         });
@@ -93,20 +94,18 @@ class WhatsAppGroupsTest extends TestCase
 
         $this->assertSame(2, $this->deliver());
 
+        // 2026-11-09: outside the window the report itself goes, as a PDF in the document template; nothing is held.
         $byTo = collect($this->sent)->keyBy('to');
         $this->assertSame('NJ: 50 jobs', $byTo['13055550101']['text']['body']);
-        $this->assertSame('automation_alert', $byTo['13055550102']['template']['name']);
-        $this->assertSame('A1 NJ Same-Day Report', $byTo['13055550102']['template']['components'][0]['parameters'][0]['text']);
-        $this->assertCount(2, $this->sent);
-
-        $this->assertSame(
-            ['13055550102'],
-            WhatsAppPendingReport::query()->withoutGlobalScopes()->whereNull('delivered_at')->pluck('counterparty')->all(),
-        );
+        $this->assertSame('report_document', $byTo['13055550102']['template']['name']);
+        $this->assertSame('document', $byTo['13055550102']['template']['components'][0]['parameters'][0]['type']);
+        $this->assertSame('A1 NJ Same-Day Report', $byTo['13055550102']['template']['components'][1]['parameters'][0]['text']);
+        $this->assertCount(3, $this->sent, 'the text, the one upload, the template');
+        $this->assertSame(0, WhatsAppPendingReport::query()->withoutGlobalScopes()->count());
     }
 
-    /** 2026-11-04: Technician sales was refused, "text.body must be at most 4096 characters". */
-    public function test_a_long_text_goes_in_pieces_with_one_notice(): void
+    /** 2026-11-09: 93 of 107 report texts sat behind "reply to get it"; each now goes as a PDF in the document template. */
+    public function test_a_report_text_goes_as_a_pdf_in_the_document_template_in_the_window_or_not(): void
     {
         $group = $this->group();
         $recent = $this->member($group, '(305) 555-0101');
@@ -115,28 +114,40 @@ class WhatsAppGroupsTest extends TestCase
             'phone_number_id' => self::NUMBER, 'direction' => WhatsAppMessage::DIRECTION_IN,
             'counterparty' => '13055550101', 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi',
         ]));
-        $body = implode("\n", array_fill(0, 300, str_repeat('x', 29))); // 300 lines, 8,999 characters
 
-        $this->inTenant($this->t['org'], function () use ($recent, $quiet, $body) {
+        $this->inTenant($this->t['org'], function () use ($recent, $quiet) {
             $number = WhatsAppNumber::query()->firstOrFail();
-            app(WhatsAppGroups::class)->deliverTextToUser($number, $recent, 'Technician sales', $body);
-            app(WhatsAppGroups::class)->deliverTextToUser($number, $quiet, 'Technician sales', $body);
+            $this->assertTrue(app(WhatsAppGroups::class)->deliverTextToUser($number, $recent, 'Revenue collected · Nov 9', 'x', 'report.text:R:revenue_collected:2026-11-09:U'));
+            $this->assertTrue(app(WhatsAppGroups::class)->deliverTextToUser($number, $quiet, 'Revenue collected · Nov 9', 'x'));
         });
 
-        $toRecent = collect($this->sent)->where('to', '13055550101');
-        $this->assertCount(3, $toRecent);
-        $this->assertTrue($toRecent->every(fn ($m) => mb_strlen($m['text']['body']) <= 4000));
-        $this->assertSame($body, $toRecent->pluck('text.body')->implode("\n"));
-        $this->assertCount(1, collect($this->sent)->where('to', '13055550102'), 'one notice');
-        $this->assertSame(3, WhatsAppPendingReport::query()->withoutGlobalScopes()->where('counterparty', '13055550102')->count());
+        $templates = collect($this->sent)->where('type', 'template')->values();
+        $this->assertSame(['13055550101', '13055550102'], $templates->pluck('to')->all());
+        $this->assertCount(0, collect($this->sent)->where('type', 'text'));
+        $this->assertSame('report_document', $templates[0]['template']['name']);
+        $this->assertSame(['type' => 'document', 'document' => ['id' => 'MEDIA-1', 'filename' => 'revenue-collected-nov-9.pdf']],
+            $templates[0]['template']['components'][0]['parameters'][0]);
+        $this->assertSame('Revenue collected · Nov 9', $templates[0]['template']['components'][1]['parameters'][0]['text']);
+        $this->assertSame(0, WhatsAppPendingReport::query()->withoutGlobalScopes()->count());
+        $this->assertSame('report.text:R:revenue_collected:2026-11-09:U', WhatsAppMessage::query()->withoutGlobalScopes()
+            ->where('counterparty', '13055550101')->where('direction', WhatsAppMessage::DIRECTION_OUT)->value('idempotency_key'));
+    }
+
+    public function test_the_pdf_keeps_bold_and_italic_and_drops_emoji(): void
+    {
+        $html = WhatsAppGroups::reportHtml("\u{1F4B5} *Revenue collected*\n_Sat, Nov 7_\n• *New Jersey*: \$309.47 & more");
+
+        $this->assertStringContainsString('<body><b>Revenue collected</b><br />', $html);
+        $this->assertStringContainsString('<i>Sat, Nov 7</i>', $html);
+        $this->assertStringContainsString('• <b>New Jersey</b>: $309.47 &amp; more', $html);
+        $this->assertStringNotContainsString("\u{1F4B5}", $html);
     }
 
     public function test_show_report_delivers_what_was_held_and_nothing_else(): void
     {
-        $group = $this->group();
-        $this->member($group, '(305) 555-0102');
-        $this->deliver();
-        $this->sent = [];
+        // Held before 2026-11-09, when reports stopped waiting behind a notice.
+        $this->inTenant($this->t['org'], fn () => WhatsAppPendingReport::create(['organization_id' => $this->t['org']->id,
+            'phone_number_id' => self::NUMBER, 'counterparty' => '13055550102', 'body' => 'NJ: 50 jobs']));
 
         $this->inbound(['type' => 'button', 'button' => ['text' => 'Show report', 'payload' => 'Show report']])->assertOk();
 
