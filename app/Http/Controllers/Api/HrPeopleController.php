@@ -165,7 +165,8 @@ class HrPeopleController extends Controller
                         ->orWhere('email', 'like', "%{$term}%");
                 });
             })
-            ->orderBy('name')
+            // Active first, then inactive, each A-Z (Jose, 2026-11-09).
+            ->orderByDesc('is_active')->orderBy('name')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
         // Who on this page has a start date: one query for the page rather
@@ -359,7 +360,7 @@ class HrPeopleController extends Controller
             'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
-            ->orderBy('name')->get();
+            ->orderByDesc('is_active')->orderBy('name')->get();
         $ids = $people->map->getKey()->all();
 
         $rates = $seesPay ? PayRate::query()->whereIn('user_id', $ids)->where('effective_on', '<=', $today)
