@@ -963,6 +963,10 @@ class HrPeopleController extends Controller
             'gender_options' => app(SettingsResolver::class)->get('hr.gender_options', $user->organization),
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on' => $answer['started_on'],
+            // Only whether it is on file; the photo itself is a reveal on the onboarding.
+            'ssn_card' => OnboardingAnswer::query()->where('field_key', Onboarding::SSN_CARD)
+                ->whereHas('onboarding', fn ($q) => $q->where('user_id', $user->id))->get()
+                ->contains(fn (OnboardingAnswer $a) => ! in_array($a->getAttribute('value'), [null, '', 'N/A'], true)) ? 'on_file' : 'missing',
 
             // The four lists of 2026-09-29. Pay is null — not an empty list —
             // for somebody without `hr.pay.view`: "no rate recorded" and "you

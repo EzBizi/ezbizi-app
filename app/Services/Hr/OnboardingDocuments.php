@@ -216,7 +216,7 @@ class OnboardingDocuments
             return null;
         }
 
-        return $this->files->contents($attachment->path, $attachment->disk);
+        return $attachment->bytes();
     }
 
     /**
@@ -231,7 +231,7 @@ class OnboardingDocuments
         $attachment = $id === null ? null : Attachment::query()->find($id);
 
         return $attachment?->mime === PdfRenderer::MIME
-            ? $this->files->contents($attachment->path, $attachment->disk)
+            ? $attachment->bytes()
             : null;
     }
 
@@ -241,7 +241,7 @@ class OnboardingDocuments
     /** A stored file's bytes, or null when it has gone. */
     public function fileBytes(Attachment $file): ?string
     {
-        return $this->files->contents($file->path, $file->disk);
+        return $file->bytes();
     }
 
     /** The question an import files its signed contract PDF under. */
@@ -420,7 +420,7 @@ class OnboardingDocuments
             $id = $field->type === FieldType::FILE && $field->key !== self::IMPORTED_CONTRACT
                 ? (string) ($answers->get($field->key)?->value ?? '') : '';
             $file = $id === '' ? null : Attachment::query()->find($id);
-            if ($file?->mime === PdfRenderer::MIME && ($bytes = $this->files->contents($file->path, $file->disk)) !== null) {
+            if ($file?->mime === PdfRenderer::MIME && ($bytes = $file->bytes()) !== null) {
                 $pdfs[] = $bytes;
             }
         }
