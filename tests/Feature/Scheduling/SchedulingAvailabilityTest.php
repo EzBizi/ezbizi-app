@@ -218,6 +218,16 @@ class SchedulingAvailabilityTest extends TestCase
             'address_line1' => '11836 Judd Ct', 'city' => 'Dallas', 'state' => 'TX', 'postal_code' => '75201']));
         $this->assertSame('11836 Judd Ct, Dallas, TX 75201', $office()['line']);
         $this->assertStringStartsWith('https://www.google.com/maps/search/?api=1&query=11836', $office()['maps_url']);
+
+        // Several listings on one branch (DMV, 2026-11-09: DC showed Baltimore): the one inside the area wins.
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            foreach ([['9 Far Rd', 'Austin', '78701'], ['5 Near St', 'Dallas', '75201']] as [$street, $city, $zip]) {
+                \App\Models\BusinessLocation::create(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
+                    'franchise_id' => $tenant['franchise']->id, 'remote_name' => 'locations/'.$city, 'title' => 'A1',
+                    'address_line1' => $street, 'city' => $city, 'state' => 'TX', 'postal_code' => $zip]);
+            }
+        });
+        $this->assertSame(['5 Near St, Dallas, TX, 75201', 'google_business_profile'], [$office()['line'], $office()['source']]);
     }
 
     /**

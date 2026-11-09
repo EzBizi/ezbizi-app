@@ -8,6 +8,8 @@ use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Models\WebLocation;
+use App\Models\ZipCentroid;
+use Illuminate\Support\Collection;
 
 /**
  * Where a service area's branch physically is (Jose, 2026-11-09: "a lot of
@@ -24,17 +26,21 @@ use App\Models\WebLocation;
 final class BranchOffice
 {
     /** @return array{line: string, maps_url: string, source: string}|null */
-    public static function for(ServiceArea $area): ?array
+    public static function for(ServiceArea $area, ?string $zip = null): ?array
     {
         $franchise = Franchise::query()->find($area->franchise_id);
 
-        $listing = BusinessLocation::query()->where('franchise_id', $area->franchise_id)
-            ->whereNull('not_listed_since')->whereNotNull('address_line1')->first();
+        // A branch can hold several listings (DMV: Baltimore, Washington,
+        // Alexandria): the one inside the area, else the nearest to the ZIP asked.
+        $zips = ServiceAreaZip::query()->where('service_area_id', $area->id)->pluck('zip');
+        $listings = BusinessLocation::query()->where('franchise_id', $area->franchise_id)
+            ->whereNull('not_listed_since')->whereNotNull('address_line1')->orderBy('remote_name')->get();
+        $listing = $listings->first(fn (BusinessLocation $b) => $zips->contains(substr((string) $b->postal_code, 0, 5)))
+            ?? self::nearest($listings, $zip ?? $zips->first());
         if ($listing !== null) {
             return self::shape($listing->addressLine(), 'google_business_profile');
         }
 
-        $zips = ServiceAreaZip::query()->where('service_area_id', $area->id)->pluck('zip');
         $site = $franchise === null ? null : WebLocation::query()->where('company_id', $franchise->company_id)
             ->whereNotNull('address_line1')->whereIn('postal_code', $zips)->first();
         if ($site !== null) {
@@ -47,6 +53,26 @@ final class BranchOffice
         }
 
         return null;
+    }
+
+    /**
+     * The listing closest to $zip's centre, straight-line; the first when
+     * either side has no known centre.
+     *
+     * @param  Collection<int, BusinessLocation>  $listings
+     */
+    private static function nearest($listings, ?string $zip): ?BusinessLocation
+    {
+        $from = $zip === null ? null : ZipCentroid::locate(substr($zip, 0, 5));
+        if ($from === null) {
+            return $listings->first();
+        }
+
+        return $listings->sortBy(function (BusinessLocation $b) use ($from) {
+            $at = $b->postal_code === null ? null : ZipCentroid::locate(substr((string) $b->postal_code, 0, 5));
+
+            return $at === null ? INF : ($at->latitude - $from->latitude) ** 2 + ($at->longitude - $from->longitude) ** 2;
+        })->first();
     }
 
     /** @param  array<int, ?string>  $parts */
