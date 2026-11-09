@@ -126,6 +126,8 @@ class TaskBoardsController extends Controller
             'columns' => $taskBoard->columns->map(fn (TaskColumn $c) => TaskBoardSettingsController::presentColumn($c))->all(),
             // Owner, Status, Due, About, Created, Updates: {key: {label, visible}}, every key.
             'builtin_columns' => $taskBoard->resolvedBuiltinColumns(),
+            // Saved views: the board's shared ones and this person's own.
+            'views' => TaskBoardViewsController::visible($taskBoard, $user->id),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
             'assignable' => $this->boards->assignable($taskBoard)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
             'tasks' => $tasks->map(fn (Task $t) => TasksController::present($t))

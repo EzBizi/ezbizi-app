@@ -965,6 +965,9 @@ Route::prefix('v1')
         Route::post('task-boards/{taskBoard}/groups', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeGroup']);
         Route::patch('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateGroup']);
         Route::delete('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyGroup']);
+        Route::post('task-boards/{taskBoard}/views', [\App\Http\Controllers\Api\TaskBoardViewsController::class, 'store']);
+        Route::patch('task-boards/{taskBoard}/views/{view}', [\App\Http\Controllers\Api\TaskBoardViewsController::class, 'update']);
+        Route::delete('task-boards/{taskBoard}/views/{view}', [\App\Http\Controllers\Api\TaskBoardViewsController::class, 'destroy']);
         Route::post('tasks/bulk', [\App\Http\Controllers\Api\TasksController::class, 'bulk']);
         Route::post('tasks', [\App\Http\Controllers\Api\TasksController::class, 'store']);
         Route::patch('tasks/{task}/move', [\App\Http\Controllers\Api\TasksController::class, 'move']);
