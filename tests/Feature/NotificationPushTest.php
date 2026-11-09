@@ -416,6 +416,39 @@ class NotificationPushTest extends TestCase
         $this->assertSame(1, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
     }
 
+    public function test_a_registration_that_loses_the_insert_race_takes_the_row_over(): void
+    {
+        $tenant = $this->provisionTenant('Kappa');
+        $colleague = $this->userWithRole($tenant, 'Colleague', []);
+
+        // A concurrent call inserts the same token between our lookup and our
+        // insert, exactly once.
+        $raced = false;
+        DeviceToken::creating(function (DeviceToken $device) use (&$raced, $tenant): void {
+            if ($raced) {
+                return;
+            }
+            $raced = true;
+            DeviceToken::withoutGlobalScopes()->insert([
+                'id' => (string) Str::uuid(),
+                'organization_id' => $tenant['org']->id,
+                'user_id' => $tenant['admin']->id,
+                'platform' => 'android',
+                'token' => $device->token,
+                'created_at' => now(),
+                'last_registered_at' => now(),
+            ]);
+        });
+
+        $this->signedInAs($colleague)->postJson('/api/v1/notifications/devices', [
+            'token' => 'token-raced', 'platform' => 'android',
+        ])->assertOk();
+
+        $devices = $this->inTenant($tenant['org'], fn () => DeviceToken::query()->get());
+        $this->assertCount(1, $devices);
+        $this->assertSame($colleague->id, $devices->first()->user_id);
+    }
+
     public function test_a_handset_that_changes_hands_moves_rather_than_duplicating(): void
     {
         $tenant = $this->provisionTenant('Iota');
