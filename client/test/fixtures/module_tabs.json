@@ -1,8 +1,13 @@
 {
     "modules": {
-        "ads_performance": {
+        "ads_manager": {
             "label": "Ads",
             "parent": "marketing",
+            "tabs": []
+        },
+        "ads_performance": {
+            "label": "Google Ads",
+            "parent": "reports",
             "tabs": []
         },
         "ai_assistance": {
@@ -377,6 +382,8 @@
         }
     },
     "permissions": [
+        "ads_manager.manage",
+        "ads_manager.view",
         "ads_performance.manage",
         "ads_performance.view",
         "ai_assistance.ai.view",

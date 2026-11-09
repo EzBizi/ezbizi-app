@@ -32,7 +32,7 @@ class MetaAdsControlTest extends TestCase
 
     private function manager(array $t)
     {
-        return $this->userWithRole($t, 'Marketing', ['ads_performance.view', 'ads_performance.manage']);
+        return $this->userWithRole($t, 'Marketing', ['ads_manager.view', 'ads_manager.manage']);
     }
 
     public function test_both_facebook_connects_ask_for_ads_management(): void
@@ -64,7 +64,7 @@ class MetaAdsControlTest extends TestCase
             ]]),
         ]);
 
-        $campaigns = $this->signedInAs($this->userWithRole($t, 'Reader', ['ads_performance.view']))
+        $campaigns = $this->signedInAs($this->userWithRole($t, 'Reader', ['ads_manager.view']))
             ->getJson('/api/v1/meta-ads/tree?connection_id='.$row->getKey().'&from=2026-10-01&to=2026-10-31')
             ->assertOk()->json('data.campaigns');
 
@@ -103,7 +103,7 @@ class MetaAdsControlTest extends TestCase
             };
         });
 
-        $this->signedInAs($this->userWithRole($t, 'Reader', ['ads_performance.view']))
+        $this->signedInAs($this->userWithRole($t, 'Reader', ['ads_manager.view']))
             ->getJson('/api/v1/meta-ads/tree?connection_id='.$row->getKey())
             ->assertOk()->assertJsonPath('data.campaigns.0.spend', 50);
     }
@@ -148,7 +148,7 @@ class MetaAdsControlTest extends TestCase
         $row = $this->account($t);
         Http::fake();
 
-        $this->signedInAs($this->userWithRole($t, 'Reader', ['ads_performance.view']))
+        $this->signedInAs($this->userWithRole($t, 'Reader', ['ads_manager.view']))
             ->postJson('/api/v1/meta-ads/budget', ['connection_id' => $row->getKey(), 'object_id' => '11', 'daily_budget' => 75])
             ->assertForbidden();
 

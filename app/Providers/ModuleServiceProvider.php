@@ -4529,13 +4529,37 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * ── Ads: running the advertising ───────────────────
+             *
+             * Marketing › Ads, Google and Meta behind one switch (Jose,
+             * 2026-11-09): pause and enable, daily budgets, bid targets and
+             * on/off schedules, each change confirmed and audited. The Google
+             * REPORT stays in Reports as Google Ads (ads_performance): his
+             * 2026-11-05 move put both in Marketing and only the managing half
+             * belonged there. Its own grant, given on creation to every role
+             * holding ads_performance (2026_11_09 migration), so nobody lost
+             * the Meta screen they had.
+             */
+            new ModuleDefinition(
+                key: 'ads_manager',
+                label: 'Ads',
+                parent: 'marketing',
+                actions: ['view', 'manage'],
+                // Every change Google or Meta accepts: google_ads.* and meta_ads.*.
+                auditActionPrefixes: ['google_ads', 'meta_ads'],
+                automationExemptBecause: 'Nothing here is stored: campaigns are read from Google '
+                    .'and Meta when the screen opens and changed there. The Google account events '
+                    .'(certifications, ads stopping) are raised by ads_performance.',
+            ),
+
+            /*
              * ── Google Ads: what the advertising costs ──────────
              *
-             * A tab inside Marketing, called Ads: it holds Google and Meta
-             * campaigns, behind the screen's switch. Jose, 2026-11-05, reversing
-             * his 2026-09-15 call that put it in Reports: "it's not a report,
-             * but ads management which should go on marketing". He could not
-             * find Meta under a tab named Google Ads.
+             * A tab inside Reports, not Marketing. Jose's call, 2026-09-15:
+             * "It is clearly not supposed to be in Marketing." Marketing is
+             * what the business SAYS about itself - its listing, its reviews,
+             * its posts. This is a measurement of what that cost, which is the
+             * same kind of thing as every other report.
              *
              * Account and Campaign levels, and nothing lower. The scope is a
              * compliance position rather than a backlog: Google's Reporting
@@ -4562,8 +4586,8 @@ class ModuleServiceProvider extends ServiceProvider
 
             new ModuleDefinition(
                 key: 'ads_performance',
-                label: 'Ads',
-                parent: 'marketing',
+                label: 'Google Ads',
+                parent: 'reports',
                 actions: ['view', 'manage'],
                 // AUTOMATED since 2026-09-28, as the exemption this replaced
                 // said it would be "the day spend is stored or watched": each

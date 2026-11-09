@@ -296,6 +296,37 @@ const Map<String, Tour> reportsTours = {
       ),
     ],
   ),
+  'reports/Google Ads': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'ads-refresh',
+        title: 'Read again',
+        body: 'Reads the figures from Google again.',
+      ),
+      TourStep(
+        anchor: 'ads-account-search',
+        title: 'Find an account',
+        body: 'Narrows the accounts as you type.',
+      ),
+      TourStep(
+        anchor: 'ads-accounts',
+        title: 'Accounts',
+        body:
+            'Managers stand out in their own colour, above the accounts in them.',
+      ),
+      TourStep(
+        anchor: 'ads-account-figures',
+        title: 'The account',
+        body: 'Cost, clicks and the rest, for the dates chosen.',
+      ),
+      TourStep(
+        anchor: 'ads-campaign-search',
+        title: 'Find a campaign',
+        body: 'Narrows the campaigns as you type.',
+      ),
+    ],
+  ),
   'reports/Profit & Loss': Tour(
     version: 1,
     steps: [

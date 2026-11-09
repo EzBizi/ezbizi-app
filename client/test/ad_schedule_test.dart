@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/ads_manager_screen.dart';
 import 'package:ezbizi_client/screens/ads_performance_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -144,7 +145,7 @@ void main() {
       MaterialApp(
         theme: EzBiziTheme.light(),
         home: Scaffold(
-          body: AdsPerformanceScreen(api: api, session: session),
+          body: AdsManagerScreen(api: api, session: session),
         ),
       ),
     );
@@ -153,7 +154,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  const manage = ['ads_performance.view', 'ads_performance.manage'];
+  // Meta's chips are Marketing › Ads (ads_manager); the Google table's is
+  // the report in Reports › Google Ads (ads_performance).
+  const manage = [
+    'ads_manager.view',
+    'ads_manager.manage',
+    'ads_performance.view',
+    'ads_performance.manage',
+  ];
 
   testWidgets('a manager sets Mon–Fri 8 to 6 from the chip', (tester) async {
     await openMeta(tester, permissions: manage);
@@ -203,7 +211,7 @@ void main() {
   testWidgets('reading alone shows a schedule and offers none', (tester) async {
     await openMeta(
       tester,
-      permissions: const ['ads_performance.view'],
+      permissions: const ['ads_manager.view'],
       schedules: [scheduled()],
     );
 

@@ -1039,6 +1039,10 @@ Route::prefix('v1')
         Route::get('meta-ads/tree', [\App\Http\Controllers\Api\MetaAdsController::class, 'tree']);
         Route::post('meta-ads/status', [\App\Http\Controllers\Api\MetaAdsController::class, 'setStatus']);
         Route::post('meta-ads/budget', [\App\Http\Controllers\Api\MetaAdsController::class, 'setBudget']);
+        Route::get('ads-manager/google/campaigns', [\App\Http\Controllers\Api\GoogleAdsManagerController::class, 'campaigns']);
+        Route::post('ads-manager/google/status', [\App\Http\Controllers\Api\GoogleAdsManagerController::class, 'status']);
+        Route::post('ads-manager/google/budget', [\App\Http\Controllers\Api\GoogleAdsManagerController::class, 'budget']);
+        Route::post('ads-manager/google/target', [\App\Http\Controllers\Api\GoogleAdsManagerController::class, 'target']);
         Route::get('ad-schedules', [\App\Http\Controllers\Api\AdSchedulesController::class, 'index']);
         Route::put('ad-schedules', [\App\Http\Controllers\Api\AdSchedulesController::class, 'save']);
         Route::delete('ad-schedules/{schedule}', [\App\Http\Controllers\Api\AdSchedulesController::class, 'destroy']);
