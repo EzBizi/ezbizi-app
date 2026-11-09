@@ -928,6 +928,7 @@ Route::prefix('v1')
         Route::get('jobs/book/options', [\App\Http\Controllers\Api\JobBookingController::class, 'options']);
         Route::post('jobs/book', [\App\Http\Controllers\Api\JobBookingController::class, 'store']);
         Route::post('jobs/{job}/book/workiz', [\App\Http\Controllers\Api\JobBookingController::class, 'retryWorkiz']);
+        Route::get('jobs/photos', \App\Http\Controllers\Api\JobPhotosController::class);
         Route::apiResource('jobs', JobsController::class);
         Route::get('project-board/jobs', [\App\Http\Controllers\Api\ProjectBoardController::class, 'jobs']);
 
