@@ -45,14 +45,26 @@ class LightingTab extends StatefulWidget {
 }
 
 /// The plain sentence for a PC's `specs.rgb_status`, and whether it is Ready.
-({String label, Tone tone, bool ready}) lightingStatus(Map device) {
+/// [attention] is a problem someone can act on. A PC with no RGB hardware,
+/// or one that has not reported yet, is not one (Jose, 2026-11-09: 31 of 31
+/// "Needs attention", most of them PCs with no lights at all).
+({String label, Tone tone, bool ready, bool attention}) lightingStatus(
+  Map device,
+) {
   final specs = device['specs'];
   final status = specs is Map ? specs['rgb_status'] as String? : null;
 
-  if (status == 'ok') return (label: 'Ready', tone: Tone.ok, ready: true);
+  if (status == 'ok') {
+    return (label: 'Ready', tone: Tone.ok, ready: true, attention: false);
+  }
   if (status != null && status.startsWith('brand_app_running:')) {
     final app = status.substring('brand_app_running:'.length);
-    return (label: 'Close $app first', tone: Tone.caution, ready: false);
+    return (
+      label: 'Close $app first',
+      tone: Tone.caution,
+      ready: false,
+      attention: true,
+    );
   }
 
   final label = switch (status) {
@@ -67,7 +79,12 @@ class LightingTab extends StatefulWidget {
     'engine_missing' => Tone.bad,
     _ => Tone.neutral,
   };
-  return (label: label, tone: tone, ready: false);
+  return (
+    label: label,
+    tone: tone,
+    ready: false,
+    attention: status != null && status != 'no_devices',
+  );
 }
 
 List<Map> _rgbDevices(Map device) {
@@ -151,7 +168,7 @@ class _LightingTabState extends State<LightingTab> {
                 _person(d).toLowerCase().contains(q)) &&
             switch (_filter) {
               'ready' => lightingStatus(d).ready,
-              'attention' => !lightingStatus(d).ready,
+              'attention' => lightingStatus(d).attention,
               _ => true,
             })
           d,
@@ -274,7 +291,8 @@ class _LightingTabState extends State<LightingTab> {
   }
 
   Widget _searchBar() {
-    final attention = _devices.where((d) => !lightingStatus(d).ready).length;
+    final ready = _devices.where((d) => lightingStatus(d).ready).length;
+    final attention = _devices.where((d) => lightingStatus(d).attention).length;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -290,7 +308,7 @@ class _LightingTabState extends State<LightingTab> {
         ),
         for (final (key, label) in [
           ('all', 'All · ${_devices.length}'),
-          ('ready', 'Ready · ${_devices.length - attention}'),
+          ('ready', 'Ready · $ready'),
           ('attention', 'Needs attention · $attention'),
         ])
           ChoiceChip(
