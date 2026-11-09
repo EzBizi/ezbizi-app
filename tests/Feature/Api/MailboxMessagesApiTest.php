@@ -1757,6 +1757,12 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertNotContains($ana->id, $candidates, 'Someone already on it was offered again.');
         $this->assertNotContains($carl->id, $candidates, 'Someone without the Inbox tab was offered.');
         $this->assertNotContains($t['admin']->id, $candidates, 'The Administrator was offered.');
+
+        // Everyone else is listed too, with why, rather than hidden (Eve, 2026-11-09).
+        $unavailable = collect($data['unavailable'])->keyBy('id');
+        $this->assertStringContainsString('Email Inbox tab', $unavailable[$carl->id]['why']);
+        $this->assertStringContainsString('Administrator', $unavailable[$t['admin']->id]['why']);
+        $this->assertFalse($unavailable->has($ana->id), 'Someone already on it was listed as unavailable.');
     }
 
     public function test_taking_an_inbox_away_closes_it(): void

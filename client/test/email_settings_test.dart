@@ -266,6 +266,42 @@ void main() {
     expect(calls, contains('DELETE /api/v1/email/mailboxes/mb-1/people/u-ana'));
   });
 
+  testWidgets('everybody who cannot be added is still listed, greyed, with why '
+      '(Eve 11-09: cannot add anyone)', (tester) async {
+    final calls = <String>[];
+    await _pump(tester, _handler(
+      mailboxes: [_row(id: 'mb-1', address: 'info@a-1chimney.com')],
+      people: const {
+        'people': [],
+        'roles': [],
+        'candidates': [],
+        'unavailable': [
+          {
+            'id': 'u-lucas',
+            'name': 'Lucas Snyder',
+            'email': 'lucas@a1.test',
+            'why': "Lucas Snyder's role does not include the Email Inbox tab.",
+          },
+        ],
+      },
+      onRequest: (method, path, body) {
+        if (method == 'POST' && path.contains('/people')) calls.add(path);
+      },
+    ));
+    await _openSettings(tester);
+
+    await _tap(tester, find.text('Add a person'));
+    await tester.enterText(find.byType(TextField).last, 'lucas');
+    await tester.pumpAndSettle();
+    expect(find.text('Lucas Snyder'), findsOneWidget);
+    expect(
+      find.text("Lucas Snyder's role does not include the Email Inbox tab."),
+      findsOneWidget,
+    );
+    await _tap(tester, find.text('Lucas Snyder'));
+    expect(calls, isEmpty, reason: 'Somebody who cannot open it was added.');
+  });
+
   // The control: somebody who may not manage the inbox is not shown the
   // section at all, and is not made to fetch it — the server would refuse.
   testWidgets('somebody who cannot manage an inbox is not shown who can open it', (
