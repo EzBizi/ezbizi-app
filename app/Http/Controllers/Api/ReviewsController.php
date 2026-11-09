@@ -221,6 +221,21 @@ class ReviewsController extends Controller
         return $this->show($review);
     }
 
+    /** PUT /api/v1/reviews/{review}/link-match {confirmed: bool}: a person settles the inferred match. */
+    public function settleLinkMatch(Request $request, Review $review): JsonResponse
+    {
+        $this->authorize('manage', $review);
+        $confirmed = (bool) $request->validate(['confirmed' => ['required', 'boolean']])['confirmed'];
+        $match = \App\Models\ReviewLinkMatch::query()->where('review_id', $review->id)->firstOrFail();
+        $match->forceFill(['status' => $confirmed ? 'confirmed' : 'rejected'])->save();
+        // A rejected match takes back the customer it set, never one a person chose.
+        if (! $confirmed && $review->customer_match === 'link') {
+            $review->forceFill(['customer_id' => null, 'job_id' => null, 'customer_match' => null])->save();
+        }
+
+        return $this->show($review);
+    }
+
     /** The customer's job last scheduled before the review, else their latest. */
     public static function jobFor(Customer $customer, Review $review): ?string
     {
@@ -624,6 +639,9 @@ class ReviewsController extends Controller
             'note_count'    => (int) ($review->notes_count ?? 0),
             'customer'      => $review->customer?->only(['id', 'name', 'phone', 'email']),
             'match'         => $review->customer_match,
+            // Which review link probably produced this review, for Confirm / Reject (Jose, 2026-11-09).
+            'link_match'    => ($lm = \App\Models\ReviewLinkMatch::query()->where('review_id', $review->id)->first()) === null ? null
+                : $lm->only(['id', 'confidence', 'clicked', 'status']) + ['sent_at' => $lm->sent_at?->toIso8601String()],
             'job'           => $review->job === null ? null : [
                 'id'         => $review->job->id,
                 'number'     => $review->job->number,

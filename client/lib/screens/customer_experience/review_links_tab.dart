@@ -33,6 +33,7 @@ const _labels = {
   'sad': 'Red',
   'google': 'Google',
   'submitted': 'Complaint',
+  'reviewed': 'Reviewed',
 };
 
 class _ReviewLinksTabState extends State<ReviewLinksTab> {
@@ -138,6 +139,7 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
           const Center(child: CircularProgressIndicator())
         else ...[
           _funnel(context, data['totals'] as Map?, narrow),
+          _reviewedDetail(context, data['reviewed'] as Map?),
           const SizedBox(height: 20),
           Align(
             alignment: Alignment.centerLeft,
@@ -178,6 +180,13 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
       _tile(context, 'sad', _share(sad, opened), 'of opened'),
       _tile(context, 'google', _share(_n(t, 'google'), happy), 'of green'),
       _tile(context, 'submitted', _share(_n(t, 'submitted'), sad), 'of red'),
+      // Jose, 2026-11-09: did they actually leave the review? Inferred by name.
+      _tile(
+        context,
+        'reviewed',
+        _share(_n(t, 'reviewed'), _n(t, 'google')),
+        'of Google',
+      ),
     ];
 
     if (narrow) {
@@ -216,6 +225,8 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
         step([tiles[2], tiles[3]]),
         arrow,
         step([tiles[4], tiles[5]]),
+        arrow,
+        step([tiles[6]]),
       ],
     );
   }
@@ -227,7 +238,7 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
     final zero = value == '0' || value.startsWith('0 ');
     final colour = switch (kind) {
       _ when zero => theme.colorScheme.onSurfaceVariant,
-      'happy' || 'google' => ToneColours.of(context, Tone.ok).ink,
+      'happy' || 'google' || 'reviewed' => ToneColours.of(context, Tone.ok).ink,
       'sad' || 'submitted' => ToneColours.of(context, Tone.bad).ink,
       _ => theme.colorScheme.primary,
     };
@@ -262,6 +273,25 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
     );
   }
 
+  /// " · 4.8 ★", or nothing when no review was matched.
+  String _stars(Object? v) => v is num ? ' · ${v.toStringAsFixed(1)} ★' : '';
+
+  /// How sure each "Reviewed" is, under the funnel (Jose, 2026-11-09).
+  Widget _reviewedDetail(BuildContext context, Map? d) {
+    final by = (d?['by'] as Map?) ?? const {};
+    int n(String k) => (by[k] as num?)?.toInt() ?? 0;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        'Reviewed, matched by name: exact ${n('exact')} · likely ${n('likely')} · '
+        'possible ${n('possible')} · without a click ${n('without_click')}'
+        '${_stars(d?['stars'])}. Confirm or reject a match on the review.',
+        key: const Key('review-links-reviewed-detail'),
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+    );
+  }
+
   Widget _rows(
     BuildContext context,
     List<Map<String, dynamic>> rows,
@@ -289,7 +319,8 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
               subtitle: Text(
                 'Sent ${_n(r, 'sent')} · Opened ${_n(r, 'opened')} · '
                 'Green ${_n(r, 'happy')} · Red ${_n(r, 'sad')} · '
-                'Google ${_n(r, 'google')} · Complaint ${_n(r, 'submitted')}',
+                'Google ${_n(r, 'google')} · Complaint ${_n(r, 'submitted')} · '
+                'Reviewed ${_n(r, 'reviewed')}${_stars(r['reviewed_stars'])}',
               ),
             ),
         ],
@@ -310,6 +341,14 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
         DataCell(Text('${_n(r, 'sad')}')),
         DataCell(Text('${_n(r, 'google')}')),
         DataCell(Text('${_n(r, 'submitted')}')),
+        DataCell(Text('${_n(r, 'reviewed')}')),
+        DataCell(
+          Text(
+            r['reviewed_stars'] is num
+                ? '${(r['reviewed_stars'] as num).toStringAsFixed(1)} ★'
+                : '—',
+          ),
+        ),
       ],
     );
 
@@ -317,29 +356,31 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
     // left 40% of the screen (deep dive 2026-11-02).
     return LayoutBuilder(
       builder: (context, box) => SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minWidth: box.maxWidth),
-        child: DataTable(
-        key: const Key('review-links-table'),
-        columns: [
-          DataColumn(label: Text(_byPerson ? 'Person' : 'Branch')),
-          for (final k in [
-            'sent',
-            'opened',
-            'happy',
-            'sad',
-            'google',
-            'submitted',
-          ])
-            DataColumn(label: Text(_labels[k]!), numeric: true),
-        ],
-        rows: [
-          for (final r in rows) row(r, name(r)),
-          row(totals ?? const {}, 'Total', total: true),
-        ],
-      ),
-      ),
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: box.maxWidth),
+          child: DataTable(
+            key: const Key('review-links-table'),
+            columns: [
+              DataColumn(label: Text(_byPerson ? 'Person' : 'Branch')),
+              for (final k in [
+                'sent',
+                'opened',
+                'happy',
+                'sad',
+                'google',
+                'submitted',
+                'reviewed',
+              ])
+                DataColumn(label: Text(_labels[k]!), numeric: true),
+              const DataColumn(label: Text('Stars'), numeric: true),
+            ],
+            rows: [
+              for (final r in rows) row(r, name(r)),
+              row(totals ?? const {}, 'Total', total: true),
+            ],
+          ),
+        ),
       ),
     );
   }
