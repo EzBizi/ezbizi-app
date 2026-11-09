@@ -4,8 +4,10 @@ namespace App\Support\Email;
 
 use App\Models\GoogleWorkspaceConnection;
 use App\Models\GoogleWorkspacePerson;
+use App\Models\GoogleWorkspaceSignatureTemplate;
 use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -22,7 +24,17 @@ final class WorkspaceSignatures
     public const SCOPE_SETTINGS = 'https://www.googleapis.com/auth/gmail.settings.basic';
 
     /** What a template may say, filled per person. */
-    public const PLACEHOLDERS = ['name', 'first_name', 'last_name', 'email', 'phone', 'title', 'company'];
+    public const PLACEHOLDERS = [
+        'name', 'first_name', 'last_name', 'email', 'title', 'company',
+        'phone', 'mobile', 'office_phone', 'extension', 'photo_url',
+        'website', 'address', 'linkedin', 'facebook', 'instagram',
+    ];
+
+    /** What a person can be given here because no directory holds it (Jose, 2026-11-09). */
+    public const PERSON_FIELDS = [
+        'title', 'phone', 'mobile', 'office_phone', 'extension', 'photo_url',
+        'website', 'address', 'linkedin', 'facebook', 'instagram',
+    ];
 
     /** Gmail refuses a signature longer than this. */
     public const MAX_LENGTH = 10000;
@@ -73,7 +85,9 @@ final class WorkspaceSignatures
             ->get(['id', 'name', 'email', 'first_name', 'last_name', 'phone'])
             ->keyBy(fn (User $u) => mb_strtolower((string) $u->email));
 
-        return array_map(function (array $person) use ($links, $byEmail) {
+        $templates = $this->templates($connection)->keyBy('id');
+
+        return array_map(function (array $person) use ($links, $byEmail, $connection, $templates) {
             $row  = $links->get($person['address']);
             $user = $row?->user;
             $how  = $user !== null ? 'linked' : null;
@@ -84,9 +98,18 @@ final class WorkspaceSignatures
                 $how  = 'same_email';
             }
 
+            $person['fields'] = $row?->fields ?? [];
+            [$source, $using] = $this->resolve($connection, $row, $templates);
+            $rendered = $source === null ? null : $this->render($source, $person, $user, $this->companyName($connection));
+
             return [
                 ...$person,
                 'user'                  => $user ? ['id' => $user->id, 'name' => $user->name] : null,
+                // Which signature this address gets, and whether Gmail has that exact one.
+                'template_id'           => $row?->signature_template_id,
+                'using'                 => $using,
+                'pushed'                => $row?->signature_applied_hash === null ? null
+                    : ($rendered !== null && hash('sha256', $rendered) === $row->signature_applied_hash ? 'current' : 'changed'),
                 // What a signature would be filled with, and where each value
                 // comes from: EzBizi's person first, the directory second.
                 'fills'                 => $this->fills($person, $user),
@@ -120,10 +143,76 @@ final class WorkspaceSignatures
         $this->rowFor($connection, $address)->forceFill(['signature_html' => $html])->save();
     }
 
-    /** The signature this address gets: its own, else the Workspace template. */
+    /** The signature this address gets: its own, its template, the default, the old single template. */
     public function sourceFor(GoogleWorkspaceConnection $connection, string $address): ?string
     {
-        return $this->row($connection, $address)?->signature_html ?? $connection->signature_template;
+        return $this->resolve($connection, $this->row($connection, $address), $this->templates($connection)->keyBy('id'))[0];
+    }
+
+    /**
+     * @param  Collection<string, GoogleWorkspaceSignatureTemplate>  $templates
+     * @return array{0: ?string, 1: array{kind: string, id: ?string, name: ?string}}
+     */
+    private function resolve(GoogleWorkspaceConnection $connection, ?GoogleWorkspacePerson $row, Collection $templates): array
+    {
+        if ($row?->signature_html !== null) {
+            return [$row->signature_html, ['kind' => 'own', 'id' => null, 'name' => 'Own signature']];
+        }
+
+        if (($t = $templates->get($row?->signature_template_id ?? '')) !== null) {
+            return [$t->html, ['kind' => 'template', 'id' => $t->id, 'name' => $t->name]];
+        }
+
+        if (($t = $templates->get($connection->default_signature_template_id ?? '')) !== null) {
+            return [$t->html, ['kind' => 'default', 'id' => $t->id, 'name' => $t->name]];
+        }
+
+        $legacy = $connection->signature_template;
+
+        return [$legacy, ['kind' => $legacy === null ? 'none' : 'legacy', 'id' => null, 'name' => null]];
+    }
+
+    /** @return Collection<int, GoogleWorkspaceSignatureTemplate> */
+    public function templates(GoogleWorkspaceConnection $connection): Collection
+    {
+        return GoogleWorkspaceSignatureTemplate::query()
+            ->where('google_workspace_connection_id', $connection->getKey())
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * Give these addresses a template; null puts them back on the default.
+     *
+     * @param  list<string>  $addresses
+     */
+    public function assign(GoogleWorkspaceConnection $connection, array $addresses, ?string $templateId): void
+    {
+        foreach ($addresses as $address) {
+            $this->rowFor($connection, $address)->forceFill(['signature_template_id' => $templateId])->save();
+        }
+    }
+
+    /** @param array<string, mixed> $fields  an empty value removes it */
+    public function setFields(GoogleWorkspaceConnection $connection, string $address, array $fields): void
+    {
+        $row  = $this->rowFor($connection, $address);
+        $kept = $row->fields ?? [];
+
+        foreach (array_intersect_key($fields, array_flip(self::PERSON_FIELDS)) as $key => $value) {
+            if (trim((string) $value) === '') {
+                unset($kept[$key]);
+            } else {
+                $kept[$key] = trim((string) $value);
+            }
+        }
+
+        $row->forceFill(['fields' => $kept === [] ? null : $kept])->save();
+    }
+
+    public function companyName(GoogleWorkspaceConnection $connection): string
+    {
+        return $this->workspace->scopeLabel($connection);
     }
 
     /**
@@ -155,18 +244,15 @@ final class WorkspaceSignatures
      */
     public function render(string $template, array $person, ?User $user, string $company): string
     {
-        $name  = (string) ($user?->name ?: ($person['name'] ?? ''));
-        $parts = preg_split('/\s+/', trim($name), 2) ?: [];
+        $values = $this->values($person, $user, $company);
 
-        $values = [
-            'name'       => $name,
-            'first_name' => (string) ($user?->first_name ?: ($person['first_name'] ?? $parts[0] ?? '')),
-            'last_name'  => (string) ($user?->last_name ?: ($person['last_name'] ?? $parts[1] ?? '')),
-            'email'      => (string) ($person['address'] ?? ''),
-            'phone'      => (string) ($user?->phone ?: ($person['phone'] ?? '')),
-            'title'      => (string) ($person['title'] ?? ''),
-            'company'    => $company,
-        ];
+        // {{#mobile}}...{{/mobile}} is kept only when that value is there, so an
+        // empty field drops its whole line instead of leaving a label behind.
+        $template = preg_replace_callback(
+            '/\{\{#\s*([a-z_]+)\s*\}\}(.*?)\{\{\/\s*\1\s*\}\}/s',
+            fn (array $m) => trim($values[$m[1]] ?? '') === '' ? '' : $m[2],
+            $template,
+        ) ?? $template;
 
         return preg_replace_callback(
             '/\{\{\s*([a-z_]+)\s*\}\}/',
@@ -175,6 +261,37 @@ final class WorkspaceSignatures
                 : $m[0],
             $template,
         ) ?? $template;
+    }
+
+    /**
+     * Every placeholder's value for one person: what was set for them here,
+     * then their EzBizi person, then the Google directory, then nothing.
+     *
+     * @param  array<string, mixed>  $person
+     * @return array<string, string>
+     */
+    public function values(array $person, ?User $user, string $company): array
+    {
+        $own   = is_array($person['fields'] ?? null) ? $person['fields'] : [];
+        $name  = (string) ($user?->name ?: ($person['name'] ?? ''));
+        $parts = preg_split('/\s+/', trim($name), 2) ?: [];
+        $first = fn (mixed ...$v): string => (string) (collect($v)->first(fn ($x) => filled($x)) ?? '');
+
+        $values = [
+            'name'       => $name,
+            'first_name' => $first($user?->first_name, $person['first_name'] ?? null, $parts[0] ?? null),
+            'last_name'  => $first($user?->last_name, $person['last_name'] ?? null, $parts[1] ?? null),
+            'email'      => (string) ($person['address'] ?? ''),
+            'company'    => $company,
+            'title'      => $first($own['title'] ?? null, $person['title'] ?? null),
+            'phone'      => $first($own['phone'] ?? null, $user?->phone, $person['phone'] ?? null),
+        ];
+
+        foreach (self::PERSON_FIELDS as $key) {
+            $values[$key] ??= (string) ($own[$key] ?? '');
+        }
+
+        return $values;
     }
 
     /** @throws GoogleWorkspaceRefused */
@@ -201,7 +318,10 @@ final class WorkspaceSignatures
             throw GoogleWorkspaceRefused::impersonationFailed($address);
         }
 
-        $this->rowFor($connection, $address)->forceFill(['signature_applied_at' => now()])->save();
+        $this->rowFor($connection, $address)->forceFill([
+            'signature_applied_at'   => now(),
+            'signature_applied_hash' => hash('sha256', $html),
+        ])->save();
     }
 
     private function gmail(string $address): \Illuminate\Http\Client\PendingRequest
