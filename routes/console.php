@@ -450,6 +450,8 @@ Schedule::command('ezbizi:label-call-transcripts --limit=4')->everyTwoMinutes()-
 Schedule::command('ezbizi:ai-weekly-summary')->weeklyOn(1, '07:00')->timezone('America/New_York')->withoutOverlapping(60);
 // Coaching scores for answered calls (ScoreReportCalls); off until REPORT_CALL_SCORING.
 Schedule::command('ezbizi:score-report-calls')->everyTenMinutes()->withoutOverlapping(15);
+// A scheduled report text WhatsApp did not deliver in 30 minutes, emailed to its rule's maker.
+Schedule::command('ezbizi:report-delivery-check')->everyTenMinutes()->withoutOverlapping(10);
 // Grok's daily and weekly read per employee for the Scoring tab (AiPersonReviews).
 Schedule::command('ezbizi:ai-person-reviews daily')->dailyAt('06:30')->timezone('America/New_York')->withoutOverlapping(30);
 Schedule::command('ezbizi:ai-person-reviews weekly')->weeklyOn(1, '06:45')->timezone('America/New_York')->withoutOverlapping(30);

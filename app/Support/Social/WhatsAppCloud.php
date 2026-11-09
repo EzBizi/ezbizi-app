@@ -107,13 +107,26 @@ final class WhatsAppCloud
      * A template, for a message the business starts.
      *
      * @param  array<int, string>  $bodyParameters  fills {{1}}, {{2}} in order
+     * @param  array{id: string, filename: string}|null  $document  a DOCUMENT header's uploaded file
      */
     public function sendTemplate(
         WhatsAppMessage $row,
         string $template,
         string $language = 'en_US',
         array $bodyParameters = [],
+        ?array $document = null,
     ): WhatsAppMessage {
+        $components = [
+            ...($document === null ? [] : [['type' => 'header', 'parameters' => [['type' => 'document', 'document' => $document]]]]),
+            ...($bodyParameters === [] ? [] : [[
+                'type' => 'body',
+                'parameters' => array_map(
+                    fn (string $p) => ['type' => 'text', 'text' => $p],
+                    array_values($bodyParameters),
+                ),
+            ]]),
+        ];
+
         return $this->deliver($row, [
             'messaging_product' => 'whatsapp',
             'to' => $row->counterparty,
@@ -121,13 +134,7 @@ final class WhatsAppCloud
             'template' => [
                 'name' => $template,
                 'language' => ['code' => $language],
-                ...($bodyParameters === [] ? [] : ['components' => [[
-                    'type' => 'body',
-                    'parameters' => array_map(
-                        fn (string $p) => ['type' => 'text', 'text' => $p],
-                        array_values($bodyParameters),
-                    ),
-                ]]]),
+                ...($components === [] ? [] : ['components' => $components]),
             ],
         ]);
     }
@@ -162,6 +169,7 @@ final class WhatsAppCloud
      * @param  string|null  $from  which of our numbers to send from, when the
      *                             organization holds more than one. Required
      *                             in that case: see numberToSendFrom().
+     * @param  array{id: string, filename: string}|null  $document  a DOCUMENT header's uploaded file
      *
      * @throws RuntimeException when the tenant has no number, the recipient is
      *                          not a number we can be sure of, or Meta refuses
@@ -173,6 +181,7 @@ final class WhatsAppCloud
         string $language = 'en_US',
         ?string $from = null,
         ?string $idempotencyKey = null,
+        ?array $document = null,
     ): WhatsAppMessage {
         /*
          * A key already sent (or still owed) answers with that row and sends
@@ -195,7 +204,7 @@ final class WhatsAppCloud
             $row->forceFill(['idempotency_key' => $idempotencyKey])->save();
         }
 
-        return $this->sendTemplate($row, $template, $language, array_map('strval', $parameters));
+        return $this->sendTemplate($row, $template, $language, array_map('strval', $parameters), $document);
     }
 
     /**

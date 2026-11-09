@@ -8,9 +8,11 @@ use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppPendingReport;
+use App\Support\Files\HardenedPdf;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -29,9 +31,6 @@ use Throwable;
  */
 final class WhatsAppGroups
 {
-    /** Meta's longest text message, less a margin for how it counts emoji. */
-    private const TEXT_LIMIT = 4000;
-
     private const WINDOW_HOURS = 24;
 
     private const TIMEOUT = 20;
@@ -127,46 +126,38 @@ final class WhatsAppGroups
     }
 
     /**
-     * A text to one person on this number (a rule's report text, 2026-10-20):
-     * the text now inside the 24-hour window, otherwise held behind the one
-     * "report ready" template and sent when they write in. False when the
-     * person has no usable phone.
+     * A text to one person on this number (a rule's report text, 2026-10-20),
+     * as a PDF in the org's approved document template, every time. Held
+     * behind a "reply to get it" notice, 93 of 107 never went (2026-11-04..09);
+     * and our own record of who wrote in can open a window Meta does not see
+     * (Bar's texts, refused as re-engagement). False when the person has no
+     * usable phone. $key: the message row's idempotency key.
      */
-    public function deliverTextToUser(WhatsAppNumber $number, User $user, string $title, string $body): bool
+    public function deliverTextToUser(WhatsAppNumber $number, User $user, string $title, string $body, ?string $key = null): bool
     {
-        // WhatsApp refuses a text over 4096 characters (Technician sales across
-        // ten branches, 2026-11-04), so a long one goes in pieces. Outside the
-        // window only the first piece sends the notice; the rest wait with it.
-        $sent = false;
-        foreach (self::pieces($body) as $i => $piece) {
-            $sent = $this->toPerson($number, $user, $title, ['type' => 'text', 'text' => ['body' => $piece]], $piece, null, null, notify: $i === 0) || $sent;
+        $e164 = ThumbtackAssociatePhoneNumbers::e164((string) $user->phone);
+
+        if ($e164 === null) {
+            return false;
         }
 
-        return $sent;
+        $filename = Str::slug($title).'.pdf';
+        $document = ['id' => $this->upload($number, HardenedPdf::render(self::reportHtml($body), 'letter'), $filename), 'filename' => $filename];
+        $org = Organization::findOrFail($number->organization_id);
+        app(TenantContext::class)->run($org, fn () => $this->cloud->send((string) $this->settings->get('ai_assistance.report_template', $org),
+            $e164, [$title], from: (string) $number->display_number, idempotencyKey: $key, document: $document));
+
+        return true;
     }
 
-    /**
-     * $body cut at line ends into pieces WhatsApp takes; a line too long on
-     * its own is cut where it must be.
-     *
-     * @return list<string>
-     */
-    public static function pieces(string $body, int $max = self::TEXT_LIMIT): array
+    /** The text as a page: WhatsApp's *bold* and _italic_ kept, emoji the PDF font has no glyph for dropped. */
+    public static function reportHtml(string $body): string
     {
-        $pieces = [''];
-        foreach (explode("\n", $body) as $line) {
-            foreach ($line === '' ? [''] : mb_str_split($line, $max) as $part) {
-                $last = array_key_last($pieces);
-                $joined = $pieces[$last] === '' ? $part : $pieces[$last]."\n".$part;
-                if (mb_strlen($joined) <= $max) {
-                    $pieces[$last] = $joined;
-                } else {
-                    $pieces[] = $part;
-                }
-            }
-        }
+        $text = e(preg_replace('/[\x{1F000}-\x{1FFFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{FE0F}\x{200D}]/u', '', $body) ?? $body);
+        $text = preg_replace(['/\*([^*\n]+)\*/', '/(?<!\w)_([^_\n]+)_(?!\w)/'], ['<b>$1</b>', '<i>$1</i>'], $text) ?? $text;
 
-        return $pieces;
+        return '<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:"DejaVu Sans",sans-serif;font-size:10pt;color:#111}</style>'
+            .'</head><body>'.nl2br(trim($text)).'</body></html>';
     }
 
     /**
