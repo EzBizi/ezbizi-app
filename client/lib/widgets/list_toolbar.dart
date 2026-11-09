@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'callout.dart';
 import 'list_filters.dart';
 import 'side_panel.dart';
 
@@ -123,12 +124,16 @@ class ListToolbar extends StatelessWidget {
               if (next != null) onChanged(query.copyWith(people: next));
             },
           ),
-        button(
-          'filter',
-          Icons.filter_list,
-          'Filter',
-          query.filters.length,
-          filterPanel,
+        Callout(
+          id: 'list_toolbar',
+          text: 'New: filter, sort, hide and group any list from here.',
+          child: button(
+            'filter',
+            Icons.filter_list,
+            'Filter',
+            query.filters.length,
+            filterPanel,
+          ),
         ),
         button('sort', Icons.swap_vert, 'Sort', query.sort.length, filterPanel),
         if (hideable)

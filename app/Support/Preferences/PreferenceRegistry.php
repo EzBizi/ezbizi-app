@@ -336,6 +336,15 @@ class PreferenceRegistry
                 'help' => 'Drag the edge of a column heading to change it.',
             ],
 
+            // One-time "New: …" tips this person dismissed with "Got it"
+            // (monday port, desk 2026-11-09). Slugs, e.g. list_toolbar.
+            'callouts.seen' => [
+                'label' => 'Dismissed tips',
+                'type' => 'keys',
+                'default' => [],
+                'help' => 'Tips you closed with "Got it" stay closed.',
+            ],
+
             'hr.records.list_width' => [
                 'label' => 'People list width',
                 'type' => 'int',
@@ -436,6 +445,10 @@ class PreferenceRegistry
             // ponytail: not checked against the companies table; an id that matches nothing simply never matches.
             'ids' => is_array($value)
                 ? array_values(array_unique(array_filter($value, fn ($id) => is_string($id) && Str::isUuid($id))))
+                : [],
+            // ponytail: capped at 200 slugs; nobody dismisses that many tips.
+            'keys' => is_array($value)
+                ? array_slice(array_values(array_unique(array_filter($value, fn ($k) => is_string($k) && preg_match('/^[a-z0-9_.-]{1,60}$/', $k)))), 0, 200)
                 : [],
             'versions' => $this->cleanVersions($value),
             'widths' => $this->cleanWidths($value, $definition['keys'] ?? '/^[0-9a-f-]{36}:[0-9a-f-]{36}$/'),

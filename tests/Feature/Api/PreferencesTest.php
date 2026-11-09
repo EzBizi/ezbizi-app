@@ -374,4 +374,15 @@ class PreferencesTest extends TestCase
 
         $this->assertSame(['jobs.projects:2' => 800], $stored['lists.column_widths']);
     }
+
+    public function test_dismissed_callouts_keep_slugs_once_and_drop_the_rest(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['callouts.seen' => ['list_toolbar', 'Bad Key', 'list_toolbar', 7, 'quick.search']],
+        ])->assertOk();
+
+        $stored = User::withoutGlobalScopes()->find($this->alpha['admin']->id)->preferences;
+
+        $this->assertSame(['list_toolbar', 'quick.search'], $stored['callouts.seen']);
+    }
 }
