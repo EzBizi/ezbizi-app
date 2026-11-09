@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0551', date: '9 Nov 2026', items: [
+      'Email: anyone can be given an inbox by name and then sees it, whatever their role or branch; the picker lists everyone',
+      'Review replies skip Business Profiles that are disconnected instead of failing each night',
+      'Memberships: customer links work outside a signed-in session',
+      'Notifications: registering a phone twice at once no longer fails',
+    ]),
     VersionRelease(version: '0.0.0550', date: '9 Nov 2026', items: [
       'Project Management > Settings: clearer cards for columns, label colours (pick a colour), sub-tabs and part status, choosing from your real statuses and tags',
       'Jobs: deleting a job asks twice, the second time you type the job number',
