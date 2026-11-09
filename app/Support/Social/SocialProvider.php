@@ -707,6 +707,41 @@ enum SocialProvider: string
         };
     }
 
+    /**
+     * The most characters this network's post text takes, or null where
+     * EzBizi's own 5000 is the tighter limit. One place for the composer
+     * check and the publishers: a post that is too long is refused, never
+     * cut mid-sentence (bug review 2026-11-09).
+     */
+    public function maxBodyLength(): ?int
+    {
+        return match ($this) {
+            self::X => 280,
+            self::Bluesky => 300,
+            self::Threads => 500,
+            // The Pin's description.
+            self::Pinterest => 800,
+            self::GoogleBusinessProfile => 1500,
+            self::InstagramProfessional, self::TikTok => 2200,
+            self::LinkedIn => 3000,
+            default => null,
+        };
+    }
+
+    /** Why this text is too long for this network, or null when it fits. */
+    public function refusesLength(string $body): ?string
+    {
+        $limit = $this->maxBodyLength();
+        $length = mb_strlen($body);
+
+        if ($limit === null || $length <= $limit) {
+            return null;
+        }
+
+        return sprintf('%s takes %d characters at most and this post is %d. Shorten it, or untick %s.',
+            $this->label(), $limit, $length, $this->label());
+    }
+
     public function takes(SocialMediaKind $kind): bool
     {
         return in_array($kind, $this->accepts(), strict: true);

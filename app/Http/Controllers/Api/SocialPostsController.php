@@ -61,13 +61,9 @@ use Symfony\Component\HttpFoundation\Response as Status;
 class SocialPostsController extends Controller
 {
     /**
-     * Longest body this will accept.
-     *
-     * ponytail: one number for every network, and the real limits differ wildly
-     * — Bluesky is 300 characters, X is 280, LinkedIn is 3,000. None of those
-     * four have a publisher yet, so enforcing per-network here would be
-     * enforcing rules against sends that cannot happen. When one lands, the
-     * limit moves onto SocialProvider beside `accepts()` and this constant goes.
+     * Longest body this will accept for any network. Each network's own,
+     * tighter limit is SocialProvider::maxBodyLength(), checked per account in
+     * whatEachNetworkRefuses() / whatEachPlaceRefuses() - refused, never cut.
      */
     private const MAX_BODY = 5000;
 
@@ -253,8 +249,9 @@ class SocialPostsController extends Controller
         $connections = $this->resolve($request, $data['connections'] ?? []);
         $places = $this->resolvePlaces($request, $data['places'] ?? []);
 
-        $refused = $this->whatEachNetworkRefuses($connections, $kind)
-            + $this->whatEachPlaceRefuses($places, $kind);
+        $words = trim((string) ($data['body'] ?? ''));
+        $refused = $this->whatEachNetworkRefuses($connections, $kind, $words)
+            + $this->whatEachPlaceRefuses($places, $kind, $words);
 
         /*
          * Jose, 2026-10-15: "if I choose 7 accounts but 2 aren't able to post
@@ -425,10 +422,17 @@ class SocialPostsController extends Controller
             Status::HTTP_NOT_FOUND,
         );
 
+        // A post whose time has not come yet goes back to waiting for it; the
+        // sweep sends it then, not now.
+        $due = $post->isDue();
+
         $flipped = SocialPostTarget::query()
             ->whereKey($target->getKey())
             ->where('status', SocialPostTarget::STATUS_FAILED)
-            ->update(['status' => SocialPostTarget::STATUS_QUEUED, 'failure' => null]);
+            ->update([
+                'status' => $due ? SocialPostTarget::STATUS_QUEUED : SocialPostTarget::STATUS_SCHEDULED,
+                'failure' => null,
+            ]);
 
         if ($flipped === 0) {
             throw ValidationException::withMessages([
@@ -436,7 +440,9 @@ class SocialPostsController extends Controller
             ]);
         }
 
-        PublishSocialTarget::dispatch($target->getKey());
+        if ($due) {
+            PublishSocialTarget::dispatch($target->getKey());
+        }
 
         $this->audit->log('social.post_retried', $post, [
             'account' => $connection->display_name,
@@ -480,16 +486,36 @@ class SocialPostsController extends Controller
         $this->assertStillScheduled($user, $post);
 
         $data = $request->validate([
-            'body' => ['sometimes', 'nullable', 'string', 'max:63206'],
-            'scheduled_for' => ['sometimes', 'required', 'string'],
+            'body' => ['sometimes', 'nullable', 'string', 'max:'.self::MAX_BODY],
+            'scheduled_for' => ['sometimes', 'required', 'string', 'date_format:Y-m-d H:i'],
+        ], [
+            'scheduled_for.date_format' => 'That is not a time this can read. Pick the day and time again.',
         ]);
 
         if (array_key_exists('body', $data)) {
+            // The same rules as composing: something to post, and short enough
+            // for every account it is going to.
+            $words = trim((string) $data['body']);
+
+            if ($words === '' && $post->media_path === null) {
+                throw ValidationException::withMessages(['body' => 'Write something, or attach a picture or a video.']);
+            }
+
+            $tooLong = $post->targets()->with('connection')->get()
+                ->map(fn (SocialPostTarget $t) => $t->connection?->providerEnum()?->refusesLength($words))
+                ->filter()->unique()->values();
+
+            if ($tooLong->isNotEmpty()) {
+                throw ValidationException::withMessages(['body' => $tooLong->implode(' ')]);
+            }
+
             $post->body = $data['body'];
         }
 
         if (array_key_exists('scheduled_for', $data)) {
-            $schedule = $this->schedule($request, $data['scheduled_for']);
+            // In the clock the post was scheduled in, not the editor's view:
+            // fixing a typo from another view must not move the post an hour.
+            $schedule = $this->schedule($request, $data['scheduled_for'], $post->scheduled_timezone);
             $post->forceFill([
                 'scheduled_for' => $schedule['for'],
                 'scheduled_timezone' => $schedule['timezone'],
@@ -588,7 +614,11 @@ class SocialPostsController extends Controller
             fn (SocialPostTarget $t) => $t->connection === null || ! $this->access->inView($user, $t->connection),
         ), Status::HTTP_NOT_FOUND);
 
-        if ($targets->contains(fn (SocialPostTarget $t) => $t->status !== SocialPostTarget::STATUS_SCHEDULED)) {
+        // A failed account (refused at compose) is not "going out": it does not
+        // pin the rest of the post, and cancelling takes it with the post.
+        if ($targets->contains(fn (SocialPostTarget $t) => ! in_array(
+            $t->status, [SocialPostTarget::STATUS_SCHEDULED, SocialPostTarget::STATUS_FAILED], true,
+        )) || ! $targets->contains(fn (SocialPostTarget $t) => $t->status === SocialPostTarget::STATUS_SCHEDULED)) {
             throw ValidationException::withMessages([
                 'post' => 'This post has already started going out, so it can no longer be edited or cancelled.',
             ]);
@@ -609,13 +639,13 @@ class SocialPostsController extends Controller
         return $connection;
     }
 
-    private function schedule(Request $request, ?string $wall): array
+    private function schedule(Request $request, ?string $wall, ?string $timezone = null): array
     {
         if ($wall === null || trim($wall) === '') {
             return ['for' => null, 'timezone' => null];
         }
 
-        $timezone = ViewTimezone::forUser($request->user());
+        $timezone = $timezone ?: ViewTimezone::forUser($request->user());
         $moment = Carbon::parse($wall, $timezone);
 
         // A minute of slack: the composer's clock and the server's are not the
@@ -732,7 +762,7 @@ class SocialPostsController extends Controller
      * @param  Collection<int, SocialConnection>  $connections
      */
     /** @return array<string, string> connection id => why that network cannot take this post */
-    private function whatEachNetworkRefuses(Collection $connections, SocialMediaKind $kind): array
+    private function whatEachNetworkRefuses(Collection $connections, SocialMediaKind $kind, string $words = ''): array
     {
         $refused = [];
 
@@ -762,7 +792,9 @@ class SocialPostsController extends Controller
              */
             $because = Publishers::refusalFor($provider)
                 ?? $provider?->refuses($kind)
-                ?? Publishers::for($provider)?->cannotSend($kind);
+                ?? Publishers::for($provider)?->cannotSend($kind)
+                // 4. Too long for this network: refused here, never cut later.
+                ?? $provider?->refusesLength($words);
 
             if ($because !== null) {
                 $refused[$connection->getKey()] = $because;
@@ -829,12 +861,13 @@ class SocialPostsController extends Controller
     }
 
     /** @return array<string, string> location id => why it cannot take this post */
-    private function whatEachPlaceRefuses(Collection $places, SocialMediaKind $kind): array
+    private function whatEachPlaceRefuses(Collection $places, SocialMediaKind $kind, string $words = ''): array
     {
         $refused = [];
 
         foreach ($places as $place) {
             $because = SocialProvider::GoogleBusinessProfile->refuses($kind)
+                ?? SocialProvider::GoogleBusinessProfile->refusesLength($words)
                 ?? ($place->isLive() ? null
                     : $place->title.' is not live on Google (it is '.strtolower((string) $place->verification_state)
                         .' or unpublished), so Google would not show the post. Nothing was sent there.');
@@ -871,8 +904,10 @@ class SocialPostsController extends Controller
             'sent' => $query
                 ->whereDoesntHave('targets', fn ($q) => $targets($q)
                     ->whereIn('status', [SocialPostTarget::STATUS_FAILED, SocialPostTarget::STATUS_QUEUED, SocialPostTarget::STATUS_AWAITING_APPROVAL]))
+                // At least one account really has it. Disapproved and removed
+                // never went out (or were taken down), so they alone are not Sent.
                 ->whereHas('targets', fn ($q) => $targets($q)
-                    ->where('status', '!=', SocialPostTarget::STATUS_SCHEDULED)),
+                    ->where('status', SocialPostTarget::STATUS_SENT)),
         };
     }
 
