@@ -13,6 +13,16 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0552', date: '9 Nov 2026', items: [
+      'Reports: every WhatsApp report arrives as a PDF from the Reports number, with no reply needed; an email alert if one is not delivered in 30 minutes',
+      'WhatsApp: each number has a purpose (reports, support, authentication)',
+      'Reports: the Overbooking report shows again for people with Re-Scheduling',
+      'Task Board: departed people’s boards are archived; boards can be archived, and custom boards deleted with a 30-day restore',
+      'Web Management: Not needed is a toggle beside each field; social links show each network’s icon',
+      'Scheduling: the office shown is the branch’s own',
+      'Email: the signature preview draws the full signature',
+      'Review links: Reviewed counts only sure matches; possible ones wait for confirmation',
+    ]),
     VersionRelease(version: '0.0.0551', date: '9 Nov 2026', items: [
       'Email: anyone can be given an inbox by name and then sees it, whatever their role or branch; the picker lists everyone',
       'Review replies skip Business Profiles that are disconnected instead of failing each night',
