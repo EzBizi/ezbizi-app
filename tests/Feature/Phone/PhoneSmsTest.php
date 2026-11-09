@@ -216,7 +216,7 @@ class PhoneSmsTest extends TestCase
         });
     }
 
-    /** Twilio's region refusal reads as a plain sentence naming the fix (health sweep 11-09, a Puerto Rico number). */
+    /** Twilio's region refusal reads as a plain sentence (health sweep 11-09, a Puerto Rico number; Jose: we do not serve Puerto Rico, the permission stays off). */
     public function test_a_region_refusal_reads_as_a_plain_sentence(): void
     {
         $t = $this->provisionTenant();
@@ -238,7 +238,7 @@ class PhoneSmsTest extends TestCase
             'number_id' => $number->id,
             'to' => '+17873700000',
             'body' => 'Hi',
-        ])->assertStatus(502)->assertJsonFragment(['message' => "Texts to that number's country are switched off on this phone account. Turn the country on under SMS geo permissions in Twilio."]);
+        ])->assertStatus(502)->assertJsonFragment(['message' => "Texts to that number's country are switched off on this phone account, so nothing was sent."]);
     }
 
     /**
