@@ -340,7 +340,9 @@ class TasksController extends Controller
     public static function valueOf(TaskColumnValue $v): mixed
     {
         return match ($v->column?->type) {
-            'number' => $v->value_number,
+            'number', 'currency' => $v->value_number,
+            'tags' => json_decode((string) $v->value_text, true) ?: [],
+            'link' => TaskWriter::linkOf($v->value_text),
             'date' => $v->value_date?->toDateString(),
             // Stored as its start (value_date) and end (value_text).
             'timeline' => $v->value_date ? ['from' => $v->value_date->toDateString(), 'to' => $v->value_text] : null,

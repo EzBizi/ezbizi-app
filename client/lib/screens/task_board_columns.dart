@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:url_launcher/url_launcher.dart';
+
 import '../core/api_client.dart';
 import '../core/timestamps.dart';
 import '../widgets/calendar_day_field.dart';
@@ -68,7 +70,9 @@ List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
         name: '${c['name'] ?? ''}',
         type: '${c['type'] ?? 'text'}',
         unit: (c['settings'] as Map?)?['unit'] as String?,
-        format: '${(c['settings'] as Map?)?['format'] ?? 'plain'}',
+        format: c['type'] == 'currency'
+            ? 'currency'
+            : '${(c['settings'] as Map?)?['format'] ?? 'plain'}',
         footer: '${(c['settings'] as Map?)?['footer'] ?? 'none'}',
         formula: c['type'] == 'formula'
             ? _compile(
@@ -253,6 +257,134 @@ String formatCellPhone(String raw) {
 
 /// One cell of the table, in its column's own shape. A checkbox, a status
 /// and a dropdown change in place; the rest are changed in the task's panel.
+
+/// The inline "+ Add tag" row of a label or tags menu: typing a new one
+/// adds it to the column and picks it (Jose, 2026-11-09).
+class _AddOption extends StatefulWidget {
+  const _AddOption({required this.columnId, required this.onAdd});
+
+  final String columnId;
+  final Future<void> Function(String label) onAdd;
+
+  @override
+  State<_AddOption> createState() => _AddOptionState();
+}
+
+class _AddOptionState extends State<_AddOption> {
+  final _text = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final label = _text.text.trim();
+    if (label.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    await widget.onAdd(label);
+    if (!mounted) return;
+    _text.clear();
+    setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+    child: SizedBox(
+      width: 200,
+      child: TextField(
+        key: ValueKey('column-option-new-${widget.columnId}'),
+        controller: _text,
+        enabled: !_busy,
+        decoration: const InputDecoration(
+          isDense: true,
+          hintText: '+ Add tag',
+          border: OutlineInputBorder(),
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+    ),
+  );
+}
+
+/// Several options as chips, for a tags column.
+class _TagChips extends StatelessWidget {
+  const _TagChips({required this.column, required this.ids});
+
+  final BoardColumn column;
+  final List<String> ids;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final picked = [for (final id in ids) ?_option(column, id)];
+    if (picked.isEmpty) {
+      return Text(
+        '—',
+        style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+      );
+    }
+    return ClipRect(
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        clipBehavior: Clip.hardEdge,
+        children: [
+          for (final o in picked)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: (o.colour ?? theme.colorScheme.outline).withValues(
+                  alpha: 0.22,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                o.label,
+                maxLines: 1,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Nov 9, 2:30 PM" for a date-and-time value.
+String? dateTimeLabel(Object? v, DisplayFormats formats) {
+  final at = v is String ? DateTime.tryParse(v.replaceFirst(' ', 'T')) : null;
+  if (at == null) return null;
+  final h = at.hour % 12 == 0 ? 12 : at.hour % 12;
+  final m = at.minute.toString().padLeft(2, '0');
+  return '${formats.formatDate(at)}, $h:$m ${at.hour < 12 ? 'AM' : 'PM'}';
+}
+
+/// tel:, mailto: or the page itself, for a phone, email or url value.
+Uri? contactUri(String type, String value) => switch (type) {
+  'phone' => Uri(scheme: 'tel', path: value.replaceAll(RegExp(r'[^\d+]'), '')),
+  'email' => Uri(scheme: 'mailto', path: value),
+  'url' => Uri.tryParse(value),
+  _ => null,
+};
+
+/// What a phone, email or url field must look like before it is sent.
+bool validColumnText(String type, String v) => switch (type) {
+  'phone' =>
+    RegExp(r'^[\d\s()+.\-]+$').hasMatch(v) &&
+        v.replaceAll(RegExp(r'\D'), '').length >= 7 &&
+        v.replaceAll(RegExp(r'\D'), '').length <= 15,
+  'email' => RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v),
+  'url' => RegExp(r'^https?://\S+\.\S+', caseSensitive: false).hasMatch(v),
+  'datetime' => RegExp(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$').hasMatch(v),
+  _ => true,
+};
+
 class ColumnCell extends StatelessWidget {
   const ColumnCell({
     super.key,
@@ -261,7 +393,15 @@ class ColumnCell extends StatelessWidget {
     required this.people,
     required this.formats,
     this.onChanged,
+    this.onAddOption,
+    this.onEditOptions,
   });
+
+  /// Adds a label or tag to the column and returns its id (null: refused).
+  final Future<String?> Function(String label)? onAddOption;
+
+  /// Opens the column's panel to rename, recolour or delete its options.
+  final VoidCallback? onEditOptions;
 
   final BoardColumn column;
   final Object? value;
@@ -307,6 +447,7 @@ class ColumnCell extends StatelessWidget {
             for (final o in column.options)
               MenuItemButton(
                 key: ValueKey('column-option-${column.id}-${o.id}'),
+                leadingIcon: _dot(o.colour, theme),
                 onPressed: () => onChanged?.call(o.id),
                 child: Text(o.label),
               ),
@@ -315,6 +456,7 @@ class ColumnCell extends StatelessWidget {
                 onPressed: () => onChanged?.call(null),
                 child: const Text('Clear'),
               ),
+            ..._optionTools(theme, (id) => onChanged?.call(id)),
           ],
           builder: (context, menu, _) => Material(
             color: column.type == 'status'
@@ -352,6 +494,78 @@ class ColumnCell extends StatelessWidget {
             ),
           ),
         );
+      case 'tags':
+        final ids = [for (final id in (v as List?) ?? const []) '$id'];
+        return MenuAnchor(
+          menuChildren: [
+            for (final o in column.options)
+              CheckboxMenuButton(
+                key: ValueKey('column-option-${column.id}-${o.id}'),
+                value: ids.contains(o.id),
+                closeOnActivate: false,
+                onChanged: (on) {
+                  final next = [
+                    for (final id in ids)
+                      if (id != o.id) id,
+                    if (on == true) o.id,
+                  ];
+                  onChanged?.call(next.isEmpty ? null : next);
+                },
+                child: Text(o.label),
+              ),
+            ..._optionTools(theme, (id) => onChanged?.call([...ids, ?id])),
+          ],
+          builder: (context, menu, _) => InkWell(
+            key: ValueKey('column-cell-${column.id}'),
+            onTap: onChanged == null
+                ? null
+                : () => menu.isOpen ? menu.close() : menu.open(),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _TagChips(column: column, ids: ids),
+            ),
+          ),
+        );
+      case 'phone':
+      case 'email':
+      case 'url':
+        if (v is! String || v.isEmpty) return Text('—', style: muted);
+        final uri = contactUri(column.type, v);
+        return InkWell(
+          onTap: uri == null ? null : () => launchUrl(uri),
+          child: Text(
+            column.type == 'phone' ? formatCellPhone(v) : v,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.colorScheme.primary,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        );
+      case 'datetime':
+        final label = dateTimeLabel(v, formats);
+        return Text(
+          label ?? '—',
+          maxLines: 1,
+          style: label == null ? muted : null,
+        );
+      case 'link':
+        final label = (v as Map?)?['label'] as String?;
+        return Text(
+          label ?? '—',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: label == null ? muted : null,
+        );
+      case 'long_text':
+        final text = v is String ? v.split('\n').first : null;
+        return Text(
+          text == null || text.isEmpty ? '—' : text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: text == null || text.isEmpty ? muted : null,
+        );
       case 'timeline':
         final label = timelineLabel(v, formats);
         return Text(
@@ -361,6 +575,7 @@ class ColumnCell extends StatelessWidget {
           style: label == null ? muted : null,
         );
       case 'number':
+      case 'currency':
       case 'formula':
         return Align(
           alignment: Alignment.centerRight,
@@ -401,6 +616,36 @@ class ColumnCell extends StatelessWidget {
         );
     }
   }
+
+  Widget _dot(Color? colour, ThemeData theme) => Container(
+    width: 12,
+    height: 12,
+    decoration: BoxDecoration(
+      color: colour ?? theme.colorScheme.outline,
+      borderRadius: BorderRadius.circular(3),
+    ),
+  );
+
+  /// "+ Add tag" and "Edit labels…", under a label or tags menu.
+  List<Widget> _optionTools(ThemeData theme, ValueChanged<String?> picked) => [
+    if (onAddOption != null) ...[
+      const Divider(height: 8),
+      _AddOption(
+        columnId: column.id,
+        onAdd: (label) async {
+          final id = await onAddOption!(label);
+          if (id != null) picked(id);
+        },
+      ),
+    ],
+    if (onEditOptions != null)
+      MenuItemButton(
+        key: ValueKey('column-options-edit-${column.id}'),
+        leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+        onPressed: onEditOptions,
+        child: Text(column.type == 'tags' ? 'Edit tags…' : 'Edit labels…'),
+      ),
+  ];
 }
 
 /// The same value, as a field in the task's panel, for every type.
@@ -412,7 +657,11 @@ class ColumnEditor extends StatefulWidget {
     required this.people,
     required this.formats,
     this.onChanged,
+    this.api,
   });
+
+  /// For a customer / job column's search; without it the field is read-only.
+  final ApiClient? api;
 
   final BoardColumn column;
   final Object? value;
@@ -427,7 +676,8 @@ class ColumnEditor extends StatefulWidget {
 class _ColumnEditorState extends State<ColumnEditor> {
   late final TextEditingController _text = TextEditingController(
     text: switch (widget.column.type) {
-      'number' => widget.value == null ? '' : _number(widget.value, null),
+      'number' ||
+      'currency' => widget.value == null ? '' : _number(widget.value, null),
       _ => widget.value == null ? '' : '${widget.value}',
     },
   );
@@ -438,9 +688,25 @@ class _ColumnEditorState extends State<ColumnEditor> {
     super.dispose();
   }
 
+  String? _invalid;
+
   void _commitText() {
     final typed = _text.text.trim();
-    if (widget.column.type == 'number') {
+    final bad = typed.isNotEmpty && !validColumnText(widget.column.type, typed);
+    if (bad != (_invalid != null)) {
+      setState(
+        () => _invalid = bad
+            ? switch (widget.column.type) {
+                'phone' => 'A phone number, 7 to 15 digits.',
+                'email' => 'An email address.',
+                'url' => 'Starts with http:// or https://',
+                _ => 'YYYY-MM-DD HH:MM',
+              }
+            : null,
+      );
+    }
+    if (bad) return;
+    if (widget.column.type == 'number' || widget.column.type == 'currency') {
       final n = typed.isEmpty ? null : num.tryParse(typed);
       if (typed.isNotEmpty && n == null) return;
       if (n != widget.value) widget.onChanged?.call(n);
@@ -486,6 +752,81 @@ class _ColumnEditorState extends State<ColumnEditor> {
           allowClear: true,
           options: options,
           onChanged: editable ? (v) => widget.onChanged!(v) : null,
+        );
+      case 'tags':
+        final ids = [
+          for (final id in (widget.value as List?) ?? const []) '$id',
+        ];
+        return Wrap(
+          key: key,
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final o in c.options)
+              FilterChip(
+                key: ValueKey('column-editor-${c.id}-${o.id}'),
+                label: Text(o.label),
+                selected: ids.contains(o.id),
+                onSelected: editable
+                    ? (on) {
+                        final next = [
+                          for (final id in ids)
+                            if (id != o.id) id,
+                          if (on) o.id,
+                        ];
+                        widget.onChanged!(next.isEmpty ? null : next);
+                      }
+                    : null,
+              ),
+          ],
+        );
+      case 'link':
+        final api = widget.api;
+        final label = (widget.value as Map?)?['label'] as String?;
+        if (api == null || !editable) return Text(label ?? '—', key: key);
+        return Autocomplete<(String, String)>(
+          key: key,
+          initialValue: TextEditingValue(text: label ?? ''),
+          displayStringForOption: (o) => o.$2,
+          optionsBuilder: (typed) async {
+            final term = typed.text.trim();
+            if (term.length < 2) return const [];
+            final (customers, jobs) = await (
+              api.get('/customers', {'search': term, 'per_page': '8'}),
+              api.get('/jobs', {'search': term, 'per_page': '8'}),
+            ).wait;
+            List rows(ApiResponse r) =>
+                r.ok && r.data is List ? r.data as List : const [];
+            return [
+              for (final c in rows(customers))
+                ('customer:${c['id']}', 'Customer · ${c['name'] ?? ''}'),
+              for (final j in rows(jobs))
+                (
+                  'job:${j['id']}',
+                  'Job ${j['number'] ?? ''} · ${(j['customer'] as Map?)?['name'] ?? ''}',
+                ),
+            ];
+          },
+          onSelected: (o) => widget.onChanged!(o.$1),
+          fieldViewBuilder: (context, controller, focus, submit) => TextField(
+            controller: controller,
+            focusNode: focus,
+            decoration: InputDecoration(
+              isDense: true,
+              border: const OutlineInputBorder(),
+              hintText: 'Search customers and jobs',
+              suffixIcon: label == null
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        controller.clear();
+                        widget.onChanged!(null);
+                      },
+                    ),
+            ),
+          ),
         );
       case 'date':
         return _DateEditor(
@@ -548,13 +889,24 @@ class _ColumnEditorState extends State<ColumnEditor> {
           key: key,
           controller: _text,
           enabled: editable,
-          keyboardType: c.type == 'number'
-              ? const TextInputType.numberWithOptions(decimal: true)
-              : TextInputType.text,
+          maxLines: c.type == 'long_text' ? 6 : 1,
+          minLines: 1,
+          keyboardType: switch (c.type) {
+            'number' ||
+            'currency' => const TextInputType.numberWithOptions(decimal: true),
+            'phone' => TextInputType.phone,
+            'email' => TextInputType.emailAddress,
+            'url' => TextInputType.url,
+            'long_text' => TextInputType.multiline,
+            _ => TextInputType.text,
+          },
           decoration: InputDecoration(
             isDense: true,
             border: const OutlineInputBorder(),
             suffixText: c.type == 'number' ? c.unit : null,
+            prefixText: c.type == 'currency' ? '\$ ' : null,
+            hintText: c.type == 'datetime' ? 'YYYY-MM-DD HH:MM' : null,
+            errorText: _invalid,
           ),
           onSubmitted: (_) => _commitText(),
           onTapOutside: (_) => _commitText(),
@@ -620,14 +972,24 @@ const swatches = [
 ];
 
 /// The column types, in the order the + menu offers them.
+/// Jose, 2026-11-09: Monday's types. A Label is one coloured option, Tags
+/// several; the server's names stay (dropdown is the Label).
 const columnTypes = [
   ('text', 'Text', Icons.short_text),
+  ('long_text', 'Long text', Icons.notes),
   ('number', 'Number', Icons.tag),
-  ('status', 'Status', Icons.label_outline),
+  ('currency', 'Currency', Icons.attach_money),
+  ('phone', 'Phone', Icons.phone_outlined),
+  ('email', 'Email', Icons.mail_outline),
+  ('url', 'Link (URL)', Icons.link),
   ('date', 'Date', Icons.event_outlined),
-  ('person', 'Person', Icons.person_outline),
-  ('dropdown', 'Dropdown', Icons.arrow_drop_down_circle_outlined),
+  ('datetime', 'Date + time', Icons.schedule),
   ('checkbox', 'Checkbox', Icons.check_box_outlined),
+  ('person', 'Person', Icons.person_outline),
+  ('status', 'Status', Icons.label_outline),
+  ('dropdown', 'Label', Icons.arrow_drop_down_circle_outlined),
+  ('tags', 'Tags', Icons.sell_outlined),
+  ('link', 'Customer / job', Icons.handshake_outlined),
   ('timeline', 'Timeline', Icons.view_timeline_outlined),
   ('formula', 'Formula', Icons.functions),
 ];
@@ -700,11 +1062,15 @@ class ColumnPanel extends StatefulWidget {
     this.column,
     this.raw,
     this.others = const [],
+    this.newType,
   });
 
   final ApiClient api;
   final String boardId;
   final String type;
+
+  /// Opened from the header's Type menu: the type to change to.
+  final String? newType;
 
   /// The board's other columns, for a formula's building blocks.
   final List<BoardColumn> others;
@@ -722,13 +1088,18 @@ class ColumnPanel extends StatefulWidget {
 class _ColumnPanelState extends State<ColumnPanel> {
   late final _name = TextEditingController(text: widget.column?.name ?? '');
   late final _unit = TextEditingController(text: widget.column?.unit ?? '');
+  late String _type = widget.newType ?? widget.type;
+
+  /// The server's "N values would be cleared", shown before a type change
+  /// goes ahead anyway.
+  String? _loss;
   late String _format = widget.column?.format ?? 'plain';
   late String _footer = widget.column?.footer ?? 'none';
   late final _expression = TextEditingController(
     text: '${widget.raw?['settings']?['expression'] ?? ''}',
   );
 
-  bool get _numeric => widget.type == 'number' || widget.type == 'formula';
+  bool get _numeric => _type == 'number' || _type == 'formula';
 
   /// Puts [text] where the cursor is in the formula.
   void _insert(String text) {
@@ -756,7 +1127,8 @@ class _ColumnPanelState extends State<ColumnPanel> {
   bool _confirmDelete = false;
   String? _error;
 
-  bool get _hasOptions => widget.type == 'status' || widget.type == 'dropdown';
+  bool get _hasOptions =>
+      _type == 'status' || _type == 'dropdown' || _type == 'tags';
 
   @override
   void dispose() {
@@ -770,11 +1142,11 @@ class _ColumnPanelState extends State<ColumnPanel> {
   }
 
   Map<String, dynamic> get _settings => {
-    if (widget.type == 'number' && _unit.text.trim().isNotEmpty)
+    if (_type == 'number' && _unit.text.trim().isNotEmpty)
       'unit': _unit.text.trim(),
     if (_numeric && _format != 'plain') 'format': _format,
     if (_numeric && _footer != 'none') 'footer': _footer,
-    if (widget.type == 'formula') 'expression': _expression.text.trim(),
+    if (_type == 'formula') 'expression': _expression.text.trim(),
     if (_hasOptions)
       'options': [
         for (final o in _options)
@@ -793,14 +1165,16 @@ class _ColumnPanelState extends State<ColumnPanel> {
     if (res.ok) {
       Navigator.of(context).pop(true);
     } else {
+      final lost = res.reason;
       setState(() {
         _saving = false;
-        _error = res.reason;
+        _loss = lost.contains('would be cleared') ? lost : null;
+        _error = _loss == null ? res.reason : null;
       });
     }
   }
 
-  void _save() {
+  void _save({bool acceptLoss = false}) {
     if (_name.text.trim().isEmpty) {
       setState(() => _error = 'Give the column a name.');
       return;
@@ -808,9 +1182,10 @@ class _ColumnPanelState extends State<ColumnPanel> {
     final id = widget.column?.id;
     final body = {
       'name': _name.text.trim(),
-      // Fixed once made: the server refuses a new type on a column with
-      // values, so a change never sends one.
-      if (id == null) 'type': widget.type,
+      // A changed type carries the values over; the server says first how
+      // many it cannot, and acceptLoss goes ahead.
+      if (id == null || _type != widget.type) 'type': _type,
+      if (acceptLoss) 'accept_loss': true,
       'settings': _settings,
     };
     _send(
@@ -837,8 +1212,8 @@ class _ColumnPanelState extends State<ColumnPanel> {
     return SidePanel(
       title: editing
           ? widget.column!.name
-          : 'Add a ${columnTypeLabel(widget.type).toLowerCase()} column',
-      subtitle: columnTypeLabel(widget.type),
+          : 'Add a ${columnTypeLabel(_type).toLowerCase()} column',
+      subtitle: columnTypeLabel(_type),
       actions: [
         if (editing)
           if (_confirmDelete)
@@ -863,11 +1238,22 @@ class _ColumnPanelState extends State<ColumnPanel> {
               onPressed: () => setState(() => _confirmDelete = true),
               child: const Text('Delete…'),
             ),
-        FilledButton(
-          key: const Key('column-save'),
-          onPressed: _saving ? null : _save,
-          child: Text(editing ? 'Save' : 'Add column'),
-        ),
+        if (_loss != null)
+          FilledButton(
+            key: const Key('column-type-anyway'),
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+              foregroundColor: theme.colorScheme.onError,
+            ),
+            onPressed: _saving ? null : () => _save(acceptLoss: true),
+            child: const Text('Change type and clear them'),
+          )
+        else
+          FilledButton(
+            key: const Key('column-save'),
+            onPressed: _saving ? null : _save,
+            child: Text(editing ? 'Save' : 'Add column'),
+          ),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -881,7 +1267,38 @@ class _ColumnPanelState extends State<ColumnPanel> {
               border: OutlineInputBorder(),
             ),
           ),
-          if (widget.type == 'formula') ...[
+          if (editing) ...[
+            const SizedBox(height: 12),
+            DropdownMenu<String>(
+              key: const Key('column-type'),
+              enableFilter: true,
+              requestFocusOnTap: true,
+              expandedInsets: EdgeInsets.zero,
+              label: const Text('Type'),
+              initialSelection: _type,
+              onSelected: (v) => setState(() {
+                _type = v ?? _type;
+                _loss = null;
+              }),
+              dropdownMenuEntries: [
+                for (final (type, label, icon) in columnTypes)
+                  DropdownMenuEntry(
+                    value: type,
+                    label: label,
+                    leadingIcon: Icon(icon, size: 18),
+                  ),
+              ],
+            ),
+            if (_type != widget.type)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Values are carried over where they fit. You are told first if any would be cleared.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+          ],
+          if (_type == 'formula') ...[
             const SizedBox(height: 12),
             TextField(
               key: const Key('column-formula'),
@@ -951,7 +1368,7 @@ class _ColumnPanelState extends State<ColumnPanel> {
               onSelectionChanged: (v) => setState(() => _footer = v.first),
             ),
           ],
-          if (widget.type == 'number' && _format == 'plain') ...[
+          if (_type == 'number' && _format == 'plain') ...[
             const SizedBox(height: 12),
             TextField(
               key: const Key('column-unit'),
@@ -966,7 +1383,10 @@ class _ColumnPanelState extends State<ColumnPanel> {
           if (_hasOptions) ...[
             const SizedBox(height: 16),
             Text(
-              widget.type == 'status' ? 'Labels' : 'Options',
+              switch (_type) {
+                'status' || 'dropdown' => 'Labels',
+                _ => 'Tags',
+              },
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -1019,9 +1439,7 @@ class _ColumnPanelState extends State<ColumnPanel> {
                   )),
                 ),
                 icon: const Icon(Icons.add, size: 18),
-                label: Text(
-                  widget.type == 'status' ? 'Add a label' : 'Add an option',
-                ),
+                label: Text(_type == 'tags' ? 'Add a tag' : 'Add a label'),
               ),
             ),
           ],
@@ -1057,6 +1475,14 @@ class _ColumnPanelState extends State<ColumnPanel> {
                   label: const Text('Hide'),
                 ),
               ],
+            ),
+          ],
+          if (_loss != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _loss!,
+              key: const Key('column-type-loss'),
+              style: TextStyle(color: theme.colorScheme.error),
             ),
           ],
           if (_error != null) ...[
