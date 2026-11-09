@@ -483,6 +483,17 @@ class SocialPublishingTest extends TestCase
         );
     }
 
+    public function test_pinterest_renews_an_expired_token_before_using_it(): void
+    {
+        Http::fake(['api.pinterest.com/v5/oauth/token' => Http::response(['access_token' => 'fresh', 'expires_in' => 2592000])]);
+        $connection = $this->connection(SocialProvider::Pinterest);
+        $connection->setAttribute('credentials', [...(array) $connection->credentials, 'expires_at' => now()->subDay()->toIso8601String()]);
+
+        $this->assertSame('fresh', (new PinterestPublisher)->token($connection));
+        $this->assertSame('r', $connection->credentials['refresh_token']);
+        Http::assertSent(fn ($r) => $r['grant_type'] === 'refresh_token' && $r['refresh_token'] === 'r');
+    }
+
     public function test_a_pin_links_to_its_page(): void
     {
         $this->assertSame('https://www.pinterest.com/pin/1234567/',
