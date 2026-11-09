@@ -146,7 +146,9 @@ class TaskBoardMembersTest extends TestCase
         $auto = $this->inTenant($tenant['org'], fn () => TaskBoard::query()->where('franchise_id', $tenant['franchise']->id)->first());
         $this->signedInAs($tenant['admin'])->deleteJson("/api/v1/task-boards/{$auto->id}")->assertStatus(422);
 
-        $this->signedInAs($owner)->deleteJson("/api/v1/task-boards/{$id}")->assertNoContent();
+        // The name typed back (Jose, 2026-11-09), then gone from the list.
+        $this->signedInAs($owner)->deleteJson("/api/v1/task-boards/{$id}", ['confirm' => 'Shared'])->assertStatus(422);
+        $this->signedInAs($owner)->deleteJson("/api/v1/task-boards/{$id}", ['confirm' => 'Renamed'])->assertNoContent();
         $this->signedInAs($owner)->getJson("/api/v1/task-boards/{$id}")->assertNotFound();
         $this->inTenant($tenant['org'], fn () => $this->assertNotNull(TaskBoard::withTrashed()->find($id)?->deleted_at));
     }

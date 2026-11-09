@@ -167,6 +167,8 @@ void main() {
               'kind': 'user',
               'name': 'Maya Lopez',
               'can_edit': true,
+              'can_set_edit_mode': true,
+              'can_delete': true,
               'statuses': statuses,
               // A personal board is given only to its owner.
               'assignable': [
@@ -401,7 +403,10 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('task-activity')));
     await tester.tap(find.byKey(const Key('task-activity')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Status: Working on it → Stuck'), findsOneWidget);
+    expect(
+      find.textContaining('Status: Working on it → Stuck'),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const Key('task-activity')));
     await tester.pumpAndSettle();
 
@@ -430,6 +435,34 @@ void main() {
     await tester.pumpAndSettle();
     sent(log.last, 'DELETE', '/tasks/t2', null);
     expect(find.byKey(const ValueKey('task-t2')), findsNothing);
+  });
+
+  testWidgets('the board menu archives, and deletes only once the name is '
+      'typed back', (tester) async {
+    await pumpBoard(tester);
+
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('board-archive')));
+    await tester.pumpAndSettle();
+    expect(log.last.$1, 'POST');
+    expect(log.last.$2, '/task-boards/b-me/archive');
+
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('board-delete')));
+    await tester.pumpAndSettle();
+    final confirm = find.byKey(const Key('board-delete-confirm'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.enterText(
+      find.byKey(const Key('board-delete-name')),
+      'Maya Lopez',
+    );
+    await tester.pump();
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(log.last.$1, 'DELETE');
+    expect(log.last.$2, '/task-boards/b-me');
   });
 
   testWidgets("the Owner picker offers the board's assignable people, not "
