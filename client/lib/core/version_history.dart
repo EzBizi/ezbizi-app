@@ -26,6 +26,13 @@ class VersionHistory {
       'Scheduling: Overbooking and Underbooking are now sub-tabs of Re-Scheduling, and both can offer customers a move',
       'Scheduling > Locations: duplicate branches are merged',
       'Monitoring > Lighting: PCs without RGB lights no longer count as needing attention; a stuck lighting engine restarts itself',
+      'Project Management: each sub-tab is set by statuses, required tags and scheduled date; Unscheduled starts as Submitted + DEPOSIT RECEIVED + no date',
+      'Promotions: date presets, filters, the full list with untick, Android and iPhone previews, a test send and a picture',
+      'Task Board: add tags from the cell, new column types (phone, email, link, currency, date and time, tags, customer or job) and a column menu',
+      'Marketing > Ads: manage Google and Meta campaigns (on/off, schedule, daily budget, target), each change confirmed; the Google report is back in Reports',
+      'Web Management: a field can be marked Not needed for this site',
+      'Human Resources: inactive people are listed last',
+      'Work Hours: a no-show is not approvable; excuse it or add the hours',
     ]),
     VersionRelease(version: '0.0.0549', date: '9 Nov 2026', items: [
       'Project Management: a Tags column, editable in Settings like the others',
