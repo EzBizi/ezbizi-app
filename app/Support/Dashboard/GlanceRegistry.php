@@ -19,6 +19,7 @@ use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\MarketingGlance;
 use App\Support\Dashboard\Glances\PhoneGlance;
 use App\Support\Dashboard\Glances\ReportsGlance;
+use App\Support\Dashboard\Glances\AdsManagerGlance;
 use App\Support\Dashboard\Glances\AdsPerformanceGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Dashboard\Glances\SchedulingGlance;
@@ -46,7 +47,8 @@ class GlanceRegistry
     public const ORDER = [
         // work_hours beside hr, where its sidebar entry sits (2026-09-24).
         'hr', 'work_hours', 'customers', 'jobs', 'project_board', 'scheduling', 'inspection', 'marketing',
-        'web_management', 'phone', 'fleet_management', 'inventory',
+        // Ads beside Web Management, where Marketing draws it (2026-11-09).
+        'web_management', 'ads_manager', 'phone', 'fleet_management', 'inventory',
         // Sales before Leads, where its sidebar entry sits (2026-10-14).
         'services', 'leads',
         // The container Reviews and Business Profile moved into (2026-09-25).
@@ -231,6 +233,8 @@ class GlanceRegistry
         // Live since 2026-09-28: certification and paused campaigns, from
         // what the watchers stored. Spend stays in the tab.
         AdsPerformanceGlance::class,
+        // Marketing › Ads (2026-11-09): accounts and schedules, counts only.
+        AdsManagerGlance::class,
         SchedulingGlance::class,
         EmailGlance::class,
         AutomationsGlance::class,
