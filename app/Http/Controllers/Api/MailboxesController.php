@@ -874,14 +874,14 @@ class MailboxesController extends Controller
         $given = $this->inboxes->peopleOn($mailbox);
         $givenIds = $given->pluck('id')->all();
 
-        $candidates = User::query()
+        $everyone = User::query()
             ->where('organization_id', $mailbox->organization_id)
             ->where('is_active', true)
             ->whereNotIn('id', $givenIds)
             ->orderBy('name')
             ->get()
-            ->filter(fn (User $u) => $this->whyCannotBeGiven($u, $mailbox) === null)
-            ->values();
+            ->map(fn (User $u) => [$u, $this->whyCannotBeGiven($u, $mailbox)]);
+        $candidates = $everyone->filter(fn ($pair) => $pair[1] === null)->map(fn ($pair) => $pair[0])->values();
 
         $person = fn (User $u) => ['id' => $u->getKey(), 'name' => $u->name, 'email' => $u->email];
 
@@ -890,6 +890,10 @@ class MailboxesController extends Controller
             'roles'      => $this->inboxes->rolesOn($mailbox)
                 ->map(fn ($r) => ['id' => $r->getKey(), 'name' => $r->name])->values()->all(),
             'candidates' => $candidates->map($person)->all(),
+            // Everybody else, with why: a picker that hid 105 of 119 staff read as
+            // "they are not here" (Eve, 2026-11-09: "I can't add anyone").
+            'unavailable' => $everyone->filter(fn ($pair) => $pair[1] !== null)
+                ->map(fn ($pair) => [...$person($pair[0]), 'why' => $pair[1]])->values()->all(),
         ];
     }
 

@@ -24,22 +24,34 @@ class InboxPeople extends StatefulWidget {
 }
 
 class _Person {
-  const _Person(this.id, this.name, this.email);
+  const _Person(this.id, this.name, this.email, [this.why]);
 
   final String id;
   final String name;
   final String email;
 
+  /// Why adding them would not let them open it; null when it would.
+  final String? why;
+
   static List<_Person> list(Object? json) => [
     for (final row in (json as List?) ?? const [])
       if (row is Map)
-        _Person('${row['id']}', '${row['name'] ?? ''}', '${row['email'] ?? ''}'),
+        _Person(
+          '${row['id']}',
+          '${row['name'] ?? ''}',
+          '${row['email'] ?? ''}',
+          row['why'] as String?,
+        ),
   ];
 }
 
 class _InboxPeopleState extends State<InboxPeople> {
   List<_Person> _people = const [];
   List<_Person> _candidates = const [];
+
+  /// Everybody who cannot be added, listed greyed with why, so nobody looks
+  /// missing (Eve, 2026-11-09: 9 of 119 staff were offered, the rest hidden).
+  List<_Person> _unavailable = const [];
   List<String> _roles = const [];
   bool _loading = true;
   bool _busy = false;
@@ -89,6 +101,7 @@ class _InboxPeopleState extends State<InboxPeople> {
       _error = null;
       _people = _Person.list(data['people']);
       _candidates = _Person.list(data['candidates']);
+      _unavailable = _Person.list(data['unavailable']);
       _roles = [
         for (final role in (data['roles'] as List?) ?? const [])
           if (role is Map) '${role['name'] ?? ''}',
@@ -139,13 +152,24 @@ class _InboxPeopleState extends State<InboxPeople> {
         const SizedBox(height: 8),
         SearchPickerField<String>(
           value: null,
-          hint: _candidates.isEmpty ? 'Nobody else could open it' : 'Add a person',
+          hint: _candidates.isEmpty && _unavailable.isEmpty
+              ? 'Nobody else is on staff'
+              : 'Add a person',
           isDense: true,
           options: [
             for (final person in _candidates)
               SearchOption(value: person.id, label: person.name, detail: person.email),
+            for (final person in _unavailable)
+              SearchOption(
+                value: person.id,
+                label: person.name,
+                detail: person.why,
+                enabled: false,
+              ),
           ],
-          onChanged: _busy || _candidates.isEmpty ? null : _add,
+          onChanged: _busy || (_candidates.isEmpty && _unavailable.isEmpty)
+              ? null
+              : _add,
         ),
         if (_error != null) ...[
           const SizedBox(height: 6),
