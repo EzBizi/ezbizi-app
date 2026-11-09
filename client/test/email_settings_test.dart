@@ -266,40 +266,35 @@ void main() {
     expect(calls, contains('DELETE /api/v1/email/mailboxes/mb-1/people/u-ana'));
   });
 
-  testWidgets('everybody who cannot be added is still listed, greyed, with why '
-      '(Eve 11-09: cannot add anyone)', (tester) async {
+  testWidgets('anybody on staff can be picked; the note says when the grant '
+      'is what lets them in (Jose 11-09)', (tester) async {
     final calls = <String>[];
     await _pump(tester, _handler(
       mailboxes: [_row(id: 'mb-1', address: 'info@a-1chimney.com')],
       people: const {
         'people': [],
         'roles': [],
-        'candidates': [],
-        'unavailable': [
+        'candidates': [
           {
             'id': 'u-lucas',
             'name': 'Lucas Snyder',
             'email': 'lucas@a1.test',
-            'why': "Lucas Snyder's role does not include the Email Inbox tab.",
+            'note': 'Gets this inbox through this grant: it is outside their branch.',
           },
         ],
       },
       onRequest: (method, path, body) {
-        if (method == 'POST' && path.contains('/people')) calls.add(path);
+        if (method == 'POST' && path.contains('/people')) {
+          calls.add('${body?['user_id']}');
+        }
       },
     ));
     await _openSettings(tester);
 
     await _tap(tester, find.text('Add a person'));
-    await tester.enterText(find.byType(TextField).last, 'lucas');
-    await tester.pumpAndSettle();
-    expect(find.text('Lucas Snyder'), findsOneWidget);
-    expect(
-      find.text("Lucas Snyder's role does not include the Email Inbox tab."),
-      findsOneWidget,
-    );
+    expect(find.textContaining('through this grant'), findsOneWidget);
     await _tap(tester, find.text('Lucas Snyder'));
-    expect(calls, isEmpty, reason: 'Somebody who cannot open it was added.');
+    expect(calls, ['u-lucas']);
   });
 
   // The control: somebody who may not manage the inbox is not shown the

@@ -30,7 +30,7 @@ class _Person {
   final String name;
   final String email;
 
-  /// Why adding them would not let them open it; null when it would.
+  /// When this grant is the only reason they would see it, said beside them.
   final String? why;
 
   static List<_Person> list(Object? json) => [
@@ -40,7 +40,7 @@ class _Person {
           '${row['id']}',
           '${row['name'] ?? ''}',
           '${row['email'] ?? ''}',
-          row['why'] as String?,
+          row['note'] as String?,
         ),
   ];
 }
@@ -48,10 +48,6 @@ class _Person {
 class _InboxPeopleState extends State<InboxPeople> {
   List<_Person> _people = const [];
   List<_Person> _candidates = const [];
-
-  /// Everybody who cannot be added, listed greyed with why, so nobody looks
-  /// missing (Eve, 2026-11-09: 9 of 119 staff were offered, the rest hidden).
-  List<_Person> _unavailable = const [];
   List<String> _roles = const [];
   bool _loading = true;
   bool _busy = false;
@@ -101,7 +97,6 @@ class _InboxPeopleState extends State<InboxPeople> {
       _error = null;
       _people = _Person.list(data['people']);
       _candidates = _Person.list(data['candidates']);
-      _unavailable = _Person.list(data['unavailable']);
       _roles = [
         for (final role in (data['roles'] as List?) ?? const [])
           if (role is Map) '${role['name'] ?? ''}',
@@ -145,37 +140,39 @@ class _InboxPeopleState extends State<InboxPeople> {
                   label: Text(person.name),
                   tooltip: person.email,
                   onDeleted: _busy ? null : () => _remove(person),
-                  deleteButtonTooltipMessage: 'Take ${person.name} off this inbox',
+                  deleteButtonTooltipMessage:
+                      'Take ${person.name} off this inbox',
                 ),
             ],
           ),
         const SizedBox(height: 8),
         SearchPickerField<String>(
           value: null,
-          hint: _candidates.isEmpty && _unavailable.isEmpty
+          hint: _candidates.isEmpty
               ? 'Nobody else is on staff'
               : 'Add a person',
           isDense: true,
           options: [
+            // Anybody on staff (Jose, 2026-11-09); the note says when this
+            // grant is what lets them see it.
             for (final person in _candidates)
-              SearchOption(value: person.id, label: person.name, detail: person.email),
-            for (final person in _unavailable)
               SearchOption(
                 value: person.id,
                 label: person.name,
-                detail: person.why,
-                enabled: false,
+                detail: person.why == null
+                    ? person.email
+                    : '${person.email} · ${person.why}',
               ),
           ],
-          onChanged: _busy || (_candidates.isEmpty && _unavailable.isEmpty)
-              ? null
-              : _add,
+          onChanged: _busy || _candidates.isEmpty ? null : _add,
         ),
         if (_error != null) ...[
           const SizedBox(height: 6),
           Text(
             _error!,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
           ),
         ],
       ],

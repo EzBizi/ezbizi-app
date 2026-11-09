@@ -186,7 +186,11 @@ class PermissionCatalogue
 
         $keys = $user->isAdministrator()
             ? $this->keys()
-            : array_values(array_intersect($this->keys(), $user->role?->permissionKeys() ?? []));
+            : array_values(array_intersect($this->keys(), array_unique([
+                ...($user->role?->permissionKeys() ?? []),
+                // An inbox given to them by name opens Email for them (User::personalGrantKeys).
+                ...$user->personalGrantKeys(),
+            ])));
 
         return array_values(array_filter(
             $keys,

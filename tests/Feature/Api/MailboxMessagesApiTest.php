@@ -1684,54 +1684,34 @@ class MailboxMessagesApiTest extends TestCase
     }
 
     /**
-     * A grant is a key to one door, not a way round the others: a person whose
-     * role lacks the Inbox tab is not let in by a person grant. Written straight
-     * to the table, because the endpoint refuses to create it at all.
+     * Jose, 2026-11-09, reversing the earlier rule that a person grant could
+     * not get round the Inbox tab or reach: "if she can see the email she
+     * should be able to assign someone to it, and that person in turn should
+     * see it." A branch user with no Email in their role is given a
+     * company inbox above them, and opens it -- and only it.
      */
-    public function test_a_person_grant_does_not_get_round_the_inbox_tab(): void
-    {
-        $this->withFakeProvider();
-        $t = $this->provisionTenant('A1-Group');
-        $mailbox = $this->inbox($t);
-        FakeMailboxReader::$page = new MessagePage([$this->summary()]);
-
-        $carl = $this->userWithRole($t, 'Driver', ['email.view'], email: 'carl@a1.test');
-        $this->inTenant($t['org'], fn () => \App\Models\MailboxGrant::create([
-            'organization_id' => $t['org']->id, 'mailbox_id' => $mailbox->id, 'user_id' => $carl->id,
-        ]));
-
-        $this->signedInAs($carl)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")->assertForbidden();
-
-        // And the endpoint says why rather than writing a grant that does nothing.
-        $this->inTenant($t['org'], fn () => \App\Models\MailboxGrant::query()->delete());
-        $this->signedInAs($t['admin'])
-            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/people", ['user_id' => $carl->id])
-            ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $m) => str_contains($m, 'Email Inbox tab'));
-    }
-
-    /** Reach still applies: a branch user cannot be given a company inbox above them. */
-    public function test_a_person_out_of_reach_is_refused_when_given(): void
+    public function test_a_person_grant_opens_the_inbox_past_the_tab_and_branch(): void
     {
         $this->withFakeProvider();
         $t = $this->provisionTenant('A1-Group');
         $company = $this->inbox($t, 'info@a-1chimney.com', 'company', $t['company']->id);
-        $jenny = $this->userWithRole($t, 'Branch Manager', self::INBOX_TAB, onlyAt: $t['franchise']);
+        $other = $this->inbox($t, 'other@a-1chimney.com', 'company', $t['company']->id);
+        FakeMailboxReader::$page = new MessagePage([$this->summary()]);
+        $jenny = $this->userWithRole($t, 'Branch Manager', ['jobs.view'], onlyAt: $t['franchise']);
 
         $this->signedInAs($t['admin'])
             ->postJson("/api/v1/email/mailboxes/{$company->id}/people", ['user_id' => $jenny->id])
-            ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $m) => str_contains($m, 'not assigned to'));
+            ->assertOk();
 
-        $this->assertSame([], $this->inTenant($t['org'], fn () => \App\Models\MailboxGrant::query()->pluck('id')->all()));
+        $this->signedInAs($jenny)->getJson("/api/v1/email/mailboxes/{$company->id}/messages")->assertOk();
+        $this->signedInAs($jenny)->getJson("/api/v1/email/mailboxes/{$other->id}/messages")->assertForbidden();
     }
 
     /**
-     * The picker offers exactly the people who could open it once added -- not
-     * the Administrator, not someone without the Inbox tab, not someone already
-     * on it -- and lists the roles that hold it alongside.
+     * The picker offers everyone but the Administrator and those already on it,
+     * says when the grant is what lets someone in, and lists the roles beside.
      */
-    public function test_the_people_list_offers_only_those_who_could_open_it(): void
+    public function test_the_people_list_offers_everyone_and_says_who_gets_in_only_by_the_grant(): void
     {
         $this->withFakeProvider();
         $t = $this->provisionTenant('A1-Group');
@@ -1755,14 +1735,44 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertContains('Office', array_column($data['roles'], 'name'));
         $this->assertContains($dee->id, $candidates);
         $this->assertNotContains($ana->id, $candidates, 'Someone already on it was offered again.');
-        $this->assertNotContains($carl->id, $candidates, 'Someone without the Inbox tab was offered.');
         $this->assertNotContains($t['admin']->id, $candidates, 'The Administrator was offered.');
 
-        // Everyone else is listed too, with why, rather than hidden (Eve, 2026-11-09).
-        $unavailable = collect($data['unavailable'])->keyBy('id');
-        $this->assertStringContainsString('Email Inbox tab', $unavailable[$carl->id]['why']);
-        $this->assertStringContainsString('Administrator', $unavailable[$t['admin']->id]['why']);
-        $this->assertFalse($unavailable->has($ana->id), 'Someone already on it was listed as unavailable.');
+        // Jose, 2026-11-09: anybody can be given it; the note says when the grant is why.
+        $byId = collect($data['candidates'])->keyBy('id');
+        $this->assertContains($carl->id, $candidates, 'Someone without the Inbox tab was hidden.');
+        $this->assertStringContainsString('through this grant', $byId[$carl->id]['note']);
+        $this->assertNull($byId[$dee->id]['note']);
+    }
+
+    /**
+     * A grant by name opens THAT inbox to the person whatever their role,
+     * branch or view -- and the Email tab with it -- and nothing else.
+     */
+    public function test_an_inbox_given_by_name_opens_it_whatever_their_role_or_branch(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $other = $this->inbox($t, 'other@a1.test');
+        FakeMailboxReader::$page = new MessagePage([$this->summary()]);
+        // No Email in the role at all.
+        $carl = $this->userWithRole($t, 'Driver', ['jobs.view'], email: 'carl@a1.test');
+
+        $this->signedInAs($carl)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")->assertForbidden();
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/people", ['user_id' => $carl->id])->assertOk();
+
+        $this->signedInAs($carl)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")->assertOk();
+        $this->signedInAs($carl)->getJson("/api/v1/email/mailboxes/{$other->id}/messages")->assertForbidden();
+        $this->assertSame([$mailbox->id], $this->inTenant($t['org'], fn () => app(\App\Support\Email\MailboxAccess::class)
+            ->readable($carl->fresh())->pluck('id')->all()));
+        $this->assertTrue($this->inTenant($t['org'], fn () => $carl->fresh()->hasPermission('email.inbox.view')),
+            'The grant did not open the Email tab.');
+
+        $this->signedInAs($t['admin'])->deleteJson("/api/v1/email/mailboxes/{$mailbox->id}/people/{$carl->id}")->assertOk();
+        $this->signedInAs($carl)->getJson("/api/v1/email/mailboxes/{$mailbox->id}/messages")->assertForbidden();
+        $this->assertFalse($this->inTenant($t['org'], fn () => $carl->fresh()->hasPermission('email.inbox.view')));
     }
 
     public function test_taking_an_inbox_away_closes_it(): void
