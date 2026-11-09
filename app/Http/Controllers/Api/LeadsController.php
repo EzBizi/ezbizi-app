@@ -57,6 +57,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
+use App\Support\Social\LeadWhatsApp;
+use App\Support\Social\WhatsAppReplies;
+use Illuminate\Support\Arr;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -566,6 +569,18 @@ class LeadsController extends Controller
         // heard of.
         $data['can_reply'] = $this->replies->canReply($lead);
         $data['cannot_reply_because'] = $this->replies->whyNot($lead);
+        // Messenger, Instagram and WhatsApp take replies for 24 hours after the
+        // person last wrote: the screen says how long is left (Jose, 2026-11-09).
+        $data['reply_window_ends_at'] = $this->replies->windowEndsAt($lead)?->toIso8601String();
+        // Once WhatsApp's window has closed, an approved template is what can still go.
+        $channel = $this->replies->for($lead);
+        try {
+            $data['whatsapp_templates'] = $channel instanceof WhatsAppReplies && ! $data['can_reply']
+                ? array_map(fn (array $t) => Arr::only($t, ['name', 'preview', 'parameters']), $channel->templates($lead))
+                : [];
+        } catch (RuntimeException) {
+            $data['whatsapp_templates'] = [];
+        }
 
         // Canned replies beside Send, filled in for this customer and brand.
         // {{missing}} asks only for what we do not already have (Jose,
@@ -1466,6 +1481,44 @@ class LeadsController extends Controller
     }
 
     /**
+     * POST /leads/{lead}/whatsapp-template {template, variables[]}: the one
+     * message WhatsApp accepts once its 24-hour window has closed, from the
+     * number the lead wrote to (Jose, 2026-11-09).
+     */
+    public function sendWhatsAppTemplate(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        $input = $request->validate([
+            'template' => ['required', 'string', 'max:512'],
+            'variables' => ['array', 'max:10'],
+            'variables.*' => ['required', 'string', 'max:500'],
+        ]);
+
+        $channel = $this->replies->for($lead);
+        abort_unless($channel instanceof WhatsAppReplies, Response::HTTP_UNPROCESSABLE_ENTITY, 'Only a WhatsApp enquiry can be sent a WhatsApp template.');
+
+        try {
+            $template = collect($channel->templates($lead))->firstWhere('name', $input['template']);
+        } catch (RuntimeException $e) {
+            abort(Response::HTTP_BAD_GATEWAY, $e->getMessage());
+        }
+        abort_if($template === null, Response::HTTP_UNPROCESSABLE_ENTITY, 'That template is not an approved template of this WhatsApp number.');
+        $variables = array_values($input['variables'] ?? []);
+        abort_if(count($variables) !== (int) $template['parameters'], Response::HTTP_UNPROCESSABLE_ENTITY,
+            'This template needs '.$template['parameters'].' value'.((int) $template['parameters'] === 1 ? '' : 's').'.');
+
+        try {
+            $row = app(LeadWhatsApp::class)->sendTemplate($lead, $template['name'], $variables, false, $channel->fromNumber($lead));
+        } catch (RuntimeException $e) {
+            abort(Response::HTTP_BAD_GATEWAY, $e->getMessage());
+        }
+
+        $this->audit->log('lead.replied', $lead, ['conversation_id' => $row->id, 'template' => $template['name']], actor: $request->user());
+
+        return response()->json(['data' => $this->presentConversation($row)], Response::HTTP_CREATED);
+    }
+
+    /**
      * The newest reply a person (not a rule) sent this customer after $since,
      * by somebody other than $me: who and its first line, or null.
      *
@@ -2214,6 +2267,8 @@ class LeadsController extends Controller
              * No N+1: every rule reads columns already on the row.
              */
             'can_reply' => $canReply = $this->replies->canReply($lead),
+            // ponytail: one more max(occurred_at) per Meta/WhatsApp row; batch it if the list slows.
+            'reply_window_ends_at' => $this->replies->windowEndsAt($lead)?->toIso8601String(),
             // The customer has waited longer than the business should let
             // them - the list's red mark (Jose, 2026-09-28).
             'reply_overdue' => $lead->replyOverdue($canReply),
