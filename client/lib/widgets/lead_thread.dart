@@ -202,6 +202,13 @@ class _LeadThreadState extends State<LeadThread> {
   /// provider, because a screen that invents a reason invents the wrong one.
   String? _cannotReplyBecause;
 
+  /// When Meta's reply window closes (Messenger, Instagram, WhatsApp), or
+  /// null for a source without one (design 186, Jose 2026-11-09).
+  DateTime? _windowEndsAt;
+
+  /// WhatsApp's approved templates, offered once its window has closed.
+  List<Map<String, dynamic>> _waTemplates = const [];
+
   /// Customers whose number matches this lead's, for the booking panel.
   List<Map<String, dynamic>> _matches = const [];
 
@@ -468,6 +475,11 @@ class _LeadThreadState extends State<LeadThread> {
       );
       _canReply = data['can_reply'] == true;
       _cannotReplyBecause = data['cannot_reply_because'] as String?;
+      _windowEndsAt = DateTime.tryParse(
+        data['reply_window_ends_at'] as String? ?? '',
+      )?.toLocal();
+      _waTemplates = (data['whatsapp_templates'] as List? ?? const [])
+          .cast<Map<String, dynamic>>();
       _canSuggest = data['can_suggest'] == true;
       _canProofread = data['can_proofread'] == true;
       _templates = (data['reply_templates'] as List? ?? const [])
@@ -1313,6 +1325,8 @@ class _LeadThreadState extends State<LeadThread> {
             top: false,
             child: _canReply
                 ? _composer(theme)
+                : _windowEndsAt != null || _waTemplates.isNotEmpty
+                ? _windowClosed(theme)
                 : Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
               child: Text(
@@ -1335,6 +1349,90 @@ class _LeadThreadState extends State<LeadThread> {
 
   bool get _narrow => MediaQuery.sizeOf(context).width < 600;
 
+  /// "3h", "45m" or "5d" until [at], as the thread words times.
+  static String _until(DateTime at) {
+    final left = at.difference(DateTime.now());
+    if (left.inMinutes < 60) return '${left.inMinutes < 1 ? 1 : left.inMinutes}m';
+    if (left.inHours < 24) return '${left.inHours}h';
+    return '${left.inDays}d';
+  }
+
+  /// "Reply window closes in 3h" above the box; amber in its last two hours.
+  Widget? _windowLine(ThemeData theme) {
+    final ends = _windowEndsAt;
+    if (ends == null || !ends.isAfter(DateTime.now())) return null;
+    final soon = ends.difference(DateTime.now()) < const Duration(hours: 2);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        'Reply window closes in ${_until(ends)}',
+        key: const ValueKey('reply-window'),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: soon
+              ? StateColour.of(context).caution
+              : theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  /// The window has closed: why, in the channel's words, a box that says so,
+  /// and on WhatsApp the one thing that can still go - an approved template.
+  Widget _windowClosed(ThemeData theme) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _cannotReplyBecause ??
+                    'This enquiry cannot be replied to from here.',
+                key: const ValueKey('reply-window-closed'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            if (_waTemplates.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              FilledButton(
+                key: const ValueKey('send-template'),
+                onPressed: _sendTemplate,
+                child: const Text('Send a template'),
+              ),
+            ],
+          ],
+        ),
+        if (_windowEndsAt != null) ...[
+          const SizedBox(height: 8),
+          const TextField(
+            key: ValueKey('reply-box-closed'),
+            enabled: false,
+            decoration: InputDecoration(
+              hintText: 'Reply window closed',
+              isDense: true,
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+
+  Future<void> _sendTemplate() async {
+    final sent = await showSidePanel<bool>(
+      context,
+      builder: (_) => _WhatsAppTemplatePanel(
+        api: widget.api,
+        leadId: '${widget.lead['id']}',
+        templates: _waTemplates,
+      ),
+    );
+    if (sent == true && mounted) await _load(quiet: true);
+  }
+
   Widget _composer(ThemeData theme) => Padding(
     padding: _narrow
         ? const EdgeInsets.fromLTRB(4, 6, 8, 6)
@@ -1343,6 +1441,7 @@ class _LeadThreadState extends State<LeadThread> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        ?_windowLine(theme),
         if (_sendError != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
@@ -3545,4 +3644,153 @@ class _DashedOutline extends CustomPainter {
   @override
   bool shouldRepaint(_DashedOutline old) =>
       old.color != color || old.radius != radius;
+}
+
+/// An approved WhatsApp template for a lead whose 24-hour window has closed:
+/// pick one, fill its values, see what the customer will read, send.
+class _WhatsAppTemplatePanel extends StatefulWidget {
+  const _WhatsAppTemplatePanel({
+    required this.api,
+    required this.leadId,
+    required this.templates,
+  });
+
+  final ApiClient api;
+  final String leadId;
+  final List<Map<String, dynamic>> templates;
+
+  @override
+  State<_WhatsAppTemplatePanel> createState() => _WhatsAppTemplatePanelState();
+}
+
+class _WhatsAppTemplatePanelState extends State<_WhatsAppTemplatePanel> {
+  Map<String, dynamic>? _template;
+  final List<TextEditingController> _values = [];
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    for (final c in _values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _pick(String? name) {
+    final template = widget.templates
+        .where((t) => t['name'] == name)
+        .firstOrNull;
+    for (final c in _values) {
+      c.dispose();
+    }
+    _values
+      ..clear()
+      ..addAll([
+        for (var i = 0; i < ((template?['parameters'] as num?)?.toInt() ?? 0); i++)
+          TextEditingController()..addListener(() => setState(() {})),
+      ]);
+    setState(() {
+      _template = template;
+      _error = null;
+    });
+  }
+
+  String get _preview => '${_template?['preview'] ?? ''}'.replaceAllMapped(
+    RegExp(r'\{\{(\d+)\}\}'),
+    (m) {
+      final i = int.parse(m[1]!) - 1;
+      return i < _values.length && _values[i].text.trim().isNotEmpty
+          ? _values[i].text
+          : m[0]!;
+    },
+  );
+
+  bool get _ready =>
+      _template != null &&
+      !_busy &&
+      _values.every((c) => c.text.trim().isNotEmpty);
+
+  Future<void> _send() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final response = await widget.api.post(
+      '/leads/${widget.leadId}/whatsapp-template',
+      {
+        'template': _template!['name'],
+        'variables': [for (final c in _values) c.text.trim()],
+      },
+    );
+    if (!mounted) return;
+    if (response.ok) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _error = response.message;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SidePanel(
+      title: 'Send a WhatsApp template',
+      actions: [
+        FilledButton(
+          key: const ValueKey('template-send'),
+          onPressed: _ready ? _send : null,
+          child: Text(_busy ? 'Sending…' : 'Send'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SearchPickerField<String>(
+            key: const ValueKey('template-pick'),
+            label: 'Template',
+            value: _template?['name'] as String?,
+            options: [
+              for (final t in widget.templates)
+                SearchOption(value: '${t['name']}', label: '${t['name']}'),
+            ],
+            onChanged: _busy ? null : _pick,
+          ),
+          if (_template != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              key: const ValueKey('template-preview'),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(_preview),
+            ),
+            for (var i = 0; i < _values.length; i++) ...[
+              const SizedBox(height: 12),
+              TextField(
+                key: ValueKey('template-value-${i + 1}'),
+                controller: _values[i],
+                enabled: !_busy,
+                decoration: InputDecoration(labelText: '{{${i + 1}}}'),
+              ),
+            ],
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              key: const ValueKey('template-error'),
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

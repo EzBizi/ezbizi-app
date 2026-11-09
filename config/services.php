@@ -191,6 +191,8 @@ return [
         // verify token. Separate from WhatsApp's on purpose: rotating one
         // subscription must not silently break the other.
         'messages_verify_token' => env('META_MESSAGES_VERIFY_TOKEN'),
+        // On once App Review approves Human Agent: people may answer Messenger/Instagram for 7 days.
+        'human_agent' => (bool) env('META_HUMAN_AGENT', false),
 
         // The ONE WhatsApp number the staff bot answers on (a phone_number_id).
         // Unset means the bot answers nothing - the safe way to fail, since the
