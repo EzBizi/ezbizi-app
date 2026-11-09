@@ -525,10 +525,13 @@ class SocialPostsApiTest extends TestCase
         $this->assertCount(1, $failed);
         $this->assertEqualsCanonicalizing(['sent', 'failed'], array_column($failed[0]['targets'], 'status'));
 
-        $this->signedInAs($admin)
+        // Two rows, in either order: the scheduled one and the one waiting for approval.
+        $scheduled = $this->signedInAs($admin)
             ->getJson(self::ENDPOINT.'?status=scheduled')
             ->assertJsonCount(2, 'data')
-            ->assertJsonPath('data.0.targets.0.status', 'scheduled');
+            ->json('data');
+        $this->assertEqualsCanonicalizing(['scheduled', 'awaiting_approval'],
+            array_map(fn ($p) => $p['targets'][0]['status'], $scheduled));
 
         // An unknown status is ignored rather than emptying the list.
         $this->signedInAs($admin)
