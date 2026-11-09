@@ -23,6 +23,9 @@ class VersionHistory {
       'Customer Experience: review sources show Thumbtack as connected for leads (Thumbtack does not share reviews)',
       'Communication: removed accounts no longer show in Team, and everyone gets a phone extension automatically',
       'Texts refused for a region say plainly that nothing was sent',
+      'Scheduling: Overbooking and Underbooking are now sub-tabs of Re-Scheduling, and both can offer customers a move',
+      'Scheduling > Locations: duplicate branches are merged',
+      'Monitoring > Lighting: PCs without RGB lights no longer count as needing attention; a stuck lighting engine restarts itself',
     ]),
     VersionRelease(version: '0.0.0549', date: '9 Nov 2026', items: [
       'Project Management: a Tags column, editable in Settings like the others',
