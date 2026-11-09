@@ -69,6 +69,8 @@ class LightingService {
 
   final ApiClient api;
   Process? _proc;
+  File? _exe;
+  int _fails = 0;
   OpenRgbClient? _rgb;
   List<OpenRgbController> _devices = const [];
   int? _applied;
@@ -99,14 +101,11 @@ class LightingService {
       _status('engine_missing');
       return;
     }
+    _exe = exe;
     try {
       _rgb = await OpenRgbClient.connect(); // one already running
     } catch (_) {
-      _proc = await Process.start(exe.path, [
-        '--server',
-        '--server-port',
-        '6742',
-      ], workingDirectory: exe.parent.path);
+      await _startEngine();
     }
     await _rescan();
     _poll = Timer.periodic(
@@ -114,6 +113,52 @@ class LightingService {
       (_) => unawaited(_tick()),
     );
     unawaited(_tick());
+  }
+
+  Future<void> _startEngine() async {
+    final exe = _exe!;
+    _proc = await Process.start(exe.path, [
+      '--server',
+      '--server-port',
+      '6742',
+    ], workingDirectory: exe.parent.path);
+  }
+
+  /// A stuck engine (connects, never answers) is ours to restart: stop every
+  /// OpenRGB running from OUR folder, by path, never by name (somebody's own
+  /// OpenRGB is left alone), and start a fresh one.
+  Future<void> _restartEngine() async {
+    unawaited(_rgb?.close());
+    _rgb = null;
+    _proc?.kill();
+    final path = _exe!.path.replaceAll("'", "''");
+    await Process.run('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      "Get-Process OpenRGB -ErrorAction SilentlyContinue | "
+          "Where-Object { \$_.Path -eq '$path' } | Stop-Process -Force",
+    ]);
+    await _startEngine();
+  }
+
+  /// The last lines of OpenRGB's own log, so a PC that will not answer says
+  /// why (the agent cannot see detection from the socket).
+  static String? openRgbLogTail() {
+    try {
+      final dir = Directory(
+        '${Platform.environment['APPDATA']}\\OpenRGB\\logs',
+      );
+      final logs = dir.listSync().whereType<File>().toList()
+        ..sort(
+          (a, b) => a.statSync().modified.compareTo(b.statSync().modified),
+        );
+      if (logs.isEmpty) return null;
+      final lines = logs.last.readAsLinesSync();
+      return lines.skip(lines.length > 15 ? lines.length - 15 : 0).join('\n');
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _connect() async {
@@ -142,10 +187,16 @@ class LightingService {
             : (_devices.isEmpty ? 'no_devices' : 'ok'),
       );
       _applied = null; // new devices get the current lighting too
-      MonitoringHeartbeat.extraSpecs.remove('rgb_error');
+      MonitoringHeartbeat.extraSpecs
+        ..remove('rgb_error')
+        ..remove('rgb_log');
+      _fails = 0;
     } catch (e) {
       _status('engine_not_responding');
       MonitoringHeartbeat.extraSpecs['rgb_error'] = '$e';
+      MonitoringHeartbeat.extraSpecs['rgb_log'] = openRgbLogTail();
+      // Every third failure in a row, start the engine afresh.
+      if (++_fails % 3 == 0 && _exe != null) await _restartEngine();
     }
   }
 
