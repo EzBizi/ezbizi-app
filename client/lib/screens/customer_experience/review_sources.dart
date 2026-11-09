@@ -93,6 +93,8 @@ class _ReviewSourcesState extends State<ReviewSources> {
 
   Widget _row(ThemeData theme, Map<String, dynamic> r) {
     final connected = r['connected'] == true;
+    // Thumbtack is connected for leads but shares no reviews.
+    final noReviews = r['reviews_available'] == false;
     final average = (r['average'] as num?)?.toDouble();
     final synced = DateTime.tryParse('${r['last_sync'] ?? ''}');
     final open = r['source'] == 'ekomi' && connected ? widget.onEkomi : null;
@@ -113,7 +115,9 @@ class _ReviewSourcesState extends State<ReviewSources> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: StatusPill(
-                connected ? 'Connected' : 'Not connected',
+                connected
+                    ? (noReviews ? 'Connected for leads' : 'Connected')
+                    : 'Not connected',
                 tone: connected ? Tone.ok : Tone.neutral,
               ),
             ),
@@ -121,7 +125,11 @@ class _ReviewSourcesState extends State<ReviewSources> {
           Expanded(
             flex: 2,
             child: Text(
-              connected ? '${r['count'] ?? 0} reviews' : '—',
+              noReviews
+                  ? 'Reviews not shared'
+                  : connected
+                  ? '${r['count'] ?? 0} reviews'
+                  : '—',
               style: theme.textTheme.bodySmall,
             ),
           ),
