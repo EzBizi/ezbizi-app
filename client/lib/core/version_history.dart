@@ -22,6 +22,7 @@ class VersionHistory {
       'Scheduling: the office shown is the branch’s own',
       'Email: the signature preview draws the full signature',
       'Review links: Reviewed counts only sure matches; possible ones wait for confirmation',
+      'Newsletter: drag blocks to reorder them, and drag new blocks in from Add a block',
     ]),
     VersionRelease(version: '0.0.0551', date: '9 Nov 2026', items: [
       'Email: anyone can be given an inbox by name and then sees it, whatever their role or branch; the picker lists everyone',
