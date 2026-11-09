@@ -141,13 +141,13 @@ class LearnController extends Controller
     {
         $user = $request->user();
         $this->authorizeLearner($user);
-        $search = mb_strtolower(trim((string) $request->validate(['search' => ['nullable', 'string', 'max:100']])['search'] ?? ''));
+        $search = mb_strtolower(trim((string) ($request->validate(['search' => ['nullable', 'string', 'max:100']])['search'] ?? '')));
 
         $out = [];
         foreach ($this->readableGuides($user, ViewScope::forUser($user)) as $guide) {
             foreach (\App\Support\Training\GuideScreens::topics($guide) as $t) {
                 $text = \App\Support\Training\GuideScreens::plainText($t['topic']);
-                foreach ($t['topic']['blocks'] as $block) {
+                foreach ($t['topic']['blocks'] ?? [] as $block) {
                     $url = (string) ($block['url'] ?? '');
                     if (($block['type'] ?? null) !== 'video' || $url === '') {
                         continue;
