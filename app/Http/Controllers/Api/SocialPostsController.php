@@ -865,11 +865,12 @@ class SocialPostsController extends Controller
         return match ($status) {
             'failed' => $query->whereHas('targets', fn ($q) => $targets($q)
                 ->where('status', SocialPostTarget::STATUS_FAILED)),
+            // Waiting for approval has not gone out yet: it reads as Scheduled, never Sent.
             'scheduled' => $query->whereDoesntHave('targets', fn ($q) => $targets($q)
-                ->where('status', '!=', SocialPostTarget::STATUS_SCHEDULED)),
+                ->whereNotIn('status', [SocialPostTarget::STATUS_SCHEDULED, SocialPostTarget::STATUS_AWAITING_APPROVAL])),
             'sent' => $query
                 ->whereDoesntHave('targets', fn ($q) => $targets($q)
-                    ->whereIn('status', [SocialPostTarget::STATUS_FAILED, SocialPostTarget::STATUS_QUEUED]))
+                    ->whereIn('status', [SocialPostTarget::STATUS_FAILED, SocialPostTarget::STATUS_QUEUED, SocialPostTarget::STATUS_AWAITING_APPROVAL]))
                 ->whereHas('targets', fn ($q) => $targets($q)
                     ->where('status', '!=', SocialPostTarget::STATUS_SCHEDULED)),
         };

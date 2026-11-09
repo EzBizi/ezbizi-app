@@ -546,8 +546,10 @@ class NewslettersController extends Controller
 
         return $this->renderer->render((array) ($row->blocks ?? []), [
             'company' => (string) ($row->organization?->name ?? 'EzBizi'),
-            'address' => '',
-            'unsubscribe_url' => url('/api/v1/newsletter/unsubscribe/preview'),
+            // As SendNewsletter fills it, so the preview shows the real footer.
+            'address' => (string) ($row->organization?->address ?? ''),
+            // APP_URL, not the request's host: a preview fetched via localhost said localhost.
+            'unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview',
         ]);
     }
 

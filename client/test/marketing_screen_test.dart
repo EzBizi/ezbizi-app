@@ -836,6 +836,11 @@ void main() {
               'id': 'c1',
               'body': 'Free inspection week',
             },
+            {
+              ..._landed('awaiting_approval'),
+              'id': 'w1',
+              'body': 'Weekly Google post',
+            },
           ],
         ),
       );
@@ -857,6 +862,13 @@ void main() {
       expect(find.byKey(const ValueKey('social-retry-f1')), findsOneWidget);
       expect(find.byKey(const ValueKey('social-retry-s1')), findsNothing);
       expect(find.widgetWithText(StatusPill, 'Scheduled'), findsOneWidget);
+
+      // A post waiting for approval has not gone out: never "Sent".
+      expect(
+        find.widgetWithText(StatusPill, 'Waiting for approval'),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(StatusPill, 'Sent'), findsOneWidget);
 
       // A fact beside the filters, and the composer one tab away.
       expect(find.text('it can post'), findsOneWidget);

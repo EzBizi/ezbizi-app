@@ -154,6 +154,23 @@ class NewsletterApiTest extends TestCase
                 fn (string $m) => str_contains($m, 'Connect Mailchimp'));
     }
 
+    public function test_the_preview_footer_carries_the_address_and_the_app_url(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $t['org']->forceFill(['address' => '800 SE 4th Ave, Hallandale Beach FL'])->save();
+        config(['app.url' => 'https://app.example.test']);
+
+        $id = $this->signedInAs($t['admin'])
+            ->postJson(self::ENDPOINT, ['subject' => 'Footer'])
+            ->assertCreated()->json('data.id');
+
+        $html = (string) $this->signedInAs($t['admin'])
+            ->getJson(self::ENDPOINT."/{$id}/preview")->assertOk()->json('data.html');
+
+        $this->assertStringContainsString('800 SE 4th Ave, Hallandale Beach FL', $html);
+        $this->assertStringContainsString('https://app.example.test/api/v1/newsletter/unsubscribe/preview', $html);
+    }
+
     public function test_a_newsletter_with_no_audience_is_refused(): void
     {
         $t = $this->provisionTenant('A1-Group');

@@ -1417,6 +1417,10 @@ class _PostsDashboard extends StatelessWidget {
 
   return switch (post.tone) {
     Tone.neutral => ('Posting $sent of $total', Tone.neutral),
+    Tone.info when post.targets.any((t) => t.status == 'awaiting_approval') => (
+      'Waiting for approval',
+      Tone.info,
+    ),
     Tone.info => ('Scheduled', Tone.info),
     _ => ('Sent', Tone.ok),
   };
@@ -3911,7 +3915,11 @@ class _SentPost {
   Tone get tone {
     if (targets.any((t) => t.status == 'failed')) return Tone.bad;
     if (targets.any((t) => t.status == 'queued')) return Tone.neutral;
-    if (targets.isNotEmpty && targets.every((t) => t.status == 'scheduled')) {
+    // Waiting for approval has not gone out: it counts with Scheduled, not Sent.
+    if (targets.isNotEmpty &&
+        targets.every(
+          (t) => t.status == 'scheduled' || t.status == 'awaiting_approval',
+        )) {
       return Tone.info;
     }
 
@@ -4709,7 +4717,7 @@ class _TargetLine extends StatelessWidget {
       'queued' => ('Posting…', Tone.neutral, Icons.hourglass_top),
       'scheduled' => ('Scheduled', Tone.info, Icons.schedule),
       'awaiting_approval' => (
-        'Waiting for approval in Reviews',
+        'Waiting for your approval in Customer Experience › Posts to approve',
         Tone.info,
         Icons.hourglass_empty,
       ),
