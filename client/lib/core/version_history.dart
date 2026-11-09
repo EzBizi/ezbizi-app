@@ -43,6 +43,11 @@ class VersionHistory {
       'Human Resources: onboarding can require a Social Security card photo, stored encrypted and visible only to HR',
       'Task Board: filters, sort, a person filter and saved views; lists gain a shared toolbar, a fixed header and resizable columns',
       'Dashboard: a Marketing Ads box',
+      'Task Board: retired labels, an activity log on each task, and an Only assignees edit switch',
+      'Lists: coloured collapsible groups and a bulk-action bar',
+      'Notifications: All, Assigned to me and Mentioned, unread only, grouped by day; a notification opens its job, lead or customer',
+      'Ctrl+K quick search across screens, customers, jobs and leads',
+      'Notes: @mention a colleague on a job, lead or task, and see unread note counts on each row',
     ]),
     VersionRelease(version: '0.0.0549', date: '9 Nov 2026', items: [
       'Project Management: a Tags column, editable in Settings like the others',
