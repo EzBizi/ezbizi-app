@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import 'list_filters.dart';
+import 'side_panel.dart';
 
 /// Count tiles that filter a list, then the list as a table: the layout
 /// Inventory uses, chosen for HR's Invitations, Onboarding and Contracts
@@ -229,9 +233,32 @@ class ListTable extends StatelessWidget {
     this.widths = const {},
     this.onResize,
     this.stickyFirstColumn = false,
+    this.groupBy,
+    this.rowTone,
+    this.groupMemory,
+    this.selectable = false,
+    this.bulkActions = const [],
   });
 
   final List<ListColumn> columns;
+
+  /// Given, rows sit under a header per group, in the order each group first
+  /// appears, and a header click collapses its group (monday port batch 2).
+  /// Ignored once the table scrolls sideways.
+  final ListGroup Function(int index)? groupBy;
+
+  /// Each row's label colour, for the split bar a collapsed group still shows.
+  final Tone? Function(int index)? rowTone;
+
+  /// Names the list so its collapsed groups survive leaving the screen, for
+  /// this session only. Null: forgotten with the widget.
+  final String? groupMemory;
+  static final Map<String, Set<String>> _collapsedByList = {};
+
+  /// Row checkboxes, a select-all in the header and, once anything is ticked,
+  /// a bar under the rows with [bulkActions].
+  final bool selectable;
+  final List<BulkAction> bulkActions;
 
   /// One widget per column, in order.
   final List<List<Widget>> rows;
@@ -263,7 +290,9 @@ class ListTable extends StatelessWidget {
   static const double stackBelow = 720;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => _ListTableBody(table: this);
+
+  Widget _render(BuildContext context, _ListTableBodyState s) {
     final theme = Theme.of(context);
 
     return LayoutBuilder(
@@ -302,9 +331,20 @@ class ListTable extends StatelessWidget {
 
         Widget rowOf(int r, int from, int to) {
           final cells = rows[r];
-          final body = wide
+          final tick = selectable && from == 0
+              ? SizedBox(
+                  width: 40,
+                  child: Checkbox(
+                    key: Key('list-select-$r'),
+                    value: s.selected.contains(r),
+                    onChanged: (_) => s.toggle(r),
+                  ),
+                )
+              : null;
+          Widget body = wide
               ? Row(
                   children: [
+                    ?tick,
                     for (var i = from; i < to && i < cells.length; i++)
                       cell(i, cells[i]),
                   ],
@@ -346,6 +386,15 @@ class ListTable extends StatelessWidget {
                     ),
                   ],
                 );
+          if (!wide && tick != null) {
+            body = Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                tick,
+                Expanded(child: body),
+              ],
+            );
+          }
 
           return Material(
             key: rowKey?.call(r),
@@ -373,8 +422,22 @@ class ListTable extends StatelessWidget {
 
         Widget row(int r) => rowOf(r, 0, columns.length);
 
-        Widget headerRow(int from, int to) => Row(
+        Row headerRow(int from, int to) => Row(
           children: [
+            if (selectable && from == 0)
+              SizedBox(
+                width: 40,
+                child: Checkbox(
+                  key: const Key('list-select-all'),
+                  tristate: true,
+                  value: s.selected.isEmpty
+                      ? false
+                      : s.selected.length == rows.length
+                      ? true
+                      : null,
+                  onChanged: (_) => s.toggleAll(),
+                ),
+              ),
             for (var i = from; i < to; i++)
               cell(
                 i,
@@ -443,20 +506,50 @@ class ListTable extends StatelessWidget {
         Widget content;
         final lazy = height != null;
         if (!scrolls) {
+          // Rows, or group headers with their rows under them: an int is a
+          // row, a ListGroup its header.
+          final items = <Object>[];
+          if (groupBy == null) {
+            items.addAll(List.generate(rows.length, (r) => r));
+          } else {
+            final groups = <String, (ListGroup, List<int>)>{};
+            for (var r = 0; r < rows.length; r++) {
+              final g = groupBy!(r);
+              groups.putIfAbsent(g.key, () => (g, []));
+              groups[g.key]!.$2.add(r);
+            }
+            for (final (g, members) in groups.values) {
+              items.add((group: g, rows: members));
+              if (!s.collapsed.contains(g.key)) items.addAll(members);
+            }
+          }
+          Widget item(Object it) =>
+              it is int ? row(it) : _groupHeader(context, s, it as _GroupItem);
+
           content = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
             children: [
-              if (wide) headerBox(headerRow(0, columns.length)),
+              if (wide)
+                headerBox(headerRow(0, columns.length))
+              else if (selectable)
+                headerBox(
+                  Row(
+                    children: [
+                      headerRow(0, 0).children.first,
+                      Text('Select all', style: theme.textTheme.bodySmall),
+                    ],
+                  ),
+                ),
               if (lazy)
                 Expanded(
                   child: ListView.builder(
-                    itemCount: rows.length,
-                    itemBuilder: (context, r) => row(r),
+                    itemCount: items.length,
+                    itemBuilder: (context, i) => item(items[i]),
                   ),
                 )
               else
-                for (var r = 0; r < rows.length; r++) row(r),
+                for (final it in items) item(it),
             ],
           );
         } else {
@@ -506,6 +599,7 @@ class ListTable extends StatelessWidget {
               mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
               children: [
                 if (lazy) Expanded(child: content) else content,
+                if (s.selected.isNotEmpty) _bulkBar(context, s),
                 ?footer,
               ],
             ),
@@ -516,6 +610,263 @@ class ListTable extends StatelessWidget {
       },
     );
   }
+
+  Widget _groupHeader(
+    BuildContext context,
+    _ListTableBodyState s,
+    _GroupItem it,
+  ) {
+    final theme = Theme.of(context);
+    final g = it.group;
+    final open = !s.collapsed.contains(g.key);
+    final ink = ToneColours.of(context, g.tone ?? Tone.neutral).ink;
+
+    // How the group's rows split by label: one segment per tone, in order of
+    // first appearance, drawn only while collapsed.
+    final split = <Tone, int>{};
+    if (rowTone != null) {
+      for (final r in it.rows) {
+        final t = rowTone!(r);
+        if (t != null) split[t] = (split[t] ?? 0) + 1;
+      }
+    }
+
+    return Material(
+      key: Key('list-group-${g.key}'),
+      color: theme.colorScheme.surfaceContainerLow,
+      child: InkWell(
+        onTap: () => s.toggleGroup(g.key),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: ink, width: 4),
+              bottom: BorderSide(color: EzBiziTheme.edge(context)),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 8, 14, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    open ? Icons.expand_more : Icons.chevron_right,
+                    size: 20,
+                    color: ink,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      g.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: ink,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${it.rows.length}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+              if (!open && split.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: Row(
+                    key: Key('list-group-split-${g.key}'),
+                    children: [
+                      for (final e in split.entries)
+                        Expanded(
+                          flex: e.value,
+                          child: Container(
+                            height: 4,
+                            color: ToneColours.of(context, e.key).ink,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _bulkBar(BuildContext context, _ListTableBodyState s) {
+    final theme = Theme.of(context);
+    final picked = s.selected.toList()..sort();
+    final bad = theme.colorScheme.error;
+
+    Future<void> run(BulkAction a) async {
+      if (a.destructive) {
+        final sure = await showSidePanel<bool>(
+          context,
+          builder: (panel) => SidePanel(
+            title: '${a.label} ${picked.length} selected?',
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(panel).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                key: const Key('list-bulk-confirm'),
+                style: FilledButton.styleFrom(backgroundColor: bad),
+                onPressed: () => Navigator.of(panel).pop(true),
+                child: Text(a.label),
+              ),
+            ],
+            child: Text(
+              'This applies to all ${picked.length} selected rows.',
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        );
+        if (sure != true) return;
+      }
+      await a.onRun(picked);
+      s.clear();
+    }
+
+    return Container(
+      key: const Key('list-bulk-bar'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer,
+        border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            '${picked.length} selected',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.onPrimaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          for (final a in bulkActions)
+            TextButton.icon(
+              key: Key('list-bulk-${a.label}'),
+              style: a.destructive
+                  ? TextButton.styleFrom(foregroundColor: bad)
+                  : null,
+              onPressed: () => run(a),
+              icon: Icon(a.icon, size: 18),
+              label: Text(a.label),
+            ),
+          TextButton(
+            key: const Key('list-bulk-clear'),
+            onPressed: s.clear,
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A group under [ListTable.groupBy]: its key, its heading and its colour.
+typedef ListGroup = ({String key, String label, Tone? tone});
+typedef _GroupItem = ({ListGroup group, List<int> rows});
+
+/// ListToolbar's Group by choice as a [ListTable.groupBy]: groups [data] by
+/// [field]'s value, an option's label where it has one, "(none)" when empty.
+/// Null [field]: no groups. [tone] colours a group from its value.
+ListGroup Function(int)? groupByField(
+  FilterField? field,
+  List<Map<String, dynamic>> data, {
+  Tone? Function(String value)? tone,
+}) {
+  if (field == null) return null;
+  final labels = {for (final (id, label) in field.options) id: label};
+  return (r) {
+    final v = field.read(data[r]);
+    final key = v == null || '$v'.isEmpty ? '' : '$v';
+    return (
+      key: key,
+      label: key.isEmpty ? '(none)' : labels[key] ?? key,
+      tone: tone?.call(key),
+    );
+  };
+}
+
+/// An action on the ticked rows. [onRun] gets their indexes, in order; a
+/// [destructive] one is red and asks first, in a side panel.
+class BulkAction {
+  const BulkAction(
+    this.label,
+    this.icon,
+    this.onRun, {
+    this.destructive = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final FutureOr<void> Function(List<int> rows) onRun;
+  final bool destructive;
+}
+
+class _ListTableBody extends StatefulWidget {
+  const _ListTableBody({required this.table});
+
+  final ListTable table;
+
+  @override
+  State<_ListTableBody> createState() => _ListTableBodyState();
+}
+
+class _ListTableBodyState extends State<_ListTableBody> {
+  final selected = <int>{};
+  late Set<String> collapsed = _memory();
+
+  Set<String> _memory() {
+    final id = widget.table.groupMemory;
+    return id == null
+        ? <String>{}
+        : ListTable._collapsedByList.putIfAbsent(id, () => <String>{});
+  }
+
+  @override
+  void didUpdateWidget(_ListTableBody old) {
+    super.didUpdateWidget(old);
+    // Indexes name rows; a different list makes old ticks point elsewhere.
+    if (old.table.rows.length != widget.table.rows.length) selected.clear();
+    if (old.table.groupMemory != widget.table.groupMemory) {
+      collapsed = _memory();
+    }
+  }
+
+  void toggle(int r) => setState(
+    () => selected.contains(r) ? selected.remove(r) : selected.add(r),
+  );
+
+  void toggleAll() => setState(() {
+    if (selected.length == widget.table.rows.length) {
+      selected.clear();
+    } else {
+      selected.addAll(List.generate(widget.table.rows.length, (r) => r));
+    }
+  });
+
+  void toggleGroup(String key) => setState(
+    () => collapsed.contains(key) ? collapsed.remove(key) : collapsed.add(key),
+  );
+
+  void clear() => setState(selected.clear);
+
+  @override
+  Widget build(BuildContext context) => widget.table._render(context, this);
 }
 
 /// The few pixels at a heading's right edge that drag its column wider.
