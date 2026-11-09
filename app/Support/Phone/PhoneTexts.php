@@ -25,6 +25,14 @@ final class PhoneTexts
         private readonly PhoneLineHealth $health,
     ) {}
 
+    /** A Twilio refusal we can say plainly, with its fix; null to use Twilio's own words. */
+    public static function refusal(Throwable $e): ?string
+    {
+        return str_contains($e->getMessage(), 'not been enabled for the region')
+            ? "Texts to that number's country are switched off on this phone account. Turn the country on under SMS geo permissions in Twilio."
+            : null;
+    }
+
     /**
      * @throws TextRefused when the line may not send, or Twilio refused
      */
@@ -45,7 +53,7 @@ final class PhoneTexts
         try {
             $sent = $this->twilio->sendMessage($connection, $from, $to, $body, $number->account_sid);
         } catch (Throwable $e) {
-            $reason = $e->getMessage() !== '' ? $e->getMessage() : 'Twilio refused to send from this phone line.';
+            $reason = self::refusal($e) ?? ($e->getMessage() !== '' ? $e->getMessage() : 'Twilio refused to send from this phone line.');
             if (PhoneLineHealth::isLineBreakingFault(null, $e)) {
                 $this->health->reportBroken($connection, $reason, $number);
             }

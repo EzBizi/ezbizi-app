@@ -2098,9 +2098,9 @@ class ActionRunner
             return [
                 'type' => $type,
                 'ok' => false,
-                'detail' => $e->getMessage() !== ''
+                'detail' => \App\Support\Phone\PhoneTexts::refusal($e) ?? ($e->getMessage() !== ''
                     ? 'Twilio refused it: '.$e->getMessage()
-                    : 'Twilio refused to send from this phone line.',
+                    : 'Twilio refused to send from this phone line.'),
             ];
         }
 
