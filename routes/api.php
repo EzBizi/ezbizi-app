@@ -1062,6 +1062,7 @@ Route::prefix('v1')
         Route::post('reviews/{review}/notes', [ReviewsController::class, 'addNote']);
         Route::get('reviews/{review}/customer-suggestions', [ReviewsController::class, 'customerSuggestions']);
         Route::put('reviews/{review}/customer', [ReviewsController::class, 'setCustomer']);
+        Route::put('reviews/{review}/link-match', [ReviewsController::class, 'settleLinkMatch']);
         Route::post('reviews/{review}/report', [ReviewsController::class, 'report']);
         Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
         Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);
