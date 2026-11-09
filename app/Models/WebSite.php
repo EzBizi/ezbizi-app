@@ -45,6 +45,8 @@ class WebSite extends Model implements StatesRetention
             'service_area_ids' => 'array',
             // Whether its pages carry the booking widget, as the plugin reports; null until it has.
             'has_booking' => 'boolean',
+            // General fields marked "Not needed for this site": never counted missing.
+            'not_needed_fields' => 'array',
         ];
     }
 

@@ -484,15 +484,17 @@ class SeoFields
      * so they never count.
      *
      * @param  array<string, string>  $effective  what the site publishes
+     * @param  list<string>  $notNeeded  keys the site marked "Not needed" (Jose, 2026-11-09)
      * @return list<string>
      */
-    public static function missing(array $effective): array
+    public static function missing(array $effective, array $notNeeded = []): array
     {
         $derived = ['address', 'website_url'];
 
         return array_values(array_filter(
             array_keys(array_filter(self::all(), fn (array $f) => $f['section'] === self::GENERAL)),
             fn (string $key) => ! in_array($key, $derived, true)
+                && ! in_array($key, $notNeeded, true)
                 && trim((string) ($effective[$key] ?? '')) === '',
         ));
     }
