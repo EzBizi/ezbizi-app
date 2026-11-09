@@ -448,6 +448,12 @@ Route::get('v1/training/media/{media}', [TrainingMediaController::class, 'show']
     ->whereUuid('media')
     ->name('training.media');
 
+// A promotion's picture (MMS): Twilio fetches it by this signed link as each text goes.
+Route::get('v1/promotions/media/{path}', [\App\Http\Controllers\Api\PromotionsController::class, 'show'])
+    ->middleware(['signed', 'throttle:600,1'])
+    ->where('path', 'promotions/[0-9a-f-]{36}/[A-Za-z0-9]{20,64}\.(jpg|jpeg|png|gif)')
+    ->name('promotions.media');
+
 Route::get('v1/whatsapp/media/{phone}/{media}', \App\Http\Controllers\Api\WhatsAppMediaController::class)
     ->middleware(['signed', 'throttle:120,1'])
     ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
@@ -985,6 +991,8 @@ Route::prefix('v1')
         Route::get('memberships/promotions', [\App\Http\Controllers\Api\PromotionsController::class, 'index']);
         Route::get('memberships/promotions/preview', [\App\Http\Controllers\Api\PromotionsController::class, 'preview']);
         Route::post('memberships/promotions', [\App\Http\Controllers\Api\PromotionsController::class, 'store']);
+        Route::post('memberships/promotions/test', [\App\Http\Controllers\Api\PromotionsController::class, 'test']);
+        Route::post('memberships/promotions/media', [\App\Http\Controllers\Api\PromotionsController::class, 'upload']);
         Route::apiResource('memberships', MembershipsController::class)->except('show');
 
         // drivers before {vehicle} so the literal path is not captured as an id

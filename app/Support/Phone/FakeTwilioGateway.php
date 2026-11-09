@@ -264,7 +264,7 @@ final class FakeTwilioGateway implements TwilioGateway
      */
     public array $incomingDetail = [];
 
-    public function fetchIncoming(PhoneConnection $connection, string $incomingSid): array
+    public function fetchIncoming(PhoneConnection $connection, string $incomingSid, ?string $accountSid = null): array
     {
         $this->record(__FUNCTION__, [$connection->id, $incomingSid]);
 
@@ -492,11 +492,12 @@ final class FakeTwilioGateway implements TwilioGateway
         return ['sid' => 'SM'.bin2hex(random_bytes(16))];
     }
 
-    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null): array
+    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null, array $mediaUrls = []): array
     {
         $this->record(__FUNCTION__, array_merge(
             [$connection->id, $from, $to, $body],
             $accountSid === null ? [] : [$accountSid],
+            $mediaUrls === [] ? [] : [['media' => $mediaUrls]],
         ));
 
         if ($this->failSendMessageWith !== null) {
