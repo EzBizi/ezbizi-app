@@ -3,9 +3,13 @@
 namespace App\Support\Social\Publishing;
 
 use App\Models\SocialConnection;
+use App\Support\Social\PinterestOAuth;
 use App\Support\Social\SocialMediaKind;
+use App\Support\Social\SocialOAuthRefused;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * A Pin, on a board belonging to the connected account.
@@ -141,19 +145,51 @@ final class PinterestPublisher implements DeletesPosts, LinksToPosts, SocialPubl
         return $this->sandbox() !== null ? self::SANDBOX_API : self::API;
     }
 
-    private function token(SocialConnection $connection): string
+    public function token(SocialConnection $connection): string
     {
         if (($sandbox = $this->sandbox()) !== null) {
             return $sandbox;
         }
 
-        $credentials = $connection->getAttribute('credentials');
-        $token = is_array($credentials) ? ($credentials['access_token'] ?? null) : null;
+        $credentials = (array) ($connection->getAttribute('credentials') ?? []);
+        $token = $credentials['access_token'] ?? null;
 
         if (! is_string($token) || $token === '') {
             throw SocialPublishFailed::network('Pinterest', 'that connection has no usable token. Reconnect it.');
         }
 
-        return $token;
+        $expires = $credentials['expires_at'] ?? null;
+        if (! is_string($expires) || Carbon::parse($expires)->isAfter(now()->addMinutes(10))) {
+            return $token;
+        }
+
+        // ponytail: no lock; Pinterest keeps the refresh token, so two renewals both work.
+        $refresh = $credentials['refresh_token'] ?? null;
+        if (! is_string($refresh) || $refresh === '') {
+            throw SocialPublishFailed::network('Pinterest', 'that connection has no usable token. Reconnect it.');
+        }
+
+        try {
+            $grant = app(PinterestOAuth::class)->refresh($refresh);
+        } catch (SocialOAuthRefused $e) {
+            if ($e->status === Response::HTTP_CONFLICT) {
+                $connection->forceFill([
+                    'status' => SocialConnection::STATUS_BROKEN,
+                    'status_reason' => $e->getMessage(),
+                ])->save();
+            }
+
+            throw new SocialPublishFailed($e->getMessage());
+        }
+
+        $credentials['access_token'] = $grant->accessToken;
+        $credentials['refresh_token'] = $grant->refreshToken;
+        $credentials['expires_at'] = now()->addSeconds($grant->expiresIn ?? 2592000)->toIso8601String();
+        $connection->setAttribute('credentials', $credentials);
+        if ($connection->exists) {
+            $connection->save();
+        }
+
+        return $grant->accessToken;
     }
 }

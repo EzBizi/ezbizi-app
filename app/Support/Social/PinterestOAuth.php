@@ -131,6 +131,43 @@ final class PinterestOAuth implements SocialOAuth
         );
     }
 
+    /** Access tokens last 30 days; the refresh token renews them without the person. */
+    public function refresh(string $refreshToken): SocialOAuthGrant
+    {
+        try {
+            $response = Http::asForm()
+                ->withBasicAuth(
+                    (string) config('services.pinterest.client_id'),
+                    (string) config('services.pinterest.client_secret'),
+                )
+                ->timeout(self::TIMEOUT)
+                ->post(self::TOKEN_ENDPOINT, [
+                    'grant_type'    => 'refresh_token',
+                    'refresh_token' => $refreshToken,
+                ]);
+        } catch (ConnectionException) {
+            throw SocialOAuthRefused::exchangeFailed('Pinterest');
+        }
+
+        if (in_array($response->status(), [400, 401], strict: true)) {
+            throw SocialOAuthRefused::noLongerPermitted('Pinterest no longer accepts this connection. It needs connecting again.');
+        }
+
+        $access = $response->json('access_token');
+
+        if ($response->failed() || ! is_string($access) || $access === '') {
+            throw SocialOAuthRefused::exchangeFailed('Pinterest');
+        }
+
+        $rotated = $response->json('refresh_token');
+
+        return new SocialOAuthGrant(
+            accessToken: $access,
+            refreshToken: is_string($rotated) && $rotated !== '' ? $rotated : $refreshToken,
+            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
+        );
+    }
+
     public function identify(SocialOAuthGrant $grant): array
     {
         try {

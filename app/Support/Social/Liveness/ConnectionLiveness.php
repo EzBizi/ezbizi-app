@@ -8,6 +8,7 @@ use App\Support\Social\FacebookOAuth;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\Publishing\BlueskyPublisher;
 use App\Support\Social\Publishing\LinkedInPublisher;
+use App\Support\Social\Publishing\PinterestPublisher;
 use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\Publishing\XPublisher;
 use App\Support\Social\SocialProvider;
@@ -87,7 +88,7 @@ final class ConnectionLiveness
                 fn (string $t) => Http::withToken($t)->acceptJson()->timeout(self::TIMEOUT)
                     ->get(BlueskySession::PDS.'/xrpc/com.atproto.server.getSession')),
             SocialProvider::Pinterest->value => fn (SocialConnection $c) => self::renewThenRead($c, 'Pinterest',
-                fn () => self::stored($c, 'access_token'),
+                fn () => app(PinterestPublisher::class)->token($c),
                 fn (string $t) => Http::withToken($t)->timeout(self::TIMEOUT)->get('https://api.pinterest.com/v5/user_account')),
 
             // A Google refresh that works is the proof; forConnection() marks
