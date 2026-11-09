@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/job_money.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
+import '../widgets/ad_change_confirm.dart';
 import '../widgets/ad_schedule.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/list_search.dart';
@@ -17,7 +18,7 @@ import '../widgets/side_panel.dart';
 ///
 /// Everything is read live from Meta through `meta-ads/tree`; nothing here is
 /// remembered, because a copy is stale the moment somebody pauses a campaign
-/// in Ads Manager. A switch posts at once and offers Undo - no dialog - and the
+/// in Ads Manager. A switch asks to confirm in a side panel, then posts and offers Undo, and the
 /// tree is re-read quietly after, since pausing a campaign changes what every
 /// ad set and ad beneath it reports.
 class MetaCampaignsView extends StatefulWidget {
@@ -62,8 +63,7 @@ class _MetaCampaignsViewState extends State<MetaCampaignsView> {
   String _sortBy = 'spend';
   bool _descending = true;
 
-  bool get _canManage =>
-      widget.session.me?.can('ads_performance.manage') ?? false;
+  bool get _canManage => widget.session.me?.can('ads_manager.manage') ?? false;
 
   @override
   void initState() {
@@ -228,7 +228,17 @@ class _MetaCampaignsViewState extends State<MetaCampaignsView> {
 
   // ── Changes ────────────────────────────────────────────────────────────
 
+  /// Confirmed first (Jose, 2026-11-09: confirmation before any change);
+  /// Undo, being the reverse change, asks again.
   Future<void> _toggle(Map<String, dynamic> node, bool on) async {
+    final ok = await confirmAdChange(
+      context,
+      title: on ? 'Turn on ${node['name']}?' : 'Pause ${node['name']}?',
+      change: on
+          ? 'Meta starts delivering it again.'
+          : 'Meta stops delivering it until it is turned on.',
+    );
+    if (!ok || !mounted) return;
     final before = node['status'];
     final status = on ? 'ACTIVE' : 'PAUSED';
     setState(() => node['status'] = status);

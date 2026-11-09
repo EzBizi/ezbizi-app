@@ -68,7 +68,8 @@ class AdsPerformanceController extends Controller
         $user = $request->user();
 
         abort_unless(
-            $user !== null && $user->hasPermission('ads_performance.view'),
+            // Marketing › Ads lists the same accounts.
+            $user !== null && ($user->hasPermission('ads_performance.view') || $user->hasPermission('ads_manager.view')),
             Status::HTTP_FORBIDDEN,
             'Reading advertising spend needs the Ads Performance permission.',
         );

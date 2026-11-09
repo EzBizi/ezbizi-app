@@ -3,16 +3,14 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
-import 'package:ezbizi_client/screens/ads_performance_screen.dart';
+import 'package:ezbizi_client/screens/ads_manager_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Meta campaigns on the Ads performance screen (design 180, Jose 2026-11-04).
+/// Meta campaigns in Marketing › Ads (design 180, Jose 2026-11-04, 2026-11-09).
 void main() {
-  setUp(forgetAdsMemory);
-
   late List<http.Request> requests;
 
   http.Response json(Object body, [int status = 200]) => http.Response(
@@ -31,7 +29,7 @@ void main() {
       'permissions': permissions,
       'modules': [
         {
-          'key': 'ads_performance',
+          'key': 'ads_manager',
           'label': 'Ads',
           'available': true,
           'reachable': true,
@@ -179,7 +177,7 @@ void main() {
       MaterialApp(
         theme: EzBiziTheme.light(),
         home: Scaffold(
-          body: AdsPerformanceScreen(api: api, session: session),
+          body: AdsManagerScreen(api: api, session: session),
         ),
       ),
     );
@@ -188,18 +186,32 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  const manage = ['ads_performance.view', 'ads_performance.manage'];
+  const manage = ['ads_manager.view', 'ads_manager.manage'];
 
-  testWidgets('a switch pauses at once, and Undo posts the reverse', (
+  testWidgets('a switch asks to confirm, and Undo posts the reverse', (
     tester,
   ) async {
     await open(tester, permissions: manage);
 
+    // Cancel sends nothing (Jose, 2026-11-09: confirmation before any change).
     await tester.tap(find.byKey(const ValueKey('meta-on-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(
+      requests.where((r) => r.url.path.endsWith('/meta-ads/status')),
+      isEmpty,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('meta-on-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ad-change-confirm')));
     await tester.pumpAndSettle();
     expect(find.text('Meta Leads · Springfield paused'), findsOneWidget);
 
     await tester.tap(find.text('UNDO'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ad-change-confirm')));
     await tester.pumpAndSettle();
 
     final posted = requests
@@ -243,7 +255,7 @@ void main() {
   testWidgets('reading spend alone shows no switches and no budget links', (
     tester,
   ) async {
-    await open(tester, permissions: const ['ads_performance.view']);
+    await open(tester, permissions: const ['ads_manager.view']);
 
     expect(find.byType(Switch), findsNothing);
     expect(find.byKey(const ValueKey('meta-budget-1')), findsNothing);

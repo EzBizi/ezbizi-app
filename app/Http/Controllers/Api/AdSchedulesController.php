@@ -16,8 +16,8 @@ use Symfony\Component\HttpFoundation\Response as Status;
 /**
  * Campaign on/off schedules, Meta and Google (Jose, 2026-11-05: "can we build
  * a switch so it can turn it on/off at designated times?"). Same grants as
- * the switch: ads_performance.view reads them, ads_performance.manage sets
- * them. ezbizi:ad-schedules applies them.
+ * the switch: ads_performance.view or ads_manager.view reads them, either's
+ * .manage sets them. ezbizi:ad-schedules applies them.
  */
 class AdSchedulesController extends Controller
 {
@@ -110,7 +110,9 @@ class AdSchedulesController extends Controller
 
     private function authorizeTo(Request $request, string $permission): void
     {
-        abort_unless($request->user()?->hasPermission($permission) ?? false, Status::HTTP_FORBIDDEN,
+        // Google's report (Reports) and Marketing › Ads both draw schedules.
+        $user = $request->user();
+        abort_unless(($user?->hasPermission($permission) || $user?->hasPermission(str_replace('ads_performance.', 'ads_manager.', $permission))) ?? false, Status::HTTP_FORBIDDEN,
             $permission === 'ads_performance.manage'
                 ? 'Scheduling campaigns needs the Manage Ads permission.'
                 : 'Reading advertising needs the Ads Performance permission.');

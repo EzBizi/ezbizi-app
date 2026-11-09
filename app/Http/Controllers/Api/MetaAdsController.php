@@ -15,8 +15,8 @@ use Symfony\Component\HttpFoundation\Response as Status;
 
 /**
  * Facebook and Instagram campaigns: read, pause, resume, re-budget (Jose,
- * 2026-11-04). Same grants as the Google Ads screen - ads_performance.view
- * to read what the business spends, ads_performance.manage to change it -
+ * 2026-11-04). Marketing › Ads grants (2026-11-09) - ads_manager.view
+ * to read what the business spends, ads_manager.manage to change it -
  * and the same rule that a connection is only reachable inside the view.
  * Every change Meta accepts is audited: it changes what a business spends.
  */
@@ -33,7 +33,7 @@ class MetaAdsController extends Controller
     /** GET /api/v1/meta-ads/accounts: the connected ad accounts, from our rows. */
     public function accounts(Request $request): JsonResponse
     {
-        $this->authorizeTo($request, 'ads_performance.view');
+        $this->authorizeTo($request, 'ads_manager.view');
 
         return response()->json(['data' => $this->connections($request)->map(fn (SocialConnection $c) => [
             'connection_id' => $c->getKey(),
@@ -45,7 +45,7 @@ class MetaAdsController extends Controller
     /** GET /api/v1/meta-ads/tree?connection_id&from&to: campaigns › ad sets › ads, with results. */
     public function tree(Request $request): JsonResponse
     {
-        $this->authorizeTo($request, 'ads_performance.view');
+        $this->authorizeTo($request, 'ads_manager.view');
         $input = $request->validate([
             'connection_id' => ['required', 'uuid'],
             'from' => ['nullable', 'date_format:Y-m-d'],
@@ -73,7 +73,7 @@ class MetaAdsController extends Controller
     /** POST /api/v1/meta-ads/status {connection_id, object_id, status: ACTIVE|PAUSED} */
     public function setStatus(Request $request): JsonResponse
     {
-        $this->authorizeTo($request, 'ads_performance.manage');
+        $this->authorizeTo($request, 'ads_manager.manage');
         $input = $request->validate([
             'connection_id' => ['required', 'uuid'],
             'object_id' => ['required', 'string', 'regex:/^\d+$/'],
@@ -96,7 +96,7 @@ class MetaAdsController extends Controller
     /** POST /api/v1/meta-ads/budget {connection_id, object_id, daily_budget} in the account's currency. */
     public function setBudget(Request $request): JsonResponse
     {
-        $this->authorizeTo($request, 'ads_performance.manage');
+        $this->authorizeTo($request, 'ads_manager.manage');
         $input = $request->validate([
             'connection_id' => ['required', 'uuid'],
             'object_id' => ['required', 'string', 'regex:/^\d+$/'],
@@ -120,7 +120,7 @@ class MetaAdsController extends Controller
     private function authorizeTo(Request $request, string $permission): void
     {
         abort_unless($request->user()?->hasPermission($permission) ?? false, Status::HTTP_FORBIDDEN,
-            $permission === 'ads_performance.manage'
+            $permission === 'ads_manager.manage'
                 ? 'Changing campaigns needs the Manage Ads permission.'
                 : 'Reading advertising spend needs the Ads Performance permission.');
     }
