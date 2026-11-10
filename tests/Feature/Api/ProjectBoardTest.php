@@ -50,7 +50,8 @@ class ProjectBoardTest extends TestCase
         $this->assertSame('WAITING PARTS', $row['part_status']);
         $this->assertSame(['WAITING PARTS', 'DEPOSIT'], $row['tags']);
         $this->assertSame(['WAITING PARTS' => '#FBAB33'], $row['tag_colours']);
-        $this->assertSame('Crown Repair, Damper Cap x2', $row['required']);
+        // Line by line (Shoval's review, 2026-11-10).
+        $this->assertSame("Crown Repair\nDamper Cap x2", $row['required']);
         $this->assertSame('7003', $row['workiz_id']);
         $this->assertSame('Alpha F1', $row['franchise']);
         $this->assertArrayHasKey('total', $row);
@@ -127,6 +128,62 @@ class ProjectBoardTest extends TestCase
         ]));
         $rows = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=complete')->assertOk()->json('data');
         $this->assertEqualsCanonicalizing([$ids['hit'], $ids['dated'], $ids['vip'], $ids['cased']], array_column($rows, 'id'));
+    }
+
+    public function test_the_unscheduled_columns_and_ready_to_schedule(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], function () use ($alpha) {
+            WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'tag', 'remote_id' => 'TAG-K',
+                'payload' => ['name' => 'KENNI REPAIR TEAM', 'color' => '#00C875'], 'synced_at' => now()]);
+            WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'tag', 'remote_id' => 'TAG-C',
+                'payload' => ['name' => 'CONTRACTOR: OMER', 'color' => '#579BFC'], 'synced_at' => now()]);
+            $id = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED'],
+                ['Team' => [['id' => 'USR-1', 'Name' => 'Jonathon Chance']], 'JobNotes' => '', 'Attachments' => []]);
+            WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'payment', 'remote_id' => 'PAY-1',
+                'job_id' => $id, 'amount' => 2163.36, 'starts_at' => now()->subDays(5)->setTime(11, 48), 'payload' => [], 'synced_at' => now()]);
+
+            return $id;
+        });
+        $api = $this->signedInAs($alpha['admin']);
+
+        $row = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk()
+            ->assertJsonPath('meta.repair_teams', ['CONTRACTOR: OMER', 'KENNI REPAIR TEAM'])->json('data.0');
+        $this->assertSame('Jonathon Chance', $row['technician']);
+        $this->assertSame(now()->subDays(5)->format('Y-m-d').' 11:48', $row['payment_date']);
+        $this->assertContains($row['status_days'], [4, 5]);
+        $this->assertSame(['Service Area', 'Repair Team / Contractor', 'an attachment', 'a note'], $row['ready_missing']);
+
+        // Not ready: refused, and nothing tagged.
+        $api->postJson("/api/v1/project-board/jobs/{$id}/ready")->assertStatus(422)->assertJsonPath('message', 'Still needs: Service Area, Repair Team / Contractor, an attachment, a note.');
+
+        $this->inTenant($alpha['org'], function () use ($alpha, $id) {
+            $area = \App\Models\ServiceArea::query()->create(['franchise_id' => $alpha['franchise']->id, 'name' => 'Columbus North']);
+            Job::query()->whereKey($id)->update(['service_area_id' => $area->id]);
+            \App\Models\JobNote::create(['job_id' => $id, 'body' => 'Customer wants mornings.']);
+            \Illuminate\Support\Facades\DB::table('attachments')->insert(['id' => (string) \Illuminate\Support\Str::uuid(),
+                'organization_id' => $alpha['org']->id, 'attachable_type' => 'jobs', 'attachable_id' => $id,
+                'disk' => 'local', 'path' => 'x.jpg', 'original_name' => 'x.jpg', 'mime' => 'image/jpeg', 'size_bytes' => 1, 'checksum' => str_repeat('0', 64),
+                'created_at' => now(), 'updated_at' => now()]);
+        });
+        // From the Workiz tags (Jose, 2026-11-10): picking one adds the tag; anything else is refused.
+        $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'VIP'])->assertStatus(422);
+        $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'KENNI REPAIR TEAM'])->assertOk()
+            ->assertJsonPath('data.tags', ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM']);
+
+        $row = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0');
+        $this->assertSame([], $row['ready_missing']);
+        $this->assertSame('Columbus North', $row['service_area']);
+        $this->assertSame('KENNI REPAIR TEAM', $row['repair_team']);
+        $this->assertSame('Customer wants mornings.', $row['notes']);
+
+        $api->postJson("/api/v1/project-board/jobs/{$id}/ready")->assertOk()
+            ->assertJsonPath('data.tags', ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM', 'READY TO SCHEDULE']);
+        // Out of Unscheduled, into Ready to Schedule; still Submitted.
+        $page = $api->getJson('/api/v1/project-board/jobs?tab=ready_to_schedule')->assertOk();
+        $this->assertSame([$id], array_column($page->json('data'), 'id'));
+        $this->assertSame(0, $page->json('meta.counts.unscheduled'));
+        $this->assertSame('Submitted', $page->json('data.0.status'));
     }
 
     private function job(Franchise $franchise, string $number, string $status, ?string $at = null, array $tags = [], array $payload = []): string

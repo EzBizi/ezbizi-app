@@ -51,6 +51,11 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   Map<String, dynamic> _labels = const {};
   Map<String, String> _scope = const {};
   Map<String, dynamic> _counts = const {};
+
+  /// The repair-team and contractor tags on offer (Workiz's), and whether
+  /// this person may change a job.
+  List<String> _repairTeams = const [];
+  bool _canEditJobs = false;
   String _tab = _tabs.first.$1;
   String? _franchise;
   final _search = TextEditingController();
@@ -157,6 +162,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       _franchises = _maps(meta['places']);
       _columns = _maps(meta['columns']);
       _labels = (meta['labels'] as Map?)?.cast<String, dynamic>() ?? const {};
+      _repairTeams = [
+        for (final t in (meta['repair_teams'] as List?) ?? const []) '$t',
+      ];
+      _canEditJobs = meta['can_edit'] == true;
       _scope = ((meta['settings_scope'] as Map?) ?? const {}).map(
         (k, v) => MapEntry('$k', '$v'),
       );
@@ -198,9 +207,141 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           );
   }
 
+  /// Shoval's Unscheduled columns (Jose, 2026-11-10).
+  Widget? _unscheduledCell(
+    Map<String, dynamic> row,
+    String key,
+    Object? value,
+  ) {
+    final theme = Theme.of(context);
+    switch (key) {
+      case 'status_days':
+        if (value is! int) return const Text('—');
+        // Under 3 days green, 3 to 7 yellow, 7 and up red.
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: StatusPill(
+            value == 1 ? '1 day' : '$value days',
+            tone: value < 3
+                ? Tone.ok
+                : value < 7
+                ? Tone.caution
+                : Tone.bad,
+          ),
+        );
+      case 'payment_date':
+        final at = value is String
+            ? DateTime.tryParse(value.replaceFirst(' ', 'T'))
+            : null;
+        if (at == null) return const Text('—');
+        final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+        return Text(
+          '${formats.formatDate(at)} at ${TimeOfDay.fromDateTime(at).format(context)}',
+        );
+      case 'repair_team':
+        // The job's Workiz repair-team / contractor tag (Jose, 2026-11-10).
+        final current = value as String?;
+        if (!_canEditJobs || _repairTeams.isEmpty) return Text(current ?? '—');
+        return MenuAnchor(
+          menuChildren: [
+            for (final t in _repairTeams)
+              MenuItemButton(
+                key: ValueKey('project-board-repair:${row['id']}:$t'),
+                onPressed: () => _setRepairTeam(row, t),
+                child: Text(t),
+              ),
+          ],
+          builder: (context, menu, _) => TextButton(
+            key: ValueKey('project-board-repair:${row['id']}'),
+            onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+            child: Text(current ?? 'Assign…'),
+          ),
+        );
+      case 'attachments':
+        final n = value is int ? value : 0;
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: ValueKey('project-board-files:${row['id']}'),
+            onPressed: () => _open(row),
+            icon: const Icon(Icons.attach_file, size: 18),
+            label: Text('$n'),
+          ),
+        );
+      case 'notes':
+        final text = value as String?;
+        if (text == null) return const Text('—');
+        return Tooltip(
+          message: text,
+          child: Text(
+            text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          ),
+        );
+      case 'required':
+        // Line by line.
+        return Text(value == null ? '—' : '$value');
+    }
+    return null;
+  }
+
+  /// Adds the tag in Workiz. Workiz cannot take one away through EzBizi, so
+  /// changing teams leaves the earlier tag until it is removed there.
+  Future<void> _setRepairTeam(Map<String, dynamic> row, String team) async {
+    final had = row['repair_team'] != null;
+    final r = await widget.api.patch(
+      '/project-board/jobs/${row['id']}/repair-team',
+      {'repair_team': team},
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          !r.ok
+              ? r.reason
+              : had
+              ? '$team added. Remove the earlier team tag in Workiz.'
+              : '$team added in Workiz.',
+        ),
+      ),
+    );
+    if (r.ok) _load(quiet: true);
+  }
+
+  /// "Ready to schedule": adds READY TO SCHEDULE in Workiz; only once
+  /// every column it needs is filled.
+  Widget _readyButton(Map<String, dynamic> row) {
+    final missing = [
+      for (final m in (row['ready_missing'] as List?) ?? const []) '$m',
+    ];
+    final button = FilledButton(
+      key: ValueKey('project-board-ready:${row['id']}'),
+      onPressed: missing.isEmpty && _canEditJobs ? () => _ready(row) : null,
+      child: const Text('Ready to schedule'),
+    );
+    return missing.isEmpty
+        ? button
+        : Tooltip(message: 'Still needs ${missing.join(', ')}', child: button);
+  }
+
+  Future<void> _ready(Map<String, dynamic> row) async {
+    final r = await widget.api.post(
+      '/project-board/jobs/${row['id']}/ready',
+      const {},
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(r.ok ? 'Moved to Ready to Schedule.' : r.reason)),
+    );
+    if (r.ok) _load(quiet: true);
+  }
+
   Widget _cell(Map<String, dynamic> row, Map<String, dynamic> column) {
     final key = '${column['key']}';
     final value = row[key];
+    if (_unscheduledCell(row, key, value) case final special?) return special;
     if (_moneyKeys.contains(key)) {
       return Text(
         value is int
@@ -397,10 +538,15 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                                 : 2,
                             end: _moneyKeys.contains(c['key']),
                           ),
+                        if (_tab == 'unscheduled')
+                          const ListColumn('', flex: 3, end: true),
                       ],
                       rows: [
                         for (final row in rows)
-                          [for (final c in columns) _cell(row, c)],
+                          [
+                            for (final c in columns) _cell(row, c),
+                            if (_tab == 'unscheduled') _readyButton(row),
+                          ],
                       ],
                     ),
                   if (_page < _lastPage)
@@ -466,6 +612,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
   final Map<String, List<String>> _tabTags = {};
   final Map<String, bool> _anyTag = {};
   List<String> _partTags = [];
+  final Map<String, List<String>> _tabNoTags = {};
 
   /// The company's real job statuses and tags, most used first.
   List<String> _knownStatuses = const [];
@@ -520,6 +667,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
           for (final t in (rule['tags'] as List?) ?? const []) '$t',
         ];
         _anyTag[key] = rule['tags_mode'] == 'any';
+        _tabNoTags[key] = [
+          for (final t in (rule['tags_none'] as List?) ?? const []) '$t',
+        ];
       }
       _partTags = [
         for (final t in (byKey['project_board.part_tags'] as List?) ?? const [])
@@ -881,6 +1031,17 @@ class _BoardSettingsState extends State<_BoardSettings> {
                       _knownTags,
                       _tabTags[key]!,
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Must not have any of these tags',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 4),
+                    _chips(
+                      'project-board-tab-no-tags:$key',
+                      _knownTags,
+                      _tabNoTags[key]!,
+                    ),
                   ],
                 ),
               ),
@@ -894,6 +1055,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
                     'tags': _tabTags[key]!,
                     'tags_mode': _anyTag[key] == true ? 'any' : 'all',
                   },
+                  if (_tabNoTags[key]!.isNotEmpty)
+                    'tags_none': _tabNoTags[key]!,
                   if (_scheduled[key] != null) 'scheduled': _scheduled[key]!,
                 },
             },

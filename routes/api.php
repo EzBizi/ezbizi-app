@@ -942,6 +942,8 @@ Route::prefix('v1')
         Route::get('jobs/photos', \App\Http\Controllers\Api\JobPhotosController::class);
         Route::apiResource('jobs', JobsController::class);
         Route::get('project-board/jobs', [\App\Http\Controllers\Api\ProjectBoardController::class, 'jobs']);
+        Route::patch('project-board/jobs/{job}/repair-team', [\App\Http\Controllers\Api\ProjectBoardController::class, 'repairTeam']);
+        Route::post('project-board/jobs/{job}/ready', [\App\Http\Controllers\Api\ProjectBoardController::class, 'ready']);
         Route::get('project-board/options', [\App\Http\Controllers\Api\ProjectBoardController::class, 'options']);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board

@@ -28,7 +28,12 @@ class ProjectBoardController extends Controller
         'franchise:id,name,timezone',
         'customer:id,name',
         'workizJob:id,job_id,serial_id,payload',
+        'serviceArea:id,name',
+        'performedBy:id,name',
     ];
+
+    /** Jose, 2026-11-10: the tag "Ready to schedule" adds; the status stays. */
+    public const READY_TAG = 'READY TO SCHEDULE';
 
     /** GET /api/v1/project-board/jobs?tab=&franchise_id=&q= */
     public function jobs(Request $request, SettingsResolver $settings): JsonResponse
@@ -83,15 +88,18 @@ class ProjectBoardController extends Controller
             ->paginate(perPage: (int) ($input['per_page'] ?? 50));
         $jobs = $page->getCollection();
         $money = $user->hasPermission('jobs.financials') ? JobMoney::of($jobs->pluck('id')) : null;
+        $extras = $this->extras($jobs->pluck('id')->all());
 
         return response()->json([
-            'data' => $jobs->map(fn (Job $job) => $this->row($job, $money, $partTags))->values(),
+            'data' => $jobs->map(fn (Job $job) => $this->row($job, $money, $partTags) + $this->unscheduled($job, $extras))->values(),
             'meta' => $this->pageMeta($page) + [
                 'places' => $this->places($companies, $franchises),
                 'franchises' => $franchises->map(fn (Franchise $f) => ['id' => $f->id, 'name' => $f->name, 'company' => $f->company?->name])->values(),
                 // How the table is drawn, and where its Settings sub-tab saves.
                 'columns' => $this->columns((array) $settings->get('project_board.columns', $place)),
                 'labels' => (object) $settings->get('project_board.labels', $place),
+                'repair_teams' => $this->repairTeams($jobs),
+                'can_edit' => $user->hasPermission('jobs.edit'),
                 'settings_scope' => ['scope_type' => $place instanceof \App\Models\Company ? 'company' : 'organization', 'scope_id' => $place->getKey()],
             ] +($page->currentPage() > 1 ? [] : ['counts' => collect(self::TABS)
                 ->mapWithKeys(fn (string $t) => [$t => $this->tab($inView(), $rules[$t] ?? [])->count()])->all()]),
@@ -212,6 +220,14 @@ class ProjectBoardController extends Controller
             });
         }
 
+        // Must not have (Jose, 2026-11-10: Unscheduled leaves out READY TO SCHEDULE).
+        $none = array_values(array_filter(array_map(fn ($t) => trim((string) $t), (array) ($rule['tags_none'] ?? []))));
+        foreach ($none as $tag) {
+            $like = '%"'.addcslashes(self::tagKey($tag), '%_\\').'"%';
+            $jobs->where(fn (Builder $q) => $q->whereNull('tags')
+                ->orWhereRaw("REPLACE(LOWER(CAST(tags AS CHAR)), ' ', '') NOT LIKE ?", [$like]));
+        }
+
         return match ($rule['scheduled'] ?? null) {
             true => $jobs->whereNotNull('scheduled_for'),
             false => $jobs->whereNull('scheduled_for'),
@@ -226,6 +242,141 @@ class ProjectBoardController extends Controller
     public static function tagKey(string $tag): string
     {
         return str_replace(' ', '', mb_strtolower(trim($tag)));
+    }
+
+    /**
+     * What the page's jobs need from other tables, in one query each: the
+     * first deposit payment (Workiz's payment record), file counts, and the
+     * newest EzBizi note.
+     *
+     * @param  list<string>  $ids
+     */
+    private function extras(array $ids): array
+    {
+        if ($ids === []) {
+            return ['paid' => [], 'files' => [], 'notes' => []];
+        }
+
+        return [
+            'paid' => \App\Models\WorkizRecord::query()->whereIn('job_id', $ids)->where('type', 'payment')
+                ->whereNotNull('starts_at')->groupBy('job_id')->selectRaw('job_id, MIN(starts_at) AS at')->pluck('at', 'job_id')->all(),
+            'files' => DB::table('attachments')->where('attachable_type', 'jobs')->whereIn('attachable_id', $ids)->groupBy('attachable_id')->selectRaw('attachable_id, COUNT(*) AS n')->pluck('n', 'attachable_id')->all(),
+            'notes' => \App\Models\JobNote::query()->whereIn('job_id', $ids)->latest()->get(['job_id', 'body'])
+                ->groupBy('job_id')->map(fn ($n) => ['count' => $n->count(), 'latest' => (string) $n->first()->body])->all(),
+        ];
+    }
+
+    /**
+     * Shoval's Unscheduled columns (Jose, 2026-11-10), and what "Ready to
+     * schedule" still needs: Service Area, Technician, Repair Team /
+     * Contractor, a file and a note.
+     */
+    private function unscheduled(Job $job, array $extras): array
+    {
+        $payload = $job->workizJob?->payload ?? [];
+        // Payment Date: the first payment on the job, as Workiz stamps it
+        // (account-local), e.g. Albert Johnston's deposit, 11/2/2026 11:48 AM.
+        $paidAt = $extras['paid'][$job->id] ?? null;
+        $paid = $paidAt === null ? null : \Illuminate\Support\Carbon::parse($paidAt);
+        $since = $paid ?? $job->created_at;
+        $technician = collect($payload['Team'] ?? [])->pluck('Name')->filter()->implode(', ') ?: $job->performedBy?->name;
+        $workizNote = trim((string) ($payload['JobNotes'] ?? ''));
+        $note = $extras['notes'][$job->id] ?? null;
+        $files = (int) ($extras['files'][$job->id] ?? 0) + count((array) ($payload['Attachments'] ?? []));
+        $notes = (int) ($note['count'] ?? 0) + ($workizNote !== '' ? 1 : 0);
+        $row = [
+            'service_area' => $job->serviceArea?->name,
+            'technician' => $technician ?: null,
+            'repair_team' => collect($job->tags ?? [])->filter(fn ($t) => self::isRepairTeam((string) $t))->values()->implode(', ') ?: null,
+            'payment_date' => $paid?->format('Y-m-d H:i'),
+            // Days in this state, from the deposit (else the job's creation).
+            'status_days' => $since === null ? null : (int) floor($since->diffInDays(now(), true)),
+            'attachments' => $files,
+            'notes' => $note['latest'] ?? ($workizNote !== '' ? $workizNote : null),
+            'notes_count' => $notes,
+        ];
+        $row['ready_missing'] = array_values(array_filter([
+            $row['service_area'] === null ? 'Service Area' : null,
+            $row['technician'] === null ? 'Technician' : null,
+            $row['repair_team'] === null ? 'Repair Team / Contractor' : null,
+            $files === 0 ? 'an attachment' : null,
+            $notes === 0 ? 'a note' : null,
+        ]));
+
+        return $row;
+    }
+
+    /**
+     * Repair Team / Contractor is the job's Workiz tag (Jose, 2026-11-10):
+     * REPAIR TEAM…, … REPAIR TEAM, CONTRACTOR…, GAS CONTRACTOR, PROGRESS BY
+     * SUB CONTRACTOR. By pattern, so a new name is picked up.
+     */
+    public static function isRepairTeam(string $tag): bool
+    {
+        return (bool) preg_match('/repair\s*team|contractor/i', $tag);
+    }
+
+    /** The repair-team and contractor tags on offer: every account's tag list, and those on the page's jobs. */
+    private function repairTeams(\Illuminate\Support\Collection $jobs): array
+    {
+        return \App\Models\WorkizRecord::query()->where('type', 'tag')->get(['payload'])
+            ->map(fn ($r) => trim((string) (($r->payload ?? [])['name'] ?? '')))
+            ->concat($jobs->flatMap(fn (Job $j) => (array) ($j->tags ?? [])))
+            ->filter(fn ($t) => $t !== '' && self::isRepairTeam($t))
+            ->unique(fn ($t) => mb_strtoupper($t))->sort()->values()->all();
+    }
+
+    /**
+     * PATCH /api/v1/project-board/jobs/{job}/repair-team: adds that tag, here
+     * and in Workiz. Workiz's v2 only adds tags, so an earlier pick stays
+     * until somebody removes it there; the screen says so.
+     */
+    public function repairTeam(Request $request, Job $job): JsonResponse
+    {
+        $this->editable($request, $job);
+        $input = $request->validate(['repair_team' => ['required', 'string', 'max:120']]);
+        $tag = trim($input['repair_team']);
+        abort_unless(self::isRepairTeam($tag), 422, 'That is not a repair team or contractor tag.');
+        $tags = array_values((array) ($job->tags ?? []));
+        if (! in_array(self::tagKey($tag), array_map(fn ($t) => self::tagKey((string) $t), $tags), true)) {
+            $job->tags = [...$tags, $tag];
+            $job->save();
+            \App\Support\Workiz\WorkizMirror::queue($job, 'tags', ['tags' => $job->tags]);
+            app(\App\Support\Audit\AuditLogger::class)->log('job.repair_team_tagged', $job, actor: $request->user());
+        }
+
+        return response()->json(['data' => ['id' => $job->id, 'tags' => $job->tags]]);
+    }
+
+    /**
+     * POST /api/v1/project-board/jobs/{job}/ready: Unscheduled to Ready to
+     * Schedule by the READY TO SCHEDULE tag, mirrored to Workiz; refused while
+     * anything the row lists as missing is.
+     */
+    public function ready(Request $request, Job $job): JsonResponse
+    {
+        $this->editable($request, $job);
+        $job->loadMissing(['workizJob:id,job_id,serial_id,payload', 'serviceArea:id,name', 'performedBy:id,name']);
+        $missing = $this->unscheduled($job, $this->extras([$job->id]))['ready_missing'];
+        abort_if($missing !== [], 422, 'Still needs: '.implode(', ', $missing).'.');
+        $tags = array_values((array) ($job->tags ?? []));
+        if (! in_array(self::tagKey(self::READY_TAG), array_map(fn ($t) => self::tagKey((string) $t), $tags), true)) {
+            $job->tags = [...$tags, self::READY_TAG];
+            $job->save();
+            \App\Support\Workiz\WorkizMirror::queue($job, 'tags', ['tags' => $job->tags]);
+            app(\App\Support\Audit\AuditLogger::class)->log('job.ready_to_schedule', $job, actor: $request->user());
+        }
+
+        return response()->json(['data' => ['id' => $job->id, 'tags' => $job->tags]]);
+    }
+
+    private function editable(Request $request, Job $job): void
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_board.view') && $user->hasPermission('jobs.edit'),
+            Response::HTTP_FORBIDDEN, 'Changing jobs is not in your role.');
+        abort_unless(in_array($job->franchise_id, ViewScope::forUser($user)->franchiseIds(), true),
+            Response::HTTP_NOT_FOUND);
     }
 
     /** @param  list<string>  $partTags */
@@ -255,7 +406,7 @@ class ProjectBoardController extends Controller
             // EzBizi keeps its own), e.g. "Crown Repair, Damper Cap x2".
             'required'      => collect($payload['LineItems'] ?? [])
                 ->map(fn ($i) => trim((string) ($i['Name'] ?? '')).((int) ($i['Quantity'] ?? 1) > 1 ? ' x'.(int) $i['Quantity'] : ''))
-                ->filter(fn ($s) => $s !== '')->values()->implode(', ') ?: null,
+                ->filter(fn ($s) => $s !== '')->values()->implode("\n") ?: null,
             // Financials only, and absent without it.
             ...($money !== null ? [
                 'paid'     => $m['paid'],

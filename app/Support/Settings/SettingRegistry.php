@@ -995,8 +995,12 @@ class SettingRegistry
                 // 2026-11-09), except the one rule he gave: Unscheduled is a
                 // Submitted job with DEPOSIT RECEIVED and no date, as in Workiz.
                 default: [
-                    'unscheduled' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED'], 'tags_mode' => 'all', 'scheduled' => false],
-                    'ready_to_schedule' => ['statuses' => []],
+                    // Jose, 2026-11-10: "Ready to schedule" adds the READY TO SCHEDULE
+                    // tag, so the job moves on with its status still Submitted.
+                    'unscheduled' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED'], 'tags_mode' => 'all',
+                        'tags_none' => ['READY TO SCHEDULE'], 'scheduled' => false],
+                    'ready_to_schedule' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED', 'READY TO SCHEDULE'],
+                        'tags_mode' => 'all', 'scheduled' => false],
                     'scheduled' => ['statuses' => []],
                     'in_progress' => ['statuses' => []],
                     'done_waiting_payment' => ['statuses' => []],
@@ -1025,16 +1029,22 @@ class SettingRegistry
                     ['key' => 'workiz_id', 'label' => 'Workiz ID', 'visible' => true, 'as_label' => false],
                     ['key' => 'customer', 'label' => 'Client Name', 'visible' => true, 'as_label' => false],
                     ['key' => 'franchise', 'label' => 'Area', 'visible' => true, 'as_label' => false],
+                    // Shoval's review (Jose, 2026-11-10): Service Area beside Area, Job Type gone.
+                    ['key' => 'service_area', 'label' => 'Service Area', 'visible' => true, 'as_label' => false],
                     ['key' => 'status', 'label' => 'Job Status', 'visible' => true, 'as_label' => true],
-                    ['key' => 'job_type', 'label' => 'Job Type', 'visible' => true, 'as_label' => false],
+                    ['key' => 'status_days', 'label' => 'Status Time', 'visible' => true, 'as_label' => false],
+                    ['key' => 'technician', 'label' => 'Technician', 'visible' => true, 'as_label' => false],
+                    ['key' => 'repair_team', 'label' => 'Repair Team / Contractor', 'visible' => true, 'as_label' => false],
                     ['key' => 'part_status', 'label' => 'Part Status', 'visible' => true, 'as_label' => true],
                     ['key' => 'tags', 'label' => 'Tags', 'visible' => true, 'as_label' => true],
                     ['key' => 'paid', 'label' => 'Paid Amount', 'visible' => true, 'as_label' => false],
-                    ['key' => 'pending', 'label' => 'Pending Amount', 'visible' => true, 'as_label' => false],
+                    ['key' => 'pending', 'label' => 'Remaining Balance', 'visible' => true, 'as_label' => false],
                     ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
-                    ['key' => 'created', 'label' => 'Date of Creation', 'visible' => true, 'as_label' => false],
+                    ['key' => 'payment_date', 'label' => 'Payment Date', 'visible' => true, 'as_label' => false],
                     ['key' => 'scheduled', 'label' => 'Scheduled Date', 'visible' => true, 'as_label' => false],
                     ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
+                    ['key' => 'attachments', 'label' => 'Attachments', 'visible' => true, 'as_label' => false],
+                    ['key' => 'notes', 'label' => 'Notes', 'visible' => true, 'as_label' => false],
                 ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'In the order shown. A column without Financials hides its amounts anyway.',
