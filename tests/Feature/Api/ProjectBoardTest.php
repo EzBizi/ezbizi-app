@@ -107,12 +107,13 @@ class ProjectBoardTest extends TestCase
             'no_tag' => $this->job($alpha['franchise'], 'J-2', 'Submitted'),
             'dated' => $this->job($alpha['franchise'], 'J-3', 'Submitted', '2026-11-10 09:00:00', ['DEPOSIT RECEIVED']),
             'vip' => $this->job($alpha['franchise'], 'J-4', 'Done', null, ['VIP']),
-            // Workiz's old misspelling, any case (Jose, 2026-11-10).
-            'misspelt' => $this->job($alpha['franchise'], 'J-5', 'submitted', null, ['Deposit Recieved']),
+            // Any case and spacing (Jose, 2026-11-10); a misspelling is a different tag.
+            'cased' => $this->job($alpha['franchise'], 'J-5', 'submitted', null, ['Deposit  received']),
+            'misspelt' => $this->job($alpha['franchise'], 'J-6', 'Submitted', null, ['DEPOSIT RECIEVED']),
         ]);
 
         $page = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk();
-        $this->assertEqualsCanonicalizing([$ids['hit'], $ids['misspelt']], array_column($page->json('data'), 'id'));
+        $this->assertEqualsCanonicalizing([$ids['hit'], $ids['cased']], array_column($page->json('data'), 'id'));
         // Every other sub-tab starts empty, and the counts follow the rules.
         $this->assertSame(['unscheduled' => 2, 'ready_to_schedule' => 0, 'scheduled' => 0, 'in_progress' => 0, 'done_waiting_payment' => 0, 'complete' => 0], $page->json('meta.counts'));
 
@@ -120,7 +121,7 @@ class ProjectBoardTest extends TestCase
             'complete' => ['statuses' => ['Done', 'Submitted'], 'tags' => ['VIP', 'DEPOSIT RECEIVED'], 'tags_mode' => 'any'],
         ]));
         $rows = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=complete')->assertOk()->json('data');
-        $this->assertEqualsCanonicalizing([$ids['hit'], $ids['dated'], $ids['vip'], $ids['misspelt']], array_column($rows, 'id'));
+        $this->assertEqualsCanonicalizing([$ids['hit'], $ids['dated'], $ids['vip'], $ids['cased']], array_column($rows, 'id'));
     }
 
     private function job(Franchise $franchise, string $number, string $status, ?string $at = null, array $tags = [], array $payload = []): string

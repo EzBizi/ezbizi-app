@@ -202,8 +202,8 @@ class ProjectBoardController extends Controller
         if ($tags !== []) {
             $any = ($rule['tags_mode'] ?? 'all') === 'any';
             // The stored list, folded the way tagKey() folds a tag, so
-            // "Deposit Recieved" matches DEPOSIT RECEIVED (Jose, 2026-11-10).
-            $folded = "REPLACE(REPLACE(LOWER(CAST(tags AS CHAR)), ' ', ''), 'recieved', 'received')";
+            // "Deposit received" matches DEPOSIT RECEIVED (Jose, 2026-11-10).
+            $folded = "REPLACE(LOWER(CAST(tags AS CHAR)), ' ', '')";
             $jobs->where(function (Builder $q) use ($tags, $any, $folded) {
                 foreach ($tags as $tag) {
                     $like = '%"'.addcslashes(self::tagKey($tag), '%_\\').'"%';
@@ -220,12 +220,12 @@ class ProjectBoardController extends Controller
     }
 
     /**
-     * A tag as it is compared: any case, no spaces, and the common Workiz
-     * misspelling RECIEVED read as RECEIVED (old jobs keep it).
+     * A tag as it is compared: any case, no spaces. A different spelling is a
+     * different tag (Jose, 2026-11-10: he fixes those in Workiz).
      */
     public static function tagKey(string $tag): string
     {
-        return str_replace('recieved', 'received', str_replace(' ', '', mb_strtolower(trim($tag))));
+        return str_replace(' ', '', mb_strtolower(trim($tag)));
     }
 
     /** @param  list<string>  $partTags */
