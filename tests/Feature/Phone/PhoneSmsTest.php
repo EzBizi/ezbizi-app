@@ -186,7 +186,7 @@ class PhoneSmsTest extends TestCase
         $this->assertSame('+12035551004', $response->json('data.from_e164'));
         $this->assertSame($to, $response->json('data.to_e164'));
         // The first text to a number carries the opt-out line (SmsConsent).
-        $this->assertSame('See you at two.'."\n".\App\Support\Phone\SmsConsent::FOOTER, $response->json('data.body'));
+        $this->assertSame('See you at two.'."\n\n".\App\Support\Phone\SmsConsent::FOOTER, $response->json('data.body'));
         $this->assertSame($customer->id, $response->json('data.customer_id'));
         $this->assertArrayNotHasKey('credentials', $response->json() ?? []);
         $this->assertArrayNotHasKey('auth_token', $response->json() ?? []);
@@ -196,7 +196,7 @@ class PhoneSmsTest extends TestCase
         $this->assertSame($number->connection_id, $send['args'][0]);
         $this->assertSame('+12035551004', $send['args'][1]);
         $this->assertSame($to, $send['args'][2]);
-        $this->assertSame('See you at two.'."\n".\App\Support\Phone\SmsConsent::FOOTER, $send['args'][3]);
+        $this->assertSame('See you at two.'."\n\n".\App\Support\Phone\SmsConsent::FOOTER, $send['args'][3]);
 
         $this->inTenant($t['org'], function () use ($number, $customer, $to, $response) {
             $message = PhoneMessage::query()->find($response->json('data.id'));

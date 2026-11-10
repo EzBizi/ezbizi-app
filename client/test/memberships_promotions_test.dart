@@ -47,7 +47,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(_count(tester), startsWith('1 customers'));
-      final rendered = 'Hi Bo, it\'s A-1 Chimney.\nReply STOP to opt out.';
+      final rendered = 'Hi Bo, it\'s A-1 Chimney.\n\nReply STOP to opt out.';
       for (final phone in ['promotions-android', 'promotions-ios']) {
         expect(
           find.descendant(
