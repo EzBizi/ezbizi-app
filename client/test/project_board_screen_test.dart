@@ -135,6 +135,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Live: "Updated hh:mm", a manual refresh, and a quiet reload every
+    // minute while on screen (Jose, 2026-11-10).
+    expect(find.byKey(const Key('project-board-updated')), findsOneWidget);
+    final before = requests.length;
+    await tester.tap(find.byKey(const Key('project-board-refresh')));
+    await tester.pumpAndSettle();
+    expect(requests.length, before + 1);
+    expect(requests.last.url.queryParameters['per_page'], '50');
+    await tester.pump(const Duration(seconds: 61));
+    await tester.pumpAndSettle();
+    expect(requests.length, before + 2);
+
     // The company's names and order; a hidden column is not drawn.
     expect(find.text('CLIENT'), findsOneWidget);
     expect(find.text('Lena Park'), findsOneWidget);
