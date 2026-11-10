@@ -233,6 +233,22 @@ class DailyTextsTest extends TestCase
         $this->assertStringNotContainsString('999', $text);
     }
 
+    /** 2026-11-09: ACE's sheet held Nov 8 as zeros in every area (not entered yet) and has no CALLS column. */
+    public function test_marketing_ppc_skips_a_day_of_zeros_and_a_table_without_calls(): void
+    {
+        $this->airtableTable($this->t, null, 'marketing', [
+            ['DATE' => '2026-10-19', 'Service Area' => 'Cleveland ', 'COST' => 0, 'JOBS' => 0, 'Clicks' => 0],
+            ['DATE' => '2026-10-17', 'Service Area' => 'Cleveland ', 'COST' => 252.31, 'JOBS' => 2, 'Clicks' => 16],
+        ]);
+
+        $text = $this->text('marketing_ppc');
+
+        $this->assertStringContainsString('*Data date: Oct 17*', $text);
+        $this->assertStringContainsString("*Cleveland*\n• Spent: $252.31 · Jobs: 2\n• Cost/job: $126.15\n", $text);
+        $this->assertStringContainsString('*TOTAL* · Spent: $252.31 · Jobs: 2', $text);
+        $this->assertStringNotContainsString('Calls', $text);
+    }
+
     /** Meta, 2026-10-27: approved ACE results entered in EzBizi count; they replace Airtable's same day and area; pending never shows. */
     public function test_marketing_ppc_reads_approved_results_over_airtable(): void
     {

@@ -472,22 +472,26 @@ final class DailyTexts
             return '';
         }
 
-        $latest = $rows->max('date');
+        // The latest day with a figure: a sheet can hold a day as zeros before it is entered (ACE's Nov 8, 2026-11-09).
+        $latest = $rows->filter(fn ($r) => (float) ($r['amount'] ?? 0) + (float) ($r['calls'] ?? 0) + (float) ($r['jobs'] ?? 0) > 0)->max('date') ?? $rows->max('date');
+        // A table without calls (ACE's) shows none rather than "Calls: 0".
+        $hasCalls = $rows->contains(fn ($r) => ($r['calls'] ?? null) !== null);
         $lines = [$head, '*Data date: '.CarbonImmutable::parse($latest)->format('M j').'*', ''];
         $total = ['cost' => 0, 'calls' => 0, 'jobs' => 0];
-        foreach ($rows->where('date', $latest)->groupBy(fn ($r) => (string) ($r['area'] ?? 'No area'))->sortKeys() as $area => $r) {
+        foreach ($rows->where('date', $latest)->groupBy(fn ($r) => trim((string) ($r['area'] ?? '')) ?: 'No area')->sortKeys() as $area => $r) {
             $cost = $r->sum(fn ($x) => AirtableSections::cents($x['amount'] ?? 0));
             $calls = (int) $r->sum(fn ($x) => (float) ($x['calls'] ?? 0));
             $jobs = (int) $r->sum(fn ($x) => (float) ($x['jobs'] ?? 0));
             $lines[] = '*'.$area.'*';
-            $lines[] = '• Spent: '.self::money($cost).' · Calls: '.$calls.' · Jobs: '.$jobs;
-            $lines[] = '• Cost/job: '.($jobs > 0 ? self::money(intdiv($cost, $jobs)) : 'N/A').' · Call-to-job: '.($calls > 0 ? number_format($jobs / $calls * 100, 1).'%' : 'N/A');
+            $lines[] = '• Spent: '.self::money($cost).($hasCalls ? ' · Calls: '.$calls : '').' · Jobs: '.$jobs;
+            $lines[] = '• Cost/job: '.($jobs > 0 ? self::money(intdiv($cost, $jobs)) : 'N/A')
+                .($hasCalls ? ' · Call-to-job: '.($calls > 0 ? number_format($jobs / $calls * 100, 1).'%' : 'N/A') : '');
             $total['cost'] += $cost;
             $total['calls'] += $calls;
             $total['jobs'] += $jobs;
         }
         $lines[] = '';
-        $lines[] = '*TOTAL* · Spent: '.self::money($total['cost']).' · Calls: '.$total['calls'].' · Jobs: '.$total['jobs'];
+        $lines[] = '*TOTAL* · Spent: '.self::money($total['cost']).($hasCalls ? ' · Calls: '.$total['calls'] : '').' · Jobs: '.$total['jobs'];
 
         return implode("\n", $lines);
     }
