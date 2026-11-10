@@ -13,7 +13,7 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0559', date: '10 Nov 2026', items: [
+    VersionRelease(version: '0.0.0558', date: '10 Nov 2026', items: [
       'Access changes (role, permissions, inboxes, companies) reach an open app within a minute, or as soon as you return to it, with no reload',
       'Websites: per-page phone numbers reach every page on sites with hundreds of town pages',
       'Email › Google Workspace: signatures preview exactly as Gmail shows them (light or dark, desktop or phone); a missing stock photo is left out instead of showing a broken box',
