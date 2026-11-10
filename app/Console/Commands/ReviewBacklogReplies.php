@@ -52,7 +52,7 @@ class ReviewBacklogReplies extends Command
                 ->whereDoesntHave('connection', fn ($c) => $c->where('status', \App\Models\SocialConnection::STATUS_CONNECTED))
                 ->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED))->count();
             if ($skipped > 0) {
-                $this->line("{$org->name}: {$skipped} reviews skipped, their Business Profile is disconnected ({$blocked} drafts marked)");
+                $this->line("{$org->name}: {$skipped} reviews skipped, their listing is not on a connected Google profile ({$blocked} drafts marked)");
             }
 
             $done = 0;
@@ -104,7 +104,7 @@ class ReviewBacklogReplies extends Command
         return self::SUCCESS;
     }
 
-    public const BLOCKED = 'Blocked: profile disconnected';
+    public const BLOCKED = 'Blocked: this listing is not on a Google profile connected in Integrations';
 
     private static function norm(?string $body): string
     {
