@@ -3476,3 +3476,38 @@ Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbi
 do-not rows. Desk (11-08): confirmed nothing shipped since 0548. Training, ring groups, Scheduled Jobs,
 LSA and publishers are untouched; Stripe keys on prod 0 and no connected company, so `/privacy/` is unchanged.
 Note for the next run: on the websites box wp-cli needs `/opt/plesk/php/8.4/bin/php /usr/local/bin/wp --path=/var/www/vhosts/ezbizi.com/httpdocs`, because `ubuntu` cannot `cd` into the docroot and there is no `php` on PATH.
+
+## 2026-11-09: 0.0.0549-0.0.0551 live, and `/privacy/` did not say staff-bot answers carry job photos
+
+Production `/download/windows.json` 0.0.0551 at `4efd8b8ce`. Before the edit, all 10 live pages matched
+their WP post_content (logo `src` only) and no page had changed since 11-06 13:58. www `/ezbizi-api.json`
+byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261109/page8.html` on the websites box). `d9d7cb569` (in
+  0551): AppAsk answers on the WhatsApp staff line now send photos from previous Done jobs (Workiz
+  attachment URLs, via `GET jobs/photos`) and training mp4s as WhatsApp image/video, which Meta fetches.
+  xAI gets the links as text, never the images, so "Only text is sent — never audio, images or files"
+  still holds. Added after it: answers can bring job photos or a training video over WhatsApp, passing
+  through Meta; xAI receives only their links. Live, checked with and without a cache-buster.
+- HR onboarding SSN card photo (`ed5eb9156`, in 0551): encrypted at rest, audited reveal. No page says
+  anything about SSNs or identity documents, so nothing went false; nothing added.
+- **On main, not in 0551 — trigger for the next run:** `98837a32e`/`f9e96697d`/`b32e3e76a` send every
+  report as a PDF in a WhatsApp `report_document` template from a "Reports" number, and email undelivered
+  ones to the rule's maker. `/privacy/` "Report files on WhatsApp" describes only asked-for files and the
+  weekly-summary line says automation rules pick the channel; re-read both once these are live.
+- Promotions MMS picture, Task Board, quick search, signatures, Scheduling office, Pinterest token renewal:
+  no page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split)
+over the 10 LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
+1, 0.0.0502. **Desk (11-09):** 0549-0551 live, 0552 cutting. Training, ring groups, Scheduled Jobs, LSA, a 7th
+publisher: unchanged. Stripe keys on prod 0, `payment_accounts` 0, so `/privacy/` names no Stripe.
+
+- **Second edit to WP page 8 after the desk's list** (pre-edit copy `~/ezb-wp-bak-20261109/page8-b.html`): the email
+  signature builder (0550) serves each photo publicly at `/api/v1/signature-photos/{40-char random}.ext` so recipients'
+  mail can load it. "What we collect › Your account" now says it sits at an unguessable address that anyone holding it
+  can see. Live.
+- SSN card photo: "Staff records … onboarding documents" already covers it (encrypted, HR-only, not in exports or AI,
+  per the desk). Left alone: no page promises anything narrower.
+- Review-link → Google review matching by name and @mentions: nothing leaves EzBizi; no sentence touched.
+- 0552 trigger stands: reports go as PDF documents over WhatsApp from +1 877-450-8572 (a "Reports" purpose number).

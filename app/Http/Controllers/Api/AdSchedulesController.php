@@ -41,7 +41,7 @@ class AdSchedulesController extends Controller
     /** PUT /api/v1/ad-schedules {connection_id, object_id, object_name, days, on_at, off_at, timezone} */
     public function save(Request $request): JsonResponse
     {
-        $this->authorizeTo($request, 'ads_performance.manage');
+        $this->authorizeTo($request, 'ads_manager.manage');
         $input = $request->validate([
             'connection_id' => ['required', 'uuid'],
             'object_id' => ['required', 'string', 'regex:/^\d+$/', 'max:32'],
@@ -79,7 +79,7 @@ class AdSchedulesController extends Controller
     /** DELETE /api/v1/ad-schedules/{schedule} - the campaign stays as it is. */
     public function destroy(Request $request, string $schedule): JsonResponse
     {
-        $this->authorizeTo($request, 'ads_performance.manage');
+        $this->authorizeTo($request, 'ads_manager.manage');
         $row = AdSchedule::query()->findOrFail($schedule);
         $connection = $this->connection($request, $row->connection_id);
 
@@ -113,7 +113,7 @@ class AdSchedulesController extends Controller
         // Google's report (Reports) and Marketing › Ads both draw schedules.
         $user = $request->user();
         abort_unless(($user?->hasPermission($permission) || $user?->hasPermission(str_replace('ads_performance.', 'ads_manager.', $permission))) ?? false, Status::HTTP_FORBIDDEN,
-            $permission === 'ads_performance.manage'
+            $permission === 'ads_manager.manage'
                 ? 'Scheduling campaigns needs the Manage Ads permission.'
                 : 'Reading advertising needs the Ads Performance permission.');
     }

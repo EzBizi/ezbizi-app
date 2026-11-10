@@ -952,6 +952,9 @@ Route::prefix('v1')
         Route::post('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'store']);
         Route::patch('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'update']);
         Route::delete('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'destroy']);
+        Route::post('task-boards/{taskBoard}/archive', [\App\Http\Controllers\Api\TaskBoardsController::class, 'archive']);
+        Route::post('task-boards/{taskBoard}/unarchive', [\App\Http\Controllers\Api\TaskBoardsController::class, 'unarchive']);
+        Route::post('task-boards/{id}/restore', [\App\Http\Controllers\Api\TaskBoardsController::class, 'restore']);
         Route::get('task-boards/{taskBoard}/members', [\App\Http\Controllers\Api\TaskBoardsController::class, 'members']);
         Route::post('task-boards/{taskBoard}/members', [\App\Http\Controllers\Api\TaskBoardsController::class, 'storeMember']);
         Route::patch('task-boards/{taskBoard}/members/{member}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'updateMember']);

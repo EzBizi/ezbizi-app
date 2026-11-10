@@ -41,7 +41,15 @@ void main() {
       tester,
     ) async {
       final module = (registry[entry.key] as Map?)?.cast<String, dynamic>();
-      final declared = ((module?['tabs'] as List?) ?? const []).cast<String>();
+      // A tab drawn inside another tab is checked in that tab's own strip
+      // (Marketing › Social Media Management › Compose).
+      final within =
+          (module?['within'] as Map?)?.cast<String, String>() ?? const {};
+      final declared = [
+        for (final tab
+            in ((module?['tabs'] as List?) ?? const []).cast<String>())
+          if (!within.containsKey(tab)) tab,
+      ];
 
       // A parent screen draws its child modules (Jobs › Estimates) in the same
       // strip. Those are granted as modules, not tabs, so they are set aside.
@@ -115,15 +123,28 @@ void main() {
       }
 
       // A one-chip strip is a screen, not a choice; the registry has no tab
-      // to grant for it either way. A parent's one pane of its own is the
-      // module itself when it carries the module's strip (Marketing › Social
-      // Media) or its name (Customers); otherwise it is a tab of the parent,
+      // to grant for it either way. A parent's one pane of its own is a tab
+      // holding tabs when the registry nests them in it (Marketing › Social
+      // Media Management), the module itself when it carries the module's
+      // strip or its name (Customers); otherwise it is a tab of the parent,
       // a choice beside the child chips (Customer Experience › Complaints).
       final String? pane = own.length == 1 && inner.containsKey(own.single)
           ? own.single
           : null;
+      if (pane != null && within.containsValue(pane)) {
+        expect(
+          _asTabs(inner[pane]!),
+          [
+            for (final MapEntry(:key, :value) in within.entries)
+              if (value == pane) key,
+          ],
+          reason: 'Tabs inside $pane and their TabDefinitions disagree.',
+        );
+      }
       final shown = pane == null
           ? _asTabs(own)
+          : within.containsValue(pane)
+          ? own
           : inner[pane]!.length >= 2 || pane == module?['label']
           ? _asTabs(inner[pane]!)
           : own;

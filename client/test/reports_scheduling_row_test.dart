@@ -68,7 +68,7 @@ Future<List<String>> _pump(
   List<String> permissions = const [
     'reports.view',
     'reports.library.view',
-    'scheduling.overbooking.view',
+    'scheduling.rescheduling.view',
   ],
   List<Map<String, dynamic>> built = const [_built],
   bool refuseScheduling = false,

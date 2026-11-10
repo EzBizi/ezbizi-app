@@ -229,6 +229,7 @@ const _me = {
     'company.kpis.view',
     'hr.view',
     'hr.edit',
+    'company.edit',
   ],
   'modules': [
     {

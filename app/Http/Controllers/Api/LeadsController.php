@@ -2020,7 +2020,7 @@ class LeadsController extends Controller
                     ? null
                     : $certifications->get($c->getKey())?->campaigns,
                 'may_pause' => $c->provider === SocialProvider::GoogleAds->value
-                    && ($user?->hasPermission('ads_performance.manage') ?? false),
+                    && ($user?->hasPermission('ads_manager.manage') ?? false),
             ])
             ->values()
             ->all();

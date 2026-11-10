@@ -49,7 +49,7 @@ class RoleInspectionsApiTest extends TestCase
 
         $role = $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
             'name' => 'Tech',
-            'permissions' => ['inspection.view', 'inspection.create', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
+            'permissions' => ['inspection.view', 'inspection.create', 'inspection.edit', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
         ])->assertCreated()->json('data');
 
         $this->assertSame([], $role['inspections']);
@@ -63,14 +63,14 @@ class RoleInspectionsApiTest extends TestCase
 
         $role = $this->signedInAs($alpha['admin'])->postJson('/api/v1/roles', [
             'name' => 'Tech',
-            'permissions' => ['inspection.view', 'inspection.create', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
+            'permissions' => ['inspection.view', 'inspection.create', 'inspection.edit', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
             'inspections' => [$level1->id],
         ])->assertCreated()->json('data');
 
         $this->assertSame([$level1->id], $role['inspections']);
 
         $this->signedInAs($alpha['admin'])->patchJson("/api/v1/roles/{$role['id']}", [
-            'permissions' => ['inspection.view', 'inspection.create', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
+            'permissions' => ['inspection.view', 'inspection.create', 'inspection.edit', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
             'inspections' => [],
         ])->assertOk()->assertJsonPath('data.inspections', []);
 

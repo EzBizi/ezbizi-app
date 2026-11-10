@@ -23,6 +23,8 @@ Artisan::command('inspire', function () {
 Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
+
+Schedule::command('ezbizi:purge-deleted-task-boards')->dailyAt('03:55')->withoutOverlapping(30);
 // Expired, never-accepted invitations are withdrawn (Jose, 2026-11-03).
 Schedule::command('ezbizi:revoke-expired-invitations')->dailyAt('06:20')->withoutOverlapping(30);
 // Meta connections Meta no longer lets us reach turn red (Jose, 2026-11-02).

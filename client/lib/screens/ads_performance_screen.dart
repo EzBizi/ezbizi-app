@@ -1534,7 +1534,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     return i < 0 ? null : i;
   }
 
-  bool get _canManage => widget.session.me?.can('ads_performance.manage') ?? false;
+  bool get _canManage => widget.session.me?.can('ads_manager.manage') ?? false;
 
   /// An optional figure in its own unit. Null is a dash: a rate with nothing
   /// under it (no impressions, no clicks) has no value, and zero would claim
