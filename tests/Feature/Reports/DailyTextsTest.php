@@ -249,6 +249,21 @@ class DailyTextsTest extends TestCase
         $this->assertStringNotContainsString('Calls', $text);
     }
 
+    /** Shoval, 2026-11-09: a sheet's areas in the location order too, a city by its state's codes ("IL, Chicago"). */
+    public function test_marketing_ppc_lists_its_areas_in_the_location_order(): void
+    {
+        $this->inTenant($this->t['org'], fn () => DB::table('business_list_items')->insert(array_map(fn (array $r) => ['id' => (string) Str::uuid(),
+            'organization_id' => $this->t['org']->id, 'list_key' => 'reports.locations', 'item_key' => $r[0], 'value' => json_encode(['branch' => $r[1], 'code' => $r[2]]),
+            'active' => true, 'sort' => $r[3], 'created_at' => now(), 'updated_at' => now()], [
+                ['NJ', 'New Jersey', 'NJ', 0], ['OH', 'Ohio', 'OH, Cleveland, Columbus', 1], ['IL', 'Illinois', 'IL, Chicago', 2]])));
+        $this->airtableTable($this->t, null, 'marketing', array_map(fn (string $area) => ['DATE' => '2026-10-17', 'Service Area' => $area, 'COST' => 10, 'JOBS' => 1],
+            ['Chicago', 'Austin', 'Columbus', 'New Jersey', 'Cleveland']));
+
+        preg_match_all('/^\*([A-Za-z ]+)\*$/m', $this->text('marketing_ppc'), $m);
+
+        $this->assertSame(['New Jersey', 'Cleveland', 'Columbus', 'Chicago', 'Austin'], $m[1]);
+    }
+
     /** Meta, 2026-10-27: approved ACE results entered in EzBizi count; they replace Airtable's same day and area; pending never shows. */
     public function test_marketing_ppc_reads_approved_results_over_airtable(): void
     {
