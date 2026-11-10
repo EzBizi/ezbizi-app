@@ -2,11 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_html/flutter_html.dart';
-import 'package:flutter_html_table/flutter_html_table.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/search_picker.dart';
+import 'message_html.dart';
 
 /// Email → Google Workspace → a signature template, built without HTML
 /// (Jose, 2026-11-09: "feels pretty lacking"; he must be able to rebuild
@@ -932,37 +931,26 @@ class _PreviewFrame extends StatelessWidget {
                           style: TextStyle(color: scheme.outline),
                         ),
                       ),
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Hi,\n\nThanks for reaching out.\n\n--',
-                            style: TextStyle(color: scheme.onSurface),
-                          ),
-                          const SizedBox(height: 6),
-                          if (html == null)
-                            Text(
-                              'Getting the preview…',
-                              style: TextStyle(color: scheme.outline),
-                            )
-                          else
-                            Html(
-                              key: const ValueKey('sig-preview-html'),
-                              data: html!,
-                              // A signature is tables; the core renderer drops them.
-                              extensions: const [TableHtmlExtension()],
-                              style: {
-                                'body': Style(
-                                  margin: Margins.zero,
-                                  padding: HtmlPaddings.zero,
-                                ),
-                              },
-                            ),
-                        ],
+                    if (html == null)
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          'Getting the preview…',
+                          style: TextStyle(color: scheme.outline),
+                        ),
+                      )
+                    else
+                      // A real browser engine, as Gmail is one: a Flutter HTML
+                      // renderer stretched the table rows and showed the photo
+                      // as its alt text (Jose, 2026-11-10).
+                      SizedBox(
+                        key: const ValueKey('sig-preview-html'),
+                        height: mobile ? 340 : 280,
+                        child: MessageHtmlView(
+                          html: signaturePreviewPage(html!, dark: dark),
+                          ownHtml: true,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -973,3 +961,14 @@ class _PreviewFrame extends StatelessWidget {
     );
   }
 }
+
+/// The compose body with the signature under it, as one page for the
+/// preview's browser engine. Dark is Gmail's dark: the page darkens, the
+/// signature keeps the colours it was written with.
+String signaturePreviewPage(String signature, {required bool dark}) =>
+    '<!doctype html><html><head><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    '<style>body{margin:12px;font:14px Arial,Helvetica,sans-serif;'
+    'background:${dark ? '#202124' : '#ffffff'};'
+    'color:${dark ? '#e8eaed' : '#202124'}}</style></head><body>'
+    'Hi,<br><br>Thanks for reaching out.<br><br>--<br>$signature</body></html>';

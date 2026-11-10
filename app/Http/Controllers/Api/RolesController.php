@@ -101,12 +101,21 @@ class RolesController extends Controller
             ->groupBy('role_id')
             ->map(fn ($users) => $users->take(8)->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name])->values()->all());
 
+        // People per role given at least one inbox by name: a role that holds
+        // none still has people reading mail (Jose, 2026-11-10, Lucas).
+        $givenByName = User::query()
+            ->where('is_active', true)
+            ->whereIn('id', \App\Models\MailboxGrant::query()->whereNotNull('user_id')->select('user_id'))
+            ->get(['id', 'role_id'])
+            ->countBy('role_id');
+
         return response()->json([
             'data' => $roles->map(fn (Role $role) => [
                 'id'               => $role->id,
                 'name'             => $role->name,
                 'is_administrator' => $role->isAdministrator(),
                 'user_count'       => $role->users_count,
+                'people_with_own_inboxes' => $givenByName[$role->id] ?? 0,
                 'people'           => $holders[$role->id] ?? [],
 
                 // Which roles its holders may offer when they invite, or null

@@ -576,6 +576,42 @@ void main() {
       expect(find.text('Inboxes'), findsOneWidget);
     });
 
+    // Jose 11-10: "No inboxes granted" read as "Lucas cannot read office@nj".
+    testWidgets('a role with no inboxes says how many of its people were given '
+        'some by name', (tester) async {
+      _wide(tester);
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Local Manager',
+            permissions: const ['email.view'],
+            users: 14,
+            ownInboxes: 9,
+          ),
+        ],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View')],
+            inboxes: [_inbox('mb-1', 'office@nj.a-1chimney.com')],
+          ),
+        ],
+      );
+      await tester.tap(_firstRole);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining(
+          '9 of its 14 people have inboxes given to them by name',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('The tab on its own opens none'), findsNothing);
+    });
+
     /// The control that carries the whole point: the tab is one grant and the
     /// inbox is another.
     testWidgets('ticking the tab grants no inbox, and says so', (tester) async {
@@ -1792,8 +1828,10 @@ Map<String, dynamic> _role(
   List<String> inboxes = const [],
   bool editable = true,
   int users = 1,
+  int ownInboxes = 0,
   List<Map<String, String>>? people,
 }) => {
+  'people_with_own_inboxes': ownInboxes,
   'id': id,
   'name': name,
   'is_administrator': !editable,

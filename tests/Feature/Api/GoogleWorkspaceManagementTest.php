@@ -127,6 +127,11 @@ class GoogleWorkspaceManagementTest extends TestCase
                 return Http::response(['sendAsEmail' => 'x', 'signature' => '<b>Old</b>']);
             }
 
+            // Stock signature photos: Ana has one, nobody else does.
+            if (str_contains($url, 'example-photos/')) {
+                return Http::response('', str_contains($url, 'ana@') ? 200 : 404);
+            }
+
             return Http::response([], 404);
         });
     }
@@ -376,6 +381,20 @@ class GoogleWorkspaceManagementTest extends TestCase
         $this->app['auth']->forgetGuards();
         $this->get(parse_url($url, PHP_URL_PATH))->assertOk();
         $this->get('/api/v1/signature-photos/..%2F..%2F.env')->assertNotFound();
+    }
+
+    /** A stock photo shows only for someone who has one; Gmail would show the rest a broken picture. */
+    public function test_a_stock_photo_that_does_not_exist_is_left_out(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $c = $this->connect($t);
+        $this->fakeGoogle();
+        $html = 'P{{^photo_url}}<img src="https://cdn.test/example-photos/{{email}}.jpg">{{/photo_url}}';
+
+        $this->signedInAs($t['admin'])->postJson($this->base($t, $c).'/signatures/preview', ['address' => 'ana@'.self::DOMAIN, 'html' => $html])
+            ->assertJsonPath('data.html', 'P<img src="https://cdn.test/example-photos/ana@'.self::DOMAIN.'.jpg">');
+        $this->signedInAs($t['admin'])->postJson($this->base($t, $c).'/signatures/preview', ['address' => 'office@nj.'.self::DOMAIN, 'html' => $html])
+            ->assertJsonPath('data.html', 'P');
     }
 
     public function test_managing_needs_email_edit_and_an_address_on_the_domain(): void
