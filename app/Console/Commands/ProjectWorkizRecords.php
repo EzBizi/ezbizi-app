@@ -119,6 +119,18 @@ class ProjectWorkizRecords extends Command
             return self::SUCCESS;
         }
 
+        // A run killed mid-way (a deploy restarting the scheduler) frees the
+        // lock at once instead of holding projection off for its full hour
+        // (11-10: 30 minutes of bookings waited). ponytail: SIGKILL cannot be
+        // trapped; that case still waits out LOCK_SECONDS.
+        if (extension_loaded('pcntl')) {
+            $this->trap([SIGTERM, SIGINT, SIGHUP], function () use ($lock) {
+                $lock->release();
+
+                exit(1);
+            });
+        }
+
         try {
             return $this->project($tenant, $numbers, $audit, $events);
         } finally {
