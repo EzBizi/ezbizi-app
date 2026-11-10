@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0553', date: '10 Nov 2026', items: [
+      'Reports: the ACE Fireplace daily shows the latest day that has figures, and leaves out calls when the sheet has none',
+    ]),
     VersionRelease(version: '0.0.0552', date: '9 Nov 2026', items: [
       'Reports: every WhatsApp report arrives as a PDF from the Reports number, with no reply needed; an email alert if one is not delivered in 30 minutes',
       'WhatsApp: each number has a purpose (reports, support, authentication)',
