@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../widgets/search_picker.dart';
@@ -8,7 +10,10 @@ import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
+import '../../core/api_client.dart';
 import 'newsletter_blocks.dart';
+import 'newsletter_import_panel.dart';
+import 'newsletter_preflight.dart';
 
 /// Newsletter › Composer: blocks to add, the email itself, and who/when/Send.
 ///
@@ -58,7 +63,19 @@ class NewsletterEditor extends StatefulWidget {
     this.onNewList,
     required this.onHtml,
     required this.onSend,
+    this.api,
+    this.newsletterId,
+    this.onSaveNow,
+    this.rasterise = rasteriseSvg,
   });
+
+  /// For the import panel and the preflight; null hides both.
+  final ApiClient? api;
+  final String? newsletterId;
+
+  /// Saves what is on screen now, before a preflight or test reads it.
+  final Future<void> Function()? onSaveNow;
+  final SvgRasteriser rasterise;
 
   final TextEditingController subject;
   final List<Map<String, dynamic>> blocks;
@@ -117,6 +134,81 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
 
   bool get _locked => widget.readOnlyBecause != null;
 
+  /// The import panel is open.
+  bool _importing = false;
+
+  /// What was there before the last import or switch, for Undo.
+  ({String html, List<Map<String, dynamic>> blocks, bool htmlMode})? _undo;
+
+  /// Custom HTML is what goes out whenever it is set, whichever pane is open.
+  bool get _htmlActive => _html.text.trim().isNotEmpty;
+
+  void _snapshot() {
+    _undo = (
+      html: _html.text,
+      blocks: [
+        for (final b in widget.blocks)
+          Map<String, dynamic>.from(jsonDecode(jsonEncode(b)) as Map),
+      ],
+      htmlMode: _htmlMode,
+    );
+  }
+
+  void _useHtml(String html) {
+    setState(() {
+      _snapshot();
+      _html.text = html;
+      _htmlMode = true;
+      _importing = false;
+      _selected = null;
+    });
+    widget.onHtml(html);
+  }
+
+  void _useBlocks(List<Map<String, dynamic>> blocks) {
+    setState(() {
+      _snapshot();
+      widget.blocks
+        ..clear()
+        ..addAll(blocks);
+      _html.clear();
+      _htmlMode = false;
+      _importing = false;
+      _selected = null;
+    });
+    widget.onHtml('');
+    widget.onChanged();
+  }
+
+  /// Back to blocks clears the HTML, so the blocks are what goes out. The
+  /// HTML is kept for Undo rather than silently discarded.
+  void _switchToBlocks() {
+    final hadHtml = _htmlActive;
+    setState(() {
+      if (hadHtml) _snapshot();
+      _html.clear();
+      _htmlMode = false;
+      _selected = null;
+    });
+    if (hadHtml) widget.onHtml('');
+  }
+
+  void _restore() {
+    final undo = _undo;
+    if (undo == null) return;
+    setState(() {
+      widget.blocks
+        ..clear()
+        ..addAll(undo.blocks);
+      _html.text = undo.html;
+      _htmlMode = undo.htmlMode;
+      _undo = null;
+      _selected = null;
+    });
+    widget.onHtml(undo.html);
+    widget.onChanged();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -157,7 +249,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     if (widget.subject.text.trim().isEmpty) {
       return 'A newsletter needs a subject line — it is the first thing anybody sees.';
     }
-    if (widget.blocks.isEmpty) {
+    if (widget.blocks.isEmpty && !_htmlActive) {
       return 'There is nothing in this newsletter yet.';
     }
 
@@ -242,13 +334,26 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           OutlinedButton.icon(
             onPressed: _locked
                 ? null
+                : _htmlMode
+                ? _switchToBlocks
                 : () => setState(() {
-                    _htmlMode = !_htmlMode;
+                    _htmlMode = true;
                     _selected = null;
                   }),
             icon: Icon(_htmlMode ? Icons.dashboard_outlined : Icons.code, size: 16),
             label: Text(_htmlMode ? 'Back to blocks' : 'Write HTML'),
           ),
+          if (widget.api != null) ...[
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              key: const ValueKey('newsletter-import'),
+              onPressed: _locked
+                  ? null
+                  : () => setState(() => _importing = true),
+              icon: const Icon(Icons.upload_file, size: 16),
+              label: const Text('Import HTML or SVG'),
+            ),
+          ],
         ],
       ),
     );
@@ -365,13 +470,86 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: bounded ? MainAxisSize.max : MainAxisSize.min,
         children: [
+          _modeBar(context),
+          const SizedBox(height: 8),
           controls,
           const SizedBox(height: 10),
+          if (_importing && !_locked) ...[
+            NewsletterImportPanel(
+              api: widget.api,
+              rasterise: widget.rasterise,
+              onUseHtml: _useHtml,
+              onUseBlocks: _useBlocks,
+              onClose: () => setState(() => _importing = false),
+            ),
+            const SizedBox(height: 10),
+          ],
           if (_locked) ...[
             DashboardNote(widget.readOnlyBecause!),
             const SizedBox(height: 10),
           ],
           body,
+        ],
+      ),
+    );
+  }
+
+  /// Which version goes out — blocks or custom HTML — and the way back.
+  ///
+  /// Audit 2026-11-10, item 2: an imported document silently replaced the
+  /// blocks with nothing on screen saying which one a send would use.
+  Widget _modeBar(BuildContext context) {
+    final theme = Theme.of(context);
+    final active = _htmlActive ? 'custom HTML' : 'the blocks';
+
+    return Container(
+      key: const ValueKey('newsletter-mode'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(
+                value: false,
+                label: Text('Blocks'),
+                icon: Icon(Icons.dashboard_outlined, size: 16),
+              ),
+              ButtonSegment(
+                value: true,
+                label: Text('Custom HTML'),
+                icon: Icon(Icons.code, size: 16),
+              ),
+            ],
+            selected: {_htmlMode},
+            showSelectedIcon: false,
+            onSelectionChanged: _locked
+                ? null
+                : (s) => s.first
+                      ? setState(() {
+                          _htmlMode = true;
+                          _selected = null;
+                        })
+                      : _switchToBlocks(),
+          ),
+          Text(
+            'Sending: $active',
+            key: const ValueKey('newsletter-mode-active'),
+            style: theme.textTheme.labelLarge,
+          ),
+          if (_undo != null && !_locked)
+            TextButton.icon(
+              key: const ValueKey('newsletter-undo'),
+              onPressed: _restore,
+              icon: const Icon(Icons.undo, size: 16),
+              label: const Text('Undo'),
+            ),
         ],
       ),
     );
@@ -407,14 +585,18 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         hintText: '<table>…</table>',
         alignLabelWithHint: true,
       ),
-      onChanged: widget.onHtml,
+      onChanged: (html) {
+        setState(() {});
+        widget.onHtml(html);
+      },
     );
 
     final children = <Widget>[
       const DashboardNote(
         'Write the email yourself. While this is set it is what goes out — '
-        'the blocks are kept but not used, so you can clear this and get them '
-        'back.',
+        'the blocks are kept but not used. Back to blocks clears this HTML, '
+        'and Undo brings it back. The address and unsubscribe footer is added '
+        'unless the HTML has its own *|UNSUB|* link.',
       ),
       const SizedBox(height: 10),
       if (bounded)
@@ -774,6 +956,14 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
             onChanged: (_) => widget.onChanged(),
           ),
           kind('Who gets it'),
+          const DashboardNote(
+            'A Mailchimp list lives in your Mailchimp account and is who the '
+            'email actually goes to. An EzBizi list says which people to pick: '
+            'a Mailchimp list as it is, or your EzBizi customers, who are '
+            'added to its Mailchimp list just before sending.',
+            key: ValueKey('newsletter-audience-explainer'),
+          ),
+          const SizedBox(height: 8),
           if (widget.audiences.isEmpty)
             DashboardNote(
               'No mailing list in ${widget.viewName} yet. A list is either built '
@@ -791,6 +981,18 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               ],
               onChanged: _locked ? null : widget.onAudience,
             ),
+          for (final a in widget.audiences)
+            if (a.id == widget.audienceId)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: DashboardNote(
+                  a.mailchimpListId == null || a.mailchimpListId!.isEmpty
+                      ? '${a.name} has no Mailchimp list behind it yet.'
+                      : '${a.name} (EzBizi, ${a.where}) → Mailchimp list '
+                            '${a.mailchimpListId}',
+                  key: const ValueKey('newsletter-audience-mapping'),
+                ),
+              ),
           if (widget.onNewList != null && !_locked)
             Align(
               alignment: Alignment.centerLeft,
@@ -870,6 +1072,20 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                   : 'This view’s clock — ${widget.viewName}, '
                         '${clockLabel(widget.scheduledTimezone)}. The time you pick '
                         'is a wall time on that clock.',
+            ),
+          ],
+          if (widget.api != null &&
+              widget.newsletterId != null &&
+              !_locked) ...[
+            kind('Check and test'),
+            NewsletterPreflight(
+              api: widget.api!,
+              newsletterId: widget.newsletterId!,
+              onSaveNow: widget.onSaveNow ?? () async {},
+              mayTest: widget.session.me?.refusal(
+                'newsletter.send',
+                'send a test newsletter',
+              ),
             ),
           ],
           const SizedBox(height: 16),

@@ -331,6 +331,56 @@ class MailchimpClient
     }
 
     /**
+     * One test email to the addresses given, through Mailchimp's own test path.
+     *
+     * A campaign must exist to be tested, so a draft is created on the list,
+     * tested, and deleted again. `actions/test` never mails the list: it goes
+     * to `test_emails` only, with merge tags such as `*|UNSUB|*` filled.
+     *
+     * @param  list<string>  $emails
+     */
+    public function sendTest(
+        string $apiKey,
+        string $listId,
+        string $subject,
+        string $fromName,
+        string $replyTo,
+        string $html,
+        array $emails,
+    ): void {
+        $campaign = $this->call($apiKey, 'post', '/campaigns', [
+            'type' => 'regular',
+            'recipients' => ['list_id' => $listId],
+            'settings' => [
+                'subject_line' => '[Test] '.$subject,
+                'title' => '[Test] '.$subject,
+                'from_name' => $fromName,
+                'reply_to' => $replyTo,
+            ],
+        ]);
+
+        $id = (string) ($campaign['id'] ?? '');
+
+        if ($id === '') {
+            throw new NewsletterSendFailed('Mailchimp created no test campaign and said nothing about why.');
+        }
+
+        try {
+            $this->call($apiKey, 'put', "/campaigns/{$id}/content", ['html' => $html]);
+            $this->call($apiKey, 'post', "/campaigns/{$id}/actions/test", [
+                'test_emails' => array_values($emails),
+                'send_type' => 'html',
+            ]);
+        } finally {
+            try {
+                $this->call($apiKey, 'delete', "/campaigns/{$id}");
+            } catch (NewsletterSendFailed) {
+                // A leftover draft in their account is harmless; the test outcome is what matters.
+            }
+        }
+    }
+
+    /**
      * The host for this key, or a refusal naming what is wrong with it.
      */
     public function datacentre(string $apiKey): string
@@ -364,6 +414,7 @@ class MailchimpClient
             $response = match ($method) {
                 'get' => $request->get($url, $payload),
                 'put' => $request->put($url, $payload),
+                'delete' => $request->delete($url, $payload),
                 default => $request->post($url, $payload),
             };
         } catch (ConnectionException) {

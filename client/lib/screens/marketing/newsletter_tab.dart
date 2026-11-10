@@ -733,6 +733,13 @@ class _NewsletterTabState extends State<NewsletterTab> {
         _touched();
       },
       onSend: _send,
+      api: widget.api,
+      newsletterId: _selectedId,
+      onSaveNow: () async {
+        _settleTimer?.cancel();
+        await _saveInFlight;
+        if (mounted) await _save();
+      },
     );
   }
 
