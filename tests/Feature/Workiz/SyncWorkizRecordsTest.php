@@ -123,6 +123,22 @@ class SyncWorkizRecordsTest extends TestCase
         $this->assertSame('2023-01-01', \App\Support\Workiz\WorkizRecords::cursor(null), 'no branch: the default');
     }
 
+    /** Jose 11-10: a tag Workiz renames reaches every mirrored job, though Workiz leaves the jobs' modified time alone. */
+    public function test_a_renamed_tag_is_renamed_on_every_mirrored_job(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $this->fake();
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['tag']])->assertSuccessful();
+        $job = $this->inTenant($tenant['org'], fn () => \App\Models\WorkizJob::query()->create(['franchise_id' => $tenant['franchise']->id,
+            'connection_id' => $connection->id, 'remote_id' => 'J1', 'status' => 'Done', 'payload' => ['Tags' => ['DEPOSIT RECIEVED', 'VIP']], 'synced_at' => now()]));
+
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        $this->fake(['tags' => [['id' => 'TG-1', 'name' => 'DEPOSIT RECEIVED', 'color' => '#00aa00', 'type' => 'job']]]);
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['tag']])->assertSuccessful();
+
+        $this->assertSame(['DEPOSIT RECEIVED', 'VIP'], $this->inTenant($tenant['org'], fn () => $job->fresh()->payload['Tags']));
+    }
+
     public function test_each_type_lands_with_the_columns_readers_filter_on_and_without_the_free_text(): void
     {
         [$tenant] = $this->branch();

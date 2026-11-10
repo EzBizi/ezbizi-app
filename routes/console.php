@@ -194,6 +194,8 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  * what changed, about eight calls a branch, well under the key's burst limit.
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
+// Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
+Schedule::command('ezbizi:sync-workiz-records --type=tag')->cron('1-59/2 * * * *')->withoutOverlapping(5);
 // Off the records run's minute: the ten-minute readers firing together hit Workiz's rate limit (measured 11-03).
 Schedule::command('ezbizi:sync-workiz-calls')->cron('3-59/10 * * * *')->withoutOverlapping(30);
 // Workiz's own Payments report, through each tenant's signed-in web session.
