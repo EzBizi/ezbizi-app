@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/files.dart';
@@ -7,6 +8,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/email/message_html.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_blocks.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_import_panel.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_tab.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
@@ -2879,6 +2881,252 @@ void main() {
       expect(find.textContaining('it is what goes out'), findsOneWidget);
     });
 
+    // ── Newsletter audit 2026-11-10 (Rodrigo) ─────────────────────
+
+    testWidgets('the composer says which version goes out, and Back to blocks '
+        'clears the HTML with an Undo', (tester) async {
+      final puts = <Map<String, dynamic>>[];
+      final base = _handler(canEdit: true, newsletters: const [_draftWithHtml]);
+      await _pumpComposer(tester, (request) async {
+        if (request.method == 'PUT') {
+          puts.add(jsonDecode(request.body) as Map<String, dynamic>);
+        }
+        return base(request);
+      });
+
+      expect(find.byKey(const ValueKey('newsletter-mode')), findsOneWidget);
+      expect(find.text('Sending: custom HTML'), findsOneWidget);
+
+      await tester.tap(find.text('Back to blocks'));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Sending: the blocks'), findsOneWidget);
+      expect(puts.last['html_override'], anyOf(isNull, ''));
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Sending: custom HTML'), findsOneWidget);
+      expect(puts.last['html_override'], '<p>Mine</p>');
+    });
+
+    testWidgets('pasted HTML is checked, previewed, refused with a script, and '
+        'undoable once used', (tester) async {
+      await _pumpComposer(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft]),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.text('There is no HTML to import.'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<p>x</p><script>alert(1)</script>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-import-error')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-import-use')), findsNothing);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<p>Imported</p>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widgetList<MessageHtmlView>(find.byType(MessageHtmlView))
+            .any((v) => v.html == '<p>Imported</p>'),
+        isTrue,
+      );
+      expect(find.textContaining('unsubscribe footer'), findsWidgets);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sending: custom HTML'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sending: the blocks'), findsOneWidget);
+      expect(find.text('Autumn sweeps'), findsWidgets);
+    });
+
+    testWidgets('an SVG design becomes editable blocks', (tester) async {
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) async {
+        if (request.url.path.endsWith('/newsletter/import/svg')) {
+          return _json({
+            'data': {
+              'blocks': [
+                {'type': 'heading', 'text': 'Spring sale', 'size': 32, 'align': 'center'},
+                {'type': 'button', 'text': 'Book now', 'url': 'https://e.com', 'align': 'center'},
+              ],
+              'artwork_svg': null,
+              'alt': 'Spring',
+              'warnings': ['Custom fonts are not carried over.'],
+            },
+          });
+        }
+        return base(request);
+      });
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SVG design'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<svg xmlns="http://www.w3.org/2000/svg"><text>Spring sale</text></svg>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Custom fonts'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-import-panel')), findsNothing);
+      expect(find.text('Spring sale'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(NewsletterEmail),
+          matching: find.text('Autumn sweeps'),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(NewsletterEmail),
+          matching: find.text('Autumn sweeps'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('SVG artwork is rasterised, uploaded and placed first with '
+        'its alt text', (tester) async {
+      Map<String, dynamic>? uploaded;
+      List<Map<String, dynamic>>? used;
+      final api = ApiClient(client: MockClient((request) async {
+        if (request.url.path.endsWith('/newsletter/import/svg')) {
+          return _json({
+            'data': {
+              'blocks': [
+                {'type': 'text', 'text': 'Hello', 'align': 'center'},
+              ],
+              'artwork_svg': '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4"/></svg>',
+              'alt': 'Spring art',
+              'warnings': [],
+            },
+          });
+        }
+        if (request.url.path.endsWith('/newsletter/import/artwork')) {
+          uploaded = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {'url': 'https://app.test/api/v1/newsletter/artwork/o/x.png'},
+          }, 201);
+        }
+        return _json({}, 404);
+      }));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: NewsletterImportPanel(
+              api: api,
+              rasterise: (svg, width) async => Uint8List.fromList([1, 2, 3]),
+              onUseHtml: (_) {},
+              onUseBlocks: (b) => used = b,
+              onClose: () {},
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('SVG design'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<svg/>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.pumpAndSettle();
+
+      expect(uploaded!['png'], base64Encode([1, 2, 3]));
+      expect(used!.first, {
+        'type': 'image',
+        'src': 'https://app.test/api/v1/newsletter/artwork/o/x.png',
+        'alt': 'Spring art',
+      });
+      expect(used![1]['text'], 'Hello');
+    });
+
+    testWidgets('preflight lists the checks and a test goes to the one typed '
+        'address', (tester) async {
+      Map<String, dynamic>? tested;
+      final base = _handler(
+        canEdit: true,
+        newsletters: const [_draft],
+        audiences: const [_audience],
+      );
+      await _pumpComposer(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/preflight')) {
+          return _json({
+            'data': {
+              'checks': [
+                {'key': 'footer', 'ok': true, 'label': 'Address and unsubscribe footer', 'detail': '1 Main St'},
+                {'key': 'from_name', 'ok': true, 'label': 'From name', 'detail': 'A-1 Chimney'},
+              ],
+            },
+          });
+        }
+        if (path.endsWith('/n-1/test')) {
+          tested = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': {'sent_to': 'me@example.com'}});
+        }
+        return base(request);
+      });
+
+      expect(find.byKey(const ValueKey('newsletter-audience-explainer')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-test-email')));
+      await tester.enterText(find.byKey(const ValueKey('newsletter-test-email')), 'me@example.com');
+      await tester.tap(find.byKey(const ValueKey('newsletter-test-send')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+
+      expect(find.textContaining('Address and unsubscribe footer: 1 Main St'), findsOneWidget);
+      expect(find.textContaining('From name: A-1 Chimney'), findsOneWidget);
+      expect(tested, {'email': 'me@example.com'});
+      expect(find.textContaining('Test sent to me@example.com'), findsOneWidget);
+    });
+
+    testWidgets('the chosen list shows which Mailchimp list it sends through', (
+      tester,
+    ) async {
+      await _pumpComposer(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: const [_draft],
+          audiences: const [
+            {'id': 'a-1', 'name': 'Customers', 'kind': 'customers', 'mailchimp_list_id': 'mc-9'},
+          ],
+        ),
+      );
+
+      expect(
+        find.text('Customers (EzBizi, built from your customers) → Mailchimp list mc-9'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('it lays out on a 375-point window without overflowing', (
       tester,
     ) async {
@@ -3496,6 +3744,17 @@ const _draftOfThree = {
     {'type': 'text', 'text': 'One', 'align': 'left'},
     {'type': 'text', 'text': 'Two', 'align': 'left'},
     {'type': 'text', 'text': 'Three', 'align': 'left'},
+  ],
+};
+
+const _draftWithHtml = {
+  'id': 'n-1',
+  'subject': 'Autumn sweeps',
+  'status': 'draft',
+  'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+  'html_override': '<p>Mine</p>',
+  'blocks': [
+    {'type': 'heading', 'text': 'Autumn sweeps', 'align': 'left'},
   ],
 };
 
