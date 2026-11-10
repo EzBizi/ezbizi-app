@@ -106,6 +106,38 @@ final class MailchimpSender
     }
 
     /**
+     * One test email to one address. Nobody on the list receives it, and
+     * nothing is pushed to the list.
+     */
+    public function sendTest(SocialConnection $connection, Newsletter $newsletter, string $html, string $email): void
+    {
+        $listId = (string) ($newsletter->audience?->mailchimp_list_id ?? '');
+
+        if ($listId === '') {
+            throw new NewsletterSendFailed(
+                'Mailchimp needs a list to test against. Choose an audience with a Mailchimp list first.'
+            );
+        }
+
+        $identity = $this->identityFor($connection, $newsletter);
+        $this->mailchimp->sendTest(
+            $this->key($connection),
+            $listId,
+            (string) $newsletter->subject,
+            $identity['from_name'],
+            $identity['reply_to'],
+            $html,
+            [$email],
+        );
+    }
+
+    /** The name a send from this connection would carry. */
+    public function fromName(SocialConnection $connection, Newsletter $newsletter): string
+    {
+        return $this->identityFor($connection, $newsletter)['from_name'];
+    }
+
+    /**
      * Opt-outs Mailchimp holds become EzBizi's own rows at the newsletter's
      * scope, and each new one raises `newsletter.unsubscribed`.
      *
