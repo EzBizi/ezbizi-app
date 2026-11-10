@@ -15,6 +15,12 @@ use Illuminate\Support\Facades\DB;
  */
 final class MetaSpend
 {
+    /** When the tenant's Meta figures were last written; null before the first sync. */
+    public static function syncedAt(): ?string
+    {
+        return DB::table('meta_ad_insights')->where('organization_id', app(TenantContext::class)->idOrFail())->max('updated_at');
+    }
+
     /** @return list<array{id: string, name: string, state: ?string, category: ?string, branch: ?string, franchise_id: ?string, spend_minor: int, leads: int, cost_per_lead_minor: ?int, clicks: int, impressions: int}> */
     public static function rows(string $from, string $to, ?string $state = null, ?string $category = null, ?string $region = null): array
     {

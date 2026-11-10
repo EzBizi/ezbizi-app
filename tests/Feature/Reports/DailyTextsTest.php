@@ -207,6 +207,47 @@ class DailyTextsTest extends TestCase
         $this->assertStringContainsString('• Net profit: -$500.00', $text);
     }
 
+    /** Audit, 2026-11-10: a branch with no P&L table is said apart, not counted as a week not in yet. */
+    public function test_weekly_losses_name_a_branch_with_no_pnl_table_apart(): void
+    {
+        $f = $this->t['franchise'];
+        $this->airtableTable($this->t, (string) $f->id, 'pnl', [
+            ['Week' => '12 Oct - 18 Oct', 'Income' => 'Cash', 'Income Amount' => 1000],
+            ['Week' => '12 Oct - 18 Oct', 'Marketing' => 'Ads', 'Marketing Amount' => 1500],
+        ]);
+        $this->inTenant($this->t['org'], fn () => Franchise::query()->create(['organization_id' => $this->t['org']->id,
+            'company_id' => $this->t['company']->id, 'name' => 'Massachusetts', 'timezone' => 'America/New_York', 'currency' => 'USD', 'is_active' => true]));
+
+        $text = $this->text('weekly_losses');
+
+        $this->assertStringContainsString('• *1 branch with negative net profit*', $text);
+        $this->assertStringContainsString('_No P&L table mapped: ', $text);
+        $this->assertStringContainsString('Massachusetts_', $text);
+        $this->assertStringNotContainsString("can't be judged", $text);
+    }
+
+    /** Audit, 2026-11-10: spend on an account linked to no branch is said, not dropped ($4,645.62 on Nov 9). */
+    public function test_google_ads_say_the_spend_of_accounts_linked_to_no_branch(): void
+    {
+        $this->mock(CampaignPerformance::class)->shouldReceive('channelCost')->andReturn(['currency' => 'USD',
+            'lsa' => ['cost_minor' => 0, 'clicks' => 0, 'conversions' => 0.0],
+            'ppc' => ['cost_minor' => 10000, 'clicks' => 40, 'conversions' => 3.0]]);
+        $f = $this->t['franchise'];
+        $this->inTenant($this->t['org'], function () use ($f) {
+            foreach ([['1234567890', $f->id], ['2222222222', null]] as [$remote, $branch]) {
+                $c = new SocialConnection;
+                $c->forceFill(['organization_id' => $this->t['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $this->t['company']->id,
+                    'provider' => SocialProvider::GoogleAds->value, 'remote_id' => $remote, 'display_name' => 'Ads '.$remote, 'leads_franchise_id' => $branch, 'is_manager' => false]);
+                $c->connect(['refresh_token' => 'r']);
+                $c->save();
+            }
+        });
+
+        $text = $this->text('evening');
+
+        $this->assertStringContainsString("\u{26A0}\u{FE0F} 1 Google Ads account linked to no branch spent $100.00; it is not in the figures above.", $text);
+    }
+
     /** Desk, 2026-11-03: no data is no text, never an empty report. */
     public function test_marketing_ppc_with_no_entries_is_no_text(): void
     {

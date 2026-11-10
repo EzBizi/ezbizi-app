@@ -33,7 +33,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'franchise_id', 'connection_id', 'remote_id', 'serial_id', 'client_id',
     'service_area', 'postal_code', 'city', 'state', 'country', 'address', 'unit',
     'latitude', 'longitude', 'status', 'sub_status', 'job_type', 'job_source', 'external_company_id', 'external_company_read_at',
-    'booked_at', 'scheduled_for', 'scheduled_end', 'last_status_update',
+    'booked_at', 'scheduled_for', 'scheduled_end', 'last_status_update', 'closed_at',
     'created_by', 'payload', 'synced_at', 'job_id', 'projected',
 ])]
 class WorkizJob extends Model implements HoldsPersonalData
@@ -54,6 +54,7 @@ class WorkizJob extends Model implements HoldsPersonalData
             'scheduled_for' => 'datetime',
             'scheduled_end' => 'datetime',
             'last_status_update' => 'datetime',
+            'closed_at' => 'datetime',
             'synced_at' => 'datetime',
         ];
     }
@@ -88,6 +89,13 @@ class WorkizJob extends Model implements HoldsPersonalData
         }
 
         $attributes = self::keepErased($connection, $attributes);
+
+        // When it first reached Done or Canceled, kept while it stays closed: last_status_update
+        // moves with every later edit (Reports audit, 2026-11-10). Reopened, it has none.
+        $attributes['closed_at'] = in_array($attributes['status'], ['Done', 'Canceled'], true)
+            ? (static::query()->where('franchise_id', $connection->scope_id)->where('remote_id', $attributes['remote_id'])->value('closed_at')
+                ?? $attributes['last_status_update'])
+            : null;
 
         static::query()->updateOrCreate(
             [

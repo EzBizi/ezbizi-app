@@ -166,11 +166,10 @@ final class SameDayReport
             $out['sources'] = self::tally($booked->pluck('job_source'), 'No source');
             $out['areas'] = self::tally($booked->pluck('service_area'), 'No service area');
 
-            // ponytail: last_status_update is the job's latest change, so a job
-            // done today and edited tomorrow leaves today's count; Workiz has no
-            // "completed at" in the API.
+            // When the sweep first saw it closed (closed_at); a row closed before
+            // that was kept reads its latest change, as it always did.
             $techs = [];
-            $closed = (clone $jobs)->whereBetween('j.last_status_update', $day)
+            $closed = (clone $jobs)->whereBetween(DB::raw('coalesce(j.closed_at, j.last_status_update)'), $day)
                 ->whereIn('j.status', ['Done', 'Canceled'])->get();
 
             foreach ($closed as $job) {
@@ -218,7 +217,10 @@ final class SameDayReport
 
         $zone = self::zone($branch);
         $from = CarbonImmutable::parse($date, $zone)->startOfDay()->utc();
-        $reviews = DB::table('reviews')->whereIn('location_name', $locations->pluck('remote_name'))->get(['location_name', 'rating', 'reviewed_at']);
+        // Reviews name a location "accounts/X/locations/ID", the location itself "locations/ID" (always 0, 2026-11-10).
+        $reviews = DB::table('reviews')->where(fn ($q) => $locations->each(fn ($l) => $q->orWhere('location_name', $l->remote_name)
+            ->orWhere('location_name', 'like', '%/'.$l->remote_name)))->get(['location_name', 'rating', 'reviewed_at'])
+            ->each(fn ($r) => $r->location_name = (string) strstr((string) $r->location_name, 'locations/') ?: $r->location_name);
         $isNew = fn ($r) => $r->reviewed_at !== null
             && CarbonImmutable::parse($r->reviewed_at, 'UTC')->between($from, $from->addDay()->subSecond());
 

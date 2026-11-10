@@ -167,6 +167,28 @@ class NewReportsTextsTest extends TestCase
         $this->assertStringContainsString('• *TOTAL*: spent $300.00 · 2 jobs', $text);
     }
 
+    /** Audit, 2026-11-10: the 8 PM text says how far its day reaches, and that Meta's figures are the morning's. */
+    public function test_the_evening_text_says_through_when_and_how_old_meta_is(): void
+    {
+        $this->inTenant($this->t['org'], function () {
+            $c = new SocialConnection;
+            $c->forceFill(['organization_id' => $this->t['org']->id, 'scope_type' => SocialConnection::SCOPE_ORGANIZATION, 'scope_id' => $this->t['org']->id,
+                'provider' => SocialProvider::FacebookAds->value, 'remote_id' => 'act_1', 'display_name' => 'Meta']);
+            $c->connect(['access_token' => 't']);
+            $c->save();
+            DB::table('meta_ad_campaigns')->insert(['id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id, 'connection_id' => $c->id,
+                'campaign_id' => 'C1', 'name' => 'C1', 'state' => 'NJ', 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('meta_ad_insights')->insert(['id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id, 'connection_id' => $c->id,
+                'date' => '2026-11-08', 'campaign_id' => 'C1', 'adset_id' => 'AC1', 'region' => '', 'spend' => 40, 'leads' => 0, 'forms' => 1,
+                'created_at' => '2026-11-08 05:30:00', 'updated_at' => '2026-11-08 05:30:00']);
+        });
+
+        $text = $this->text('evening', '2026-11-08 20:00:00');
+
+        $this->assertStringContainsString('_Sun, Nov 8, 2026 · through 8:00 PM_', $text);
+        $this->assertStringContainsString("\u{26A0}\u{FE0F} Meta last refreshed Nov 8, 5:30 AM: spend since then is not in these figures.", $text);
+    }
+
     public function test_meta_ads_place_a_campaign_by_its_state_or_a_city_in_its_name_and_count_forms(): void
     {
         DB::table('business_list_items')->where('list_key', 'reports.locations')->update(['value' => json_encode(['branch' => 'New Jersey', 'code' => 'NJ, Newark'])]);
