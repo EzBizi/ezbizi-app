@@ -8,6 +8,7 @@ use App\Models\WorkizRecord;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizRecords;
+use App\Support\Workiz\WorkizTags;
 use App\Support\Workiz\WorkizV2;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -118,9 +119,10 @@ class SyncWorkizRecords extends Command
                 ? array_filter($rows, fn ($r) => (string) ($r['startDate'] ?? '') < $since)
                 : [];
             $fresh = $type === 'payment' ? self::unheld($connection, array_column($rows, 'id')) : [];
-            $renamed = $type === 'tag' ? self::renamedTags($connection, $rows) : [];
+            // A tag renamed, recoloured, added or deleted: logged, told, followed (WorkizTags).
+            $tagChanges = $type === 'tag' ? WorkizTags::diff($connection, $rows, $page === 1 && ! ($read['data']['hasMore'] ?? false)) : [];
             $landed += WorkizRecords::land($connection, $type, array_diff_key($rows, $older));
-            self::retag($connection, $renamed);
+            WorkizTags::record($connection, $tagChanges);
             self::announce($connection, $fresh);
 
             if ($older !== [] || ! ($read['data']['hasMore'] ?? false)) {
@@ -131,51 +133,6 @@ class SyncWorkizRecords extends Command
         }
 
         return ['landed' => $landed, 'failed' => null, 'status' => 200];
-    }
-
-    /**
-     * Tags Workiz renamed (same id, new name), as [old => new]. Workiz renames
-     * a tag on every job without touching the jobs' modified time, so the job
-     * sync never re-reads them (Jose, 2026-11-10: "DEPOSIT RECIEVED" fixed on
-     * every branch, EzBizi still showed it).
-     *
-     * @return array<string, string>
-     */
-    private static function renamedTags(SocialConnection $connection, array $rows): array
-    {
-        $held = WorkizRecord::query()->where('franchise_id', $connection->scope_id)->where('type', 'tag')
-            ->get(['remote_id', 'payload'])->mapWithKeys(fn (WorkizRecord $r) => [$r->remote_id => (string) ($r->payload['name'] ?? '')]);
-        $renamed = [];
-
-        foreach ($rows as $row) {
-            $old = $held[(string) ($row['id'] ?? '')] ?? null;
-            $new = (string) ($row['name'] ?? '');
-
-            if ($old !== null && $old !== '' && $new !== '' && $old !== $new) {
-                $renamed[$old] = $new;
-            }
-        }
-
-        return $renamed;
-    }
-
-    /** The branch's mirrored jobs carry the new names; the projection's follow pass takes them to EzBizi's jobs. */
-    private static function retag(SocialConnection $connection, array $renamed): void
-    {
-        foreach ($renamed as $old => $new) {
-            \App\Models\WorkizJob::query()->where('franchise_id', $connection->scope_id)
-                ->where('payload', 'like', '%'.str_replace(['%', '_'], ['\%', '\_'], $old).'%')
-                ->chunkById(500, function ($jobs) use ($old, $new) {
-                    foreach ($jobs as $job) {
-                        $payload = $job->payload;
-
-                        if (is_array($payload['Tags'] ?? null) && in_array($old, $payload['Tags'], true)) {
-                            $payload['Tags'] = array_map(fn ($t) => $t === $old ? $new : $t, $payload['Tags']);
-                            $job->forceFill(['payload' => $payload])->save();
-                        }
-                    }
-                });
-        }
     }
 
     /** Which of these payment ids the mirror does not hold yet. @return list<string> */
