@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.26.27
+ * Version:           1.26.28
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.26.27';
+const EZBIZI_VERSION = '1.26.28';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -54,6 +54,12 @@ const EZBIZI_CACHE_TTL = 300;
 // one. Only reached on sites where WP-Cron never runs.
 const EZBIZI_STALE_MAX = 3600;
 const EZBIZI_REFRESHING = 'ezbizi_refreshing';
+/*
+ * Set when EzBizi answers 429. The values endpoint allows 60 reads an hour per
+ * site, and a retry every minute is exactly 60: call.a-1garagedoorrepair.com
+ * stayed refused all afternoon on 2026-11-10 and served 360 of its 689 pages.
+ */
+const EZBIZI_BACKOFF = 'ezbizi_backoff';
 
 /*
  * When EzBizi started REFUSING this site's token, as distinct from failing to
@@ -180,11 +186,14 @@ function ezbizi_payload($force = false) {
      * forever, because the background refresh below never runs. Past the
      * ceiling we block rather than publish an unbounded-stale phone number.
      */
-    if (time() - (int) (isset($last['fetched_at']) ? $last['fetched_at'] : 0) > EZBIZI_STALE_MAX) {
+    // Not while EzBizi has asked us to back off: past the ceiling every page
+    // view would otherwise fetch, and every fetch renew the 429.
+    if (time() - (int) (isset($last['fetched_at']) ? $last['fetched_at'] : 0) > EZBIZI_STALE_MAX
+        && ! get_transient(EZBIZI_BACKOFF)) {
         return ezbizi_fetch();
     }
 
-    if (! get_transient(EZBIZI_REFRESHING)) {
+    if (! get_transient(EZBIZI_REFRESHING) && ! get_transient(EZBIZI_BACKOFF)) {
         // Short-lived, so a failed refresh retries soon rather than being
         // locked out until it expires.
         set_transient(EZBIZI_REFRESHING, 1, 60);
@@ -253,6 +262,10 @@ function ezbizi_fetch() {
     ));
 
     $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
+
+    if ($code === 429) {
+        set_transient(EZBIZI_BACKOFF, 1, 15 * MINUTE_IN_SECONDS);
+    }
 
     if ($code !== 200) {
         /*
@@ -474,7 +487,8 @@ add_action('rest_api_init', function () {
     register_rest_route('ezbizi/v1', '/refresh', array(
         'methods' => 'POST',
         'callback' => function () {
-            $payload = ezbizi_fetch();
+            // A nudge during a back-off would only renew the 429.
+            $payload = get_transient(EZBIZI_BACKOFF) ? ezbizi_payload() : ezbizi_fetch();
 
             return new WP_REST_Response(array('fetched_at' => isset($payload['fetched_at']) ? (int) $payload['fetched_at'] : null));
         },
