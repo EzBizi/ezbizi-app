@@ -31,8 +31,11 @@ class WorkizTagsController
             ->filter(fn ($t) => is_array($t) && trim((string) ($t['name'] ?? '')) !== '')
             ->mapWithKeys(fn ($t) => [self::key($t['name']) => WorkizTags::face($t)]);
 
+        // Only accounts whose tags EzBizi reads (v2): a v1 branch holds no tag list,
+        // and would show every tag as missing (Everdoors Connecticut, 11-10).
         $branchIds = SocialConnection::query()->where('provider', SocialProvider::Workiz->value)
-            ->where('scope_type', SocialConnection::SCOPE_FRANCHISE)->pluck('scope_id')->unique();
+            ->where('scope_type', SocialConnection::SCOPE_FRANCHISE)->get()
+            ->filter(fn (SocialConnection $c) => \App\Support\Workiz\WorkizV2::uses($c))->pluck('scope_id')->unique();
         $accounts = Franchise::query()->whereKey($branchIds)->orderBy('name')->get(['id', 'name']);
         $tags = WorkizRecord::query()->where('type', 'tag')->whereIn('franchise_id', $accounts->pluck('id'))->get(['franchise_id', 'remote_id', 'payload']);
 
