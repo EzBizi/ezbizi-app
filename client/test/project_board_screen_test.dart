@@ -84,6 +84,8 @@ void main() {
               'status': 'Pending',
               'part_status': 'WAITING PARTS',
               'required': 'Crown Repair',
+              'status_days': 8,
+              'ready_missing': <String>[],
               'tags': ['VIP', 'DEPOSIT'],
               'tag_colours': {'VIP': '#D32F2F'},
             },
@@ -106,6 +108,7 @@ void main() {
                 'as_label': true,
               },
               {'key': 'required', 'label': 'Required', 'visible': true},
+              {'key': 'status_days', 'label': 'Status Time', 'visible': true},
               {
                 'key': 'tags',
                 'label': 'Tags',
@@ -117,6 +120,8 @@ void main() {
               'part_status': {'WAITING PARTS': 'caution'},
             },
             'settings_scope': {'scope_type': 'company', 'scope_id': 'c-1'},
+            'can_edit': true,
+            'repair_teams': ['KENNI REPAIR TEAM'],
           },
         });
       }),
@@ -148,6 +153,23 @@ void main() {
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpAndSettle();
     expect(requests.length, before + 2);
+
+    // Status Time: 7 days and up is red (Jose, 2026-11-10), and Ready to
+    // schedule posts once nothing is missing.
+    expect(
+      tester.widget<StatusPill>(find.widgetWithText(StatusPill, '8 days')).tone,
+      Tone.bad,
+    );
+    await tester.tap(find.byKey(const ValueKey('project-board-ready:j-1')));
+    await tester.pumpAndSettle();
+    expect(
+      requests.any(
+        (r) =>
+            r.method == 'POST' &&
+            r.url.path.endsWith('/project-board/jobs/j-1/ready'),
+      ),
+      isTrue,
+    );
 
     // The company's names and order; a hidden column is not drawn.
     expect(find.text('CLIENT'), findsOneWidget);
