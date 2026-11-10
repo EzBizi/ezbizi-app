@@ -3877,7 +3877,8 @@ class ActionRunner
             }
             try {
                 // The key names the rule, so ReportDeliveryCheck can tell its maker one did not arrive.
-                $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text, $once === null ? null : "{$once}:{$user->id}") ? 1 : 0;
+                $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text, $once === null ? null : "{$once}:{$user->id}",
+                    $scopeType === 'company' ? Company::query()->find($scopeId) : null) ? 1 : 0;
             } catch (RuntimeException $refusal) {
                 // Not sent, so a retry may try again rather than report "nobody has a phone".
                 if ($once !== null) {

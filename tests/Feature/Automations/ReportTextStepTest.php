@@ -22,7 +22,7 @@ class ReportTextStepTest extends TestCase
     public function test_a_rule_sends_the_text_as_the_document_template_and_refuses_a_creator_without_reports(): void
     {
         config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
-        Http::fake(['*/media' => Http::response(['id' => 'MEDIA-1']), '*' => Http::response(['messages' => [['id' => 'wamid.OUT1']]])]);
+        Http::fake(['*/media' => Http::response(['id' => 'MEDIA-1']), '*' => fn () => Http::response(['messages' => [['id' => 'wamid.'.Str::random(10)]]])]);
         $t = $this->provisionTenant('A1-Group');
         $viewer = $this->userWithRole($t, 'Viewer', ['tasks.view']);
         DB::table('whatsapp_numbers')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id,
@@ -37,21 +37,23 @@ class ReportTextStepTest extends TestCase
 
             $sent = app(ActionRunner::class)->run($step, $event, null, automation: $mine);
             $this->assertTrue($sent['ok'], $sent['detail']);
-            $this->assertSame([['13055550123', 'report_document']], WhatsAppMessage::query()->get()->map(fn ($m) => [$m->counterparty, $m->template_name])->all());
+            // 2026-11-09: the text in account_report, then the PDF in report_statement.
+            $this->assertSame([['13055550123', 'account_report'], ['13055550123', 'report_statement']],
+                WhatsAppMessage::query()->oldest('id')->get()->map(fn ($m) => [$m->counterparty, $m->template_name])->sortBy(fn ($r) => $r[1])->values()->all());
             app(ActionRunner::class)->run($step, $event, null, automation: $mine);
-            $this->assertSame(1, WhatsAppMessage::query()->count(), 'the same day is not sent twice');
+            $this->assertSame(2, WhatsAppMessage::query()->count(), 'the same day is not sent twice');
 
             $theirs = Automation::create(['name' => 'V', 'trigger_key' => 'automation.schedule_reached', 'is_active' => false, 'created_by' => $viewer->id]);
             $refused = app(ActionRunner::class)->run($step, $event, null, automation: $theirs);
             $this->assertFalse($refused['ok']);
-            $this->assertSame(1, WhatsAppMessage::query()->count(), 'a creator without reports.view sends nothing');
+            $this->assertSame(2, WhatsAppMessage::query()->count(), 'a creator without reports.view sends nothing');
         });
     }
 
     public function test_a_recipient_who_cannot_see_reports_is_skipped_at_send_and_refused_on_save(): void
     {
         config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
-        Http::fake(['*/media' => Http::response(['id' => 'MEDIA-1']), '*' => Http::response(['messages' => [['id' => 'wamid.OUT1']]])]);
+        Http::fake(['*/media' => Http::response(['id' => 'MEDIA-1']), '*' => fn () => Http::response(['messages' => [['id' => 'wamid.'.Str::random(10)]]])]);
         $t = $this->provisionTenant('A1-Group');
         $viewer = $this->userWithRole($t, 'Viewer', ['tasks.view']);
         DB::table('whatsapp_numbers')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id,

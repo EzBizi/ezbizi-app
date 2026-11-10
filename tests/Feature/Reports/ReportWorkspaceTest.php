@@ -50,7 +50,7 @@ class ReportWorkspaceTest extends TestCase
     public function test_send_now_goes_to_each_person_who_may_see_it(): void
     {
         config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
-        Http::fake(['*/media' => Http::response(['id' => 'MEDIA-1']), '*' => Http::response(['messages' => [['id' => 'wamid.OUT1']]])]);
+        Http::fake(['*/media' => Http::response(['id' => 'MEDIA-1']), '*' => fn () => Http::response(['messages' => [['id' => 'wamid.'.Str::random(10)]]])]);
         $t = $this->provisionTenant('Alpha');
         $viewer = $this->userWithRole($t, 'Viewer', ['leads.view']);
         DB::table('whatsapp_numbers')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id,
@@ -63,7 +63,7 @@ class ReportWorkspaceTest extends TestCase
 
         $this->signedInAs($t['admin'])->postJson('/api/v1/reports/texts/weekly_reviews/send', ['user_ids' => [$t['admin']->id, $viewer->id]])
             ->assertOk()->assertJsonPath('data.sent', 1);
-        $this->assertSame(['13055550123'], $this->inTenant($t['org'], fn () => WhatsAppMessage::query()->pluck('counterparty')->all()));
+        $this->assertSame(['13055550123'], $this->inTenant($t['org'], fn () => WhatsAppMessage::query()->distinct()->pluck('counterparty')->all()));
     }
 
     public function test_the_batch_steps_and_approve_for_the_approval_group_only(): void

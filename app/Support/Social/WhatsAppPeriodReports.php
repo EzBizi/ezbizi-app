@@ -118,7 +118,7 @@ final class WhatsAppPeriodReports
             ."\u{2705} Reply *APPROVE* to send them to every group\n"
             ."\u{1F4E5} Reply *SEPARATELY* to get each company's PDF here, privately\n"
             ."\u{23F8} Reply *HOLD* to keep them back for now\n"
-            ."\u{1F504} Reply *REFRESH* for a new copy once the Airtable P&L is in");
+            ."\u{1F504} Reply *REFRESH* for a new copy once the Airtable P&L is in", file: false);
 
         return $reached;
     }
@@ -211,7 +211,7 @@ final class WhatsAppPeriodReports
             'HOLD' => "\u{23F8} *On hold.* Nothing goes to the groups. Reply *APPROVE* when it is ready, or *REFRESH* for a new copy.",
             'SEPARATELY' => "\u{1F4E5} *Sending you each company's PDF now, privately.* Nothing goes to the groups.",
             default => "\u{2705} *Approved!*\n\n\u{1F4E4} Sending the ".$label.' to every group now.',
-        });
+        }, file: false);
 
         return true;
     }
