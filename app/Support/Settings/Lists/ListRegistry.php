@@ -107,9 +107,9 @@ final class ListRegistry
                 help: $list[3].' Emoji, spaces and dashes are ignored, so "Paid – Estimated" also matches it with a coloured dot in front.',
                 editPermission: 'reports.settings',
             ), [
-                ['reports.tags_not_in_progress', 'Tags left out of In Progress jobs', ['Deposit Received', 'Deposit Recieved'],
+                ['reports.tags_not_in_progress', 'Tags left out of In Progress jobs', ['DEPOSIT RECEIVED'],
                     'Jobs with one of these tags are not counted in the In Progress jobs texts.'],
-                ['reports.tags_not_created', 'Tags left out of jobs created', ['Paid – Estimated', 'Paid – Estimated (By Sub)'],
+                ['reports.tags_not_created', 'Tags left out of jobs created', ['PAID - ESTIMATED', 'PAID - ESTIMATED (BY SUB)'],
                     'Jobs with one of these tags are not counted in the jobs created texts.'],
             ]),
             new ListDefinition(

@@ -274,7 +274,7 @@ class NewReportsTextsTest extends TestCase
             '*Google Ads · active campaigns*', '*Meta Ads · active campaigns*', 'Local Services · locations losing money*'] as $section) {
             $this->assertStringContainsString($section, $text);
         }
-        $this->assertStringContainsString('_Excludes jobs tagged Deposit Received, Deposit Recieved._', $text);
+        $this->assertStringContainsString('_Excludes jobs tagged DEPOSIT RECEIVED._', $text);
         $this->assertStringContainsString('Nov 2 - Nov 8, 2026', $text);
     }
 }
