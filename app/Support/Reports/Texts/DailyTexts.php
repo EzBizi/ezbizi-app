@@ -67,6 +67,20 @@ final class DailyTexts
         'weekly' => 'Weekly report',
     ];
 
+    /** kind => the emoji its title starts with, its heading's where it has one (Jose, 2026-11-10). */
+    public const ICONS = [
+        'ppc' => "\u{1F4CA}",
+        'marketing_ppc' => "\u{1F4CA}",
+        'dispatchers' => "\u{1F4CB}",
+        'technician_sales' => "\u{1F477}",
+        'weekly_losses' => "\u{1F4C9}",
+        'weekly_reviews' => "\u{2B50}",
+        'job_assignments' => "\u{1F9F0}",
+        'revenue_collected' => "\u{1F4B5}",
+        'evening' => "\u{1F319}",
+        'weekly' => "\u{1F4C5}",
+    ];
+
     /** A text's own date: "Mon, Nov 9, 2026", "Nov 3 - Nov 9, 2026". */
     private const DATE = '/(?:(?<weekday>Mon|Tue|Wed|Thu|Fri|Sat|Sun), )?(?<from>[A-Z][a-z]{2} \d{1,2})(?: - (?<to>(?:[A-Z][a-z]{2} )?\d{1,2}))?, \d{4}/';
 
@@ -150,7 +164,7 @@ final class DailyTexts
         }
 
         // A report whose first section was only its heading starts at what follows (the weekly's rule).
-        return [$whose.' · '.self::NAMES[$kind].' · '.$date, (string) preg_replace('/^[\s\x{2014}]+/u', '', implode("\n", $lines))];
+        return [self::ICONS[$kind].' '.$whose.' · '.self::NAMES[$kind].' · '.$date, (string) preg_replace('/^[\s\x{2014}]+/u', '', implode("\n", $lines))];
     }
 
     /** @var \Closure(Franchise): string */
@@ -189,7 +203,7 @@ final class DailyTexts
             $total += $cents;
         }
 
-        return implode("\n", [...$lines, '', '*TOTAL: '.self::money($total).'*']);
+        return implode("\n", [...$lines, '', "\u{1F4B0} *TOTAL: ".self::money($total).'*']);
     }
 
     /** Jobs booked per location, less the tags the business leaves out (reports.tags_not_created). */
@@ -733,7 +747,7 @@ final class DailyTexts
     /** Each branch's technicians that day: completed, canceled, sales and deposits. */
     private function technicianSales(Collection $branches, CarbonImmutable $day): string
     {
-        $lines = ["*Technician sales*\n".$this->period($day, $day), ''];
+        $lines = ["\u{1F477} *Technician sales*\n".$this->period($day, $day), ''];
         $all = ['done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
 
         foreach ($branches as $branch) {
@@ -759,8 +773,9 @@ final class DailyTexts
             return $lines[0]."\n\nNo technician activity.";
         }
 
-        $lines[] = '*Total:* '.$all['done'].' completed · '.$all['canceled'].' canceled · '
-            .self::money((int) round($all['gross'] * 100)).' sales · '.self::money((int) round($all['deposits'] * 100)).' deposits';
+        // The emoji are the WhatsApp message's; the PDF drops them (Jose, 2026-11-10).
+        $lines[] = "\u{1F4B0} *Total:* \u{2705} ".$all['done']." completed · \u{274C} ".$all['canceled']." canceled · \u{1F4B5} "
+            .self::money((int) round($all['gross'] * 100))." sales · \u{1F3E6} ".self::money((int) round($all['deposits'] * 100)).' deposits';
 
         return implode("\n", $lines);
     }

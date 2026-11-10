@@ -40,7 +40,7 @@ class ReportTextStepTest extends TestCase
             // 2026-11-10 (Jose): ONE message, the PDF in account_report_pdf with the title and the report its values.
             $this->assertSame([['13055550123', 'account_report_pdf']],
                 WhatsAppMessage::query()->get()->map(fn ($m) => [$m->counterparty, $m->template_name])->all());
-            $this->assertStringContainsString('"A1-Group · Weekly reviews by branch · ', $sent['detail']);
+            $this->assertStringContainsString("\"\u{2B50} A1-Group · Weekly reviews by branch · ", $sent['detail']);
             app(ActionRunner::class)->run($step, $event, null, automation: $mine);
             $this->assertSame(1, WhatsAppMessage::query()->count(), 'the same day is not sent twice');
 

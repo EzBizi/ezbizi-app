@@ -105,7 +105,7 @@ class NewReportsTextsTest extends TestCase
         [$title, $text] = $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)
             ->headed('revenue_collected', 'A-1 Chimney', $this->t['org'], CarbonImmutable::parse('2026-11-08 01:00:00')));
 
-        $this->assertSame('A-1 Chimney · Revenue collected · Sat, Nov 7', $title);
+        $this->assertSame("\u{1F4B5} A-1 Chimney · Revenue collected · Sat, Nov 7", $title);
         $this->assertStringStartsWith("_Payments received, as of Nov 8, 1:00 AM_\n\n• *New Jersey*: $100.00", $text);
     }
 
