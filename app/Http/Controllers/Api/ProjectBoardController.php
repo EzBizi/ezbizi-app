@@ -66,7 +66,7 @@ class ProjectBoardController extends Controller
         $place = ViewScope::forUser($user)->settingsScope();
         $place = $place instanceof Franchise ? ($place->company ?? $user->organization) : $place;
         $rules = (array) $settings->get('project_board.tabs', $place);
-        $partTags = array_map(fn ($t) => mb_strtolower(trim((string) $t)), (array) $settings->get('project_board.part_tags', $place));
+        $partTags = array_map(fn ($t) => self::tagKey((string) $t), (array) $settings->get('project_board.part_tags', $place));
 
         // The search box: customer name, job number (ours or Workiz's) or address.
         $term = trim((string) ($input['q'] ?? ''));
@@ -201,9 +201,13 @@ class ProjectBoardController extends Controller
         $tags = array_values(array_filter(array_map(fn ($t) => trim((string) $t), (array) ($rule['tags'] ?? []))));
         if ($tags !== []) {
             $any = ($rule['tags_mode'] ?? 'all') === 'any';
-            $jobs->where(function (Builder $q) use ($tags, $any) {
+            // The stored list, folded the way tagKey() folds a tag, so
+            // "Deposit Recieved" matches DEPOSIT RECEIVED (Jose, 2026-11-10).
+            $folded = "REPLACE(REPLACE(LOWER(CAST(tags AS CHAR)), ' ', ''), 'recieved', 'received')";
+            $jobs->where(function (Builder $q) use ($tags, $any, $folded) {
                 foreach ($tags as $tag) {
-                    $any ? $q->orWhereJsonContains('tags', $tag) : $q->whereJsonContains('tags', $tag);
+                    $like = '%"'.addcslashes(self::tagKey($tag), '%_\\').'"%';
+                    $any ? $q->orWhereRaw("{$folded} LIKE ?", [$like]) : $q->whereRaw("{$folded} LIKE ?", [$like]);
                 }
             });
         }
@@ -213,6 +217,15 @@ class ProjectBoardController extends Controller
             false => $jobs->whereNull('scheduled_for'),
             default => $jobs,
         };
+    }
+
+    /**
+     * A tag as it is compared: any case, no spaces, and the common Workiz
+     * misspelling RECIEVED read as RECEIVED (old jobs keep it).
+     */
+    public static function tagKey(string $tag): string
+    {
+        return str_replace('recieved', 'received', str_replace(' ', '', mb_strtolower(trim($tag))));
     }
 
     /** @param  list<string>  $partTags */
@@ -233,7 +246,7 @@ class ProjectBoardController extends Controller
             'tags'          => array_values((array) ($job->tags ?? [])),
             // Part status: the job's tags that the organization names as part
             // tags (project_board.part_tags), e.g. WAITING PARTS.
-            'part_status'   => collect($job->tags ?? [])->filter(fn ($t) => in_array(mb_strtolower(trim((string) $t)), $partTags, true))->values()->implode(', ') ?: null,
+            'part_status'   => collect($job->tags ?? [])->filter(fn ($t) => in_array(self::tagKey((string) $t), $partTags, true))->values()->implode(', ') ?: null,
             'created'       => $job->created_at?->copy()->setTimezone($zone)->toDateString(),
             'scheduled'     => $job->scheduled_for?->toDateString(),
             // Required: what the job needs done, its line items (Workiz's until
