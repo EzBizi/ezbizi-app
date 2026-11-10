@@ -3500,5 +3500,14 @@ byte-identical to the app's `/api/v1/openapi.json`.
 
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split)
 over the 10 LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
-1, 0.0.0502. Desk asked (11-09) for the 0549-0552 diff and do-not-row counts; see the reply line below if
-one arrived this run.
+1, 0.0.0502. **Desk (11-09):** 0549-0551 live, 0552 cutting. Training, ring groups, Scheduled Jobs, LSA, a 7th
+publisher: unchanged. Stripe keys on prod 0, `payment_accounts` 0, so `/privacy/` names no Stripe.
+
+- **Second edit to WP page 8 after the desk's list** (pre-edit copy `~/ezb-wp-bak-20261109/page8-b.html`): the email
+  signature builder (0550) serves each photo publicly at `/api/v1/signature-photos/{40-char random}.ext` so recipients'
+  mail can load it. "What we collect › Your account" now says it sits at an unguessable address that anyone holding it
+  can see. Live.
+- SSN card photo: "Staff records … onboarding documents" already covers it (encrypted, HR-only, not in exports or AI,
+  per the desk). Left alone: no page promises anything narrower.
+- Review-link → Google review matching by name and @mentions: nothing leaves EzBizi; no sentence touched.
+- 0552 trigger stands: reports go as PDF documents over WhatsApp from +1 877-450-8572 (a "Reports" purpose number).
