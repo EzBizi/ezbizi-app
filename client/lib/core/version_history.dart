@@ -13,6 +13,15 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0559', date: '10 Nov 2026', items: [
+      'Project Management: drag to resize columns (kept per person), search fills the row and finds technicians, the franchise picker lists only what is in your view and scrolls',
+      'Project Management: the attachments count opens Photos & files and counts the Workiz files too; Workiz notes show in the Notes tab; a small gap between Required items',
+      'Project Management: the tag picker and Repair Team menu show Workiz colours and only the job’s own account’s tags',
+      'Jobs: the description keeps up with the Workiz notes until someone edits it',
+      'Human Resources › Records: Inactive lists every inactive person',
+      'Leads: the status pill is the same size as the tags beside it',
+      'Integrations › Workiz › Tags: an account without a tag list no longer marks every tag as different',
+    ]),
     VersionRelease(version: '0.0.0558', date: '10 Nov 2026', items: [
       'Access changes (role, permissions, inboxes, companies) reach an open app within a minute, or as soon as you return to it, with no reload',
       'Websites: per-page phone numbers reach every page on sites with hundreds of town pages',
