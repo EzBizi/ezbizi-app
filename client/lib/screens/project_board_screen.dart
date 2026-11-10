@@ -14,6 +14,8 @@ import '../widgets/list_table.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
+import '../widgets/tag.dart';
+import 'jobs/job_labels.dart';
 import 'jobs/job_detail_panel.dart';
 
 /// Project Management (Jose, 2026-11-06): six sub-tabs of jobs, from
@@ -207,8 +209,19 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       );
     }
     if (value is List) {
-      // Tags: one chip each, coloured like any label column.
+      // Tags: one chip each, in its Workiz colour where known (Jose,
+      // 2026-11-10), else coloured like any label column.
       if (value.isEmpty) return const Text('—');
+      final workiz = key == 'tags'
+          ? jobTagColours(row)
+          : const <String, Color>{};
+      if (workiz.isNotEmpty) {
+        return Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: [for (final t in value) Tag('$t', colour: workiz['$t'])],
+        );
+      }
       final named = (_labels[key] as Map?) ?? const {};
       return Wrap(
         spacing: 4,

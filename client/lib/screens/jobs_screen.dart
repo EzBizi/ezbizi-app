@@ -82,10 +82,7 @@ class _JobsScreenState extends State<JobsScreen> {
   /// looks, and then kept, as the Jobs tab is.
   final Set<String> _opened = {'jobs'};
 
-  List<String> get _tabs => [
-    'jobs',
-    if (_seesEstimates) 'estimates',
-  ];
+  List<String> get _tabs => ['jobs', if (_seesEstimates) 'estimates'];
 
   bool get _seesEstimates =>
       _seesMoney && (widget.session.me?.can('estimates.view') ?? false);
@@ -481,7 +478,10 @@ class _JobsScreenState extends State<JobsScreen> {
         // — would offer the same word twice. The franchise row says it.
         if (!(a.name.toLowerCase() == f.name.toLowerCase() &&
             _areas.where((x) => x.franchiseId == f.id).length == 1))
-          SearchOption<String?>(value: 'a:${a.id}', label: '${f.name} · ${a.name}'),
+          SearchOption<String?>(
+            value: 'a:${a.id}',
+            label: '${f.name} · ${a.name}',
+          ),
     ],
   ];
 
@@ -536,10 +536,7 @@ class _JobsScreenState extends State<JobsScreen> {
                 if (count != null)
                   TextSpan(
                     text: '  ${formatCount(count)}',
-                    style: TextStyle(
-                      color: muted,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: TextStyle(color: muted, fontWeight: FontWeight.w500),
                   ),
               ],
             ),
@@ -579,10 +576,7 @@ class _JobsScreenState extends State<JobsScreen> {
               child: Row(
                 children: [
                   for (final c in chips)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: c,
-                    ),
+                    Padding(padding: const EdgeInsets.only(right: 6), child: c),
                 ],
               ),
             ),
@@ -607,7 +601,9 @@ class _JobsScreenState extends State<JobsScreen> {
                     : shortMinor(minor, currency: currency),
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: tone == null ? null : ToneColours.of(context, tone).ink,
+                  color: tone == null
+                      ? null
+                      : ToneColours.of(context, tone).ink,
                 ),
               ),
             ],
@@ -688,7 +684,11 @@ class _JobsScreenState extends State<JobsScreen> {
     };
     final mark = Padding(
       padding: const EdgeInsets.only(left: 6),
-      child: StatusPill(words, key: ValueKey('tile-money-${job['id']}'), tone: pill.$2),
+      child: StatusPill(
+        words,
+        key: ValueKey('tile-money-${job['id']}'),
+        tone: pill.$2,
+      ),
     );
 
     return isShared
@@ -752,9 +752,9 @@ class _JobsScreenState extends State<JobsScreen> {
               onChanged: (_) => setState(() {}),
               onSubmitted: (_) => _load(),
               onClear: () {
-                            _search.clear();
-                            _load();
-                          },
+                _search.clear();
+                _load();
+              },
             ),
           ),
           if (!wide && _statusChoices.isNotEmpty)
@@ -1077,7 +1077,7 @@ class _JobsScreenState extends State<JobsScreen> {
           flex: 3,
           cell: (_, job) => Align(
             alignment: AlignmentDirectional.centerStart,
-            child: JobTagsSummary(jobTags(job)),
+            child: JobTagsSummary(jobTags(job), colours: jobTagColours(job)),
           ),
         ),
       // Only with the Financials toggle (Jose, 2026-09-29). Without it the
@@ -1087,7 +1087,9 @@ class _JobsScreenState extends State<JobsScreen> {
       // Only when a loaded job has some, as the Workiz column: two empty
       // columns were squeezing Title and Where (UI review, 2026-10-08).
       if (_seesMoney &&
-          _jobs.any((job) => job['money'] != null || job['amount'] != null)) ...[
+          _jobs.any(
+            (job) => job['money'] != null || job['amount'] != null,
+          )) ...[
         TableColumn(
           'Money',
           width: 120,
@@ -1184,7 +1186,13 @@ class _JobsScreenState extends State<JobsScreen> {
                 if (jobType(job) != null)
                   Flexible(child: JobTypeLabel(jobType(job)!)),
                 if (jobTags(job).isNotEmpty)
-                  Flexible(child: JobTagsSummary(jobTags(job), shown: 1)),
+                  Flexible(
+                    child: JobTagsSummary(
+                      jobTags(job),
+                      shown: 1,
+                      colours: jobTagColours(job),
+                    ),
+                  ),
               ],
             ),
     );

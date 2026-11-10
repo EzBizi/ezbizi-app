@@ -54,6 +54,9 @@ class AppServiceProvider extends ServiceProvider
         // One instance per process — see plan §5.1
         $this->app->singleton(TenantContext::class);
 
+        // One tag-colour map per request, read once for every job it shows.
+        $this->app->scoped(\App\Support\Workiz\WorkizTagColours::class);
+
         // What stops working when an integration is disconnected. Each module
         // adds its own counter here; the disconnect panel lists them all.
         $this->app->tag([

@@ -244,6 +244,8 @@ class ProjectBoardController extends Controller
             'status'        => $job->franchise ? Job::labelFor((string) $job->status, $job->franchise) : $job->status,
             'job_type'      => $job->job_type,
             'tags'          => array_values((array) ($job->tags ?? [])),
+            // Each tag's Workiz colour, where the mirror knows it (Jose, 2026-11-10).
+            'tag_colours'   => (object) app(\App\Support\Workiz\WorkizTagColours::class)->for($job->franchise_id, (array) ($job->tags ?? [])),
             // Part status: the job's tags that the organization names as part
             // tags (project_board.part_tags), e.g. WAITING PARTS.
             'part_status'   => collect($job->tags ?? [])->filter(fn ($t) => in_array(self::tagKey((string) $t), $partTags, true))->values()->implode(', ') ?: null,

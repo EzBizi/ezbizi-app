@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\WorkizJob;
+use App\Models\WorkizRecord;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -22,6 +23,9 @@ class ProjectBoardTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
         $beta = $this->provisionTenant('Beta');
         $this->inTenant($beta['org'], fn () => $this->job($beta['franchise'], 'B-1', 'Pending'));
+        // Workiz tag colours from the tag mirror (Jose, 2026-11-10); a tag without one is left out.
+        $this->inTenant($alpha['org'], fn () => WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'tag',
+            'remote_id' => 'TAG-1', 'payload' => ['name' => 'Waiting Parts', 'color' => '#fbab33'], 'synced_at' => now()]));
         $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('project_board.tabs', $alpha['org'], [
             'unscheduled' => ['statuses' => ['Pending'], 'scheduled' => false],
             'ready_to_schedule' => ['statuses' => ['Submitted']],
@@ -45,6 +49,7 @@ class ProjectBoardTest extends TestCase
             ->assertOk()->assertJsonPath('meta.counts.unscheduled', 1)->json('data.0');
         $this->assertSame('WAITING PARTS', $row['part_status']);
         $this->assertSame(['WAITING PARTS', 'DEPOSIT'], $row['tags']);
+        $this->assertSame(['WAITING PARTS' => '#FBAB33'], $row['tag_colours']);
         $this->assertSame('Crown Repair, Damper Cap x2', $row['required']);
         $this->assertSame('7003', $row['workiz_id']);
         $this->assertSame('Alpha F1', $row['franchise']);
