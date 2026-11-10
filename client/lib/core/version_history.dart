@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0556', date: '10 Nov 2026', items: [
+      'Reports: corrected after a full audit: Paid – Estimated jobs are left out of every jobs count, dispatchers count only the company’s branches, done counts jobs not technicians, revenue counts only received payments',
+      'Reports: every report email carries the PDF; WhatsApp texts reach people whose 24-hour window has closed',
+      'Reports: Meta figures show when they were last refreshed, partial days say through 8 PM, spend from unlinked Google accounts is called out, same-day reviews count correctly',
+    ]),
     VersionRelease(version: '0.0.0555', date: '10 Nov 2026', items: [
       'Reports: every report sends its text titled with the company, report and date, then a PDF copy; no generic lines',
       'Reports: marketing PPC areas follow the report order; jobs come from EzBizi, with a warning when spend is out of date',
