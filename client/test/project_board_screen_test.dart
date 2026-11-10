@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/project_board_screen.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
+import 'package:ezbizi_client/widgets/tag.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -84,6 +85,7 @@ void main() {
               'part_status': 'WAITING PARTS',
               'required': 'Crown Repair',
               'tags': ['VIP', 'DEPOSIT'],
+              'tag_colours': {'VIP': '#D32F2F'},
             },
           ],
           'meta': {
@@ -144,7 +146,15 @@ void main() {
     );
     expect(pill.tone, Tone.caution);
     // Tags: one chip per tag.
-    expect(find.widgetWithText(StatusPill, 'VIP'), findsOneWidget);
+    // In its Workiz colour; one without a colour stays grey.
+    expect(
+      tester.widget<Tag>(find.widgetWithText(Tag, 'VIP')).colour,
+      const Color(0xFFD32F2F),
+    );
+    expect(
+      tester.widget<Tag>(find.widgetWithText(Tag, 'DEPOSIT')).colour,
+      isNull,
+    );
 
     await tester.tap(find.byKey(const Key('project-board-franchise')));
     await tester.pumpAndSettle();

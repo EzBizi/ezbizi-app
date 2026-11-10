@@ -332,7 +332,14 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
         for (final t in _tags)
           InputChip(
             key: ValueKey('job-tag-$t'),
-            label: Text(t),
+            label: Text(
+              t,
+              style: switch (jobTagColours(_row)[t]) {
+                final c? => TextStyle(color: inkOn(c)),
+                null => null,
+              },
+            ),
+            backgroundColor: jobTagColours(_row)[t],
             visualDensity: VisualDensity.compact,
             onDeleted: editable
                 ? () => _patchLabel('tags', [

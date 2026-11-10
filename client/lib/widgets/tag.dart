@@ -10,9 +10,14 @@ class Tag extends StatelessWidget {
     this.warn = false,
     this.good = false,
     this.bad = false,
+    this.colour,
   });
 
   final String label;
+
+  /// Its own colour, a job tag's in Workiz (Jose, 2026-11-10), with white or
+  /// dark text by contrast. Wins over [warn], [good] and [bad].
+  final Color? colour;
 
   /// Something the reader needs to notice, not just know. Amber, not red:
   /// "12 missing" on every onboarding row is a to-do, and red is kept for a
@@ -40,7 +45,9 @@ class Tag extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: bad
+          color: colour != null
+              ? colour!
+              : bad
               ? problem.fill
               : warn
               ? caution.fill
@@ -58,7 +65,9 @@ class Tag extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: bad
+            color: colour != null
+                ? inkOn(colour!)
+                : bad
                 ? problem.ink
                 : warn
                 ? caution.ink
