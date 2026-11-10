@@ -13,6 +13,13 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0560', date: '10 Nov 2026', items: [
+      'Project Management: click a column to sort the whole list (click again to reverse); your choice is kept',
+      'Project Management: Unassign a repair team; a job holds one repair team or contractor, shown as its coloured chip',
+      'Project Management › Settings: choose which tags are repair teams, what Ready to schedule needs and the Status Time colours; tag lists are compact and searchable',
+      'Email › Google Workspace: the person panel opens for people with no signature details yet; giving a template confirms who got it',
+      'Leads: Facebook and Instagram leads past their reply window show Awaiting reply',
+    ]),
     VersionRelease(version: '0.0.0559', date: '10 Nov 2026', items: [
       'Project Management: drag to resize columns (kept per person), search fills the row and finds technicians, the franchise picker lists only what is in your view and scrolls',
       'Project Management: the attachments count opens Photos & files and counts the Workiz files too; Workiz notes show in the Notes tab; a small gap between Required items',
