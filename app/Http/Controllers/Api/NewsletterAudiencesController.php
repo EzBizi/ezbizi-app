@@ -108,6 +108,7 @@ class NewsletterAudiencesController extends Controller
             'id' => $audience->getKey(),
             'name' => $audience->name,
             'kind' => $audience->kind,
+            'mailchimp_list_id' => $audience->mailchimp_list_id,
         ]], Status::HTTP_CREATED);
     }
 

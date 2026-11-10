@@ -416,7 +416,10 @@ class NewsletterApiTest extends TestCase
             'subject' => 'Custom', 'html_override' => '<p>Exact copy</p>',
         ])->assertCreated()->json('data.id');
         $this->signedInAs($t['admin'])->getJson(self::ENDPOINT."/{$id}/preview")
-            ->assertOk()->assertJsonPath('data.html', '<p>Exact copy</p>');
+            // Stored exactly; the preview adds only the protected footer after it (audit 2026-11-10).
+            ->assertOk()->assertJsonPath('data.html', fn (string $h) => str_starts_with($h, '<p>Exact copy</p><table'));
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT)
+            ->assertJsonPath('data.0.html_override', '<p>Exact copy</p>');
     }
 
     public function test_scope_is_applied_before_the_fifty_row_limit(): void
