@@ -1546,6 +1546,9 @@ Route::prefix('v1')
         Route::post('social/airtable/replace-token', [AirtableConnectController::class, 'replaceToken']);
         Route::post('social/workiz', [WorkizConnectController::class, 'store']);
         Route::put('social/workiz/{connection}', [WorkizConnectController::class, 'update']);
+        // Every account's tags against the approved standard, and the change log (Jose, 2026-11-10).
+        Route::get('workiz/tags', [\App\Http\Controllers\Api\WorkizTagsController::class, 'index']);
+        Route::post('workiz/tags/approve', [\App\Http\Controllers\Api\WorkizTagsController::class, 'approve']);
         Route::post('social/workiz-web/link', [WorkizWebSessionController::class, 'link']);
         Route::get('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'accounts']);
         Route::put('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'map']);

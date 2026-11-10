@@ -239,6 +239,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'or switched back on. Switching one OFF raises "Deactivated" '
                             .'instead of this.',
                     ),
+                    // Jose, 2026-11-10: a tag renamed, recoloured, added or deleted in a branch's Workiz.
+                    new TriggerDefinition(
+                        key: 'franchise.workiz_tag_changed',
+                        label: 'Workiz tag changed',
+                        description: 'Somebody renamed, recoloured, added or deleted a tag in this branch\'s '
+                            .'Workiz account. It carries the change, and the tag before and after.',
+                    ),
                     new TriggerDefinition(
                         key: 'franchise.deactivated',
                         label: 'Deactivated',

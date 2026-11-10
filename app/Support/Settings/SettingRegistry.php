@@ -2495,6 +2495,13 @@ class SettingRegistry
                 help: 'The first day (YYYY-MM-DD) a full read of Workiz invoices, payments, estimates '
                     .'and timesheets starts from. Later reads only fetch what changed.',
             ),
+            new SettingDefinition(
+                key: 'workiz.tag_baseline', label: 'Approved Workiz tags',
+                type: SettingDefinition::TYPE_JSON, default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'The tag names and colours every Workiz account should have, as approved on the '
+                    .'Workiz tags tab. An account that differs is highlighted there.',
+            ),
         ];
     }
 }
