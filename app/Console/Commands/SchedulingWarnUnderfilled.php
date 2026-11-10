@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\ServiceArea;
 use App\Support\Automations\ActionRunner;
 use App\Support\Automations\EventEmitter;
+use App\Support\Reports\LocationOrder;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Overbooking;
 use App\Support\Settings\SettingsResolver;
@@ -88,7 +89,9 @@ class SchedulingWarnUnderfilled extends Command
         $name = fn (?string $s) => ActionRunner::escapeMarkdown((string) $s);
         $company = collect($rows)->pluck('company_name')->filter()->unique()->implode(', ');
         $lines = ['## '.($company === '' ? '' : $name($company).': ').'empty spots tomorrow, '.$date->format('D M j'), ''];
-        foreach (collect($rows)->groupBy('franchise_id') as $areas) {
+        // Branches in the business's location order (Shoval, 2026-11-09).
+        $place = LocationOrder::places(collect($rows)->pluck('franchise_id'));
+        foreach (collect($rows)->groupBy('franchise_id')->sortBy(fn ($areas, $id) => $place[(string) $id] ?? PHP_INT_MAX) as $areas) {
             $branch = $areas->first()['franchise_name'];
             $lines[] = "### {$name($branch)}: {$areas->sum('gap')} empty ({$areas->sum('booked')} of {$areas->sum('capacity')} booked)";
             foreach ($areas as $r) {

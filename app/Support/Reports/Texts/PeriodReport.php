@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Support\Files\HardenedPdf;
 use App\Support\Reports\Airtable\AirtablePnl;
 use App\Support\Reports\Airtable\ReportSources;
+use App\Support\Reports\LocationOrder;
 use App\Support\Reports\ReportJobs;
 use Carbon\CarbonImmutable;
 
@@ -64,6 +65,7 @@ final class PeriodReport
             ->whereIn('id', ReportJobs::branchesWithJobs((string) $organization->getKey()))
             ->orderBy('name')
             ->get();
+        $branches = LocationOrder::sort($branches);
 
         // A draft's company order; any branch it does not name keeps its place after.
         if (($order = $this->options['company_order'] ?? []) !== []) {

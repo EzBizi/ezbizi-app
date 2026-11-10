@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\ServiceArea;
 use App\Support\Automations\ActionRunner;
 use App\Support\Automations\EventEmitter;
+use App\Support\Reports\LocationOrder;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Overbooking;
 use App\Support\Settings\SettingsResolver;
@@ -87,7 +88,10 @@ class SchedulingWarnOverbooking extends Command
         $name = fn (?string $s) => ActionRunner::escapeMarkdown((string) $s);
         $lines = ['## FULLY BOOKED for '.Overbooking::fullDays().' days or more', ''];
 
-        $rows = collect($full)->sortByDesc(fn ($r) => $r['next_opening'] ?? '9999-12-31');
+        // Branches in the business's location order (Shoval, 2026-11-09), the most booked first in each.
+        $place = LocationOrder::places(collect($full)->pluck('franchise_id'));
+        $rows = collect($full)->sortByDesc(fn ($r) => $r['next_opening'] ?? '9999-12-31')
+            ->sortBy(fn ($r) => $place[(string) ($r['franchise_id'] ?? '')] ?? PHP_INT_MAX);
         foreach ($rows as $r) {
             $who = $r['franchise_name'] !== null ? "{$name($r['franchise_name'])} › {$name($r['name'])}" : $name($r['name']);
             if ($r['next_opening'] === null) {

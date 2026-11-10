@@ -108,6 +108,30 @@ class NewReportsTextsTest extends TestCase
         $this->assertSame(1, substr_count($text, 'New Jersey'));
     }
 
+    /** Shoval, 2026-11-09: A-1's locations in the list's order, then every sub-company: never one between two of A-1's. */
+    public function test_a_sub_company_with_figures_comes_after_every_listed_location(): void
+    {
+        $ohio = $this->inTenant($this->t['org'], function () {
+            DB::table('business_list_items')->insert(['id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id,
+                'list_key' => 'reports.locations', 'item_key' => 'OH', 'value' => json_encode(['branch' => 'Ohio', 'code' => 'OH']), 'active' => true, 'sort' => 1,
+                'created_at' => now(), 'updated_at' => now()]);
+
+            return Franchise::query()->create(['organization_id' => $this->t['org']->id, 'company_id' => $this->t['company']->id,
+                'name' => 'Ohio', 'timezone' => 'America/New_York', 'currency' => 'USD', 'is_active' => true]);
+        });
+        $sister = $this->inTenant($this->t['org'], fn () => Franchise::query()->create(['organization_id' => $this->t['org']->id,
+            'company_id' => Company::query()->create(['organization_id' => $this->t['org']->id, 'parent_company_id' => $this->t['company']->id,
+                'name' => 'AngiSweep', 'is_active' => true])->id,
+            'name' => 'New Jersey', 'timezone' => 'America/New_York', 'currency' => 'USD', 'is_active' => true]));
+        $this->record($this->nj, 'payment', 'P1', '2026-11-07 10:00:00', 100);
+        $this->record($ohio, 'payment', 'P2', '2026-11-07 10:00:00', 30);
+        $this->record($sister, 'payment', 'P3', '2026-11-07 10:00:00', 5);
+
+        $text = $this->text('revenue_collected');
+
+        $this->assertMatchesRegularExpression('/• \*New Jersey\*: \$100\.00\n• \*Ohio\*: \$30\.00\n(• .*\n)*• \*AngiSweep\*: \$5\.00/', $text);
+    }
+
     public function test_jobs_created_leave_out_paid_estimated_however_workiz_decorates_it(): void
     {
         $this->job($this->nj, 'J1', 'LS Ads', '2026-11-08 09:00:00');
