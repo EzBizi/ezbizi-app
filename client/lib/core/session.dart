@@ -418,6 +418,7 @@ class Me {
     required this.franchises,
     required this.onboardingId,
     this.screenMonitoringExempt = false,
+    this.accessVersion,
     this.timeClock = TimeClockStatus.absent,
     this.phoneIncomingPopup = true,
     this.profileMissing = const [],
@@ -491,6 +492,11 @@ class Me {
   /// without it the app comes back with saves failing and nothing on
   /// screen saying why.
   final bool emailConfirmationRequired;
+
+  /// One value for everything this person may reach. The shell keys the page
+  /// on it, so a grant or a role change made elsewhere redraws the screen on
+  /// the next /me (Jose, 2026-11-10).
+  final String? accessVersion;
 
   /// The minimum length THIS organization's passwords must reach — the platform
   /// floor, or higher where an administrator has raised it (§6
@@ -844,6 +850,7 @@ class Me {
     franchises: franchises,
     onboardingId: onboardingId,
     screenMonitoringExempt: screenMonitoringExempt,
+    accessVersion: accessVersion,
     phoneIncomingPopup: phoneIncomingPopup,
     timeClock: timeClock,
     profileMissing: profileMissing,
@@ -870,6 +877,7 @@ class Me {
     franchises: franchises,
     onboardingId: onboardingId,
     screenMonitoringExempt: screenMonitoringExempt,
+    accessVersion: accessVersion,
     phoneIncomingPopup: phoneIncomingPopup,
     timeClock: timeClock,
     profileMissing: profileMissing,
@@ -993,6 +1001,7 @@ class Me {
           ),
     twoFactorEnrolmentRequired: json['two_factor_enrolment_required'] == true,
     emailConfirmationRequired: json['email_confirmation_required'] == true,
+    accessVersion: json['access_version'] as String?,
     // Falls back to the compiled floor rather than to zero. A server that
     // does not send this is an older one, and its own minimum is the floor —
     // asking for nothing would be a form that promises to accept `a`.
