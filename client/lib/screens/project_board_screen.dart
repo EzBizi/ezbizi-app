@@ -9,6 +9,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
+import '../widgets/colour_field.dart';
 import '../widgets/list_search.dart';
 import '../widgets/list_table.dart';
 import '../widgets/side_panel.dart';
@@ -54,7 +55,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
 
   /// The repair-team and contractor tags on offer (Workiz's), and whether
   /// this person may change a job.
-  List<String> _repairTeams = const [];
+
   bool _canEditJobs = false;
   String _tab = _tabs.first.$1;
   String? _franchise;
@@ -162,15 +163,23 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       _franchises = _maps(meta['places']);
       _columns = _maps(meta['columns']);
       _labels = (meta['labels'] as Map?)?.cast<String, dynamic>() ?? const {};
-      _repairTeams = [
-        for (final t in (meta['repair_teams'] as List?) ?? const []) '$t',
-      ];
       _canEditJobs = meta['can_edit'] == true;
+
       _scope = ((meta['settings_scope'] as Map?) ?? const {}).map(
         (k, v) => MapEntry('$k', '$v'),
       );
       _page = quiet ? shownPages : page;
     });
+  }
+
+  void _resize(int column, double width) {
+    final all = {
+      ...((widget.session.me?.preferences['lists.column_widths'] as Map?) ??
+          const {}),
+      'project-board:$column': width.roundToDouble(),
+    };
+    widget.session.setPreference('lists.column_widths', all);
+    setState(() {});
   }
 
   void _switch(int i) {
@@ -189,14 +198,16 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     _load();
   }
 
-  void _open(Map<String, dynamic> row) => showSidePanel<bool>(
-    context,
-    builder: (_) => JobDetailPanel(
-      api: widget.api,
-      session: widget.session,
-      id: '${row['id']}',
-    ),
-  ).then((_) => _load());
+  void _open(Map<String, dynamic> row, {String tab = 'job'}) =>
+      showSidePanel<bool>(
+        context,
+        builder: (_) => JobDetailPanel(
+          api: widget.api,
+          session: widget.session,
+          id: '${row['id']}',
+          initialTab: tab,
+        ),
+      ).then((_) => _load());
 
   String _date(Object? ymd) {
     final at = ymd is String ? DateTime.tryParse(ymd) : null;
@@ -241,14 +252,19 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       case 'repair_team':
         // The job's Workiz repair-team / contractor tag (Jose, 2026-11-10).
         final current = value as String?;
-        if (!_canEditJobs || _repairTeams.isEmpty) return Text(current ?? '—');
+        // Only that job's own Workiz account's tags (Jose, 2026-11-10).
+        final options = [
+          for (final t in (row['repair_options'] as List?) ?? const [])
+            if (t is Map) ('${t['name']}', ColourField.parse('${t['colour']}')),
+        ];
+        if (!_canEditJobs || options.isEmpty) return Text(current ?? '—');
         return MenuAnchor(
           menuChildren: [
-            for (final t in _repairTeams)
+            for (final (t, colour) in options)
               MenuItemButton(
                 key: ValueKey('project-board-repair:${row['id']}:$t'),
                 onPressed: () => _setRepairTeam(row, t),
-                child: Text(t),
+                child: Tag(t, colour: colour),
               ),
           ],
           builder: (context, menu, _) => TextButton(
@@ -263,7 +279,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
             key: ValueKey('project-board-files:${row['id']}'),
-            onPressed: () => _open(row),
+            onPressed: () => _open(row, tab: 'files'),
             icon: const Icon(Icons.attach_file, size: 18),
             label: Text('$n'),
           ),
@@ -271,8 +287,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       case 'notes':
         final text = value as String?;
         if (text == null) return const Text('—');
+        // Says where the text is from (Jose, 2026-11-10).
+        final fromWorkiz = row['notes_source'] == 'workiz';
         return Tooltip(
-          message: text,
+          message: fromWorkiz ? 'From Workiz\n\n$text' : text,
           child: Text(
             text,
             maxLines: 2,
@@ -281,8 +299,20 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           ),
         );
       case 'required':
-        // Line by line.
-        return Text(value == null ? '—' : '$value');
+        // Line by line, a small gap between items so a long one reads as
+        // one (Jose, 2026-11-10).
+        if (value == null) return const Text('—');
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (i, item) in '$value'.split(_newline).indexed)
+              Padding(
+                padding: EdgeInsets.only(top: i == 0 ? 0 : 5),
+                child: Text(item),
+              ),
+          ],
+        );
     }
     return null;
   }
@@ -318,12 +348,21 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     ];
     final button = FilledButton(
       key: ValueKey('project-board-ready:${row['id']}'),
+      // Roomier, and centred in its cell (Jose, 2026-11-10).
+      style: FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
       onPressed: missing.isEmpty && _canEditJobs ? () => _ready(row) : null,
       child: const Text('Ready to schedule'),
     );
-    return missing.isEmpty
-        ? button
-        : Tooltip(message: 'Still needs ${missing.join(', ')}', child: button);
+    return Center(
+      child: missing.isEmpty
+          ? button
+          : Tooltip(
+              message: 'Still needs ${missing.join(', ')}',
+              child: button,
+            ),
+    );
   }
 
   Future<void> _ready(Map<String, dynamic> row) async {
@@ -455,65 +494,105 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                     onSaved: _load,
                   )
                 else ...[
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        '${shown[selected].$2} · $_total jobs',
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      if (_updated case final at?)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'Updated ${TimeOfDay.fromDateTime(at).format(context)}',
-                              key: const Key('project-board-updated'),
-                              style: theme.textTheme.bodySmall,
-                            ),
-                            IconButton(
-                              key: const Key('project-board-refresh'),
-                              tooltip: 'Refresh now',
-                              icon: const Icon(Icons.refresh, size: 18),
-                              onPressed: _fetching
-                                  ? null
-                                  : () => _load(quiet: true),
-                            ),
-                          ],
-                        ),
-                      DropdownMenu<String>(
-                        enableFilter: true,
-                        requestFocusOnTap: true,
-                        key: const Key('project-board-franchise'),
-                        label: const Text('Franchise'),
-                        initialSelection: _franchise ?? '',
-                        onSelected: (v) =>
-                            _pick(v == null || v.isEmpty ? null : v),
-                        dropdownMenuEntries: [
-                          const DropdownMenuEntry(value: '', label: 'All'),
-                          // Hierarchy order from the server, indented by level.
-                          for (final f in _franchises)
-                            DropdownMenuEntry(
-                              value: '${f['value']}',
-                              label: '${f['label']}',
-                              labelWidget: Padding(
-                                padding: EdgeInsets.only(
-                                  left: 16.0 * ((f['depth'] as int?) ?? 0),
-                                ),
-                                child: Text('${f['label']}'),
-                              ),
-                            ),
-                        ],
-                      ),
-                      ListSearch(
+                  // The search takes what is left of the row (Jose,
+                  // 2026-11-10); on a narrow window it wraps below.
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      final search = ListSearch(
                         key: const Key('project-board-search'),
                         controller: _search,
-                        hint: 'Customer, job number or address',
+                        hint: 'Customer, job number, address or technician',
+                        width: box.maxWidth >= 900 ? double.infinity : 280,
                         onChanged: _searched,
-                      ),
-                    ],
+                      );
+                      final items = <Widget>[
+                        Text(
+                          '${shown[selected].$2} · $_total jobs',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        if (_updated case final at?)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Updated ${TimeOfDay.fromDateTime(at).format(context)}',
+                                key: const Key('project-board-updated'),
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              IconButton(
+                                key: const Key('project-board-refresh'),
+                                tooltip: 'Refresh now',
+                                icon: const Icon(Icons.refresh, size: 18),
+                                onPressed: _fetching
+                                    ? null
+                                    : () => _load(quiet: true),
+                              ),
+                            ],
+                          ),
+                        DropdownMenu<String>(
+                          enableFilter: true,
+                          requestFocusOnTap: true,
+                          key: const Key('project-board-franchise'),
+                          // The same size as the search beside it, and a
+                          // list that scrolls past the screen's height
+                          // (Jose, 2026-11-10).
+                          width: 280,
+                          menuHeight: 420,
+                          hintText: 'Franchise',
+                          leadingIcon: const Icon(
+                            Icons.store_outlined,
+                            size: 18,
+                          ),
+                          inputDecorationTheme: InputDecorationTheme(
+                            isDense: true,
+                            constraints: BoxConstraints.tightFor(
+                              height: ListSearch.height,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          initialSelection: _franchise ?? '',
+                          onSelected: (v) =>
+                              _pick(v == null || v.isEmpty ? null : v),
+                          dropdownMenuEntries: [
+                            const DropdownMenuEntry(value: '', label: 'All'),
+                            // Hierarchy order from the server, indented by level.
+                            for (final f in _franchises)
+                              DropdownMenuEntry(
+                                value: '${f['value']}',
+                                label: '${f['label']}',
+                                labelWidget: Padding(
+                                  padding: EdgeInsets.only(
+                                    left: 16.0 * ((f['depth'] as int?) ?? 0),
+                                  ),
+                                  child: Text('${f['label']}'),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ];
+                      if (box.maxWidth < 900) {
+                        return Wrap(
+                          spacing: 16,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [...items, search],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          for (final w in items) ...[
+                            w,
+                            const SizedBox(width: 16),
+                          ],
+                          Expanded(child: search),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   if (rows.isEmpty && _fetching)
@@ -526,6 +605,15 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                     )
                   else
                     ListTable(
+                      // Dragged widths, per person on every device (Jose,
+                      // 2026-11-10). ponytail: by column position; a
+                      // reordered column keeps the slot's width.
+                      widths:
+                          widget.session.me?.listColumnWidths(
+                            'project-board',
+                          ) ??
+                          const {},
+                      onResize: _resize,
                       rowKey: (i) =>
                           ValueKey('project-board-job:${rows[i]['id']}'),
                       onTap: (i) => _open(rows[i]),
@@ -539,7 +627,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                             end: _moneyKeys.contains(c['key']),
                           ),
                         if (_tab == 'unscheduled')
-                          const ListColumn('', flex: 3, end: true),
+                          const ListColumn('', flex: 3),
                       ],
                       rows: [
                         for (final row in rows)
@@ -1109,3 +1197,6 @@ const _tabs = [
   ('done_waiting_payment', 'Done Waiting Payment', Icons.payments_outlined),
   ('complete', 'Complete', Icons.task_alt),
 ];
+
+/// One required item per line, as the server joins them.
+const _newline = '\n';

@@ -139,7 +139,9 @@ class ProjectBoardTest extends TestCase
             WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'tag', 'remote_id' => 'TAG-C',
                 'payload' => ['name' => 'CONTRACTOR: OMER', 'color' => '#579BFC'], 'synced_at' => now()]);
             $id = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED'],
-                ['Team' => [['id' => 'USR-1', 'Name' => 'Jonathon Chance']], 'JobNotes' => '', 'Attachments' => []]);
+                ['Team' => [['id' => 'USR-1', 'Name' => 'Jonathon Chance']], 'JobNotes' => '', 'Attachments' => [],
+                    // The panel's "From Workiz" file (Jose, 2026-11-10): the column counts it too.
+                    'CustomFields' => [['Name' => 'Inspection Report', 'Value' => [['name' => 'report.pdf', 'url' => 'https://app.workiz.com/r.pdf']]]]]);
             WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'payment', 'remote_id' => 'PAY-1',
                 'job_id' => $id, 'amount' => 2163.36, 'starts_at' => now()->subDays(5)->setTime(11, 48), 'payload' => [], 'synced_at' => now()]);
 
@@ -148,14 +150,26 @@ class ProjectBoardTest extends TestCase
         $api = $this->signedInAs($alpha['admin']);
 
         $row = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk()
-            ->assertJsonPath('meta.repair_teams', ['CONTRACTOR: OMER', 'KENNI REPAIR TEAM'])->json('data.0');
+            ->json('data.0');
+        // The Assign menu: the job's own account's repair-team tags, each in its colour.
+        $this->assertSame([['name' => 'CONTRACTOR: OMER', 'colour' => '#579BFC'], ['name' => 'KENNI REPAIR TEAM', 'colour' => '#00C875']],
+            $row['repair_options']);
+        // Workiz's renames (2026-11-10) still read as repair teams; other tags do not.
+        foreach (['REPAIR TEAM: KENNI', 'CONTRACTOR MIGUEL', 'GAS CONTRACTOR', 'PROGRESS BY SUB CONTRACTOR'] as $tag) {
+            $this->assertTrue(\App\Http\Controllers\Api\ProjectBoardController::isRepairTeam($tag), $tag);
+        }
+        $this->assertFalse(\App\Http\Controllers\Api\ProjectBoardController::isRepairTeam('DEPOSIT RECEIVED'));
         $this->assertSame('Jonathon Chance', $row['technician']);
+        // Search finds a job by its technician (Jose, 2026-11-10).
+        $this->assertSame([$id], array_column($api->getJson('/api/v1/project-board/jobs?tab=unscheduled&q=jonathon')->json('data'), 'id'));
+        $this->assertSame([], $api->getJson('/api/v1/project-board/jobs?tab=unscheduled&q=nobody-here')->json('data'));
         $this->assertSame(now()->subDays(5)->format('Y-m-d').' 11:48', $row['payment_date']);
         $this->assertContains($row['status_days'], [4, 5]);
-        $this->assertSame(['Service Area', 'Repair Team / Contractor', 'an attachment', 'a note'], $row['ready_missing']);
+        $this->assertSame(1, $row['attachments']);
+        $this->assertSame(['Service Area', 'Repair Team / Contractor', 'a note'], $row['ready_missing']);
 
         // Not ready: refused, and nothing tagged.
-        $api->postJson("/api/v1/project-board/jobs/{$id}/ready")->assertStatus(422)->assertJsonPath('message', 'Still needs: Service Area, Repair Team / Contractor, an attachment, a note.');
+        $api->postJson("/api/v1/project-board/jobs/{$id}/ready")->assertStatus(422)->assertJsonPath('message', 'Still needs: Service Area, Repair Team / Contractor, a note.');
 
         $this->inTenant($alpha['org'], function () use ($alpha, $id) {
             $area = \App\Models\ServiceArea::query()->create(['franchise_id' => $alpha['franchise']->id, 'name' => 'Columbus North']);
@@ -184,6 +198,60 @@ class ProjectBoardTest extends TestCase
         $this->assertSame([$id], array_column($page->json('data'), 'id'));
         $this->assertSame(0, $page->json('meta.counts.unscheduled'));
         $this->assertSame('Submitted', $page->json('data.0.status'));
+    }
+
+    public function test_another_companys_tags_never_reach_this_companys_jobs_or_view(): void
+    {
+        // Jose, 2026-11-10: "why are everdoors stuff showing up when im on a-1chimney view".
+        $alpha = $this->provisionTenant('Alpha');
+        [$a1, $door] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $other = \App\Models\Company::create(['organization_id' => $alpha['org']->id, 'name' => 'Everdoors']);
+            $doors = Franchise::create(['company_id' => $other->id, 'name' => 'Everdoors CT']);
+            WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'tag', 'remote_id' => 'TAG-A',
+                'payload' => ['name' => 'REPAIR TEAM: KENNI', 'color' => '#198218'], 'synced_at' => now()]);
+            WorkizRecord::create(['franchise_id' => $doors->id, 'type' => 'tag', 'remote_id' => 'TAG-D',
+                'payload' => ['name' => 'CONTRACTOR DOORMAN', 'color' => '#be2c2c'], 'synced_at' => now()]);
+            WorkizRecord::create(['franchise_id' => $doors->id, 'type' => 'tag', 'remote_id' => 'TAG-E',
+                'payload' => ['name' => 'DEPOSIT RECEIVED', 'color' => '#be2c2c'], 'synced_at' => now()]);
+
+            return [
+                $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']),
+                $this->job($doors, 'D-1', 'Submitted', null, ['DEPOSIT RECEIVED', '🔴 Manual Follow-Up 🔴']),
+            ];
+        });
+        $view = $this->signedInAs($alpha['admin'])->withHeader('X-EzBizi-View', 'company:'.$alpha['company']->id);
+
+        $page = $view->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk();
+        $this->assertSame([$a1], array_column($page->json('data'), 'id'));
+        $this->assertSame(1, $page->json('meta.counts.unscheduled'));
+        $this->assertNotContains('Everdoors CT', array_column($page->json('meta.places'), 'label'));
+
+        // The picker: only what is inside the view, switched-off places out,
+        // and a sub-company's view starts at that sub-company (Jose, 2026-11-10).
+        $sub = $this->inTenant($alpha['org'], function () use ($alpha) {
+            Franchise::create(['company_id' => $alpha['company']->id, 'name' => 'Closed branch', 'is_active' => false]);
+            $sub = \App\Models\Company::create(['organization_id' => $alpha['org']->id, 'name' => 'AngiSweep', 'parent_company_id' => $alpha['company']->id]);
+            Franchise::create(['company_id' => $sub->id, 'name' => 'Sweep NJ']);
+
+            return $sub;
+        });
+        $labels = array_column($view->getJson('/api/v1/project-board/jobs')->json('meta.places'), 'label');
+        $this->assertContains('AngiSweep · Sweep NJ', $labels);
+        $this->assertNotContains('Alpha Co · Closed branch', $labels);
+        $subLabels = array_column($this->signedInAs($alpha['admin'])->withHeader('X-EzBizi-View', 'company:'.$sub->id)
+            ->getJson('/api/v1/project-board/jobs')->json('meta.places'), 'label');
+        $this->assertSame(['AngiSweep', 'AngiSweep · Sweep NJ'], $subLabels);
+        $row = $page->json('data.0');
+        $this->assertSame(['REPAIR TEAM: KENNI'], array_column($row['repair_options'], 'name'));
+        // Everdoors' colour for the same name does not paint A-1's tag.
+        $this->assertSame([], (array) $row['tag_colours']);
+
+        $options = $view->getJson('/api/v1/project-board/options')->assertOk()->json('data');
+        $this->assertNotContains('🔴 Manual Follow-Up 🔴', $options['tags']);
+
+        $this->assertSame(['REPAIR TEAM: KENNI'],
+            array_column($view->getJson("/api/v1/jobs/{$a1}")->assertOk()->json('data.workiz_tags'), 'name'));
+        $this->assertNotContains($door, array_column($view->getJson('/api/v1/project-board/jobs?tab=unscheduled&q=D-1')->json('data'), 'id'));
     }
 
     private function job(Franchise $franchise, string $number, string $status, ?string $at = null, array $tags = [], array $payload = []): string

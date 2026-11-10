@@ -840,6 +840,11 @@ class JobsController extends Controller
         $job->loadMissing(['lines', 'performedBy:id,name', 'workizJob']);
 
         return $base + [
+            // The job's Workiz account's tags now, for "Add a tag" (Jose, 2026-11-10).
+            // Workiz's job notes as they are now, read only in the Notes tab
+            // (Jose, 2026-11-10: the Notes tab said "No notes yet").
+            'workiz_notes' => (fn ($n) => is_string($n) && trim($n) !== '' ? trim($n) : null)($job->workizJob?->payload['JobNotes'] ?? null),
+            'workiz_tags' => app(\App\Support\Workiz\WorkizTagColours::class)->definitions($job->franchise_id),
             'description' => $job->description,
             'duration_minutes' => $job->duration_minutes,
             'allowed_statuses' => $job->franchise

@@ -121,7 +121,6 @@ void main() {
             },
             'settings_scope': {'scope_type': 'company', 'scope_id': 'c-1'},
             'can_edit': true,
-            'repair_teams': ['KENNI REPAIR TEAM'],
           },
         });
       }),
