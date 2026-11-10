@@ -254,8 +254,8 @@ class ReviewsController extends Controller
             'meta' => ['counts' => $counts, 'total' => $page->total(), 'last_page' => $page->lastPage(),
                 // Why drafts wait, in one line (desk, 2026-11-10).
                 'drafts_note' => 'Drafts wait for one of three reasons: 3 stars or less are never posted by themselves; '
-                    .'"Draft replies" in Reviews writes drafts for a person to post; and a review whose Business Profile '
-                    .'is no longer connected cannot be answered until it is reconnected.']]);
+                    .'"Draft replies" in Reviews writes drafts for a person to post; and a review on a listing that is '
+                    .'not on a Google profile connected in Integrations (today: Roofirst) cannot be answered.']]);
     }
 
     /** PUT /api/v1/reviews/{review}/link-match {confirmed: bool}: a person settles the inferred match. */
