@@ -51,7 +51,7 @@ class DailyTextsTest extends TestCase
         $text = $this->text('technician_sales');
 
         $this->assertStringContainsString('• *Ann*: 1 completed · 0 canceled · $450.00 sales', $text);
-        $this->assertStringContainsString('*Total:* 1 completed', $text);
+        $this->assertStringContainsString("\u{1F4B0} *Total:* \u{2705} 1 completed", $text);
     }
 
     /** Audit, 2026-11-10: Ohio's 19 done were 17 jobs; a job two worked is one in the total. */
@@ -66,7 +66,7 @@ class DailyTextsTest extends TestCase
 
         $this->assertStringContainsString('• *Ann*: 1 completed · 0 canceled · $150.00 sales', $text);
         $this->assertStringContainsString('• *Bo*: 1 completed · 0 canceled · $150.00 sales', $text);
-        $this->assertStringContainsString('*Total:* 1 completed · 0 canceled · $300.00 sales', $text);
+        $this->assertStringContainsString("\u{1F4B0} *Total:* \u{2705} 1 completed · \u{274C} 0 canceled · \u{1F4B5} \$300.00 sales", $text);
     }
 
     public function test_ppc_spend_against_ppc_jobs_per_branch_with_google_ads(): void
