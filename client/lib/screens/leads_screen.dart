@@ -2255,7 +2255,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
       // Only when it is not New: 43,184 of 43,190 are, and a pill on
       // every row would say nothing.
       if ((lead['status'] ?? 'new') != 'new')
-        leadStatusPill(lead['status'], key: ValueKey('status-pill-$id')),
+        leadStatusPill(
+          lead['status'],
+          key: ValueKey('status-pill-$id'),
+          dense: true,
+        ),
       // Replied or not, and ONLY where a reply is possible.
       //
       // `can_reply` is the channel's own answer, not a guess

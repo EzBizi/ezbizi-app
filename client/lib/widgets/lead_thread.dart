@@ -3549,7 +3549,11 @@ String? threadDay(String? iso, {DateTime? now}) {
 
 /// A lead's status as a pill, the same in the thread's header and on the
 /// list's rows (design 28).
-StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
+StatusPill leadStatusPill(
+  Object? status, {
+  Key? key,
+  bool dense = false,
+}) => StatusPill(
   switch (status) {
     'booked' => 'Booked',
     'archived' => 'Archived',
@@ -3561,6 +3565,7 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     _ => 'New',
   },
   key: key,
+  dense: dense,
   tone: switch (status) {
     'booked' => Tone.ok,
     'archived' => Tone.neutral,
