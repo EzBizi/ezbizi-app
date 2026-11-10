@@ -6,6 +6,7 @@ use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Support\Automations\ActionRunner;
 use App\Support\Social\WhatsAppGroups;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -22,6 +23,7 @@ class WhatsAppGroupStepTest extends TestCase
 
     public function test_it_posts_the_filled_message_and_says_when_nobody_was_reached(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 15:00', 'UTC'));
         $sent = [];
         $reach = 3;
         $this->app->instance(WhatsAppGroups::class, new class($sent, $reach) {
@@ -49,7 +51,8 @@ class WhatsAppGroupStepTest extends TestCase
 
         $ok = $run();
         $this->assertTrue($ok['ok'], $ok['detail']);
-        $this->assertSame([['messages', 'Lead alert', 'New lead from thumbtack']], $sent);
+        // Its title says whose and when, as every report's does (Jose, 2026-11-10).
+        $this->assertSame([['messages', 'Alpha · Lead alert · Nov 9', 'New lead from thumbtack']], $sent);
 
         $reach = 0;
         $none = $run();

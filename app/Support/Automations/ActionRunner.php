@@ -2777,7 +2777,11 @@ class ActionRunner
 
         // Meta's limit for one message.
         $body = mb_substr($body, 0, 4096);
+        // Whose and when, as every report's title says (Jose, 2026-11-10): "A1-Group · Weekly AI summary · Nov 9".
+        $org = $automation === null ? null : Organization::query()->find($automation->organization_id);
+        $whose = $automation?->scope_type === 'company' ? Company::query()->find($automation->scope_id)?->name : $org?->name;
         $title = mb_substr((string) ($automation?->name ?? 'EzBizi alert'), 0, 60);
+        $title = ($whose === null ? '' : $whose.' · ').$title.' · '.CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of())->format('M j');
 
         $reached = app(WhatsAppGroups::class)->deliver($purpose, $title, $body);
 
@@ -3836,7 +3840,7 @@ class ActionRunner
         }
         // A company's rule says whose report it is (Ace Fireplace's daily beside A-1's, 2026-11-09).
         $company = $automation->scope_type === 'company' ? Company::query()->find($automation->scope_id)?->name : null;
-        $title = ($company === null ? '' : $company.' · ').DailyTexts::KINDS[$kind].' · '.$day->format('M j');
+        $title = ($company ?? $org->name).' · '.DailyTexts::KINDS[$kind].' · '.$day->format('M j');
 
         // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
         $sent = self::deliverReportText((string) ($action['from'] ?? ''), self::idList($action['user_ids'] ?? []),

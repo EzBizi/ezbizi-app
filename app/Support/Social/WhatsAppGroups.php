@@ -60,7 +60,7 @@ final class WhatsAppGroups
         $filename = Str::slug($title).'.pdf';
 
         return $this->fanOut($purpose, $title, ['type' => 'text', 'text' => ['body' => $body]], $file
-            ? fn (WhatsAppNumber $number) => [$this->upload($number, $this->pdf($number, $body), $filename), $filename]
+            ? fn (WhatsAppNumber $number) => [$this->upload($number, $this->pdf($number, self::titled($title, $body)), $filename), $filename]
             : null);
     }
 
@@ -144,7 +144,7 @@ final class WhatsAppGroups
         }
 
         $filename = Str::slug($title).'.pdf';
-        $mediaId = $this->upload($number, $this->pdf($number, $body, $issuer), $filename);
+        $mediaId = $this->upload($number, $this->pdf($number, self::titled($title, $body), $issuer), $filename);
         $this->textTo($number, $e164, $title, $body, $key);
 
         return $this->toPerson($number, $user, $title, $mediaId, $filename, $key);
@@ -152,7 +152,7 @@ final class WhatsAppGroups
 
     /**
      * The report's text as people read it on WhatsApp. Inside the 24-hour
-     * window as written, in pieces WhatsApp takes; outside it in the org's
+     * window under its title, in pieces WhatsApp takes; outside it in the org's
      * text template (ai_assistance.report_text_template: {{1}} the report and
      * its date, {{2}} the text), whose values cannot hold a line break, so the
      * lines run on and a long report goes in several messages, in order.
@@ -164,12 +164,9 @@ final class WhatsAppGroups
 
         app(TenantContext::class)->run($org, function () use ($number, $e164, $to, $title, $body, $key, $org) {
             if ($this->windowOpen($number, $to)) {
-                foreach (self::pieces($body) as $i => $piece) {
-                    $row = $this->cloud->replyFreeForm($number, $to, ['type' => 'text', 'text' => ['body' => $piece]], $piece);
-                    if ($key !== null) {
-                        WhatsAppMessage::query()->where('idempotency_key', $key.':text:'.($i + 1))->update(['idempotency_key' => null]);
-                        $row->forceFill(['idempotency_key' => $key.':text:'.($i + 1)])->save();
-                    }
+                foreach (self::pieces(self::titled($title, $body)) as $i => $piece) {
+                    $this->keyed($this->cloud->replyFreeForm($number, $to, ['type' => 'text', 'text' => ['body' => $piece]], $piece),
+                        $key === null ? null : $key.':text:'.($i + 1));
                 }
 
                 return;
@@ -182,6 +179,21 @@ final class WhatsAppGroups
                     from: (string) $number->display_number, idempotencyKey: $key === null ? null : $key.':text:'.($i + 1));
             }
         });
+    }
+
+    /** The report under its title: the company, the report and its date (Jose, 2026-11-10). */
+    private static function titled(string $title, string $body): string
+    {
+        return '*'.$title."*\n\n".$body;
+    }
+
+    /** A free-form message's row under the key, taken from any earlier row that had it. */
+    private function keyed(WhatsAppMessage $row, ?string $key): void
+    {
+        if ($key !== null) {
+            WhatsAppMessage::query()->where('idempotency_key', $key)->update(['idempotency_key' => null]);
+            $row->forceFill(['idempotency_key' => $key])->save();
+        }
     }
 
     /**
@@ -243,16 +255,6 @@ final class WhatsAppGroups
         $zone = (string) app(TenantContext::class)->run($org, fn () => $this->settings->get('timezone', $org));
 
         return ReportPdf::render($body, $issuer ?? $org, CarbonImmutable::now($zone !== '' ? $zone : 'UTC'));
-    }
-
-    /** The text as a page: WhatsApp's *bold* and _italic_ kept, emoji the PDF font has no glyph for dropped. */
-    public static function reportHtml(string $body): string
-    {
-        $text = e(preg_replace('/[\x{1F000}-\x{1FFFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{FE0F}\x{200D}]/u', '', $body) ?? $body);
-        $text = preg_replace(['/\*([^*\n]+)\*/', '/(?<!\w)_([^_\n]+)_(?!\w)/'], ['<b>$1</b>', '<i>$1</i>'], $text) ?? $text;
-
-        return '<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:"DejaVu Sans",sans-serif;font-size:10pt;color:#111}</style>'
-            .'</head><body>'.nl2br(trim($text)).'</body></html>';
     }
 
     /**
@@ -395,12 +397,13 @@ final class WhatsAppGroups
     }
 
     /**
-     * One report to one person: the uploaded file in the org's approved
-     * document template (ai_assistance.report_template: {{1}} the report),
-     * every time. Free text reaches only someone who
-     * wrote in the last 24 hours: held behind a "reply to get it" notice, 93
-     * of 107 report texts never went (2026-11-04..09), and our own record of
-     * who wrote can open a window Meta does not see (fake webhooks as Bar).
+     * One report's file to one person, its caption no more than what it is
+     * (Jose, 2026-11-10: "📎 PDF copy: <report> · <date>"). Inside the 24-hour
+     * window as a document; outside it in the org's approved document template
+     * (ai_assistance.report_template: {{1}} the report). Free text reaches only
+     * someone who wrote in the last 24 hours: 93 of 107 report texts never went
+     * (2026-11-04..09), and our own record of who wrote can open a window Meta
+     * does not see (fake webhooks as Bar), so only a message they sent counts.
      */
     private function toPerson(WhatsAppNumber $number, User $user, string $title, string $mediaId, string $filename, ?string $key = null): bool
     {
@@ -411,9 +414,19 @@ final class WhatsAppGroups
         }
 
         $org = Organization::findOrFail($number->organization_id);
-        app(TenantContext::class)->run($org, fn () => $this->cloud->send((string) $this->settings->get('ai_assistance.report_template', $org),
-            $e164, [$title], from: (string) $number->display_number, idempotencyKey: $key,
-            document: ['id' => $mediaId, 'filename' => $filename]));
+        app(TenantContext::class)->run($org, function () use ($number, $e164, $title, $mediaId, $filename, $key, $org) {
+            $to = ltrim($e164, '+');
+            if ($this->windowOpen($number, $to)) {
+                $caption = "\u{1F4CE} ".(str_ends_with($filename, '.pdf') ? 'PDF copy: ' : '').$title;
+                $this->keyed($this->cloud->replyFreeForm($number, $to,
+                    ['type' => 'document', 'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => $caption]], $caption), $key);
+
+                return;
+            }
+            $this->cloud->send((string) $this->settings->get('ai_assistance.report_template', $org),
+                $e164, [$title], from: (string) $number->display_number, idempotencyKey: $key,
+                document: ['id' => $mediaId, 'filename' => $filename]);
+        });
 
         return true;
     }

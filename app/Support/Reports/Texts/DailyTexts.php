@@ -455,8 +455,10 @@ final class DailyTexts
      */
     private function marketingPpc(Organization $organization, CarbonImmutable $day, ?Collection $branches): string
     {
-        $read = fn (?string $branch) => ReportSources::rows((string) $organization->id, 'marketing', $branch, $day->subDays(14)->toDateString(), $day->toDateString());
-        $rows = $branches === null ? $read(null) : $branches->flatMap(fn ($b) => $read((string) $b->getKey()))->values();
+        // A branch's sheet is its company's ads: the rows carry whose (ACE's, 2026-11-10).
+        $read = fn (?Franchise $b) => ReportSources::rows((string) $organization->id, 'marketing', $b === null ? null : (string) $b->getKey(),
+            $day->subDays(14)->toDateString(), $day->toDateString())->map(fn ($r) => $r + ['company' => $b?->company?->name]);
+        $rows = $branches === null ? $read(null) : $branches->flatMap(fn ($b) => $read($b))->values();
         $head = "\u{1F4CA} *Marketing PPC · Daily update*\nReport: ".$day->format('D, M j, Y');
 
         if ($rows->isEmpty()) {
@@ -464,20 +466,45 @@ final class DailyTexts
             return '';
         }
 
-        // The latest day with a figure: a sheet can hold a day as zeros before it is entered (ACE's Nov 8, 2026-11-09).
-        $latest = $rows->filter(fn ($r) => (float) ($r['amount'] ?? 0) + (float) ($r['calls'] ?? 0) + (float) ($r['jobs'] ?? 0) > 0)->max('date') ?? $rows->max('date');
+        // The latest day with spend: a sheet can hold a day as zeros before it is entered (ACE's Nov 8, 2026-11-09).
+        $latest = $rows->filter(fn ($r) => (float) ($r['amount'] ?? 0) + (float) ($r['calls'] ?? 0) > 0)->max('date') ?? $rows->max('date');
         // A table without calls (ACE's) shows none rather than "Calls: 0".
         $hasCalls = $rows->contains(fn ($r) => ($r['calls'] ?? null) !== null);
-        $lines = [$head, '*Data date: '.CarbonImmutable::parse($latest)->format('M j').'*', ''];
+        $lines = [$head, '*Data date: '.CarbonImmutable::parse($latest)->format('D, M j').'*'];
+        if ($latest < $day->subDay()->toDateString()) {
+            $lines[] = "\u{26A0}\u{FE0F} Spend last updated ".CarbonImmutable::parse($latest)->format('M j');
+        }
+        // A company's jobs are EzBizi's, not the sheet's hand-filled count (Jose, 2026-11-10): the
+        // Workiz jobs credited to it, booked that day, by service area; its sheet keeps the spend.
+        $companies = $rows->pluck('company')->filter()->unique()->values();
+        $ours = collect();
+        if ($companies->isNotEmpty()) {
+            $lines[] = '_Spend from the '.$companies->implode(', ').' sheet · jobs from EzBizi_';
+            $skip = self::tags('reports.tags_not_created');
+            $ours = DB::table('workiz_jobs')->where('organization_id', $organization->getKey())->whereIn('job_source', $companies)
+                ->whereBetween('booked_at', [$latest.' 00:00:00', $latest.' 23:59:59'])
+                ->get(['service_area', DB::raw("coalesce(json_extract(payload, '$.Tags'), json_array()) as tags")])
+                ->reject(fn ($j) => self::tagged($j->tags, $skip))
+                ->countBy(fn ($j) => trim((string) $j->service_area) ?: 'No area');
+        }
+        $lines[] = '';
+        $areas = $rows->where('date', $latest)->groupBy(fn ($r) => trim((string) ($r['area'] ?? '')) ?: 'No area');
+        $same = fn (string $a, string $b) => mb_strtolower($a) === mb_strtolower($b);
+        // An area with jobs and nothing on the sheet still shows.
+        foreach ($ours as $area => $n) {
+            if (! $areas->keys()->contains(fn ($k) => $same((string) $k, (string) $area))) {
+                $areas[$area] = collect();
+            }
+        }
         $total = ['cost' => 0, 'calls' => 0, 'jobs' => 0];
-        foreach ($rows->where('date', $latest)->groupBy(fn ($r) => trim((string) ($r['area'] ?? '')) ?: 'No area')
-            ->sortBy(fn ($r, $area) => [LocationOrder::areaPlace((string) $area), $area]) as $area => $r) {
+        foreach ($areas->sortBy(fn ($r, $area) => [LocationOrder::areaPlace((string) $area), $area]) as $area => $r) {
             $cost = $r->sum(fn ($x) => AirtableSections::cents($x['amount'] ?? 0));
             $calls = (int) $r->sum(fn ($x) => (float) ($x['calls'] ?? 0));
-            $jobs = (int) $r->sum(fn ($x) => (float) ($x['jobs'] ?? 0));
+            $jobs = $companies->isEmpty() ? (int) $r->sum(fn ($x) => (float) ($x['jobs'] ?? 0))
+                : (int) $ours->first(fn ($n, $k) => $same((string) $k, (string) $area), 0);
             $lines[] = '*'.$area.'*';
-            $lines[] = '• Spent: '.self::money($cost).($hasCalls ? ' · Calls: '.$calls : '').' · Jobs: '.$jobs;
-            $lines[] = '• Cost/job: '.($jobs > 0 ? self::money(intdiv($cost, $jobs)) : 'N/A')
+            $lines[] = '• Spent: '.($r->isEmpty() ? 'N/A' : self::money($cost)).($hasCalls ? ' · Calls: '.$calls : '').' · Jobs: '.$jobs;
+            $lines[] = '• Cost/job: '.($jobs > 0 && $cost > 0 ? self::money(intdiv($cost, $jobs)) : 'N/A')
                 .($hasCalls ? ' · Call-to-job: '.($calls > 0 ? number_format($jobs / $calls * 100, 1).'%' : 'N/A') : '');
             $total['cost'] += $cost;
             $total['calls'] += $calls;
