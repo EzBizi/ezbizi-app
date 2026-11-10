@@ -427,6 +427,10 @@ class _WorkspaceViewState extends State<WorkspaceView> {
   String? _deleting;
   String? _assignTo;
 
+  /// "Given A-1 standard to 2 people": the picker keeps the choice and this
+  /// says it took (Jose 11-10: it "reverts back", so it looked like nothing).
+  String? _assignNote;
+
   final _search = TextEditingController();
   final Set<String> _selected = {};
   bool _applying = false;
@@ -511,7 +515,15 @@ class _WorkspaceViewState extends State<WorkspaceView> {
       _say(response.reason);
       return;
     }
-    setState(() => _assignTo = null);
+    final count = _selected.length;
+    final name = template == null
+        ? 'the default'
+        : '${_templates.firstWhere((t) => '${t['id']}' == template, orElse: () => const {})['name'] ?? 'the template'}';
+    setState(
+      () => _assignNote =
+          'Given $name to $count ${count == 1 ? 'person' : 'people'}. '
+          'Set in Gmail sends it.',
+    );
     await _load();
   }
 
@@ -567,6 +579,8 @@ class _WorkspaceViewState extends State<WorkspaceView> {
       if (error == null) {
         _applied = {'set': set, 'results': results};
         _selected.clear();
+        _assignTo = null;
+        _assignNote = null;
       }
     });
     if (error == null) _load();
@@ -978,7 +992,13 @@ class _WorkspaceViewState extends State<WorkspaceView> {
                   ),
                 ),
                 TextButton(
-                  onPressed: _applying ? null : () => setState(_selected.clear),
+                  onPressed: _applying
+                      ? null
+                      : () => setState(() {
+                          _selected.clear();
+                          _assignTo = null;
+                          _assignNote = null;
+                        }),
                   child: const Text('Clear'),
                 ),
                 if (_templates.isNotEmpty)
@@ -1012,6 +1032,14 @@ class _WorkspaceViewState extends State<WorkspaceView> {
                   onPressed: _applying ? null : _apply,
                   child: Text(_applying ? 'Setting…' : 'Set in Gmail'),
                 ),
+                if (_assignNote != null)
+                  Text(
+                    _assignNote!,
+                    key: const ValueKey('workspace-assign-note'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
               ],
             ),
           ),
