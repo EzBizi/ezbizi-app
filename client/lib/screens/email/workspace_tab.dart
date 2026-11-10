@@ -1495,7 +1495,12 @@ class _PersonPaneState extends State<PersonPane> {
   late final Map<String, TextEditingController> _fields = {
     for (final key in _fieldLabels.keys)
       key: TextEditingController(
-        text: '${(widget.person['fields'] as Map?)?[key] ?? ''}',
+        // A person with nothing set arrives as [] from PHP, not {}.
+        text:
+            '${switch (widget.person['fields']) {
+              final Map f => f[key] ?? '',
+              _ => '',
+            }}',
       ),
   };
 

@@ -725,6 +725,8 @@ final _people = [
   },
   {
     'address': 'pat@brightside.example',
+    // As PHP sends an empty array: [] not {}. The pane once cast it and threw (Jose 11-10).
+    'fields': <Object>[],
     'name': 'Pat Lin',
     'title': 'Technician',
     'phone': '',
