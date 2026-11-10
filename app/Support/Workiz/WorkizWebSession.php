@@ -186,6 +186,58 @@ final class WorkizWebSession
      * Nationwide), the longest such name if several; the tenant's own mapping
      * (`credentials.accounts`) overrides it. Null when neither names one.
      */
+    /** The login's account whose books are this branch's, or null. */
+    public static function accountFor(SocialConnection $connection, string $franchiseId): ?string
+    {
+        $account = collect(self::accounts($connection))
+            ->search(fn ($name, $a) => self::franchiseFor($connection, (string) $a, (string) $name)?->getKey() === $franchiseId);
+
+        return $account === false ? null : (string) $account;
+    }
+
+    /**
+     * Take tags off a job in Workiz. v2's PUT {tags} only ever adds (measured
+     * 2026-11-10 on NY Y7TCXI, and {tags: []} changes nothing); the job page's
+     * own POST /ajaxc/jobTags/remove/ {id, objectId, context: job} does it
+     * (measured on NY 900018655: removed, then added back).
+     *
+     * @param  list<string>  $names
+     * @return array{removed: list<string>, refused: ?string}
+     */
+    public static function removeJobTags(string $franchiseId, string $uuid, array $names): array
+    {
+        $login = SocialConnection::query()->where('provider', \App\Support\Social\SocialProvider::WorkizWeb->value)->where('status', 'connected')->first();
+        $account = $login === null ? null : self::accountFor($login, $franchiseId);
+
+        if ($account === null) {
+            return ['removed' => [], 'refused' => 'No Workiz web login reaches this branch, so tags can only be added in Workiz, not removed.'];
+        }
+
+        return self::inAccount($login, $account, function () use ($login, $uuid, $names) {
+            $all = self::call($login, '/ajaxc/jobTags/getAll/');
+            $job = self::call($login, '/ajaxc/job/get/'.rawurlencode($uuid).'/');
+            $objectId = ((array) ($job['data']['data'] ?? $job['data'] ?? []))['id'] ?? null;
+
+            if ($all['refused'] !== null || $job['refused'] !== null || ! is_numeric($objectId)) {
+                return ['removed' => [], 'refused' => $all['refused'] ?? $job['refused'] ?? 'Workiz did not find this job.'];
+            }
+
+            $ids = collect((array) ($all['data']['data'] ?? $all['data']))->filter(fn ($t) => is_array($t))
+                ->mapWithKeys(fn ($t) => [mb_strtolower(trim((string) ($t['name'] ?? ''))) => (string) ($t['id'] ?? '')]);
+            $removed = [];
+
+            foreach ($names as $name) {
+                $id = $ids[mb_strtolower(trim($name))] ?? null;
+
+                if ($id !== null && (self::call($login, '/ajaxc/jobTags/remove/', ['id' => $id, 'objectId' => (string) $objectId, 'context' => 'job'])['data']['flag'] ?? false) === true) {
+                    $removed[] = $name;
+                }
+            }
+
+            return ['removed' => $removed, 'refused' => null];
+        });
+    }
+
     public static function franchiseFor(SocialConnection $connection, string $account, string $name = ''): ?Franchise
     {
         $id = ((array) ($connection->credentials['accounts'] ?? []))[$account] ?? null;
