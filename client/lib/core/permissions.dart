@@ -339,7 +339,12 @@ class RoleSummary {
     this.invitableRoles,
     this.hiddenOnLeads = false,
     this.people,
+    this.peopleWithOwnInboxes = 0,
   });
+
+  /// How many of its people were given an inbox by name in Email settings,
+  /// which opens that inbox whatever the role holds.
+  final int peopleWithOwnInboxes;
 
   /// Some of the people who hold it, for "Who has it" (UI queue 111).
   ///
@@ -394,6 +399,8 @@ class RoleSummary {
   factory RoleSummary.fromJson(Map<String, dynamic> json) => RoleSummary(
     id: json['id'].toString(),
     hiddenOnLeads: json['hidden_on_leads'] as bool? ?? false,
+    peopleWithOwnInboxes:
+        (json['people_with_own_inboxes'] as num?)?.toInt() ?? 0,
     invitableRoles: (json['invitable_roles'] as List<dynamic>?)
         ?.whereType<String>()
         .toList(),

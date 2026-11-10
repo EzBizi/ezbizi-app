@@ -1711,6 +1711,22 @@ class MailboxMessagesApiTest extends TestCase
      * The picker offers everyone but the Administrator and those already on it,
      * says when the grant is what lets someone in, and lists the roles beside.
      */
+    /** Roles say how many of their people were given inboxes by name (Jose, 2026-11-10). */
+    public function test_the_roles_list_counts_people_given_inboxes_by_name(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $ana = $this->userWithRole($t, 'Dispatcher', self::INBOX_TAB, email: 'ana@a1.test');
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/people", ['user_id' => $ana->id])->assertOk();
+
+        $role = collect($this->signedInAs($t['admin'])->getJson('/api/v1/roles')->assertOk()->json('data'))
+            ->firstWhere('id', $ana->role_id);
+        $this->assertSame(1, $role['people_with_own_inboxes']);
+    }
+
     public function test_the_people_list_offers_everyone_and_says_who_gets_in_only_by_the_grant(): void
     {
         $this->withFakeProvider();

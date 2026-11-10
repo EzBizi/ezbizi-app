@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/email/email_screen.dart';
+import 'package:ezbizi_client/screens/email/message_html.dart';
 import 'package:ezbizi_client/screens/email/signature_builder.dart';
 import 'package:ezbizi_client/screens/email/workspace_tab.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
@@ -97,14 +98,14 @@ void main() {
     expect(html, contains('>A-1</strong>'));
     expect(html, contains('{{^photo_url}}'));
     expect(find.byKey(const ValueKey('sig-preview-html')), findsOne);
+    // Drawn by a browser engine, the server's filled HTML whole.
+    final view = tester.widget<MessageHtmlView>(find.byType(MessageHtmlView));
+    expect(view.ownHtml, isTrue);
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('sig-preview-html')),
-        matching: find.textContaining('Dana Reyes', findRichText: true),
-      ),
-      findsWidgets,
-      reason: 'The signature table was not drawn.',
+      view.html,
+      contains('<table><tr><td><b>Dana Reyes</b></td></tr></table>'),
     );
+    expect(view.html, contains('--<br>'));
 
     await tester.enterText(
       find.byKey(const ValueKey('sig-name')),

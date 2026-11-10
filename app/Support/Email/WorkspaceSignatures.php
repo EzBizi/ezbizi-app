@@ -245,23 +245,61 @@ final class WorkspaceSignatures
     public function render(string $template, array $person, ?User $user, string $company): string
     {
         $values = $this->values($person, $user, $company);
-
-        // {{#mobile}}...{{/mobile}} is kept only when that value is there, so an
-        // empty field drops its whole line instead of leaving a label behind.
-        $template = preg_replace_callback(
-            '/\{\{([#^])\s*([a-z_]+)\s*\}\}(.*?)\{\{\/\s*\2\s*\}\}/s',
-            // {{^photo_url}} is the opposite: kept only when the value is missing.
-            fn (array $m) => (trim($values[$m[2]] ?? '') === '') === ($m[1] === '^') ? $m[3] : '',
-            $template,
-        ) ?? $template;
-
-        return preg_replace_callback(
+        $fill   = fn (string $html) => preg_replace_callback(
             '/\{\{\s*([a-z_]+)\s*\}\}/',
             fn (array $m) => array_key_exists($m[1], $values)
                 ? htmlspecialchars($values[$m[1]], ENT_QUOTES | ENT_HTML5, 'UTF-8')
                 : $m[0],
+            $html,
+        ) ?? $html;
+
+        // {{#mobile}}...{{/mobile}} is kept only when that value is there, so an
+        // empty field drops its whole line instead of leaving a label behind.
+        // {{^photo_url}} is the opposite: kept only when the value is missing --
+        // and then only if its pictures exist. A stock-photo address per person
+        // (/photos/{{email}}.jpg) is missing for most people, and Gmail would
+        // show each of them a broken picture (79 of 96 at A-1, 2026-11-10).
+        $template = preg_replace_callback(
+            '/\{\{([#^])\s*([a-z_]+)\s*\}\}(.*?)\{\{\/\s*\2\s*\}\}/s',
+            function (array $m) use ($values, $fill) {
+                if ((trim($values[$m[2]] ?? '') === '') !== ($m[1] === '^')) {
+                    return '';
+                }
+
+                return $m[1] === '^' && ! $this->picturesExist($fill($m[3])) ? '' : $m[3];
+            },
             $template,
         ) ?? $template;
+
+        return $fill($template);
+    }
+
+    /**
+     * Whether every picture in this HTML answers. Remembered for a day, so a
+     * list of a hundred people is not a hundred fetches on every preview.
+     * ponytail: a picture added after a miss shows up within a day.
+     */
+    private function picturesExist(string $html): bool
+    {
+        preg_match_all('/<img[^>]+src="([^"]+)"/i', $html, $found);
+
+        foreach ($found[1] as $src) {
+            $url = html_entity_decode($src, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+            $ok = \Illuminate\Support\Facades\Cache::remember('signature-picture:'.sha1($url), 86400, function () use ($url) {
+                try {
+                    return Http::timeout(5)->head($url)->successful();
+                } catch (\Throwable) {
+                    return false;
+                }
+            });
+
+            if (! $ok) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
