@@ -463,6 +463,13 @@ class _HomeShellState extends State<HomeShell> {
   /// The countdown before a scheduled shift ends (design 2026-09-08 §10.1).
   late final ShiftReminderController _reminder;
   Timer? _clockPoll;
+
+  /// Access changed elsewhere (an inbox granted, a role edited) reaches an
+  /// open app without a reload: /me is asked again every minute and when the
+  /// app comes back, and the page is keyed on its access_version (Jose,
+  /// 2026-11-10).
+  Timer? _accessPoll;
+  AppLifecycleListener? _accessOnResume;
   VoidCallback? _stopClockListening;
 
   _Rail _rail = _Rail.modules;
@@ -636,6 +643,15 @@ class _HomeShellState extends State<HomeShell> {
     // One small block every minute while the organization has the clock on,
     // so an exemption, a schedule change or a server-side close reaches an
     // open app (design 2026-09-08 §3.12). Same cadence as the bell.
+    _accessPoll = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => widget.session.refresh(),
+    );
+    _accessOnResume = AppLifecycleListener(
+      onResume: widget.session.refresh,
+      onShow: widget.session.refresh,
+    );
+
     _clockPoll = Timer.periodic(const Duration(seconds: 60), (_) async {
       final status = widget.session.me?.timeClock;
       if (status == null ||
@@ -759,6 +775,8 @@ class _HomeShellState extends State<HomeShell> {
     PhoneCallService.current.stop();
 
     _clockPoll?.cancel();
+    _accessPoll?.cancel();
+    _accessOnResume?.dispose();
     _stopClockListening?.call();
     _reminder.dispose();
 
@@ -1956,7 +1974,11 @@ class _HomeShellState extends State<HomeShell> {
                     child: FocusTraversalGroup(
                       key: shellPageGroup,
                       child: KeyedSubtree(
-                        key: ValueKey('${me.scope.type}:${me.scope.id}'),
+                        // And by what they may reach, so a grant made
+                        // elsewhere remounts the page and its lists reload.
+                        key: ValueKey(
+                          '${me.scope.type}:${me.scope.id}:${me.accessVersion}',
+                        ),
                         // Their own account is the last fallback, and the only honest
                         // one: it is the single screen that is theirs by definition and
                         // cannot answer 403. It is what somebody whose role reaches no
@@ -2043,7 +2065,11 @@ class _HomeShellState extends State<HomeShell> {
         }
         if (record != null) {
           DeepLinks.open(
-            DeepLink(module: module, type: module.substring(0, module.length - 1), id: record),
+            DeepLink(
+              module: module,
+              type: module.substring(0, module.length - 1),
+              id: record,
+            ),
           );
         }
         _open(module);

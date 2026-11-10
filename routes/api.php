@@ -3474,8 +3474,7 @@ Route::prefix('v1')
             // answers have to come from the same reading of the platform flags.
             $catalogue = app(PermissionCatalogue::class);
 
-            return response()->json([
-                'data' => [
+            $data = [
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
@@ -3701,8 +3700,28 @@ Route::prefix('v1')
                         'company_id' => $f->company_id,
                         'is_active' => $f->is_active,
                     ])->values(),
-                ],
-            ]);
+            ];
+
+            // What this person may reach, as one value. An open client asks
+            // /me every minute and on resume, and redraws the screen when this
+            // moves (Jose, 2026-11-10: a granted inbox showed only after a
+            // reload). Inboxes are named by grant, because a second inbox
+            // changes no permission key.
+            $data['access_version'] = sha1(json_encode([
+                $data['role'],
+                $data['permissions'],
+                $data['modules'],
+                $data['companies'],
+                $data['franchises'],
+                \App\Models\MailboxGrant::query()
+                    ->where('user_id', $user->id)
+                    ->when($user->role_id, fn ($q) => $q->orWhere('role_id', $user->role_id))
+                    ->orderBy('mailbox_id')
+                    ->pluck('mailbox_id')
+                    ->all(),
+            ]));
+
+            return response()->json(['data' => $data]);
         });
     });
 

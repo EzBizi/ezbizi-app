@@ -288,6 +288,45 @@ void main() {
     );
   });
 
+  testWidgets('access changed elsewhere reloads the open screen; an unchanged '
+      '/me does not', (tester) async {
+    _wide(tester);
+
+    var version = 'v1';
+    var screenFetches = 0;
+    final api = ApiClient(client: MockClient((request) async {
+      if (request.url.path.endsWith('/me')) {
+        return _json({
+          'data': {
+            ..._me([_module('customers', 'Customers')]),
+            'access_version': version,
+          },
+        });
+      }
+      screenFetches++;
+
+      return _json({'message': 'Nothing stubbed for this screen.'}, 500);
+    }));
+
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    await _pump(tester, api, session);
+    final first = screenFetches;
+    expect(first, greaterThan(0), reason: 'The screen has to fetch at all.');
+
+    // The minute poll finds nothing new: the screen keeps its state.
+    await tester.runAsync(() => session.refresh());
+    await tester.pumpAndSettle();
+    expect(screenFetches, first);
+
+    // An inbox granted, a role edited: the page remounts and fetches again,
+    // with nobody leaving the tab.
+    version = 'v2';
+    await tester.runAsync(() => session.refresh());
+    await tester.pumpAndSettle();
+    expect(screenFetches, greaterThan(first));
+  });
+
   /// Reach can be nothing at all. The shell has to render something, and the
   /// only screen that is theirs by definition is their own account.
   testWidgets('somebody who reaches no module lands on their own account', (
