@@ -205,6 +205,33 @@ Future<void> _saveAs(String filename, List<int> content) async {
 
 void clearQuery() {}
 
-String? previewUrl(List<int> bytes, String mime) => null;
+/// The bytes written to a temporary file, as a `file:` URL a video player
+/// opens on desktop and phone. Deleted again by [releasePreviewUrl].
+String? previewUrl(List<int> bytes, String mime) {
+  try {
+    final ext = switch (mime) {
+      'video/quicktime' => 'mov',
+      'video/webm' => 'webm',
+      _ => 'mp4',
+    };
+    final file = File(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}'
+      'ezbizi-preview-${DateTime.now().microsecondsSinceEpoch}.$ext',
+    )..writeAsBytesSync(bytes, flush: true);
+    return Uri.file(file.path).toString();
+  } catch (_) {
+    return null;
+  }
+}
 
-void releasePreviewUrl(String url) {}
+void releasePreviewUrl(String url) {
+  try {
+    final uri = Uri.parse(url);
+    if (uri.isScheme('file')) File(uri.toFilePath()).deleteSync();
+  } catch (_) {
+    // Already gone, or the temp folder was cleared: nothing to give back.
+  }
+}
+
+/// `flutter test` sets this; no platform video player answers there.
+bool get underTest => Platform.environment.containsKey('FLUTTER_TEST');

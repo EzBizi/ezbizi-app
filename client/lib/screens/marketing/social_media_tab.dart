@@ -40,6 +40,7 @@ class SocialMediaTab extends StatefulWidget {
     required this.session,
     this.openConsent = openConsentWindow,
     this.pickMedia = _pickMedia,
+    this.videoPlayer = _videoPlayer,
   });
 
   final ApiClient api;
@@ -52,11 +53,19 @@ class SocialMediaTab extends StatefulWidget {
   /// point of attaching a file you are about to publish under your own name.
   final Future<PickedBytes?> Function() pickMedia;
 
+  /// The one player for an attached video, or null where none can run.
+  /// Injectable so a test can stand in for the platform player.
+  final VideoPlayerController? Function(Uri) videoPlayer;
+
   @override
   State<SocialMediaTab> createState() => _SocialMediaTabState();
 }
 
 Future<PickedBytes?> _pickMedia() => Files.pickBytes(accept: 'image/*,video/*');
+
+/// No platform player answers under `flutter test`; null keeps the label.
+VideoPlayerController? _videoPlayer(Uri uri) =>
+    Files.underTest ? null : VideoPlayerController.networkUrl(uri);
 
 class _SocialMediaTabState extends State<SocialMediaTab> {
   /// Roughly a minute at three seconds a try. Long enough for a video upload
@@ -691,6 +700,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   onRetryPost: _canPost ? _retryPost : null,
                   stillWaiting: _gaveUpWaiting,
                   pickMedia: widget.pickMedia,
+                  videoPlayer: widget.videoPlayer,
                   landing: _landing,
                   outlined: _outlined,
                   focusDay: _focusDay,
@@ -797,6 +807,7 @@ class _PostsPane extends StatelessWidget {
     required this.view,
     required this.stillWaiting,
     required this.pickMedia,
+    required this.videoPlayer,
     required this.landing,
     required this.outlined,
     required this.focusDay,
@@ -843,6 +854,7 @@ class _PostsPane extends StatelessWidget {
   final VoidCallback? onAccounts;
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
+  final VideoPlayerController? Function(Uri) videoPlayer;
   final _SentPost? landing;
 
   /// Try again on a failed account; null without the right to post.
@@ -905,6 +917,7 @@ class _PostsPane extends StatelessWidget {
           connections: connections,
           stillWaiting: stillWaiting,
           pickMedia: pickMedia,
+          videoPlayer: videoPlayer,
           landing: landing,
           formats: formats,
           onSent: onSent,
@@ -1760,6 +1773,7 @@ class _ComposeColumn extends StatefulWidget {
     required this.connections,
     required this.stillWaiting,
     required this.pickMedia,
+    required this.videoPlayer,
     required this.landing,
     required this.formats,
     required this.onSent,
@@ -1774,6 +1788,7 @@ class _ComposeColumn extends StatefulWidget {
   final List<_SocialConnection> connections;
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
+  final VideoPlayerController? Function(Uri) videoPlayer;
   final void Function(_SentPost, _SentTarget)? onRetry;
 
   /// The post just published. While set, the composer IS the result
@@ -1829,6 +1844,19 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       _media = null;
       _libraryItem = item;
     });
+    if (item['kind'] != 'video') return;
+
+    // The stored file, through the signed-in API: a <video> on the web
+    // cannot send the token, so it plays from the bytes like a fresh pick.
+    final bytes = await widget.api.getBytes(
+      '/social/library/${item['id']}/file',
+    );
+    if (!mounted || _libraryItem != item) return;
+    if (bytes == null) {
+      setState(() => _videoFailed = true);
+      return;
+    }
+    await _loadVideo(bytes, '${item['name'] ?? ''}');
   }
 
   @override
@@ -1862,6 +1890,12 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   /// as long as the attachment does — see `_clearMedia`.
   String? _mediaUrl;
   VideoPlayerController? _player;
+
+  /// The attached video could not be played; the label stays, with a note.
+  bool _videoFailed = false;
+
+  /// Bumped on every release, so a load that finishes late is ignored.
+  int _videoGen = 0;
 
   /// Wall clock in this view's timezone, `YYYY-MM-DD HH:MM`, empty for "now".
   final TextEditingController _when = TextEditingController();
@@ -1908,7 +1942,8 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     _body.dispose();
     _when.dispose();
     _ctaUrl.dispose();
-    _releaseMedia();
+    // Nothing draws this column any more, so the player can go now.
+    _releaseMedia(now: true);
     super.dispose();
   }
 
@@ -1916,13 +1951,29 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   ///
   /// A blob is held until revoked, so picking three videos while deciding
   /// would otherwise keep all three in memory for the life of the page.
-  void _releaseMedia() {
-    _player?.dispose();
-    _player = null;
-
+  ///
+  /// Disposed only after the frame that stops drawing it (as the help video,
+  /// bc7dad52f): disposing while VideoPlayer is still on screen threw
+  /// "No active player with ID n" on Android.
+  void _releaseMedia({bool now = false}) {
+    final player = _player;
     final url = _mediaUrl;
-    if (url != null) Files.releasePreviewUrl(url);
+    _player = null;
     _mediaUrl = null;
+    _videoFailed = false;
+    _videoGen++;
+
+    void release() {
+      player?.dispose();
+      if (url != null) Files.releasePreviewUrl(url);
+    }
+
+    if (now || (player == null && url == null)) {
+      release();
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => release());
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   /// Why Publish cannot be pressed, or null when it can.
@@ -2063,34 +2114,38 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 
     if (_looksLikeImage(picked.name)) return;
 
-    // Video: hand the bytes to the browser as a blob and play them from there.
-    // Nothing is uploaded — the file is being looked at precisely because
-    // nobody is sure yet that it is the right one.
-    final url = Files.previewUrl(picked.bytes, _mimeFor(picked.name));
-    if (url == null || !mounted) return;
+    await _loadVideo(picked.bytes, picked.name);
+  }
 
-    final player = VideoPlayerController.networkUrl(Uri.parse(url));
+  /// One player over [bytes], shared by the attachment box and every
+  /// preview card. A blob URL on the web, a temporary file elsewhere.
+  /// Nothing is uploaded — the file is being looked at precisely because
+  /// nobody is sure yet that it is the right one.
+  Future<void> _loadVideo(List<int> bytes, String name) async {
+    final gen = _videoGen;
+    final url = Files.previewUrl(bytes, _mimeFor(name));
+    final player = url == null ? null : widget.videoPlayer(Uri.parse(url));
+
+    if (player == null) {
+      if (url != null) Files.releasePreviewUrl(url);
+      if (mounted && gen == _videoGen) setState(() => _videoFailed = true);
+      return;
+    }
+
+    // Held from here, so Remove or Replace mid-load still disposes it.
+    _player = player;
+    _mediaUrl = url;
 
     try {
       await player.initialize();
+      await player.setVolume(0);
     } catch (_) {
-      // A container the browser will not decode. The placeholder below says
-      // what the file is; claiming a broken player is worse than saying less.
-      player.dispose();
-      if (mounted) Files.releasePreviewUrl(url);
+      // A container this platform will not decode: keep the label, say so.
+      if (mounted && gen == _videoGen) setState(() => _videoFailed = true);
       return;
     }
 
-    if (!mounted) {
-      player.dispose();
-      Files.releasePreviewUrl(url);
-      return;
-    }
-
-    setState(() {
-      _mediaUrl = url;
-      _player = player;
-    });
+    if (mounted && gen == _videoGen) setState(() {});
   }
 
   /// Read what this TikTok account allows, for its panel. Asked fresh on
@@ -2430,10 +2485,16 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       ),
     );
 
+    final fromLibrary = _libraryItem;
     final preview = _PreviewCard(
       networks: networks,
       body: _words,
       media: _media,
+      libraryVideo: _media == null && fromLibrary?['kind'] == 'video'
+          ? '${fromLibrary!['name'] ?? ''}'
+          : null,
+      video: _player,
+      videoFailed: _videoFailed,
       when: _scheduling && when.isNotEmpty ? 'Scheduled $when' : 'Now',
     );
 
@@ -2618,7 +2679,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 
     final fromLibrary = _libraryItem;
     if (media == null && fromLibrary != null) {
-      return Row(
+      final row = Row(
         key: const ValueKey('social-library-picked'),
         children: [
           Icon(
@@ -2634,9 +2695,36 @@ class _ComposeColumnState extends State<_ComposeColumn> {
           TextButton(
             onPressed: _sending
                 ? null
-                : () => setState(() => _libraryItem = null),
+                : () => setState(() {
+                    _releaseMedia();
+                    _libraryItem = null;
+                  }),
             child: const Text('Remove'),
           ),
+        ],
+      );
+      if (fromLibrary['kind'] != 'video') return row;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              height: 160,
+              child: _AttachedVideo(
+                player: _player,
+                failed: _videoFailed,
+                placeholder: _mediaFallback(
+                  context,
+                  Icons.movie_outlined,
+                  '${fromLibrary['name'] ?? ''}',
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          row,
         ],
       );
     }
@@ -2761,36 +2849,14 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   /// still tells somebody which file they attached and how big it is — less
   /// than Jose asked for, and not a pretence that it is something else.
   Widget _videoPreview(BuildContext context, PickedBytes media) {
-    final player = _player;
-
-    if (player == null || !player.value.isInitialized) {
-      return _mediaFallback(
+    return _AttachedVideo(
+      player: _player,
+      failed: _videoFailed,
+      placeholder: _mediaFallback(
         context,
         Icons.movie_outlined,
         '${media.name} · ${_sizeOf(media.bytes.length)}',
-      );
-    }
-
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Center(
-          child: AspectRatio(
-            aspectRatio: player.value.aspectRatio,
-            child: VideoPlayer(player),
-          ),
-        ),
-        // Play and pause, and nothing else. Reviewing a clip before it goes out
-        // needs to start and stop it; a scrubber, volume and fullscreen are a
-        // media player, which is not what this is.
-        IconButton.filled(
-          onPressed: () => setState(() {
-            player.value.isPlaying ? player.pause() : player.play();
-          }),
-          icon: Icon(player.value.isPlaying ? Icons.pause : Icons.play_arrow),
-          tooltip: player.value.isPlaying ? 'Pause' : 'Play',
-        ),
-      ],
+      ),
     );
   }
 
@@ -2864,6 +2930,9 @@ class _PreviewCard extends StatelessWidget {
     required this.body,
     required this.media,
     required this.when,
+    this.libraryVideo,
+    this.video,
+    this.videoFailed = false,
   });
 
   /// One ticked account per network.
@@ -2872,10 +2941,24 @@ class _PreviewCard extends StatelessWidget {
   final PickedBytes? media;
   final String when;
 
+  /// The name of a library video, when that is what is attached.
+  final String? libraryVideo;
+
+  /// The composer's one player, shared by every card — never one each.
+  final VideoPlayerController? video;
+  final bool videoFailed;
+
   @override
   Widget build(BuildContext context) {
-    Widget likeness(_SocialConnection network) =>
-        _PostLikeness(account: network, body: body, media: media, when: when);
+    Widget likeness(_SocialConnection network) => _PostLikeness(
+      account: network,
+      body: body,
+      media: media,
+      when: when,
+      libraryVideo: libraryVideo,
+      video: video,
+      videoFailed: videoFailed,
+    );
 
     return DashboardCard(
       key: const ValueKey('tour-marketing-compose-preview'),
@@ -3026,12 +3109,18 @@ class _PostLikeness extends StatelessWidget {
     required this.body,
     required this.media,
     required this.when,
+    this.libraryVideo,
+    this.video,
+    this.videoFailed = false,
   });
 
   final _SocialConnection account;
   final String body;
   final PickedBytes? media;
   final String when;
+  final String? libraryVideo;
+  final VideoPlayerController? video;
+  final bool videoFailed;
 
   /// Networks that lead with the picture and put the words under it, after
   /// the account's name.
@@ -3079,8 +3168,21 @@ class _PostLikeness extends StatelessWidget {
       ],
     );
 
+    final videoName = media?.name ?? libraryVideo;
+    Widget playing(String name) => _AttachedVideo(
+      player: video,
+      failed: videoFailed,
+      placeholder: _thumbnailLabel(theme, Icons.movie_outlined, name),
+    );
+
     final Widget? picture = media == null
-        ? null
+        ? (videoName == null
+              ? null
+              : ClipRRect(
+                  key: const ValueKey('social-preview-media'),
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(height: 150, child: playing(videoName)),
+                ))
         : ClipRRect(
             key: const ValueKey('social-preview-media'),
             borderRadius: BorderRadius.circular(8),
@@ -3097,7 +3199,7 @@ class _PostLikeness extends StatelessWidget {
                         media.name,
                       ),
                     )
-                  : _thumbnailLabel(theme, Icons.movie_outlined, media.name),
+                  : playing(media.name),
             ),
           );
 
@@ -3179,6 +3281,139 @@ class _PostLikeness extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The attached video in its frame: first frame, muted, play in the middle,
+/// a thin progress bar and the length. One [player] serves every frame that
+/// shows it; this widget never creates or disposes one.
+///
+/// Until it can play, [placeholder]; when it cannot, the placeholder with
+/// a quiet note rather than an alarm.
+class _AttachedVideo extends StatelessWidget {
+  const _AttachedVideo({
+    required this.player,
+    required this.failed,
+    required this.placeholder,
+  });
+
+  final VideoPlayerController? player;
+  final bool failed;
+  final Widget placeholder;
+
+  static String _clock(Duration d) =>
+      '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final player = this.player;
+
+    Widget waiting() => Stack(
+      fit: StackFit.expand,
+      children: [
+        placeholder,
+        if (failed)
+          Positioned(
+            left: 8,
+            right: 8,
+            bottom: 6,
+            child: Text(
+              'Preview not available',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (player == null) return waiting();
+
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: player,
+      builder: (context, value, _) {
+        if (!value.isInitialized || failed) return waiting();
+
+        return ColoredBox(
+          color: theme.colorScheme.surfaceContainerHighest,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Center(
+                child: AspectRatio(
+                  aspectRatio: value.aspectRatio,
+                  child: VideoPlayer(player),
+                ),
+              ),
+              // Tap anywhere to play or pause. A scrubber, volume and
+              // fullscreen would be a media player, which this is not.
+              GestureDetector(
+                key: const ValueKey('social-video-toggle'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => value.isPlaying ? player.pause() : player.play(),
+                child: Center(
+                  child: value.isPlaying
+                      ? const SizedBox.shrink()
+                      : Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: theme.colorScheme.primary,
+                          ),
+                          child: Icon(
+                            Icons.play_arrow,
+                            size: 28,
+                            color: theme.colorScheme.onPrimary,
+                          ),
+                        ),
+                ),
+              ),
+              Positioned(
+                right: 6,
+                bottom: 8,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.inverseSurface,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      _clock(value.duration),
+                      key: const ValueKey('social-video-length'),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onInverseSurface,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 3,
+                child: VideoProgressIndicator(
+                  player,
+                  allowScrubbing: false,
+                  padding: EdgeInsets.zero,
+                  colors: VideoProgressColors(
+                    playedColor: theme.colorScheme.primary,
+                    bufferedColor: theme.colorScheme.outlineVariant,
+                    backgroundColor: theme.colorScheme.surfaceContainerHigh,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
