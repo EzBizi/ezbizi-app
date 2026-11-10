@@ -173,6 +173,24 @@ void main() {
       'addresses': ['dana@brightside.example'],
       'template_id': 't-short',
     });
+    // It says it took, and the picker keeps the choice (Jose 11-10: it reverted).
+    expect(
+      find.text('Given Short reply to 1 person. Set in Gmail sends it.'),
+      findsOne,
+    );
+    expect(
+      tester
+          .widget<SearchPickerField<String>>(
+            find.byKey(const ValueKey('workspace-bulk-assign')),
+          )
+          .value,
+      't-short',
+    );
+    // And Set in Gmail sends it for the same people.
+    await _tap(tester, find.byKey(const ValueKey('workspace-bulk-apply')));
+    expect(server.asked('POST', '/signatures/apply').last, {
+      'addresses': ['dana@brightside.example'],
+    });
 
     await _tap(
       tester,
@@ -725,6 +743,8 @@ final _people = [
   },
   {
     'address': 'pat@brightside.example',
+    // As PHP sends an empty array: [] not {}. The pane once cast it and threw (Jose 11-10).
+    'fields': <Object>[],
     'name': 'Pat Lin',
     'title': 'Technician',
     'phone': '',
