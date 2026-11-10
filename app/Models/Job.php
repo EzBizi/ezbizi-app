@@ -35,7 +35,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'franchise_id', 'customer_id', 'number', 'title', 'description',
     'status', 'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
     'assigned_role_id', 'performed_by_user_id', 'service_area_id',
-    'job_type', 'sub_status', 'tags', 'external_company',
+    'job_type', 'sub_status', 'tags', 'external_company', 'schedule_proposal',
     'job_source', 'custom_fields', 'all_day', 'recurrence', 'created_by_user_id', 'created_by_label',
 ])]
 class Job extends Model implements StatesRetention
@@ -112,6 +112,7 @@ class Job extends Model implements StatesRetention
             // Set only by a person's change; the Workiz projection leaves the
             // area alone once it is (see its migration).
             'service_area_chosen_at' => 'datetime',
+            'schedule_proposal' => 'array',
         ];
     }
 

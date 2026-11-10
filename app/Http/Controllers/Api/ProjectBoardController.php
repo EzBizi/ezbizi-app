@@ -142,7 +142,7 @@ class ProjectBoardController extends Controller
 
         // The search box: customer name, job number (ours or Workiz's), address or technician.
         $term = trim((string) ($input['q'] ?? ''));
-        $page = $this->tab($inView(), $rules[$tab] ?? [])
+        $filtered = $this->tab($inView(), $rules[$tab] ?? [])
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q
                 ->where('number', 'like', "%{$term}%")
                 ->orWhereHas('workizJob', fn ($w) => $w->where('serial_id', 'like', "%{$term}%")
@@ -153,8 +153,8 @@ class ProjectBoardController extends Controller
                     ->where('name', 'like', "%{$term}%")
                     ->orWhere('address_line1', 'like', "%{$term}%")
                     ->orWhere('city', 'like', "%{$term}%")
-                    ->orWhere('postal_code', 'like', "%{$term}%")))))
-            ->with(self::WITH)
+                    ->orWhere('postal_code', 'like', "%{$term}%")))));
+        $page = (clone $filtered)->with(self::WITH)
             ->tap(fn (Builder $q) => $this->sorted($q, $input['sort'] ?? null, $input['dir'] ?? 'asc'))
             ->paginate(perPage: (int) ($input['per_page'] ?? 50));
         $jobs = $page->getCollection();
@@ -172,6 +172,14 @@ class ProjectBoardController extends Controller
                 'can_edit' => $user->hasPermission('jobs.edit'),
                 // Columns a header click can sort by, over the whole tab.
                 'sortable' => array_keys(self::SORTS),
+                // Over the whole filtered tab, not the page (Jose, 2026-11-10:
+                // Total Paid, Total Remaining Balance, Total Amount).
+                ...($money !== null ? ['totals' => [
+                    'paid' => JobMoney::sum($filtered, 'paid'),
+                    'due' => JobMoney::sum($filtered, 'due'),
+                    'total' => JobMoney::sum($filtered, 'total'),
+                    'currency' => 'USD',
+                ]] : []),
                 'status_days' => (object) $settings->get('project_board.status_days', $place),
                 'settings_scope' => ['scope_type' => $place instanceof \App\Models\Company ? 'company' : 'organization', 'scope_id' => $place->getKey()],
             ] +($page->currentPage() > 1 ? [] : ['counts' => collect(self::TABS)
@@ -364,7 +372,9 @@ class ProjectBoardController extends Controller
         $workizNote = trim((string) ($payload['JobNotes'] ?? ''));
         $note = $extras['notes'][$job->id] ?? null;
         $files = (int) ($extras['files'][$job->id] ?? 0) + count(\App\Support\Jobs\WorkizExtras::files(is_array($payload) ? $payload : []));
-        $notes = (int) ($note['count'] ?? 0) + ($workizNote !== '' ? 1 : 0);
+        // EzBizi's own notes only (Jose, 2026-11-10: "Notes should be clean,
+        // not tied to Workiz description"); the panel still shows Workiz's.
+        $notes = (int) ($note['count'] ?? 0);
         $row = [
             'service_area' => $job->serviceArea?->name,
             'technician' => $technician ?: null,
@@ -374,9 +384,8 @@ class ProjectBoardController extends Controller
             // Days in this state, from the deposit (else the job's creation).
             'status_days' => $since === null ? null : (int) floor($since->diffInDays(now(), true)),
             'attachments' => $files,
-            'notes' => $note['latest'] ?? ($workizNote !== '' ? $workizNote : null),
-            // Where that text is from (Jose, 2026-11-10: he could not tell).
-            'notes_source' => isset($note['latest']) ? 'ezbizi' : ($workizNote !== '' ? 'workiz' : null),
+            'notes' => $note['latest'] ?? null,
+            'schedule_proposal' => $job->schedule_proposal,
             'notes_count' => $notes,
         ];
         // Only what the company ticks in Settings (project_board.ready_requires).
@@ -456,10 +465,13 @@ class ProjectBoardController extends Controller
     {
         $this->editable($request, $job);
         $this->settingsFor($request->user());
+        $proposal = $this->proposal($request);
         $job->loadMissing(['workizJob:id,job_id,serial_id,payload', 'serviceArea:id,name', 'performedBy:id,name']);
         $missing = $this->unscheduled($job, $this->extras([$job->id]))['ready_missing'];
         abort_if($missing !== [], 422, 'Still needs: '.implode(', ', $missing).'.');
+        $job->schedule_proposal = $proposal;
         $tags = array_values((array) ($job->tags ?? []));
+        $job->save();
         if (! in_array(self::tagKey(self::READY_TAG), array_map(fn ($t) => self::tagKey((string) $t), $tags), true)) {
             $job->tags = [...$tags, self::READY_TAG];
             $job->save();
@@ -468,6 +480,32 @@ class ProjectBoardController extends Controller
         }
 
         return response()->json(['data' => ['id' => $job->id, 'tags' => $job->tags]]);
+    }
+
+    /**
+     * The four questions "Ready to schedule" asks (Jose, 2026-11-10): a date
+     * and time slot, and an alternative of each.
+     *
+     * @return array{date: string, slot: string, alt_date: string, alt_slot: string}
+     */
+    private function proposal(Request $request): array
+    {
+        return $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'slot' => ['required', 'string', 'max:40'],
+            'alt_date' => ['required', 'date_format:Y-m-d'],
+            'alt_slot' => ['required', 'string', 'max:40'],
+        ]);
+    }
+
+    /** PATCH /api/v1/project-board/jobs/{job}/proposal: view or change the offered times. */
+    public function updateProposal(Request $request, Job $job): JsonResponse
+    {
+        $this->editable($request, $job);
+        $job->forceFill(['schedule_proposal' => $this->proposal($request)])->save();
+        app(\App\Support\Audit\AuditLogger::class)->log('job.schedule_proposed', $job, actor: $request->user());
+
+        return response()->json(['data' => ['id' => $job->id, 'schedule_proposal' => $job->schedule_proposal]]);
     }
 
     private function editable(Request $request, Job $job): void

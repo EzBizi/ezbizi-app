@@ -100,6 +100,11 @@ class ProjectBoardTest extends TestCase
             ->getJson('/api/v1/project-board/jobs?tab=in_progress')->assertOk()->json('data.0');
         $this->assertSame($id, $row['id']);
         $this->assertArrayNotHasKey('total', $row);
+        // The totals strip needs Financials too (Jose, 2026-11-10).
+        $this->assertNull($this->signedInAs($this->userWithRole($alpha, 'Viewer 2', ['jobs.view', 'project_board.view']))
+            ->getJson('/api/v1/project-board/jobs?tab=in_progress')->json('meta.totals'));
+        $this->assertSame(['paid', 'due', 'total', 'currency'], array_keys($this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/project-board/jobs?tab=in_progress&per_page=1')->json('meta.totals')));
 
         $this->signedInAs($this->userWithRole($alpha, 'Jobs only', ['jobs.view']))
             ->getJson('/api/v1/project-board/jobs')->assertForbidden();
@@ -169,7 +174,10 @@ class ProjectBoardTest extends TestCase
         $this->assertSame(['Service Area', 'Repair Team / Contractor', 'a note'], $row['ready_missing']);
 
         // Not ready: refused, and nothing tagged.
-        $api->postJson("/api/v1/project-board/jobs/{$id}/ready")->assertStatus(422)->assertJsonPath('message', 'Still needs: Service Area, Repair Team / Contractor, a note.');
+        // The four questions first (Jose, 2026-11-10: date, time slot, and an alternative of each).
+        $times = ['date' => '2026-11-20', 'slot' => '8 - 11 AM', 'alt_date' => '2026-11-21', 'alt_slot' => '11 AM - 2 PM'];
+        $api->postJson("/api/v1/project-board/jobs/{$id}/ready", ['date' => '2026-11-20'])->assertStatus(422);
+        $api->postJson("/api/v1/project-board/jobs/{$id}/ready", $times)->assertStatus(422)->assertJsonPath('message', 'Still needs: Service Area, Repair Team / Contractor, a note.');
 
         $this->inTenant($alpha['org'], function () use ($alpha, $id) {
             $area = \App\Models\ServiceArea::query()->create(['franchise_id' => $alpha['franchise']->id, 'name' => 'Columbus North']);
@@ -199,13 +207,15 @@ class ProjectBoardTest extends TestCase
         $this->assertSame(['Repair Team / Contractor'], $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.ready_missing'));
         $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'KENNI REPAIR TEAM'])->assertOk();
 
-        $api->postJson("/api/v1/project-board/jobs/{$id}/ready")->assertOk()
+        $api->postJson("/api/v1/project-board/jobs/{$id}/ready", $times)->assertOk()
             ->assertJsonPath('data.tags', ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM', 'READY TO SCHEDULE']);
         // Out of Unscheduled, into Ready to Schedule; still Submitted.
         $page = $api->getJson('/api/v1/project-board/jobs?tab=ready_to_schedule')->assertOk();
         $this->assertSame([$id], array_column($page->json('data'), 'id'));
         $this->assertSame(0, $page->json('meta.counts.unscheduled'));
         $this->assertSame('Submitted', $page->json('data.0.status'));
+        $this->assertSame($times, $page->json('data.0.schedule_proposal'));
+        $api->patchJson("/api/v1/project-board/jobs/{$id}/proposal", ['slot' => 'x'] + $times)->assertOk();
     }
 
     public function test_another_companys_tags_never_reach_this_companys_jobs_or_view(): void

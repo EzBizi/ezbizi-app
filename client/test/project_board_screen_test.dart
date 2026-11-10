@@ -162,14 +162,39 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('project-board-ready:j-1')));
     await tester.pumpAndSettle();
-    expect(
-      requests.any(
-        (r) =>
-            r.method == 'POST' &&
-            r.url.path.endsWith('/project-board/jobs/j-1/ready'),
-      ),
-      isTrue,
+    // The four questions first; Save waits for all of them (Jose, 2026-11-10).
+    final save = find.byKey(const Key('project-board-times-save'));
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    for (final (key, value) in const [
+      ('date', '2026-11-20'),
+      ('slot', '8 - 11 AM'),
+      ('alt_date', '2026-11-21'),
+      ('alt_slot', '2 - 5 PM'),
+    ]) {
+      final field = find.byKey(Key('project-board-times-$key'));
+      await tester.enterText(
+        tester.widget(field) is TextField
+            ? field
+            : find
+                  .descendant(of: field, matching: find.byType(TextField))
+                  .first,
+        value,
+      );
+      await tester.pump();
+    }
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    final ready = requests.lastWhere(
+      (r) =>
+          r.method == 'POST' &&
+          r.url.path.endsWith('/project-board/jobs/j-1/ready'),
     );
+    expect(jsonDecode(ready.body), {
+      'date': '2026-11-20',
+      'slot': '8 - 11 AM',
+      'alt_date': '2026-11-21',
+      'alt_slot': '2 - 5 PM',
+    });
 
     // A header click sorts the whole tab on the server; a second click
     // reverses it, with an arrow (Jose, 2026-11-10).

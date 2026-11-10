@@ -9,6 +9,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
+import '../widgets/calendar_day_field.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/list_search.dart';
 import '../widgets/search_picker.dart';
@@ -53,6 +54,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   Map<String, dynamic> _labels = const {};
   Map<String, String> _scope = const {};
   Map<String, dynamic> _counts = const {};
+
+  /// Total Paid, Remaining Balance and Amount over the whole tab (Jose,
+  /// 2026-11-10); null without Financials.
+  Map<String, dynamic>? _totals;
 
   /// The repair-team and contractor tags on offer (Workiz's), and whether
   /// this person may change a job.
@@ -190,6 +195,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           : meta['last_page'] as int? ?? 1;
       _updated = DateTime.now();
       _counts = (meta['counts'] as Map?)?.cast<String, dynamic>() ?? _counts;
+      _totals = (meta['totals'] as Map?)?.cast<String, dynamic>();
       _franchises = _maps(meta['places']);
       _columns = _maps(meta['columns']);
       _labels = (meta['labels'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -218,6 +224,37 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     };
     widget.session.setPreference('lists.column_widths', all);
     setState(() {});
+  }
+
+  Widget _totalsStrip(Map<String, dynamic> t) {
+    final theme = Theme.of(context);
+    final currency = '${t['currency'] ?? 'USD'}';
+    Widget figure(String key, String label) => Padding(
+      padding: const EdgeInsets.only(right: 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: theme.textTheme.bodySmall),
+          Text(
+            formatMoney((t[key] as num?)?.toInt() ?? 0, currency: currency),
+            key: Key('project-board-total-$key'),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        children: [
+          figure('paid', 'Total Paid'),
+          figure('due', 'Total Remaining Balance'),
+          figure('total', 'Total Amount of Jobs'),
+        ],
+      ),
+    );
   }
 
   void _switch(int i) {
@@ -342,10 +379,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       case 'notes':
         final text = value as String?;
         if (text == null) return const Text('—');
-        // Says where the text is from (Jose, 2026-11-10).
-        final fromWorkiz = row['notes_source'] == 'workiz';
         return Tooltip(
-          message: fromWorkiz ? 'From Workiz\n\n$text' : text,
+          message: text,
           child: Text(
             text,
             maxLines: 2,
@@ -420,15 +455,141 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   }
 
   Future<void> _ready(Map<String, dynamic> row) async {
+    final times = await _askTimes(row, title: 'Ready to schedule');
+    if (times == null || !mounted) return;
     final r = await widget.api.post(
       '/project-board/jobs/${row['id']}/ready',
-      const {},
+      times,
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(r.ok ? 'Moved to Ready to Schedule.' : r.reason)),
     );
     if (r.ok) _load(quiet: true);
+  }
+
+  /// Date, time slot, alternative date, alternative time slot, in a side
+  /// panel (Jose, 2026-11-10). Pops the four, or null when cancelled.
+  Future<Map<String, String>?> _askTimes(
+    Map<String, dynamic> row, {
+    required String title,
+  }) {
+    final had = (row['schedule_proposal'] as Map?) ?? const {};
+    final fields = {
+      for (final k in const ['date', 'slot', 'alt_date', 'alt_slot'])
+        k: TextEditingController(text: '${had[k] ?? ''}'),
+    };
+    final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+    return showSidePanel<Map<String, String>>(
+      context,
+      builder: (panel) => StatefulBuilder(
+        builder: (panel, set) {
+          final done = fields.values.every((c) => c.text.trim().isNotEmpty);
+          Widget slot(String key, String label) => Autocomplete<String>(
+            initialValue: TextEditingValue(text: fields[key]!.text),
+            optionsBuilder: (v) => _slots.where(
+              (s) => s.toLowerCase().contains(v.text.toLowerCase()),
+            ),
+            onSelected: (v) => set(() => fields[key]!.text = v),
+            fieldViewBuilder: (context, c, focus, submit) => TextField(
+              key: Key('project-board-times-$key'),
+              controller: c,
+              focusNode: focus,
+              onChanged: (v) => set(() => fields[key]!.text = v),
+              decoration: InputDecoration(
+                labelText: label,
+                hintText: 'e.g. 8 - 11 AM',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          );
+          Widget day(String key, String label) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: Theme.of(panel).textTheme.labelLarge),
+              const SizedBox(height: 4),
+              CalendarDayField(
+                key: Key('project-board-times-$key'),
+                controller: fields[key]!,
+                formats: formats,
+                dense: true,
+                onChanged: (_) => set(() {}),
+              ),
+            ],
+          );
+          return SidePanel(
+            title: title,
+            subtitle: '${row['customer'] ?? ''}',
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(panel).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                key: const Key('project-board-times-save'),
+                onPressed: done
+                    ? () => Navigator.of(panel).pop({
+                        for (final e in fields.entries)
+                          e.key: e.value.text.trim(),
+                      })
+                    : null,
+                child: const Text('Save'),
+              ),
+            ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                day('date', 'Date'),
+                const SizedBox(height: 12),
+                slot('slot', 'Time slot'),
+                const SizedBox(height: 20),
+                day('alt_date', 'Alternative date'),
+                const SizedBox(height: 12),
+                slot('alt_slot', 'Alternative time slot'),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// The Schedule column on Ready to Schedule: the offered times; a click
+  /// shows and changes them.
+  Widget _proposalCell(Map<String, dynamic> row) {
+    final p = (row['schedule_proposal'] as Map?) ?? const {};
+    final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+    String day(Object? v) {
+      final at = DateTime.tryParse('${v ?? ''}');
+      return at == null ? '—' : formats.formatDate(at);
+    }
+
+    return InkWell(
+      key: ValueKey('project-board-proposal:${row['id']}'),
+      onTap: _canEditJobs
+          ? () async {
+              final times = await _askTimes(row, title: 'Schedule');
+              if (times == null || !mounted) return;
+              final r = await widget.api.patch(
+                '/project-board/jobs/${row['id']}/proposal',
+                times,
+              );
+              if (!mounted) return;
+              if (!r.ok) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(r.reason)));
+                return;
+              }
+              _load(quiet: true);
+            }
+          : null,
+      child: p.isEmpty
+          ? const Text('Set times…')
+          : Text(
+              '${day(p['date'])} · ${p['slot']}\nor ${day(p['alt_date'])} · ${p['alt_slot']}',
+            ),
+    );
   }
 
   Widget _cell(Map<String, dynamic> row, Map<String, dynamic> column) {
@@ -657,7 +818,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                           ? 'No job matches "$_q".'
                           : 'No jobs in ${shown[selected].$2}.',
                     )
-                  else
+                  else ...[
+                    if (_totals case final t?) _totalsStrip(t),
                     ListTable(
                       // Dragged widths, per person on every device (Jose,
                       // 2026-11-10). ponytail: by column position; a
@@ -686,15 +848,19 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                           ),
                         if (_tab == 'unscheduled')
                           const ListColumn('', flex: 3),
+                        if (_tab == 'ready_to_schedule')
+                          const ListColumn('Schedule', flex: 3),
                       ],
                       rows: [
                         for (final row in rows)
                           [
                             for (final c in columns) _cell(row, c),
                             if (_tab == 'unscheduled') _readyButton(row),
+                            if (_tab == 'ready_to_schedule') _proposalCell(row),
                           ],
                       ],
                     ),
+                  ],
                   if (_page < _lastPage)
                     Center(
                       child: TextButton(
@@ -1396,3 +1562,6 @@ const _tabs = [
 
 /// One required item per line, as the server joins them.
 const _newline = '\n';
+
+/// Time slots offered in the Ready to schedule questions; any other can be typed.
+const _slots = ['8 - 11 AM', '11 AM - 2 PM', '2 - 5 PM'];
