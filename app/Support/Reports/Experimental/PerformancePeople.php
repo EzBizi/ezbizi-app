@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ExperimentalCallReportController;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\User;
+use App\Support\Reports\ReportJobs;
 use App\Support\Reports\ReportView;
 use Carbon\CarbonImmutable;
 
@@ -24,28 +25,32 @@ class PerformancePeople
 
     /**
      * $connection reads that RingCentral account alone; null, the default one.
+     * $branches: only those branches' Workiz jobs; null, every one in view.
      *
+     * @param  list<string>|null  $branches
      * @return array<string, array<string, mixed>> person => row; empty without RingCentral
      */
-    public function for(?User $user, CarbonImmutable $start, CarbonImmutable $end, ?string $connection = null): array
+    public function for(?User $user, CarbonImmutable $start, CarbonImmutable $end, ?string $connection = null, ?array $branches = null): array
     {
         $this->calls->only($connection);
         try {
-            return $this->people($start, $end);
+            return $this->people($start, $end, $branches);
         } finally {
             $this->calls->only(null);
         }
     }
 
     /** @return array<string, array<string, mixed>> */
-    private function people(CarbonImmutable $start, CarbonImmutable $end): array
+    /** @param  list<string>|null  $branches */
+    private function people(CarbonImmutable $start, CarbonImmutable $end, ?array $branches): array
     {
         if (! $this->calls->configured()) {
             return [];
         }
 
+        // Jobs created as every report counts them, less the tags left out (2026-11-10).
         $jobs = $this->workiz->allAccounts() !== []
-            ? $this->workiz->storedAll($start->subDays(ReportView::lookbackDays())->toDateString())['jobs']
+            ? ReportJobs::created(collect($this->workiz->storedAll($start->subDays(ReportView::lookbackDays())->toDateString(), $branches)['jobs']))->all()
             : [];
 
         $report = $this->reconcile->forRange(

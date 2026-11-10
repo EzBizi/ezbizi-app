@@ -161,7 +161,7 @@ final class SameDayReport
         $out = ['jobs' => null, 'sources' => [], 'areas' => [], 'techs' => null, 'deposits' => null, 'reviews' => self::reviews($branch, $date)];
 
         if ($fresh('jobs', self::JOBS_STALE_MINUTES)) {
-            $booked = (clone $jobs)->whereBetween('j.booked_at', $day)->get();
+            $booked = ReportJobs::created((clone $jobs)->whereBetween('j.booked_at', $day)->get());
             $out['jobs'] = $booked->count();
             $out['sources'] = self::tally($booked->pluck('job_source'), 'No source');
             $out['areas'] = self::tally($booked->pluck('service_area'), 'No service area');
@@ -188,6 +188,8 @@ final class SameDayReport
             }
 
             $out['techs'] = $techs;
+            // Jobs, not technicians: a job two worked is one (2026-11-10).
+            $out['closed'] = ['completed' => $closed->where('status', 'Done')->count(), 'canceled' => $closed->where('status', 'Canceled')->count()];
         }
 
         if ($fresh('payments', self::PAYMENTS_STALE_MINUTES)) {
@@ -337,8 +339,8 @@ final class SameDayReport
         $rows = self::techRows($f);
 
         return [
-            'completed' => array_sum(array_column($rows, 'completed')),
-            'canceled' => array_sum(array_column($rows, 'canceled')),
+            'completed' => $f['closed']['completed'] ?? array_sum(array_column($rows, 'completed')),
+            'canceled' => $f['closed']['canceled'] ?? array_sum(array_column($rows, 'canceled')),
             'sales' => array_sum(array_column($rows, 'sales')),
             'deposits' => array_sum(array_column($rows, 'deposits')),
         ];

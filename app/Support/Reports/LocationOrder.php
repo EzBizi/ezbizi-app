@@ -6,6 +6,7 @@ use App\Models\Franchise;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Settings\Lists\BusinessLists;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 
 /**
@@ -38,7 +39,7 @@ final class LocationOrder
     {
         $positions ??= self::positions();
         $key = fn (Franchise $b) => mb_strtolower(trim((string) $b->name));
-        $listed = $branches->loadMissing('company')->filter(fn (Franchise $b) => isset($positions[$key($b)]));
+        $listed = EloquentCollection::make($branches->all())->loadMissing('company')->filter(fn (Franchise $b) => isset($positions[$key($b)]));
         $names = $listed->groupBy('company_id')->map->count();
 
         return $listed->sortBy(fn (Franchise $b) => [$b->company?->parent_company_id !== null, -($names[$b->company_id] ?? 0)])

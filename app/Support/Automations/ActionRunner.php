@@ -70,6 +70,7 @@ use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Reports\SendSavedReport;
 use App\Support\Reports\Texts\DailyTexts;
+use App\Support\Reports\Texts\ReportPdf as ReportTextPdf;
 use App\Support\Reviews\ReviewReplyWriter;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -1786,15 +1787,22 @@ class ActionRunner
             return ['type' => $type, 'ok' => false, 'detail' => $refusal];
         }
 
+        $issuer = $this->scopeModelFor($automation) ?? $event->organization()->withoutGlobalScopes()->firstOrFail();
+        // $record, not $subject: in THIS arm `$subject` is the email's
+        // subject line. The record the rule fired on is the other one.
+        $subjectLine = $this->interpolate($subject, $event, $record);
+        $body = $this->interpolate((string) $action['body'], $event, $record, forMarkdown: AutomationMessage::RENDERS_MARKDOWN);
+        // A report to staff carries its formatted copy, as on WhatsApp (Jose, 2026-11-10); never to a customer.
+        $pdf = in_array($event->event_key, self::REPORT_EVENTS, true) && $field !== self::RECIPIENT_CUSTOMER
+            ? ReportTextPdf::render('*'.$subjectLine."*\n\n".AutomationMessage::plain($body), $issuer, CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of()))
+            : null;
+
         try {
             $this->mail->platformForTenant(
-                $this->scopeModelFor($automation) ?? $event->organization()->withoutGlobalScopes()->firstOrFail(),
+                $issuer,
                 new AutomationMessage(
-                    // $record, not $subject: in THIS arm `$subject` is the email's
-                    // subject line. The record the rule fired on is the other one.
-                    subjectLine: $this->interpolate($subject, $event, $record),
-                    body: $this->interpolate((string) $action['body'], $event, $record,
-                        forMarkdown: AutomationMessage::RENDERS_MARKDOWN),
+                    subjectLine: $subjectLine,
+                    body: $body,
                     businessName: (string) ($event->organization()->withoutGlobalScopes()->value('name') ?? 'this business'),
                     // EzBizi's band only when EzBizi composed the substance: a
                     // trigger that declares composedFields. Never widened to
@@ -1802,6 +1810,7 @@ class ActionRunner
                     kind: ($trigger = app(ModuleRegistry::class)->findTrigger($event->event_key)) !== null
                         && $trigger->composedFields !== [] ? $trigger->label : null,
                     automationName: $automation?->name,
+                    pdf: $pdf,
                 ),
                 $to,
             );
@@ -1819,6 +1828,9 @@ class ActionRunner
 
         return ['type' => $type, 'ok' => true, 'detail' => "Emailed {$shown}: {$subject}"];
     }
+
+    /** The events whose email is a report: the weekly AI summary, overbooking, empty spots. */
+    private const REPORT_EVENTS = ['reports.ai_summary_ready', 'scheduling.overbooking_found', 'scheduling.area_underfilled'];
 
     /** Prefix marking a stored recipient as a person rather than a field or an address. */
     private const RECIPIENT_USER = 'user:';

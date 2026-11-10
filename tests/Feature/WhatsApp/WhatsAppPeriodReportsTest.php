@@ -47,10 +47,11 @@ class WhatsAppPeriodReportsTest extends TestCase
         $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful();
         $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful(); // asked once
 
-        // A file to someone talking to the line goes as itself, the question as a text (2026-11-10).
-        $this->assertSame(['document', 'text'], array_column($this->sent, 'type'));
+        // 2026-11-10: the figures as text, the file as itself, then the question.
+        $this->assertSame(['text', 'document', 'text'], array_column($this->sent, 'type'));
         $this->assertSame(self::APPROVER, $this->sent[0]['to']);
-        $this->assertStringContainsString('APPROVE', $this->sent[1]['text']['body']);
+        $this->assertStringContainsString('*TOTAL: ', $this->sent[0]['text']['body']);
+        $this->assertStringContainsString('APPROVE', $this->sent[2]['text']['body']);
 
         $this->sent = [];
         $this->inbound('Approved');
@@ -68,8 +69,8 @@ class WhatsAppPeriodReportsTest extends TestCase
         $this->approvalSetUp();
 
         $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful();
-        $this->assertStringContainsString('SEPARATELY', $this->sent[1]['text']['body']);
-        $this->assertStringContainsString('HOLD', $this->sent[1]['text']['body']);
+        $this->assertStringContainsString('SEPARATELY', $this->sent[2]['text']['body']);
+        $this->assertStringContainsString('HOLD', $this->sent[2]['text']['body']);
 
         $this->sent = [];
         $this->inbound('Hold');
@@ -125,7 +126,7 @@ class WhatsAppPeriodReportsTest extends TestCase
         $this->assertSame(1, $batch->revision);
         $this->assertCount(2, $files, 'the branch PDF and the consolidated one');
         $consolidated = $files->firstWhere('franchise_id', null);
-        $this->assertStringContainsString(substr($consolidated->sha256, 0, 8), $this->sent[1]['text']['body']);
+        $this->assertStringContainsString(substr($consolidated->sha256, 0, 8), $this->sent[2]['text']['body']);
 
         // Whatever the stored file holds is what goes out.
         Storage::disk('local')->put($consolidated->path, '%PDF-THE-APPROVED-ONE');
@@ -181,7 +182,7 @@ class WhatsAppPeriodReportsTest extends TestCase
             WhatsAppGroup::create(['phone_number_id' => self::NUMBER, 'purpose' => 'financial', 'subject' => 'Financial', 'remote_id' => 'GROUP-FIN']);
             // She wrote today, so the preview reaches her as a document, not a template.
             WhatsAppMessage::create(['phone_number_id' => self::NUMBER, 'direction' => 'in', 'counterparty' => self::APPROVER,
-                'status' => 'received', 'kind' => 'text', 'body' => 'hi']);
+                'status' => 'received', 'kind' => 'text', 'body' => 'hi', 'wamid' => 'wamid.IN1']);
         });
 
         return $merav;

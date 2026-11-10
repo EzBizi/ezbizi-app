@@ -54,6 +54,21 @@ class DailyTextsTest extends TestCase
         $this->assertStringContainsString('*Total:* 1 completed', $text);
     }
 
+    /** Audit, 2026-11-10: Ohio's 19 done were 17 jobs; a job two worked is one in the total. */
+    public function test_technician_sales_total_counts_a_shared_job_once(): void
+    {
+        $f = $this->t['franchise'];
+        $this->inTenant($this->t['org'], fn () => WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => 'JOB-9', 'job_source' => 'GMB',
+            'status' => 'Done', 'booked_at' => '2026-10-19 09:00:00', 'last_status_update' => '2026-10-20 10:00:00',
+            'payload' => ['Team' => [['id' => 'U1', 'Name' => 'Ann'], ['id' => 'U2', 'Name' => 'Bo']], 'JobTotalPrice' => 300], 'synced_at' => now()]));
+
+        $text = $this->text('technician_sales');
+
+        $this->assertStringContainsString('• *Ann*: 1 completed · 0 canceled · $150.00 sales', $text);
+        $this->assertStringContainsString('• *Bo*: 1 completed · 0 canceled · $150.00 sales', $text);
+        $this->assertStringContainsString('*Total:* 1 completed · 0 canceled · $300.00 sales', $text);
+    }
+
     public function test_ppc_spend_against_ppc_jobs_per_branch_with_google_ads(): void
     {
         $this->mock(CampaignPerformance::class)->shouldReceive('channelCost')->andReturn(['currency' => 'USD',
@@ -69,6 +84,9 @@ class DailyTextsTest extends TestCase
         });
         $this->inTenant($this->t['org'], fn () => WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => 'JOB-2', 'job_source' => 'PPC',
             'status' => 'Submitted', 'booked_at' => '2026-10-20 11:00:00', 'payload' => [], 'synced_at' => now()]));
+        // Not a job created, here as in every report (audit, 2026-11-10: only the daily texts left it out).
+        $this->inTenant($this->t['org'], fn () => WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => 'JOB-3', 'job_source' => 'PPC',
+            'status' => 'Submitted', 'booked_at' => '2026-10-20 12:00:00', 'payload' => ['Tags' => ['Paid – Estimated']], 'synced_at' => now()]));
 
         $text = $this->text('ppc');
 
@@ -272,14 +290,21 @@ class DailyTextsTest extends TestCase
             $job('JOB-3', 'Ace Fireplace Services', 'DFW', '2026-10-17 10:00:00');
             $job('JOB-4', 'GMB', 'Cleveland', '2026-10-17 10:00:00');
             $job('JOB-5', 'Ace Fireplace Services', 'Cleveland', '2026-10-18 10:00:00');
+            $job('JOB-6', 'Ace FireplaceServices', 'DFW', '2026-10-17 11:00:00');
         });
 
         $text = $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)->render('marketing_ppc', $this->t['org'], CarbonImmutable::parse('2026-10-20'), [$ace->id]));
 
         $this->assertStringContainsString("*Data date: Sat, Oct 17*\n\u{26A0}\u{FE0F} Spend last updated Oct 17\n_Spend from the Ace Fireplace Services sheet · jobs from EzBizi_", $text);
         $this->assertStringContainsString("*Cleveland*\n• Spent: $300.00 · Jobs: 2\n• Cost/job: $150.00", $text);
-        $this->assertStringContainsString("*DFW*\n• Spent: N/A · Jobs: 1\n• Cost/job: N/A", $text);
-        $this->assertStringContainsString('*TOTAL* · Spent: $300.00 · Jobs: 3', $text);
+        $this->assertStringContainsString("*DFW*\n• Spent: N/A · Jobs: 2\n• Cost/job: N/A", $text);
+        $this->assertStringContainsString('*TOTAL* · Spent: $300.00 · Jobs: 4', $text);
+        $this->assertStringNotContainsString("*Ace Fireplace Services*\n", $text);
+
+        // The parent's rule (its sub-companies in it) reads ACE's sheet under ACE's name (audit, 2026-11-10).
+        $parent = $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)->render('marketing_ppc', $this->t['org'], CarbonImmutable::parse('2026-10-20'),
+            [$this->t['franchise']->id, $ace->id]));
+        $this->assertStringContainsString("*Ace Fireplace Services*\n*Data date: Sat, Oct 17*", $parent);
     }
 
     /** Shoval, 2026-11-09: a sheet's areas in the location order too, a city by its state's codes ("IL, Chicago"). */

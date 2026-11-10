@@ -64,6 +64,7 @@ final class DailyTexts
     /** @param list<string>|null $branches */
     public function render(string $kind, Organization $organization, CarbonImmutable $day, ?array $branches = null): string
     {
+        $this->at = $day;
         $this->locations = LocationOrder::positions();
         // The listed branches in the list's order, every other branch after (Shoval, 2026-11-09).
         $list = LocationOrder::sort(Franchise::query()->where('is_active', true)
@@ -73,6 +74,7 @@ final class DailyTexts
         $this->claimed = LocationOrder::claimed($list, $this->locations);
         // One company's branches read as "Texas"; several companies' need theirs, unless the business listed it by name.
         $several = $list->pluck('company_id')->unique()->count() > 1;
+        $this->several = $several;
         $this->name = fn (Franchise $b) => ! $several || ($this->locations !== [] && $this->listed($b)) ? (string) $b->name : BranchName::of($b);
 
         return match ($kind) {
@@ -102,6 +104,12 @@ final class DailyTexts
     /** @var \Closure(Franchise): string */
     private \Closure $name;
 
+    /** When the text is made: a rule's run. */
+    private CarbonImmutable $at;
+
+    /** The rule's branches are more than one company's. */
+    private bool $several = false;
+
     /** @var array<string, int> reports.locations: lower-cased branch name => position */
     private array $locations = [];
 
@@ -117,7 +125,8 @@ final class DailyTexts
     /** Payments received per location (Workiz's Payments, by payment date), and the total. */
     private function revenue(Collection $branches, CarbonImmutable $from, CarbonImmutable $to): string
     {
-        $lines = ["\u{1F4B5} *Revenue collected*", '_'.self::period($from, $to).' · payments received_', ''];
+        // When it was read: a payment entered after the 1 AM run is not in it (2026-11-10).
+        $lines = ["\u{1F4B5} *Revenue collected*", '_'.self::period($from, $to).' · payments received, as of '.$this->at->format('M j, g:i A').'_', ''];
         $total = 0;
         foreach ($branches as $branch) {
             $cents = (int) round((float) ReportJobs::payments((string) $branch->getKey())->whereBetween('starts_at', self::range($from, $to))->sum('amount') * 100);
@@ -134,7 +143,7 @@ final class DailyTexts
     /** Jobs booked per location, less the tags the business leaves out (reports.tags_not_created). */
     private function jobsCreated(Collection $branches, CarbonImmutable $from, CarbonImmutable $to): string
     {
-        $skip = self::tags('reports.tags_not_created');
+        $skip = ReportJobs::tags('reports.tags_not_created');
         $lines = ["\u{1F4DD} *Jobs created*", '_'.self::period($from, $to).'_'];
         if ($skip !== []) {
             $lines[] = '_Not counting jobs tagged '.implode(', ', array_keys($skip)).'._';
@@ -142,8 +151,7 @@ final class DailyTexts
         $lines[] = '';
         $total = 0;
         foreach ($branches as $branch) {
-            $n = ReportJobs::jobs((string) $branch->getKey())->whereBetween('j.booked_at', self::range($from, $to))->get()
-                ->reject(fn ($job) => self::tagged($job->tags, $skip))->count();
+            $n = ReportJobs::created(ReportJobs::jobs((string) $branch->getKey())->whereBetween('j.booked_at', self::range($from, $to))->get())->count();
             if ($n === 0 && ! $this->listed($branch)) {
                 continue;
             }
@@ -168,8 +176,8 @@ final class DailyTexts
                 continue;
             }
             $spent = $cost['lsa']['cost_minor'] + $cost['ppc']['cost_minor'];
-            $jobs = $sources === [] ? 0 : ReportJobs::jobs((string) $branch->getKey())->whereIn('j.job_source', $sources)
-                ->whereBetween('j.booked_at', self::range($from, $to))->count();
+            $jobs = $sources === [] ? 0 : ReportJobs::created(ReportJobs::jobs((string) $branch->getKey())->whereIn('j.job_source', $sources)
+                ->whereBetween('j.booked_at', self::range($from, $to))->get())->count();
             $lines[] = self::adLine(($this->name)($branch), $spent, $jobs);
             $total['cost'] += $spent;
             $total['jobs'] += $jobs;
@@ -196,7 +204,8 @@ final class DailyTexts
      */
     private function metaAds(Collection $branches, CarbonImmutable $from, CarbonImmutable $to): string
     {
-        $byName = $branches->keyBy(fn (Franchise $b) => mb_strtolower(trim((string) $b->name)));
+        // A listed name is the branch the list claims: A-1's Texas, not AngiSweep's (Meta DFW, 2026-11-10).
+        $byName = $branches->filter(fn (Franchise $b) => $this->listed($b))->keyBy(fn (Franchise $b) => mb_strtolower(trim((string) $b->name)));
         $codes = [];
         foreach (app(BusinessLists::class)->rows('reports.locations') as $row) {
             $id = $byName->get(mb_strtolower(trim((string) ($row['value']['branch'] ?? $row['key']))))?->getKey();
@@ -239,8 +248,8 @@ final class DailyTexts
         $lines = ["\u{1F4F1} *Meta Ads · active campaigns*", '_'.self::period($from, $to).' · jobs from '.($source ?? 'no source').'_', ''];
         $total = ['spend' => 0, 'forms' => 0, 'jobs' => 0];
         foreach ($branches as $branch) {
-            $jobs = $source === null ? 0 : ReportJobs::jobs((string) $branch->getKey())->where('j.job_source', $source)
-                ->whereBetween('j.booked_at', self::range($from, $to))->count();
+            $jobs = $source === null ? 0 : ReportJobs::created(ReportJobs::jobs((string) $branch->getKey())->where('j.job_source', $source)
+                ->whereBetween('j.booked_at', self::range($from, $to))->get())->count();
             $mine = $per[(string) $branch->getKey()] ?? ['spend' => 0, 'forms' => 0];
             if ($mine['spend'] === 0 && $jobs === 0) {
                 continue;
@@ -378,28 +387,6 @@ final class DailyTexts
             .' · '.($jobs > 0 ? self::money(intdiv($spentMinor, $jobs)).' per job' : 'no jobs');
     }
 
-    /** A tag as a person reads it, letters and digits only: "Paid – Estimated" with any dot in front is "paidestimated". */
-    private static function tagKey(string $tag): string
-    {
-        return (string) preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($tag));
-    }
-
-    /** @return array<string, string> a list's tags as written => as matched */
-    private static function tags(string $list): array
-    {
-        return collect(app(BusinessLists::class)->rows($list))
-            ->mapWithKeys(fn (array $row) => [(string) ($row['value']['tag'] ?? $row['key']) => self::tagKey((string) ($row['value']['tag'] ?? $row['key']))])
-            ->all();
-    }
-
-    /** @param  array<string, string>  $tags  from tags() */
-    private static function tagged(mixed $jobTags, array $tags): bool
-    {
-        $have = array_map(fn ($t) => self::tagKey((string) $t), (array) (is_string($jobTags) ? json_decode($jobTags, true) : $jobTags));
-
-        return array_intersect(array_values($tags), $have) !== [];
-    }
-
     /** @return array{0: string, 1: string} wall-clock stamps, as jobs and payments store them */
     private static function range(CarbonImmutable $from, CarbonImmutable $to): array
     {
@@ -422,8 +409,8 @@ final class DailyTexts
             if ($cost['accounts'] === 0) {
                 continue;
             }
-            $jobs = ReportJobs::jobs((string) $branch->getKey())->where('j.job_source', MarketingReport::sourceOf('ppc') ?? '')
-                ->whereBetween('j.booked_at', [$day->toDateString().' 00:00:00', $day->toDateString().' 23:59:59'])->count();
+            $jobs = ReportJobs::created(ReportJobs::jobs((string) $branch->getKey())->where('j.job_source', MarketingReport::sourceOf('ppc') ?? '')
+                ->whereBetween('j.booked_at', [$day->toDateString().' 00:00:00', $day->toDateString().' 23:59:59'])->get())->count();
             $c = $cost['ppc'];
             $lines = [...$lines, '*'.BranchName::of($branch).'*', ...$this->ppcLines($c['cost_minor'], $c['clicks'], $jobs, $c['conversions']), ''];
             $total['cost'] += $c['cost_minor'];
@@ -455,36 +442,47 @@ final class DailyTexts
      */
     private function marketingPpc(Organization $organization, CarbonImmutable $day, ?Collection $branches): string
     {
-        // A branch's sheet is its company's ads: the rows carry whose (ACE's, 2026-11-10).
+        // A branch's sheet is its company's ads: the rows carry whose (ACE's, 2026-11-10). A company rule
+        // reads its branches' sheets; a sub-company's is its own section, under its name (A-1's read ACE's as its own).
         $read = fn (?Franchise $b) => ReportSources::rows((string) $organization->id, 'marketing', $b === null ? null : (string) $b->getKey(),
             $day->subDays(14)->toDateString(), $day->toDateString())->map(fn ($r) => $r + ['company' => $b?->company?->name]);
         $rows = $branches === null ? $read(null) : $branches->flatMap(fn ($b) => $read($b))->values();
-        $head = "\u{1F4CA} *Marketing PPC · Daily update*\nReport: ".$day->format('D, M j, Y');
 
         if ($rows->isEmpty()) {
             // Nothing to report is no text: a rule sends none (desk, 2026-11-03).
             return '';
         }
 
+        return implode("\n\n", ["\u{1F4CA} *Marketing PPC · Daily update*\nReport: ".$day->format('D, M j, Y'),
+            ...$rows->groupBy(fn ($r) => (string) ($r['company'] ?? ''))->sortKeys()
+                ->map(fn (Collection $mine, $company) => $this->marketingSection($organization, $day, $mine, $company === '' ? null : (string) $company))
+                ->values()->all()]);
+    }
+
+    /**
+     * One sheet's latest day with spend, by area. A company's jobs are EzBizi's,
+     * not the sheet's hand-filled count (Jose, 2026-11-10): the Workiz jobs
+     * credited to it, booked that day, by service area; its sheet keeps the spend.
+     */
+    private function marketingSection(Organization $organization, CarbonImmutable $day, Collection $rows, ?string $company): string
+    {
         // The latest day with spend: a sheet can hold a day as zeros before it is entered (ACE's Nov 8, 2026-11-09).
         $latest = $rows->filter(fn ($r) => (float) ($r['amount'] ?? 0) + (float) ($r['calls'] ?? 0) > 0)->max('date') ?? $rows->max('date');
         // A table without calls (ACE's) shows none rather than "Calls: 0".
         $hasCalls = $rows->contains(fn ($r) => ($r['calls'] ?? null) !== null);
-        $lines = [$head, '*Data date: '.CarbonImmutable::parse($latest)->format('D, M j').'*'];
+        $lines = $company !== null && $this->several ? ['*'.$company.'*'] : [];
+        $lines[] = '*Data date: '.CarbonImmutable::parse($latest)->format('D, M j').'*';
         if ($latest < $day->subDay()->toDateString()) {
             $lines[] = "\u{26A0}\u{FE0F} Spend last updated ".CarbonImmutable::parse($latest)->format('M j');
         }
-        // A company's jobs are EzBizi's, not the sheet's hand-filled count (Jose, 2026-11-10): the
-        // Workiz jobs credited to it, booked that day, by service area; its sheet keeps the spend.
-        $companies = $rows->pluck('company')->filter()->unique()->values();
         $ours = collect();
-        if ($companies->isNotEmpty()) {
-            $lines[] = '_Spend from the '.$companies->implode(', ').' sheet · jobs from EzBizi_';
-            $skip = self::tags('reports.tags_not_created');
-            $ours = DB::table('workiz_jobs')->where('organization_id', $organization->getKey())->whereIn('job_source', $companies)
+        if ($company !== null) {
+            $lines[] = '_Spend from the '.$company.' sheet · jobs from EzBizi_';
+            // Workiz spells a company its own way ("Angi Sweep" for AngiSweep): letters and digits compared.
+            $ours = ReportJobs::created(DB::table('workiz_jobs')->where('organization_id', $organization->getKey())
                 ->whereBetween('booked_at', [$latest.' 00:00:00', $latest.' 23:59:59'])
-                ->get(['service_area', DB::raw("coalesce(json_extract(payload, '$.Tags'), json_array()) as tags")])
-                ->reject(fn ($j) => self::tagged($j->tags, $skip))
+                ->get(['job_source', 'service_area', DB::raw("coalesce(json_extract(payload, '$.Tags'), json_array()) as tags")]))
+                ->filter(fn ($j) => ReportJobs::tagKey((string) $j->job_source) === ReportJobs::tagKey($company))
                 ->countBy(fn ($j) => trim((string) $j->service_area) ?: 'No area');
         }
         $lines[] = '';
@@ -500,7 +498,7 @@ final class DailyTexts
         foreach ($areas->sortBy(fn ($r, $area) => [LocationOrder::areaPlace((string) $area), $area]) as $area => $r) {
             $cost = $r->sum(fn ($x) => AirtableSections::cents($x['amount'] ?? 0));
             $calls = (int) $r->sum(fn ($x) => (float) ($x['calls'] ?? 0));
-            $jobs = $companies->isEmpty() ? (int) $r->sum(fn ($x) => (float) ($x['jobs'] ?? 0))
+            $jobs = $company === null ? (int) $r->sum(fn ($x) => (float) ($x['jobs'] ?? 0))
                 : (int) $ours->first(fn ($n, $k) => $same((string) $k, (string) $area), 0);
             $lines[] = '*'.$area.'*';
             $lines[] = '• Spent: '.($r->isEmpty() ? 'N/A' : self::money($cost)).($hasCalls ? ' · Calls: '.$calls : '').' · Jobs: '.$jobs;
@@ -537,7 +535,7 @@ final class DailyTexts
 
         $sections = [];
         foreach ($accounts as $id => $name) {
-            $rows = collect($this->performance->for(null, $day->startOfDay(), $day->endOfDay(), $id === '' ? null : (string) $id))
+            $rows = collect($this->performance->for(null, $day->startOfDay(), $day->endOfDay(), $id === '' ? null : (string) $id, $branches))
                 ->filter(fn ($p) => ($p['answered'] ?? 0) > 0 || ($p['jobs'] ?? 0) > 0)
                 ->sortByDesc(fn ($p) => $p['answered'] ?? 0);
             $title = count($accounts) > 1 ? ['*'.$name.'*'] : [];
@@ -598,12 +596,12 @@ final class DailyTexts
      */
     private function jobAssignments(Collection $branches, CarbonImmutable $from, CarbonImmutable $to): string
     {
-        $skip = self::tags('reports.tags_not_in_progress');
+        $skip = ReportJobs::tags('reports.tags_not_in_progress');
         $jobs = DB::table('jobs')->whereIn('franchise_id', $branches->pluck('id'))->whereNull('deleted_at')
             ->whereRaw('lower(status) = ?', ['in progress'])
             ->whereDate('scheduled_for', '>=', $from->toDateString())->whereDate('scheduled_for', '<=', $to->toDateString())
             ->get(['id', 'franchise_id', 'tags'])
-            ->reject(fn ($j) => self::tagged($j->tags, $skip));
+            ->reject(fn ($j) => ReportJobs::tagged($j->tags, $skip));
         $crew = DB::table('job_technicians as jt')->join('scheduling_technicians as t', 't.id', '=', 'jt.technician_id')
             ->whereIn('jt.job_id', $jobs->pluck('id'))->get(['jt.job_id', 't.name'])->groupBy('job_id');
         $plural = fn (int $n) => $n.' job'.($n === 1 ? '' : 's');
@@ -654,17 +652,20 @@ final class DailyTexts
         $all = ['done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
 
         foreach ($branches as $branch) {
-            $techs = $this->report->figures($branch, $day->toDateString(), $day->toDateString())['techs'];
+            $f = $this->report->figures($branch, $day->toDateString(), $day->toDateString());
+            $techs = $f['techs'];
             if ($techs === []) {
                 continue;
             }
+            // Jobs, not technicians: a job two worked is one (Ohio's 19 done were 17 jobs, 2026-11-10).
+            $all['done'] += array_sum(array_column($f['closed'], 'done'));
+            $all['canceled'] += array_sum(array_column($f['closed'], 'canceled'));
             $lines[] = '*'.BranchName::of($branch).'*';
             foreach ($techs as $t) {
                 $lines[] = '• *'.$t['name'].'*: '.$t['done'].' completed · '.$t['canceled'].' canceled · '
                     .self::money((int) round($t['gross'] * 100)).' sales · '.self::money((int) round($t['deposits'] * 100)).' deposits';
-                foreach (array_keys($all) as $k) {
-                    $all[$k] += $t[$k];
-                }
+                $all['gross'] += $t['gross'];
+                $all['deposits'] += $t['deposits'];
             }
             $lines[] = '';
         }

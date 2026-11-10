@@ -80,12 +80,16 @@ class NewReportsTextsTest extends TestCase
         $this->record($this->nj, 'payment', 'P2', '2026-11-07 23:30:00', 50.5);
         $this->record($this->nj, 'payment', 'P3', '2026-11-08 00:10:00', 999);
         $this->record($this->t['franchise'], 'payment', 'P4', '2026-11-07 12:00:00', 20);
+        // A pending ACH is not money yet (audit, 2026-11-10: $1,459.08 at 1 AM).
+        $this->record($this->nj, 'payment', 'P5', '2026-11-07 11:00:00', 1459.08);
+        DB::table('workiz_records')->where('remote_id', 'P5')->update(['status' => 'pending']);
         $this->inTenant($this->t['org'], fn () => Franchise::query()->create(['organization_id' => $this->t['org']->id,
             'company_id' => $this->t['company']->id, 'name' => 'Zero Town', 'timezone' => 'America/New_York', 'currency' => 'USD', 'is_active' => true]));
 
         $text = $this->text('revenue_collected');
 
-        $this->assertStringContainsString('Sat, Nov 7, 2026', $text);
+        $this->assertStringContainsString('Sat, Nov 7, 2026 · payments received, as of Nov 8, 12:00 AM', $text);
+        $this->assertStringNotContainsString('1,459.08', $text);
         $this->assertStringContainsString("• *New Jersey*: $150.50\n• *".$this->t['franchise']->name.'*: $20.00', $text);
         $this->assertStringContainsString('*TOTAL: $170.50*', $text);
         $this->assertStringNotContainsString('999', $text);

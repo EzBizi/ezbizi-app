@@ -171,12 +171,20 @@ final class WorkizJobs
             ->values()->all();
     }
 
-    /** The accounts the reader counts: their unticked ones left out. */
-    public function storedAll(string $since): array
+    /**
+     * The accounts the reader counts: their unticked ones left out. $branches:
+     * only those branches' accounts (a rule's place: A-1's dispatchers, not
+     * the organization's 417 jobs, 2026-11-10).
+     *
+     * @param  list<string>|null  $branches
+     */
+    public function storedAll(string $since, ?array $branches = null): array
     {
         $excluded = self::excluded();
 
-        return $this->storedFrom($this->inView()->reject(fn (SocialConnection $c) => in_array((string) $c->getKey(), $excluded, true)), $since);
+        return $this->storedFrom($this->inView()->reject(fn (SocialConnection $c) => in_array((string) $c->getKey(), $excluded, true))
+            ->when($branches !== null, fn ($all) => $all->filter(fn (SocialConnection $c) => $c->scope_type === SocialConnection::SCOPE_FRANCHISE
+                && in_array((string) $c->scope_id, $branches, true))), $since);
     }
 
     /** User preference key: the Workiz accounts this person leaves out of Reports. */
@@ -848,6 +856,7 @@ final class WorkizJobs
                 'scheduled_for' => $job['JobDateTime'] ?? null,
 
                 'status' => $job['Status'] ?? null,
+                'tags' => $job['Tags'] ?? [],
             ];
         }
 

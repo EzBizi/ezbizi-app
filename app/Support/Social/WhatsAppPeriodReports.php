@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppReportBatch;
+use App\Support\Reports\ReportJobs;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
 use Illuminate\Support\Carbon;
@@ -92,6 +93,19 @@ final class WhatsAppPeriodReports
         return $files;
     }
 
+    /**
+     * A file's figures as text, sent before it: its branch's, or every branch
+     * with jobs for the consolidated one. ponytail: read now, not frozen with
+     * the PDF; freeze it too if an approved batch's figures ever move.
+     */
+    private function text(WhatsAppReportBatch $batch, PeriodReport $report, string $title, ?string $branchId): string
+    {
+        $branches = $branchId !== null ? Franchise::query()->whereKey($branchId)->get()
+            : Franchise::query()->where('is_active', true)->whereIn('id', ReportJobs::branchesWithJobs())->get();
+
+        return $report->summaryText($title, $branches, $batch->starts_on->toDateString(), $batch->ends_on->toDateString());
+    }
+
     /** The frozen PDFs of a revision, the consolidated one last. */
     public function files(WhatsAppReportBatch $batch, ?int $revision = null): Collection
     {
@@ -110,7 +124,8 @@ final class WhatsAppPeriodReports
         $label = $this->label($batch);
         $consolidated = collect($this->freeze($batch, $report))->last();
 
-        $reached = $this->groups->deliverDocument(self::APPROVAL, $label.' (for approval)', $consolidated->bytes(), $consolidated->filename);
+        $reached = $this->groups->deliverDocument(self::APPROVAL, $label.' (for approval)', $consolidated->bytes(), $consolidated->filename,
+            $this->text($batch, $report, ucfirst($label), null));
 
         $this->groups->deliver(self::APPROVAL, $label,
             "\u{1F4CA} *".ucfirst($label)." - ready for approval*\n"
@@ -140,7 +155,7 @@ final class WhatsAppPeriodReports
 
         foreach ($files as $file) {
             $sent += $this->groups->deliverDocument($file->franchise_id === null ? 'financial' : 'daily:'.$file->franchise_id,
-                $file->title, $file->bytes(), $file->filename);
+                $file->title, $file->bytes(), $file->filename, $this->text($batch, $report, $file->title, $file->franchise_id));
         }
 
         return $sent;
@@ -163,7 +178,8 @@ final class WhatsAppPeriodReports
             $files = $this->files($batch->refresh());
         }
 
-        $documents = $files->map(fn (ReportBatchFile $f) => ['title' => $f->title, 'pdf' => $f->bytes(), 'filename' => $f->filename])->all();
+        $documents = $files->map(fn (ReportBatchFile $f) => ['title' => $f->title, 'pdf' => $f->bytes(), 'filename' => $f->filename,
+            'text' => $this->text($batch, $report, $f->title, $f->franchise_id)])->all();
         $label = $this->label($batch);
 
         return $this->groups->deliverDocumentsToMember(self::APPROVAL, $to, ucfirst($label), $documents);

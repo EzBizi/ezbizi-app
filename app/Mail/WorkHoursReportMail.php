@@ -2,9 +2,15 @@
 
 namespace App\Mail;
 
+use App\Models\Organization;
+use App\Support\Reports\Texts\ReportPdf;
+use App\Support\Settings\OrgTimezone;
+use Carbon\CarbonImmutable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Support\Str;
 
 /**
  * The weekly hours email (2026-09-28): one row per person with their hours,
@@ -48,5 +54,16 @@ class WorkHoursReportMail extends Mailable
                 'fromAutomation' => $this->fromAutomation,
             ],
         );
+    }
+
+    /** The same table as a formatted PDF (Jose, 2026-11-10: every report, its PDF too). */
+    public function attachments(): array
+    {
+        $body = '*'.$this->reportName."*\n".$this->range."\n\n"
+            .implode("\n", array_map(fn (array $r) => '• *'.$r['name'].'*: '.$r['hours'], $this->rows))
+            ."\n\n*TOTAL: ".$this->total.'*';
+
+        return [Attachment::fromData(fn () => ReportPdf::render($body, new Organization(['name' => $this->businessName ?: 'EzBizi']),
+            CarbonImmutable::now(OrgTimezone::of())), Str::slug($this->reportName.' '.$this->range).'.pdf')->withMime('application/pdf')];
     }
 }

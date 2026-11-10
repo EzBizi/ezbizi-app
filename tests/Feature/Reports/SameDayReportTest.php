@@ -82,7 +82,7 @@ class SameDayReportTest extends TestCase
             '• *Ann:* ✅ 2 done · ❌ 0 canceled · 💰 $400.00 sales · 💵 $250.00 deposits',
             '• *Bo:* ✅ 1 done · ❌ 1 canceled · 💰 $100.00 sales · 💵 $0.00 deposits',
             "• *Not in Workiz's API (USR-office):* $1,000.00 in payments received · no completed, canceled, or sales activity today",
-            '*Total: ✅ 3 done · ❌ 1 canceled · 💰 $500.00 sales · 💵 $1,250.00 deposits*',
+            '*Total: ✅ 2 done · ❌ 1 canceled · 💰 $500.00 sales · 💵 $1,250.00 deposits*', // jobs, not technicians: Ann and Bo shared one (2026-11-10)
             '',
             '_Ask me about any location, technician, source, or job behind these numbers._',
         ]), SameDayReport::forFranchise($f, '2026-10-05'));

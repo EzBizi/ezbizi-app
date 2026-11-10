@@ -56,6 +56,37 @@ final class PeriodReport
         return $this->page($this->title(BranchName::of($branch), $from, $to), $this->branch($branch, $from, $to));
     }
 
+    /**
+     * The period as people read it on WhatsApp, sent before its file (Jose,
+     * 2026-11-10: the text with the data, then the PDF): each branch's jobs
+     * created, done and canceled and its done sales, in the location order,
+     * and the total.
+     *
+     * @param  iterable<Franchise>  $branches
+     */
+    public function summaryText(string $title, iterable $branches, string $from, string $to): string
+    {
+        $money = fn (float $v) => ($v < 0 ? '-$' : '$').number_format(abs($v), 2);
+        $lines = ["\u{1F4CA} *{$title}*", '_'.CarbonImmutable::parse($from)->format('M j').' – '.CarbonImmutable::parse($to)->format('M j, Y').'_', ''];
+        $all = ['created' => 0, 'done' => 0, 'canceled' => 0, 'gross' => 0.0];
+        foreach (LocationOrder::sort(collect($branches)) as $branch) {
+            $f = $this->figures($branch, $from, $to);
+            $n = ['created' => array_sum(array_column($f['created'], 'all')), 'done' => array_sum(array_column($f['closed'], 'done')),
+                'canceled' => array_sum(array_column($f['closed'], 'canceled')), 'gross' => (float) array_sum(array_column($f['closed'], 'gross'))];
+            if ($n['created'] + $n['done'] + $n['canceled'] === 0 && $n['gross'] == 0) {
+                continue;
+            }
+            $lines[] = '• *'.BranchName::of($branch).'*: '.$n['created'].' created · '.$n['done'].' done · '.$n['canceled'].' canceled · '.$money($n['gross']).' sales';
+            foreach ($n as $k => $v) {
+                $all[$k] += $v;
+            }
+        }
+        $lines[] = '';
+        $lines[] = '*TOTAL: '.$all['created'].' created · '.$all['done'].' done · '.$all['canceled'].' canceled · '.$money($all['gross']).' sales*';
+
+        return implode("\n", $lines);
+    }
+
     /** Every branch with Workiz jobs, after a company summary. */
     public function consolidated(Organization $organization, string $from, string $to): string
     {
@@ -232,7 +263,7 @@ final class PeriodReport
         $excluded = array_flip(array_map('strval', $this->options['exclude_jobs'] ?? []));
         $kept = fn ($job) => $excluded === [] || ! (isset($excluded[(string) $job->ref]) || isset($excluded[(string) $job->serial]));
 
-        foreach ($jobs()->whereBetween('j.booked_at', $range)->get()->filter($kept) as $job) {
+        foreach (ReportJobs::created($jobs()->whereBetween('j.booked_at', $range)->get())->filter($kept) as $job) {
             $s = $source($job->job_source);
             $created[$s] ??= $row();
             $created[$s]['all']++;
