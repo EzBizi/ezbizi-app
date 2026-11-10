@@ -3476,3 +3476,29 @@ Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbi
 do-not rows. Desk (11-08): confirmed nothing shipped since 0548. Training, ring groups, Scheduled Jobs,
 LSA and publishers are untouched; Stripe keys on prod 0 and no connected company, so `/privacy/` is unchanged.
 Note for the next run: on the websites box wp-cli needs `/opt/plesk/php/8.4/bin/php /usr/local/bin/wp --path=/var/www/vhosts/ezbizi.com/httpdocs`, because `ubuntu` cannot `cd` into the docroot and there is no `php` on PATH.
+
+## 2026-11-09: 0.0.0549-0.0.0551 live, and `/privacy/` did not say staff-bot answers carry job photos
+
+Production `/download/windows.json` 0.0.0551 at `4efd8b8ce`. Before the edit, all 10 live pages matched
+their WP post_content (logo `src` only) and no page had changed since 11-06 13:58. www `/ezbizi-api.json`
+byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261109/page8.html` on the websites box). `d9d7cb569` (in
+  0551): AppAsk answers on the WhatsApp staff line now send photos from previous Done jobs (Workiz
+  attachment URLs, via `GET jobs/photos`) and training mp4s as WhatsApp image/video, which Meta fetches.
+  xAI gets the links as text, never the images, so "Only text is sent — never audio, images or files"
+  still holds. Added after it: answers can bring job photos or a training video over WhatsApp, passing
+  through Meta; xAI receives only their links. Live, checked with and without a cache-buster.
+- HR onboarding SSN card photo (`ed5eb9156`, in 0551): encrypted at rest, audited reveal. No page says
+  anything about SSNs or identity documents, so nothing went false; nothing added.
+- **On main, not in 0551 — trigger for the next run:** `98837a32e`/`f9e96697d`/`b32e3e76a` send every
+  report as a PDF in a WhatsApp `report_document` template from a "Reports" number, and email undelivered
+  ones to the rule's maker. `/privacy/` "Report files on WhatsApp" describes only asked-for files and the
+  weekly-summary line says automation rules pick the channel; re-read both once these are live.
+- Promotions MMS picture, Task Board, quick search, signatures, Scheduling office, Pinterest token renewal:
+  no page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split)
+over the 10 LIVE pages after the edit ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
+1, 0.0.0502. Desk asked (11-09) for the 0549-0552 diff and do-not-row counts; see the reply line below if
+one arrived this run.
