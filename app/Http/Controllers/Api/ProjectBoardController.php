@@ -55,7 +55,11 @@ class ProjectBoardController extends Controller
         $reach = ViewScope::forUser($user)->franchiseIds();
         // A switched-off branch is not a filter choice (Jose, 2026-11-10).
         $franchises = Franchise::query()->whereIn('id', $reach)->switchedOn()->with('company:id,name')->orderBy('name')->get(['id', 'name', 'company_id']);
-        $companies = Company::query()->get(['id', 'name', 'parent_company_id']);
+        // Only the companies inside the view (Jose, 2026-11-10: "offer only
+        // the available ones"): those owning a franchise listed, and the
+        // view's own company and sub-companies; never a switched-off one.
+        $visible = $franchises->pluck('company_id')->merge(ViewScope::forUser($user)->companyIds())->unique()->values();
+        $companies = Company::query()->whereIn('id', $visible)->switchedOn()->get(['id', 'name', 'parent_company_id']);
         $chosen = $input['franchise_id'] ?? null;
         abort_if($chosen !== null && ! in_array($chosen, $reach, true), Response::HTTP_FORBIDDEN, 'That franchise is not in your view.');
         // A company picks its own franchises and its sub-companies', in reach.
@@ -74,12 +78,15 @@ class ProjectBoardController extends Controller
         $rules = (array) $settings->get('project_board.tabs', $place);
         $partTags = array_map(fn ($t) => self::tagKey((string) $t), (array) $settings->get('project_board.part_tags', $place));
 
-        // The search box: customer name, job number (ours or Workiz's) or address.
+        // The search box: customer name, job number (ours or Workiz's), address or technician.
         $term = trim((string) ($input['q'] ?? ''));
         $page = $this->tab($inView(), $rules[$tab] ?? [])
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q
                 ->where('number', 'like', "%{$term}%")
-                ->orWhereHas('workizJob', fn ($w) => $w->where('serial_id', 'like', "%{$term}%"))
+                ->orWhereHas('workizJob', fn ($w) => $w->where('serial_id', 'like', "%{$term}%")
+                    // The technician (Jose, 2026-11-10): Workiz's Team names.
+                    ->orWhereRaw("CAST(JSON_EXTRACT(payload, '$.Team') AS CHAR) LIKE ?", ["%{$term}%"]))
+                ->orWhereHas('performedBy', fn ($u) => $u->where('name', 'like', "%{$term}%"))
                 ->orWhereHas('customer', fn ($c) => $c->where(fn ($c) => $c
                     ->where('name', 'like', "%{$term}%")
                     ->orWhere('address_line1', 'like', "%{$term}%")
@@ -99,7 +106,6 @@ class ProjectBoardController extends Controller
                 // How the table is drawn, and where its Settings sub-tab saves.
                 'columns' => $this->columns((array) $settings->get('project_board.columns', $place)),
                 'labels' => (object) $settings->get('project_board.labels', $place),
-                'repair_teams' => $this->repairTeams($jobs),
                 'can_edit' => $user->hasPermission('jobs.edit'),
                 'settings_scope' => ['scope_type' => $place instanceof \App\Models\Company ? 'company' : 'organization', 'scope_id' => $place->getKey()],
             ] +($page->currentPage() > 1 ? [] : ['counts' => collect(self::TABS)
@@ -175,7 +181,12 @@ class ProjectBoardController extends Controller
     private function places(\Illuminate\Support\Collection $companies, \Illuminate\Support\Collection $franchises, ?string $parent = null, int $depth = 0): array
     {
         $out = [];
-        foreach ($companies->where('parent_company_id', $parent)->sortBy(fn ($c) => mb_strtolower($c->name)) as $company) {
+        // At the top: every company whose parent is outside the view, so a
+        // sub-company's view starts at that sub-company.
+        $level = $parent === null
+            ? $companies->filter(fn ($c) => $c->parent_company_id === null || ! $companies->contains('id', $c->parent_company_id))
+            : $companies->where('parent_company_id', $parent);
+        foreach ($level->sortBy(fn ($c) => mb_strtolower($c->name)) as $company) {
             $own = $franchises->where('company_id', $company->id)->sortBy(fn ($f) => mb_strtolower($f->name));
             $subs = $this->places($companies, $franchises, $company->id, $depth + 1);
             if ($own->isEmpty() && $subs === []) {
@@ -283,17 +294,20 @@ class ProjectBoardController extends Controller
         $technician = collect($payload['Team'] ?? [])->pluck('Name')->filter()->implode(', ') ?: $job->performedBy?->name;
         $workizNote = trim((string) ($payload['JobNotes'] ?? ''));
         $note = $extras['notes'][$job->id] ?? null;
-        $files = (int) ($extras['files'][$job->id] ?? 0) + count((array) ($payload['Attachments'] ?? []));
+        $files = (int) ($extras['files'][$job->id] ?? 0) + count(\App\Support\Jobs\WorkizExtras::files(is_array($payload) ? $payload : []));
         $notes = (int) ($note['count'] ?? 0) + ($workizNote !== '' ? 1 : 0);
         $row = [
             'service_area' => $job->serviceArea?->name,
             'technician' => $technician ?: null,
             'repair_team' => collect($job->tags ?? [])->filter(fn ($t) => self::isRepairTeam((string) $t))->values()->implode(', ') ?: null,
+            'repair_options' => $this->repairOptions($job),
             'payment_date' => $paid?->format('Y-m-d H:i'),
             // Days in this state, from the deposit (else the job's creation).
             'status_days' => $since === null ? null : (int) floor($since->diffInDays(now(), true)),
             'attachments' => $files,
             'notes' => $note['latest'] ?? ($workizNote !== '' ? $workizNote : null),
+            // Where that text is from (Jose, 2026-11-10: he could not tell).
+            'notes_source' => isset($note['latest']) ? 'ezbizi' : ($workizNote !== '' ? 'workiz' : null),
             'notes_count' => $notes,
         ];
         $row['ready_missing'] = array_values(array_filter([
@@ -317,14 +331,18 @@ class ProjectBoardController extends Controller
         return (bool) preg_match('/repair\s*team|contractor/i', $tag);
     }
 
-    /** The repair-team and contractor tags on offer: every account's tag list, and those on the page's jobs. */
-    private function repairTeams(\Illuminate\Support\Collection $jobs): array
+    /**
+     * The repair-team and contractor tags the job's own Workiz account has,
+     * each in its colour: never another account's (Jose, 2026-11-10).
+     *
+     * @return list<array{name: string, colour: string}>
+     */
+    private function repairOptions(Job $job): array
     {
-        return \App\Models\WorkizRecord::query()->where('type', 'tag')->get(['payload'])
-            ->map(fn ($r) => trim((string) (($r->payload ?? [])['name'] ?? '')))
-            ->concat($jobs->flatMap(fn (Job $j) => (array) ($j->tags ?? [])))
-            ->filter(fn ($t) => $t !== '' && self::isRepairTeam($t))
-            ->unique(fn ($t) => mb_strtoupper($t))->sort()->values()->all();
+        return array_values(array_filter(
+            app(\App\Support\Workiz\WorkizTagColours::class)->definitions($job->franchise_id),
+            fn (array $t) => self::isRepairTeam($t['name']),
+        ));
     }
 
     /**
