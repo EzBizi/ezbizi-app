@@ -32,6 +32,67 @@ class ProjectBoardController extends Controller
         'performedBy:id,name',
     ];
 
+    /**
+     * What each sortable column orders by, in SQL, so the sort covers the
+     * whole tab and Load more continues it (Jose, 2026-11-10: "this should
+     * take into account all the list, not just the loaded ones").
+     */
+    /** The company's repair tags (empty: the name rule), and what Ready needs. */
+    private array $repairTags = [];
+
+    private array $readyRequires = ['service_area', 'technician', 'repair_team', 'attachment', 'note'];
+
+    /** Reads the company's Project Management settings for [user]'s view. */
+    private function settingsFor(\App\Models\User $user): \Illuminate\Database\Eloquent\Model
+    {
+        $place = ViewScope::forUser($user)->settingsScope();
+        $place = $place instanceof Franchise ? ($place->company ?? $user->organization) : $place;
+        $settings = app(SettingsResolver::class);
+        $this->repairTags = array_values(array_filter(array_map(fn ($t) => self::tagKey((string) $t),
+            (array) $settings->get('project_board.repair_tags', $place))));
+        $this->readyRequires = array_values((array) $settings->get('project_board.ready_requires', $place));
+
+        return $place;
+    }
+
+    /** A repair-team / contractor tag: the company's list, else the name rule. */
+    private function isRepair(string $tag): bool
+    {
+        return $this->repairTags === [] ? self::isRepairTeam($tag) : in_array(self::tagKey($tag), $this->repairTags, true);
+    }
+
+    private const SORTS = [
+        'number' => 'jobs.number',
+        'workiz_id' => '(SELECT w.serial_id FROM workiz_jobs w WHERE w.job_id = jobs.id LIMIT 1)',
+        'customer' => '(SELECT c.name FROM customers c WHERE c.id = jobs.customer_id)',
+        'franchise' => '(SELECT f.name FROM franchises f WHERE f.id = jobs.franchise_id)',
+        'service_area' => '(SELECT a.name FROM service_areas a WHERE a.id = jobs.service_area_id)',
+        'status' => 'jobs.status',
+        'job_type' => 'jobs.job_type',
+        'technician' => "(SELECT JSON_UNQUOTE(JSON_EXTRACT(w.payload, '$.Team[0].Name')) FROM workiz_jobs w WHERE w.job_id = jobs.id LIMIT 1)",
+        'tags' => 'CAST(jobs.tags AS CHAR)',
+        'total' => 'jobs.amount_minor',
+        'created' => 'jobs.created_at',
+        'scheduled' => 'jobs.scheduled_for',
+        'payment_date' => "(SELECT MIN(r.starts_at) FROM workiz_records r WHERE r.job_id = jobs.id AND r.type = 'payment')",
+        // Days in this state: older first is more days, so it sorts the other way.
+        'status_days' => "COALESCE((SELECT MIN(r.starts_at) FROM workiz_records r WHERE r.job_id = jobs.id AND r.type = 'payment'), jobs.created_at)",
+        'attachments' => "(SELECT COUNT(*) FROM attachments t WHERE t.attachable_type = 'jobs' AND t.attachable_id = jobs.id)",
+    ];
+
+    /** The chosen sort, empty values last; newest first when none. A tie keeps the job's id order, so pages never overlap. */
+    private function sorted(Builder $jobs, ?string $key, string $dir): void
+    {
+        if ($key === null) {
+            $jobs->latest()->orderBy('jobs.id');
+
+            return;
+        }
+        $sql = self::SORTS[$key];
+        $dir = $key === 'status_days' ? ($dir === 'asc' ? 'desc' : 'asc') : $dir;
+        $jobs->orderByRaw("({$sql}) IS NULL")->orderByRaw("{$sql} {$dir}")->orderBy('jobs.id');
+    }
+
     /** Jose, 2026-11-10: the tag "Ready to schedule" adds; the status stays. */
     public const READY_TAG = 'READY TO SCHEDULE';
 
@@ -47,6 +108,8 @@ class ProjectBoardController extends Controller
             'company_id' => ['nullable', 'uuid'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
             'q' => ['nullable', 'string', 'max:200'],
+            'sort' => ['nullable', 'in:'.implode(',', array_keys(self::SORTS))],
+            'dir' => ['nullable', 'in:asc,desc'],
         ]);
         $tab = $input['tab'] ?? self::TABS[0];
 
@@ -73,8 +136,7 @@ class ProjectBoardController extends Controller
 
         // Everything on this screen is the company's (Jose, 2026-11-06): read at
         // the company in view, the organization's where it set nothing.
-        $place = ViewScope::forUser($user)->settingsScope();
-        $place = $place instanceof Franchise ? ($place->company ?? $user->organization) : $place;
+        $place = $this->settingsFor($user);
         $rules = (array) $settings->get('project_board.tabs', $place);
         $partTags = array_map(fn ($t) => self::tagKey((string) $t), (array) $settings->get('project_board.part_tags', $place));
 
@@ -92,7 +154,8 @@ class ProjectBoardController extends Controller
                     ->orWhere('address_line1', 'like', "%{$term}%")
                     ->orWhere('city', 'like', "%{$term}%")
                     ->orWhere('postal_code', 'like', "%{$term}%")))))
-            ->with(self::WITH)->latest()
+            ->with(self::WITH)
+            ->tap(fn (Builder $q) => $this->sorted($q, $input['sort'] ?? null, $input['dir'] ?? 'asc'))
             ->paginate(perPage: (int) ($input['per_page'] ?? 50));
         $jobs = $page->getCollection();
         $money = $user->hasPermission('jobs.financials') ? JobMoney::of($jobs->pluck('id')) : null;
@@ -107,6 +170,9 @@ class ProjectBoardController extends Controller
                 'columns' => $this->columns((array) $settings->get('project_board.columns', $place)),
                 'labels' => (object) $settings->get('project_board.labels', $place),
                 'can_edit' => $user->hasPermission('jobs.edit'),
+                // Columns a header click can sort by, over the whole tab.
+                'sortable' => array_keys(self::SORTS),
+                'status_days' => (object) $settings->get('project_board.status_days', $place),
                 'settings_scope' => ['scope_type' => $place instanceof \App\Models\Company ? 'company' : 'organization', 'scope_id' => $place->getKey()],
             ] +($page->currentPage() > 1 ? [] : ['counts' => collect(self::TABS)
                 ->mapWithKeys(fn (string $t) => [$t => $this->tab($inView(), $rules[$t] ?? [])->count()])->all()]),
@@ -160,8 +226,11 @@ class ProjectBoardController extends Controller
             'statuses' => $jobs()->whereNotNull('status')->where('status', '!=', '')
                 ->groupBy('status')->orderByRaw('COUNT(*) DESC')->pluck('status')->values(),
             // ponytail: reads every tagged job's tags; a tags table if this gets slow.
-            'tags' => $jobs()->whereNotNull('tags')->pluck('tags')->flatten()
+            'tags' => $tags = $jobs()->whereNotNull('tags')->pluck('tags')->flatten()
                 ->map(fn ($t) => trim((string) $t))->filter()->countBy()->sortDesc()->keys()->values(),
+            // In their Workiz colours, read from an account inside the view.
+            'tag_colours' => (object) collect(ViewScope::forUser($user)->switchedOnFranchiseIds())
+                ->reduce(fn (array $c, string $f) => $c + app(\App\Support\Workiz\WorkizTagColours::class)->for($f, $tags->all()), []),
         ]]);
     }
 
@@ -299,7 +368,7 @@ class ProjectBoardController extends Controller
         $row = [
             'service_area' => $job->serviceArea?->name,
             'technician' => $technician ?: null,
-            'repair_team' => collect($job->tags ?? [])->filter(fn ($t) => self::isRepairTeam((string) $t))->values()->implode(', ') ?: null,
+            'repair_team' => collect($job->tags ?? [])->first(fn ($t) => $this->isRepair((string) $t)),
             'repair_options' => $this->repairOptions($job),
             'payment_date' => $paid?->format('Y-m-d H:i'),
             // Days in this state, from the deposit (else the job's creation).
@@ -310,12 +379,14 @@ class ProjectBoardController extends Controller
             'notes_source' => isset($note['latest']) ? 'ezbizi' : ($workizNote !== '' ? 'workiz' : null),
             'notes_count' => $notes,
         ];
+        // Only what the company ticks in Settings (project_board.ready_requires).
+        $need = fn (string $key) => in_array($key, $this->readyRequires, true);
         $row['ready_missing'] = array_values(array_filter([
-            $row['service_area'] === null ? 'Service Area' : null,
-            $row['technician'] === null ? 'Technician' : null,
-            $row['repair_team'] === null ? 'Repair Team / Contractor' : null,
-            $files === 0 ? 'an attachment' : null,
-            $notes === 0 ? 'a note' : null,
+            $need('service_area') && $row['service_area'] === null ? 'Service Area' : null,
+            $need('technician') && $row['technician'] === null ? 'Technician' : null,
+            $need('repair_team') && $row['repair_team'] === null ? 'Repair Team / Contractor' : null,
+            $need('attachment') && $files === 0 ? 'an attachment' : null,
+            $need('note') && $notes === 0 ? 'a note' : null,
         ]));
 
         return $row;
@@ -341,27 +412,36 @@ class ProjectBoardController extends Controller
     {
         return array_values(array_filter(
             app(\App\Support\Workiz\WorkizTagColours::class)->definitions($job->franchise_id),
-            fn (array $t) => self::isRepairTeam($t['name']),
+            fn (array $t) => $this->isRepair($t['name']),
         ));
     }
 
     /**
-     * PATCH /api/v1/project-board/jobs/{job}/repair-team: adds that tag, here
-     * and in Workiz. Workiz's v2 only adds tags, so an earlier pick stays
-     * until somebody removes it there; the screen says so.
+     * PATCH /api/v1/project-board/jobs/{job}/repair-team: the job's one
+     * repair-team / contractor tag, here and in Workiz. A pick replaces the
+     * old one; null unassigns (Jose, 2026-11-10: "there is no way to
+     * Unassign"). Workiz takes the whole list, removals through the web
+     * login (031349404).
      */
     public function repairTeam(Request $request, Job $job): JsonResponse
     {
         $this->editable($request, $job);
-        $input = $request->validate(['repair_team' => ['required', 'string', 'max:120']]);
-        $tag = trim($input['repair_team']);
-        abort_unless(self::isRepairTeam($tag), 422, 'That is not a repair team or contractor tag.');
-        $tags = array_values((array) ($job->tags ?? []));
-        if (! in_array(self::tagKey($tag), array_map(fn ($t) => self::tagKey((string) $t), $tags), true)) {
-            $job->tags = [...$tags, $tag];
+        $this->settingsFor($request->user());
+        $input = $request->validate(['repair_team' => ['present', 'nullable', 'string', 'max:120']]);
+        $tag = trim((string) ($input['repair_team'] ?? ''));
+        abort_if($tag !== '' && ! $this->isRepair($tag), 422, 'That is not a repair team or contractor tag.');
+        // One per job (Jose, 2026-11-10: "it should only be one type of repair
+        // team"): a pick takes every other repair tag off, here and in Workiz.
+        $before = array_values((array) ($job->tags ?? []));
+        $after = [
+            ...array_values(array_filter($before, fn ($t) => ! $this->isRepair((string) $t))),
+            ...($tag !== '' ? [$tag] : []),
+        ];
+        if ($after !== $before) {
+            $job->tags = $after;
             $job->save();
             \App\Support\Workiz\WorkizMirror::queue($job, 'tags', ['tags' => $job->tags]);
-            app(\App\Support\Audit\AuditLogger::class)->log('job.repair_team_tagged', $job, actor: $request->user());
+            app(\App\Support\Audit\AuditLogger::class)->log($tag === '' ? 'job.repair_team_unassigned' : 'job.repair_team_tagged', $job, actor: $request->user());
         }
 
         return response()->json(['data' => ['id' => $job->id, 'tags' => $job->tags]]);
@@ -375,6 +455,7 @@ class ProjectBoardController extends Controller
     public function ready(Request $request, Job $job): JsonResponse
     {
         $this->editable($request, $job);
+        $this->settingsFor($request->user());
         $job->loadMissing(['workizJob:id,job_id,serial_id,payload', 'serviceArea:id,name', 'performedBy:id,name']);
         $missing = $this->unscheduled($job, $this->extras([$job->id]))['ready_missing'];
         abort_if($missing !== [], 422, 'Still needs: '.implode(', ', $missing).'.');
@@ -413,7 +494,8 @@ class ProjectBoardController extends Controller
             'franchise'     => $job->franchise?->name,
             'status'        => $job->franchise ? Job::labelFor((string) $job->status, $job->franchise) : $job->status,
             'job_type'      => $job->job_type,
-            'tags'          => array_values((array) ($job->tags ?? [])),
+            // The repair tag has its own column (Jose, 2026-11-10), so not here.
+            'tags'          => array_values(array_filter((array) ($job->tags ?? []), fn ($t) => ! $this->isRepair((string) $t))),
             // Each tag's Workiz colour, where the mirror knows it (Jose, 2026-11-10).
             'tag_colours'   => (object) app(\App\Support\Workiz\WorkizTagColours::class)->for($job->franchise_id, (array) ($job->tags ?? [])),
             // Part status: the job's tags that the organization names as part

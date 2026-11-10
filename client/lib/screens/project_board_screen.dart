@@ -11,6 +11,7 @@ import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/list_search.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/list_table.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
@@ -57,6 +58,33 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   /// this person may change a job.
 
   bool _canEditJobs = false;
+
+  /// Status Time colours: yellow from [warn] days, red from [bad] (Settings).
+  ({int warn, int bad}) _days = (warn: 3, bad: 7);
+
+  /// The columns the server can sort by, and the sort in force: per person,
+  /// on every device (Jose, 2026-11-10: "clicking the column orders it").
+  Set<String> _sortable = const {};
+  late final List<String> _savedSort =
+      '${widget.session.me?.preferences['project_board.sort'] ?? ''}'.split(
+        ':',
+      );
+  late String? _sortKey = _savedSort.first.isEmpty ? null : _savedSort.first;
+  late bool _sortDesc = _savedSort.length > 1 && _savedSort[1] == 'desc';
+
+  void _sortBy(String key) {
+    setState(() {
+      _sortDesc = _sortKey == key ? !_sortDesc : false;
+      _sortKey = key;
+      _rows = const [];
+    });
+    widget.session.setPreference(
+      'project_board.sort',
+      '$key:${_sortDesc ? 'desc' : 'asc'}',
+    );
+    _load();
+  }
+
   String _tab = _tabs.first.$1;
   String? _franchise;
   final _search = TextEditingController();
@@ -143,6 +171,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       else
         'franchise_id': ?franchise,
       if (q.isNotEmpty) 'q': q,
+      'sort': ?_sortKey,
+      if (_sortKey != null) 'dir': _sortDesc ? 'desc' : 'asc',
     });
     if (!mounted || franchise != _franchise || q != _q) return;
     setState(() {
@@ -164,6 +194,14 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       _columns = _maps(meta['columns']);
       _labels = (meta['labels'] as Map?)?.cast<String, dynamic>() ?? const {};
       _canEditJobs = meta['can_edit'] == true;
+      final days = (meta['status_days'] as Map?) ?? const {};
+      _days = (
+        warn: (days['warn'] as num?)?.toInt() ?? 3,
+        bad: (days['bad'] as num?)?.toInt() ?? 7,
+      );
+      _sortable = {
+        for (final k in (meta['sortable'] as List?) ?? const []) '$k',
+      };
 
       _scope = ((meta['settings_scope'] as Map?) ?? const {}).map(
         (k, v) => MapEntry('$k', '$v'),
@@ -233,9 +271,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           alignment: Alignment.centerLeft,
           child: StatusPill(
             value == 1 ? '1 day' : '$value days',
-            tone: value < 3
+            tone: value < _days.warn
                 ? Tone.ok
-                : value < 7
+                : value < _days.bad
                 ? Tone.caution
                 : Tone.bad,
           ),
@@ -257,9 +295,23 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           for (final t in (row['repair_options'] as List?) ?? const [])
             if (t is Map) ('${t['name']}', ColourField.parse('${t['colour']}')),
         ];
-        if (!_canEditJobs || options.isEmpty) return Text(current ?? '—');
+        if (!_canEditJobs || options.isEmpty) {
+          return current == null
+              ? const Text('—')
+              : Align(
+                  alignment: Alignment.centerLeft,
+                  child: Tag(current, colour: jobTagColours(row)[current]),
+                );
+        }
         return MenuAnchor(
           menuChildren: [
+            if (current != null)
+              MenuItemButton(
+                key: ValueKey('project-board-repair:${row['id']}:none'),
+                leadingIcon: const Icon(Icons.close, size: 18),
+                onPressed: () => _setRepairTeam(row, null),
+                child: const Text('Unassign'),
+              ),
             for (final (t, colour) in options)
               MenuItemButton(
                 key: ValueKey('project-board-repair:${row['id']}:$t'),
@@ -270,7 +322,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           builder: (context, menu, _) => TextButton(
             key: ValueKey('project-board-repair:${row['id']}'),
             onPressed: () => menu.isOpen ? menu.close() : menu.open(),
-            child: Text(current ?? 'Assign…'),
+            // The one tag, as its coloured chip on one line.
+            child: current == null
+                ? const Text('Assign…')
+                : Tag(current, colour: jobTagColours(row)[current]),
           ),
         );
       case 'attachments':
@@ -317,10 +372,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     return null;
   }
 
-  /// Adds the tag in Workiz. Workiz cannot take one away through EzBizi, so
-  /// changing teams leaves the earlier tag until it is removed there.
-  Future<void> _setRepairTeam(Map<String, dynamic> row, String team) async {
-    final had = row['repair_team'] != null;
+  /// The job's repair team, here and in Workiz: a pick replaces the old
+  /// one, null unassigns (Jose, 2026-11-10).
+  Future<void> _setRepairTeam(Map<String, dynamic> row, String? team) async {
     final r = await widget.api.patch(
       '/project-board/jobs/${row['id']}/repair-team',
       {'repair_team': team},
@@ -331,9 +385,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         content: Text(
           !r.ok
               ? r.reason
-              : had
-              ? '$team added. Remove the earlier team tag in Workiz.'
-              : '$team added in Workiz.',
+              : team == null
+              ? 'Unassigned.'
+              : '$team assigned.',
         ),
       ),
     );
@@ -625,6 +679,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                                 ? 4
                                 : 2,
                             end: _moneyKeys.contains(c['key']),
+                            onSort: _sortable.contains(c['key'])
+                                ? () => _sortBy('${c['key']}')
+                                : null,
+                            sorted: _sortKey == c['key'] ? _sortDesc : null,
                           ),
                         if (_tab == 'unscheduled')
                           const ListColumn('', flex: 3),
@@ -705,6 +763,13 @@ class _BoardSettingsState extends State<_BoardSettings> {
   /// The company's real job statuses and tags, most used first.
   List<String> _knownStatuses = const [];
   List<String> _knownTags = const [];
+  Map<String, Color> _tagColours = const {};
+
+  /// Settings for the new columns (Jose, 2026-11-10).
+  List<String> _repairTagList = [];
+  final Set<String> _readyNeeds = {};
+  final _warnDays = TextEditingController();
+  final _badDays = TextEditingController();
   bool _ready = false;
   String? _saving;
   String? _error;
@@ -722,6 +787,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
         c.dispose();
       }
     }
+    _warnDays.dispose();
+    _badDays.dispose();
     super.dispose();
   }
 
@@ -745,6 +812,29 @@ class _BoardSettingsState extends State<_BoardSettings> {
       _knownTags = [
         for (final t in (options['tags'] as List?) ?? const []) '$t',
       ];
+      _tagColours = jobTagColours({'tag_colours': options['tag_colours']});
+      _repairTagList = [
+        for (final t
+            in (byKey['project_board.repair_tags'] as List?) ?? const [])
+          '$t',
+      ];
+      _readyNeeds
+        ..clear()
+        ..addAll([
+          for (final k
+              in (byKey['project_board.ready_requires'] as List?) ??
+                  const [
+                    'service_area',
+                    'technician',
+                    'repair_team',
+                    'attachment',
+                    'note',
+                  ])
+            '$k',
+        ]);
+      final days = (byKey['project_board.status_days'] as Map?) ?? const {};
+      _warnDays.text = '${days['warn'] ?? 3}';
+      _badDays.text = '${days['bad'] ?? 7}';
       for (final (key, _, _) in _tabs) {
         final rule = (tabs[key] as Map?) ?? const {};
         _statuses[key] = [
@@ -838,6 +928,52 @@ class _BoardSettingsState extends State<_BoardSettings> {
       ),
     );
   }
+
+  /// The chosen tags as coloured chips, and "+ Add tag" opening a searchable
+  /// list (Jose, 2026-11-10: the ~95 chips were a wall, four times over).
+  Widget _tagPicker(String key, List<String> chosen) => Wrap(
+    key: Key(key),
+    spacing: 6,
+    runSpacing: 6,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      for (final t in chosen)
+        InputChip(
+          label: Text(
+            t,
+            style: _tagColours[t] == null
+                ? null
+                : TextStyle(color: inkOn(_tagColours[t]!)),
+          ),
+          backgroundColor: _tagColours[t],
+          onDeleted: () => setState(() => chosen.remove(t)),
+        ),
+      ActionChip(
+        key: Key('$key-add'),
+        avatar: const Icon(Icons.add, size: 16),
+        label: const Text('Add tag'),
+        onPressed: () async {
+          final picked = await showSearchPicker<String>(
+            context,
+            title: 'Add a tag',
+            options: [
+              for (final t in _knownTags)
+                if (!chosen.contains(t))
+                  SearchOption(
+                    value: t,
+                    label: t,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Tag(t, colour: _tagColours[t]),
+                    ),
+                  ),
+            ],
+          );
+          if (picked != null && mounted) setState(() => chosen.add(picked));
+        },
+      ),
+    ],
+  );
 
   /// Every known value as a chip, the chosen ones ticked; a chosen value the
   /// company no longer uses stays listed so it can be unticked.
@@ -1114,20 +1250,15 @@ class _BoardSettingsState extends State<_BoardSettings> {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    _chips(
-                      'project-board-tab-tags:$key',
-                      _knownTags,
-                      _tabTags[key]!,
-                    ),
+                    _tagPicker('project-board-tab-tags:$key', _tabTags[key]!),
                     const SizedBox(height: 8),
                     Text(
                       'Must not have any of these tags',
                       style: theme.textTheme.bodySmall,
                     ),
                     const SizedBox(height: 4),
-                    _chips(
+                    _tagPicker(
                       'project-board-tab-no-tags:$key',
-                      _knownTags,
                       _tabNoTags[key]!,
                     ),
                   ],
@@ -1157,14 +1288,79 @@ class _BoardSettingsState extends State<_BoardSettings> {
           [
             KeyedSubtree(
               key: const Key('project-board-part-tags'),
-              child: _chips(
-                'project-board-part-tags-chips',
-                _knownTags,
-                _partTags,
-              ),
+              child: _tagPicker('project-board-part-tags-chips', _partTags),
             ),
           ],
           () => {'project_board.part_tags': _partTags},
+        ),
+        _card(
+          'repair',
+          'Repair team / contractor tags',
+          'The job tags that are a Repair Team / Contractor. None chosen: every tag naming a repair team or a contractor.',
+          [_tagPicker('project-board-repair-tags', _repairTagList)],
+          () => {'project_board.repair_tags': _repairTagList},
+        ),
+        _card(
+          'ready',
+          'Ready to schedule',
+          'What a job needs before "Ready to schedule" can move it on.',
+          [
+            for (final (k, label) in const [
+              ('service_area', 'Service Area'),
+              ('technician', 'Technician'),
+              ('repair_team', 'Repair Team / Contractor'),
+              ('attachment', 'At least one attachment'),
+              ('note', 'At least one note'),
+            ])
+              CheckboxListTile(
+                key: ValueKey('project-board-ready-needs:$k'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(label),
+                value: _readyNeeds.contains(k),
+                onChanged: (on) => setState(
+                  () => on == true ? _readyNeeds.add(k) : _readyNeeds.remove(k),
+                ),
+              ),
+          ],
+          () => {'project_board.ready_requires': _readyNeeds.toList()},
+        ),
+        _card(
+          'status_days',
+          'Status Time colours',
+          'Green below the first number of days, yellow from it, red from the second.',
+          [
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                for (final (c, label, key) in [
+                  (_warnDays, 'Yellow from (days)', 'project-board-warn-days'),
+                  (_badDays, 'Red from (days)', 'project-board-bad-days'),
+                ])
+                  SizedBox(
+                    width: 180,
+                    child: TextField(
+                      key: Key(key),
+                      controller: c,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: label,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          () => {
+            'project_board.status_days': {
+              'warn': int.tryParse(_warnDays.text.trim()) ?? 3,
+              'bad': int.tryParse(_badDays.text.trim()) ?? 7,
+            },
+          },
         ),
       ],
     );
