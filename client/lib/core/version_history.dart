@@ -14,6 +14,8 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0559', date: '10 Nov 2026', items: [
+      'Email › Google Workspace: signatures preview exactly as Gmail shows them (light or dark, desktop or phone); a missing stock photo is left out instead of showing a broken box',
+      'Roles › Email: also says how many of the role’s people have inboxes given to them by name',
       'Texts: a blank line before “Reply STOP to opt out.”',
       'Workiz: removing a tag from a job in EzBizi now removes it in Workiz too',
       'Project Management, Reports, Scheduling: tag settings use the new Workiz tag names',
