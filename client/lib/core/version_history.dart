@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0558', date: '10 Nov 2026', items: [
+      'Switched-off companies, their Sub Companies and places no longer show in any list or picker (Task Board, Scheduling, Leads, HR, reports); their data stays and Settings › Organization still lists them',
       'Reports: each WhatsApp report’s title and totals carry an emoji; the PDF stays plain',
       'Social › Compose: an attached video plays in the Picture or video box and in every How it will look preview',
       'Project Management: refreshes itself every minute while open, with an Updated time and a refresh button',
