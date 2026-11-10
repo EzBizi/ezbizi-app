@@ -66,16 +66,18 @@ class WhatsAppGroupsTest extends TestCase
         ]);
     }
 
-    public function test_a_real_group_gets_one_message(): void
+    /** 2026-11-10: a real group gets the report's text, then its PDF. */
+    public function test_a_real_group_gets_the_text_then_the_pdf(): void
     {
         $this->group(['remote_id' => 'GROUP-1']);
 
         $this->assertSame(1, $this->deliver());
 
-        $this->assertCount(1, $this->sent);
-        $this->assertSame('group', $this->sent[0]['recipient_type']);
-        $this->assertSame('GROUP-1', $this->sent[0]['to']);
-        $this->assertSame('NJ: 50 jobs', $this->sent[0]['text']['body']);
+        $posts = collect($this->sent)->filter(fn ($m) => isset($m['to']))->values();
+        $this->assertSame([['GROUP-1', 'group', 'text'], ['GROUP-1', 'group', 'document']],
+            $posts->map(fn ($m) => [$m['to'], $m['recipient_type'], $m['type']])->all());
+        $this->assertSame('NJ: 50 jobs', $posts[0]['text']['body']);
+        $this->assertSame("\u{1F4CE} PDF copy: A1 NJ Same-Day Report", $posts[1]['document']['caption']);
     }
 
     public function test_without_a_group_each_member_gets_it_one_to_one(): void
@@ -89,7 +91,7 @@ class WhatsAppGroupsTest extends TestCase
         // Only the first wrote to the line today.
         $this->inTenant($this->t['org'], fn () => WhatsAppMessage::create([
             'phone_number_id' => self::NUMBER, 'direction' => WhatsAppMessage::DIRECTION_IN,
-            'counterparty' => '13055550101', 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi',
+            'counterparty' => '13055550101', 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi', 'wamid' => 'wamid.IN1',
         ]));
 
         $this->assertSame(2, $this->deliver());
@@ -120,6 +122,30 @@ class WhatsAppGroupsTest extends TestCase
         $this->assertSame(['account_report'], collect($this->sent)->pluck('template.name')->all());
     }
 
+    /** Bar, 2026-11-04..09 (131047): only a message Meta delivered opens the window, and Meta's refusal shuts it. */
+    public function test_only_meta_opens_the_window_and_its_refusal_shuts_it(): void
+    {
+        $group = $this->group();
+        $ours = $this->member($group, '(305) 555-0101');
+        $refused = $this->member($group, '(305) 555-0102');
+        $this->inTenant($this->t['org'], function () {
+            $in = fn (string $from, ?string $wamid) => WhatsAppMessage::create(['phone_number_id' => self::NUMBER, 'direction' => WhatsAppMessage::DIRECTION_IN,
+                'counterparty' => $from, 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi', 'wamid' => $wamid]);
+            $in('13055550101', null);
+            $in('13055550102', 'wamid.IN2');
+            (new WhatsAppMessage)->forceFill(['phone_number_id' => self::NUMBER, 'direction' => WhatsAppMessage::DIRECTION_OUT, 'counterparty' => '13055550102',
+                'status' => WhatsAppMessage::STATUS_FAILED, 'status_reason' => 'Re-engagement message', 'kind' => 'text', 'body' => 'x'])->save();
+        });
+
+        $this->inTenant($this->t['org'], function () use ($ours, $refused) {
+            $number = WhatsAppNumber::query()->firstOrFail();
+            app(WhatsAppGroups::class)->deliverTextToUser($number, $ours, 'Revenue collected · Nov 9', 'NJ: $1');
+            app(WhatsAppGroups::class)->deliverTextToUser($number, $refused, 'Revenue collected · Nov 9', 'NJ: $1');
+        });
+
+        $this->assertSame(['template'], collect($this->sent)->filter(fn ($m) => isset($m['to']))->pluck('type')->unique()->values()->all());
+    }
+
     /** 2026-11-09: 93 of 107 report texts sat behind "reply to get it"; each now goes as its text and a formatted PDF. */
     public function test_a_report_text_goes_as_its_text_then_a_pdf_in_the_window_or_not(): void
     {
@@ -128,7 +154,7 @@ class WhatsAppGroupsTest extends TestCase
         $quiet = $this->member($group, '(305) 555-0102');
         $this->inTenant($this->t['org'], fn () => WhatsAppMessage::create([
             'phone_number_id' => self::NUMBER, 'direction' => WhatsAppMessage::DIRECTION_IN,
-            'counterparty' => '13055550101', 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi',
+            'counterparty' => '13055550101', 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi', 'wamid' => 'wamid.IN1',
         ]));
         $body = "\u{1F4B5} *Revenue collected*\n_Mon, Nov 9, 2026 · payments received_\n\n".str_repeat("• *A-1 Chimney · New Jersey*: $17,744.11\n", 30)."\n*TOTAL: $532,323.30*";
 

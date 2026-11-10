@@ -73,6 +73,32 @@ class MarkdownEmailFieldsTest extends TestCase
         $this->assertEqualsCanonicalizing([[$label, 'Morning check'], [null, 'Morning check']], $kinds);
     }
 
+    /** Jose, 2026-11-10: a report emailed to staff carries its PDF too; any other email does not. */
+    public function test_a_report_email_carries_its_pdf_and_no_other_does(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $tenant = $this->provisionTenant('Alpha');
+        foreach (['scheduling.overbooking_found', 'email.received'] as $key) {
+            $result = $this->inTenant($tenant['org'], function () use ($tenant, $key) {
+                $rule = \App\Models\Automation::create(['organization_id' => $tenant['org']->id, 'name' => 'Morning check', 'trigger_key' => $key, 'is_active' => true]);
+                $event = AutomationEvent::create(['organization_id' => $tenant['org']->id, 'event_key' => $key,
+                    'payload' => ['summary' => '**NJ**: 3 full'], 'occurred_at' => now(), 'available_at' => now()]);
+
+                return app(ActionRunner::class)->run(['type' => 'email.send', 'to_field' => 'office@example.test',
+                    'subject' => 'Fully booked', 'body' => '{{summary}}'], $event, null, automation: $rule);
+            });
+            $this->assertTrue($result['ok'], $result['detail']);
+        }
+
+        $pdfs = [];
+        \Illuminate\Support\Facades\Mail::assertSent(AutomationMessage::class, function ($m) use (&$pdfs) {
+            $pdfs[] = substr((string) (new \ReflectionProperty($m, 'pdf'))->getValue($m), 0, 5);
+
+            return true;
+        });
+        $this->assertEqualsCanonicalizing(['%PDF-', ''], $pdfs);
+    }
+
     public function test_a_strangers_words_stay_text_and_ezbizis_own_keep_their_markdown(): void
     {
         $registry = app(ModuleRegistry::class);

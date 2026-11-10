@@ -5,6 +5,7 @@ namespace App\Mail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Str;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
 use League\CommonMark\Extension\Strikethrough\StrikethroughExtension;
@@ -110,6 +111,7 @@ class AutomationMessage extends Mailable
         private readonly string $businessName,
         private readonly ?string $kind = null,
         private readonly ?string $automationName = null,
+        private readonly ?string $pdf = null,
     ) {}
 
     public function build(): self
@@ -127,6 +129,11 @@ class AutomationMessage extends Mailable
         $mail = $this->subject($this->subjectLine)->text('emails.automation-plain', [
             'body' => (self::RENDERS_MARKDOWN ? self::plain($this->body) : $this->body).$footer,
         ]);
+
+        // A report's formatted copy rides along (Jose, 2026-11-10: every report, its PDF too).
+        if ($this->pdf !== null) {
+            $mail->attachData($this->pdf, (Str::slug($this->subjectLine) ?: 'report').'.pdf', ['mime' => 'application/pdf']);
+        }
 
         return self::RENDERS_MARKDOWN ? $mail->html($this->framed()) : $mail;
     }

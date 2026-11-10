@@ -39,7 +39,7 @@ final class WhatsAppGroups
     /** A template value's pieces: the whole body may be 1024, the template's own words included. */
     private const VALUE_LIMIT = 800;
 
-    private const WINDOW_HOURS = 24;
+    private const WINDOW_HOURS = 23;
 
     private const TIMEOUT = 20;
 
@@ -66,8 +66,9 @@ final class WhatsAppGroups
 
     /**
      * A PDF to the group: uploaded to Meta once, then sent by its media id.
+     * $text, its figures as people read them, goes first (Jose, 2026-11-10).
      */
-    public function deliverDocument(string $purpose, string $title, string $pdf, string $filename): int
+    public function deliverDocument(string $purpose, string $title, string $pdf, string $filename, ?string $text = null): int
     {
         $number = $this->numberFor($purpose);
 
@@ -77,9 +78,9 @@ final class WhatsAppGroups
 
         $mediaId = $this->upload($number, $pdf, $filename);
 
-        return $this->fanOut($purpose, $title, [
+        return $this->fanOut($purpose, $title, $text !== null ? ['type' => 'text', 'text' => ['body' => $text]] : [
             'type' => 'document',
-            'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => "\u{1F4C4} *".$title.'*'],
+            'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => "\u{1F4CE} PDF copy: ".$title],
         ], fn () => [$mediaId, $filename]);
     }
 
@@ -110,17 +111,23 @@ final class WhatsAppGroups
      * document template under its own title. A document may name its `type`
      * (an Excel export); PDF otherwise. $title is the batch's, kept for callers.
      *
-     * @param  list<array{title: string, pdf: string, filename: string, type?: string}>  $documents
+     * A document's `text` goes first, as the report's text does (Jose, 2026-11-10).
+     *
+     * @param  list<array{title: string, pdf: string, filename: string, type?: string, text?: string}>  $documents
      * @return int how many were sent; 0 when the person has no usable phone
      */
     public function deliverDocumentsToUser(WhatsAppNumber $number, User $user, string $title, array $documents): int
     {
-        if (ThumbtackAssociatePhoneNumbers::e164((string) $user->phone) === null) {
+        if (($e164 = ThumbtackAssociatePhoneNumbers::e164((string) $user->phone)) === null) {
             return 0;
         }
 
         foreach ($documents as $d) {
-            $this->toPerson($number, $user, $d['title'], $this->upload($number, $d['pdf'], $d['filename'], $d['type'] ?? 'application/pdf'), $d['filename']);
+            $mediaId = $this->upload($number, $d['pdf'], $d['filename'], $d['type'] ?? 'application/pdf');
+            if (($d['text'] ?? '') !== '') {
+                $this->textTo($number, $e164, $d['title'], $d['text'], null);
+            }
+            $this->toPerson($number, $user, $d['title'], $mediaId, $d['filename']);
         }
 
         return count($documents);
@@ -271,12 +278,23 @@ final class WhatsAppGroups
         }
 
         if ($group->remote_id !== null) {
-            $this->graph('post', $number->phone_number_id.'/messages', phoneNumberId: $number->phone_number_id, body: [
+            $post = fn (array $m) => $this->graph('post', $number->phone_number_id.'/messages', phoneNumberId: $number->phone_number_id, body: [
                 'messaging_product' => 'whatsapp',
                 'recipient_type' => 'group',
                 'to' => $group->remote_id,
-                ...$message,
+                ...$m,
             ]);
+            $post($message);
+            // A report's file after its text, as members one to one get it (2026-11-10). The text
+            // went: a refused file is reported, not a failed run that sends the text again.
+            if ($file !== null && $message['type'] === 'text') {
+                try {
+                    [$mediaId, $filename] = $file($number);
+                    $post(['type' => 'document', 'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => "\u{1F4CE} PDF copy: ".$title]]);
+                } catch (Throwable $e) {
+                    report($e);
+                }
+            }
 
             return 1;
         }
@@ -431,14 +449,21 @@ final class WhatsAppGroups
         return true;
     }
 
+    /**
+     * Open only on a message Meta delivered (it carries Meta's wamid), and
+     * shut again once Meta refused one of ours as a re-engagement (131047):
+     * our own rows opened windows Meta did not see, and Bar got nothing
+     * (2026-11-04..09). An hour short of Meta's 24, so a long report does not
+     * outlive it halfway.
+     */
     private function windowOpen(WhatsAppNumber $number, string $to): bool
     {
-        return WhatsAppMessage::query()
-            ->where('phone_number_id', $number->phone_number_id)
-            ->where('counterparty', $to)
-            ->where('direction', WhatsAppMessage::DIRECTION_IN)
-            ->where('created_at', '>', now()->subHours(self::WINDOW_HOURS))
-            ->exists();
+        $mine = fn () => WhatsAppMessage::query()->where('phone_number_id', $number->phone_number_id)->where('counterparty', $to);
+        $last = $mine()->where('direction', WhatsAppMessage::DIRECTION_IN)->whereNotNull('wamid')
+            ->where('created_at', '>', now()->subHours(self::WINDOW_HOURS))->max('created_at');
+
+        return $last !== null && ! $mine()->where('direction', WhatsAppMessage::DIRECTION_OUT)->where('status', WhatsAppMessage::STATUS_FAILED)
+            ->where('status_reason', 'like', 'Re-engagement%')->where('updated_at', '>=', $last)->exists();
     }
 
     /** @return array<string, mixed> */
