@@ -37,7 +37,8 @@ class ProjectBoardScreen extends StatefulWidget {
   State<ProjectBoardScreen> createState() => _ProjectBoardScreenState();
 }
 
-class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
+class _ProjectBoardScreenState extends State<ProjectBoardScreen>
+    with WidgetsBindingObserver {
   bool _loading = true;
   bool _loaded = false;
   bool _fetching = false;
@@ -52,6 +53,12 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
   String? _franchise;
   final _search = TextEditingController();
   Timer? _debounce;
+
+  /// Live refresh (Jose, 2026-11-10: "if I stay on this window, will I see
+  /// changes?"): Workiz syncs every minute, so the board looks again every
+  /// minute while it is on screen, and whenever the window comes back.
+  Timer? _live;
+  DateTime? _updated;
   String _q = '';
   int _page = 1;
   int _lastPage = 1;
@@ -67,11 +74,33 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _live = Timer.periodic(const Duration(seconds: 60), (_) => _refresh());
     _load();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  /// A quiet reload of what is on screen: the same rows and counts, no
+  /// spinner, so the scroll stays where it is. Skipped while the screen is
+  /// hidden (another module, or a sub-tab off stage) or Settings is open.
+  void _refresh() {
+    if (!mounted || _fetching || _tab == 'settings') return;
+    if (!TickerMode.valuesOf(context).enabled) return;
+    if (WidgetsBinding.instance.lifecycleState case final s?
+        when s != AppLifecycleState.resumed) {
+      return;
+    }
+    _load(quiet: true);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _live?.cancel();
     _debounce?.cancel();
     _search.dispose();
     super.dispose();
@@ -87,9 +116,11 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
     });
   }
 
-  Future<void> _load({int page = 1}) async {
+  Future<void> _load({int page = 1, bool quiet = false}) async {
+    // Quiet: every page already shown, in one call of the same rows.
+    final shownPages = quiet ? _page.clamp(1, 4) : page;
     setState(() {
-      _loading = true;
+      if (!quiet) _loading = true;
       _fetching = true;
     });
     final tab = _tab == 'settings' ? _tabs.first.$1 : _tab;
@@ -97,7 +128,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
     final q = _q;
     final response = await widget.api.get('/project-board/jobs', {
       'tab': tab,
-      'page': '$page',
+      'page': quiet ? '1' : '$page',
+      if (quiet) 'per_page': '${50 * shownPages}',
       if (franchise != null && franchise.startsWith('company:'))
         'company_id': franchise.substring(8)
       else
@@ -112,10 +144,13 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
       _error = response.ok ? null : response.message;
       if (!response.ok) return;
       final rows = _maps(response.body['data']);
-      _rows = page == 1 ? rows : [..._rows, ...rows];
+      _rows = page == 1 || quiet ? rows : [..._rows, ...rows];
       final meta = (response.body['meta'] as Map?) ?? const {};
       _total = meta['total'] as int? ?? _rows.length;
-      _lastPage = meta['last_page'] as int? ?? 1;
+      _lastPage = quiet
+          ? (_total / 50).ceil().clamp(1, 1 << 30)
+          : meta['last_page'] as int? ?? 1;
+      _updated = DateTime.now();
       _counts = (meta['counts'] as Map?)?.cast<String, dynamic>() ?? _counts;
       _franchises = _maps(meta['places']);
       _columns = _maps(meta['columns']);
@@ -123,7 +158,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
       _scope = ((meta['settings_scope'] as Map?) ?? const {}).map(
         (k, v) => MapEntry('$k', '$v'),
       );
-      _page = page;
+      _page = quiet ? shownPages : page;
     });
   }
 
@@ -275,6 +310,25 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
                         '${shown[selected].$2} · $_total jobs',
                         style: theme.textTheme.titleMedium,
                       ),
+                      if (_updated case final at?)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Updated ${TimeOfDay.fromDateTime(at).format(context)}',
+                              key: const Key('project-board-updated'),
+                              style: theme.textTheme.bodySmall,
+                            ),
+                            IconButton(
+                              key: const Key('project-board-refresh'),
+                              tooltip: 'Refresh now',
+                              icon: const Icon(Icons.refresh, size: 18),
+                              onPressed: _fetching
+                                  ? null
+                                  : () => _load(quiet: true),
+                            ),
+                          ],
+                        ),
                       DropdownMenu<String>(
                         enableFilter: true,
                         requestFocusOnTap: true,
