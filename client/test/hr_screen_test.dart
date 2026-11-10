@@ -430,6 +430,25 @@ void main() {
     expect(queries.last.containsKey('missing'), isFalse);
   });
 
+  testWidgets('Active and Inactive ask the server, not the loaded page', (
+    tester,
+  ) async {
+    final queries = <Map<String, String>>[];
+
+    await _pump(tester, _handler(onPeopleQuery: queries.add));
+    await _tap(tester, _tab('Records'));
+    expect(queries.last.containsKey('status'), isFalse);
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Inactive'));
+    expect(queries.last['status'], 'inactive');
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Active'));
+    expect(queries.last['status'], 'active');
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Everyone'));
+    expect(queries.last.containsKey('status'), isFalse);
+  });
+
   // Jose, 2026-09-30: the invite can start the paperwork, "but toggable, some
   // people dont need contracts". Off sends no contract; on needs one chosen.
   testWidgets('an invitation can start the paperwork with a contract', (
