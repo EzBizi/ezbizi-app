@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0557', date: '10 Nov 2026', items: [
+      'Reports: each report is one WhatsApp message, the PDF with the report written under it, titled with the company, report and the data’s date',
+      'Help videos: closing a video no longer crashes the Android app',
+    ]),
     VersionRelease(version: '0.0.0556', date: '10 Nov 2026', items: [
       'Reports: corrected after a full audit: Paid – Estimated jobs are left out of every jobs count, dispatchers count only the company’s branches, done counts jobs not technicians, revenue counts only received payments',
       'Reports: every report email carries the PDF; WhatsApp texts reach people whose 24-hour window has closed',
