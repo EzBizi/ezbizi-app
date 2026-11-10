@@ -4,6 +4,7 @@ namespace App\Support\Reports\Texts;
 
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Support\Reports\LocationOrder;
 use App\Support\Reports\ReportJobs;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -71,6 +72,7 @@ final class SameDayReport
             ->whereIn('id', ReportJobs::branchesWithJobs())
             ->orderBy('name')
             ->get();
+        $branches = LocationOrder::sort($branches);
 
         $sources = [];
         $rows = [];

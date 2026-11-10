@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Ads\AdsCost;
 use App\Support\Reports\Airtable\ReportSources;
 use App\Support\Reports\Experimental\PerformancePeople;
+use App\Support\Reports\LocationOrder;
 use App\Support\Reports\MarketingReport;
 use App\Support\Reports\MetaSpend;
 use App\Support\Reports\ReportJobs;
@@ -63,16 +64,13 @@ final class DailyTexts
     /** @param list<string>|null $branches */
     public function render(string $kind, Organization $organization, CarbonImmutable $day, ?array $branches = null): string
     {
-        $this->locations = array_flip(array_map(fn (array $row) => mb_strtolower(trim((string) ($row['value']['branch'] ?? $row['key']))),
-            app(BusinessLists::class)->rows('reports.locations')));
-        $list = $this->ordered(Franchise::query()->where('is_active', true)
+        $this->locations = LocationOrder::positions();
+        // The listed branches in the list's order, every other branch after (Shoval, 2026-11-09).
+        $list = LocationOrder::sort(Franchise::query()->where('is_active', true)
             ->when($branches !== null, fn ($q) => $q->whereIn('id', $branches))
             ->orderBy('name')->get());
-        // A listed name is one branch: the parent company's, when a sub company has an (empty) "Texas" too.
-        $this->claimed = $list->loadMissing('company')->filter(fn (Franchise $b) => isset($this->locations[mb_strtolower(trim((string) $b->name))]))
-            ->sortBy(fn (Franchise $b) => $b->company?->parent_company_id !== null)
-            ->unique(fn (Franchise $b) => mb_strtolower(trim((string) $b->name)))
-            ->mapWithKeys(fn (Franchise $b) => [$b->getKey() => true])->all();
+        // A listed name is one branch: A-1's "Texas", not AngiSweep's.
+        $this->claimed = LocationOrder::claimed($list, $this->locations);
         // One company's branches read as "Texas"; several companies' need theirs, unless the business listed it by name.
         $several = $list->pluck('company_id')->unique()->count() > 1;
         $this->name = fn (Franchise $b) => ! $several || ($this->locations !== [] && $this->listed($b)) ? (string) $b->name : BranchName::of($b);
@@ -110,16 +108,10 @@ final class DailyTexts
     /** @var array<string, true> the branch each listed name stands for, by id */
     private array $claimed = [];
 
-    /** In the business's location order; branches it does not list after, by name. */
-    private function ordered(Collection $branches): Collection
-    {
-        return $branches->sortBy(fn (Franchise $b) => [$this->locations[mb_strtolower(trim((string) $b->name))] ?? PHP_INT_MAX, $b->name])->values();
-    }
-
     /** A branch the business lists (or every branch, when it lists none): an unlisted one is shown only with something to show. */
     private function listed(Franchise $branch): bool
     {
-        return $this->locations === [] || isset($this->claimed[$branch->getKey()]);
+        return $this->locations === [] || isset($this->claimed[(string) $branch->getKey()]);
     }
 
     /** Payments received per location (Workiz's Payments, by payment date), and the total. */
