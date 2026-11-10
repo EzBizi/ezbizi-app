@@ -17,6 +17,10 @@ class VersionHistory {
       'Project Management: refreshes itself every minute while open, with an Updated time and a refresh button',
       'Customer Experience › Auto-replies: each review the AI answered beside our reply; approve, edit or discard drafts',
       'Reviews: a reply that cannot go out names the missing Google profile connection',
+      'Project Management, Jobs: job tags show in their Workiz colours',
+      'Integrations › Workiz › Tags: every account’s tags against the approved standard, differences highlighted, a warning when anyone changes a tag, and the change log',
+      'Workiz: a tag renamed in Workiz reaches EzBizi’s jobs within two minutes',
+      'Leads: each lead row shows on three lines',
     ]),
     VersionRelease(version: '0.0.0557', date: '10 Nov 2026', items: [
       'Reports: each report is one WhatsApp message, the PDF with the report written under it, titled with the company, report and the data’s date',
