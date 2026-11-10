@@ -6,6 +6,7 @@ import '../core/module_screens.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'business_profile/post_queue_view.dart';
+import 'customer_experience/auto_replies_tab.dart';
 import 'business_profile_screen.dart';
 import 'customer_experience/complaints_tab.dart';
 import 'customer_experience/review_links_tab.dart';
@@ -28,7 +29,7 @@ import 'customer_experience/review_links_tab.dart';
 /// this one.
 const customerExperienceChildChips = {
   'business_profile': ['GBP Listings', 'GBP Performance', 'Posts to approve'],
-  'reviews': ['Reviews', 'Review links'],
+  'reviews': ['Reviews', 'Auto-replies', 'Review links'],
 };
 
 class CustomerExperienceScreen extends StatefulWidget {
@@ -111,6 +112,14 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
               () => PostQueueView(api: widget.api),
             ),
         ],
+    // Every review the AI answered or drafted, with our reply (Jose,
+    // 2026-11-10). Reviews' own activity, so Reviews' grant.
+    if (me.reaches('reviews'))
+      (
+        'Auto-replies',
+        Icons.smart_toy_outlined,
+        () => AutoRepliesTab(api: widget.api, session: widget.session),
+      ),
     // What customers did with their review links (Jose, 2026-10-15). Reviews'
     // own activity, so Reviews' grant; the server asks the same.
     if (me.reaches('reviews'))
