@@ -631,13 +631,27 @@ class MailDispatcher
          * until it restarts. The worker listener in AppServiceProvider only
          * sees a job that THROWS. ActionRunner catches this one into the rule's
          * run log, and that is how a 451 on 2026-11-04 left failed_jobs empty.
+         *
+         * A 4xx is retried once on the fresh connection: the 451 of 2026-11-09
+         * was the first command on a connection SES had already timed out, so
+         * nothing was accepted and the second try is not a duplicate.
          */
         try {
             Mail::mailer($this->platform->mailerName())->to($to)->send($message);
         } catch (TransportExceptionInterface $e) {
             app('mail.manager')->purge($this->platform->mailerName());
 
-            throw $e;
+            if ($e->getCode() < 400 || $e->getCode() >= 500) {
+                throw $e;
+            }
+
+            try {
+                Mail::mailer($this->platform->mailerName())->to($to)->send($message);
+            } catch (TransportExceptionInterface $retry) {
+                app('mail.manager')->purge($this->platform->mailerName());
+
+                throw $retry;
+            }
         }
     }
 }

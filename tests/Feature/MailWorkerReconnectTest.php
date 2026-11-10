@@ -121,6 +121,36 @@ class MailWorkerReconnectTest extends TestCase
         $this->assertNotSame($before, $manager->mailer('refusing')->getSymfonyTransport());
     }
 
+    public function test_a_451_is_sent_again_once_on_a_fresh_connection(): void
+    {
+        $sends = new \ArrayObject;
+        app('mail.manager')->extend('flaky', fn () => new class($sends) extends AbstractTransport
+        {
+            public function __construct(private \ArrayObject $sends)
+            {
+                parent::__construct();
+            }
+
+            protected function doSend(SentMessage $message): void
+            {
+                $this->sends->append(1);
+                if (count($this->sends) === 1) {
+                    throw new UnexpectedResponseException('451 4.4.2 Timeout waiting for data from client.', 451);
+                }
+            }
+
+            public function __toString(): string
+            {
+                return 'flaky://';
+            }
+        });
+        config(['mail.mailers.flaky' => ['transport' => 'flaky'], 'mail.platform_mailer' => 'flaky', 'mail.from.address' => 'noreply@ezbizi.test']);
+
+        app(MailDispatcher::class)->platform(new AutomationMessage('s', 'b', 'Biz'), 'someone@example.test');
+
+        $this->assertCount(2, $sends);
+    }
+
     private function workerJobThrew(\Throwable $e): void
     {
         event(new JobExceptionOccurred('database', $this->createStub(Job::class), $e));
