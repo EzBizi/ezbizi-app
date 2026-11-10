@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0559', date: '10 Nov 2026', items: [
+      'Texts: a blank line before “Reply STOP to opt out.”',
+      'Workiz: removing a tag from a job in EzBizi now removes it in Workiz too',
+      'Project Management, Reports, Scheduling: tag settings use the new Workiz tag names',
+    ]),
     VersionRelease(version: '0.0.0558', date: '10 Nov 2026', items: [
       'Project Management › Unscheduled: Service Area, Technician, Repair Team / Contractor, Payment Date, Remaining Balance, attachments, latest note and Status Time (green, yellow, red); Ready to schedule moves a job once every column is filled',
       'Switched-off companies, their Sub Companies and places no longer show in any list or picker (Task Board, Scheduling, Leads, HR, reports); their data stays and Settings › Organization still lists them',
