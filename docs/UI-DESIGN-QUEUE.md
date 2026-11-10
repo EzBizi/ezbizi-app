@@ -5340,6 +5340,10 @@ Client by UI/UX; server HR 17fb4c40e. Jose via the desk: show current access as 
 
 Jose 11-06 on the Work tab: "this can definitely be shown in a better way, use green and red as well for clock in - out times"; on Training: "same here". Three equal tinted KPI tiles; an aligned table Course | Status (green Passed / amber Due / red Failed-Overdue) | Score bar | Completed | Retake by; empty state; the footnote rewritten plainly. Client by UI/UX (`client/lib/screens/hr/training_card.dart`).
 
+### 191 · Integrations › Workiz › Tags — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/workiz-tags-layouts.html`)
+
+Client by UI/UX on the Workiz backend (session/workiz 5b905b31b). Jose 11-10: "a sub tab where we can see all existing tags per account so if someone in the future changes a tag, we know about it and get a warning". A Tags section on the Workiz provider screen: caution banner for changes in the last 7 days linking to the log, a tags × accounts matrix (sticky tag column and header, colour chip + name, differing cell tinted caution, missing cell "—" in caution), Show only differences + search, Approve current tags as standard (SidePanel confirm, disabled when nothing differs), then the change log (Deleted is Tone.bad, the rest caution). No baseline yet: one line asking to approve the current tags.
+
 ### 189 · HR › Work: work schedule — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-work-schedule-layouts.html`)
 
 Client by UI/UX. Jose 11-06: "this can definitely be shown in a better way, use green and red as well for clock in - out times". All seven days as rows (a day off reads "Off" instead of vanishing), green in chip (Tone.ok), red out chip (Tone.bad; his ruling for this screen), a 24 h day bar, hours per day and a weekly total. Times through DisplayFormats.formatWallClock. Phone drops the bar.
