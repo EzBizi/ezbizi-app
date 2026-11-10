@@ -47,7 +47,10 @@ class SchedulingAreasController extends Controller
     {
         $this->authorize('viewAny', ServiceArea::class);
 
+        // A switched-off branch's areas are not listed (Jose, 2026-11-10);
+        // they stay, and reachable() still opens them.
         $areas = $this->reachable($request)
+            ->whereIn('franchise_id', ViewScope::forUser($request->user())->switchedOnFranchiseIds())
             ->with(['slots', 'zips'])
             ->orderBy('name')
             ->get();

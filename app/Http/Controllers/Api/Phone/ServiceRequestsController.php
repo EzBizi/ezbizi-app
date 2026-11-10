@@ -189,6 +189,7 @@ class ServiceRequestsController extends Controller
             ->all();
 
         $rows = Company::query()
+            ->switchedOn()
             ->orderBy('name')
             ->get(['id', 'name'])
             ->map(fn (Company $company) => [

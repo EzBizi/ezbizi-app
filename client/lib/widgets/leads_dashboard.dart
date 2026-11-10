@@ -217,7 +217,7 @@ class _LeadsDashboardState extends State<LeadsDashboard> {
 
   Widget _filters(BuildContext context, {required bool desk}) {
     final formats = widget.session.me?.display ?? DisplayFormats.fallback;
-    final companies = widget.session.me?.companies ?? const [];
+    final companies = widget.session.me?.switchableCompanies ?? const [];
 
     return Wrap(
       spacing: 8,

@@ -41,7 +41,7 @@ class ReportPeriodController extends Controller
 
         $xlsx = ($in['format'] ?? 'pdf') === 'xlsx';
         abort_if($xlsx && ! $request->user()->hasPermission('reports.export'), 403);
-        $branches = $branch !== null ? collect([$branch]) : Franchise::query()->whereIn('id', $view->franchiseIds())->orderBy('name')->get();
+        $branches = $branch !== null ? collect([$branch]) : Franchise::query()->whereIn('id', $view->switchedOnFranchiseIds())->orderBy('name')->get();
 
         if (($in['report'] ?? 'period') === 'job_profitability') {
             $rows = $this->profitability((string) $request->user()->organization_id, $branches, $from, $to);

@@ -95,9 +95,10 @@ class FranchiseField extends StatelessWidget {
     // "Connecticut · Everdoors", sorted by company then branch, so the two
     // Connecticuts sit under their own companies rather than next to each
     // other: the one order every branch picker uses (Jose, 2026-10-21).
-    // Switched-off places stay: a record may already be filed on one.
+    // Switched-off places are not offered (Jose, 2026-11-10), but a record
+    // already filed on one still shows where it is.
     final sorted = branchOptions(
-      franchises ?? me.franchisesInView,
+      me.franchisesKeeping(franchises ?? me.franchisesInView, value),
       me.companies,
       activeOnly: false,
     );

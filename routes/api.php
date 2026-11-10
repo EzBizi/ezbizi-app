@@ -3647,15 +3647,24 @@ Route::prefix('v1')
                         // and there is no way to tell from the screen that it
                         // inherits from that company rather than from the
                         // organization.
-                        ->map(fn ($c) => [
-                            'id' => $c->id,
-                            'name' => $c->name,
-                            'parent_company_id' => $c->parent_company_id,
-                            'has_logo' => $c->logo_path !== null,
-                            // Switched off: kept in reach, not offered by the
-                            // view switcher (Jose, 2026-10-15).
-                            'is_active' => (bool) $c->is_active,
-                        ])
+                        ->pipe(function ($companies) {
+                            // Off under a parent that is off too: that parent
+                            // is not in this list when it has no branches of
+                            // its own, so the client could not tell.
+                            $off = \App\Models\Company::query()->whereKey($companies->pluck('id'))
+                                ->switchedOff()->pluck('id')->all();
+
+                            return $companies->map(fn ($c) => [
+                                'id' => $c->id,
+                                'name' => $c->name,
+                                'parent_company_id' => $c->parent_company_id,
+                                'has_logo' => $c->logo_path !== null,
+                                // Switched off: kept in reach so a record still
+                                // reads its name, offered nowhere (Jose,
+                                // 2026-10-15 and 11-10).
+                                'is_active' => ! in_array($c->id, $off, true),
+                            ]);
+                        })
                         ->all(),
 
                     // The RESOLVED scope, not the stored string. A preference

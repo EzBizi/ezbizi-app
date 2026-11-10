@@ -160,10 +160,12 @@ class _EmailFiltersPanelState extends State<EmailFiltersPanel> {
       value: 'organization:',
       label: 'Everyone at ${widget.organizationName}',
     ),
-    for (final c in widget.companies)
-      if (c.isActive)
-        SearchOption(value: 'company:${c.id}', label: 'Everyone at ${c.name}'),
-    for (final b in branchOptions(widget.branches, widget.companies))
+    for (final c in switchedOnCompanies(widget.companies))
+      SearchOption(value: 'company:${c.id}', label: 'Everyone at ${c.name}'),
+    for (final b in branchOptions(
+      switchedOnFranchises(widget.branches, widget.companies),
+      widget.companies,
+    ))
       SearchOption(value: 'franchise:${b.id}', label: 'Everyone at ${b.label}'),
   ];
 

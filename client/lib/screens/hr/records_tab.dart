@@ -175,10 +175,11 @@ class _RecordsTabState extends State<RecordsTab> {
       return names.join(' › ');
     }
 
+    // Switched-off ones are not offered (Jose, 2026-11-10).
     final rows = [
-      for (final c in me.companies)
+      for (final c in me.switchableCompanies)
         SearchOption(value: 'company:${c.id}', label: pathOf(c.id)),
-      for (final f in me.franchises)
+      for (final f in me.switchableFranchises)
         SearchOption(
           value: 'franchise:${f.id}',
           label: [
@@ -2084,15 +2085,10 @@ class _WorksAtState extends State<_WorksAt> {
       context,
       title: 'Add place',
       options: [
+        // Switched-off places are not offered (Jose, 2026-11-10).
         for (final scope in widget.options.scopes)
-          if (!have.contains(scope.value))
-            SearchOption(
-              value: scope.value,
-              label: scope.isActive
-                  ? scope.pathLabel
-                  : '${scope.pathLabel} — deactivated',
-              enabled: scope.isActive,
-            ),
+          if (!have.contains(scope.value) && scope.isActive)
+            SearchOption(value: scope.value, label: scope.pathLabel),
       ],
     );
     if (picked == null || !mounted) return;

@@ -624,7 +624,9 @@ Widget _placePicker(Me me, String? value, ValueChanged<String?> onChanged) =>
     );
 
 Map<String, Object?> _placeBody(Me me, String? place) {
-  final franchise = me.franchisesInView.where((f) => f.id == place).firstOrNull;
+  // Reach, not the view: a result already filed on a switched-off branch
+  // keeps its branch.
+  final franchise = me.franchises.where((f) => f.id == place).firstOrNull;
   return {
     'franchise_id': franchise?.id,
     'company_id': franchise?.companyId ?? (franchise == null ? place : null),

@@ -231,7 +231,8 @@ class SchedulingAvailabilityController extends Controller
             ]);
         }
 
-        $franchiseIds = ViewScope::forUser($request->user())->franchiseIds();
+        // A switched-off branch's areas are not offered (Jose, 2026-11-10).
+        $franchiseIds = ViewScope::forUser($request->user())->switchedOnFranchiseIds();
         $franchiseNames = Franchise::whereIn('id', $franchiseIds)->pluck('name', 'id');
 
         [$areas, $by] = match (true) {
@@ -318,7 +319,7 @@ class SchedulingAvailabilityController extends Controller
     {
         $this->authorize('viewAny', ServiceArea::class);
 
-        $ids = ServiceArea::whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
+        $ids = ServiceArea::whereIn('franchise_id', ViewScope::forUser($request->user())->switchedOnFranchiseIds())
             ->distinct()
             ->pluck('franchise_id');
 

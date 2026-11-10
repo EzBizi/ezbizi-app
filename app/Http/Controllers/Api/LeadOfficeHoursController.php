@@ -42,8 +42,9 @@ class LeadOfficeHoursController extends Controller
     {
         $org = Organization::query()->findOrFail($this->tenant->idOrFail());
         $reach = $this->reach($request->user(), $org);
-        $companies = Company::query()->orderBy('name')->get();
-        $branches = Franchise::query()->orderBy('name')->get()->groupBy('company_id');
+        // Switched-off companies and branches are not listed (Jose, 2026-11-10).
+        $companies = Company::query()->switchedOn()->orderBy('name')->get();
+        $branches = Franchise::query()->switchedOn()->orderBy('name')->get()->groupBy('company_id');
 
         // Parents first, each followed by its branches and then its sub companies.
         $places = [$this->place($org, 'organization', null)];

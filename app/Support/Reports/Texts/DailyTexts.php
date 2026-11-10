@@ -98,7 +98,7 @@ final class DailyTexts
         $this->at = $day;
         $this->locations = LocationOrder::positions();
         // The listed branches in the list's order, every other branch after (Shoval, 2026-11-09).
-        $list = LocationOrder::sort(Franchise::query()->where('is_active', true)
+        $list = LocationOrder::sort(Franchise::query()->switchedOn()
             ->when($branches !== null, fn ($q) => $q->whereIn('id', $branches))
             ->orderBy('name')->get());
         // A listed name is one branch: A-1's "Texas", not AngiSweep's.

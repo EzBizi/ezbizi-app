@@ -35,7 +35,7 @@ class MarketingReportController extends Controller
 
         $inView = ReportView::franchiseIds();
         $branches = Franchise::query()
-            ->where('is_active', true)
+            ->switchedOn()
             ->when($inView !== null, fn ($q) => $q->whereIn('id', $inView))
             ->whereIn('id', ReportJobs::branchesWithJobs())
             ->orderBy('name')

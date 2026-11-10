@@ -367,6 +367,36 @@ class Session extends ChangeNotifier {
   }
 }
 
+/// The companies that are switched on: on themselves, under a parent that is
+/// on (Jose, 2026-11-10: a switched-off company does not show up anywhere).
+/// The server's `Company::switchedOn` rule, for lists `/me` already carries.
+List<CompanySummary> switchedOnCompanies(List<CompanySummary> companies) {
+  final byId = {for (final c in companies) c.id: c};
+  bool on(CompanySummary c) {
+    final parent = c.parentCompanyId == null ? null : byId[c.parentCompanyId];
+    return c.isActive && (parent == null || parent.isActive);
+  }
+
+  return companies.where(on).toList();
+}
+
+/// Places that are on, in a company that is not switched off. A company the
+/// list does not name counts as on, as it does on the server.
+List<FranchiseSummary> switchedOnFranchises(
+  List<FranchiseSummary> franchises,
+  List<CompanySummary> companies,
+) {
+  final on = {for (final c in switchedOnCompanies(companies)) c.id};
+  final named = {for (final c in companies) c.id};
+  return franchises
+      .where(
+        (f) =>
+            f.isActive &&
+            (!named.contains(f.companyId) || on.contains(f.companyId)),
+      )
+      .toList();
+}
+
 class Me {
   const Me({
     required this.id,
@@ -508,26 +538,12 @@ class Me {
   /// Where the view switcher may go (Jose, 2026-10-15: "if a company is
   /// switched off, it should not appear on the company picker"): companies
   /// that are on, under a parent that is on.
-  List<CompanySummary> get switchableCompanies {
-    final byId = {for (final c in companies) c.id: c};
-    bool on(CompanySummary c) {
-      final parent = c.parentCompanyId == null ? null : byId[c.parentCompanyId];
-      return c.isActive && (parent == null || parent.isActive);
-    }
-
-    return companies.where(on).toList();
-  }
+  List<CompanySummary> get switchableCompanies =>
+      switchedOnCompanies(companies);
 
   /// Places that are on, in a company that is on and switchable.
-  List<FranchiseSummary> get switchableFranchises {
-    final on = {for (final c in switchableCompanies) c.id};
-    return franchises
-        .where(
-          (f) =>
-              f.isActive && (f.companyId == null || on.contains(f.companyId)),
-        )
-        .toList();
-  }
+  List<FranchiseSummary> get switchableFranchises =>
+      switchedOnFranchises(franchises, companies);
 
   /// Companies the current view covers — the scoped company plus its Sub
   /// Companies, already intersected with [companies] (reach).
@@ -535,31 +551,55 @@ class Me {
   /// `/me` sends every company this person can act on. The switcher then
   /// narrows what they are looking at. A picker that offered the rest would
   /// let somebody standing in A-1 Chimney file a record on Everdoors.
+  ///
+  /// Switched-on only (Jose, 2026-11-10: a switched-off company does not show
+  /// up anywhere). Settings › Organization still lists them; names of records
+  /// already filed on one resolve from [companies].
   List<CompanySummary> get companiesInView {
     final scope = this.scope;
-    if (scope.type == 'organization') return companies;
+    final on = switchableCompanies;
+    if (scope.type == 'organization') return on;
     if (scope.type == 'franchise') {
       final place = franchises.where((f) => f.id == scope.id).firstOrNull;
       if (place == null) return const [];
-      return companies.where((c) => c.id == place.companyId).toList();
+      return on.where((c) => c.id == place.companyId).toList();
     }
     final rootId = scope.id;
     if (rootId == null) return const [];
-    return companies.where((c) => _inCompanySubtree(c, rootId)).toList();
+    return on.where((c) => _inCompanySubtree(c, rootId)).toList();
   }
 
   /// Franchises the current view covers. Organization: every reachable
   /// franchise. Company: that company and its Sub Companies. Franchise: that
-  /// one branch.
+  /// one branch. Switched-on only, like [companiesInView].
   List<FranchiseSummary> get franchisesInView {
     final scope = this.scope;
-    if (scope.type == 'organization') return franchises;
+    final on = switchableFranchises;
+    if (scope.type == 'organization') return on;
     if (scope.type == 'franchise') {
-      return franchises.where((f) => f.id == scope.id).toList();
+      return on.where((f) => f.id == scope.id).toList();
     }
     final ids = {for (final c in companiesInView) c.id};
-    return franchises.where((f) => ids.contains(f.companyId)).toList();
+    return on.where((f) => ids.contains(f.companyId)).toList();
   }
+
+  /// [offered] plus the company [id] names, from reach, when it is not among
+  /// them: a switched-off company is not offered, but a record already filed
+  /// on one still shows where it is.
+  List<CompanySummary> companiesKeeping(
+    List<CompanySummary> offered,
+    String? id,
+  ) => id == null || offered.any((c) => c.id == id)
+      ? offered
+      : [...offered, ...companies.where((c) => c.id == id)];
+
+  /// [companiesKeeping] for places.
+  List<FranchiseSummary> franchisesKeeping(
+    List<FranchiseSummary> offered,
+    String? id,
+  ) => id == null || offered.any((f) => f.id == id)
+      ? offered
+      : [...offered, ...franchises.where((f) => f.id == id)];
 
   /// Franchises of one company, still inside the current view.
   List<FranchiseSummary> franchisesOf(String? companyId) {

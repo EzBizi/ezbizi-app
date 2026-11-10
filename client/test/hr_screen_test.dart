@@ -490,23 +490,19 @@ void main() {
     // The organization first — it is the widest thing on offer — then
     // everything else by its whole path, so a company is followed by the
     // franchises under it rather than by an alphabetical run of Connecticuts.
+    // §4: an assignment to a deactivated scope grants nothing, and a
+    // switched-off place does not show up at all (Jose, 2026-11-10), so
+    // Rhode Island (fr-4) is not drawn.
     expect(scopes.options.map((o) => o.value), [
       'organization:org-1',
       'company:co-1',
       'franchise:fr-9',
-      'franchise:fr-4',
     ]);
 
     expect(scopes.options.map((o) => o.label), [
       'Everdoors',
       'Serenisima',
       'Serenisima › Connecticut',
-      // §4: an assignment to a deactivated scope grants nothing, so it is drawn
-      // and refused rather than offered as a silent mistake.
-      'Serenisima › Rhode Island — deactivated',
-    ]);
-    expect(scopes.options.where((o) => !o.enabled).map((o) => o.value), [
-      'franchise:fr-4',
     ]);
 
     // `/me` knows about Texas and does not know about Connecticut. Neither

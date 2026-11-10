@@ -67,7 +67,8 @@ final class SchedulingAreaMapController extends Controller
      */
     public function overview(Request $request): JsonResponse
     {
-        $franchises = ViewScope::forUser($request->user())->franchiseIds();
+        // Switched-off branches are not drawn (Jose, 2026-11-10).
+        $franchises = ViewScope::forUser($request->user())->switchedOnFranchiseIds();
         if ($request->filled('franchise_id')) {
             abort_unless(in_array($request->query('franchise_id'), $franchises, true), 404);
             $franchises = [$request->query('franchise_id')];

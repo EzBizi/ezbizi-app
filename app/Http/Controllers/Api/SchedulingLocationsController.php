@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\BusinessLocation;
 use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\SchedulingLocationNote;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
@@ -49,7 +50,8 @@ class SchedulingLocationsController extends Controller
         $companies = Company::query()->pluck('name', 'id');
 
         $notes = SchedulingLocationNote::query()->with('editor:id,name')->get()
-            ->filter(fn (SchedulingLocationNote $n) => trim($n->text) !== '' && $scope->coversCompany($n->company_id))
+            ->filter(fn (SchedulingLocationNote $n) => trim($n->text) !== '' && $scope->coversCompany($n->company_id)
+                && ! Company::isSwitchedOff($n->company_id))
             ->map(fn (SchedulingLocationNote $n) => [
                 'company_id' => $n->company_id,
                 'company_name' => $companies[$n->company_id] ?? null,
@@ -143,10 +145,15 @@ class SchedulingLocationsController extends Controller
         $place = fn (?string $street, ?string $zip) => $this->street($street).'|'.$this->zip5($zip);
         $digits = fn (?string $phone) => substr((string) preg_replace('/\D+/', '', (string) $phone), -10);
 
+        // A switched-off company or branch is not a place to send anybody
+        // (Jose, 2026-11-10); its website rows stay for Web Management.
+        $offCompanies = Company::query()->switchedOff()->pluck('id')->all();
+        $offPlaces = Franchise::query()->switchedOff()->pluck('id')->all();
+
         $web = WebLocation::query()
             ->orderByRaw('site_id is not null')->orderBy('sort_order')->orderBy('name')
             ->get()
-            ->filter(fn (WebLocation $l) => $scope->coversCompany($l->company_id))
+            ->filter(fn (WebLocation $l) => $scope->coversCompany($l->company_id) && ! in_array($l->company_id, $offCompanies, true))
             ->unique(fn (WebLocation $l) => $place($l->address_line1, $l->postal_code))
             ->values();
         // A site's row with no address beside a filled row for the same branch is the same branch, half-entered.
@@ -160,7 +167,8 @@ class SchedulingLocationsController extends Controller
             ->get()
             // A listing filed on no branch is the company's, shown in each of its branch views (Desk, 2026-11-05).
             ->filter(fn (BusinessLocation $b) => $scope->coversCompany($b->company_id)
-                && ($b->franchise_id === null || $scope->coversFranchise($b->franchise_id)));
+                && ($b->franchise_id === null || $scope->coversFranchise($b->franchise_id))
+                && ! in_array($b->company_id, $offCompanies, true) && ! in_array($b->franchise_id, $offPlaces, true));
 
         $rows = collect();
         $used = [];

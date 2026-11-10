@@ -566,6 +566,8 @@ class FieldController extends Controller
 
         return Company::query()
             ->whereIn('id', array_unique($ids))
+            // A switched-off company's office is not on the map (Jose, 2026-11-10).
+            ->switchedOn()
             ->orderBy('name')
             ->get()
             ->filter(fn (Company $c) => $view->coversCompany($c->getKey()))

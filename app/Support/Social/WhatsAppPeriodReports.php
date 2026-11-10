@@ -101,7 +101,7 @@ final class WhatsAppPeriodReports
     private function text(WhatsAppReportBatch $batch, PeriodReport $report, string $title, ?string $branchId): string
     {
         $branches = $branchId !== null ? Franchise::query()->whereKey($branchId)->get()
-            : Franchise::query()->where('is_active', true)->whereIn('id', ReportJobs::branchesWithJobs())->get();
+            : Franchise::query()->switchedOn()->whereIn('id', ReportJobs::branchesWithJobs())->get();
 
         return $report->summaryText($title, $branches, $batch->starts_on->toDateString(), $batch->ends_on->toDateString());
     }
