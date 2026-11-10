@@ -470,7 +470,8 @@ final class DailyTexts
         $hasCalls = $rows->contains(fn ($r) => ($r['calls'] ?? null) !== null);
         $lines = [$head, '*Data date: '.CarbonImmutable::parse($latest)->format('M j').'*', ''];
         $total = ['cost' => 0, 'calls' => 0, 'jobs' => 0];
-        foreach ($rows->where('date', $latest)->groupBy(fn ($r) => trim((string) ($r['area'] ?? '')) ?: 'No area')->sortKeys() as $area => $r) {
+        foreach ($rows->where('date', $latest)->groupBy(fn ($r) => trim((string) ($r['area'] ?? '')) ?: 'No area')
+            ->sortBy(fn ($r, $area) => [LocationOrder::areaPlace((string) $area), $area]) as $area => $r) {
             $cost = $r->sum(fn ($x) => AirtableSections::cents($x['amount'] ?? 0));
             $calls = (int) $r->sum(fn ($x) => (float) ($x['calls'] ?? 0));
             $jobs = (int) $r->sum(fn ($x) => (float) ($x['jobs'] ?? 0));

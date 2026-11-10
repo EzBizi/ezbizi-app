@@ -61,6 +61,25 @@ final class LocationOrder
     }
 
     /**
+     * A free-text area's place (a marketing sheet's "Chicago"): the listed row
+     * whose branch or one of its codes ("IL, Chicago") is a word of it; after
+     * every listed one otherwise.
+     */
+    public static function areaPlace(string $area): int
+    {
+        foreach (array_values(app(BusinessLists::class)->rows('reports.locations')) as $i => $row) {
+            $words = [(string) ($row['value']['branch'] ?? $row['key']), ...explode(',', (string) ($row['value']['code'] ?? ''))];
+            foreach (array_filter(array_map('trim', $words)) as $word) {
+                if (preg_match('/\b'.preg_quote($word, '/').'\b/iu', $area)) {
+                    return $i;
+                }
+            }
+        }
+
+        return PHP_INT_MAX;
+    }
+
+    /**
      * Each branch's place, for lists that hold ids rather than branches.
      *
      * @param  iterable<string>  $ids
