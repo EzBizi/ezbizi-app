@@ -343,13 +343,14 @@ class ProjectBoardController extends Controller
     private function extras(array $ids): array
     {
         if ($ids === []) {
-            return ['paid' => [], 'files' => [], 'notes' => []];
+            return ['paid' => [], 'files' => [], 'notes' => [], 'parts' => []];
         }
 
         return [
             'paid' => \App\Models\WorkizRecord::query()->whereIn('job_id', $ids)->where('type', 'payment')
                 ->whereNotNull('starts_at')->groupBy('job_id')->selectRaw('job_id, MIN(starts_at) AS at')->pluck('at', 'job_id')->all(),
             'files' => DB::table('attachments')->where('attachable_type', 'jobs')->whereIn('attachable_id', $ids)->groupBy('attachable_id')->selectRaw('attachable_id, COUNT(*) AS n')->pluck('n', 'attachable_id')->all(),
+            'parts' => \App\Models\JobPart::query()->whereIn('job_id', $ids)->orderBy('position')->get()->groupBy('job_id')->all(),
             'notes' => \App\Models\JobNote::query()->whereIn('job_id', $ids)->latest()->get(['job_id', 'body'])
                 ->groupBy('job_id')->map(fn ($n) => ['count' => $n->count(), 'latest' => (string) $n->first()->body])->all(),
         ];
@@ -386,6 +387,7 @@ class ProjectBoardController extends Controller
             'attachments' => $files,
             'notes' => $note['latest'] ?? null,
             'schedule_proposal' => $job->schedule_proposal,
+            'parts' => collect($extras['parts'][$job->id] ?? [])->map(fn (\App\Models\JobPart $p) => $p->present())->values()->all(),
             'notes_count' => $notes,
         ];
         // Only what the company ticks in Settings (project_board.ready_requires).
@@ -496,6 +498,42 @@ class ProjectBoardController extends Controller
             'alt_date' => ['required', 'date_format:Y-m-d'],
             'alt_slot' => ['required', 'string', 'max:40'],
         ]);
+    }
+
+    /**
+     * PUT /api/v1/project-board/jobs/{job}/parts: the job's whole parts list
+     * (Jose, 2026-11-10): "Need to Order" item, quantity, price, delivery
+     * date; "In Stock" item, quantity, price.
+     */
+    public function parts(Request $request, Job $job): JsonResponse
+    {
+        $this->editable($request, $job);
+        $input = $request->validate([
+            'parts' => ['present', 'array', 'max:50'],
+            'parts.*.kind' => ['required', 'in:order,stock'],
+            'parts.*.item' => ['required', 'string', 'max:160'],
+            'parts.*.quantity' => ['required', 'integer', 'min:1', 'max:100000'],
+            'parts.*.price_minor' => ['nullable', 'integer', 'min:0', 'max:100000000000'],
+            'parts.*.delivery_on' => ['nullable', 'date_format:Y-m-d'],
+            'parts.*.inventory_item_id' => ['nullable', 'uuid', 'exists:inventory_items,id'],
+        ]);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($job, $input) {
+            \App\Models\JobPart::query()->where('job_id', $job->id)->delete();
+            foreach ($input['parts'] as $i => $p) {
+                \App\Models\JobPart::query()->create([
+                    'organization_id' => $job->organization_id, 'job_id' => $job->id, 'position' => $i,
+                    'kind' => $p['kind'], 'item' => trim($p['item']), 'quantity' => $p['quantity'],
+                    'price_minor' => $p['price_minor'] ?? null,
+                    // A delivery date belongs to a part being ordered.
+                    'delivery_on' => $p['kind'] === 'order' ? ($p['delivery_on'] ?? null) : null,
+                    'inventory_item_id' => $p['kind'] === 'stock' ? ($p['inventory_item_id'] ?? null) : null,
+                ]);
+            }
+        });
+        app(\App\Support\Audit\AuditLogger::class)->log('job.parts_set', $job, actor: $request->user());
+
+        return response()->json(['data' => \App\Models\JobPart::query()->where('job_id', $job->id)->orderBy('position')->get()
+            ->map(fn (\App\Models\JobPart $p) => $p->present())->values()]);
     }
 
     /** PATCH /api/v1/project-board/jobs/{job}/proposal: view or change the offered times. */

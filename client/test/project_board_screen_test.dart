@@ -207,6 +207,27 @@ void main() {
     expect(requests.last.url.queryParameters['dir'], 'desc');
     expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
 
+    // Part Status opens the parts list: one to order (Jose, 2026-11-10).
+    await tester.tap(find.byKey(const ValueKey('project-board-parts:j-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('project-board-part-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('project-board-part-item-0')),
+      'Stainless cap',
+    );
+    await tester.tap(find.byKey(const Key('project-board-parts-save')));
+    await tester.pumpAndSettle();
+    final put = requests.lastWhere(
+      (r) => r.method == 'PUT' && r.url.path.endsWith('/parts'),
+    );
+    expect((jsonDecode(put.body)['parts'] as List).single, {
+      'kind': 'order',
+      'item': 'Stainless cap',
+      'quantity': 1,
+      'price_minor': null,
+    });
+
     // The company's names and order; a hidden column is not drawn.
     expect(find.text('CLIENT'), findsOneWidget);
     expect(find.text('Lena Park'), findsOneWidget);

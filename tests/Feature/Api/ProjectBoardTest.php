@@ -338,6 +338,27 @@ class ProjectBoardTest extends TestCase
         $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'KENNI CREW'])->assertOk();
     }
 
+    public function test_a_jobs_parts_need_to_order_or_in_stock(): void
+    {
+        // Jose, 2026-11-10: "Part Status @ Need to Order or @ In Stock".
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']));
+        $api = $this->signedInAs($alpha['admin']);
+        $url = "/api/v1/project-board/jobs/{$id}/parts";
+
+        $api->putJson($url, ['parts' => [['kind' => 'order', 'item' => 'Cap', 'quantity' => 0]]])->assertStatus(422);
+        $api->putJson($url, ['parts' => [
+            ['kind' => 'order', 'item' => 'Stainless cap 13x13', 'quantity' => 2, 'price_minor' => 8900, 'delivery_on' => '2026-11-14'],
+            ['kind' => 'stock', 'item' => 'Mortar', 'quantity' => 1, 'price_minor' => 1200, 'delivery_on' => '2026-11-30'],
+        ]])->assertOk()->assertJsonCount(2, 'data')->assertJsonPath('data.1.delivery_on', null);
+
+        $parts = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.parts');
+        $this->assertSame(['order', 'stock'], array_column($parts, 'kind'));
+        $this->assertSame('2026-11-14', $parts[0]['delivery_on']);
+
+        $api->putJson($url, ['parts' => []])->assertOk()->assertJsonCount(0, 'data');
+    }
+
     private function job(Franchise $franchise, string $number, string $status, ?string $at = null, array $tags = [], array $payload = []): string
     {
         $customer = Customer::create(['owning_franchise_id' => $franchise->id, 'number' => "C-{$number}", 'name' => 'Ann Smith']);

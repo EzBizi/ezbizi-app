@@ -226,6 +226,35 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     setState(() {});
   }
 
+  /// The job's parts, each "Need to order" (item, quantity, price,
+  /// delivery date) or "In stock" (item, quantity, price), in a side panel.
+  Future<void> _editParts(Map<String, dynamic> row) async {
+    final parts = [
+      for (final p in (row['parts'] as List?) ?? const [])
+        if (p is Map) Map<String, dynamic>.from(p),
+    ];
+    final saved = await showSidePanel<List<Map<String, dynamic>>>(
+      context,
+      builder: (panel) => _PartsPanel(
+        customer: '${row['customer'] ?? ''}',
+        parts: parts,
+        formats: widget.session.me?.display ?? DisplayFormats.fallback,
+      ),
+    );
+    if (saved == null || !mounted) return;
+    final r = await widget.api.put('/project-board/jobs/${row['id']}/parts', {
+      'parts': saved,
+    });
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    _load(quiet: true);
+  }
+
   Widget _totalsStrip(Map<String, dynamic> t) {
     final theme = Theme.of(context);
     final currency = '${t['currency'] ?? 'USD'}';
@@ -301,6 +330,40 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   ) {
     final theme = Theme.of(context);
     switch (key) {
+      case 'part_status':
+        // The job's parts (Jose, 2026-11-10), else its part tags.
+        final parts = [
+          for (final p in (row['parts'] as List?) ?? const [])
+            if (p is Map) p,
+        ];
+        if (parts.isEmpty && !_canEditJobs) return null;
+        final order = parts.where((p) => p['kind'] == 'order').toList();
+        final stock = parts.length - order.length;
+        final eta = [
+          for (final p in order)
+            ?DateTime.tryParse('${p['delivery_on'] ?? ''}'),
+        ]..sort();
+        final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+        final summary = [
+          if (order.isNotEmpty) '${order.length} to order',
+          if (eta.isNotEmpty) 'ETA ${formats.formatDate(eta.last)}',
+          if (stock > 0) '$stock in stock',
+        ].join(' · ');
+        return InkWell(
+          key: ValueKey('project-board-parts:${row['id']}'),
+          onTap: _canEditJobs ? () => _editParts(row) : null,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: parts.isEmpty
+                ? (value == null
+                      ? const Text('Add parts…')
+                      : StatusPill('$value', tone: Tone.caution))
+                : StatusPill(
+                    summary,
+                    tone: order.isEmpty ? Tone.ok : Tone.caution,
+                  ),
+          ),
+        );
       case 'status_days':
         if (value is! int) return const Text('—');
         // Under 3 days green, 3 to 7 yellow, 7 and up red.
@@ -1565,3 +1628,209 @@ const _newline = '\n';
 
 /// Time slots offered in the Ready to schedule questions; any other can be typed.
 const _slots = ['8 - 11 AM', '11 AM - 2 PM', '2 - 5 PM'];
+
+/// Editing a job's parts: rows of kind, item, quantity, price and (to order)
+/// delivery date. Pops the list to save, or null.
+class _PartsPanel extends StatefulWidget {
+  const _PartsPanel({
+    required this.customer,
+    required this.parts,
+    required this.formats,
+  });
+
+  final String customer;
+  final List<Map<String, dynamic>> parts;
+  final DisplayFormats formats;
+
+  @override
+  State<_PartsPanel> createState() => _PartsPanelState();
+}
+
+class _PartsPanelState extends State<_PartsPanel> {
+  late final List<
+    ({
+      String kind,
+      TextEditingController item,
+      TextEditingController quantity,
+      TextEditingController price,
+      TextEditingController delivery,
+    })
+  >
+  _rows = [for (final p in widget.parts) _row(p)];
+
+  ({
+    String kind,
+    TextEditingController item,
+    TextEditingController quantity,
+    TextEditingController price,
+    TextEditingController delivery,
+  })
+  _row(Map<String, dynamic> p) => (
+    kind: '${p['kind'] ?? 'order'}',
+    item: TextEditingController(text: '${p['item'] ?? ''}'),
+    quantity: TextEditingController(text: '${p['quantity'] ?? 1}'),
+    price: TextEditingController(
+      text: p['price_minor'] is num
+          ? ((p['price_minor'] as num) / 100).toStringAsFixed(2)
+          : '',
+    ),
+    delivery: TextEditingController(text: '${p['delivery_on'] ?? ''}'),
+  );
+
+  @override
+  void dispose() {
+    for (final r in _rows) {
+      r.item.dispose();
+      r.quantity.dispose();
+      r.price.dispose();
+      r.delivery.dispose();
+    }
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _value => [
+    for (final r in _rows)
+      if (r.item.text.trim().isNotEmpty)
+        {
+          'kind': r.kind,
+          'item': r.item.text.trim(),
+          'quantity': int.tryParse(r.quantity.text.trim()) ?? 1,
+          'price_minor': switch (double.tryParse(
+            r.price.text.trim().replaceAll(r'$', ''),
+          )) {
+            final d? => (d * 100).round(),
+            null => null,
+          },
+          if (r.kind == 'order' && r.delivery.text.trim().isNotEmpty)
+            'delivery_on': r.delivery.text.trim(),
+        },
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    InputDecoration box(String label) => InputDecoration(
+      isDense: true,
+      labelText: label,
+      border: const OutlineInputBorder(),
+    );
+    return SidePanel(
+      title: 'Parts',
+      subtitle: widget.customer,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('project-board-parts-save'),
+          onPressed: () => Navigator.of(context).pop(_value),
+          child: const Text('Save'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, r) in _rows.indexed)
+            Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SegmentedButton<String>(
+                            key: ValueKey('project-board-part-kind-$i'),
+                            showSelectedIcon: false,
+                            segments: const [
+                              ButtonSegment(
+                                value: 'order',
+                                label: Text('Need to order'),
+                              ),
+                              ButtonSegment(
+                                value: 'stock',
+                                label: Text('In stock'),
+                              ),
+                            ],
+                            selected: {r.kind},
+                            onSelectionChanged: (v) => setState(
+                              () => _rows[i] = (
+                                kind: v.first,
+                                item: r.item,
+                                quantity: r.quantity,
+                                price: r.price,
+                                delivery: r.delivery,
+                              ),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove',
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => setState(() => _rows.removeAt(i)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      key: ValueKey('project-board-part-item-$i'),
+                      controller: r.item,
+                      decoration: box('Item'),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: r.quantity,
+                            keyboardType: TextInputType.number,
+                            decoration: box('Quantity'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: r.price,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: box('Price'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (r.kind == 'order') ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Delivery date',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 4),
+                      CalendarDayField(
+                        controller: r.delivery,
+                        formats: widget.formats,
+                        dense: true,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('project-board-part-add'),
+              onPressed: () => setState(
+                () => _rows.add(_row(const {'kind': 'order', 'quantity': 1})),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add a part'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
