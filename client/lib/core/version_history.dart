@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0560', date: '10 Nov 2026', items: [
+      'Newsletter: custom HTML carries the same address and unsubscribe footer as blocks; the composer shows which mode sends; paste or upload HTML or import an SVG with preview and Undo; a preflight check and one test email before sending',
       'Project Management: click a column to sort the whole list (click again to reverse); your choice is kept',
       'Project Management: Unassign a repair team; a job holds one repair team or contractor, shown as its coloured chip',
       'Project Management › Settings: choose which tags are repair teams, what Ready to schedule needs and the Status Time colours; tag lists are compact and searchable',
