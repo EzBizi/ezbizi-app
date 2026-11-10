@@ -1066,6 +1066,7 @@ Route::prefix('v1')
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
         Route::post('reviews/replies/draft-batch', [ReviewsController::class, 'draftBatch']);
+        Route::get('reviews/auto-replies', [ReviewsController::class, 'autoReplies']);
         Route::get('reviews/sources', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'sources']);
         // The eKomi screen (Jose, 2026-11-02).
         Route::get('ekomi', [\App\Http\Controllers\Api\EkomiController::class, 'index']);

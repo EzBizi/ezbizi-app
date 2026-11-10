@@ -246,6 +246,9 @@ void reviewLinkTests() {
       await _pump(tester, _handler(reachable: const ['reviews']));
       tester.view.physicalSize = const Size(390, 844);
       await tester.pumpAndSettle();
+      // The chip row scrolls on a phone; Auto-replies pushed this one past the edge.
+      await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'Review links'));
+      await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
       await tester.pumpAndSettle();
 
