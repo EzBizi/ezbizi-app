@@ -47,19 +47,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
-    expect(
-      sent.last.containsKey('invitable_roles'),
-      isFalse,
-      reason: 'An unchanged setting was sent back.',
-    );
+    expect(sent.last.containsKey('invitable_roles'), isFalse,
+        reason: 'An unchanged setting was sent back.');
 
     await tester.tap(_firstRole);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Only roles chosen here'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('role-invitable-r-3')),
-    );
+    await tester.ensureVisible(find.byKey(const ValueKey('role-invitable-r-3')));
     await tester.tap(find.byKey(const ValueKey('role-invitable-r-3')));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -146,9 +141,7 @@ void main() {
 
     await _pumpRoles(
       tester,
-      roles: [
-        _role('r-2', 'Manager', permissions: ['customers.view']),
-      ],
+      roles: [_role('r-2', 'Manager', permissions: ['customers.view'])],
       onPatch: (body) => sent = body,
     );
 
@@ -260,12 +253,10 @@ void main() {
     final builtIn = tester.getTopLeft(find.text('Built in'));
     final yours = tester.getTopLeft(find.text('Yours'));
     final admin = tester.getTopLeft(find.byKey(const ValueKey('role-row:r-1')));
-    final accounting = tester.getTopLeft(
-      find.byKey(const ValueKey('role-row:r-2')),
-    );
-    final dispatcher = tester.getTopLeft(
-      find.byKey(const ValueKey('role-row:r-3')),
-    );
+    final accounting =
+        tester.getTopLeft(find.byKey(const ValueKey('role-row:r-2')));
+    final dispatcher =
+        tester.getTopLeft(find.byKey(const ValueKey('role-row:r-3')));
 
     expect(builtIn.dy, lessThan(admin.dy));
     expect(admin.dy, lessThan(yours.dy));
@@ -298,8 +289,7 @@ void main() {
           'jobs',
           'Jobs',
           available: false,
-          reason:
-              'Jobs is paused for your organization while we fix an '
+          reason: 'Jobs is paused for your organization while we fix an '
               'issue with scheduling.',
         ),
       ],
@@ -309,7 +299,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Jobs'), findsOneWidget);
-    expect(find.textContaining('paused for your organization'), findsOneWidget);
+    expect(
+      find.textContaining('paused for your organization'),
+      findsOneWidget,
+    );
     expect(tester.widget<Checkbox>(_tabCheckbox('jobs')).onChanged, isNull);
 
     // The one beside it is still live, so "greyed" is about that module rather
@@ -327,9 +320,7 @@ void main() {
 
     await _pumpRoles(
       tester,
-      roles: [
-        _role('r-2', 'Dispatcher', permissions: const ['dashboard.view']),
-      ],
+      roles: [_role('r-2', 'Dispatcher', permissions: const ['dashboard.view'])],
       catalogue: [
         _catalogueModule('dashboard', 'Dashboard'),
         _catalogueModule('customers', 'Customers'),
@@ -364,12 +355,10 @@ void main() {
     );
 
     final titles = tester
-        .widgetList<Text>(
-          find.descendant(
-            of: find.byKey(const ValueKey('roles-grid')),
-            matching: find.byType(Text),
-          ),
-        )
+        .widgetList<Text>(find.descendant(
+          of: find.byKey(const ValueKey('roles-grid')),
+          matching: find.byType(Text),
+        ))
         .map((t) => t.data)
         .whereType<String>()
         .toList();
@@ -503,22 +492,14 @@ void main() {
       // Indented, which is the only thing on this screen that says where it is
       // drawn. Measured rather than asserted on a widget type, because the
       // indent is the whole statement.
-      final parent = tester
-          .getTopLeft(find.byKey(const ValueKey('module-name:marketing')))
-          .dx;
-      final child = tester
-          .getTopLeft(find.byKey(const ValueKey('module-name:leads')))
-          .dx;
+      final parent = tester.getTopLeft(find.byKey(const ValueKey('module-name:marketing'))).dx;
+      final child = tester.getTopLeft(find.byKey(const ValueKey('module-name:leads'))).dx;
 
       expect(child, greaterThan(parent));
 
       // And it is under Marketing rather than somewhere else in the list.
-      final marketingY = tester
-          .getTopLeft(find.byKey(const ValueKey('module:marketing')))
-          .dy;
-      final leadsY = tester
-          .getTopLeft(find.byKey(const ValueKey('module:leads')))
-          .dy;
+      final marketingY = tester.getTopLeft(find.byKey(const ValueKey('module:marketing'))).dy;
+      final leadsY = tester.getTopLeft(find.byKey(const ValueKey('module:leads'))).dy;
 
       expect(leadsY, greaterThan(marketingY));
     });
@@ -628,10 +609,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('The tab on its own opens none'),
-        findsNothing,
-      );
+      expect(find.textContaining('The tab on its own opens none'), findsNothing);
     });
 
     /// The control that carries the whole point: the tab is one grant and the
@@ -821,65 +799,57 @@ void main() {
     /// §4 again, one level down: a role can hold an inbox the person editing it
     /// cannot open. Shown, ticked, dead — and out of the payload, because
     /// naming it is a 422 for the whole save and omitting it is not a removal.
-    testWidgets(
-      'an inbox the editor cannot open is shown, dead, and preserved',
-      (tester) async {
-        _wide(tester);
+    testWidgets('an inbox the editor cannot open is shown, dead, and preserved',
+        (tester) async {
+      _wide(tester);
 
-        Map<String, dynamic>? sent;
+      Map<String, dynamic>? sent;
 
-        await _pumpRoles(
-          tester,
-          roles: [
-            _role(
-              'r-2',
-              'Supervisor',
-              permissions: ['email.view'],
-              inboxes: ['mb-1', 'mb-2'],
-            ),
-          ],
-          catalogue: [
-            _catalogueModule(
-              'email',
-              'Email',
-              actions: const [('view', 'View')],
-              inboxes: [
-                _inbox('mb-1', 'info@a-1chimney.com'),
-                _inbox('mb-2', 'payroll@everdoors.com', grantable: false),
-              ],
-            ),
-          ],
-          onPatch: (body) => sent = body,
-        );
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Supervisor',
+            permissions: ['email.view'],
+            inboxes: ['mb-1', 'mb-2'],
+          ),
+        ],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View')],
+            inboxes: [
+              _inbox('mb-1', 'info@a-1chimney.com'),
+              _inbox('mb-2', 'payroll@everdoors.com', grantable: false),
+            ],
+          ),
+        ],
+        onPatch: (body) => sent = body,
+      );
 
-        await tester.tap(_firstRole);
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Email'));
-        await tester.pumpAndSettle();
+      await tester.tap(_firstRole);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Email'));
+      await tester.pumpAndSettle();
 
-        final payroll = tester.widget<CheckboxListTile>(
-          find.byKey(const ValueKey('inbox:mb-2')),
-        );
+      final payroll = tester.widget<CheckboxListTile>(
+        find.byKey(const ValueKey('inbox:mb-2')),
+      );
 
-        expect(payroll.value, isTrue, reason: 'The role does hold it.');
-        expect(
-          payroll.onChanged,
-          isNull,
-          reason: 'This person cannot move it.',
-        );
+      expect(payroll.value, isTrue, reason: 'The role does hold it.');
+      expect(payroll.onChanged, isNull, reason: 'This person cannot move it.');
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Save'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
 
-        expect(sent!['inboxes'], ['mb-1']);
-      },
-    );
+      expect(sent!['inboxes'], ['mb-1']);
+    });
 
     /// Switching the tab off takes the mail with it — the state the server
     /// refuses is one the editor never produces.
-    testWidgets('unticking the tab clears the inboxes under it', (
-      tester,
-    ) async {
+    testWidgets('unticking the tab clears the inboxes under it', (tester) async {
       _wide(tester);
 
       Map<String, dynamic>? sent;
@@ -960,49 +930,48 @@ void main() {
       );
     });
 
-    testWidgets(
-      'named inspections nest under Inspection, not under Customers',
-      (tester) async {
-        _wide(tester);
+    testWidgets('named inspections nest under Inspection, not under Customers', (
+      tester,
+    ) async {
+      _wide(tester);
 
-        Map<String, dynamic>? sent;
+      Map<String, dynamic>? sent;
 
-        await _pumpRoles(
-          tester,
-          roles: [_role('r-2', 'Manager', permissions: const [])],
-          catalogue: [
-            _catalogueModule('customers', 'Customers'),
-            _catalogueModule(
-              'inspection',
-              'Inspection',
-              actions: const [('view', 'View'), ('create', 'Create')],
-              inspections: [
-                {'id': 'def-1', 'name': 'Level 1', 'grantable': true},
-              ],
-            ),
-          ],
-          onPatch: (body) => sent = body,
-        );
+      await _pumpRoles(
+        tester,
+        roles: [_role('r-2', 'Manager', permissions: const [])],
+        catalogue: [
+          _catalogueModule('customers', 'Customers'),
+          _catalogueModule(
+            'inspection',
+            'Inspection',
+            actions: const [('view', 'View'), ('create', 'Create')],
+            inspections: [
+              {'id': 'def-1', 'name': 'Level 1', 'grantable': true},
+            ],
+          ),
+        ],
+        onPatch: (body) => sent = body,
+      );
 
-        await tester.tap(_firstRole);
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Inspection'));
-        await tester.pumpAndSettle();
+      await tester.tap(_firstRole);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inspection'));
+      await tester.pumpAndSettle();
 
-        expect(find.text('Named inspections'), findsOneWidget);
-        expect(find.text('Level 1'), findsOneWidget);
+      expect(find.text('Named inspections'), findsOneWidget);
+      expect(find.text('Level 1'), findsOneWidget);
 
-        await tester.tap(_tabCheckbox('inspection'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('inbox:def-1')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Save'));
-        await tester.pumpAndSettle();
+      await tester.tap(_tabCheckbox('inspection'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('inbox:def-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
 
-        expect(sent!['inspections'], ['def-1']);
-        expect(sent!.containsKey('inboxes'), isFalse);
-      },
-    );
+      expect(sent!['inspections'], ['def-1']);
+      expect(sent!.containsKey('inboxes'), isFalse);
+    });
 
     /// Phone lines are NOT a per-role grant, and the editor must not offer
     /// them — even if a server still sends the key.
@@ -1309,17 +1278,14 @@ void main() {
     // 48 -> 56 at the label's own size); bodySmall costs 4pt of line height
     // and no wrap. Guard the wrap, which is the failure a longer label would
     // reintroduce, not the 4pt, which nobody can see on one row in a hundred.
-    final plain = tester
-        .getSize(find.byKey(const ValueKey('action:training.view')))
-        .height;
-    final withSuffix = tester
-        .getSize(find.byKey(const ValueKey('action:training.assign')))
-        .height;
+    final plain =
+        tester.getSize(find.byKey(const ValueKey('action:training.view'))).height;
+    final withSuffix =
+        tester.getSize(find.byKey(const ValueKey('action:training.assign'))).height;
     expect(
       withSuffix,
       lessThan(plain + 8),
-      reason:
-          'The requirement suffix wrapped onto a second line at this '
+      reason: 'The requirement suffix wrapped onto a second line at this '
           'width. Shorten it or move it under the label.',
     );
   });
@@ -1371,44 +1337,43 @@ void main() {
     );
   });
 
-  testWidgets(
-    'on a phone the requirement is under the label, not behind a tap',
-    (tester) async {
-      tester.view.physicalSize = const Size(400, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+  testWidgets('on a phone the requirement is under the label, not behind a tap', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
 
-      await _pumpRoles(
-        tester,
-        roles: [_role('r-2', 'Manager', permissions: const [])],
-        catalogue: [
-          _catalogueModule(
-            'training',
-            'Training',
-            actions: const [
-              ('view', 'View'),
-              ('monitor', 'Monitor training'),
-              ('assign', 'Assign a guide'),
-            ],
-            requires: const {
-              'assign': ['training.monitor'],
-            },
-          ),
-        ],
-      );
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [
+        _catalogueModule(
+          'training',
+          'Training',
+          actions: const [
+            ('view', 'View'),
+            ('monitor', 'Monitor training'),
+            ('assign', 'Assign a guide'),
+          ],
+          requires: const {
+            'assign': ['training.monitor'],
+          },
+        ),
+      ],
+    );
 
-      await tester.tap(_firstRole);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Training'));
-      await tester.pumpAndSettle();
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Training'));
+    await tester.pumpAndSettle();
 
-      // Stated at rest, with nothing ticked and nothing tapped.
-      expect(find.text('Needs Monitor training'), findsOneWidget);
-      // And NOT also as a suffix: two slots measured separately would say it
-      // twice, which is what the single LayoutBuilder exists to prevent.
-      expect(find.textContaining('·  needs'), findsNothing);
-    },
-  );
+    // Stated at rest, with nothing ticked and nothing tapped.
+    expect(find.text('Needs Monitor training'), findsOneWidget);
+    // And NOT also as a suffix: two slots measured separately would say it
+    // twice, which is what the single LayoutBuilder exists to prevent.
+    expect(find.textContaining('·  needs'), findsNothing);
+  });
 
   /// UI queue 111, option 1: the role as one grid, a row per module.
   group('the roles grid', () {
@@ -1429,96 +1394,90 @@ void main() {
       ),
     ];
 
-    testWidgets(
-      'each row counts what the role holds, with an all/some/none box',
-      (tester) async {
-        _wide(tester);
+    testWidgets('each row counts what the role holds, with an all/some/none box',
+        (tester) async {
+      _wide(tester);
 
-        await _pumpRoles(
-          tester,
-          roles: [
-            _role(
-              'r-2',
-              'Dispatcher',
-              permissions: [
-                'customers.view',
-                'customers.edit',
-                'hr.view',
-                'hr.create',
-                'hr.records',
-              ],
-              users: 5,
-              people: [
-                {'id': 'u-7', 'name': 'Dana Reyes'},
-                {'id': 'u-8', 'name': 'Pat Lin'},
-              ],
-            ),
-          ],
-          catalogue: catalogue(),
-        );
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Dispatcher',
+            permissions: [
+              'customers.view',
+              'customers.edit',
+              'hr.view',
+              'hr.create',
+              'hr.records',
+            ],
+            users: 5,
+            people: [
+              {'id': 'u-7', 'name': 'Dana Reyes'},
+              {'id': 'u-8', 'name': 'Pat Lin'},
+            ],
+          ),
+        ],
+        catalogue: catalogue(),
+      );
 
-        String text(String key) =>
-            tester.widget<Text>(find.byKey(ValueKey(key))).data!;
+      String text(String key) =>
+          tester.widget<Text>(find.byKey(ValueKey(key))).data!;
 
-        expect(text('role-counts'), '5 people · 2 modules');
+      expect(text('role-counts'), '5 people · 2 modules');
 
-        // Some: view and edit of four.
-        expect(_tabState('customers'), isNull);
-        expect(text('can-do-text:customers'), '2 of 4 · view, edit');
-        expect(text('tabs:customers'), '—', reason: 'Customers has no tabs.');
+      // Some: view and edit of four.
+      expect(_tabState('customers'), isNull);
+      expect(text('can-do-text:customers'), '2 of 4 · view, edit');
+      expect(text('tabs:customers'), '—', reason: 'Customers has no tabs.');
 
-        // None: not opened, so nothing to count.
-        expect(_tabState('jobs'), isFalse);
-        expect(text('can-do-text:jobs'), '—');
+      // None: not opened, so nothing to count.
+      expect(_tabState('jobs'), isFalse);
+      expect(text('can-do-text:jobs'), '—');
 
-        // Tabs are counted apart from what can be done.
-        expect(text('tabs:hr'), '1 of 2');
-        expect(text('can-do-text:hr'), '2 of 3 · view, invite');
-        expect(text('invite:hr'), 'Roles within their own');
-        expect(text('invite:customers'), '—');
+      // Tabs are counted apart from what can be done.
+      expect(text('tabs:hr'), '1 of 2');
+      expect(text('can-do-text:hr'), '2 of 3 · view, invite');
+      expect(text('invite:hr'), 'Roles within their own');
+      expect(text('invite:customers'), '—');
 
-        // Who has it: the names sent, and the rest as a number.
-        expect(find.text('DR'), findsOneWidget);
-        expect(find.text('Dana Reyes'), findsOneWidget);
-        expect(find.text('Pat Lin'), findsOneWidget);
-        expect(text('role-people-more'), '+3');
-      },
-    );
+      // Who has it: the names sent, and the rest as a number.
+      expect(find.text('DR'), findsOneWidget);
+      expect(find.text('Dana Reyes'), findsOneWidget);
+      expect(find.text('Pat Lin'), findsOneWidget);
+      expect(text('role-people-more'), '+3');
+    });
 
-    testWidgets(
-      'all of it is a full box, and a missing people list is a count',
-      (tester) async {
-        _wide(tester);
+    testWidgets('all of it is a full box, and a missing people list is a count',
+        (tester) async {
+      _wide(tester);
 
-        await _pumpRoles(
-          tester,
-          roles: [
-            _role(
-              'r-2',
-              'Dispatcher',
-              permissions: [
-                'jobs.view',
-                'jobs.create',
-                'jobs.edit',
-                'jobs.delete',
-              ],
-              users: 4,
-            ),
-          ],
-          catalogue: catalogue(),
-        );
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Dispatcher',
+            permissions: [
+              'jobs.view',
+              'jobs.create',
+              'jobs.edit',
+              'jobs.delete',
+            ],
+            users: 4,
+          ),
+        ],
+        catalogue: catalogue(),
+      );
 
-        expect(_tabState('jobs'), isTrue);
-        expect(
-          tester
-              .widget<Text>(find.byKey(const ValueKey('can-do-text:jobs')))
-              .data,
-          'all 4',
-        );
-        expect(find.text('4 people hold this role.'), findsOneWidget);
-        expect(find.byKey(const ValueKey('role-people-more')), findsNothing);
-      },
-    );
+      expect(_tabState('jobs'), isTrue);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('can-do-text:jobs'))).data,
+        'all 4',
+      );
+      expect(find.text('4 people hold this role.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('role-people-more')), findsNothing);
+    });
 
     testWidgets('a row opens in place, and its save is the same request', (
       tester,
@@ -1529,9 +1488,7 @@ void main() {
 
       await _pumpRoles(
         tester,
-        roles: [
-          _role('r-2', 'Dispatcher', permissions: ['customers.view']),
-        ],
+        roles: [_role('r-2', 'Dispatcher', permissions: ['customers.view'])],
         onPatch: (body) => sent = body,
       );
 
@@ -1573,18 +1530,13 @@ void main() {
 
       await _pumpRoles(
         tester,
-        roles: [
-          _role('r-2', 'Dispatcher', permissions: ['customers.view']),
-        ],
+        roles: [_role('r-2', 'Dispatcher', permissions: ['customers.view'])],
         onPatch: (body) => sent = body,
       );
 
       await tester.tap(find.byKey(const ValueKey('role-rename')));
       await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byType(TextField).last,
-        'Brightside dispatch',
-      );
+      await tester.enterText(find.byType(TextField).last, 'Brightside dispatch');
       await tester.tap(find.widgetWithText(FilledButton, 'Save').last);
       await tester.pumpAndSettle();
 
@@ -1661,7 +1613,11 @@ void main() {
         tester,
         roles: [
           _role('r-2', 'Dispatcher', permissions: const []),
-          _role('r-3', 'Technician', permissions: ['jobs.view', 'jobs.edit']),
+          _role(
+            'r-3',
+            'Technician',
+            permissions: ['jobs.view', 'jobs.edit'],
+          ),
         ],
       );
 
@@ -1753,7 +1709,8 @@ Finder _tabCheckbox(String moduleKey) => find
 bool? _tabState(String moduleKey) => _boxState(ValueKey('can-do:$moduleKey'));
 
 bool? _boxState(Key key) {
-  final icon = (find.byKey(key).evaluate().single.widget as Icon).icon;
+  final icon =
+      (find.byKey(key).evaluate().single.widget as Icon).icon;
   if (icon == Icons.check_box) return true;
   if (icon == Icons.indeterminate_check_box) return null;
   expect(icon, Icons.check_box_outline_blank);
@@ -1764,8 +1721,7 @@ bool? _boxState(Key key) {
 /// list; on a phone the list is all there is until one is tapped.
 final Finder _firstRole = find
     .byWidgetPredicate(
-      (w) =>
-          w.key is ValueKey<String> &&
+      (w) => w.key is ValueKey<String> &&
           (w.key as ValueKey<String>).value.startsWith('role-row:'),
     )
     .first;
@@ -1776,31 +1732,29 @@ Future<void> _pumpRoles(
   List<Map<String, dynamic>>? catalogue,
   void Function(Map<String, dynamic> body)? onPatch,
 }) async {
-  final api = ApiClient(
-    client: MockClient((request) async {
-      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+  final api = ApiClient(client: MockClient((request) async {
+    if (request.url.path.endsWith('/me')) return _json({'data': _me});
 
-      if (request.url.path.endsWith('/roles/catalogue')) {
-        // `modules` at the top level, with no `data` around it — the shape
-        // RolesController@catalogue actually answers with.
-        return _json({
-          'modules':
-              catalogue ??
-              [
-                _catalogueModule('customers', 'Customers'),
-                _catalogueModule('jobs', 'Jobs'),
-              ],
-        });
-      }
+    if (request.url.path.endsWith('/roles/catalogue')) {
+      // `modules` at the top level, with no `data` around it — the shape
+      // RolesController@catalogue actually answers with.
+      return _json({
+        'modules':
+            catalogue ??
+            [
+              _catalogueModule('customers', 'Customers'),
+              _catalogueModule('jobs', 'Jobs'),
+            ],
+      });
+    }
 
-      if (request.method == 'PATCH') {
-        onPatch?.call(jsonDecode(request.body) as Map<String, dynamic>);
-        return _json({'data': roles.first});
-      }
+    if (request.method == 'PATCH') {
+      onPatch?.call(jsonDecode(request.body) as Map<String, dynamic>);
+      return _json({'data': roles.first});
+    }
 
-      return _json({'data': roles});
-    }),
-  );
+    return _json({'data': roles});
+  }));
 
   final session = Session(api);
 
@@ -1815,9 +1769,7 @@ Future<void> _pumpRoles(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(
-        body: RolesScreen(api: api, session: session),
-      ),
+      home: Scaffold(body: RolesScreen(api: api, session: session)),
     ),
   );
   await tester.pumpAndSettle();
@@ -1827,27 +1779,25 @@ Future<void> _pumpSettingsShell(
   WidgetTester tester, {
   required bool rolesReachable,
 }) async {
-  final api = ApiClient(
-    client: MockClient((request) async {
-      if (request.url.path.endsWith('/me')) {
-        return _json({
-          'data': {
-            ..._me,
-            'modules': [
-              {
-                'key': 'roles',
-                'label': 'Roles & permissions',
-                'available': true,
-                'reachable': rolesReachable,
-              },
-            ],
-          },
-        });
-      }
+  final api = ApiClient(client: MockClient((request) async {
+    if (request.url.path.endsWith('/me')) {
+      return _json({
+        'data': {
+          ..._me,
+          'modules': [
+            {
+              'key': 'roles',
+              'label': 'Roles & permissions',
+              'available': true,
+              'reachable': rolesReachable,
+            },
+          ],
+        },
+      });
+    }
 
-      return _json({'data': const <dynamic>[]});
-    }),
-  );
+    return _json({'data': const <dynamic>[]});
+  }));
 
   final session = Session(api);
 
@@ -1856,9 +1806,7 @@ Future<void> _pumpSettingsShell(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(
-        body: SettingsShell(api: api, session: session),
-      ),
+      home: Scaffold(body: SettingsShell(api: api, session: session)),
     ),
   );
   await tester.pumpAndSettle();
@@ -1904,7 +1852,12 @@ Map<String, dynamic> _inbox(
   String address, {
   String? name,
   bool grantable = true,
-}) => {'id': id, 'address': address, 'label': name, 'grantable': grantable};
+}) => {
+  'id': id,
+  'address': address,
+  'label': name,
+  'grantable': grantable,
+};
 
 /// One module in the grantable tree. The default action set is the CRUD one the
 /// server's registry declares, spelled out here rather than assumed anywhere in
@@ -1921,7 +1874,6 @@ Map<String, dynamic> _catalogueModule(
     ('edit', 'Edit'),
     ('delete', 'Delete'),
   ],
-
   /// Null — the default — means the key is ABSENT from the answer, which is how
   /// the server says a module has nothing to do with mail. An empty list is a
   /// different statement: it takes inboxes and this organization has connected
