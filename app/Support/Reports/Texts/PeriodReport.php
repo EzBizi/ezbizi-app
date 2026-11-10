@@ -93,7 +93,7 @@ final class PeriodReport
     {
         $branches = Franchise::query()->withoutGlobalScopes()
             ->where('organization_id', $organization->getKey())
-            ->where('is_active', true)
+            ->switchedOn()
             ->whereIn('id', ReportJobs::branchesWithJobs((string) $organization->getKey()))
             ->orderBy('name')
             ->get();

@@ -45,7 +45,8 @@ class SchedulingBoardController extends Controller
             'franchise_id' => ['nullable', 'uuid'],
         ]);
 
-        $inView = ViewScope::forUser($request->user())->franchiseIds();
+        // A switched-off branch is not on the board (Jose, 2026-11-10).
+        $inView = ViewScope::forUser($request->user())->switchedOnFranchiseIds();
         $franchiseIds = ($data['franchise_id'] ?? null) !== null
             ? array_values(array_intersect($inView, [$data['franchise_id']]))
             : $inView;

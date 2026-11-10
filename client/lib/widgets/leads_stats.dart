@@ -166,7 +166,7 @@ class _LeadsStatsState extends State<LeadsStats> {
     if (_error != null) {
       return Center(child: Text(_error!, style: theme.textTheme.bodyMedium));
     }
-    final places = widget.session.me?.franchises ?? const [];
+    final places = widget.session.me?.switchableFranchises ?? const [];
 
     return LayoutBuilder(
       builder: (context, box) {

@@ -48,7 +48,8 @@ class ProjectBoardController extends Controller
         // The Franchise filter lists the franchises in the viewer's reach, in the
         // company they are looking at; a franchise outside it is refused, not widened.
         $reach = ViewScope::forUser($user)->franchiseIds();
-        $franchises = Franchise::query()->whereIn('id', $reach)->with('company:id,name')->orderBy('name')->get(['id', 'name', 'company_id']);
+        // A switched-off branch is not a filter choice (Jose, 2026-11-10).
+        $franchises = Franchise::query()->whereIn('id', $reach)->switchedOn()->with('company:id,name')->orderBy('name')->get(['id', 'name', 'company_id']);
         $companies = Company::query()->get(['id', 'name', 'parent_company_id']);
         $chosen = $input['franchise_id'] ?? null;
         abort_if($chosen !== null && ! in_array($chosen, $reach, true), Response::HTTP_FORBIDDEN, 'That franchise is not in your view.');

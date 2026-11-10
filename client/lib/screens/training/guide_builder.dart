@@ -1055,13 +1055,13 @@ String _scopeLabel(Me? me, Map<String, dynamic> entry) {
 
   final franchiseId = entry['franchise_id'] as String?;
   if (franchiseId != null) {
-    final franchise = me.franchisesInView.where((f) => f.id == franchiseId).firstOrNull;
+    final franchise = me.franchises.where((f) => f.id == franchiseId).firstOrNull;
     if (franchise != null) return franchise.name;
   }
 
   final companyId = entry['company_id'] as String?;
   if (companyId != null) {
-    final company = me.companiesInView.where((c) => c.id == companyId).firstOrNull;
+    final company = me.companies.where((c) => c.id == companyId).firstOrNull;
     if (company != null) return company.name;
   }
 

@@ -722,7 +722,7 @@ class _NumbersPaneState extends State<NumbersPane> {
   /// The company a line belongs to, by name, when this view spans several.
   /// The row carries `scope_id`; the name is the one `/me` already has.
   String _company(_Line line) {
-    final company = _me.companiesInView
+    final company = _me.companies
         .where((c) => c.id == line.scopeId)
         .firstOrNull;
 

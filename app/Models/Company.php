@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\TenantScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -57,6 +59,34 @@ class Company extends Model
     public function franchises(): HasMany
     {
         return $this->hasMany(Franchise::class);
+    }
+
+    // ── switched off ─────────────────────────────────────────────
+
+    /**
+     * Switched off: its own switch is off, or it is a Sub Company under a
+     * parent that is. THE one place this rule lives (ViewScope, /me, every
+     * list). Rows stay, Settings › Organization still lists them, and a record
+     * that names one still reads its name; only lists and pickers leave them
+     * out (Jose, 2026-11-10: "switched off companies ... should not show up
+     * anywhere on the app, the information should still be there though").
+     */
+    public function scopeSwitchedOff(Builder $query): void
+    {
+        // The parent is reached by its key: no tenant needed, so a report
+        // reading across tenants can use this too.
+        $query->where(fn (Builder $q) => $q->where($q->qualifyColumn('is_active'), false)
+            ->orWhereHas('parent', fn (Builder $p) => $p->withoutGlobalScope(TenantScope::class)->where('is_active', false)));
+    }
+
+    public function scopeSwitchedOn(Builder $query): void
+    {
+        $query->whereNot(fn (Builder $q) => $q->switchedOff());
+    }
+
+    public static function isSwitchedOff(?string $id): bool
+    {
+        return $id !== null && static::query()->whereKey($id)->switchedOff()->exists();
     }
 
     // ── shape ────────────────────────────────────────────────────

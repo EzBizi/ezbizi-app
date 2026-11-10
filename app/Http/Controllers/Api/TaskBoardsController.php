@@ -50,7 +50,13 @@ class TaskBoardsController extends Controller
             ->orWhere(fn ($q) => $q->where('kind', TaskBoard::KIND_USER)
                 ->whereHas('owner', fn ($o) => $o->where('is_active', false))));
 
-        $boards = $this->boards->visibleTo($user)
+        // A board of a switched-off company or place, or one filed on either,
+        // is not listed (Jose, 2026-11-10: "on task board, switched off
+        // companies should not show up"). Its rows and tasks stay.
+        $switchedOn = fn ($q) => $q->whereDoesntHave('company', fn ($c) => $c->switchedOff())
+            ->whereDoesntHave('franchise', fn ($f) => $f->switchedOff());
+
+        $boards = $this->boards->visibleTo($user)->where($switchedOn)
             ->when($archived, $ownerGone, fn ($q) => $q->whereNot($ownerGone))
             ->when($archived && ! $user->isAdministrator(), fn ($q) => $q->whereNotNull('archived_at'))
             ->withCount(['tasks as open_for_me' => fn ($q) => $q
@@ -96,7 +102,7 @@ class TaskBoardsController extends Controller
             ];
         })->concat($archived ? $this->deleted($user) : [])->all(), 'meta' => [
             // The Archived list's switch, with how many wait there.
-            'archived_count' => $archived ? null : $this->boards->visibleTo($user)->where($ownerGone)
+            'archived_count' => $archived ? null : $this->boards->visibleTo($user)->where($switchedOn)->where($ownerGone)
                 ->when(! $user->isAdministrator(), fn ($q) => $q->whereNotNull('archived_at'))->count()
                 + $this->deleted($user)->count(),
         ]]);

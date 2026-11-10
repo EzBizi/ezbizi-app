@@ -798,7 +798,8 @@ class _SourcePanelState extends State<_SourcePanel> {
       return setState(() => _error = 'Choose the part and the Airtable table.');
     }
     final parts = _table!.split('/');
-    final franchise = widget.me.franchisesInView
+    // Reach, not the view: a source already on a switched-off branch keeps it.
+    final franchise = widget.me.franchises
         .where((f) => f.id == _place)
         .firstOrNull;
     final body = {

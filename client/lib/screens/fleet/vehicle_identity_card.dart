@@ -464,7 +464,10 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                     value: fleetOrgValue,
                     label: _me.organization.name,
                   ),
-                for (final c in _me.companiesInView)
+                for (final c in _me.companiesKeeping(
+                  _me.companiesInView,
+                  _companyId,
+                ))
                   SearchOption(value: c.id, label: c.name),
               ],
               enabled
@@ -487,7 +490,11 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                   value: fleetGeneralValue,
                   label: fleetGeneralLabel,
                 ),
-                for (final f in branchOptions(_places, _me.companies, activeOnly: false))
+                for (final f in branchOptions(
+                  _me.franchisesKeeping(_places, _franchiseId),
+                  _me.companies,
+                  activeOnly: false,
+                ))
                   SearchOption(value: f.id, label: f.label),
               ],
               enabled
