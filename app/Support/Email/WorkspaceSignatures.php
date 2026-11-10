@@ -98,7 +98,7 @@ final class WorkspaceSignatures
                 $how  = 'same_email';
             }
 
-            $person['fields'] = $row?->fields ?? [];
+            $person['fields'] = $row?->fields ?? [];   // the client reads either shape
             [$source, $using] = $this->resolve($connection, $row, $templates);
             $rendered = $source === null ? null : $this->render($source, $person, $user, $this->companyName($connection));
 
