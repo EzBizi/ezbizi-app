@@ -510,8 +510,14 @@ tar -czf - \
     -C /var/repos ezbizi.git \
     -C /var/www/ezbizi .env storage \
     2>/dev/null | encrypt_to "$RUN_WORK/app-${RUN_ID}.tar.gz.gpg"
+app_rc=("${PIPESTATUS[@]}")
 
-all_ok "${PIPESTATUS[@]}" || errors+=("app-archive")
+# GNU tar exits 1 for "file changed as we read it" — live storage (monitoring
+# screenshots, temp dirs) moves during the read, and that failed every other
+# night from 11-06. The archive is still complete for everything that held
+# still; only 2+ is a real tar failure.
+(( app_rc[0] == 1 )) && app_rc[0]=0
+all_ok "${app_rc[@]}" || errors+=("app-archive")
 
 # `storage` remains in the application archive above to preserve the existing
 # backup exactly. This second encrypted archive gives customer files the
