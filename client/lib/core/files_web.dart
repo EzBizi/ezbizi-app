@@ -173,3 +173,5 @@ String? previewUrl(List<int> bytes, String mime) {
 }
 
 void releasePreviewUrl(String url) => web.URL.revokeObjectURL(url);
+
+bool get underTest => false;

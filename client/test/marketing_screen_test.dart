@@ -22,6 +22,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:video_player/video_player.dart';
 
 /// Marketing — Newsletter and Social Media Management, both built.
 ///
@@ -1873,6 +1874,84 @@ void main() {
       expect(find.textContaining('sweep.mp4'), findsWidgets);
       expect(find.textContaining('2 KB'), findsOneWidget);
     });
+
+    /// Jose, 2026-11-10: "I attached a video, on the preview on the right
+    /// side, it should actually show the video".
+    Future<List<_FakeVideo>> attachVideo(
+      WidgetTester tester, {
+      bool fails = false,
+    }) async {
+      final made = <_FakeVideo>[];
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard, _tiktokDirect],
+        ),
+        pickMedia: () async =>
+            PickedBytes('sweep.mp4', List<int>.filled(2048, 7)),
+        videoPlayer: (uri) {
+          final video = _FakeVideo(uri, fails: fails);
+          made.add(video);
+          return video;
+        },
+      );
+      await _openCompose(tester);
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-7')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Attach a picture or video'),
+      );
+      await tester.pumpAndSettle();
+      return made;
+    }
+
+    testWidgets('one player plays the video in the box and every card', (
+      tester,
+    ) async {
+      final made = await attachVideo(tester);
+
+      expect(made, hasLength(1));
+      final players = tester
+          .widgetList<VideoPlayer>(find.byType(VideoPlayer))
+          .toList();
+      // The attachment box and both network cards.
+      expect(players, hasLength(3));
+      for (final p in players) {
+        expect(identical(p.controller, made.single), isTrue);
+      }
+      expect(made.single.volume, 0);
+      expect(find.text('0:42'), findsNWidgets(3));
+
+      await tester.tap(find.byKey(const ValueKey('social-video-toggle')).first);
+      await tester.pump();
+      expect(made.single.value.isPlaying, isTrue);
+    });
+
+    testWidgets('Remove disposes the player once nothing draws it', (
+      tester,
+    ) async {
+      final made = await attachVideo(tester);
+      expect(made.single.disposed, isFalse);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Remove'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VideoPlayer), findsNothing);
+      expect(made.single.disposed, isTrue);
+    });
+
+    testWidgets('a video that will not load says Preview not available', (
+      tester,
+    ) async {
+      await attachVideo(tester, fails: true);
+
+      expect(find.byType(VideoPlayer), findsNothing);
+      expect(find.text('Preview not available'), findsNWidgets(3));
+      expect(find.textContaining('sweep.mp4'), findsWidgets);
+    });
   });
 
   /// Scheduling. The promise is a wall clock in THIS view's timezone, and the
@@ -3513,13 +3592,49 @@ Future<void> _pumpSocial(
   WidgetTester tester,
   MockClientHandler handler, {
   Future<PickedBytes?> Function()? pickMedia,
+  VideoPlayerController? Function(Uri)? videoPlayer,
   Size size = const Size(1400, 1600),
 }) =>
     _pump(tester, handler, size, (api, session) => SocialMediaTab(
           api: api,
           session: session,
           pickMedia: pickMedia ?? () async => null,
+          videoPlayer: videoPlayer ?? (_) => null,
         ));
+
+/// A player with no platform behind it: 16:9, 42 seconds, or a refusal.
+class _FakeVideo extends VideoPlayerController {
+  _FakeVideo(super.url, {this.fails = false}) : super.networkUrl();
+
+  final bool fails;
+  bool disposed = false;
+  double? volume;
+
+  @override
+  Future<void> initialize() async {
+    if (fails) throw Exception('cannot decode');
+    value = value.copyWith(
+      isInitialized: true,
+      size: const Size(1920, 1080),
+      duration: const Duration(seconds: 42),
+    );
+  }
+
+  @override
+  Future<void> setVolume(double volume) async => this.volume = volume;
+
+  @override
+  Future<void> play() async => value = value.copyWith(isPlaying: true);
+
+  @override
+  Future<void> pause() async => value = value.copyWith(isPlaying: false);
+
+  @override
+  Future<void> dispose() async {
+    disposed = true;
+    await super.dispose();
+  }
+}
 
 /// Marketing → Social Media Management → Posts, which is where compose lives.
 Future<void> _openPosts(WidgetTester tester) async {
