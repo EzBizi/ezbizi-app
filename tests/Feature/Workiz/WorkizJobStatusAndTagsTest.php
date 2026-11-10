@@ -105,11 +105,40 @@ class WorkizJobStatusAndTagsTest extends TestCase
         $this->inTenant($this->t['org'], fn () => $this->writer()->setTags($this->job, ['DEPOSIT RECEIVED', 'dont  change tech']));
 
         Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['tags'] === ['TAG-D', 'TAG-T']);
-        $this->assertSame(['Membership'], $this->inTenant($this->t['org'], fn () => \App\Models\AuditEvent::query()->where('action', 'workiz.job_tags_set')->sole()->metadata['removed']));
+        // v2 only adds; with no web login nothing could come off, and the audit says so (desk 11-10).
+        $audit = $this->inTenant($this->t['org'], fn () => \App\Models\AuditEvent::query()->where('action', 'workiz.job_tags_set')->sole()->metadata);
+        $this->assertSame([[], ['Membership']], [$audit['removed'], $audit['not_removed']]);
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Workiz has no tag "VIP" in this account.');
         $this->inTenant($this->t['org'], fn () => $this->writer()->setTags($this->job, ['VIP']));
+    }
+
+    /** Desk 11-10: v2's PUT only adds a tag; the one to drop comes off through the web login's job page call. */
+    public function test_a_dropped_tag_is_taken_off_through_the_web_login(): void
+    {
+        $this->inTenant($this->t['org'], function () {
+            $web = new SocialConnection;
+            $web->forceFill(['organization_id' => $this->t['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $this->t['company']->id,
+                'provider' => SocialProvider::WorkizWeb->value, 'remote_id' => $this->t['company']->id, 'display_name' => 'Workiz web login']);
+            $web->connect(['cookies' => ['sendajob_sessid' => 's'], 'user_id' => '1', 'account_id' => '2', 'accounts' => ['main' => $this->t['franchise']->id]]);
+            $web->forceFill(['status' => 'connected'])->save();
+        });
+        $job = array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1', 'tags' => [['id' => 'TAG-1', 'name' => 'Membership'], ['id' => 'TAG-D', 'name' => 'DEPOSIT RECEIVED']]]);
+        Http::fake([
+            'api.workiz.com/crm/api/v2/tags*' => Http::response(['data' => [['id' => 'TAG-1', 'name' => 'Membership'], ['id' => 'TAG-D', 'name' => 'DEPOSIT RECEIVED']]]),
+            'api.workiz.com/crm/api/v2/jobs/JOB-1' => fn (Request $r) => Http::response($r->method() === 'GET' ? ['data' => [$job]] : $job),
+            'app.workiz.com/ajaxc/jobTags/getAll/' => Http::response(['flag' => true, 'data' => [['id' => '901', 'name' => 'MEMBERSHIP'], ['id' => '902', 'name' => 'DEPOSIT RECEIVED']]]),
+            'app.workiz.com/ajaxc/job/get/*' => Http::response(['flag' => true, 'data' => ['id' => '555']]),
+            'app.workiz.com/ajaxc/jobTags/remove/' => Http::response(['flag' => true, 'msg' => 'Tag removed']),
+            'app.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->inTenant($this->t['org'], fn () => $this->writer()->setTags($this->job, ['DEPOSIT RECEIVED']));
+
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/ajaxc/jobTags/remove/') && $r['id'] === '901' && $r['objectId'] === '555' && $r['context'] === 'job');
+        $audit = $this->inTenant($this->t['org'], fn () => \App\Models\AuditEvent::query()->where('action', 'workiz.job_tags_set')->sole()->metadata);
+        $this->assertSame([['Membership'], []], [$audit['removed'], $audit['not_removed']]);
     }
 
     /** Jose's Action 1, 2026-10-22: payment in, time off the schedule. isScheduled:false is what Workiz takes (measured on 900018655). */

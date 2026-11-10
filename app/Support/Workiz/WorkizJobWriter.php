@@ -464,9 +464,10 @@ final class WorkizJobWriter
      * Make the job's tags exactly these names (Jose, 2026-10-21: "existing
      * tags should be removed"). Each name is the account's own tag (GET
      * /tags), matched without case and spacing, or by one close spelling,
-     * since accounts spell them differently ("DEPOSIT RECIEVED" on NY). A tag
-     * the account lacks is refused, never created. The tags dropped are
-     * audited under `removed`.
+     * since accounts spell them differently. A tag the account lacks is
+     * refused, never created. v2 only adds, so the tags to drop are taken off
+     * through the web login (WorkizWebSession::removeJobTags); the audit says
+     * which came off (`removed`) and which Workiz still holds (`not_removed`).
      *
      * @param  list<string>  $names
      */
@@ -485,7 +486,10 @@ final class WorkizJobWriter
         $current = is_array($current) && array_is_list($current) ? ($current[0] ?? []) : (array) $current;
         $removed = collect($current['tags'] ?? [])->reject(fn ($t) => in_array($t['id'] ?? null, $ids, true))->pluck('name')->values()->all();
 
-        return $this->put($connection, $job, $id, ['tags' => $ids], 'workiz.job_tags_set', ['tags' => $names, 'removed' => $removed]);
+        $dropped = $removed === [] ? ['removed' => [], 'refused' => null] : WorkizWebSession::removeJobTags($job->franchise_id, (string) $job->remote_id, $removed);
+
+        return $this->put($connection, $job, $id, ['tags' => $ids], 'workiz.job_tags_set', ['tags' => $names, 'removed' => $dropped['removed'],
+            'not_removed' => array_values(array_diff($removed, $dropped['removed'])), 'not_removed_because' => $dropped['refused']]);
     }
 
     /** @return array{0: SocialConnection, 1: string} */
