@@ -1008,7 +1008,8 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'project_board.part_tags', label: 'Project Management: job tags that are a part status',
                 type: SettingDefinition::TYPE_JSON,
-                default: ['WAITING PARTS', 'PARTS ORDERED', 'PARTS RECEIVED'],
+                // A-1's Workiz tags after the 11-10 cleanup: only WAITING PARTS exists.
+                default: ['WAITING PARTS'],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'Shown in the Part Status column.',
             ),
@@ -1042,7 +1043,7 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'project_board.labels', label: 'Project Management: label colours',
                 type: SettingDefinition::TYPE_JSON,
-                default: ['part_status' => ['WAITING PARTS' => 'caution', 'PARTS ORDERED' => 'info', 'PARTS RECEIVED' => 'ok']],
+                default: ['part_status' => ['WAITING PARTS' => 'caution']],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'Per column, each value and its colour: neutral, info, caution, review, ok or bad. A value not listed is neutral; Job Status unlisted keeps its usual colour.',
             ),
@@ -1489,8 +1490,7 @@ class SettingRegistry
                 key: 'scheduling.excluded_tags', label: 'Job tags that free a spot',
                 type: SettingDefinition::TYPE_LIST,
                 default: [
-                    ['value' => 'deposit received', 'label' => 'Deposit received'],
-                    ['value' => 'deposit recieved', 'label' => 'Deposit recieved'],
+                    ['value' => 'deposit received', 'label' => 'DEPOSIT RECEIVED'],
                 ],
                 help: 'A job carrying one of these tags holds no spot (matched ignoring case).',
             ),
