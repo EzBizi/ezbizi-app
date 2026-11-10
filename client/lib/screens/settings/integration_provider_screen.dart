@@ -81,6 +81,7 @@ class IntegrationProviderScreen extends StatefulWidget {
     this.purpose,
     this.onEdit,
     this.mayMoveWorkizWeb = false,
+    this.footer,
     required this.onBack,
   });
 
@@ -88,6 +89,9 @@ class IntegrationProviderScreen extends StatefulWidget {
   /// a company: the `workiz_web` connect permission. The server answers the
   /// move in the organization view only; elsewhere the row says so.
   final bool mayMoveWorkizWeb;
+
+  /// Drawn under the list: Workiz's tags (design 191).
+  final Widget? footer;
 
   final ApiClient api;
   final Session session;
@@ -800,6 +804,7 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
             ],
           ),
         ),
+        ?widget.footer,
       ],
     );
   }

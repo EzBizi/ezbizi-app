@@ -8,6 +8,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/sending_server_panel.dart';
 import '../../widgets/workiz_connect_form.dart';
+import '../../widgets/workiz_tags_section.dart';
 import '../../widgets/airtable_token_connect.dart';
 import '../../widgets/api_key_connect_form.dart';
 import '../../widgets/side_panel.dart';
@@ -429,6 +430,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         purpose: _purpose[open],
         onEdit: open == 'workiz' && _maySeeExperimental ? _editWorkiz : null,
         mayMoveWorkizWeb: _mayConnectProvider('workiz_web'),
+        footer: open == 'workiz' && _mayConnectProvider('workiz')
+            ? WorkizTagsSection(api: widget.api)
+            : null,
         onChanged: _load,
         onBack: () => setState(() => _open = null),
       );
