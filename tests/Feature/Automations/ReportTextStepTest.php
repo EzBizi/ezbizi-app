@@ -37,16 +37,17 @@ class ReportTextStepTest extends TestCase
 
             $sent = app(ActionRunner::class)->run($step, $event, null, automation: $mine);
             $this->assertTrue($sent['ok'], $sent['detail']);
-            // 2026-11-09: the text in account_report, then the PDF in report_statement.
-            $this->assertSame([['13055550123', 'account_report'], ['13055550123', 'report_statement']],
-                WhatsAppMessage::query()->oldest('id')->get()->map(fn ($m) => [$m->counterparty, $m->template_name])->sortBy(fn ($r) => $r[1])->values()->all());
+            // 2026-11-10 (Jose): ONE message, the PDF in account_report_pdf with the title and the report its values.
+            $this->assertSame([['13055550123', 'account_report_pdf']],
+                WhatsAppMessage::query()->get()->map(fn ($m) => [$m->counterparty, $m->template_name])->all());
+            $this->assertStringContainsString('"A1-Group · Weekly reviews by branch · ', $sent['detail']);
             app(ActionRunner::class)->run($step, $event, null, automation: $mine);
-            $this->assertSame(2, WhatsAppMessage::query()->count(), 'the same day is not sent twice');
+            $this->assertSame(1, WhatsAppMessage::query()->count(), 'the same day is not sent twice');
 
             $theirs = Automation::create(['name' => 'V', 'trigger_key' => 'automation.schedule_reached', 'is_active' => false, 'created_by' => $viewer->id]);
             $refused = app(ActionRunner::class)->run($step, $event, null, automation: $theirs);
             $this->assertFalse($refused['ok']);
-            $this->assertSame(2, WhatsAppMessage::query()->count(), 'a creator without reports.view sends nothing');
+            $this->assertSame(1, WhatsAppMessage::query()->count(), 'a creator without reports.view sends nothing');
         });
     }
 

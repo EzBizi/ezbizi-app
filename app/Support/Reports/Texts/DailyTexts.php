@@ -53,6 +53,23 @@ final class DailyTexts
         'weekly' => 'Weekly · revenue, jobs, dispatchers, ads, Local Services',
     ];
 
+    /** kind => the report's name in its title; its first heading, when that says the same, is dropped under the title. */
+    public const NAMES = [
+        'ppc' => 'Google PPC · Daily breakdown',
+        'marketing_ppc' => 'Marketing PPC · Daily update',
+        'dispatchers' => 'Dispatcher performance',
+        'technician_sales' => 'Technician sales',
+        'weekly_losses' => 'Weekly Net Loss Report',
+        'weekly_reviews' => 'Weekly reviews by branch',
+        'job_assignments' => "Today's In Progress jobs by technician",
+        'revenue_collected' => 'Revenue collected',
+        'evening' => 'Daily 8 PM report',
+        'weekly' => 'Weekly report',
+    ];
+
+    /** A text's own date: "Mon, Nov 9, 2026", "Nov 3 - Nov 9, 2026". */
+    private const DATE = '/(?:(?<weekday>Mon|Tue|Wed|Thu|Fri|Sat|Sun), )?(?<from>[A-Z][a-z]{2} \d{1,2})(?: - (?<to>(?:[A-Z][a-z]{2} )?\d{1,2}))?, \d{4}/';
+
     private const RULE = "\n\n\u{2014}\u{2014}\u{2014}\u{2014}\u{2014}\n\n";
 
     public function __construct(
@@ -99,6 +116,41 @@ final class DailyTexts
                 $this->lsaLosses($list, $day->subDays(6), $day),
             ]),
         };
+    }
+
+    /**
+     * The text under ONE header line, "A-1 Chimney · Revenue collected · Mon,
+     * Nov 9" (Jose, 2026-11-10): the date its figures are for, read off its
+     * own first lines and taken out of them, and its first heading dropped
+     * when that is the report's name.
+     *
+     * @param  list<string>|null  $branches
+     * @return array{0: string, 1: string} the title and the text under it
+     */
+    public function headed(string $kind, string $whose, Organization $organization, CarbonImmutable $day, ?array $branches = null): array
+    {
+        $lines = explode("\n", $this->render($kind, $organization, $day, $branches));
+        if (preg_match('/^(?:\S+ )?\*(.+)\*$/u', $lines[0], $m) === 1 && strcasecmp($m[1], self::NAMES[$kind]) === 0) {
+            array_shift($lines);
+        }
+        $date = $day->format('D, M j');
+        foreach ([0, 1] as $i) {
+            if (! isset($lines[$i]) || preg_match(self::DATE, $lines[$i], $d) !== 1) {
+                continue;
+            }
+            $date = ($d['weekday'] !== '' ? $d['weekday'].', ' : '').$d['from'].(($d['to'] ?? '') !== '' ? ' - '.$d['to'] : '');
+            $italic = preg_match('/^_(.*)_$/u', $lines[$i], $inner) === 1;
+            $rest = trim(str_replace($d[0], '', $italic ? $inner[1] : $lines[$i]), ' ·');
+            if ($rest === '') {
+                unset($lines[$i]);
+            } else {
+                $lines[$i] = $italic ? '_'.ucfirst($rest).'_' : ucfirst($rest);
+            }
+            break;
+        }
+
+        // A report whose first section was only its heading starts at what follows (the weekly's rule).
+        return [$whose.' · '.self::NAMES[$kind].' · '.$date, (string) preg_replace('/^[\s\x{2014}]+/u', '', implode("\n", $lines))];
     }
 
     /** @var \Closure(Franchise): string */
@@ -486,7 +538,7 @@ final class DailyTexts
             return '';
         }
 
-        return implode("\n\n", ["\u{1F4CA} *Marketing PPC · Daily update*\nReport: ".$day->format('D, M j, Y'),
+        return implode("\n\n", ["\u{1F4CA} *Marketing PPC · Daily update*\n_".$day->format('D, M j, Y').'_',
             ...$rows->groupBy(fn ($r) => (string) ($r['company'] ?? ''))->sortKeys()
                 ->map(fn (Collection $mine, $company) => $this->marketingSection($organization, $day, $mine, $company === '' ? null : (string) $company))
                 ->values()->all()]);

@@ -42,10 +42,10 @@ class ReportWorkspaceController extends Controller
     {
         $in = $request->validate(['user_ids' => ['required', 'array', 'min:1'], 'user_ids.*' => ['uuid'], 'from' => ['nullable', 'string', 'max:32']]);
         [$day, $branches, $scopeType, $scopeId] = $this->place($request, $kind);
-        $text = $texts->render($kind, $request->user()->organization, $day, $branches);
+        $org = $request->user()->organization;
+        [$title, $text] = $texts->headed($kind, $org->name, $org, $day, $branches);
 
-        $sent = ActionRunner::deliverReportText((string) ($in['from'] ?? ''), $in['user_ids'], $scopeType, $scopeId,
-            DailyTexts::KINDS[$kind].' · '.$day->format('M j'), $text);
+        $sent = ActionRunner::deliverReportText((string) ($in['from'] ?? ''), $in['user_ids'], $scopeType, $scopeId, $title, $text);
         abort_if(is_string($sent), 422, is_string($sent) ? $sent : '');
 
         return response()->json(['data' => ['sent' => $sent]]);

@@ -42,11 +42,10 @@ class WhatsAppSameDayReportsTest extends TestCase
         $this->artisan('ezbizi:whatsapp-same-day-reports', ['--date' => '2026-10-05'])->assertSuccessful();
         $this->artisan('ezbizi:whatsapp-same-day-reports', ['--date' => '2026-10-05'])->assertSuccessful();
 
-        // Each group its text, then the PDF (2026-11-10); once.
+        // Each group ONE message, the PDF under its text (Jose, 2026-11-10); once.
         $posts = array_values(array_filter($sent, fn ($m) => isset($m['to'])));
-        $this->assertSame([['GROUP-DAILY', 'text'], ['GROUP-DAILY', 'document'], ['GROUP-FIN', 'text'], ['GROUP-FIN', 'document']],
-            array_map(fn ($m) => [$m['to'], $m['type']], $posts));
-        $this->assertStringContainsString('Same-Day Report', $posts[0]['text']['body']);
-        $this->assertStringContainsString('Same-Day Company Summary', $posts[2]['text']['body']);
+        $this->assertSame([['GROUP-DAILY', 'document'], ['GROUP-FIN', 'document']], array_map(fn ($m) => [$m['to'], $m['type']], $posts));
+        $this->assertStringContainsString('Same-Day Report', $posts[0]['document']['caption']);
+        $this->assertStringContainsString('Same-Day Company Summary', $posts[1]['document']['caption']);
     }
 }
