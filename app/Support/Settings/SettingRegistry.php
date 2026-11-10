@@ -1042,7 +1042,6 @@ class SettingRegistry
                     ['key' => 'pending', 'label' => 'Remaining Balance', 'visible' => true, 'as_label' => false],
                     ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'payment_date', 'label' => 'Payment Date', 'visible' => true, 'as_label' => false],
-                    ['key' => 'scheduled', 'label' => 'Scheduled Date', 'visible' => true, 'as_label' => false],
                     ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
                     ['key' => 'attachments', 'label' => 'Attachments', 'visible' => true, 'as_label' => false],
                     ['key' => 'notes', 'label' => 'Notes', 'visible' => true, 'as_label' => false],

@@ -162,14 +162,39 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('project-board-ready:j-1')));
     await tester.pumpAndSettle();
-    expect(
-      requests.any(
-        (r) =>
-            r.method == 'POST' &&
-            r.url.path.endsWith('/project-board/jobs/j-1/ready'),
-      ),
-      isTrue,
+    // The four questions first; Save waits for all of them (Jose, 2026-11-10).
+    final save = find.byKey(const Key('project-board-times-save'));
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    for (final (key, value) in const [
+      ('date', '2026-11-20'),
+      ('slot', '8 - 11 AM'),
+      ('alt_date', '2026-11-21'),
+      ('alt_slot', '2 - 5 PM'),
+    ]) {
+      final field = find.byKey(Key('project-board-times-$key'));
+      await tester.enterText(
+        tester.widget(field) is TextField
+            ? field
+            : find
+                  .descendant(of: field, matching: find.byType(TextField))
+                  .first,
+        value,
+      );
+      await tester.pump();
+    }
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    final ready = requests.lastWhere(
+      (r) =>
+          r.method == 'POST' &&
+          r.url.path.endsWith('/project-board/jobs/j-1/ready'),
     );
+    expect(jsonDecode(ready.body), {
+      'date': '2026-11-20',
+      'slot': '8 - 11 AM',
+      'alt_date': '2026-11-21',
+      'alt_slot': '2 - 5 PM',
+    });
 
     // A header click sorts the whole tab on the server; a second click
     // reverses it, with an arrow (Jose, 2026-11-10).
@@ -181,6 +206,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(requests.last.url.queryParameters['dir'], 'desc');
     expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
+
+    // Part Status opens the parts list: one to order (Jose, 2026-11-10).
+    await tester.tap(find.byKey(const ValueKey('project-board-parts:j-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('project-board-part-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('project-board-part-item-0')),
+      'Stainless cap',
+    );
+    await tester.tap(find.byKey(const Key('project-board-parts-save')));
+    await tester.pumpAndSettle();
+    final put = requests.lastWhere(
+      (r) => r.method == 'PUT' && r.url.path.endsWith('/parts'),
+    );
+    expect((jsonDecode(put.body)['parts'] as List).single, {
+      'kind': 'order',
+      'item': 'Stainless cap',
+      'quantity': 1,
+      'price_minor': null,
+    });
 
     // The company's names and order; a hidden column is not drawn.
     expect(find.text('CLIENT'), findsOneWidget);

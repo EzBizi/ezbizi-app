@@ -949,6 +949,8 @@ Route::prefix('v1')
         Route::apiResource('jobs', JobsController::class);
         Route::get('project-board/jobs', [\App\Http\Controllers\Api\ProjectBoardController::class, 'jobs']);
         Route::patch('project-board/jobs/{job}/repair-team', [\App\Http\Controllers\Api\ProjectBoardController::class, 'repairTeam']);
+        Route::put('project-board/jobs/{job}/parts', [\App\Http\Controllers\Api\ProjectBoardController::class, 'parts']);
+        Route::patch('project-board/jobs/{job}/proposal', [\App\Http\Controllers\Api\ProjectBoardController::class, 'updateProposal']);
         Route::post('project-board/jobs/{job}/ready', [\App\Http\Controllers\Api\ProjectBoardController::class, 'ready']);
         Route::get('project-board/options', [\App\Http\Controllers\Api\ProjectBoardController::class, 'options']);
 
