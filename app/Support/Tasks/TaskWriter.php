@@ -408,7 +408,10 @@ class TaskWriter
     {
         return DB::transaction(function () use ($task, $actor) {
             $at = $task->deleted_at;
-            Task::onlyTrashed()->where('parent_task_id', $task->id)->where('deleted_at', $at)->get()
+            // Subtasks go a moment before their parent (delete()), so a second
+            // can tick between them: take the ones deleted in the 5 s up to it.
+            Task::onlyTrashed()->where('parent_task_id', $task->id)
+                ->whereBetween('deleted_at', [$at->copy()->subSeconds(5), $at])->get()
                 ->each(fn (Task $c) => $c->restore());
             $task->restore();
             $this->audit->log('task.restored', $task, actor: $actor);
