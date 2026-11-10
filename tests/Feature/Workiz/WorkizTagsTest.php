@@ -77,6 +77,15 @@ class WorkizTagsTest extends TestCase
         $this->getJson('/api/v1/workiz/tags')->assertOk()->assertJsonPath('data.baseline_set', false)->assertJsonPath('data.rows.0.differs', true);
 
         $this->postJson('/api/v1/workiz/tags/approve')->assertOk()->assertJsonPath('data.approved', 1);
+        // A branch on a v1 key holds no tag list: it is not a column, so it cannot make every tag look missing.
+        $branch = $this->extraFranchise($this->t, 'Everdoors');
+        $this->inTenant($this->t['org'], function () use ($branch) {
+            $v1 = new SocialConnection;
+            $v1->forceFill(['organization_id' => $this->t['org']->id, 'scope_type' => SocialConnection::SCOPE_FRANCHISE, 'scope_id' => $branch->id,
+                'provider' => SocialProvider::Workiz->value, 'remote_id' => $branch->id, 'display_name' => 'Everdoors']);
+            $v1->connect(['api_token' => 'a', 'refresh_token' => 'a', 'auth_secret' => 's']);
+            $v1->save();
+        });
         $this->getJson('/api/v1/workiz/tags')->assertJsonPath('data.rows.0.differs', false)
             ->assertJsonPath('data.rows.0.standard', ['name' => 'VIP', 'color' => '#222222']);
 
