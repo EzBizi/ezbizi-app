@@ -1,6 +1,5 @@
 import '../core/phone_numbers.dart';
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -15,7 +14,6 @@ import '../widgets/ai_mark.dart';
 import '../widgets/lead_source_details.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
-import '../widgets/row_tags.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/tab_help.dart';
 
@@ -2175,10 +2173,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
      */
     final unread = lead['is_unread'] == true;
     final starred = lead['starred'] == true;
-    // Design 187 (Jose, 2026-11-06): the lead's tags line up in one column
-    // beside the time; marks about the row (somebody viewing, a note, an
-    // overdue reply) stay beside the name.
-    final phoneRow = MediaQuery.sizeOf(context).width < 480;
+    // Marks about the row (somebody viewing, a note, an overdue reply) stay
+    // beside the name; every tag is on line 3 (Jose, 2026-11-10).
     final nameMarks = <Widget>[
       // Somebody else has it open right now.
       if ((lead['viewers'] as List?)?.isNotEmpty ?? false)
@@ -2249,46 +2245,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
       ],
     ];
-    // Most telling first: only two are shown before "+N".
-    final tags = <(String, Widget)>[
+    // Line 3, most telling first: the status, Customer, then the source and
+    // channel (Jose, 2026-11-10).
+    final tags = <Widget>[
       // A specimen, not a customer. First because it changes how
       // everything after it should be read.
       if (lead['is_test'] == true)
-        (
-          'Test',
-          _Badge('Test', key: ValueKey('test-badge-$id')),
-        ),
+        _Badge('Test', key: ValueKey('test-badge-$id')),
       // Only when it is not New: 43,184 of 43,190 are, and a pill on
       // every row would say nothing.
       if ((lead['status'] ?? 'new') != 'new')
-        (
-          leadStatusPill(lead['status']).label,
-          leadStatusPill(
-              lead['status'],
-              key: ValueKey('status-pill-$id'),
-            ),
-        ),
-      // An unanswered RC call: Possible spam, Missed call or Voicemail
-      // (Jose, 2026-10-16).
-      if ((lead['source'] == 'ringcentral' ||
-              lead['source'] == 'ez_calls') &&
-          lead['source_status'] is String)
-        (
-          rcCallTag('${lead['source_status']}'),
-          _Badge(
-              rcCallTag(lead['source_status'] as String),
-              key: ValueKey('rc-tag-$id'),
-            ),
-        ),
-      // This number is already a customer.
-      if (lead['customer'] is Map)
-        (
-          'Customer',
-          _Badge(
-              'Customer',
-              key: ValueKey('customer-badge-$id'),
-            ),
-        ),
+        leadStatusPill(lead['status'], key: ValueKey('status-pill-$id')),
       // Replied or not, and ONLY where a reply is possible.
       //
       // `can_reply` is the channel's own answer, not a guess
@@ -2308,55 +2275,40 @@ class _LeadsScreenState extends State<LeadsScreen> {
               lead['reply_overdue'] == true) &&
           lead['reply_owed'] != false &&
           lead['status'] != 'completed')
-        (
+        _Badge(
           mine ? 'Replied' : 'Awaiting reply',
-          _Badge(
-              mine ? 'Replied' : 'Awaiting reply',
-              key: ValueKey('reply-badge-$id'),
-              alert: !mine,
-            ),
+          key: ValueKey('reply-badge-$id'),
+          alert: !mine,
+        ),
+      // This number is already a customer.
+      if (lead['customer'] is Map)
+        _Badge('Customer', key: ValueKey('customer-badge-$id')),
+      // An unanswered RC call: Possible spam, Missed call or Voicemail
+      // (Jose, 2026-10-16).
+      if ((lead['source'] == 'ringcentral' ||
+              lead['source'] == 'ez_calls') &&
+          lead['source_status'] is String)
+        _Badge(
+          rcCallTag(lead['source_status'] as String),
+          key: ValueKey('rc-tag-$id'),
         ),
       // AI thinks Google should refund it, not yet asked.
       if (lead['credit'] is Map &&
           (lead['credit'] as Map)['requested_at'] == null)
-        (
-          'Credit?',
-          _Badge('Credit?', key: ValueKey('credit-badge-$id')),
-        ),
-    ];
-    // Line 2's chips, the message's source and channel, go right too, under
-    // the time (Jose, 2026-11-06: "the tags on the second line, we ought to
-    // move them to the right aas well, maybe below the time").
-    final chips = <(String, Widget)>[
+        _Badge('Credit?', key: ValueKey('credit-badge-$id')),
       // The source, in its own colour (design 159).
       if (src.sourceKey != null)
-        (
-          sourceBadgeWord(lead['source'] as String?),
-          LeadSourceChip(src.sourceKey, key: ValueKey('source-badge-$id')),
-        )
+        LeadSourceChip(src.sourceKey, key: ValueKey('source-badge-$id'))
       else
-        (
-          leadSourceWord(lead),
-          _SourceBadge(leadSourceWord(lead), key: ValueKey('source-badge-$id')),
-        ),
+        _SourceBadge(leadSourceWord(lead), key: ValueKey('source-badge-$id')),
       // The channel badge is drawn only when it says something the source
       // badge does not. "Call · Google" is two facts; a chat row read "Chat ·
       // Chat", one fact twice (UI/UX, 2026-09-08). The rule needs no list of
       // sources: a fifth source with one channel gets the right answer free.
       if (channel != null &&
           !leadSourceWord(lead).endsWith(channelWord(channel)))
-        (
-          channelWord(channel),
-          _Badge(channelWord(channel), call: channel == 'PHONE_CALL'),
-        ),
+        _Badge(channelWord(channel), call: channel == 'PHONE_CALL'),
     ];
-    Widget tagColumn(String line, double width, List<(String, Widget)> of) =>
-        RowTags(
-          key: ValueKey('lead-$line-$id'),
-          width: width,
-          tags: [for (final t in of) t.$2],
-          hidden: [for (final t in of.skip(2)) t.$1],
-        );
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: unread
           ? theme.colorScheme.onSurface
@@ -2442,13 +2394,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      // Design 187: up to 44% of the row, so a narrow list
-                      // pane keeps room for the name. A phone puts them on
-                      // line 2, under the time.
-                      if (!phoneRow && tags.isNotEmpty)
-                        tagColumn('tags', math.min(176, line.maxWidth * 0.44), tags),
-                      if (!phoneRow && tags.isNotEmpty)
-                        const SizedBox(width: 6),
                       SizedBox(
                         width: 62,
                         child: Text(
@@ -2463,7 +2408,26 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      // Hollow until set, after the time (Jose, 2026-11-10).
+                      // A phone keeps 40 of target.
+                      IconButton(
+                        key: ValueKey('star-$id'),
+                        tooltip: starred ? 'Unstar' : 'Star',
+                        iconSize: 16,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints.tight(
+                          Size.square(
+                            MediaQuery.sizeOf(context).width < 600 ? 40 : 30,
+                          ),
+                        ),
+                        onPressed: () => _mark(lead, starred: !starred),
+                        icon: Icon(
+                          starred ? Icons.star : Icons.star_border,
+                          color: starred
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outline,
+                        ),
+                      ),
                     ],
                   ),
                   ),
@@ -2554,39 +2518,32 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           ),
                         ),
                       ],
-                      // Under the time. A phone has no line-1 column, so
-                      // its tags lead here (design 187, phone 4).
-                      const SizedBox(width: 6),
-                      tagColumn(
-                        'chips',
-                        // With the 40% job line and a 48px star target, 34% fits a 260px pane.
-                        math.min(phoneRow ? 150 : 176, box.maxWidth * 0.34),
-                        [if (phoneRow) ...tags, ...chips],
-                      ),
-                      // Hollow until set, at the end of the line it marks
-                      // (design 30): stacked under the time it made every row
-                      // as tall as a 44px target. A phone keeps 40 of target.
-                      IconButton(
-                        key: ValueKey('star-$id'),
-                        tooltip: starred ? 'Unstar' : 'Star',
-                        iconSize: 16,
-                        padding: EdgeInsets.zero,
-                        constraints: BoxConstraints.tight(
-                          Size.square(
-                            MediaQuery.sizeOf(context).width < 600 ? 40 : 30,
-                          ),
-                        ),
-                        onPressed: () => _mark(lead, starred: !starred),
-                        icon: Icon(
-                          starred ? Icons.star : Icons.star_border,
-                          color: starred
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.outline,
-                        ),
-                      ),
                     ],
                   ),
                   ),
+                  // Line 3: every tag, smaller, under the name (Jose,
+                  // 2026-11-10: "move all the tags to the third line
+                  // instead, maybe make them a bit smaller too").
+                  if (tags.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Theme(
+                        data: theme.copyWith(
+                          textTheme: theme.textTheme.copyWith(
+                            labelSmall: theme.textTheme.labelSmall?.copyWith(
+                              fontSize: 10,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                        child: Wrap(
+                          key: ValueKey('lead-tags-$id'),
+                          spacing: 4,
+                          runSpacing: 2,
+                          children: tags,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
