@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0559', date: '10 Nov 2026', items: [
+      'Reports: each WhatsApp report’s title and totals carry an emoji; the PDF stays plain',
+      'Social › Compose: an attached video plays in the Picture or video box and in every How it will look preview',
+    ]),
     VersionRelease(version: '0.0.0558', date: '10 Nov 2026', items: [
       'Project Management: refreshes itself every minute while open, with an Updated time and a refresh button',
       'Customer Experience › Auto-replies: each review the AI answered beside our reply; approve, edit or discard drafts',
