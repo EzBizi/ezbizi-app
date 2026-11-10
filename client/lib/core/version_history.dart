@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0558', date: '10 Nov 2026', items: [
+      'Project Management › Unscheduled: Service Area, Technician, Repair Team / Contractor, Payment Date, Remaining Balance, attachments, latest note and Status Time (green, yellow, red); Ready to schedule moves a job once every column is filled',
       'Switched-off companies, their Sub Companies and places no longer show in any list or picker (Task Board, Scheduling, Leads, HR, reports); their data stays and Settings › Organization still lists them',
       'Reports: each WhatsApp report’s title and totals carry an emoji; the PDF stays plain',
       'Social › Compose: an attached video plays in the Picture or video box and in every How it will look preview',
