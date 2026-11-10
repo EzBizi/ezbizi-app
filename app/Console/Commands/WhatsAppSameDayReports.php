@@ -58,7 +58,7 @@ class WhatsAppSameDayReports extends Command
                 if ($financial !== null) {
                     $sent += $this->once($financial->getKey(), $date, fn () => $groups->deliver(
                         'financial',
-                        'Same-Day Company Summary for '.Carbon::parse($date)->format('M j'),
+                        $organization->name.' · Same-Day Company Summary · '.Carbon::parse($date)->format('M j'),
                         SameDayReport::summary($organization, $date),
                     ));
                 }

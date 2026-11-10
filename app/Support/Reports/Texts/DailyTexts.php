@@ -88,7 +88,7 @@ final class DailyTexts
             'revenue_collected' => $this->revenue($list, $day->subDay(), $day->subDay()),
             'evening' => implode(self::RULE, [$this->jobsCreated($list, $day, $day), $this->googleAds($list, $day, $day), $this->metaAds($list, $day, $day)]),
             'weekly' => implode(self::RULE, [
-                "\u{1F4C5} *Weekly report*\n_".self::period($day->subDays(6), $day).'_',
+                "\u{1F4C5} *Weekly report*\n_".$this->period($day->subDays(6), $day).'_',
                 $this->revenue($list, $day->subDays(6), $day),
                 $this->jobAssignments($list, $day->subDays(6), $day),
                 $this->jobsCreated($list, $day->subDays(6), $day),
@@ -126,7 +126,7 @@ final class DailyTexts
     private function revenue(Collection $branches, CarbonImmutable $from, CarbonImmutable $to): string
     {
         // When it was read: a payment entered after the 1 AM run is not in it (2026-11-10).
-        $lines = ["\u{1F4B5} *Revenue collected*", '_'.self::period($from, $to).' · payments received, as of '.$this->at->format('M j, g:i A').'_', ''];
+        $lines = ["\u{1F4B5} *Revenue collected*", '_'.$this->period($from, $to).' · payments received, as of '.$this->at->format('M j, g:i A').'_', ''];
         $total = 0;
         foreach ($branches as $branch) {
             $cents = (int) round((float) ReportJobs::payments((string) $branch->getKey())->whereBetween('starts_at', self::range($from, $to))->sum('amount') * 100);
@@ -144,7 +144,7 @@ final class DailyTexts
     private function jobsCreated(Collection $branches, CarbonImmutable $from, CarbonImmutable $to): string
     {
         $skip = ReportJobs::tags('reports.tags_not_created');
-        $lines = ["\u{1F4DD} *Jobs created*", '_'.self::period($from, $to).'_'];
+        $lines = ["\u{1F4DD} *Jobs created*", '_'.$this->period($from, $to).'_'];
         if ($skip !== []) {
             $lines[] = '_Not counting jobs tagged '.implode(', ', array_keys($skip)).'._';
         }
@@ -166,11 +166,13 @@ final class DailyTexts
     private function googleAds(Collection $branches, CarbonImmutable $from, CarbonImmutable $to): string
     {
         $sources = array_values(array_filter([MarketingReport::sourceOf('lsa'), MarketingReport::sourceOf('ppc')]));
-        $lines = ["\u{1F4CA} *Google Ads · active campaigns*", '_'.self::period($from, $to).' · jobs from '.(implode(' and ', $sources) ?: 'no source').'_', ''];
+        // Today: the campaigns switched on. A past week: every campaign that spent in it, paused since or not (DMV's $142.53, 2026-11-10).
+        $live = $to->toDateString() >= $this->at->toDateString();
+        $lines = ["\u{1F4CA} *Google Ads · ".($live ? 'active campaigns' : 'campaigns').'*', '_'.$this->period($from, $to).' · jobs from '.(implode(' and ', $sources) ?: 'no source').'_', ''];
         $total = ['cost' => 0, 'jobs' => 0];
         $refused = [];
         foreach ($branches as $branch) {
-            $cost = $this->ads->forBranch($branch, $from->startOfDay(), $to->endOfDay(), activeOnly: true);
+            $cost = $this->ads->forBranch($branch, $from->startOfDay(), $to->endOfDay(), activeOnly: $live);
             $refused = [...$refused, ...array_column($cost['refused'], 'account')];
             if ($cost['accounts'] === 0) {
                 continue;
@@ -186,6 +188,15 @@ final class DailyTexts
             return implode("\n", [...array_slice($lines, 0, 2), '', 'No branch has a Google Ads account linked.']);
         }
         $lines = [...$lines, '', self::adLine('TOTAL', $total['cost'], $total['jobs'])];
+        // Spend on accounts linked to no branch is said, not dropped (audit, 2026-11-10: $4,645.62 on Nov 9).
+        if (($org = $branches->first()?->organization_id) !== null) {
+            $loose = $this->ads->unmapped((string) $org, $branches->pluck('company_id')->filter()->unique()->values()->all(), $from->startOfDay(), $to->endOfDay(), activeOnly: $live);
+            $spent = $loose['lsa']['cost_minor'] + $loose['ppc']['cost_minor'];
+            if ($spent > 0) {
+                $lines[] = "\u{26A0}\u{FE0F} ".$loose['accounts'].' Google Ads '.($loose['accounts'] === 1 ? 'account' : 'accounts').' linked to no branch spent '
+                    .self::money($spent).'; it is not in the figures above.';
+            }
+        }
         if ($refused !== []) {
             // A refused account's spend is missing, so the totals are too low: said, not hidden.
             $lines[] = "\u{26A0}\u{FE0F} Google would not answer for: ".implode(', ', array_unique($refused)).'. Their spend is not in these figures.';
@@ -245,7 +256,7 @@ final class DailyTexts
         }
 
         $source = MarketingReport::sourceOf('meta');
-        $lines = ["\u{1F4F1} *Meta Ads · active campaigns*", '_'.self::period($from, $to).' · jobs from '.($source ?? 'no source').'_', ''];
+        $lines = ["\u{1F4F1} *Meta Ads · active campaigns*", '_'.$this->period($from, $to).' · jobs from '.($source ?? 'no source').'_', ...$this->metaFreshness(), ''];
         $total = ['spend' => 0, 'forms' => 0, 'jobs' => 0];
         foreach ($branches as $branch) {
             $jobs = $source === null ? 0 : ReportJobs::created(ReportJobs::jobs((string) $branch->getKey())->where('j.job_source', $source)
@@ -282,7 +293,7 @@ final class DailyTexts
     private function dispatcherCalls(CarbonImmutable $from, CarbonImmutable $to, ?array $branches, string $clients): string
     {
         $new = $clients === 'new';
-        $head = "\u{1F4DE} *Dispatcher performance · ".($new ? 'new' : 'existing')." clients*\n_".self::period($from, $to).'_';
+        $head = "\u{1F4DE} *Dispatcher performance · ".($new ? 'new' : 'existing')." clients*\n_".$this->period($from, $to).'_';
         $accounts = $this->phoneAccounts($branches);
         if ($accounts === []) {
             return $head."\n\nNo phone account answers for these branches alone.";
@@ -335,7 +346,7 @@ final class DailyTexts
     private function lsaLosses(Collection $branches, CarbonImmutable $from, CarbonImmutable $to): string
     {
         $source = MarketingReport::sourceOf('lsa');
-        $head = ["\u{1F4C9} *Local Services · locations losing money*", '_'.self::period($from, $to).' · Workiz profit on '.($source ?? 'Local Services').' jobs, less Local Services spend_', ''];
+        $head = ["\u{1F4C9} *Local Services · locations losing money*", '_'.$this->period($from, $to).' · Workiz profit on '.($source ?? 'Local Services').' jobs, less Local Services spend_', ''];
         if ($source === null) {
             return implode("\n", [...$head, 'No job source is set as lsa in Settings › Lists › Paid job sources.']);
         }
@@ -393,9 +404,31 @@ final class DailyTexts
         return [$from->toDateString().' 00:00:00', $to->toDateString().' 23:59:59'];
     }
 
-    private static function period(CarbonImmutable $from, CarbonImmutable $to): string
+    /** A range ending on the run's own day says how far it reaches: "through 8:00 PM" (audit, 2026-11-10). */
+    private function period(CarbonImmutable $from, CarbonImmutable $to): string
     {
-        return $from->isSameDay($to) ? $from->format('D, M j, Y') : $from->format('M j').' - '.$to->format('M j, Y');
+        $through = $to->isSameDay($this->at) && $this->at->format('H:i:s') !== '00:00:00' ? ' · through '.$this->at->format('g:i A') : '';
+
+        return ($from->isSameDay($to) ? $from->format('D, M j, Y') : $from->format('M j').' - '.$to->format('M j, Y')).$through;
+    }
+
+    /**
+     * When Meta's figures were read, and a warning once that is over three
+     * hours before the run (audit, 2026-11-10: the 8 PM text read the 5:30 AM
+     * sync, so the day's spend was missing without a word).
+     *
+     * @return list<string>
+     */
+    private function metaFreshness(): array
+    {
+        if (($synced = MetaSpend::syncedAt()) === null) {
+            return [];
+        }
+        $at = CarbonImmutable::parse($synced, 'UTC')->setTimezone($this->at->getTimezone());
+
+        return $at->lessThan($this->at->subHours(3))
+            ? ["\u{26A0}\u{FE0F} Meta last refreshed ".$at->format('M j, g:i A').': spend since then is not in these figures.']
+            : ['_Meta as of '.$at->format('M j, g:i A').'_'];
     }
 
     /** Each branch's Google Search spend against its PPC jobs created that day. */
@@ -607,7 +640,7 @@ final class DailyTexts
         $plural = fn (int $n) => $n.' job'.($n === 1 ? '' : 's');
 
         $lines = ["\u{1F9F0} *".($from->isSameDay($to) ? "Today's In Progress jobs" : 'In Progress jobs').' by technician*',
-            '_'.self::period($from, $to).' · measured '.now(OrgTimezone::of())->format('g:i A T').' from EzBizi jobs_'];
+            '_'.$this->period($from, $to).' · measured '.now(OrgTimezone::of())->format('g:i A T').' from EzBizi jobs_'];
         if ($skip !== []) {
             $lines[] = '_Excludes jobs tagged '.implode(', ', array_keys($skip)).'._';
         }
@@ -648,7 +681,7 @@ final class DailyTexts
     /** Each branch's technicians that day: completed, canceled, sales and deposits. */
     private function technicianSales(Collection $branches, CarbonImmutable $day): string
     {
-        $lines = ["*Technician sales*\n".$day->format('D, M j, Y'), ''];
+        $lines = ["*Technician sales*\n".$this->period($day, $day), ''];
         $all = ['done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
 
         foreach ($branches as $branch) {
@@ -686,8 +719,15 @@ final class DailyTexts
         [$from, $to] = [$day->startOfWeek()->subWeek(), $day->startOfWeek()->subDay()];
         $losses = [];
         $pending = [];
+        $unmapped = [];
 
         foreach ($branches as $branch) {
+            // No P&L table at all is a different fact from a week not in yet (MA and the sub-companies, 2026-11-10).
+            if (! ReportSources::mapped((string) $branch->organization_id, 'pnl', (string) $branch->getKey())) {
+                $unmapped[] = BranchName::of($branch);
+
+                continue;
+            }
             $pnl = $this->report->profitAndLoss($branch, $from->toDateString(), $to->toDateString());
             if ($pnl['net'] === null) {
                 $pending[] = BranchName::of($branch);
@@ -700,12 +740,14 @@ final class DailyTexts
         $lines = ["\u{1F4C9} *Weekly Net Loss Report*", '_'.$from->format('M j').' - '.$to->format('M j, Y').'_', ''];
         // No all-clear on missing data (desk, 2026-11-03): a branch whose week
         // is not complete cannot be judged, and the text says so first.
-        $judged = $branches->count() - count($pending);
+        $withTable = $branches->count() - count($unmapped);
+        $judged = $withTable - count($pending);
+        $noTable = $unmapped === [] ? [] : ['', '_No P&L table mapped: '.implode(', ', $unmapped).'_'];
         if ($judged === 0) {
-            return implode("\n", [...$lines, "\u{26A0}\u{FE0F} Can't be judged yet: no branch has a complete P&L for the week.", 'Not complete yet: '.implode(', ', $pending)]);
+            return implode("\n", [...$lines, "\u{26A0}\u{FE0F} Can't be judged yet: no branch has a complete P&L for the week.", 'Not complete yet: '.implode(', ', $pending), ...$noTable]);
         }
         if ($pending !== []) {
-            $lines[] = "\u{26A0}\u{FE0F} Only {$judged} of {$branches->count()} branches have a complete P&L for the week; the rest can't be judged yet.";
+            $lines[] = "\u{26A0}\u{FE0F} Only {$judged} of the {$withTable} branches with a P&L table have a complete week; the rest can't be judged yet.";
         }
         $lines[] = '• *'.count($losses).' '.(count($losses) === 1 ? 'branch' : 'branches').' with negative net profit*';
         $lines[] = '• *Combined losses: '.self::money((int) round(array_sum(array_map(fn ($l) => $l[1]['net'], $losses)) * 100)).'*';
@@ -720,7 +762,7 @@ final class DailyTexts
             $lines[] = "\u{26A0}\u{FE0F} Not complete yet: ".implode(', ', $pending);
         }
 
-        return implode("\n", $lines);
+        return implode("\n", [...$lines, ...$noTable]);
     }
 
     /** Last Monday-Sunday: new Google reviews per branch, 4-5 stars positive, 1-3 negative. */

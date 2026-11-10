@@ -6,6 +6,8 @@ use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use RuntimeException;
@@ -18,7 +20,8 @@ use RuntimeException;
  * managers hold no spend and are left out.
  *
  * Cached per account and range until the end of the day, so a report opened
- * twice asks Google once. Cost in USD minor units; an account billed in
+ * twice asks Google once; a range that takes in today, 15 minutes (audit,
+ * 2026-11-10: today's spend stood still from the first read). Cost in USD minor units; an account billed in
  * anything else is listed in `refused` rather than summed into a wrong total.
  */
 final class AdsCost
@@ -35,24 +38,46 @@ final class AdsCost
      */
     public function forBranch(Franchise $branch, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly = false): array
     {
+        return $this->sum($this->accounts((string) $branch->organization_id)->where('leads_franchise_id', $branch->getKey())->get(), $from, $to, $activeOnly);
+    }
+
+    /**
+     * The spend of the accounts linked to no branch, so a report can say it
+     * rather than drop it (audit, 2026-11-10: $4,645.62 on Nov 9). $companies:
+     * only accounts made for those companies; null, all of them.
+     *
+     * @param  list<string>|null  $companies
+     */
+    public function unmapped(string $organizationId, ?array $companies, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly = false): array
+    {
+        return $this->sum($this->accounts($organizationId)->whereNull('leads_franchise_id')
+            ->when($companies !== null, fn ($q) => $q->where('scope_type', SocialConnection::SCOPE_COMPANY)->whereIn('scope_id', $companies))
+            ->get(), $from, $to, $activeOnly);
+    }
+
+    private function accounts(string $organizationId): Builder
+    {
+        return SocialConnection::query()->withoutGlobalScopes()
+            ->where('organization_id', $organizationId)
+            ->where('provider', SocialProvider::GoogleAds->value)
+            ->where('status', SocialConnection::STATUS_CONNECTED)
+            ->where('is_manager', false);
+    }
+
+    /** @param  Collection<int, SocialConnection>  $accounts */
+    private function sum(Collection $accounts, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly): array
+    {
         $total = ['lsa' => ['cost_minor' => 0, 'clicks' => 0, 'conversions' => 0.0]];
         $total['ppc'] = $total['lsa'];
         $total['accounts'] = 0;
         $total['refused'] = [];
-
-        $accounts = SocialConnection::query()->withoutGlobalScopes()
-            ->where('organization_id', $branch->organization_id)
-            ->where('provider', SocialProvider::GoogleAds->value)
-            ->where('status', SocialConnection::STATUS_CONNECTED)
-            ->where('leads_franchise_id', $branch->getKey())
-            ->where('is_manager', false)
-            ->get();
+        $today = $to->toDateString() >= CarbonImmutable::now($to->getTimezone())->toDateString();
 
         foreach ($accounts as $account) {
             try {
                 $cost = Cache::remember(
                     "ads-cost:{$account->getKey()}:{$from->toDateString()}:{$to->toDateString()}".($activeOnly ? ':active' : ''),
-                    now()->endOfDay(),
+                    $today ? now()->addMinutes(15) : now()->endOfDay(),
                     fn () => $this->performance->channelCost($account, Carbon::parse($from), Carbon::parse($to), $activeOnly),
                 );
             } catch (RuntimeException $e) {

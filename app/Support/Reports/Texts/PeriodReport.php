@@ -10,6 +10,7 @@ use App\Support\Reports\Airtable\ReportSources;
 use App\Support\Reports\LocationOrder;
 use App\Support\Reports\ReportJobs;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The weekly and monthly PDF, per branch and consolidated, for any
@@ -274,13 +275,13 @@ final class PeriodReport
             }
         }
 
-        // Closed: done or canceled in the period, whenever booked. ponytail:
-        // last_status_update is the latest change, Workiz's API has no
-        // "completed at".
+        // Closed: done or canceled in the period, whenever booked: when the sweep
+        // first saw it closed (closed_at), else its latest change for a row
+        // closed before that was kept.
         $closed = [];
         $techs = [];
         $reasons = [];
-        foreach ($jobs()->whereBetween('j.last_status_update', $range)->whereIn('j.status', ['Done', 'Canceled'])->get()->filter($kept) as $job) {
+        foreach ($jobs()->whereBetween(DB::raw('coalesce(j.closed_at, j.last_status_update)'), $range)->whereIn('j.status', ['Done', 'Canceled'])->get()->filter($kept) as $job) {
             $s = $source($job->job_source);
             $kind = self::kind($job->status);
             $price = $kind === 'done' ? (float) $job->total : 0.0;

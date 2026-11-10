@@ -1791,6 +1791,10 @@ class ActionRunner
         // $record, not $subject: in THIS arm `$subject` is the email's
         // subject line. The record the rule fired on is the other one.
         $subjectLine = $this->interpolate($subject, $event, $record);
+        // A report's subject says whose it is, as its WhatsApp title does (Jose, 2026-11-10).
+        if (in_array($event->event_key, self::REPORT_EVENTS, true) && ! str_contains($subjectLine, (string) ($issuer->name ?? ''))) {
+            $subjectLine = $issuer->name.' · '.$subjectLine;
+        }
         $body = $this->interpolate((string) $action['body'], $event, $record, forMarkdown: AutomationMessage::RENDERS_MARKDOWN);
         // A report to staff carries its formatted copy, as on WhatsApp (Jose, 2026-11-10); never to a customer.
         $pdf = in_array($event->event_key, self::REPORT_EVENTS, true) && $field !== self::RECIPIENT_CUSTOMER

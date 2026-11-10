@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\BusinessLocation;
 use App\Models\Franchise;
+use App\Models\Review;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
 use App\Models\WorkizTeamMember;
@@ -10,6 +12,7 @@ use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\SameDayReport;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use ReflectionMethod;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -142,6 +145,23 @@ class SameDayReportTest extends TestCase
     }
 
     /** Jose, 2026-10-09: "they all say main or texas, u cant tell which company they belong to". */
+    /** Audit, 2026-11-10: reviews name a location "accounts/X/locations/ID", the location "locations/ID"; the day's count was always 0. */
+    public function test_a_review_counts_for_its_location_whichever_way_it_is_named(): void
+    {
+        $t = $this->provisionTenant('Reviews');
+        $count = $this->inTenant($t['org'], function () use ($t) {
+            BusinessLocation::create(['organization_id' => $t['org']->id, 'franchise_id' => $t['franchise']->id, 'remote_name' => 'locations/9',
+                'title' => 'A-1 Chimney NJ', 'verification_state' => BusinessLocation::VERIFIED, 'is_published' => true]);
+            Review::create(['organization_id' => $t['org']->id, 'remote_name' => 'accounts/1/locations/9/reviews/r1', 'location_name' => 'accounts/1/locations/9',
+                'reviewer_name' => 'Dana', 'rating' => 5, 'comment' => 'Great', 'reviewed_at' => '2026-10-05 16:00:00']);
+
+            return (new ReflectionMethod(SameDayReport::class, 'reviews'))->invoke(null, $t['franchise'], '2026-10-05');
+        });
+
+        $this->assertSame(1, $count['new']);
+        $this->assertSame(1, $count['rows'][0]['total']);
+    }
+
     public function test_a_branch_is_named_by_its_company(): void
     {
         $t = $this->provisionTenant('Alpha');

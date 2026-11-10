@@ -90,13 +90,15 @@ class MarkdownEmailFieldsTest extends TestCase
             $this->assertTrue($result['ok'], $result['detail']);
         }
 
-        $pdfs = [];
-        \Illuminate\Support\Facades\Mail::assertSent(AutomationMessage::class, function ($m) use (&$pdfs) {
-            $pdfs[] = substr((string) (new \ReflectionProperty($m, 'pdf'))->getValue($m), 0, 5);
+        $sent = [];
+        \Illuminate\Support\Facades\Mail::assertSent(AutomationMessage::class, function ($m) use (&$sent) {
+            $read = fn (string $p) => (new \ReflectionProperty($m, $p))->getValue($m);
+            $sent[] = [substr((string) $read('pdf'), 0, 5), $read('subjectLine')];
 
             return true;
         });
-        $this->assertEqualsCanonicalizing(['%PDF-', ''], $pdfs);
+        // And a report's subject says whose it is (2026-11-10).
+        $this->assertEqualsCanonicalizing([['%PDF-', 'Alpha · Fully booked'], ['', 'Fully booked']], $sent);
     }
 
     public function test_a_strangers_words_stay_text_and_ezbizis_own_keep_their_markdown(): void
