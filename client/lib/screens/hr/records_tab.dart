@@ -211,6 +211,9 @@ class _RecordsTabState extends State<RecordsTab> {
         'role_id': ?_roleId,
         if (_place?.split(':') case [final kind, final id]) '${kind}_id': id,
         'missing': ?_missing,
+        // Server-side, so Inactive finds people past the first page (Jose, 2026-11-10).
+        if (_showing != _Showing.everyone)
+          'status': _showing == _Showing.active ? 'active' : 'inactive',
       }),
       widget.api.get('/hr/people/scope-options'),
     ]);
@@ -285,17 +288,8 @@ class _RecordsTabState extends State<RecordsTab> {
     });
   }
 
-  List<Map<String, dynamic>> get _shown => switch (_showing) {
-    _Showing.everyone => _people,
-    _Showing.active => [
-      for (final p in _people)
-        if (p['is_active'] != false) p,
-    ],
-    _Showing.deactivated => [
-      for (final p in _people)
-        if (p['is_active'] == false) p,
-    ],
-  };
+  // The server filters by status; see _load.
+  List<Map<String, dynamic>> get _shown => _people;
 
   Map<String, dynamic>? get _selectedPerson {
     for (final person in _people) {
@@ -412,7 +406,10 @@ class _RecordsTabState extends State<RecordsTab> {
                   label: Text(label),
                   selected: _showing == value,
                   visualDensity: VisualDensity.compact,
-                  onSelected: (_) => setState(() => _showing = value),
+                  onSelected: (_) {
+                    setState(() => _showing = value);
+                    _load();
+                  },
                 ),
             ],
           ),
