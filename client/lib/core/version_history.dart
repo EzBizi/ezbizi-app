@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0554', date: '10 Nov 2026', items: [
+      'Reports: every WhatsApp report sends the readable text and a formatted PDF (logo, tables, totals, page numbers)',
+      'Reports: every report lists A-1 branches in the set order (NJ, CT, TX, OH, IL, GA, DMV, MA, NY, Nationwide), with sub-companies after them, in WhatsApp, PDFs and emails',
+    ]),
     VersionRelease(version: '0.0.0553', date: '10 Nov 2026', items: [
       'Reports: the ACE Fireplace daily shows the latest day that has figures, and leaves out calls when the sheet has none',
     ]),
