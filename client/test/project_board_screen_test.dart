@@ -121,6 +121,7 @@ void main() {
             },
             'settings_scope': {'scope_type': 'company', 'scope_id': 'c-1'},
             'can_edit': true,
+            'sortable': ['status_days', 'customer'],
           },
         });
       }),
@@ -170,6 +171,17 @@ void main() {
       isTrue,
     );
 
+    // A header click sorts the whole tab on the server; a second click
+    // reverses it, with an arrow (Jose, 2026-11-10).
+    await tester.tap(find.text('STATUS TIME'));
+    await tester.pumpAndSettle();
+    expect(requests.last.url.queryParameters['sort'], 'status_days');
+    expect(requests.last.url.queryParameters['dir'], 'asc');
+    await tester.tap(find.text('STATUS TIME'));
+    await tester.pumpAndSettle();
+    expect(requests.last.url.queryParameters['dir'], 'desc');
+    expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
+
     // The company's names and order; a hidden column is not drawn.
     expect(find.text('CLIENT'), findsOneWidget);
     expect(find.text('Lena Park'), findsOneWidget);
@@ -206,6 +218,21 @@ void main() {
 
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
+    // Tag lists are compact pickers, not a wall of chips; the new columns
+    // have their settings (Jose, 2026-11-10).
+    expect(
+      find.byKey(const Key('project-board-tab-tags:unscheduled-add')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('project-board-repair-tags-add')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('project-board-ready-needs:note')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('project-board-warn-days')), findsOneWidget);
     // Statuses are the company's real ones, picked as chips.
     await tester.tap(
       find.descendant(

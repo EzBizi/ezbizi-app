@@ -336,6 +336,15 @@ class PreferenceRegistry
                 'help' => 'Drag the edge of a column heading to change it.',
             ],
 
+            // Project Management's sort, "<column>:<asc|desc>" (Jose,
+            // 2026-11-10: "clicking the column orders it"). Empty is newest first.
+            'project_board.sort' => [
+                'label' => 'Project Management sort',
+                'type' => 'string',
+                'default' => '',
+                'help' => 'Click a column heading in Project Management to change it.',
+            ],
+
             // One-time "New: …" tips this person dismissed with "Got it"
             // (monday port, desk 2026-11-09). Slugs, e.g. list_toolbar.
             'callouts.seen' => [

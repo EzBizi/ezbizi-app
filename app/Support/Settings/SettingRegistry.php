@@ -1050,6 +1050,29 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'In the order shown. A column without Financials hides its amounts anyway.',
             ),
+            // Jose, 2026-11-10: "the settings need to be updated to manage all
+            // of these new columns".
+            new SettingDefinition(
+                key: 'project_board.repair_tags', label: 'Project Management: repair team and contractor tags',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'The job tags that are a Repair Team / Contractor. None chosen: every tag naming a repair team or a contractor.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.ready_requires', label: 'Project Management: what Ready to schedule needs',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['service_area', 'technician', 'repair_team', 'attachment', 'note'],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Service area, technician, repair team, an attachment, a note: the ones ticked must be there.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.status_days', label: 'Project Management: Status Time colours',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['warn' => 3, 'bad' => 7],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Green below the first number of days, yellow from it, red from the second.',
+            ),
             new SettingDefinition(
                 key: 'project_board.labels', label: 'Project Management: label colours',
                 type: SettingDefinition::TYPE_JSON,

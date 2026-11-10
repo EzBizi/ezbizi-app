@@ -191,6 +191,14 @@ class ProjectBoardTest extends TestCase
         $this->assertSame('KENNI REPAIR TEAM', $row['repair_team']);
         $this->assertSame('Customer wants mornings.', $row['notes']);
 
+        // A different pick replaces it; Unassign takes it off, and Ready needs it again (Jose, 2026-11-10).
+        $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'CONTRACTOR: OMER'])->assertOk()
+            ->assertJsonPath('data.tags', ['DEPOSIT RECEIVED', 'CONTRACTOR: OMER']);
+        $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => null])->assertOk()
+            ->assertJsonPath('data.tags', ['DEPOSIT RECEIVED']);
+        $this->assertSame(['Repair Team / Contractor'], $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.ready_missing'));
+        $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'KENNI REPAIR TEAM'])->assertOk();
+
         $api->postJson("/api/v1/project-board/jobs/{$id}/ready")->assertOk()
             ->assertJsonPath('data.tags', ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM', 'READY TO SCHEDULE']);
         // Out of Unscheduled, into Ready to Schedule; still Submitted.
@@ -252,6 +260,72 @@ class ProjectBoardTest extends TestCase
         $this->assertSame(['REPAIR TEAM: KENNI'],
             array_column($view->getJson("/api/v1/jobs/{$a1}")->assertOk()->json('data.workiz_tags'), 'name'));
         $this->assertNotContains($door, array_column($view->getJson('/api/v1/project-board/jobs?tab=unscheduled&q=D-1')->json('data'), 'id'));
+    }
+
+    public function test_sort_and_search_cover_the_whole_tab_not_the_loaded_page(): void
+    {
+        // Jose, 2026-11-10: "this should take into account all the list, not just the loaded ones".
+        $alpha = $this->provisionTenant('Alpha');
+        $ids = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $ids = [];
+            foreach (range(1, 7) as $n) {
+                $ids[$n] = $this->job($alpha['franchise'], "J-{$n}", 'Submitted', null, ['DEPOSIT RECEIVED']);
+                // J-1 is the oldest: newest-first puts it on the last page.
+                Job::query()->whereKey($ids[$n])->update(['created_at' => now()->subDays(20 - $n)]);
+            }
+            Customer::query()->where('number', 'C-J-1')->update(['name' => 'Zelda Quarry']);
+
+            return $ids;
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        $first = fn (string $query) => array_column($api->getJson("/api/v1/project-board/jobs?tab=unscheduled&per_page=3{$query}")
+            ->assertOk()->json('data'), 'id');
+
+        $this->assertNotContains($ids[1], $first(''), 'J-1 is past page 1 unsorted');
+        // Status Time, most days first: the oldest job tops page 1.
+        $this->assertSame($ids[1], $first('&sort=status_days&dir=desc')[0]);
+        $this->assertSame($ids[7], $first('&sort=status_days&dir=asc')[0]);
+        $this->assertSame($ids[1], $first('&sort=customer&dir=desc')[0]);
+        // Load more continues the same order, with no row twice.
+        $page2 = array_column($api->getJson('/api/v1/project-board/jobs?tab=unscheduled&per_page=3&page=2&sort=status_days&dir=desc')->json('data'), 'id');
+        $this->assertSame([$ids[4], $ids[5], $ids[6]], $page2);
+        // Search reaches a row beyond page 1.
+        $this->assertSame([$ids[1]], $first('&q=Zelda'));
+        $api->getJson('/api/v1/project-board/jobs?sort=nonsense')->assertStatus(422);
+        $this->assertContains('status_days', $api->getJson('/api/v1/project-board/jobs')->json('meta.sortable'));
+    }
+
+    public function test_one_repair_team_per_job_and_the_settings_that_steer_it(): void
+    {
+        // Jose, 2026-11-10: "it should only be one type of repair team" and
+        // "the settings need to be updated to manage all of these new columns".
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null,
+            ['DEPOSIT RECEIVED', 'CONTRACTOR', 'CONTRACTOR: ITAMAR']));
+        $api = $this->signedInAs($alpha['admin']);
+
+        $row = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk()
+            ->assertJsonPath('meta.status_days', ['warn' => 3, 'bad' => 7])->json('data.0');
+        $this->assertSame(['DEPOSIT RECEIVED'], $row['tags'], 'the repair tag has its own column');
+        $this->assertSame('CONTRACTOR', $row['repair_team']);
+
+        // A pick leaves exactly one.
+        $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'CONTRACTOR: ITAMAR'])->assertOk()
+            ->assertJsonPath('data.tags', ['DEPOSIT RECEIVED', 'CONTRACTOR: ITAMAR']);
+
+        // The company's own list replaces the name rule; Ready needs only what is ticked.
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            app(SettingsResolver::class)->set('project_board.repair_tags', $alpha['org'], ['KENNI CREW']);
+            app(SettingsResolver::class)->set('project_board.ready_requires', $alpha['org'], ['technician']);
+            app(SettingsResolver::class)->set('project_board.status_days', $alpha['org'], ['warn' => 2, 'bad' => 5]);
+        });
+        $page = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled');
+        $this->assertEquals(['warn' => 2, 'bad' => 5], $page->json('meta.status_days'));
+        $row = $page->json('data.0');
+        $this->assertNull($row['repair_team'], 'CONTRACTOR: ITAMAR is no longer a repair tag');
+        $this->assertSame(['Technician'], $row['ready_missing']);
+        $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'CONTRACTOR: OMER'])->assertStatus(422);
+        $api->patchJson("/api/v1/project-board/jobs/{$id}/repair-team", ['repair_team' => 'KENNI CREW'])->assertOk();
     }
 
     private function job(Franchise $franchise, string $number, string $status, ?string $at = null, array $tags = [], array $payload = []): string
