@@ -72,7 +72,8 @@ final class SameDayReport
             ->whereIn('id', ReportJobs::branchesWithJobs())
             ->orderBy('name')
             ->get();
-        $branches = LocationOrder::sort($branches);
+        // Sorting reads each branch's company and the org's list setting: inside its org.
+        $branches = app(\App\Support\Tenancy\TenantContext::class)->run($organization, fn () => LocationOrder::sort($branches));
 
         $sources = [];
         $rows = [];
