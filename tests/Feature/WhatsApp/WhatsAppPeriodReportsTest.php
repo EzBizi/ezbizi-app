@@ -47,8 +47,8 @@ class WhatsAppPeriodReportsTest extends TestCase
         $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful();
         $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful(); // asked once
 
-        // A file to one person goes as the document template (2026-11-09); the question, to someone talking to the line, as a text.
-        $this->assertSame(['template', 'text'], array_column($this->sent, 'type'));
+        // A file to someone talking to the line goes as itself, the question as a text (2026-11-10).
+        $this->assertSame(['document', 'text'], array_column($this->sent, 'type'));
         $this->assertSame(self::APPROVER, $this->sent[0]['to']);
         $this->assertStringContainsString('APPROVE', $this->sent[1]['text']['body']);
 

@@ -95,15 +95,16 @@ class WhatsAppGroupsTest extends TestCase
         $this->assertSame(2, $this->deliver());
 
         // 2026-11-09 (Jose: "I want both"): the text, then the PDF; outside the window the text in account_report.
+        // 2026-11-10: in the window the PDF goes as itself, under a short caption.
         $messages = collect($this->sent)->filter(fn ($m) => isset($m['to']))->map(fn ($m) => [$m['to'], $m['type'], $m['template']['name'] ?? null])
             ->sortBy(fn ($m) => $m[0])->values()->all(); // each member's in order; members in any
         $this->assertSame([
             ['13055550101', 'text', null],
-            ['13055550101', 'template', 'report_statement'],
+            ['13055550101', 'document', null],
             ['13055550102', 'template', 'account_report'],
             ['13055550102', 'template', 'report_statement'],
         ], $messages);
-        $this->assertSame('NJ: 50 jobs', collect($this->sent)->firstWhere('type', 'text')['text']['body']);
+        $this->assertSame("*A1 NJ Same-Day Report*\n\nNJ: 50 jobs", collect($this->sent)->firstWhere('type', 'text')['text']['body']);
         $this->assertCount(1, collect($this->sent)->filter(fn ($m) => str_ends_with($m['url'], '/media')), 'one upload for every member');
         $this->assertSame(0, WhatsAppPendingReport::query()->withoutGlobalScopes()->count());
     }
@@ -138,12 +139,10 @@ class WhatsAppGroupsTest extends TestCase
         });
 
         $sent = collect($this->sent)->filter(fn ($m) => isset($m['to']))->values();
-        // In the window: the text as written, then the PDF.
-        $this->assertSame($body, $sent[0]['text']['body']);
-        $this->assertSame('report_statement', $sent[1]['template']['name']);
-        $this->assertSame(['type' => 'document', 'document' => ['id' => 'MEDIA-1', 'filename' => 'revenue-collected-nov-9.pdf']],
-            $sent[1]['template']['components'][0]['parameters'][0]);
-        $this->assertSame('Revenue collected · Nov 9', $sent[1]['template']['components'][1]['parameters'][0]['text']);
+        // In the window: the text under its title, then the PDF under a caption that only names it (Jose, 2026-11-10).
+        $this->assertSame("*Revenue collected · Nov 9*\n\n".$body, $sent[0]['text']['body']);
+        $this->assertSame(['id' => 'MEDIA-1', 'filename' => 'revenue-collected-nov-9.pdf', 'caption' => "\u{1F4CE} PDF copy: Revenue collected · Nov 9"],
+            $sent[1]['document']);
         // Outside it: the text on one line in account_report, in order over as many as it needs, then the PDF.
         $texts = $sent->slice(2, -1)->values();
         $this->assertSame(['account_report'], $texts->pluck('template.name')->unique()->values()->all());

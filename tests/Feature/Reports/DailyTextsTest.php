@@ -227,7 +227,7 @@ class DailyTextsTest extends TestCase
 
         $text = $this->text('marketing_ppc');
 
-        $this->assertStringContainsString('*Data date: Oct 19*', $text);
+        $this->assertStringContainsString('*Data date: Mon, Oct 19*', $text);
         $this->assertStringContainsString('• Spent: $200.00 · Calls: 10 · Jobs: 4', $text);
         $this->assertStringContainsString('• Cost/job: $50.00 · Call-to-job: 40.0%', $text);
         $this->assertStringNotContainsString('999', $text);
@@ -243,10 +243,43 @@ class DailyTextsTest extends TestCase
 
         $text = $this->text('marketing_ppc');
 
-        $this->assertStringContainsString('*Data date: Oct 17*', $text);
+        $this->assertStringContainsString('*Data date: Sat, Oct 17*', $text);
         $this->assertStringContainsString("*Cleveland*\n• Spent: $252.31 · Jobs: 2\n• Cost/job: $126.15\n", $text);
         $this->assertStringContainsString('*TOTAL* · Spent: $252.31 · Jobs: 2', $text);
         $this->assertStringNotContainsString('Calls', $text);
+    }
+
+    /**
+     * Jose, 2026-11-10: a company's sheet keeps its spend, but its jobs are the
+     * ones Workiz credits to that company, by service area, that day; stale
+     * spend is said.
+     */
+    public function test_marketing_ppc_counts_a_companys_jobs_from_ezbizi_not_its_sheet(): void
+    {
+        $ace = $this->inTenant($this->t['org'], fn () => Franchise::query()->create(['organization_id' => $this->t['org']->id,
+            'company_id' => Company::query()->create(['organization_id' => $this->t['org']->id, 'parent_company_id' => $this->t['company']->id,
+                'name' => 'Ace Fireplace Services', 'is_active' => true])->id,
+            'name' => 'Main', 'timezone' => 'America/New_York', 'currency' => 'USD', 'is_active' => true]));
+        $this->airtableTable($this->t, $ace->id, 'marketing', [
+            ['DATE' => '2026-10-17', 'Service Area' => 'Cleveland ', 'COST' => 300, 'JOBS' => 0],
+            ['DATE' => '2026-10-19', 'Service Area' => 'Cleveland ', 'COST' => 0, 'JOBS' => 0],
+        ]);
+        $job = fn (string $ref, string $source, string $area, string $at) => WorkizJob::query()->create(['franchise_id' => $this->t['franchise']->id,
+            'remote_id' => $ref, 'job_source' => $source, 'service_area' => $area, 'status' => 'Submitted', 'booked_at' => $at, 'payload' => [], 'synced_at' => now()]);
+        $this->inTenant($this->t['org'], function () use ($job) {
+            $job('JOB-1', 'Ace Fireplace Services', 'Cleveland', '2026-10-17 09:00:00');
+            $job('JOB-2', 'Ace Fireplace Services', 'Cleveland', '2026-10-17 15:00:00');
+            $job('JOB-3', 'Ace Fireplace Services', 'DFW', '2026-10-17 10:00:00');
+            $job('JOB-4', 'GMB', 'Cleveland', '2026-10-17 10:00:00');
+            $job('JOB-5', 'Ace Fireplace Services', 'Cleveland', '2026-10-18 10:00:00');
+        });
+
+        $text = $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)->render('marketing_ppc', $this->t['org'], CarbonImmutable::parse('2026-10-20'), [$ace->id]));
+
+        $this->assertStringContainsString("*Data date: Sat, Oct 17*\n\u{26A0}\u{FE0F} Spend last updated Oct 17\n_Spend from the Ace Fireplace Services sheet · jobs from EzBizi_", $text);
+        $this->assertStringContainsString("*Cleveland*\n• Spent: $300.00 · Jobs: 2\n• Cost/job: $150.00", $text);
+        $this->assertStringContainsString("*DFW*\n• Spent: N/A · Jobs: 1\n• Cost/job: N/A", $text);
+        $this->assertStringContainsString('*TOTAL* · Spent: $300.00 · Jobs: 3', $text);
     }
 
     /** Shoval, 2026-11-09: a sheet's areas in the location order too, a city by its state's codes ("IL, Chicago"). */
