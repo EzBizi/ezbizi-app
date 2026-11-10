@@ -3850,13 +3850,12 @@ class ActionRunner
         // A company's sub-companies are in it too (desk review, 2026-10-27).
         $branches = $automation->scope_type === null ? null
             : ViewScope::forStoredAutomationScope($creator, $automation->scope_type, $automation->scope_id)->franchiseIds();
-        $text = app(DailyTexts::class)->render($kind, $org, $day, $branches);
+        // A company's rule says whose report it is (Ace Fireplace's daily beside A-1's, 2026-11-09).
+        $company = $automation->scope_type === 'company' ? Company::query()->find($automation->scope_id)?->name : null;
+        [$title, $text] = app(DailyTexts::class)->headed($kind, $company ?? $org->name, $org, $day, $branches);
         if (trim($text) === '') {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nothing to report today, so nothing was sent.'];
         }
-        // A company's rule says whose report it is (Ace Fireplace's daily beside A-1's, 2026-11-09).
-        $company = $automation->scope_type === 'company' ? Company::query()->find($automation->scope_id)?->name : null;
-        $title = ($company ?? $org->name).' · '.DailyTexts::KINDS[$kind].' · '.$day->format('M j');
 
         // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
         $sent = self::deliverReportText((string) ($action['from'] ?? ''), self::idList($action['user_ids'] ?? []),

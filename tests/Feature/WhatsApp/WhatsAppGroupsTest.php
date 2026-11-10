@@ -66,18 +66,16 @@ class WhatsAppGroupsTest extends TestCase
         ]);
     }
 
-    /** 2026-11-10: a real group gets the report's text, then its PDF. */
-    public function test_a_real_group_gets_the_text_then_the_pdf(): void
+    /** 2026-11-10 (Jose: "just ONE message, just the message + the attachment"): a real group gets the PDF, the report its caption. */
+    public function test_a_real_group_gets_one_message_the_pdf_under_its_text(): void
     {
         $this->group(['remote_id' => 'GROUP-1']);
 
         $this->assertSame(1, $this->deliver());
 
         $posts = collect($this->sent)->filter(fn ($m) => isset($m['to']))->values();
-        $this->assertSame([['GROUP-1', 'group', 'text'], ['GROUP-1', 'group', 'document']],
-            $posts->map(fn ($m) => [$m['to'], $m['recipient_type'], $m['type']])->all());
-        $this->assertSame('NJ: 50 jobs', $posts[0]['text']['body']);
-        $this->assertSame("\u{1F4CE} PDF copy: A1 NJ Same-Day Report", $posts[1]['document']['caption']);
+        $this->assertSame([['GROUP-1', 'group', 'document']], $posts->map(fn ($m) => [$m['to'], $m['recipient_type'], $m['type']])->all());
+        $this->assertSame("*A1 NJ Same-Day Report*\n\nNJ: 50 jobs", $posts[0]['document']['caption']);
     }
 
     public function test_without_a_group_each_member_gets_it_one_to_one(): void
@@ -96,17 +94,16 @@ class WhatsAppGroupsTest extends TestCase
 
         $this->assertSame(2, $this->deliver());
 
-        // 2026-11-09 (Jose: "I want both"): the text, then the PDF; outside the window the text in account_report.
-        // 2026-11-10: in the window the PDF goes as itself, under a short caption.
+        // 2026-11-10 (Jose): ONE message each, the PDF under the report; outside the window the document template, the report its value.
         $messages = collect($this->sent)->filter(fn ($m) => isset($m['to']))->map(fn ($m) => [$m['to'], $m['type'], $m['template']['name'] ?? null])
-            ->sortBy(fn ($m) => $m[0])->values()->all(); // each member's in order; members in any
+            ->sortBy(fn ($m) => $m[0])->values()->all();
         $this->assertSame([
-            ['13055550101', 'text', null],
             ['13055550101', 'document', null],
-            ['13055550102', 'template', 'account_report'],
-            ['13055550102', 'template', 'report_statement'],
+            ['13055550102', 'template', 'account_report_pdf'],
         ], $messages);
-        $this->assertSame("*A1 NJ Same-Day Report*\n\nNJ: 50 jobs", collect($this->sent)->firstWhere('type', 'text')['text']['body']);
+        $this->assertSame("*A1 NJ Same-Day Report*\n\nNJ: 50 jobs", collect($this->sent)->firstWhere('type', 'document')['document']['caption']);
+        $this->assertSame([['type' => 'text', 'text' => 'A1 NJ Same-Day Report'], ['type' => 'text', 'text' => 'NJ: 50 jobs']],
+            collect(collect($this->sent)->firstWhere('type', 'template')['template']['components'])->firstWhere('type', 'body')['parameters']);
         $this->assertCount(1, collect($this->sent)->filter(fn ($m) => str_ends_with($m['url'], '/media')), 'one upload for every member');
         $this->assertSame(0, WhatsAppPendingReport::query()->withoutGlobalScopes()->count());
     }
@@ -146,8 +143,8 @@ class WhatsAppGroupsTest extends TestCase
         $this->assertSame(['template'], collect($this->sent)->filter(fn ($m) => isset($m['to']))->pluck('type')->unique()->values()->all());
     }
 
-    /** 2026-11-09: 93 of 107 report texts sat behind "reply to get it"; each now goes as its text and a formatted PDF. */
-    public function test_a_report_text_goes_as_its_text_then_a_pdf_in_the_window_or_not(): void
+    /** 2026-11-10: a report is one message in the window or not; one over WhatsApp's 1024-character caption says its headings and totals. */
+    public function test_a_long_report_is_one_message_with_its_headings_and_totals_in_the_window_or_not(): void
     {
         $group = $this->group();
         $recent = $this->member($group, '(305) 555-0101');
@@ -165,24 +162,19 @@ class WhatsAppGroupsTest extends TestCase
         });
 
         $sent = collect($this->sent)->filter(fn ($m) => isset($m['to']))->values();
-        // In the window: the text under its title, then the PDF under a caption that only names it (Jose, 2026-11-10).
-        $this->assertSame("*Revenue collected · Nov 9*\n\n".$body, $sent[0]['text']['body']);
-        $this->assertSame(['id' => 'MEDIA-1', 'filename' => 'revenue-collected-nov-9.pdf', 'caption' => "\u{1F4CE} PDF copy: Revenue collected · Nov 9"],
-            $sent[1]['document']);
-        // Outside it: the text on one line in account_report, in order over as many as it needs, then the PDF.
-        $texts = $sent->slice(2, -1)->values();
-        $this->assertSame(['account_report'], $texts->pluck('template.name')->unique()->values()->all());
-        $this->assertGreaterThan(1, $texts->count());
-        $this->assertSame('Revenue collected · Nov 9 (1/'.$texts->count().')', $texts[0]['template']['components'][0]['parameters'][0]['text']);
-        $values = $texts->map(fn ($m) => $m['template']['components'][0]['parameters'][1]['text']);
-        $this->assertStringStartsWith("\u{1F4B5} *Revenue collected* | _Mon, Nov 9, 2026 · payments received_ • *A-1 Chimney · New Jersey*: $17,744.11 •", $values[0]);
-        $this->assertStringEndsWith('| *TOTAL: $532,323.30*', $values->last());
-        $values->each(fn ($v) => $this->assertTrue(mb_strlen($v) <= 800 && ! preg_match('/[\n\t]| {4}/', $v), $v));
-        $this->assertSame('report_statement', $sent->last()['template']['name']);
+        $this->assertCount(2, $sent);
+        // In the window: the PDF, its caption the title, the headings and the total.
+        $this->assertSame(['id' => 'MEDIA-1', 'filename' => 'revenue-collected-nov-9.pdf',
+            'caption' => "*Revenue collected · Nov 9*\n\n\u{1F4B5} *Revenue collected*\n*TOTAL: $532,323.30*\n\n_Full detail in the PDF_"], $sent[0]['document']);
+        // Outside it: the document template, the title and the same on one line its values.
+        $this->assertSame('account_report_pdf', $sent[1]['template']['name']);
+        $this->assertSame([['type' => 'text', 'text' => 'Revenue collected · Nov 9'],
+            ['type' => 'text', 'text' => "\u{1F4B5} *Revenue collected* | *TOTAL: $532,323.30* | _Full detail in the PDF_"]],
+            collect($sent[1]['template']['components'])->firstWhere('type', 'body')['parameters']);
         $this->assertSame(0, WhatsAppPendingReport::query()->withoutGlobalScopes()->count());
-        $this->assertSame(['report.text:R:revenue_collected:2026-11-09:U', 'report.text:R:revenue_collected:2026-11-09:U:text:1'],
+        $this->assertSame(['report.text:R:revenue_collected:2026-11-09:U'],
             WhatsAppMessage::query()->withoutGlobalScopes()->where('counterparty', '13055550101')->where('direction', WhatsAppMessage::DIRECTION_OUT)
-                ->orderBy('idempotency_key')->pluck('idempotency_key')->all());
+                ->pluck('idempotency_key')->all());
     }
 
     public function test_show_report_delivers_what_was_held_and_nothing_else(): void

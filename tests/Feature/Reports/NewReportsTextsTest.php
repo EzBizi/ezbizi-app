@@ -97,6 +97,18 @@ class NewReportsTextsTest extends TestCase
         $this->assertStringNotContainsString('Zero Town', $text);
     }
 
+    /** Jose, 2026-11-10: ONE header line, the date the figures are for: "A-1 Chimney · Revenue collected · Mon, Nov 9". */
+    public function test_a_report_goes_under_one_title_with_the_date_its_figures_are_for(): void
+    {
+        $this->record($this->nj, 'payment', 'P1', '2026-11-07 10:00:00', 100);
+
+        [$title, $text] = $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)
+            ->headed('revenue_collected', 'A-1 Chimney', $this->t['org'], CarbonImmutable::parse('2026-11-08 01:00:00')));
+
+        $this->assertSame('A-1 Chimney · Revenue collected · Sat, Nov 7', $title);
+        $this->assertStringStartsWith("_Payments received, as of Nov 8, 1:00 AM_\n\n• *New Jersey*: $100.00", $text);
+    }
+
     public function test_a_sub_companys_empty_branch_of_a_listed_name_is_not_a_second_line(): void
     {
         // A-1's sister brands carry empty branches named "Texas" too.

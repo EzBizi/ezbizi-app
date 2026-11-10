@@ -26,10 +26,12 @@ use Throwable;
  * A group with a `remote_id` is a real WhatsApp group made with Meta's Groups
  * API, and gets one message. That needs an Official Business Account (the
  * earliest A-1's number can ask is ~2026-10-15), so until then the same call
- * sends the report to each MEMBER one to one: the text as they read it
- * (textTo), then the same report as a formatted PDF in the approved document
- * template (toPerson), whether or not they wrote in the last 24 hours. The
- * sender never knows which happened.
+ * sends the report to each MEMBER one to one (toPerson), whether or not they
+ * wrote in the last 24 hours. The sender never knows which happened.
+ *
+ * Either way a report is ONE message: its formatted PDF, the report's text
+ * as the caption (Jose, 2026-11-10: "Why can't it be just ONE message, just
+ * the message + the attachment").
  */
 final class WhatsAppGroups
 {
@@ -38,6 +40,12 @@ final class WhatsAppGroups
 
     /** A template value's pieces: the whole body may be 1024, the template's own words included. */
     private const VALUE_LIMIT = 800;
+
+    /** WhatsApp's limit on a document's caption. */
+    private const CAPTION_LIMIT = 1024;
+
+    /** A report that goes in the template as its value: run on, " | " between lines adds up to two characters a line, so it stays within VALUE_LIMIT. */
+    private const TEMPLATE_REPORT = 640;
 
     private const WINDOW_HOURS = 23;
 
@@ -59,14 +67,14 @@ final class WhatsAppGroups
     {
         $filename = Str::slug($title).'.pdf';
 
-        return $this->fanOut($purpose, $title, ['type' => 'text', 'text' => ['body' => $body]], $file
+        return $this->fanOut($purpose, $title, $body, $file
             ? fn (WhatsAppNumber $number) => [$this->upload($number, $this->pdf($number, self::titled($title, $body)), $filename), $filename]
             : null);
     }
 
     /**
-     * A PDF to the group: uploaded to Meta once, then sent by its media id.
-     * $text, its figures as people read them, goes first (Jose, 2026-11-10).
+     * A PDF to the group: uploaded to Meta once, then sent by its media id,
+     * $text, its figures as people read them, its caption (Jose, 2026-11-10).
      */
     public function deliverDocument(string $purpose, string $title, string $pdf, string $filename, ?string $text = null): int
     {
@@ -78,10 +86,7 @@ final class WhatsAppGroups
 
         $mediaId = $this->upload($number, $pdf, $filename);
 
-        return $this->fanOut($purpose, $title, $text !== null ? ['type' => 'text', 'text' => ['body' => $text]] : [
-            'type' => 'document',
-            'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => "\u{1F4CE} PDF copy: ".$title],
-        ], fn () => [$mediaId, $filename]);
+        return $this->fanOut($purpose, $title, $text, fn () => [$mediaId, $filename]);
     }
 
     /**
@@ -111,7 +116,7 @@ final class WhatsAppGroups
      * document template under its own title. A document may name its `type`
      * (an Excel export); PDF otherwise. $title is the batch's, kept for callers.
      *
-     * A document's `text` goes first, as the report's text does (Jose, 2026-11-10).
+     * A document's `text` is its caption, as a report's text is (Jose, 2026-11-10).
      *
      * @param  list<array{title: string, pdf: string, filename: string, type?: string, text?: string}>  $documents
      * @return int how many were sent; 0 when the person has no usable phone
@@ -124,10 +129,7 @@ final class WhatsAppGroups
 
         foreach ($documents as $d) {
             $mediaId = $this->upload($number, $d['pdf'], $d['filename'], $d['type'] ?? 'application/pdf');
-            if (($d['text'] ?? '') !== '') {
-                $this->textTo($number, $e164, $d['title'], $d['text'], null);
-            }
-            $this->toPerson($number, $user, $d['title'], $mediaId, $d['filename']);
+            $this->toPerson($number, $user, $d['title'], $mediaId, $d['filename'], null, $d['text'] ?? null);
         }
 
         return count($documents);
@@ -135,10 +137,9 @@ final class WhatsAppGroups
 
     /**
      * A report text to one person on this number (a rule's, 2026-10-20): the
-     * text, then the same report as a formatted PDF in the document template
-     * (Jose, 2026-11-09: "I want both. The message that shows the data and the
-     * attachment."). False when the person has no usable phone. $key: the
-     * message rows' idempotency key, the text's pieces under it. $issuer: the
+     * report as a formatted PDF, its text the caption, one message (Jose,
+     * 2026-11-10). False when the person has no usable phone. $key: the
+     * message row's idempotency key. $issuer: the
      * Company or Organization whose logo and name head the PDF; the number's
      * organization when null.
      */
@@ -152,28 +153,27 @@ final class WhatsAppGroups
 
         $filename = Str::slug($title).'.pdf';
         $mediaId = $this->upload($number, $this->pdf($number, self::titled($title, $body), $issuer), $filename);
-        $this->textTo($number, $e164, $title, $body, $key);
 
-        return $this->toPerson($number, $user, $title, $mediaId, $filename, $key);
+        return $this->toPerson($number, $user, $title, $mediaId, $filename, $key, $body);
     }
 
     /**
-     * The report's text as people read it on WhatsApp. Inside the 24-hour
-     * window under its title, in pieces WhatsApp takes; outside it in the org's
-     * text template (ai_assistance.report_text_template: {{1}} the report and
-     * its date, {{2}} the text), whose values cannot hold a line break, so the
-     * lines run on and a long report goes in several messages, in order.
+     * A message with no file (an approval prompt) as people read it on
+     * WhatsApp. Inside the 24-hour window under its title, in pieces WhatsApp
+     * takes; outside it in the org's text template
+     * (ai_assistance.report_text_template: {{1}} the title, {{2}} the text),
+     * whose values cannot hold a line break, so the lines run on and a long
+     * one goes in several messages, in order.
      */
-    private function textTo(WhatsAppNumber $number, string $e164, string $title, string $body, ?string $key): void
+    private function textTo(WhatsAppNumber $number, string $e164, string $title, string $body): void
     {
         $to = ltrim($e164, '+');
         $org = Organization::findOrFail($number->organization_id);
 
-        app(TenantContext::class)->run($org, function () use ($number, $e164, $to, $title, $body, $key, $org) {
+        app(TenantContext::class)->run($org, function () use ($number, $e164, $to, $title, $body, $org) {
             if ($this->windowOpen($number, $to)) {
-                foreach (self::pieces(self::titled($title, $body)) as $i => $piece) {
-                    $this->keyed($this->cloud->replyFreeForm($number, $to, ['type' => 'text', 'text' => ['body' => $piece]], $piece),
-                        $key === null ? null : $key.':text:'.($i + 1));
+                foreach (self::pieces(self::titled($title, $body)) as $piece) {
+                    $this->cloud->replyFreeForm($number, $to, ['type' => 'text', 'text' => ['body' => $piece]], $piece);
                 }
 
                 return;
@@ -183,7 +183,7 @@ final class WhatsAppGroups
             $pieces = self::runOn($body);
             foreach ($pieces as $i => $piece) {
                 $this->cloud->send($template, $e164, [$title.(count($pieces) > 1 ? ' ('.($i + 1).'/'.count($pieces).')' : ''), $piece],
-                    from: (string) $number->display_number, idempotencyKey: $key === null ? null : $key.':text:'.($i + 1));
+                    from: (string) $number->display_number);
             }
         });
     }
@@ -192,6 +192,30 @@ final class WhatsAppGroups
     private static function titled(string $title, string $body): string
     {
         return '*'.$title."*\n\n".$body;
+    }
+
+    /** What a report's one message says with its PDF: the report under its title; a file with no text, its title (Jose, 2026-11-10). */
+    public static function caption(string $title, ?string $body): string
+    {
+        return trim((string) $body) === '' ? '*'.$title.'*'
+            : self::titled($title, self::brief((string) $body, self::CAPTION_LIMIT - mb_strlen($title) - 4));
+    }
+
+    /** The report whole when it fits $max; else its headings and totals and "Full detail in the PDF" (Jose, 2026-11-10). */
+    private static function brief(string $body, int $max): string
+    {
+        if (mb_strlen($body) <= $max) {
+            return $body;
+        }
+
+        $more = "\n\n_Full detail in the PDF_";
+        // A heading is an emoji then bold words ("💵 *Revenue collected*"); a total says so.
+        $lines = array_values(array_filter(explode("\n", $body), fn (string $line) => preg_match('/^[^\s•*_]+ \*[^*]+\*$|total/iu', trim($line)) === 1));
+        while ($lines !== [] && mb_strlen(implode("\n", $lines).$more) > $max) {
+            array_pop($lines);
+        }
+
+        return mb_substr(implode("\n", $lines), 0, max(0, $max - mb_strlen($more))).$more;
     }
 
     /** A free-form message's row under the key, taken from any earlier row that had it. */
@@ -265,10 +289,10 @@ final class WhatsAppGroups
     }
 
     /**
-     * @param  array<string, mixed>  $message  the Cloud API message to a real group, minus who it is to
-     * @param  (callable(WhatsAppNumber): array{0: string, 1: string})|null  $file  the media id and filename members get, made once; null: a text alone
+     * @param  string|null  $body  the text: the file's caption, or the message when there is no file
+     * @param  (callable(WhatsAppNumber): array{0: string, 1: string})|null  $file  the media id and filename, made once; null: the text alone
      */
-    private function fanOut(string $purpose, string $title, array $message, ?callable $file): int
+    private function fanOut(string $purpose, string $title, ?string $body, ?callable $file): int
     {
         $group = WhatsAppGroup::query()->where('purpose', $purpose)->first();
         $number = $this->numberFor($purpose);
@@ -278,23 +302,14 @@ final class WhatsAppGroups
         }
 
         if ($group->remote_id !== null) {
-            $post = fn (array $m) => $this->graph('post', $number->phone_number_id.'/messages', phoneNumberId: $number->phone_number_id, body: [
+            [$mediaId, $filename] = $file === null ? [null, null] : $file($number);
+            $this->graph('post', $number->phone_number_id.'/messages', phoneNumberId: $number->phone_number_id, body: [
                 'messaging_product' => 'whatsapp',
                 'recipient_type' => 'group',
                 'to' => $group->remote_id,
-                ...$m,
+                ...($file === null ? ['type' => 'text', 'text' => ['body' => (string) $body]]
+                    : ['type' => 'document', 'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => self::caption($title, $body)]]),
             ]);
-            $post($message);
-            // A report's file after its text, as members one to one get it (2026-11-10). The text
-            // went: a refused file is reported, not a failed run that sends the text again.
-            if ($file !== null && $message['type'] === 'text') {
-                try {
-                    [$mediaId, $filename] = $file($number);
-                    $post(['type' => 'document', 'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => "\u{1F4CE} PDF copy: ".$title]]);
-                } catch (Throwable $e) {
-                    report($e);
-                }
-            }
 
             return 1;
         }
@@ -308,17 +323,14 @@ final class WhatsAppGroups
                 if ($e164 === null) {
                     continue;
                 }
-                // The text first, as they read it; then the report's file.
-                if ($message['type'] === 'text') {
-                    $this->textTo($number, $e164, $title, $message['text']['body'], null);
-                }
                 if ($file === null) {
+                    $this->textTo($number, $e164, $title, (string) $body);
                     $reached++;
 
                     continue;
                 }
                 [$mediaId, $filename] = $made ??= $file($number);
-                $reached += $this->toPerson($number, $user, $title, $mediaId, $filename) ? 1 : 0;
+                $reached += $this->toPerson($number, $user, $title, $mediaId, $filename, null, $body) ? 1 : 0;
             } catch (Throwable $e) {
                 // One member's refusal must not cost the others their report.
                 report($e);
@@ -415,15 +427,16 @@ final class WhatsAppGroups
     }
 
     /**
-     * One report's file to one person, its caption no more than what it is
-     * (Jose, 2026-11-10: "📎 PDF copy: <report> · <date>"). Inside the 24-hour
-     * window as a document; outside it in the org's approved document template
-     * (ai_assistance.report_template: {{1}} the report). Free text reaches only
+     * One report to one person, ONE message: its file, $body under its title
+     * the caption (Jose, 2026-11-10). Inside the 24-hour window as a document;
+     * outside it in the org's approved document template
+     * (ai_assistance.report_template: the file its header, {{1}} the title,
+     * {{2}} the report run on, since a value cannot break a line). Free text reaches only
      * someone who wrote in the last 24 hours: 93 of 107 report texts never went
      * (2026-11-04..09), and our own record of who wrote can open a window Meta
      * does not see (fake webhooks as Bar), so only a message they sent counts.
      */
-    private function toPerson(WhatsAppNumber $number, User $user, string $title, string $mediaId, string $filename, ?string $key = null): bool
+    private function toPerson(WhatsAppNumber $number, User $user, string $title, string $mediaId, string $filename, ?string $key = null, ?string $body = null): bool
     {
         $e164 = ThumbtackAssociatePhoneNumbers::e164((string) $user->phone);
 
@@ -432,17 +445,18 @@ final class WhatsAppGroups
         }
 
         $org = Organization::findOrFail($number->organization_id);
-        app(TenantContext::class)->run($org, function () use ($number, $e164, $title, $mediaId, $filename, $key, $org) {
+        app(TenantContext::class)->run($org, function () use ($number, $e164, $title, $mediaId, $filename, $key, $body, $org) {
             $to = ltrim($e164, '+');
             if ($this->windowOpen($number, $to)) {
-                $caption = "\u{1F4CE} ".(str_ends_with($filename, '.pdf') ? 'PDF copy: ' : '').$title;
+                $caption = self::caption($title, $body);
                 $this->keyed($this->cloud->replyFreeForm($number, $to,
                     ['type' => 'document', 'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => $caption]], $caption), $key);
 
                 return;
             }
             $this->cloud->send((string) $this->settings->get('ai_assistance.report_template', $org),
-                $e164, [$title], from: (string) $number->display_number, idempotencyKey: $key,
+                $e164, [$title, trim((string) $body) === '' ? 'The file is attached.' : self::runOn(self::brief((string) $body, self::TEMPLATE_REPORT))[0]],
+                from: (string) $number->display_number, idempotencyKey: $key,
                 document: ['id' => $mediaId, 'filename' => $filename]);
         });
 
