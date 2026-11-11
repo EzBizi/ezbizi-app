@@ -3884,6 +3884,10 @@ Route::prefix('v1/staff')
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);
 
+        // The release in flight, stage by stage, from what release.sh and
+        // deploy.sh append on this box (the Development tab's Releases).
+        Route::get('release-status', [\App\Http\Controllers\Api\StaffReleaseStatusController::class, 'index']);
+
         // Which tab has which how-to video (UI queue 81). Platform-wide like the
         // client versions: a new video is a save, not a release.
         Route::get('help-videos', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'index']);
