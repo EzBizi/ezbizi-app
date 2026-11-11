@@ -2530,7 +2530,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   // instead, maybe make them a bit smaller too").
                   if (tags.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 2),
+                      padding: const EdgeInsets.only(top: 5),
                       child: Theme(
                         data: theme.copyWith(
                           textTheme: theme.textTheme.copyWith(
