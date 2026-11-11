@@ -218,6 +218,14 @@ void main() {
     expect(none, isNot(contains('<img')));
   });
 
+  /// A saved design comes back with JSON nulls; it must not draw an empty logo.
+  test('a stored null logo or phone draws nothing', () {
+    final html = compileSignature(
+      mergeDesign({'logo_url': null, 'company_phone': null}),
+    );
+    expect(html, isNot(contains('max-height:40px')));
+  });
+
   testWidgets('linking: same email, unlink, and picking a person', (
     tester,
   ) async {
