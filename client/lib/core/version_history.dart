@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0562', date: '11 Nov 2026', items: [
+      'Email: signature logos are no longer listed as attachments; real attachments show as compact chips; on phones a thread scrolls as one page',
       'Reports on WhatsApp: one item per line with the title and date on their own lines, even when sent outside the 24-hour window; every caption carries its key figures',
     ]),
     VersionRelease(version: '0.0.0561', date: '11 Nov 2026', items: [
