@@ -76,6 +76,7 @@ class PhoneNumber extends Model implements StatesRetention
         'messaging_service_sid', 'sms_outbound_allowed', 'lead_line', 'emergency_address_set',
         'emergency_address_sid', 'voice_caller_id_lookup', 'voicemail_transcribe',
         'capabilities', 'recording_notice', 'fallback_number',
+        'override_on', 'override',
     ];
 
     protected function casts(): array
@@ -92,6 +93,10 @@ class PhoneNumber extends Model implements StatesRetention
             // Twilio owns this; we keep the last answer so the list can draw
             // without asking. See the migration for why.
             'capabilities' => 'array',
+
+            // What the line does instead of the call flow, when override_on.
+            'override_on' => 'boolean',
+            'override' => 'array',
         ];
     }
 
