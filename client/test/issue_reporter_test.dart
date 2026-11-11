@@ -37,6 +37,16 @@ void main() {
     expect(stall(5 * 60 * 1000), isNull, reason: 'A laptop lid, not a freeze.');
   });
 
+  test('a window ping answered after the computer slept is not a freeze', () {
+    expect(IssueReporter.pingStalled(const Duration(milliseconds: 1500)), isFalse);
+    expect(IssueReporter.pingStalled(const Duration(seconds: 9)), isTrue);
+    expect(
+      IssueReporter.pingStalled(const Duration(milliseconds: 3630650)),
+      isFalse,
+      reason: 'The 11-11 hour-long "freeze": a sleeping PC.',
+    );
+  });
+
   test('a background tab coming back is not a freeze; a real stall while in front is', () {
     // 2026-10-16: 175 web "freezes", and they were hidden tabs. Chrome holds a
     // hidden tab's timer for up to a minute; the late tick fired once the tab
