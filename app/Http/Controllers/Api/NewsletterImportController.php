@@ -26,6 +26,9 @@ class NewsletterImportController extends Controller
     /** 2 MB of PNG is already a heavy email. */
     private const MAX_PNG_BYTES = 2 * 1024 * 1024;
 
+    /** The pictures served from the artwork folder, by extension. */
+    private const PICTURE_TYPES = ['png' => 'image/png', 'jpg' => 'image/jpeg', 'gif' => 'image/gif', 'webp' => 'image/webp'];
+
     public function __construct(
         private readonly SvgImporter $importer,
         private readonly FileStore $files,
@@ -71,7 +74,39 @@ class NewsletterImportController extends Controller
         $path = $this->files->directoryFor('newsletter-artwork', $org).'/'.$name;
         abort_unless($this->files->exists($path), Status::HTTP_NOT_FOUND);
 
-        return $this->files->serve($path, mime: 'image/png', filename: $name, disposition: 'inline');
+        // Only the raster types `library` stores; never an SVG.
+        $mime = self::PICTURE_TYPES[strtolower(pathinfo($name, PATHINFO_EXTENSION))] ?? null;
+        abort_if($mime === null, Status::HTTP_NOT_FOUND);
+
+        return $this->files->serve($path, mime: $mime, filename: $name, disposition: 'inline');
+    }
+
+    /**
+     * POST /newsletter/import/library/{item}: a picture from the media library,
+     * copied to a public address an inbox can load (review 2026-11-09 A29).
+     */
+    public function library(Request $request, string $item): JsonResponse
+    {
+        $user = $this->mayWrite($request);
+        $row = app(SocialLibraryController::class)->find($user, $item);
+
+        $bytes = $this->files->contents($row->path, $row->disk);
+        $info = $bytes === null ? false : @getimagesizefromstring($bytes);
+        $extension = $info === false ? null : array_search($info['mime'] ?? '', self::PICTURE_TYPES, true);
+        if ($extension === false || $extension === null) {
+            throw ValidationException::withMessages(['item' => 'That library item is not a picture an email can show.']);
+        }
+        if (strlen($bytes) > self::MAX_PNG_BYTES) {
+            throw ValidationException::withMessages(['item' => 'That picture is larger than 2 MB. Choose a smaller one.']);
+        }
+
+        $organization = (string) $user->organization_id;
+        $path = $this->files->putContents($bytes, $this->files->directoryFor('newsletter-artwork', $organization), $extension);
+
+        return response()->json(['data' => [
+            'url' => rtrim((string) config('app.url'), '/')
+                ."/api/v1/newsletter/artwork/{$organization}/".basename($path),
+        ]], Status::HTTP_CREATED);
     }
 
     private function mayWrite(Request $request): User

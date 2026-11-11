@@ -170,7 +170,7 @@ final class SendNewsletter implements ShouldQueue
      *
      * @return array<int, array{email: string, first_name?: string, last_name?: string}>
      */
-    private function people(Newsletter $newsletter): array
+    public static function people(Newsletter $newsletter): array
     {
         $audience = $newsletter->audience;
 
