@@ -295,6 +295,15 @@ class PhoneTokenTest extends TestCase
 
         $this->assertEqualsCanonicalizing([$a->id, $b->id], $ids);
         $this->assertNotContains($empty->id, $ids);
+
+        // A ring-group member with no line there still takes its calls (Jose on Owners).
+        $this->inTenant($t['org'], fn () => \App\Models\PhoneRingGroup::query()->create([
+            'connection_id' => $empty->id, 'name' => 'Owners', 'mode' => 'simultaneous',
+            'timeout_seconds' => 30, 'member_user_ids' => [$desk->id], 'member_role_ids' => [], 'overflow' => 'voicemail',
+        ]));
+        $ids = collect($this->signedInAs($desk)->getJson('/api/v1/phone/registrations')->assertOk()->json('data'))->pluck('connection_id')->all();
+        $this->assertContains($empty->id, $ids);
+        $this->signedInAs($desk)->putJson('/api/v1/phone/presence', ['connection_id' => $empty->id, 'state' => 'registered'])->assertOk();
     }
 
     public function test_presence_list_returns_teammates_on_the_connection(): void

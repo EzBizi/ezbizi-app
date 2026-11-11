@@ -47,7 +47,7 @@ class TokensController extends Controller
             ->where('status', PhoneConnection::STATUS_CONNECTED)
             ->orderBy('id')
             ->get()
-            ->filter(fn (PhoneConnection $connection) => $this->access->hasLineOn($user, $connection))
+            ->filter(fn (PhoneConnection $connection) => $this->access->takesCallsOn($user, $connection))
             ->map(fn (PhoneConnection $connection) => ['connection_id' => $connection->id])
             ->values()
             ->all()]);
@@ -86,7 +86,7 @@ class TokensController extends Controller
         $connection = PhoneConnection::query()->findOrFail($input['connection_id']);
         $user = $request->user();
 
-        if (! $this->access->hasLineOn($user, $connection)) {
+        if (! $this->access->takesCallsOn($user, $connection)) {
             return response()->json(['message' => self::NO_LINE], Response::HTTP_FORBIDDEN);
         }
 
