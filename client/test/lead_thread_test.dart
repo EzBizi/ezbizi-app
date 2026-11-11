@@ -85,6 +85,39 @@ void main() {
         reason: 'the lead now has its job');
   });
 
+  // Jose, 2026-11-11: "make it so address email etc can be copied too".
+  testWidgets('the email copies like the phone', (tester) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      email: 'marcus@example.com',
+      size: const Size(1200, 1400),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('copy-email')));
+    await tester.pump();
+
+    expect(copied, ['marcus@example.com']);
+    expect(find.text('Email copied'), findsOneWidget);
+  });
+
   testWidgets('on a phone the details fold away and the header stays short', (
     tester,
   ) async {
@@ -1436,6 +1469,7 @@ Future<void> _pump(
   Map<String, dynamic>? booking,
   List<String>? ai,
   String? postalCode,
+  String? email,
   Map<String, dynamic>? credit,
   String? replying,
   String? conflictOnce,
@@ -1711,6 +1745,7 @@ Future<void> _pump(
             'source': ?source,
             'ai': ?ai,
             'postal_code': ?postalCode,
+            'email': ?email,
             'credit': ?credit,
             if (offer != null) 'lead_type': 'Reschedule',
           },
