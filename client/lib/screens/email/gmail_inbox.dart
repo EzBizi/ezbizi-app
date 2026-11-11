@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/deep_links.dart';
@@ -197,22 +198,24 @@ class _GmailInboxState extends State<GmailInbox> {
   int _messageRequest = 0;
   Dealt? _dealt;
 
-  ReadingPane _pane = ReadingPane.right;
+  ReadingPane _pane = ReadingPane.off;
 
   /// The rail laid over the list, below [_railBeside].
   bool _drawer = false;
 
   late final AppLifecycleListener _resume;
 
-  String get _paneKey => 'email_reading_pane_${widget.session.me?.id ?? ''}';
+  // _v2: opening a mail now takes the list's space by default, Gmail's own
+  // default (Jose 11-11); a side-by-side saved under the old default is reset.
+  String get _paneKey => 'email_reading_pane_v2_${widget.session.me?.id ?? ''}';
 
   @override
   void initState() {
     super.initState();
     _pane = switch (store.readItem(_paneKey)) {
+      'right' => ReadingPane.right,
       'below' => ReadingPane.below,
-      'off' => ReadingPane.off,
-      _ => ReadingPane.right,
+      _ => ReadingPane.off,
     };
     DeepLinks.pending.addListener(_followLink);
     // Connecting an inbox happens in the browser; coming back must show it.
@@ -284,8 +287,10 @@ class _GmailInboxState extends State<GmailInbox> {
     final next = _next;
     if (next == null || _appending) return;
     _appending = true;
-    _loadList(cursor: next, append: true)
-        .whenComplete(() => _appending = false);
+    _loadList(
+      cursor: next,
+      append: true,
+    ).whenComplete(() => _appending = false);
   }
 
   Future<void> _loadList({String? cursor, bool append = false}) async {
@@ -1382,7 +1387,26 @@ class _GmailInboxState extends State<GmailInbox> {
         : _pane;
 
     final Widget body = switch (pane) {
-      ReadingPane.off => open ? _reader(context, back: true) : _list(context),
+      // The list stays built under the open mail, so back finds it where it
+      // was scrolled to.
+      ReadingPane.off => IndexedStack(
+        index: open ? 1 : 0,
+        sizing: StackFit.expand,
+        children: [
+          _list(context),
+          if (open)
+            CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.escape): () =>
+                    setState(_closeReader),
+              },
+              child: Focus(
+                autofocus: true,
+                child: _reader(context, back: true),
+              ),
+            ),
+        ],
+      ),
       ReadingPane.right => Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1458,8 +1482,9 @@ class _GmailInboxState extends State<GmailInbox> {
                 itemCount: _rows.length + (_next != null ? 1 : 0),
                 itemBuilder: (context, index) {
                   if (index == _rows.length) {
-                    WidgetsBinding.instance
-                        .addPostFrameCallback((_) => _appendOlder());
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => _appendOlder(),
+                    );
                     return const Padding(
                       key: ValueKey('email-more'),
                       padding: EdgeInsets.all(16),

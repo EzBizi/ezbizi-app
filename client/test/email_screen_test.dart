@@ -12,6 +12,7 @@ import 'package:ezbizi_client/screens/email/message_body.dart';
 import 'package:ezbizi_client/screens/email/message_list.dart';
 import 'package:ezbizi_client/screens/email/reply_panel.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -182,10 +183,10 @@ void main() {
     expect(find.text('Notifications'), findsOneWidget);
   });
 
-  // Design 137: the reading pane sits to the right by default, and "No
-  // reading pane" is the old behaviour -- the mail replaces the list.
-  testWidgets('at 1400px with no reading pane opening a message replaces the '
-      'list', (tester) async {
+  // Jose 11-11: an open mail takes the list's space by default, as in Gmail;
+  // side by side is the reading-pane setting.
+  testWidgets('at 1400px opening a message replaces the list; Esc and back '
+      'return to it', (tester) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
 
     final list = find.byKey(const ValueKey('tour-email-list'));
@@ -195,19 +196,25 @@ void main() {
     expect(list, findsOneWidget);
 
     await _tap(tester, find.textContaining('Chimney sweep quote').first);
-    expect(list, findsOneWidget, reason: 'The pane on the right keeps the list.');
-    expect(find.byType(MessageBody), findsOneWidget);
-
-    await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
-    await _tap(tester, find.byKey(const ValueKey('email-pane-off')));
-
     expect(list, findsNothing);
     expect(find.byType(MessageBody), findsOneWidget);
     expect(rail, findsOneWidget);
-    expect(find.byTooltip('Back to the messages'), findsOneWidget);
 
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(list, findsOneWidget);
+    expect(find.byType(MessageBody), findsNothing);
+
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
     await _tap(tester, find.byTooltip('Back to the messages'));
     expect(list, findsOneWidget);
+
+    // The split-view setting keeps the list beside the mail.
+    await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
+    await _tap(tester, find.byKey(const ValueKey('email-pane-right')));
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
+    expect(list, findsOneWidget);
+    expect(find.byType(MessageBody), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -270,6 +277,7 @@ void main() {
     await _tap(tester, find.textContaining('Invoice 4471').first);
     expect(find.byType(MessageBody), findsOneWidget);
     expect(find.textContaining('Seen by'), findsNothing);
+    await _tap(tester, find.byTooltip('Back to the messages'));
 
     // The CONTROL, on the mail beside it: the indicator does appear when it
     // is somebody else, so the assertion above is about the filter and not
