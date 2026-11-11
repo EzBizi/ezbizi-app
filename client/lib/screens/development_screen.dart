@@ -9,6 +9,7 @@ import 'staff/health_screen.dart';
 import 'staff/impersonations_screen.dart';
 import 'staff/modules_screen.dart';
 import 'staff/organizations_screen.dart';
+import 'staff/releases_screen.dart';
 import 'staff/staff_accounts_screen.dart';
 import 'staff/suggestions_queue_screen.dart';
 
@@ -17,11 +18,7 @@ import 'staff/suggestions_queue_screen.dart';
 /// Opening this tab asks for the authenticator, then holds a staff token on a
 /// SEPARATE ApiClient while the tab is mounted. Leaving drops that session.
 class DevelopmentScreen extends StatefulWidget {
-  const DevelopmentScreen({
-    super.key,
-    required this.session,
-    this.staffApi,
-  });
+  const DevelopmentScreen({super.key, required this.session, this.staffApi});
 
   final Session session;
   final ApiClient? staffApi;
@@ -187,6 +184,8 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
         Icons.devices_outlined,
         ClientVersionsScreen(staff: _staff),
       ),
+      // The release in flight, stage by stage, with its percentage.
+      ('Releases', Icons.rocket_launch_outlined, ReleasesScreen(staff: _staff)),
       (
         'Client access',
         Icons.history_outlined,

@@ -211,6 +211,24 @@ git diff --quiet -- . ':(exclude)docs' && git diff --cached --quiet -- . ':(excl
 echo "── EzBizi release v${VERSION} · ${COMMIT} ──"
 echo "   targets: ${TARGETS}"
 
+# ── progress for the Development tab's Releases screen ──────────
+#
+# Only the pinned run reports: the outer run re-execs it below, and reporting
+# from both would start every release twice. A dry run reports nothing. Every
+# call swallows its own failure — a box that cannot be reached costs the
+# progress bar, never the release. The EXIT trap closes the record whichever
+# `exit` ends the run.
+source scripts/lib/release-status.sh
+export EZBIZI_RELEASE_VERSION="$VERSION" RELEASE_STATUS_SHA="$RELEASE_SHA"
+RELEASE_STATUS_CLOSED=0
+if [ -n "${EZBIZI_PINNED:-}" ] && [ "$DRY_RUN" -eq 0 ]; then
+  RELEASE_STATUS_TARGETS="$TARGETS" release_status release 0 "started · targets: ${TARGETS}"
+  wants web && release_status precheck 100 "✓ precheck finished, release.sh started"
+  trap 'rc=$?; [ "$RELEASE_STATUS_CLOSED" = 1 ] || [ "$rc" = 0 ] || release_status release 0 "✗ release v${VERSION} stopped (exit $rc)"' EXIT
+else
+  release_status() { :; }
+fi
+
 # ── refuse to release a tree that is not committed ───────────────
 #
 # deploy.sh tests `git archive main` — the committed tree, not the working
@@ -458,6 +476,7 @@ if wants web; then
   echo "→ web — deploy.sh (tests, build, push, UI swap)"
   if ! run ./scripts/deploy.sh ${SKIP_GATES} --sha "$RELEASE_SHA"; then
     echo "✗ web/API deployment failed; native builds and publication stopped" >&2
+    release_status release 0 "✗ web/API deployment failed; native builds stopped"; RELEASE_STATUS_CLOSED=1
     exit 1
   fi
 else
@@ -471,6 +490,7 @@ fi
 if wants windows; then
   echo
   echo "→ windows — building"
+  release_status windows 0 "building"
   if run ./scripts/build-app.sh windows ${GATES}; then
   GATES=--skip-gates   # whatever ran above covered this commit
 
@@ -498,6 +518,7 @@ if wants windows; then
   # The app itself first, so the copy the installer drops on disk is signed too,
   # not only the installer that carries it.
   echo "→ windows — signing ezbizi.exe"
+  release_status windows 50 "signing + wrapping the installer"
   sign "$WIN_BUILD/ezbizi.exe"
 
   echo "→ windows — wrapping into an installer"
@@ -577,6 +598,7 @@ if wants windows; then
 
   if [ "$PUBLISH_WINDOWS" -eq 1 ]; then
   echo "→ windows — publishing the installer and its manifest"
+  release_status windows 85 "publishing the installer"
   run ssh "$WEB_REMOTE" "sudo mkdir -p '$WEB_DOWNLOADS' && sudo chown www-data:www-data '$WEB_DOWNLOADS'"
 
   if [ "$DRY_RUN" -eq 0 ]; then
@@ -591,10 +613,14 @@ if wants windows; then
   else
     echo "   would upload $WIN_EXE and write windows.json"
   fi
+  release_status windows 100 "✓ published"
+  else
+  release_status windows 90 "✗ built, NOT published: the web deploy failed"
   fi
 else
   FAILED+=("windows")
   echo "   ✗ windows failed — skipped its packaging, continuing"
+  release_status windows 0 "✗ windows failed"
 fi
 fi
 
@@ -602,6 +628,7 @@ fi
 if wants android; then
   echo
   echo "→ android — building signed app bundle"
+  release_status android 0 "building signed app bundle"
   if run ./scripts/build-app.sh android ${GATES}; then
 
   AAB="client/build/app/outputs/bundle/release/app-release.aab"
@@ -613,12 +640,18 @@ if wants android; then
     cp "$AAB" "$DIST_ANDROID/EzBizi-${VERSION}-${COMMIT}.aab"
     # Upload to Play, like iOS goes to TestFlight. Play still reviews it.
     # A failure warns and does not fail the release: the AAB is in dist/.
-    ./scripts/play-upload.sh "$DIST_ANDROID/EzBizi-${VERSION}-${COMMIT}.aab" production "$VERSION" \
-      || echo "   ⚠ Play upload failed — the AAB is in $DIST_ANDROID; upload it by hand"
+    release_status android 70 "uploading to Play"
+    if ./scripts/play-upload.sh "$DIST_ANDROID/EzBizi-${VERSION}-${COMMIT}.aab" production "$VERSION"; then
+      release_status android 100 "✓ uploaded to Play"
+    else
+      echo "   ⚠ Play upload failed — the AAB is in $DIST_ANDROID; upload it by hand"
+      release_status android 100 "✓ built — ⚠ Play upload failed, upload the AAB by hand"
+    fi
   fi
 else
   FAILED+=("android")
   echo "   ✗ android failed — skipped its packaging, continuing"
+  release_status android 0 "✗ android failed"
 fi
 fi
 
@@ -640,6 +673,7 @@ fi
 if wants ios; then
   echo
   echo "→ ios — building signed archive on the Mac relay"
+  release_status apple 0 "iOS: building on the Mac relay"
   if run ./scripts/build-app.sh ios ${GATES} --upload; then
 
   # EzBizi-${VERSION}-*.ipa, not EzBizi-*.ipa. dist/ keeps every past release,
@@ -650,9 +684,11 @@ if wants ios; then
     echo "✗ build-app.sh finished but left no .ipa in ${DIST_APPLE}/." >&2
     exit 1
   fi
+  if wants macos; then release_status apple 50 "✓ iOS uploaded to TestFlight"; else release_status apple 100 "✓ iOS uploaded to TestFlight"; fi
 else
   FAILED+=("ios")
   echo "   ✗ ios failed — skipped its packaging, continuing"
+  release_status apple 0 "✗ ios failed"
 fi
 fi
 
@@ -669,6 +705,7 @@ fi
 if wants macos; then
   echo
   echo "→ macos — building on the Mac relay"
+  if wants ios; then release_status apple 55 "macOS: building on the Mac relay"; else release_status apple 0 "macOS: building on the Mac relay"; fi
   if run ./scripts/build-app.sh macos ${GATES} --upload; then
 
   # A signed .pkg when the relay can sign for the store, an ad-hoc .zip when it
@@ -681,9 +718,11 @@ if wants macos; then
     echo "✗ build-app.sh finished but left no macOS .pkg or .zip in ${DIST_APPLE}/." >&2
     exit 1
   fi
+  release_status apple 100 "✓ macOS built"
 else
   FAILED+=("macos")
   echo "   ✗ macos failed — skipped its packaging, continuing"
+  release_status apple 0 "✗ macos failed"
 fi
 fi
 
@@ -708,10 +747,12 @@ if [ ${#FAILED[@]} -gt 0 ]; then
     echo "  WEB FAILED, so the API did NOT ship. Anything built in this run is"
     echo "  newer than what is live — do not distribute it." ;;
   esac
+  release_status release 100 "✗ release v${VERSION} — failed: ${FAILED[*]}"; RELEASE_STATUS_CLOSED=1
   exit 1
 fi
 
 echo "✓ release v${VERSION} · ${COMMIT}"
+release_status release 100 "✓ release v${VERSION} · ${COMMIT}"; RELEASE_STATUS_CLOSED=1
 wants web && echo "   web      https://app.ezbizi.com"
 if [ -d "$DIST" ]; then
   echo "   artefacts in ${DIST}/:"
