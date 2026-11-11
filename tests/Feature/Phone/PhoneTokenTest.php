@@ -261,6 +261,42 @@ class PhoneTokenTest extends TestCase
         });
     }
 
+    /** The desk registers on every account with a line (EverDoors' ring group, Jose 2026-11-11). */
+    public function test_token_index_lists_every_account_with_a_line(): void
+    {
+        $t = $this->provisionTenant();
+        $desk = $this->userWithRole($t, 'Desk accounts', ['phone.view']);
+
+        [$a, $b, $empty] = $this->inTenant($t['org'], function () use ($t) {
+            $made = [];
+            $second = \App\Models\Company::create(['organization_id' => $t['org']->id, 'name' => 'Second']);
+            $scopes = [[PhoneConnection::SCOPE_ORGANIZATION, $t['org']->id], ['company', $t['company']->id], ['company', $second->id]];
+            foreach (['+12035551051', '+12035551052', null] as $i => $e164) {
+                $connection = PhoneConnection::factory()->create([
+                    'scope_type' => $scopes[$i][0],
+                    'scope_id' => $scopes[$i][1],
+                    'status' => PhoneConnection::STATUS_CONNECTED,
+                ]);
+                if ($e164 !== null) {
+                    PhoneNumber::factory()->create([
+                        'connection_id' => $connection->id,
+                        'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                        'scope_id' => $t['org']->id,
+                        'e164' => $e164,
+                    ]);
+                }
+                $made[] = $connection;
+            }
+
+            return $made;
+        });
+
+        $ids = collect($this->signedInAs($desk)->getJson('/api/v1/phone/registrations')->assertOk()->json('data'))->pluck('connection_id')->all();
+
+        $this->assertEqualsCanonicalizing([$a->id, $b->id], $ids);
+        $this->assertNotContains($empty->id, $ids);
+    }
+
     public function test_presence_list_returns_teammates_on_the_connection(): void
     {
         $t = $this->provisionTenant();

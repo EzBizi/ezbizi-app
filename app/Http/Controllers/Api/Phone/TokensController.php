@@ -31,6 +31,28 @@ class TokensController extends Controller
     ) {}
 
     /** POST /api/v1/phone/tokens */
+    /**
+     * GET /api/v1/phone/registrations: every phone account this person can take calls on.
+     *
+     * A token belongs to one Twilio account, and a ring group on another
+     * account cannot reach a device registered on this one (EverDoors'
+     * "Owners", Jose 2026-11-11). So the desk registers once per account here.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneConnection::class);
+        $user = $request->user();
+
+        return response()->json(['data' => PhoneConnection::query()
+            ->where('status', PhoneConnection::STATUS_CONNECTED)
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (PhoneConnection $connection) => $this->access->hasLineOn($user, $connection))
+            ->map(fn (PhoneConnection $connection) => ['connection_id' => $connection->id])
+            ->values()
+            ->all()]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $this->authorize('viewAny', PhoneConnection::class);

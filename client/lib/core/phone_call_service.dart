@@ -101,6 +101,30 @@ class PhoneCallService extends ChangeNotifier {
 
   VoiceDevice? _device;
 
+  /// Every OTHER phone account this person takes calls on, one device each.
+  ///
+  /// A Twilio token belongs to one account, so a ring group on another
+  /// account (EverDoors' "Owners", Jose 2026-11-11) could not reach the one
+  /// device registered on the person's own line. These only receive; outbound
+  /// stays on [_device].
+  final Map<String, VoiceDevice> _extras = {};
+  final Map<String, Timer> _extraRenewals = {};
+
+  /// The extra device a call came in on, while it rings or is answered.
+  VoiceDevice? _active;
+  String? _activeConnection;
+
+  VoiceDevice? get _live => _active ?? _device;
+
+  /// Builds the extra devices; a test hands in fakes.
+  @visibleForTesting
+  VoiceDevice Function() newDevice = createVoiceDevice;
+
+  /// The extra devices' views, which Windows must mount like [platformView].
+  List<Object?> get extraViews => [
+    for (final device in _extras.values) device.platformView,
+  ];
+
   String? _connectionId;
   String? _callerId;
 
@@ -292,8 +316,121 @@ class PhoneCallService extends ChangeNotifier {
         'connection_id': _connectionId,
         'state': 'registered',
       });
+
+      unawaited(syncAccounts());
     } finally {
       _starting = false;
+    }
+  }
+
+  /// Register on every phone account GET /phone/registrations lists, and drop the
+  /// ones it no longer does. Called at start and whenever access changes.
+  Future<void> syncAccounts() async {
+    final api = _api;
+    final primary = _device;
+    if (api == null || primary == null || busy) return;
+
+    // ponytail: a handset keeps its one account; the twilio_voice plugin holds
+    // a single registration. Per-account push needs a plugin that allows more.
+    if (primary.pushPlatform != null) return;
+
+    final response = await api.get('/phone/registrations');
+    if (!response.ok || _api != api) return;
+    final want = <String>{
+      for (final row
+          in (response.data is List ? response.data as List : const []))
+        if (row is Map) (row['connection_id'] ?? '').toString(),
+    }..removeAll(['', ?_connectionId]);
+
+    for (final id in _extras.keys.where((id) => !want.contains(id)).toList()) {
+      _dropExtra(id);
+    }
+
+    for (final id in want.where((id) => !_extras.containsKey(id))) {
+      final device = newDevice();
+      _extras[id] = device;
+      device.onIncoming = (incoming) {
+        // One call at a time: the caller goes on to the next person.
+        if (busy) {
+          device.declineIncoming();
+          return;
+        }
+        _active = device;
+        _activeConnection = id;
+        _ringing(incoming.from);
+      };
+      device.onRegistrationChanged = notifyListeners;
+      device.onEnded = _ended;
+      device.onAnswered = _answeredElsewhere;
+      device.onCallFailed = _callFailed;
+      device.onTokenExpiring = () => unawaited(_registerExtra(api, id));
+
+      await device.prepare();
+      notifyListeners();
+      await WidgetsBinding.instance.endOfFrame;
+      await _registerExtra(api, id);
+      if (_extras[id] != device) continue;
+
+      await api.put('/phone/presence', {
+        'connection_id': id,
+        'state': 'registered',
+      });
+    }
+  }
+
+  /// Mint this account's token and register; renew five minutes early, never mid-call.
+  Future<void> _registerExtra(ApiClient api, String id) async {
+    final device = _extras[id];
+    if (device == null) return;
+    _extraRenewals.remove(id)?.cancel();
+
+    if (_active == device) {
+      _extraRenewals[id] = Timer(
+        const Duration(minutes: 1),
+        () => unawaited(_registerExtra(api, id)),
+      );
+      return;
+    }
+
+    final token = await api.post('/phone/tokens', {
+      'connection_id': id,
+      'device_id': DeviceIdentity.value,
+      'device_label': DeviceIdentity.label,
+    });
+    if (!token.ok || _extras[id] != device) return;
+
+    final value = token.body['token'] as String? ?? '';
+    if (value.isEmpty) return;
+    await device.setup(value);
+    if (_extras[id] != device) return;
+
+    final seconds = int.tryParse('${token.body['expires_in']}') ?? 0;
+    if (seconds <= 0) return;
+    final ahead = seconds - 300;
+    _extraRenewals[id] = Timer(
+      Duration(seconds: ahead < 60 ? 60 : ahead),
+      () => unawaited(_registerExtra(api, id)),
+    );
+  }
+
+  void _dropExtra(String id) {
+    _extraRenewals.remove(id)?.cancel();
+    final device = _extras.remove(id);
+    if (device == null) return;
+    if (_active == device) {
+      _active = null;
+      _activeConnection = null;
+    }
+    device.onIncoming = null;
+    device.onRegistrationChanged = null;
+    device.onEnded = null;
+    device.onCallFailed = null;
+    device.dispose();
+  }
+
+  void _dropExtras() {
+    for (final id in _extras.keys.toList()) {
+      _dropExtra(id);
     }
   }
 
@@ -451,6 +588,7 @@ class PhoneCallService extends ChangeNotifier {
   /// retrying on top of a half-registered one leaves two, and the second
   /// registration silently wins the routing.
   Future<void> restart(ApiClient api, {VoiceDevice? device}) async {
+    _dropExtras();
     _device?.onIncoming = null;
     _device?.onRegistrationChanged = null;
     _device?.onEnded = null;
@@ -547,7 +685,7 @@ class PhoneCallService extends ChangeNotifier {
   }
 
   void accept() {
-    _device?.acceptIncoming();
+    _live?.acceptIncoming();
     _stopRinging();
     _onCall = true;
     notifyListeners();
@@ -555,7 +693,7 @@ class PhoneCallService extends ChangeNotifier {
   }
 
   void decline() {
-    _device?.declineIncoming();
+    _live?.declineIncoming();
     _stopRinging();
     notifyListeners();
     unawaited(_silenceMyOtherDevices());
@@ -642,7 +780,9 @@ class PhoneCallService extends ChangeNotifier {
     // Only for a call that was actually connected. A ringing call that was
     // never answered never set `on_call`, and writing presence for it would be
     // a request per missed call for no change.
-    if (wasOnCall) unawaited(_releasePresence());
+    if (wasOnCall) unawaited(_releasePresence(_activeConnection));
+    _active = null;
+    _activeConnection = null;
 
     // A renewal deferred because a call was in flight — see [_renewToken].
     //
@@ -659,9 +799,9 @@ class PhoneCallService extends ChangeNotifier {
   /// Deliberately fire-and-forget: the desk is already correct on screen, and
   /// a failed write here must not leave the app believing it is still on a
   /// call. The next start() writes presence again regardless.
-  Future<void> _releasePresence() async {
+  Future<void> _releasePresence([String? on]) async {
     final api = _api;
-    final connectionId = _connectionId;
+    final connectionId = on ?? _connectionId;
     if (api == null || connectionId == null || connectionId.isEmpty) return;
 
     await api.put('/phone/presence', {
@@ -678,7 +818,7 @@ class PhoneCallService extends ChangeNotifier {
   void hangUp() {
     final wasOnCall = _onCall;
 
-    _device?.hangUp();
+    _live?.hangUp();
     _onCall = false;
     _stopRinging();
     _callsToken++;
@@ -687,7 +827,9 @@ class PhoneCallService extends ChangeNotifier {
     // Hanging up locally left `on_call` set on the server too — the same
     // stale-presence bug by a different route, and the one somebody would hit
     // every single call rather than only when the customer hung up first.
-    if (wasOnCall) unawaited(_releasePresence());
+    if (wasOnCall) unawaited(_releasePresence(_activeConnection));
+    _active = null;
+    _activeConnection = null;
 
     // And the deferred token, for the same reason as in [_ended]: hanging up
     // is a way a call ends that does not go through it.
@@ -700,6 +842,7 @@ class PhoneCallService extends ChangeNotifier {
     // token for the person who just left.
     _renewal?.cancel();
     _renewal = null;
+    _dropExtras();
 
     _device?.onIncoming = null;
     _device?.onRegistrationChanged = null;

@@ -2775,6 +2775,7 @@ Route::prefix('v1')
         // Voice SDK token + desk presence. phone.view and a granted number on
         // that connection; no grant → fixed 403 sentence.
         Route::post('phone/tokens', [PhoneTokensController::class, 'store']);
+        Route::get('phone/registrations', [PhoneTokensController::class, 'index']);
         Route::get('phone/presence', [PhonePresenceController::class, 'index']);
         Route::put('phone/presence', [PhonePresenceController::class, 'update']);
 

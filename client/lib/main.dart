@@ -699,6 +699,7 @@ class _HomeShellState extends State<HomeShell> {
 
   /// Which view the desk was brought up for, so a change can be noticed.
   String? _deskScope;
+  String? _deskAccess;
 
   /// Try again for a desk that never came up, now that the view has moved.
   ///
@@ -722,6 +723,13 @@ class _HomeShellState extends State<HomeShell> {
   /// since navigated away from. Give it the scope's own line when somebody
   /// asks for that, and decide then what a lineless scope should do.
   void _followScope() {
+    // Access changed (a line or account granted): register on what is new.
+    final access = widget.session.me?.accessVersion;
+    if (access != _deskAccess) {
+      _deskAccess = access;
+      unawaited(PhoneCallService.current.syncAccounts());
+    }
+
     final scope = widget.session.me?.scope;
     final key = scope == null ? null : '${scope.type}:${scope.id}';
     if (key == _deskScope) return;
@@ -1738,8 +1746,15 @@ class _HomeShellState extends State<HomeShell> {
              */
             AnimatedBuilder(
               animation: PhoneCallService.current,
-              builder: (context, _) =>
+              builder: (context, _) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   voiceDeviceView(PhoneCallService.current.platformView),
+                  // One per other phone account (EverDoors, 2026-11-11).
+                  for (final view in PhoneCallService.current.extraViews)
+                    voiceDeviceView(view),
+                ],
+              ),
             ),
 
             /*
