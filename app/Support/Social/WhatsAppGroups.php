@@ -209,8 +209,8 @@ final class WhatsAppGroups
         }
 
         $more = "\n\n_Full detail in the PDF_";
-        // A heading is an emoji then bold words ("💵 *Revenue collected*"); a total says so.
-        $lines = array_values(array_filter(explode("\n", $body), fn (string $line) => preg_match('/^[^\s•*_]+ \*[^*]+\*$|total/iu', trim($line)) === 1));
+        // A heading is an emoji then bold words ("💵 *Revenue collected*"); a total says so; a ⚠️ warning is kept too.
+        $lines = array_values(array_filter(explode("\n", $body), fn (string $line) => preg_match('/^[^\s•*_]+ \*[^*]+\*$|total|^\x{26A0}/iu', trim($line)) === 1));
         while ($lines !== [] && mb_strlen(implode("\n", $lines).$more) > $max) {
             array_pop($lines);
         }

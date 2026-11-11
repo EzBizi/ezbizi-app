@@ -109,6 +109,19 @@ class NewReportsTextsTest extends TestCase
         $this->assertStringStartsWith("_Payments received, as of Nov 8, 1:00 AM_\n\n• *New Jersey*: $100.00", $text);
     }
 
+    /** Audit #14, 2026-11-11: the Sunday weekly no longer opens on a bare "_Through 8:01 PM_"; its sections say it. */
+    public function test_the_weekly_opens_on_its_first_section_not_a_bare_through(): void
+    {
+        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn([]);
+
+        [$title, $text] = $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)
+            ->headed('weekly', 'A-1 Chimney', $this->t['org'], CarbonImmutable::parse('2026-11-08 20:01:00')));
+
+        $this->assertSame("\u{1F4C5} A-1 Chimney · Weekly report · Nov 2 - Nov 8", $title);
+        $this->assertStringStartsNotWith('_Through', $text);
+        $this->assertStringContainsString('Nov 2 - Nov 8, 2026 · through 8:01 PM', $text);
+    }
+
     public function test_a_sub_companys_empty_branch_of_a_listed_name_is_not_a_second_line(): void
     {
         // A-1's sister brands carry empty branches named "Texas" too.

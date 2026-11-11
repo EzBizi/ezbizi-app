@@ -77,7 +77,8 @@ final class AdsCost
             try {
                 $cost = Cache::remember(
                     "ads-cost:{$account->getKey()}:{$from->toDateString()}:{$to->toDateString()}".($activeOnly ? ':active' : ''),
-                    $today ? now()->addMinutes(15) : now()->endOfDay(),
+                    // A past day still settles for hours after its midnight: an hour, not until 23:59 UTC (audit #14, 2026-11-11).
+                    $today ? now()->addMinutes(15) : now()->addHour(),
                     fn () => $this->performance->channelCost($account, Carbon::parse($from), Carbon::parse($to), $activeOnly),
                 );
             } catch (RuntimeException $e) {
