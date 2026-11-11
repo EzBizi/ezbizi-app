@@ -3533,3 +3533,10 @@ byte-identical to the app's `/api/v1/openapi.json`.
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
 LIVE pages, and over `/privacy/` after the edit: ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
 1, 0.0.0502.
+
+**Desk (11-11, ~13:30 UTC), recorded as given:** Training 3 guides / 144 media (attempts and progress NOT counted,
+so the tense rule's test is still unmeasured); ring groups 2 (a group count, not the resolved fraction the Phone row
+names); LSA `is_test=0` 52,155 (already published); `payment_accounts` 0, no Stripe account, so `/privacy/` names
+no Stripe. Scheduled Jobs: the desk looked for `jobs.scheduled_at`; the row's test is `jobs.scheduled_for` without a
+`workiz_jobs` row — ask that next time. Publishers: the desk counted 7 connected posting providers; in code
+`Publishers::for()` has had 10 since `947e6cc23` (GBP posts, 10-15), and none is new since 0551. No sentence moves.
