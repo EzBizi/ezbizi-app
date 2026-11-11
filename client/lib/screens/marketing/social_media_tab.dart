@@ -483,10 +483,12 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
           onDecide: _canPost
               ? (target, approve) {
                   Navigator.of(panel).pop();
-                  final verb = approve ? 'approve' : 'disapprove';
+                  // Literal paths: ClientCallsRealRoutesTest reads them.
                   _act(
                     widget.api.post(
-                      '/business-profile/post-queue/${target.id}/$verb',
+                      approve
+                          ? '/business-profile/post-queue/${target.id}/approve'
+                          : '/business-profile/post-queue/${target.id}/disapprove',
                       const {},
                     ),
                   );
@@ -4187,31 +4189,28 @@ class _AccountsPane extends StatelessWidget {
       ),
     );
     List<Widget> actionsOf(BuildContext context, _SocialConnection page) => [
-
-                        if (page.broken)
-                          TextButton(
-                            key: ValueKey('social-reconnect-${page.id}'),
-                            onPressed: onConnect,
-                            child: const Text('Reconnect'),
-                          ),
-                        // Instagram comments are moderated through the Page
-                        // the Instagram account is linked to.
-                        if (page.provider == 'facebook_page')
-                          TextButton(
-                            onPressed: () => onComments(page),
-                            child: const Text('Instagram comments'),
-                          ),
-                        // Muted, not the accent: a destructive link styled as
-                        // the main action (deep dive 2026-11-02 #11).
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                          onPressed: () => onDisconnect(page),
-                          child: const Text('Disconnect'),
-                        ),
+      if (page.broken)
+        TextButton(
+          key: ValueKey('social-reconnect-${page.id}'),
+          onPressed: onConnect,
+          child: const Text('Reconnect'),
+        ),
+      // Instagram comments are moderated through the Page
+      // the Instagram account is linked to.
+      if (page.provider == 'facebook_page')
+        TextButton(
+          onPressed: () => onComments(page),
+          child: const Text('Instagram comments'),
+        ),
+      // Muted, not the accent: a destructive link styled as
+      // the main action (deep dive 2026-11-02 #11).
+      TextButton(
+        style: TextButton.styleFrom(
+          foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        onPressed: () => onDisconnect(page),
+        child: const Text('Disconnect'),
+      ),
     ];
 
     return ListView(
@@ -4261,9 +4260,9 @@ class _AccountsPane extends StatelessWidget {
                     trailing: phone
                         ? null
                         : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: actionsOf(context, page),
-                    ),
+                            mainAxisSize: MainAxisSize.min,
+                            children: actionsOf(context, page),
+                          ),
                   ),
               const SizedBox(height: 12),
               Align(
