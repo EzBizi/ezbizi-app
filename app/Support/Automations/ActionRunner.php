@@ -3859,7 +3859,8 @@ class ActionRunner
 
         // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
         $sent = self::deliverReportText((string) ($action['from'] ?? ''), self::idList($action['user_ids'] ?? []),
-            $automation->scope_type, $automation->scope_id, $title, $text, "report.text:{$automation->id}:{$kind}:{$day->toDateString()}");
+            $automation->scope_type, $automation->scope_id, $title, $text, "report.text:{$automation->id}:{$kind}:{$day->toDateString()}",
+            app(DailyTexts::class)->attachment($kind, $org, $day, $branches));
         if (is_string($sent)) {
             return ['type' => $type, 'ok' => false, 'detail' => $sent];
         }
@@ -3877,7 +3878,7 @@ class ActionRunner
      * @param  list<string>  $userIds
      * @return int|string how many it went to, or why nothing could go
      */
-    public static function deliverReportText(string $from, array $userIds, ?string $scopeType, ?string $scopeId, string $title, string $text, ?string $once = null): int|string
+    public static function deliverReportText(string $from, array $userIds, ?string $scopeType, ?string $scopeId, string $title, string $text, ?string $once = null, ?string $pdf = null): int|string
     {
         // The Reports number when there is one, whatever the rule names (Jose, 2026-11-09).
         $number = WhatsAppNumber::forPurpose('reports')
@@ -3897,7 +3898,7 @@ class ActionRunner
             try {
                 // The key names the rule, so ReportDeliveryCheck can tell its maker one did not arrive.
                 $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text, $once === null ? null : "{$once}:{$user->id}",
-                    $scopeType === 'company' ? Company::query()->find($scopeId) : null) ? 1 : 0;
+                    $scopeType === 'company' ? Company::query()->find($scopeId) : null, $pdf) ? 1 : 0;
             } catch (RuntimeException $refusal) {
                 // Not sent, so a retry may try again rather than report "nobody has a phone".
                 if ($once !== null) {

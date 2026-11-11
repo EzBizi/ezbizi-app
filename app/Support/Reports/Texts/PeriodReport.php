@@ -89,13 +89,18 @@ final class PeriodReport
         return implode("\n", $lines);
     }
 
-    /** Every branch with Workiz jobs, after a company summary. */
-    public function consolidated(Organization $organization, string $from, string $to): string
+    /**
+     * Every branch with Workiz jobs, after a company summary. $only: a rule's branches.
+     *
+     * @param  list<string>|null  $only
+     */
+    public function consolidated(Organization $organization, string $from, string $to, ?array $only = null): string
     {
         $branches = Franchise::query()->withoutGlobalScopes()
             ->where('organization_id', $organization->getKey())
             ->switchedOn()
             ->whereIn('id', ReportJobs::branchesWithJobs((string) $organization->getKey()))
+            ->when($only !== null, fn ($q) => $q->whereIn('id', $only))
             ->orderBy('name')
             ->get();
         $branches = LocationOrder::sort($branches);
