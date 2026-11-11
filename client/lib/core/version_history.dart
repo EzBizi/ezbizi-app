@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0560', date: '11 Nov 2026', items: [
+      'Phone › Numbers: an Override switch sends a number’s calls straight to a forward number, a ring group, voicemail or a message, skipping hours and the menu',
       'Phone: the web and desktop apps take calls on every company line you belong to (e.g. A-1 and EverDoors), so ring groups on another company’s number ring you',
       'Communication › Users and ring-group pickers list only people with access to that company',
       'Reports › Calls: Result shows Booked or Not booked, a new Call column shows Answered, Not answered or Missed; a missed call no longer counts as booked',
