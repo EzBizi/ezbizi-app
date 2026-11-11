@@ -1670,6 +1670,8 @@ Route::prefix('v1')
         Route::get('reports/scoring/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording'])->middleware('permission:reports.scoring.view');
         // Thumbtack lead spend (Jose, 2026-10-13).
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
+        // Every job created in the dates, by source, number dialed and area (Jose, 2026-11-11).
+        Route::get('reports/jobs', [\App\Http\Controllers\Api\JobsReportController::class, 'show'])->middleware('permission:reports.jobs.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
             Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
             Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);

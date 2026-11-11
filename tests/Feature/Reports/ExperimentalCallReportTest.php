@@ -254,6 +254,29 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertFalse($byId['c-open']['booked']);
     }
 
+    /** Jose, 2026-11-11: a caller's missed calls showed under Booked; only an answered call can have booked the job. */
+    public function test_a_missed_call_from_a_number_that_booked_is_not_booked(): void
+    {
+        $this->fakeCallLog([
+            array_merge($this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - New Client'),
+                ['id' => 'c-took', 'from' => ['phoneNumber' => '+12125551212', 'name' => 'X']]),
+            array_merge($this->inbound(rang: [['Trey Brannan', 'No Answer']], queue: 'A1 - New Client', result: 'Missed'),
+                ['id' => 'c-missed', 'from' => ['phoneNumber' => '+12125551212', 'name' => 'X']]),
+        ]);
+
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+        $day = $this->inTenant($this->provisionTenant('Missed booked')['org'], fn () => app(CallReconciliation::class)->forRange(
+            $calls,
+            [['created_at' => '2026-09-14 10:00:00', 'phone' => '(212) 555-1212', 'created_by' => 'Trey Brannan']],
+            '2026-09-14',
+            '2026-09-14',
+        ));
+
+        $byId = array_column($day['calls'], null, 'id');
+        $this->assertTrue($byId['c-took']['booked']);
+        $this->assertFalse($byId['c-missed']['booked']);
+    }
+
     /**
      * A call from the client's other number is booked too (Trey, 2026-11-03:
      * 10 of 43 "AI heard a booking, no job" calls in a week were).

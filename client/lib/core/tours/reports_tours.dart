@@ -296,6 +296,38 @@ const Map<String, Tour> reportsTours = {
       ),
     ],
   ),
+  'reports/Jobs': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'jobs-search',
+        title: 'Find a job',
+        body: 'By client, phone, or its EzBizi or Workiz number.',
+      ),
+      TourStep(
+        anchor: 'jobs-source',
+        title: 'Narrow it',
+        body: 'By source, the number the client dialed, and area.',
+      ),
+      TourStep(
+        anchor: 'jobs-totals',
+        title: 'Totals',
+        body: 'How many jobs were created, and their total, for all the dates.',
+      ),
+      TourStep(
+        anchor: 'jobs-table',
+        title: 'Every job',
+        body:
+            'Each job created, newest first, with its EzBizi and Workiz ids '
+            'and the line the client called.',
+      ),
+      TourStep(
+        anchor: 'jobs-empty',
+        title: 'Nothing yet',
+        body: 'No jobs were created in these dates.',
+      ),
+    ],
+  ),
   'reports/Google Ads': Tour(
     version: 1,
     steps: [

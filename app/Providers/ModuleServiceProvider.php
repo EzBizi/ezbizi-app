@@ -4517,6 +4517,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('meta', 'Meta'),
                     // Thumbtack lead spend by category and branch (2026-10-13).
                     new TabDefinition('thumbtack', 'Thumbtack'),
+                    // Every job created in the dates, with its Workiz and EzBizi ids (Jose, 2026-11-11).
+                    new TabDefinition('jobs', 'Jobs'),
                     // Pick a report, preview it, export, approve or send it
                     // (takeover row 10, UI queue 157, Jose 2026-10-29).
                     new TabDefinition('workspace', 'Workspace'),
