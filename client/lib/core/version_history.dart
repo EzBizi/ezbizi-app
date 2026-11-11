@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0560', date: '11 Nov 2026', items: [
+      'Reports: the weekly losses wait for the P&L instead of saying nothing can be judged; a warning shows when data is behind; removed reviews no longer count',
       'Project Management: opens again for people whose saved column widths were empty (it showed a grey screen in 0.0.0559)',
       'Email signatures: a template without a logo no longer draws a broken image',
       'A PC going to sleep is no longer reported as an app freeze',
