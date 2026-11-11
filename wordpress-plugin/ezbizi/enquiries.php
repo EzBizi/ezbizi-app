@@ -1066,6 +1066,43 @@ function ezbizi_chat_style($id, $style, $position, $config = array()) {
  * Online Booking for a dispatcher, holding its window meanwhile. Behind the
  * same robot check and Turnstile box as every EzBizi form.
  */
+/**
+ * This site's own privacy and terms pages, for the booking SMS box. Found by
+ * slug, since WordPress's privacy setting is often unset or wrong (Cleveland's
+ * pointed at its gallery). No dedicated SMS terms page exists on any site
+ * (2026-11-11), so the general terms page stands in. '' when there is none.
+ */
+function ezbizi_legal_url($kind) {
+    $cached = get_transient('ezbizi_legal_' . $kind);
+
+    if (is_string($cached)) {
+        return $cached;
+    }
+
+    global $wpdb;
+    $url = '';
+
+    if (is_object($wpdb)) {
+        $patterns = $kind === 'privacy' ? array('%privacy%') : array('%sms%', 'terms%');
+
+        foreach ($patterns as $like) {
+            $id = $wpdb->get_var($wpdb->prepare(
+                "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'page' AND post_status = 'publish' AND post_name LIKE %s ORDER BY ID LIMIT 1",
+                $like
+            ));
+
+            if ($id) {
+                $url = (string) get_permalink((int) $id);
+                break;
+            }
+        }
+    }
+
+    set_transient('ezbizi_legal_' . $kind, $url, 86400);
+
+    return $url;
+}
+
 function ezbizi_booking_shortcode($atts) {
     // No chat bubble on a booking page (Jose, 2026-10-09): it sat on the card.
     // chat="keep" leaves it, for a site with the widget on every page
@@ -1090,6 +1127,13 @@ function ezbizi_booking_shortcode($atts) {
     $s = '#' . $id;
     $line = 'color-mix(in srgb,' . $accent . ' 45%,#fff)';
     $soft = 'color-mix(in srgb,' . $accent . ' 10%,#fff)';
+    // A link to the site's own page, or the words alone when it has none.
+    $legal = function ($kind, $text) {
+        $url = ezbizi_legal_url($kind);
+
+        return $url === '' ? esc_html($text)
+            : '<a href="' . esc_url($url) . '" target="_blank" rel="noopener">' . esc_html($text) . '</a>';
+    };
     $head = function ($n, $text) {
         return '<div class="ezb-head"><b>' . esc_html($text) . '</b></div>';
     };
@@ -1139,6 +1183,9 @@ function ezbizi_booking_shortcode($atts) {
         . $s . ' .ezb-pill{background:' . $soft . ';border-radius:10px;padding:10px;text-align:center;font-weight:700;font-size:14px;margin:0 0 14px}'
         . $s . ' label{display:block;font-weight:700;font-size:13px;margin:0 0 12px}'
         . $s . ' input{display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:12px 14px;border:1px solid #c9d3dc;border-radius:10px;font:inherit;font-weight:400}'
+        . $s . ' .ezb-sms{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;font-weight:400;line-height:1.45;text-align:left}'
+        . $s . ' .ezb-sms input{width:auto;min-height:0;margin:2px 0 0;flex:0 0 auto}'
+        . $s . ' .ezb-sms a{color:inherit;text-decoration:underline}'
         . $s . ' .ezb-go{display:block;width:100%;background:' . $accent . ';color:' . $on . ';border:0;border-radius:10px;padding:14px;font:inherit;font-weight:700;font-size:16px;cursor:pointer}'
         . $s . ' .ezb-go[disabled]{opacity:.6}'
         . $s . ' .ezb-note{text-align:center;font-size:13px;margin:10px 0 0;min-height:1em}'
@@ -1179,6 +1226,12 @@ function ezbizi_booking_shortcode($atts) {
         . '<label>' . esc_html__('Your name', 'ezbizi') . '<input name="name" autocomplete="name" required placeholder="' . esc_attr__('Your full name', 'ezbizi') . '" /></label>'
         . '<label>' . esc_html__('Phone number', 'ezbizi') . '<input name="phone" type="tel" autocomplete="tel" required placeholder="' . esc_attr__('Best number to call or text', 'ezbizi') . '" /></label>'
         . '<label>' . esc_html__('Full service address', 'ezbizi') . '<input name="address" autocomplete="street-address" required placeholder="' . esc_attr__('Street, city, state', 'ezbizi') . '" /></label>'
+        // Jose, 2026-11-11, his words. Unticked by default and never required:
+        // consent to texts cannot be a condition of booking (TCPA, A2P 10DLC).
+        . '<label class="ezb-sms"><input type="checkbox" name="sms_consent" /><span>'
+        . esc_html__('By checking this box, I consent to receive text messages related to orders, service appointments, or other relevant information. You can reply STOP at any time to opt out. Message and data rates may apply. Message frequency may vary. For more information, please refer to our', 'ezbizi') . ' '
+        . $legal('privacy', __('Privacy Policy', 'ezbizi')) . ' ' . esc_html__('and', 'ezbizi') . ' '
+        . $legal('sms', __('SMS Terms and Conditions', 'ezbizi')) . '.</span></label>'
         . ezbizi_turnstile_box()
         . '<button class="ezb-go" type="submit">' . esc_html__('Book appointment', 'ezbizi') . '</button></form>'
         . '<div class="ezb-done" data-step="done" hidden><b style="font-size:22px">' . esc_html__('Request received', 'ezbizi') . '</b>'
@@ -1235,8 +1288,9 @@ q('[data-step=details]').addEventListener('submit',function(e){
   var ts=ezTs(f);if(ts===''){note.textContent=" . wp_json_encode(__('Please complete the check above the button.', 'ezbizi')) . ";return;}
   var b=f.querySelector('.ezb-go');b.disabled=true;note.textContent='';
   var v={key:key,zip:st.zip,date:st.date,start_time:st.win&&st.win.start_time,name:f.elements['name'].value.trim(),phone:f.elements.phone.value.trim(),address:f.elements.address.value.trim(),page_url:location.href};
+  var sc=f.elements.sms_consent;if(sc&&sc.checked){v.sms_consent=true;v.sms_consent_text=sc.parentNode.textContent.replace(/\s+/g,' ').trim();}
   var to='/api/v1/web/booking';
-  if(st.req){to='/api/v1/web/form';v={key:key,zip:st.zip,name:v.name,phone:v.phone,page_url:v.page_url,fields:{'Booking request':'Call to schedule','Name':v.name,'Phone':v.phone,'Address':v.address,'ZIP code':st.zip}};}
+  if(st.req){to='/api/v1/web/form';v={key:key,zip:st.zip,name:v.name,phone:v.phone,page_url:v.page_url,fields:{'Booking request':'Call to schedule','Name':v.name,'Phone':v.phone,'Address':v.address,'ZIP code':st.zip},sms_consent:v.sms_consent,sms_consent_text:v.sms_consent_text};}
   if(ts)v.turnstile=ts;if(lt)v.l=lt;
   ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)v.captcha=sol;
     return fetch(api+to,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)});})

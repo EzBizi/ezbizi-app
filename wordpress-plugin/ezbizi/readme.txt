@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.28
+Stable tag: 1.26.29
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,9 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.29 =
+* NEW: The booking widget's last step has an unticked, optional box to agree to text messages, linking the site's privacy and terms pages.
 
 = 1.26.28 =
 * FIX: When EzBizi says "too many requests", the site waits 15 minutes instead of retrying every minute.
