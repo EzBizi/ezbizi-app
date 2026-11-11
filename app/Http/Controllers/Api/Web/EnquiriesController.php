@@ -21,6 +21,7 @@ use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\BookingConfirmations;
 use App\Support\Web\BookingLink;
 use App\Support\Web\ChatPeople;
 use App\Support\Web\FormChallenge;
@@ -455,6 +456,8 @@ class EnquiriesController extends Controller
             'name' => [$linked ? 'nullable' : 'required', 'string', 'max:191'],
             'phone' => [$linked ? 'nullable' : 'required', 'string', 'max:40'],
             'address' => ['required', 'string', 'max:300'],
+            // Optional; where the confirmation email goes (Jose, 2026-11-11).
+            'email' => ['nullable', 'email', 'max:191'],
             'page_url' => ['nullable', 'string', 'max:500'],
             'captcha' => ['nullable', 'string', 'max:2000'],
             'turnstile' => ['nullable', 'string', 'max:4000'],
@@ -508,15 +511,22 @@ class EnquiriesController extends Controller
                         Response::HTTP_CONFLICT)->withHeaders($this->browserHeaders());
                 }
 
-                DB::transaction(fn () => $this->enquiries->submitBooking($site, $area, $input['date'], $window, $input['address'], [
+                $visitor = [
                     'name' => $input['name'] ?? null,
                     'phone' => $input['phone'] ?? null,
+                    'email' => $input['email'] ?? null,
                     'zip' => $input['zip'],
                     'page_url' => $input['page_url'] ?? null,
                     'sms_consent' => (bool) ($input['sms_consent'] ?? false),
                     'sms_consent_text' => $input['sms_consent_text'] ?? null,
                     'ip' => $input['ip'],
-                ], $lead));
+                ];
+                DB::transaction(fn () => $this->enquiries->submitBooking($site, $area, $input['date'], $window, $input['address'], $visitor, $lead));
+
+                if (($input['email'] ?? '') !== '') {
+                    $confirm = app(BookingConfirmations::class);
+                    $confirm->send($site, $input['email'], $confirm->details($site, $input['date'], $window, $input['address'], $visitor));
+                }
 
                 return response()->json(['received' => true, 'date' => $input['date']] + $window, Response::HTTP_CREATED)
                     ->withHeaders($this->browserHeaders());

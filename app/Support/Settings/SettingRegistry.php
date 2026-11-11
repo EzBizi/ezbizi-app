@@ -1667,6 +1667,17 @@ class SettingRegistry
                     .'{{booking_link}} in an auto reply is this page with a link that files the '
                     .'booking on the same lead. Empty: no link.',
             ),
+            // Jose, 2026-11-11: an online booking with an email gets a branded confirmation.
+            new SettingDefinition(
+                key: 'leads.booking_confirmation_email',
+                label: 'Email a confirmation for online bookings',
+                type: SettingDefinition::TYPE_BOOL,
+                default: true,
+                editPermission: 'leads.edit',
+                help: 'When a visitor books online and gives an email, they get "Your appointment request '
+                    .'is confirmed" in your logo and colour, with the day, arrival window and address. '
+                    .'Replies go to the email on your website.',
+            ),
             new SettingDefinition(
                 key: 'leads.office_phone',
                 label: 'Office phone for customers',

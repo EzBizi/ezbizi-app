@@ -176,11 +176,23 @@ class MailDispatcher
      *
      * @throws CannotSendMail when this business has sent its hourly allowance
      */
-    public function platformForTenant(Model $scope, Mailable $message, string|array $to): void
+    public function platformForTenant(Model $scope, Mailable $message, string|array $to, ?string $fromName = null, ?string $replyTo = null): void
     {
         $this->withinHourlyAllowance($scope);
 
         $identity = $this->platform->identity();
+
+        // EzBizi's address under the business's name, answered by its own inbox
+        // (booking confirmations, 2026-11-11). The address never changes here.
+        if ($fromName !== null || $replyTo !== null) {
+            $identity = new MailIdentity(
+                fromAddress: $identity->fromAddress,
+                fromName: $fromName ?? $identity->fromName,
+                replyTo: $replyTo ?? $identity->replyTo,
+                transport: $identity->transport,
+                state: $identity->state,
+            );
+        }
 
         /*
          * Attribution WITHOUT a header the recipient can read.

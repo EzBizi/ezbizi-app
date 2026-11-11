@@ -1214,7 +1214,7 @@ function ezbizi_booking_shortcode($atts) {
         // What happens next, where the first step would otherwise be empty.
         . '<div class="ezb-how">'
         . '<div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2zm-2 8h14v10H5z"/></svg><span><b>' . esc_html__('Pick a time', 'ezbizi') . '</b> ' . esc_html__('A day and an arrival window.', 'ezbizi') . '</span></div>'
-        . '<div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg><span><b>' . esc_html__('We call to confirm', 'ezbizi') . '</b> ' . esc_html__('Before anyone comes out.', 'ezbizi') . '</span></div>'
+        . '<div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg><span><b>' . esc_html__('Automatic confirmation', 'ezbizi') . '</b> ' . esc_html__('A message confirms your appointment.', 'ezbizi') . '</span></div>'
         . '<div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span><b>' . esc_html__('We arrive', 'ezbizi') . '</b> ' . esc_html__('In the window you chose.', 'ezbizi') . '</span></div>'
         . '</div></form>'
         . '<div data-step="day" hidden><button type="button" class="ezb-back" data-to="zip">&lsaquo; ' . esc_html__('Back', 'ezbizi') . '</button>'
@@ -1225,6 +1225,8 @@ function ezbizi_booking_shortcode($atts) {
         . $head('', __('Please tell us how to reach you', 'ezbizi')) . '<div class="ezb-pill"></div>'
         . '<label>' . esc_html__('Your name', 'ezbizi') . '<input name="name" autocomplete="name" required placeholder="' . esc_attr__('Your full name', 'ezbizi') . '" /></label>'
         . '<label>' . esc_html__('Phone number', 'ezbizi') . '<input name="phone" type="tel" autocomplete="tel" required placeholder="' . esc_attr__('Best number to call or text', 'ezbizi') . '" /></label>'
+        // Optional: where the confirmation email goes (Jose, 2026-11-11).
+        . '<label>' . esc_html__('Email (optional)', 'ezbizi') . '<input name="email" type="email" autocomplete="email" placeholder="' . esc_attr__('For your confirmation email', 'ezbizi') . '" /></label>'
         . '<label>' . esc_html__('Full service address', 'ezbizi') . '<input name="address" autocomplete="street-address" required placeholder="' . esc_attr__('Street, city, state', 'ezbizi') . '" /></label>'
         // Jose, 2026-11-11, his words. Unticked by default and never required:
         // consent to texts cannot be a condition of booking (TCPA, A2P 10DLC).
@@ -1235,9 +1237,9 @@ function ezbizi_booking_shortcode($atts) {
         . ezbizi_turnstile_box()
         . '<button class="ezb-go" type="submit">' . esc_html__('Book appointment', 'ezbizi') . '</button></form>'
         . '<div class="ezb-done" data-step="done" hidden><b style="font-size:22px">' . esc_html__('Request received', 'ezbizi') . '</b>'
-        . '<p class="ezb-when"></p><p>' . esc_html__('We will call you shortly to confirm your appointment.', 'ezbizi') . '</p></div>'
+        . '<p class="ezb-when"></p><p>' . esc_html__('You will get an automatic message confirming your appointment.', 'ezbizi') . '</p></div>'
         . '<p class="ezb-note" role="status" aria-live="polite"></p>'
-        . '</div><div class="ezb-foot">' . esc_html__('No payment to book · We call to confirm', 'ezbizi') . '</div></div>'
+        . '</div><div class="ezb-foot">' . esc_html__('No payment to book · Automatic confirmation', 'ezbizi') . '</div></div>'
         . ezbizi_late_script("<script>(function(){
 var root=document.getElementById(" . wp_json_encode($id) . ");if(!root)return;
 var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) . ",st={},note=root.querySelector('.ezb-note');
@@ -1288,9 +1290,10 @@ q('[data-step=details]').addEventListener('submit',function(e){
   var ts=ezTs(f);if(ts===''){note.textContent=" . wp_json_encode(__('Please complete the check above the button.', 'ezbizi')) . ";return;}
   var b=f.querySelector('.ezb-go');b.disabled=true;note.textContent='';
   var v={key:key,zip:st.zip,date:st.date,start_time:st.win&&st.win.start_time,name:f.elements['name'].value.trim(),phone:f.elements.phone.value.trim(),address:f.elements.address.value.trim(),page_url:location.href};
+  if(f.elements.email&&f.elements.email.value.trim())v.email=f.elements.email.value.trim();
   var sc=f.elements.sms_consent;if(sc&&sc.checked){v.sms_consent=true;v.sms_consent_text=sc.parentNode.textContent.replace(/\s+/g,' ').trim();}
   var to='/api/v1/web/booking';
-  if(st.req){to='/api/v1/web/form';v={key:key,zip:st.zip,name:v.name,phone:v.phone,page_url:v.page_url,fields:{'Booking request':'Call to schedule','Name':v.name,'Phone':v.phone,'Address':v.address,'ZIP code':st.zip},sms_consent:v.sms_consent,sms_consent_text:v.sms_consent_text};}
+  if(st.req){to='/api/v1/web/form';v={key:key,zip:st.zip,name:v.name,phone:v.phone,email:v.email,page_url:v.page_url,fields:{'Booking request':'Call to schedule','Name':v.name,'Phone':v.phone,'Address':v.address,'ZIP code':st.zip},sms_consent:v.sms_consent,sms_consent_text:v.sms_consent_text};}
   if(ts)v.turnstile=ts;if(lt)v.l=lt;
   ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)v.captcha=sol;
     return fetch(api+to,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)});})

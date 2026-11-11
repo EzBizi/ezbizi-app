@@ -82,6 +82,35 @@ class WebBookingTest extends TestCase
         $this->assertNull($lead->marketing_consent_at);
     }
 
+    /** Jose, 2026-11-11: a booking with an email gets the company's confirmation; the setting turns it off. */
+    public function test_a_booking_with_an_email_is_confirmed_by_email(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        [$site, $tenant] = $this->siteWithArea();
+        $days = $this->getJson('/api/v1/web/booking/days?key='.$site->public_key.'&zip=06810')->json('days');
+
+        $this->postJson('/api/v1/web/booking', array_merge($this->booking($site, $days[0]['date']), [
+            'email' => 'dana@example.com', 'captcha' => $this->solved(),
+        ]))->assertCreated();
+
+        \Illuminate\Support\Facades\Mail::assertSent(\App\Mail\BookingConfirmationMail::class, function ($mail) use ($days) {
+            $html = $mail->content()->htmlString;
+
+            return $mail->hasTo('dana@example.com')
+                && str_contains($html, 'Your appointment request is confirmed')
+                && str_contains($html, \Carbon\CarbonImmutable::parse($days[0]['date'])->format('l, F j, Y'))
+                && str_contains($html, '8:00 AM - 11:00 AM');
+        });
+
+        // Off for the company: booked, not emailed.
+        $this->inTenant($tenant['org'], fn () => app(SettingsResolver::class)->set('leads.booking_confirmation_email', $tenant['company'], false));
+        \Illuminate\Support\Facades\Mail::fake();
+        $this->postJson('/api/v1/web/booking', array_merge($this->booking($site, $days[1]['date']), [
+            'phone' => '203-555-0177', 'email' => 'lee@example.com', 'captcha' => $this->solved(),
+        ]))->assertCreated();
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
+    }
+
     /** Jose, 2026-10-08: forms ask the ZIP too, so Check availability works on their leads. */
     public function test_a_form_zip_lands_on_the_lead(): void
     {

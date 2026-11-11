@@ -1398,6 +1398,7 @@ Route::prefix('v1')
             // what every other site publishes.
             Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
             Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
+            Route::get('web/sites/{site}/booking-confirmation-preview', [WebSitesController::class, 'bookingConfirmationPreview']);
             Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
             // Rodrigo's bulk hours editor: review a week edit across websites,
             // then apply exactly what was reviewed. Each site is authorised
