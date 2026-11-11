@@ -32,6 +32,9 @@ class WhatsAppGroupsTest extends TestCase
     /** @var list<array<string, mixed>> */
     private array $sent = [];
 
+    /** @var list<array<string, mixed>> the templates Meta lists on the account */
+    private array $templates = [];
+
     private array $t;
 
     protected function setUp(): void
@@ -53,6 +56,7 @@ class WhatsAppGroupsTest extends TestCase
                 str_ends_with($request->url(), '/groups') => Http::response(['id' => 'GROUP-1']),
                 str_ends_with($request->url(), '/invite_link') => Http::response(['invite_link' => 'https://chat.whatsapp.com/ABC']),
                 str_ends_with($request->url(), '/media') => Http::response(['id' => 'MEDIA-1']),
+                str_contains($request->url(), '/message_templates') => Http::response(['data' => $this->templates]),
                 default => Http::response(['messages' => [['id' => 'wamid.OUT'.$n]]]),
             };
         });
@@ -163,18 +167,71 @@ class WhatsAppGroupsTest extends TestCase
 
         $sent = collect($this->sent)->filter(fn ($m) => isset($m['to']))->values();
         $this->assertCount(2, $sent);
-        // In the window: the PDF, its caption the title, the headings and the total.
-        $this->assertSame(['id' => 'MEDIA-1', 'filename' => 'revenue-collected-nov-9.pdf',
-            'caption' => "*Revenue collected · Nov 9*\n\n\u{1F4B5} *Revenue collected*\n*TOTAL: $532,323.30*\n\n_Full detail in the PDF_"], $sent[0]['document']);
-        // Outside it: the document template, the title and the same on one line its values.
+        // In the window: the PDF, its caption the title over its date, the top of the list that fits, its total and where the rest is.
+        $caption = $sent[0]['document']['caption'];
+        $this->assertSame(['MEDIA-1', 'revenue-collected-nov-9.pdf'], [$sent[0]['document']['id'], $sent[0]['document']['filename']]);
+        $this->assertStringStartsWith("*Revenue collected*\nNov 9\n\n\u{1F4B5} *Revenue collected*\n• *A-1 Chimney · New Jersey*: $17,744.11\n", $caption);
+        // What did not fit is counted: the 30 branches less those shown.
+        $this->assertStringEndsWith("$17,744.11\n\n*TOTAL: $532,323.30*\n\n_+ ".(30 - substr_count($caption, "\n• ")).' more in the PDF_', $caption);
+        $this->assertLessThanOrEqual(1024, mb_strlen($caption));
+        // Outside it, no line template approved yet: the document template, the title and the same run on.
         $this->assertSame('account_report_pdf', $sent[1]['template']['name']);
-        $this->assertSame([['type' => 'text', 'text' => 'Revenue collected · Nov 9'],
-            ['type' => 'text', 'text' => "\u{1F4B5} *Revenue collected* | *TOTAL: $532,323.30* | _Full detail in the PDF_"]],
-            collect($sent[1]['template']['components'])->firstWhere('type', 'body')['parameters']);
+        [$title, $text] = array_column(collect($sent[1]['template']['components'])->firstWhere('type', 'body')['parameters'], 'text');
+        $this->assertSame('Revenue collected · Nov 9', $title);
+        $this->assertStringStartsWith("\u{1F4B5} *Revenue collected* • *A-1 Chimney · New Jersey*: $17,744.11 • ", $text);
+        $this->assertMatchesRegularExpression('/ \| \*TOTAL: \$532,323\.30\* \| _\+ \d+ more in the PDF_$/', $text);
         $this->assertSame(0, WhatsAppPendingReport::query()->withoutGlobalScopes()->count());
         $this->assertSame(['report.text:R:revenue_collected:2026-11-09:U'],
             WhatsAppMessage::query()->withoutGlobalScopes()->where('counterparty', '13055550101')->where('direction', WhatsAppMessage::DIRECTION_OUT)
                 ->pluck('idempotency_key')->all());
+    }
+
+    /** Desk, 2026-11-11 ("a massive wall of text"): outside the window a report keeps its lines, in the smallest line template Meta approved that holds it. */
+    public function test_outside_the_window_a_report_keeps_its_lines_in_a_line_template(): void
+    {
+        $this->templates = array_map(fn (int $n) => ['name' => 'report_lines_'.$n, 'status' => 'APPROVED', 'category' => 'UTILITY', 'language' => 'en_US',
+            'components' => [['type' => 'BODY', 'text' => "EzBizi report\n".implode("\n", array_map(fn ($i) => '{{'.$i.'}}', range(1, $n)))."\n\nThe PDF above has every figure in full."]]], [6, 10, 18]);
+        $this->templates[] = ['name' => 'report_lines_14', 'status' => 'PENDING', 'components' => []];
+        $quiet = $this->member($this->group(), '(305) 555-0102');
+        $short = "\u{1F4B5} *Revenue collected*\n_Payments received_\n\n• *New Jersey*: $1.00\n• *Ohio*: $2.00\n\n\u{1F4B0} *TOTAL: $3.00*";
+        $long = "\u{1F4B5} *Revenue collected*\n\n".str_repeat("• *A-1 Chimney · New Jersey*: $17,744.11\n", 30)."\n*TOTAL: $532,323.30*";
+
+        $this->inTenant($this->t['org'], function () use ($quiet, $short, $long) {
+            $number = WhatsAppNumber::query()->firstOrFail();
+            app(WhatsAppGroups::class)->deliverTextToUser($number, $quiet, "\u{1F4B5} A-1 Chimney · Revenue collected · Mon, Nov 9", $short);
+            app(WhatsAppGroups::class)->deliverTextToUser($number, $quiet, "\u{1F4B5} A-1 Chimney · Revenue collected · Mon, Nov 9", $long);
+        });
+
+        $sent = collect($this->sent)->filter(fn ($m) => isset($m['to']))->values();
+        $values = fn (int $i) => array_column(collect($sent[$i]['template']['components'])->firstWhere('type', 'body')['parameters'], 'text');
+        // The title, its date, then a value a line; a blank line, and what pads the template, is Braille's blank.
+        $this->assertSame('report_lines_10', $sent[0]['template']['name']);
+        $this->assertSame(["*\u{1F4B5} A-1 Chimney · Revenue collected*", 'Mon, Nov 9', "\u{1F4B5} *Revenue collected*", '_Payments received_', "\u{2800}",
+            '• *New Jersey*: $1.00', '• *Ohio*: $2.00', "\u{2800}", "\u{1F4B0} *TOTAL: $3.00*", "\u{2800}"], $values(0));
+        // Too long for the largest: the lines that fit, the total, and where the rest is.
+        $this->assertSame('report_lines_18', $sent[1]['template']['name']);
+        $lines = $values(1);
+        $this->assertCount(18, $lines);
+        $this->assertSame(['*TOTAL: $532,323.30*', "\u{2800}", '_+ '.(30 - count(preg_grep('/^• /u', $lines))).' more in the PDF_'], array_slice($lines, -3));
+        $this->assertLessThanOrEqual(740, mb_strlen(implode("\n", $lines)));
+    }
+
+    /** Desk, 2026-11-11: a report cut short never leaves a total under the wrong heading, nor a heading with nothing under it. */
+    public function test_a_short_report_keeps_each_total_under_its_own_heading(): void
+    {
+        $section = fn (string $name) => "\u{1F4CA} *{$name}*\n_A note_\n\n".implode("\n", array_map(fn ($i) => "• *Branch {$i}*: {$i}", range(1, 10)))."\n\n*TOTAL: {$name}*";
+        $body = implode("\n\n—————\n\n", [$section('Jobs'), $section('Google'), $section('Meta'), "\u{1F4F1} *Leads*\n• *Branch 1*: 1"]);
+
+        // Room for two sections: the last ones go whole.
+        $this->assertSame(['*Daily*', 'Mon, Nov 9', "\u{1F4CA} *Jobs*", '*TOTAL: Jobs*', "\u{2800}", "\u{1F4CA} *Google*", '*TOTAL: Google*', "\u{2800}", '_+ 31 more in the PDF_'],
+            WhatsAppGroups::lineValues('Daily · Mon, Nov 9', $body, 10));
+        // Room for all: Leads has nothing but its list, which does not fit, so its heading goes too.
+        $all = WhatsAppGroups::lineValues('Daily · Mon, Nov 9', $body, 14);
+        $this->assertSame(['*TOTAL: Meta*', "\u{2800}", '_+ 31 more in the PDF_'], array_slice($all, -3));
+        $this->assertNotContains("\u{1F4F1} *Leads*", $all);
+        // No heading and no total: the top of the list, never nothing (the In Progress caption said only "Full detail in the PDF").
+        $this->assertSame(['*Jobs*', 'Mon, Nov 9', '• *Tech 1*: 1 job', '• *Tech 2*: 1 job', "\u{2800}", '_+ 28 more in the PDF_'],
+            WhatsAppGroups::lineValues('Jobs · Mon, Nov 9', implode("\n", array_map(fn ($i) => "• *Tech {$i}*: 1 job", range(1, 30))), 6));
     }
 
     public function test_show_report_delivers_what_was_held_and_nothing_else(): void

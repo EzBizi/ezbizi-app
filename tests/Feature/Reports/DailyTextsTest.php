@@ -51,8 +51,10 @@ class DailyTextsTest extends TestCase
 
         $text = $this->text('technician_sales');
 
-        $this->assertStringContainsString('• *Ann*: 1 completed · 0 canceled · $450.00 sales', $text);
-        $this->assertStringContainsString("\u{1F4B0} *Total:* \u{2705} 1 completed", $text);
+        $this->assertStringContainsString("*Alpha F1 — 1 completed · \$450.00 sales*\n• *Ann*: 1 completed · 0 canceled · \$450.00 sales", $text);
+        // The total a figure a line, then the top technicians (Jose, 2026-11-11: "basically use line breaks").
+        $this->assertStringContainsString("\u{1F4B0} *TOTAL*\n\u{2705} 1 completed\n\u{274C} 0 canceled\n\u{1F4B5} \$450.00 sales\n\u{1F3E6} \$0.00 deposits\n\n"
+            ."*Top technicians*\n• *Ann · Alpha F1*: \$450.00 sales · 1 completed\n", $text);
     }
 
     /** Audit, 2026-11-10: Ohio's 19 done were 17 jobs; a job two worked is one in the total. */
@@ -67,7 +69,7 @@ class DailyTextsTest extends TestCase
 
         $this->assertStringContainsString('• *Ann*: 1 completed · 0 canceled · $150.00 sales', $text);
         $this->assertStringContainsString('• *Bo*: 1 completed · 0 canceled · $150.00 sales', $text);
-        $this->assertStringContainsString("\u{1F4B0} *Total:* \u{2705} 1 completed · \u{274C} 0 canceled · \u{1F4B5} \$300.00 sales", $text);
+        $this->assertStringContainsString("\u{1F4B0} *TOTAL*\n\u{2705} 1 completed\n\u{274C} 0 canceled\n\u{1F4B5} \$300.00 sales", $text);
     }
 
     /**
@@ -117,10 +119,9 @@ class DailyTextsTest extends TestCase
 
         $text = $this->text('ppc');
 
-        $this->assertStringContainsString('Spent: $100.00 · Clicks: 40', $text);
-        $this->assertStringContainsString('Average per click: $2.50', $text);
-        $this->assertStringContainsString('PPC jobs created: 1 · Cost per job: $100.00', $text);
-        $this->assertStringContainsString('*TOTAL*', $text);
+        // A branch a line, the total on its own (Jose, 2026-11-11).
+        $this->assertStringContainsString("\n• *Alpha F1*: spent $100.00 · 1 job · $100.00 per job · 40 clicks · 3 conversions\n", $text);
+        $this->assertStringContainsString("\n\n• *TOTAL*: spent $100.00 · 1 job · $100.00 per job · 40 clicks", $text);
     }
 
     public function test_dispatchers_from_performance_people(): void
@@ -213,10 +214,8 @@ class DailyTextsTest extends TestCase
 
         $text = $this->text('job_assignments');
 
-        $this->assertStringContainsString('• Ann — 2 jobs', $text);
-        $this->assertStringContainsString('Unassigned — 1 job', $text);
-        $this->assertStringContainsString('*All branches — 3 In Progress jobs*', $text);
-        $this->assertStringContainsString('2 assigned · 1 unassigned', $text);
+        // The count first, then a technician a line (Jose, 2026-11-11).
+        $this->assertStringContainsString("*TOTAL: 3 In Progress jobs*\n2 assigned · 1 unassigned\n\n*Alpha F1 — 3 jobs*\n• *Ann*: 2 jobs\n• *\u{26A0} Unassigned*: 1 job", $text);
         $this->assertStringContainsString('measured ', $text);
     }
 
@@ -231,7 +230,7 @@ class DailyTextsTest extends TestCase
         $text = $this->text('weekly_losses');
 
         $this->assertStringContainsString('• *1 branch with negative net profit*', $text);
-        $this->assertStringContainsString('• Net profit: -$500.00', $text);
+        $this->assertStringContainsString('• *Alpha F1*: net -$500.00 · income $1,000.00 · expenses $1,500.00', $text);
     }
 
     /** Audit #5, 2026-11-11: the weekly company PDF had reached nobody; a rule sends it, once the P&L can be judged, with each branch's net. */
@@ -317,7 +316,7 @@ class DailyTextsTest extends TestCase
 
         $text = $this->text('weekly_reviews');
 
-        $this->assertStringContainsString('*Total: 4 reviews*', $text);
+        $this->assertStringContainsString("• *Alpha F1*: \u{2705} 3 positive · \u{26A0}\u{FE0F} 1 negative\n\n*TOTAL: 4 reviews*", $text);
         $this->assertStringContainsString('3 positive', $text);
         $this->assertStringContainsString('1 negative', $text);
     }
@@ -331,7 +330,7 @@ class DailyTextsTest extends TestCase
                 'created_at' => now(), 'updated_at' => now()]);
         }
 
-        $this->assertStringContainsString('*Total: 1 reviews*', $this->text('weekly_reviews'));
+        $this->assertStringContainsString('*TOTAL: 1 reviews*', $this->text('weekly_reviews'));
     }
 
     /** Audit #9, 2026-11-11: Rodrigo held a report back on stale Workiz; ours goes out and says so, and only when it is. */
@@ -358,8 +357,7 @@ class DailyTextsTest extends TestCase
         $text = $this->text('marketing_ppc');
 
         $this->assertStringContainsString('*Data date: Mon, Oct 19*', $text);
-        $this->assertStringContainsString('• Spent: $200.00 · Calls: 10 · Jobs: 4', $text);
-        $this->assertStringContainsString('• Cost/job: $50.00 · Call-to-job: 40.0%', $text);
+        $this->assertStringContainsString('• *Austin*: spent $200.00 · 4 jobs · $50.00 per job · 10 calls · call-to-job: 40.0%', $text);
         $this->assertStringNotContainsString('999', $text);
     }
 
@@ -374,9 +372,8 @@ class DailyTextsTest extends TestCase
         $text = $this->text('marketing_ppc');
 
         $this->assertStringContainsString('*Data date: Sat, Oct 17*', $text);
-        $this->assertStringContainsString("*Cleveland*\n• Spent: $252.31 · Jobs: 2\n• Cost/job: $126.15\n", $text);
-        $this->assertStringContainsString('*TOTAL* · Spent: $252.31 · Jobs: 2', $text);
-        $this->assertStringNotContainsString('Calls', $text);
+        $this->assertStringContainsString("\n• *Cleveland*: spent $252.31 · 2 jobs · $126.15 per job\n\n• *TOTAL*: spent $252.31 · 2 jobs · $126.15 per job", $text);
+        $this->assertStringNotContainsString('calls', $text);
     }
 
     /**
@@ -408,15 +405,14 @@ class DailyTextsTest extends TestCase
         $text = $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)->render('marketing_ppc', $this->t['org'], CarbonImmutable::parse('2026-10-20'), [$ace->id]));
 
         $this->assertStringContainsString("*Data date: Sat, Oct 17*\n\u{26A0}\u{FE0F} Spend last updated Oct 17\n_Spend from the Ace Fireplace Services sheet · jobs from EzBizi_", $text);
-        $this->assertStringContainsString("*Cleveland*\n• Spent: $300.00 · Jobs: 2\n• Cost/job: $150.00", $text);
-        $this->assertStringContainsString("*DFW*\n• Spent: N/A · Jobs: 2\n• Cost/job: N/A", $text);
-        $this->assertStringContainsString('*TOTAL* · Spent: $300.00 · Jobs: 4', $text);
+        $this->assertStringContainsString("\n• *Cleveland*: spent $300.00 · 2 jobs · $150.00 per job\n• *DFW*: spent N/A · 2 jobs · N/A per job\n", $text);
+        $this->assertStringContainsString('• *TOTAL*: spent $300.00 · 4 jobs · $75.00 per job', $text);
         $this->assertStringNotContainsString("*Ace Fireplace Services*\n", $text);
 
         // The parent's rule (its sub-companies in it) reads ACE's sheet under ACE's name (audit, 2026-11-10).
         $parent = $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)->render('marketing_ppc', $this->t['org'], CarbonImmutable::parse('2026-10-20'),
             [$this->t['franchise']->id, $ace->id]));
-        $this->assertStringContainsString("*Ace Fireplace Services*\n*Data date: Sat, Oct 17*", $parent);
+        $this->assertStringContainsString("\u{1F3E2} *Ace Fireplace Services*\n*Data date: Sat, Oct 17*", $parent);
     }
 
     /** Shoval, 2026-11-09: a sheet's areas in the location order too, a city by its state's codes ("IL, Chicago"). */
@@ -429,7 +425,7 @@ class DailyTextsTest extends TestCase
         $this->airtableTable($this->t, null, 'marketing', array_map(fn (string $area) => ['DATE' => '2026-10-17', 'Service Area' => $area, 'COST' => 10, 'JOBS' => 1],
             ['Chicago', 'Austin', 'Columbus', 'New Jersey', 'Cleveland']));
 
-        preg_match_all('/^\*([A-Za-z ]+)\*$/m', $this->text('marketing_ppc'), $m);
+        preg_match_all('/^• \*(?!TOTAL)([A-Za-z ]+)\*:/mu', $this->text('marketing_ppc'), $m);
 
         $this->assertSame(['New Jersey', 'Cleveland', 'Columbus', 'Chicago', 'Austin'], $m[1]);
     }
@@ -450,8 +446,8 @@ class DailyTextsTest extends TestCase
 
         $text = $this->text('marketing_ppc');
 
-        $this->assertStringContainsString("*Austin*\n• Spent: $200.00 · Calls: 10 · Jobs: 4", $text);
-        $this->assertStringContainsString("*Dallas*\n• Spent: $100.00 · Calls: 5 · Jobs: 1", $text);
+        $this->assertStringContainsString('• *Austin*: spent $200.00 · 4 jobs · $50.00 per job · 10 calls', $text);
+        $this->assertStringContainsString('• *Dallas*: spent $100.00 · 1 job · $100.00 per job · 5 calls', $text);
         $this->assertStringNotContainsString('999', $text);
         $this->assertStringNotContainsString('777', $text);
     }
