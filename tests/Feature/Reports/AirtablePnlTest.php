@@ -71,6 +71,22 @@ class AirtablePnlTest extends TestCase
     }
 
     /**
+     * The live sheets spell the markers as people type them (measured 2026-11-11): "Total balance",
+     * "total balance", "TOTAL", "total" and, in New York's Marketing, "tota". Each one was summed as
+     * a line, adding the week's net into income and doubling a category.
+     */
+    public function test_markers_match_however_the_sheet_spells_them(): void
+    {
+        $rows = array_map(fn (array $row) => array_map(fn ($v) => match ($v) {
+            'Total Balance' => 'total balance ', 'Total' => 'TOTAL', default => $v,
+        }, $row), $this->realWeek());
+        $rows[] = ['Week' => self::WEEK, 'Marketing' => 'tota', 'Marketing Amount' => 11258.83];
+        $rows = array_map(fn (array $row) => ($row['Marketing'] ?? null) === 'TOTAL' ? array_diff_key($row, ['Marketing' => 1, 'Marketing Amount' => 1]) : $row, $rows);
+
+        $this->assertEquals((new AirtablePnl)->week($this->realWeek(), self::WEEK), (new AirtablePnl)->week($rows, self::WEEK));
+    }
+
+    /**
      * A CATEGORY'S TOTAL CELL IS CHECKED, NEVER PREFERRED.
      *
      * Measured on the live base: of 29 complete weeks across four tenants, 19

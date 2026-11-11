@@ -2,13 +2,26 @@
 
 namespace Tests\Feature\Api;
 
+use App\Http\Controllers\Api\ProjectBoardController;
+use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\JobNote;
+use App\Models\Notification;
+use App\Models\PhoneConnection;
+use App\Models\PhoneMessage;
+use App\Models\PhoneNumber;
+use App\Models\ServiceArea;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
+use App\Support\Dashboard\DashboardPeriod;
+use App\Support\Dashboard\Glances\ProjectBoardGlance;
+use App\Support\Jobs\ScheduleTexts;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -62,8 +75,8 @@ class ProjectBoardTest extends TestCase
         $this->assertEqualsCanonicalizing(['WAITING PARTS', 'DEPOSIT'], $options['tags']);
 
         // The dashboard glance counts what the board counts, and nothing of Beta's.
-        $data = app(\App\Support\Dashboard\Glances\ProjectBoardGlance::class)
-            ->resolve($alpha['admin'], \App\Support\Dashboard\DashboardPeriod::for($alpha['admin']), [])->data;
+        $data = app(ProjectBoardGlance::class)
+            ->resolve($alpha['admin'], DashboardPeriod::for($alpha['admin']), [])->data;
         $this->assertSame('3 open jobs.', $data['sentence']);
         $this->assertSame([1, 1, 1, 0, 0, 1], array_column($data['figures'], 'value'));
     }
@@ -126,7 +139,8 @@ class ProjectBoardTest extends TestCase
         $page = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk();
         $this->assertEqualsCanonicalizing([$ids['hit'], $ids['cased']], array_column($page->json('data'), 'id'));
         // Every other sub-tab starts empty, and the counts follow the rules.
-        $this->assertSame(['unscheduled' => 2, 'ready_to_schedule' => 0, 'scheduled' => 0, 'in_progress' => 0, 'done_waiting_payment' => 0, 'complete' => 0], $page->json('meta.counts'));
+        // The dated deposit job is on Scheduled (Jose, 2026-11-10).
+        $this->assertSame(['unscheduled' => 2, 'ready_to_schedule' => 0, 'scheduled' => 1, 'in_progress' => 0, 'done_waiting_payment' => 0, 'complete' => 0], $page->json('meta.counts'));
 
         $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('project_board.tabs', $alpha['org'], [
             'complete' => ['statuses' => ['Done', 'Submitted'], 'tags' => ['VIP', 'DEPOSIT RECEIVED'], 'tags_mode' => 'any'],
@@ -161,9 +175,9 @@ class ProjectBoardTest extends TestCase
             $row['repair_options']);
         // Workiz's renames (2026-11-10) still read as repair teams; other tags do not.
         foreach (['REPAIR TEAM: KENNI', 'CONTRACTOR MIGUEL', 'GAS CONTRACTOR', 'PROGRESS BY SUB CONTRACTOR'] as $tag) {
-            $this->assertTrue(\App\Http\Controllers\Api\ProjectBoardController::isRepairTeam($tag), $tag);
+            $this->assertTrue(ProjectBoardController::isRepairTeam($tag), $tag);
         }
-        $this->assertFalse(\App\Http\Controllers\Api\ProjectBoardController::isRepairTeam('DEPOSIT RECEIVED'));
+        $this->assertFalse(ProjectBoardController::isRepairTeam('DEPOSIT RECEIVED'));
         $this->assertSame('Jonathon Chance', $row['technician']);
         // Search finds a job by its technician (Jose, 2026-11-10).
         $this->assertSame([$id], array_column($api->getJson('/api/v1/project-board/jobs?tab=unscheduled&q=jonathon')->json('data'), 'id'));
@@ -180,10 +194,10 @@ class ProjectBoardTest extends TestCase
         $api->postJson("/api/v1/project-board/jobs/{$id}/ready", $times)->assertStatus(422)->assertJsonPath('message', 'Still needs: Service Area, Repair Team / Contractor, a note.');
 
         $this->inTenant($alpha['org'], function () use ($alpha, $id) {
-            $area = \App\Models\ServiceArea::query()->create(['franchise_id' => $alpha['franchise']->id, 'name' => 'Columbus North']);
+            $area = ServiceArea::query()->create(['franchise_id' => $alpha['franchise']->id, 'name' => 'Columbus North']);
             Job::query()->whereKey($id)->update(['service_area_id' => $area->id]);
-            \App\Models\JobNote::create(['job_id' => $id, 'body' => 'Customer wants mornings.']);
-            \Illuminate\Support\Facades\DB::table('attachments')->insert(['id' => (string) \Illuminate\Support\Str::uuid(),
+            JobNote::create(['job_id' => $id, 'body' => 'Customer wants mornings.']);
+            DB::table('attachments')->insert(['id' => (string) Str::uuid(),
                 'organization_id' => $alpha['org']->id, 'attachable_type' => 'jobs', 'attachable_id' => $id,
                 'disk' => 'local', 'path' => 'x.jpg', 'original_name' => 'x.jpg', 'mime' => 'image/jpeg', 'size_bytes' => 1, 'checksum' => str_repeat('0', 64),
                 'created_at' => now(), 'updated_at' => now()]);
@@ -223,7 +237,7 @@ class ProjectBoardTest extends TestCase
         // Jose, 2026-11-10: "why are everdoors stuff showing up when im on a-1chimney view".
         $alpha = $this->provisionTenant('Alpha');
         [$a1, $door] = $this->inTenant($alpha['org'], function () use ($alpha) {
-            $other = \App\Models\Company::create(['organization_id' => $alpha['org']->id, 'name' => 'Everdoors']);
+            $other = Company::create(['organization_id' => $alpha['org']->id, 'name' => 'Everdoors']);
             $doors = Franchise::create(['company_id' => $other->id, 'name' => 'Everdoors CT']);
             WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'tag', 'remote_id' => 'TAG-A',
                 'payload' => ['name' => 'REPAIR TEAM: KENNI', 'color' => '#198218'], 'synced_at' => now()]);
@@ -248,7 +262,7 @@ class ProjectBoardTest extends TestCase
         // and a sub-company's view starts at that sub-company (Jose, 2026-11-10).
         $sub = $this->inTenant($alpha['org'], function () use ($alpha) {
             Franchise::create(['company_id' => $alpha['company']->id, 'name' => 'Closed branch', 'is_active' => false]);
-            $sub = \App\Models\Company::create(['organization_id' => $alpha['org']->id, 'name' => 'AngiSweep', 'parent_company_id' => $alpha['company']->id]);
+            $sub = Company::create(['organization_id' => $alpha['org']->id, 'name' => 'AngiSweep', 'parent_company_id' => $alpha['company']->id]);
             Franchise::create(['company_id' => $sub->id, 'name' => 'Sweep NJ']);
 
             return $sub;
@@ -357,6 +371,102 @@ class ProjectBoardTest extends TestCase
         $this->assertSame('2026-11-14', $parts[0]['delivery_on']);
 
         $api->putJson($url, ['parts' => []])->assertOk()->assertJsonCount(0, 'data');
+    }
+
+    /** Trey, 2026-11-11: search a job by the client's phone in any format, or its address. */
+    public function test_jobs_and_project_management_search_by_phone_and_address(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $id = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->findOrFail($id)->customer->update(['phone' => '+15553334444', 'address_line1' => '12 Elm Street']);
+            $this->job($alpha['franchise'], 'J-2', 'Submitted', null, ['DEPOSIT RECEIVED']);
+
+            return $id;
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        foreach (['(555) 333-4444', '555.333.4444', '+1 555 333 4444', '3334444', 'Elm Street'] as $term) {
+            $this->assertSame([$id], array_column($api->getJson('/api/v1/jobs?search='.urlencode($term))->json('data'), 'id'), $term);
+            $this->assertSame([$id], array_column($api->getJson('/api/v1/project-board/jobs?tab=unscheduled&q='.urlencode($term))->json('data'), 'id'), $term);
+        }
+        $this->assertCount(2, $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data'));
+    }
+
+    /** Jose, 2026-11-10: the repair team list is managed here, each with a phone or user. */
+    public function test_the_repair_team_list_is_added_renamed_and_deleted_here(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM']));
+        $api = $this->signedInAs($alpha['admin']);
+        $post = fn (array $body) => $api->postJson('/api/v1/project-board/repair-teams', $body);
+
+        $post(['op' => 'create', 'name' => 'OMER', 'color' => '#123456'])->assertStatus(422);
+        // The first change keeps the tags already working as repair teams.
+        $post(['op' => 'create', 'name' => 'CONTRACTOR: OMER', 'color' => '#0059a0', 'phone' => '+15550001111'])->assertOk()
+            ->assertJsonPath('data.list', [
+                ['name' => 'CONTRACTOR: OMER', 'phone' => '+15550001111', 'user_id' => null],
+                ['name' => 'KENNI REPAIR TEAM', 'phone' => null, 'user_id' => null],
+            ]);
+        $post(['op' => 'update', 'name' => 'contractor: omer', 'to' => 'OMER CONTRACTOR', 'user_id' => $alpha['admin']->id])->assertOk()
+            ->assertJsonPath('data.list.1', ['name' => 'OMER CONTRACTOR', 'phone' => null, 'user_id' => $alpha['admin']->id]);
+        $post(['op' => 'delete', 'name' => 'KENNI REPAIR TEAM'])->assertOk()->assertJsonCount(1, 'data.list');
+        // Only the list counts now: the job's KENNI tag is no longer its repair team.
+        $this->assertNull($api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.repair_team'));
+    }
+
+    /** Jose, 2026-11-10: YES schedules and confirms; NO offers the alternative; NO again, the PM calls. */
+    public function test_the_client_answers_the_scheduling_text_yes_or_no(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$no, $yes] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $connection = PhoneConnection::factory()->create(['scope_type' => 'organization', 'scope_id' => $alpha['org']->id]);
+            PhoneNumber::factory()->create(['connection_id' => $connection->id, 'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id, 'e164' => '+12035551004', 'sms_outbound_allowed' => true]);
+            $times = ['date' => '2026-11-20', 'slot' => '8 - 11 AM', 'alt_date' => '2026-11-21', 'alt_slot' => '11 AM - 2 PM', 'by' => $alpha['admin']->id];
+            $ids = [];
+            foreach (['+15553334444', '+15553335555'] as $i => $phone) {
+                $ids[$i] = $this->job($alpha['franchise'], "J-{$i}", 'Submitted', null, ['DEPOSIT RECEIVED', 'READY TO SCHEDULE']);
+                $job = Job::query()->findOrFail($ids[$i]);
+                $job->customer->update(['phone' => $phone]);
+                $job->update(['schedule_proposal' => $times]);
+                $this->assertNull(app(ScheduleTexts::class)->offer($job, $alpha['admin']));
+            }
+
+            return $ids;
+        });
+        $texts = new class($alpha['org'], fn ($org, $f) => $this->inTenant($org, $f))
+        {
+            public function __construct(private $org, private $in) {}
+
+            public function absorb(...$a): bool
+            {
+                return ($this->in)($this->org, fn () => app(ScheduleTexts::class)->absorb(...$a));
+            }
+        };
+        $stage = fn (string $id) => $this->inTenant($alpha['org'], fn () => Job::query()->findOrFail($id)->schedule_proposal['stage']);
+
+        $this->assertSame('offered', $stage($no));
+        $this->assertFalse($texts->absorb('+15553334444', 'What time again?', 'SM1'), 'not an answer');
+        $this->assertTrue($texts->absorb('+15553334444', 'No sorry', 'SM2'));
+        $this->assertSame('alt_offered', $stage($no));
+        $this->assertTrue($texts->absorb('+15553334444', 'no', 'SM3'));
+        $this->assertSame('pm_call', $stage($no));
+        $this->assertFalse($texts->absorb('+15553334444', 'no', 'SM4'), 'nothing pending any more');
+
+        $this->assertTrue($texts->absorb('+15553335555', 'Yes!', 'SM5'));
+        $this->inTenant($alpha['org'], function () use ($no, $yes, $alpha) {
+            $job = Job::query()->findOrFail($yes);
+            $this->assertSame('confirmed', $job->schedule_proposal['stage']);
+            $this->assertSame('2026-11-20 08:00', $job->scheduled_for->format('Y-m-d H:i'));
+            $this->assertStringContainsString('Friday, Nov 20 between 8 - 11 AM', PhoneMessage::query()->where('to_e164', '+15553335555')->latest('id')->value('body'));
+            // Every text both ways is on the job, and the PM heard about the double no.
+            $this->assertSame(5, JobNote::query()->where('job_id', $no)->count());
+            $this->assertTrue(Notification::query()->where('user_id', $alpha['admin']->id)->where('title', 'like', '%J-0%')->exists());
+        });
+        // The Scheduled sub-tab: DEPOSIT RECEIVED with a date.
+        $this->assertSame([$yes], array_column($this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=scheduled')->json('data'), 'id'));
+        $this->assertSame(['11:00', '14:00'], ScheduleTexts::window('11 AM - 2 PM'));
+        $this->assertSame(['14:30', '17:00'], ScheduleTexts::window('2:30-5pm'));
     }
 
     private function job(Franchise $franchise, string $number, string $status, ?string $at = null, array $tags = [], array $payload = []): string

@@ -779,7 +779,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                       final search = ListSearch(
                         key: const Key('project-board-search'),
                         controller: _search,
-                        hint: 'Customer, job number, address or technician',
+                        hint:
+                            'Customer, job number, phone, address or technician',
                         width: box.maxWidth >= 900 ? double.infinity : 280,
                         onChanged: _searched,
                       );
@@ -995,7 +996,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
   Map<String, Color> _tagColours = const {};
 
   /// Settings for the new columns (Jose, 2026-11-10).
-  List<String> _repairTagList = [];
+  List<Map<String, dynamic>> _repairTeams = [];
+  List<Map<String, dynamic>> _users = const [];
+  List<String> _repairColours = const [];
   final Set<String> _readyNeeds = {};
   final _warnDays = TextEditingController();
   final _badDays = TextEditingController();
@@ -1042,10 +1045,17 @@ class _BoardSettingsState extends State<_BoardSettings> {
         for (final t in (options['tags'] as List?) ?? const []) '$t',
       ];
       _tagColours = jobTagColours({'tag_colours': options['tag_colours']});
-      _repairTagList = [
+      _repairTeams = [
         for (final t
             in (byKey['project_board.repair_tags'] as List?) ?? const [])
-          '$t',
+          t is Map ? Map<String, dynamic>.from(t) : {'name': '$t'},
+      ];
+      _users = [
+        for (final u in (options['users'] as List?) ?? const [])
+          if (u is Map) Map<String, dynamic>.from(u),
+      ];
+      _repairColours = [
+        for (final c in (options['repair_colours'] as List?) ?? const []) '$c',
       ];
       _readyNeeds
         ..clear()
@@ -1156,6 +1166,103 @@ class _BoardSettingsState extends State<_BoardSettings> {
         ),
       ),
     );
+  }
+
+  /// The Repair Team / Contractor list (Jose, 2026-11-10): managed here,
+  /// each a Workiz tag on every account, with a phone or a user. Each change
+  /// is saved at once and shows what every Workiz account answered.
+  Widget _repairCard() {
+    final theme = Theme.of(context);
+    String? userName(Object? id) =>
+        _users.where((u) => u['id'] == id).firstOrNull?['name'] as String?;
+    return Card(
+      key: const Key('project-board-repair-teams'),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Repair teams / contractors',
+              style: theme.textTheme.titleMedium,
+            ),
+            Text(
+              'Each is a job tag in every Workiz account: adding, renaming or deleting one here does it there too.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            for (final t in _repairTeams)
+              ListTile(
+                key: ValueKey('project-board-repair-team:${t['name']}'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Tag('${t['name']}', colour: _tagColours[t['name']]),
+                ),
+                subtitle: Text(
+                  [
+                    if ('${t['phone'] ?? ''}'.isNotEmpty) '${t['phone']}',
+                    ?userName(t['user_id']),
+                  ].join(' · '),
+                ),
+                trailing: const Icon(Icons.edit_outlined, size: 18),
+                onTap: _saving != null ? null : () => _editRepairTeam(t),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('project-board-repair-tags-add'),
+                onPressed: _saving != null ? null : () => _editRepairTeam(null),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add a repair team / contractor'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editRepairTeam(Map<String, dynamic>? team) async {
+    final body = await showSidePanel<Map<String, Object?>>(
+      context,
+      builder: (_) =>
+          _RepairTeamPanel(team: team, users: _users, colours: _repairColours),
+    );
+    if (body == null || !mounted) return;
+    setState(() => _saving = 'repair');
+    final r = await widget.api.post('/project-board/repair-teams', body);
+    if (!mounted) return;
+    setState(() => _saving = null);
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.message)));
+      return;
+    }
+    final data = r.data as Map;
+    final outcomes = (data['outcomes'] as Map?) ?? const {};
+    setState(
+      () => _repairTeams = [
+        for (final t in (data['list'] as List?) ?? const [])
+          Map<String, dynamic>.from(t as Map),
+      ],
+    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            outcomes.isEmpty
+                ? 'Saved.'
+                : [
+                    for (final e in outcomes.entries) '${e.key}: ${e.value}',
+                  ].join(_newline),
+          ),
+        ),
+      );
   }
 
   /// The chosen tags as coloured chips, and "+ Add tag" opening a searchable
@@ -1522,13 +1629,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
           ],
           () => {'project_board.part_tags': _partTags},
         ),
-        _card(
-          'repair',
-          'Repair team / contractor tags',
-          'The job tags that are a Repair Team / Contractor. None chosen: every tag naming a repair team or a contractor.',
-          [_tagPicker('project-board-repair-tags', _repairTagList)],
-          () => {'project_board.repair_tags': _repairTagList},
-        ),
+        _repairCard(),
         _card(
           'ready',
           'Ready to schedule',
@@ -1828,6 +1929,156 @@ class _PartsPanelState extends State<_PartsPanel> {
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Add a part'),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Adding or changing one repair team / contractor: its name, (new) its
+/// Workiz colour, a phone or a user; Delete removes it everywhere. Pops the
+/// request body for POST /project-board/repair-teams, or null.
+class _RepairTeamPanel extends StatefulWidget {
+  const _RepairTeamPanel({
+    required this.team,
+    required this.users,
+    required this.colours,
+  });
+
+  final Map<String, dynamic>? team;
+  final List<Map<String, dynamic>> users;
+  final List<String> colours;
+
+  @override
+  State<_RepairTeamPanel> createState() => _RepairTeamPanelState();
+}
+
+class _RepairTeamPanelState extends State<_RepairTeamPanel> {
+  late final _name = TextEditingController(
+    text: '${widget.team?['name'] ?? ''}',
+  );
+  late final _phone = TextEditingController(
+    text: '${widget.team?['phone'] ?? ''}',
+  );
+  late String? _userId = widget.team?['user_id'] as String?;
+  late String? _colour = widget.colours.firstOrNull;
+  bool _deleting = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  bool get _isNew => widget.team == null;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = widget.users.where((u) => u['id'] == _userId).firstOrNull;
+    return SidePanel(
+      title: _isNew
+          ? 'Add a repair team / contractor'
+          : 'Repair team / contractor',
+      actions: [
+        if (!_isNew)
+          TextButton(
+            key: const Key('project-board-repair-team-delete'),
+            onPressed: () => _deleting
+                ? Navigator.of(context).pop(<String, Object?>{
+                    'op': 'delete',
+                    'name': widget.team!['name'],
+                  })
+                : setState(() => _deleting = true),
+            child: Text(
+              _deleting ? 'Delete from every Workiz account' : 'Delete',
+            ),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ValueListenableBuilder(
+          valueListenable: _name,
+          builder: (context, name, _) => FilledButton(
+            key: const Key('project-board-repair-team-save'),
+            onPressed: name.text.trim().isEmpty
+                ? null
+                : () => Navigator.of(context).pop(<String, Object?>{
+                    'op': _isNew ? 'create' : 'update',
+                    'name': _isNew ? name.text.trim() : widget.team!['name'],
+                    if (!_isNew) 'to': name.text.trim(),
+                    if (_isNew) 'color': _colour,
+                    'phone': _phone.text.trim().isEmpty
+                        ? null
+                        : _phone.text.trim(),
+                    'user_id': _userId,
+                  }),
+            child: const Text('Save'),
+          ),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: const Key('project-board-repair-team-name'),
+            controller: _name,
+            decoration: const InputDecoration(
+              labelText: 'Name (the Workiz tag)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (_isNew) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final c in widget.colours)
+                  ChoiceChip(
+                    key: ValueKey('project-board-repair-colour:$c'),
+                    showCheckmark: false,
+                    label: const SizedBox(width: 16, height: 16),
+                    backgroundColor: ColourField.parse(c),
+                    selectedColor: ColourField.parse(c),
+                    side: _colour == c ? const BorderSide(width: 3) : null,
+                    selected: _colour == c,
+                    onSelected: (_) => setState(() => _colour = c),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('project-board-repair-team-phone'),
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Phone',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const Key('project-board-repair-team-user'),
+            icon: const Icon(Icons.person_outline, size: 18),
+            label: Text('${user?['name'] ?? 'Pick a user'}'),
+            onPressed: () async {
+              final picked = await showSearchPicker<String>(
+                context,
+                title: 'User',
+                value: _userId,
+                options: [
+                  const SearchOption(value: '', label: 'Nobody'),
+                  for (final u in widget.users)
+                    SearchOption(value: '${u['id']}', label: '${u['name']}'),
+                ],
+              );
+              if (picked != null && mounted) {
+                setState(() => _userId = picked.isEmpty ? null : picked);
+              }
+            },
           ),
         ],
       ),

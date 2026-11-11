@@ -13,7 +13,17 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
-    VersionRelease(version: '0.0.0559', date: '10 Nov 2026', items: [
+    VersionRelease(version: '0.0.0559', date: '11 Nov 2026', items: [
+      'Project Management: totals for Paid, Remaining Balance and Total Amount over the whole tab',
+      'Project Management: a parts list per job, each part Need to order (item, quantity, price, delivery date) or In stock',
+      'Project Management: Ready to schedule asks for a date, time slot and an alternative; the client is texted to confirm with YES or NO, and YES schedules the job in Workiz',
+      'Project Management › Settings: repair teams and contractors are added, renamed and deleted here and in Workiz on every account, each with a phone or user',
+      'Project Management: Notes shows the team’s notes; the Scheduled column is gone',
+      'Jobs and Project Management: search by the client’s phone number or address',
+      'Reports: the weekly profit and loss reads “Total balance” and misspelt totals correctly',
+      'Automations: a task for a Sub Company lead goes to a board every owner can see',
+      'Leads: the reply proofreader gives up quietly after 20 seconds instead of erroring',
+      'AI Assistance: the technician bot finds job photos by the job’s title too',
       'Newsletter: custom HTML carries the same address and unsubscribe footer as blocks; the composer shows which mode sends; paste or upload HTML or import an SVG with preview and Undo; a preflight check and one test email before sending',
       'Project Management: click a column to sort the whole list (click again to reverse); your choice is kept',
       'Project Management: Unassign a repair team; a job holds one repair team or contractor, shown as its coloured chip',

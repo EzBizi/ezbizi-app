@@ -3,7 +3,6 @@
 namespace App\Support\Settings;
 
 use App\Models\TimeClockDay;
-
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
@@ -1001,7 +1000,8 @@ class SettingRegistry
                         'tags_none' => ['READY TO SCHEDULE'], 'scheduled' => false],
                     'ready_to_schedule' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED', 'READY TO SCHEDULE'],
                         'tags_mode' => 'all', 'scheduled' => false],
-                    'scheduled' => ['statuses' => []],
+                    // Jose, 2026-11-10: Scheduled is DEPOSIT RECEIVED with a date.
+                    'scheduled' => ['statuses' => ['Submitted', 'Scheduled'], 'tags' => ['DEPOSIT RECEIVED'], 'tags_mode' => 'all', 'scheduled' => true],
                     'in_progress' => ['statuses' => []],
                     'done_waiting_payment' => ['statuses' => []],
                     'complete' => ['statuses' => []],
@@ -1056,7 +1056,8 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_JSON,
                 default: [],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
-                help: 'The job tags that are a Repair Team / Contractor. None chosen: every tag naming a repair team or a contractor.',
+                // 2026-11-10: managed from Project Management and pushed to every Workiz account; each a name with a phone or user.
+                help: 'The Repair Team / Contractor list: each a job tag, with a phone or a user. None yet: every tag naming a repair team or a contractor.',
             ),
             new SettingDefinition(
                 key: 'project_board.ready_requires', label: 'Project Management: what Ready to schedule needs',
@@ -1064,6 +1065,12 @@ class SettingRegistry
                 default: ['service_area', 'technician', 'repair_team', 'attachment', 'note'],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'Service area, technician, repair team, an attachment, a note: the ones ticked must be there.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.client_texts', label: 'Project Management: text the client the times',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Ready to schedule texts the client the date and slot; YES schedules it, NO offers the alternative, NO again asks the PM to call.',
             ),
             new SettingDefinition(
                 key: 'project_board.status_days', label: 'Project Management: Status Time colours',
