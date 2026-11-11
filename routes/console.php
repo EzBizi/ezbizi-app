@@ -23,6 +23,8 @@ Artisan::command('inspire', function () {
 Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
+
+Schedule::command('ezbizi:purge-deleted-task-boards')->dailyAt('03:55')->withoutOverlapping(30);
 // Expired, never-accepted invitations are withdrawn (Jose, 2026-11-03).
 Schedule::command('ezbizi:revoke-expired-invitations')->dailyAt('06:20')->withoutOverlapping(30);
 // Meta connections Meta no longer lets us reach turn red (Jose, 2026-11-02).
@@ -34,15 +36,22 @@ Schedule::command('ezbizi:check-connection-health')->dailyAt('06:40')->withoutOv
 Schedule::command('ezbizi:time-clock-approval-reminders')->everyFifteenMinutes()->withoutOverlapping(10);
 Schedule::command('ezbizi:pto-daily-triggers')->dailyAt('07:10')->withoutOverlapping(30);
 
-// Yesterday's RingCentral call log into the Experimental report's cache, so a
-// week or a month opens without waiting on RingCentral's rate limit.
-Schedule::command('ezbizi:warm-call-log')->dailyAt('02:30')->withoutOverlapping(30);
+// Every RingCentral account's finished days kept for the reports, so a week or
+// a month opens without waiting on RingCentral's rate limit (CALLS-504: hourly,
+// as 02:30 UTC is still yesterday in New York).
+Schedule::command('ezbizi:warm-call-log')->hourlyAt(7)->withoutOverlapping(60);
+// Meta enquiries a webhook never brought (Jose, 2026-11-05: "recovery should be automatic").
+Schedule::command('ezbizi:meta-catch-up')->hourlyAt(23)->withoutOverlapping(60);
+// Campaigns on and off at their set times (Jose, 2026-11-05).
+Schedule::command('ezbizi:ad-schedules')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverlapping(5);
 // Yesterday's calls AI read as booked with no Workiz job (AiBookedNoJob).
 // A-1's Airtable copied into EzBizi for the reports (A1 Leads takeover, 2026-10-16); about 8 s.
 Schedule::command('ezbizi:airtable-snapshot')->hourlyAt(17)->withoutOverlapping(10);
 // Financials tables linked to Airtable read that copy, ten minutes after it lands.
 Schedule::command('ezbizi:financials-airtable-refresh')->hourlyAt(27)->withoutOverlapping(10);
+// Airtable retirement: each base's Airtable copy vs EzBizi, once a day after a refresh (plan 2026-11-03 §4).
+Schedule::command('ezbizi:airtable-parity')->dailyAt('05:45')->withoutOverlapping(30);
 // Invoices that passed their due date unpaid raise invoice.overdue once each.
 Schedule::command('ezbizi:invoices-overdue')->dailyAt('08:05')->withoutOverlapping(10);
 Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('America/New_York')->withoutOverlapping(30);
@@ -185,6 +194,8 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  * what changed, about eight calls a branch, well under the key's burst limit.
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
+// Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
+Schedule::command('ezbizi:sync-workiz-records --type=tag')->cron('1-59/2 * * * *')->withoutOverlapping(5);
 // Off the records run's minute: the ten-minute readers firing together hit Workiz's rate limit (measured 11-03).
 Schedule::command('ezbizi:sync-workiz-calls')->cron('3-59/10 * * * *')->withoutOverlapping(30);
 // Workiz's own Payments report, through each tenant's signed-in web session.
@@ -263,15 +274,12 @@ Schedule::command('scheduling:build-zip-map')->everyFiveMinutes()->withoutOverla
  * `scheduling.overbooking_found` where a service area is overbooked or fully
  * booked in the next 7 days. The email itself is an automation on it.
  */
-Schedule::command('scheduling:warn-overbooking')->dailyAt('07:00')->timezone('America/New_York');
+// Hourly; each organization's own scheduling.overbooking_hour, in its own timezone, picks the run.
+Schedule::command('scheduling:warn-overbooking')->hourlyAt(0);
 Schedule::command('scheduling:warn-underfilled')->hourlyAt(2);
-// job.estimate_aging, once a day (Jose's Project Management rule 2, 2026-10-21).
+// job.estimate_aging, once a day (Jose, 2026-10-21).
 Schedule::command('jobs:emit-estimate-aging')->dailyAt('08:10')->timezone('America/New_York')->withoutOverlapping(60);
 // Mirrored jobs keep Workiz's type, sub-status and tags where nobody set them (review 2026-11-02: 2,174 jobs had none).
-// The paid-not-started warning (Jose, 2026-10-22): daily, to each company's address.
-Schedule::command('jobs:warn-paid-not-started')->dailyAt('08:20')->timezone('America/New_York')->withoutOverlapping(60);
-// Project Management - 2's Submitted tab keeps its jobs for good (Jose, 2026-11-02): each move is copied before its event expires.
-Schedule::command('project-management-2:record-submissions')->everyMinute()->withoutOverlapping(5);
 
 // A month before a membership year ends (Customers › Memberships).
 Schedule::command('memberships:remind-renewals')->dailyAt('09:00')->timezone('America/New_York');
@@ -285,6 +293,9 @@ Schedule::command('memberships:remind-renewals')->dailyAt('09:00')->timezone('Am
 Schedule::command('scheduling:apply-scheduled-changes')->hourly()->withoutOverlapping(10);
 
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
+
+// Instagram and Threads 60-day tokens, renewed while they still work (bug review 2026-11-09).
+Schedule::command('ezbizi:renew-meta-login-tokens')->dailyAt('04:20')->timezone('America/New_York')->withoutOverlapping(30);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
 //
@@ -373,6 +384,10 @@ Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30
 
 // Every Twilio line still routes to us; numbers added, removed or repointed.
 Schedule::command('ezbizi:phone-line-audit')->dailyAt('04:30')->withoutOverlapping(30);
+// New and reactivated people get an extension within the hour (Jose, 2026-11-09).
+Schedule::command('ezbizi:phone-assign-extensions')->hourly()->withoutOverlapping(10);
+// Hourly at :30; the command rings each line only at 21:30 on an even-week Monday in its own zone (after hours: voicemail, nobody rung).
+Schedule::command('ezbizi:phone-line-answer-test')->hourlyAt(30)->withoutOverlapping(30);
 
 // Field: lost-signal alerts (the one fact no incoming point can announce) and
 // geocoding the next days' job addresses, so arrival checks never wait on Google.
@@ -403,6 +418,8 @@ Schedule::command('ezbizi:whatsapp-period-reports month')->monthlyOn(2, '13:00')
 // Facebook Ads spend and results for Reports' Meta tab; the last 3 days, which
 // Meta still revises. A new connection backfills itself.
 Schedule::command('ezbizi:meta-ads-sync')->dailyAt('05:30')->timezone('America/New_York')->withoutOverlapping(120);
+// Again before the 8 PM report texts, so they carry the day's Meta spend (Reports audit, 2026-11-10).
+Schedule::command('ezbizi:meta-ads-sync')->dailyAt('19:30')->timezone('America/New_York')->withoutOverlapping(120);
 // AI suggests each new campaign's category (SuggestMetaCategories); a person confirms.
 Schedule::command('ezbizi:suggest-meta-categories')->dailyAt('06:15')->timezone('America/New_York')->withoutOverlapping(30);
 // Grok reads new leads: sorting, and a name/ZIP a call gave (Jose, 2026-10-09).
@@ -421,8 +438,10 @@ Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOve
 Schedule::command('ezbizi:ekomi-reviews sync')->cron('50 */6 * * *')->withoutOverlapping(60);
 // The unanswered Google reviews, 50 a day so listings are not flooded (Jose, 2026-11-02).
 Schedule::command('ezbizi:review-backlog')->dailyAt('15:00')->withoutOverlapping(120);
-// One AI Google post per listing a week, into the approval queue (Jose, 2026-11-03).
-Schedule::command('ezbizi:gbp-weekly-posts')->weeklyOn(1, '13:00')->withoutOverlapping(120);
+// One AI Google post always waiting per listing (Jose, 2026-11-03/04); the queue refills on each decision, this catches the rest.
+Schedule::command('ezbizi:gbp-weekly-posts')->dailyAt('13:00')->withoutOverlapping(120);
+// The funnel's "Reviewed" step: which review each link produced (Jose, 2026-11-09).
+Schedule::command('ezbizi:review-link-matches')->hourlyAt(40)->withoutOverlapping(30);
 Schedule::command('ezbizi:ekomi-requests')->everyFifteenMinutes()->withoutOverlapping(30);
 // Complaints from bad reviews, Bad Ratings and complaint calls (2026-10-20).
 Schedule::command('ezbizi:complaints-intake')->everyMinute()->withoutOverlapping(5);
@@ -437,6 +456,8 @@ Schedule::command('ezbizi:label-call-transcripts --limit=4')->everyTwoMinutes()-
 Schedule::command('ezbizi:ai-weekly-summary')->weeklyOn(1, '07:00')->timezone('America/New_York')->withoutOverlapping(60);
 // Coaching scores for answered calls (ScoreReportCalls); off until REPORT_CALL_SCORING.
 Schedule::command('ezbizi:score-report-calls')->everyTenMinutes()->withoutOverlapping(15);
+// A scheduled report text WhatsApp did not deliver in 30 minutes, emailed to its rule's maker.
+Schedule::command('ezbizi:report-delivery-check')->everyTenMinutes()->withoutOverlapping(10);
 // Grok's daily and weekly read per employee for the Scoring tab (AiPersonReviews).
 Schedule::command('ezbizi:ai-person-reviews daily')->dailyAt('06:30')->timezone('America/New_York')->withoutOverlapping(30);
 Schedule::command('ezbizi:ai-person-reviews weekly')->weeklyOn(1, '06:45')->timezone('America/New_York')->withoutOverlapping(30);

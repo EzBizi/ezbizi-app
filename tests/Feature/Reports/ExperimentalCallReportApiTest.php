@@ -11,6 +11,8 @@ use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Models\WorkizCall;
 use App\Models\WorkizJob;
+use App\Support\Reports\ReportView;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -28,10 +30,42 @@ use Tests\TestCase;
  */
 class ExperimentalCallReportApiTest extends TestCase
 {
-    use BuildsTenants;
+    use BuildsTenants {
+        provisionTenant as private tenantWithoutQueues;
+    }
     use RefreshDatabase;
 
+    /** A tenant with A-1's two queue names set, as Settings holds them (no names in code). */
+    protected function provisionTenant(string $name = 'Alpha', ?string $email = null): array
+    {
+        $t = $this->tenantWithoutQueues($name, $email);
+        $this->inTenant($t['org'], function () use ($t) {
+            app(SettingsResolver::class)->set('leads.new_client_queue', $t['org'], 'A1 - New Client');
+            app(SettingsResolver::class)->set('leads.existing_client_queue', $t['org'], 'A1 - Existing Client');
+        });
+
+        return $t;
+    }
+
     // ── the gate ─────────────────────────────────────────────────
+
+    /**
+     * A report's days are the organization's own (Jose, 2026-11-04: on UTC,
+     * "Yesterday" held the evening before and lost its own evening).
+     */
+    public function test_a_reports_day_is_cut_in_the_organizations_time_zone(): void
+    {
+        config(['app.timezone' => 'UTC']);
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('timezone', $t['org'], 'America/New_York'));
+
+        $this->actingAs($t['admin']);
+        // A request has resolved its organization by the time a report asks.
+        $this->inTenant($t['org'], fn () => $this->assertSame('America/New_York', ReportView::zone()));
+
+        auth()->forgetGuards();
+        $this->assertSame('UTC', ReportView::zone(), 'nobody signed in');
+    }
 
     /** Running saved reports is a weaker right and must not open this. */
     public function test_reports_view_alone_cannot_read_it(): void
@@ -502,6 +536,39 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->assertSame($tenant['admin']->name, $after['conversions'][0]['converted_by']);
     }
 
+    /**
+     * Jose, 2026-11-03, for Trey: a call's client and booking set by hand,
+     * both ways, with who; the counts follow, and deleting reverts.
+     */
+    public function test_a_call_s_client_and_booking_are_set_by_hand_and_revert(): void
+    {
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->connected($tenant);
+        $as = $this->signedInAs($tenant['admin']);
+        $day = fn () => $this->signedInAs($tenant['admin'])->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->json();
+        $queue = $day()['calls'][0]['queue'];
+
+        $as->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'booking', 'value' => 'booked'])
+            ->assertOk()->assertJsonPath('data.set_by', $tenant['admin']->name);
+        $after = $day();
+        $this->assertTrue($after['calls'][0]['booked']);
+        $this->assertSame(0, $after['totals']['not_booked']);
+        $this->assertSame($tenant['admin']->name, $after['calls'][0]['set_by']['booking']);
+
+        $flip = $queue === 'A1 - New Client' ? 'existing' : 'new';
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'client', 'value' => $flip])->assertOk();
+        $this->assertNotSame($queue, $day()['calls'][0]['queue']);
+        $this->assertSame($queue, $day()['calls'][0]['reclassified']['pressed']);
+
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'booking', 'value' => 'shipped'])->assertStatus(422);
+        $this->signedInAs($tenant['admin'])->deleteJson('/api/v1/reports/experimental/calls/1/override?field=client')->assertOk();
+        $this->signedInAs($tenant['admin'])->deleteJson('/api/v1/reports/experimental/calls/1/override?field=booking')->assertOk();
+        $back = $day();
+        $this->assertSame($queue, $back['calls'][0]['queue']);
+        $this->assertFalse($back['calls'][0]['booked']);
+        $this->assertNull($back['calls'][0]['set_by']);
+    }
+
     /** Both writes sit behind the pane's own gate. */
     public function test_tag_and_convert_need_the_experimental_tab(): void
     {
@@ -514,6 +581,10 @@ class ExperimentalCallReportApiTest extends TestCase
 
         $this->signedInAs($builder)
             ->postJson('/api/v1/reports/experimental/calls/1/convert')
+            ->assertForbidden();
+
+        $this->signedInAs($builder)
+            ->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'booking', 'value' => 'booked'])
             ->assertForbidden();
 
         $this->assertSame(0, CallReportConversion::withoutGlobalScopes()->count());

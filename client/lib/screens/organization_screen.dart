@@ -73,6 +73,9 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
 
   int _tab = _list;
 
+  /// A node's page is open in place of the tree (narrow List view only).
+  bool _pageOpen = false;
+
   /// Which tabs have been shown at least once — hr_screen's idiom, and its two
   /// reasons hold identically. A tab nobody has opened must not build: the
   /// canvas lays out every box in the business to do it, and somebody who only
@@ -162,111 +165,121 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // The heading sits ABOVE the strip, unlike hr_screen and
-                // email_screen which have none at all. Those screens have no
-                // header ACTION; this one does, and "Add company" belongs to
-                // the organization rather than to either view of it — a button
-                // that vanished on switching tabs would read as having
-                // navigated somewhere else rather than as two pictures of one
-                // page. Only the note changes, because only the note is about
-                // which picture you are looking at.
-                //
-                // PanelHeader rather than the hand-rolled Row that used to be
-                // here. That Row put a button and a paragraph in one line with
-                // no breakpoint, which is the exact shape PanelHeader's
-                // docblock exists to replace: at 375 the paragraph was laid out
-                // into a column a few characters wide and took the page with
-                // it.
-                PanelHeader(
-                  // No title: the Organization chip above already says it
-                  // (UI queue 110, the shared Settings header).
-                  // ── Two sentences, and the second is the rule ──
+                // On a phone a branch's page goes under the header, and the
+                // two together took 820 of 844 px, leaving its Settings a
+                // 20 px strip (phone audit 2026-11-04, Section 4 #1). The
+                // page has its own Back, so the header steps aside.
+                if (!(_pageOpen &&
+                    _tab == _list &&
+                    MediaQuery.sizeOf(context).width < 600)) ...[
+                  // The heading sits ABOVE the strip, unlike hr_screen and
+                  // email_screen which have none at all. Those screens have no
+                  // header ACTION; this one does, and "Add company" belongs to
+                  // the organization rather than to either view of it — a button
+                  // that vanished on switching tabs would read as having
+                  // navigated somewhere else rather than as two pictures of one
+                  // page. Only the note changes, because only the note is about
+                  // which picture you are looking at.
                   //
-                  // Said for a business owner rather than for a developer. It
-                  // used to end "nothing here can be moved to a different
-                  // parent once it exists", which is the model's vocabulary
-                  // and not anybody's: "parent" is a column name. What it says
-                  // now is the fact that vocabulary was standing in for — who
-                  // owns what is settled when a thing is created and stays
-                  // that way — which is the same rule `CompaniesController`
-                  // enforces and the same one the canvas explains at length
-                  // the moment somebody drops one box onto another.
-                  note: _tab == _structure
-                      ? 'The same companies, sub companies and places, drawn '
-                            'rather than listed. Moving a box moves the picture '
-                            'only — who owns what is decided when something is '
-                            'created and stays that way afterwards.'
-                      // The same rule in the same words, because it is the same
-                      // rule. Two tabs of one screen phrasing it differently is
-                      // how somebody comes to believe there are two rules, and
-                      // this is the one they are most likely to test by trying
-                      // it on the other tab.
-                      : 'Companies, sub companies and the places work happens. '
-                            'Settings cascade down this tree, and who owns what '
-                            'is decided when something is created and stays '
-                            'that way afterwards.',
-                  // Shown either way. It used to vanish for anybody who could
-                  // not use it, which reads as a missing feature rather than as
-                  // a refusal — and this is the refusal least likely to be
-                  // guessed, because it is about POSITION rather than
-                  // permission (§4): somebody holding `companies.create` at a
-                  // branch has earned the button and still cannot press it.
-                  // List or Structure beside the action, in the header
-                  // (UI queue 110), rather than a second row of chips.
-                  action: Wrap(
-                    spacing: 12,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                  SegmentedButton<int>(
-                    key: const ValueKey('tour-org-views'),
-                    showSelectedIcon: false,
-                    segments: const [
-                      ButtonSegment(
-                        value: 0,
-                        icon: Icon(Icons.list_alt_outlined, size: 18),
-                        label: Text('List'),
-                      ),
-                      ButtonSegment(
-                        value: 1,
-                        icon: Icon(Icons.account_tree_outlined, size: 18),
-                        label: Text('Structure'),
-                      ),
-                    ],
-                    selected: {_tab},
-                    onSelectionChanged: (picked) => _select(picked.first),
-                  ),
-                  // The List view's tree is what it filters, so it is not
-                  // offered over the canvas.
-                  if (_tab == _list)
-                    // Standard field height, as tall as Leads search (Jose, 2026-10-27).
-                    SizedBox(
-                      width: 240,
-                      child: ListSearch(
-                        key: const ValueKey('org-search'),
-                        controller: _search,
-                        hint: 'Find a company or branch',
-                      ),
+                  // PanelHeader rather than the hand-rolled Row that used to be
+                  // here. That Row put a button and a paragraph in one line with
+                  // no breakpoint, which is the exact shape PanelHeader's
+                  // docblock exists to replace: at 375 the paragraph was laid out
+                  // into a column a few characters wide and took the page with
+                  // it.
+                  PanelHeader(
+                    // No title: the Organization chip above already says it
+                    // (UI queue 110, the shared Settings header).
+                    // ── Two sentences, and the second is the rule ──
+                    //
+                    // Said for a business owner rather than for a developer. It
+                    // used to end "nothing here can be moved to a different
+                    // parent once it exists", which is the model's vocabulary
+                    // and not anybody's: "parent" is a column name. What it says
+                    // now is the fact that vocabulary was standing in for — who
+                    // owns what is settled when a thing is created and stays
+                    // that way — which is the same rule `CompaniesController`
+                    // enforces and the same one the canvas explains at length
+                    // the moment somebody drops one box onto another.
+                    note: _tab == _structure
+                        ? 'The same companies, sub companies and places, drawn '
+                              'rather than listed. Moving a box moves the picture '
+                              'only — who owns what is decided when something is '
+                              'created and stays that way afterwards.'
+                        // The same rule in the same words, because it is the same
+                        // rule. Two tabs of one screen phrasing it differently is
+                        // how somebody comes to believe there are two rules, and
+                        // this is the one they are most likely to test by trying
+                        // it on the other tab.
+                        : 'Companies, sub companies and the places work happens. '
+                              'Settings cascade down this tree, and who owns what '
+                              'is decided when something is created and stays '
+                              'that way afterwards.',
+                    // Shown either way. It used to vanish for anybody who could
+                    // not use it, which reads as a missing feature rather than as
+                    // a refusal — and this is the refusal least likely to be
+                    // guessed, because it is about POSITION rather than
+                    // permission (§4): somebody holding `companies.create` at a
+                    // branch has earned the button and still cannot press it.
+                    // List or Structure beside the action, in the header
+                    // (UI queue 110), rather than a second row of chips.
+                    action: Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        SegmentedButton<int>(
+                          key: const ValueKey('tour-org-views'),
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(
+                              value: 0,
+                              icon: Icon(Icons.list_alt_outlined, size: 18),
+                              label: Text('List'),
+                            ),
+                            ButtonSegment(
+                              value: 1,
+                              icon: Icon(Icons.account_tree_outlined, size: 18),
+                              label: Text('Structure'),
+                            ),
+                          ],
+                          selected: {_tab},
+                          onSelectionChanged: (picked) => _select(picked.first),
+                        ),
+                        // The List view's tree is what it filters, so it is not
+                        // offered over the canvas.
+                        if (_tab == _list)
+                          // Standard field height, as tall as Leads search (Jose, 2026-10-27).
+                          SizedBox(
+                            width: 240,
+                            child: ListSearch(
+                              key: const ValueKey('org-search'),
+                              controller: _search,
+                              hint: 'Find a company or branch',
+                            ),
+                          ),
+                        Refused(
+                          reason:
+                              tree['organization']['may_add_company'] == true
+                              ? null
+                              : tree['organization']['may_add_company_reason']
+                                        as String? ??
+                                    'Adding a company is the whole business’s to do.',
+                          child: FilledButton.icon(
+                            key: const ValueKey('tour-org-add'),
+                            onPressed:
+                                tree['organization']['may_add_company'] == true
+                                ? () => _createCompany(parent: null)
+                                : null,
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add company'),
+                          ),
+                        ),
+                      ],
                     ),
-                  Refused(
-                    reason: tree['organization']['may_add_company'] == true
-                        ? null
-                        : tree['organization']['may_add_company_reason']
-                                  as String? ??
-                              'Adding a company is the whole business’s to do.',
-                    child: FilledButton.icon(
-                      key: const ValueKey('tour-org-add'),
-                      onPressed: tree['organization']['may_add_company'] == true
-                          ? () => _createCompany(parent: null)
-                          : null,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Add company'),
-                    ),
                   ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
+                  const Divider(height: 1),
+                ],
                 Expanded(
                   // Offstage rather than IndexedStack, for the reason
                   // automations_screen gives: IndexedStack leaves its hidden
@@ -337,6 +350,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       onMoveCompany: _moveCompany,
       onRenameFranchise: _renameFranchise,
       onToggleFranchise: _toggleFranchise,
+      onPageOpen: (open) => setState(() => _pageOpen = open),
     );
   }
 
@@ -458,8 +472,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   Future<void> _editCompany(Map<String, dynamic> company) async {
     final draft = await showSidePanel<CompanyDraft>(
       context,
-      builder: (_) =>
-          CompanyFormPanel.edit(api: widget.api, company: company),
+      builder: (_) => CompanyFormPanel.edit(api: widget.api, company: company),
     );
 
     if (draft == null) return;
@@ -499,11 +512,9 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       // Only offered when it is somewhere else now. For a company already at
       // the top this is not a move.
       if (parentId != null)
-        (
-          id: null,
-          label: 'Top level, under ${tree['organization']['name']}',
-        ),
-      for (final c in (tree['companies'] as List<dynamic>).cast<Map<String, dynamic>>())
+        (id: null, label: 'Top level, under ${tree['organization']['name']}'),
+      for (final c
+          in (tree['companies'] as List<dynamic>).cast<Map<String, dynamic>>())
         if (c['id'] != id && c['id'] != parentId)
           (id: c['id'] as String, label: 'Under ${c['name']}'),
     ];
@@ -528,11 +539,12 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
     final parent = parentId == null
         ? null
         : (tree['companies'] as List<dynamic>)
-              .cast<Map<String, dynamic>>()
-              .firstWhere(
-                (c) => c['id'] == parentId,
-                orElse: () => <String, dynamic>{},
-              )['name'] as String?;
+                  .cast<Map<String, dynamic>>()
+                  .firstWhere(
+                    (c) => c['id'] == parentId,
+                    orElse: () => <String, dynamic>{},
+                  )['name']
+              as String?;
 
     // A side panel, as every other edit here (UI queue 99), not a dialog.
     final chosen = await showSidePanel<({String? id, String label})>(

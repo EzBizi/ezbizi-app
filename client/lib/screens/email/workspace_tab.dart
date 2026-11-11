@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
+import 'signature_builder.dart';
 import '../../widgets/tag.dart';
 
 /// Email › Google Workspace (UI queue 134, options 1 and 4).
@@ -418,15 +420,16 @@ class _WorkspaceViewState extends State<WorkspaceView> {
   String? _error;
   Map<String, dynamic> _data = const {};
 
-  final _template = TextEditingController();
-  String _savedTemplate = '';
-  bool _savingTemplate = false;
-  String? _templateNote;
+  /// The template open in the builder: a saved one, `{}` for a new one,
+  /// null when the builder is closed.
+  Map<String, dynamic>? _editing;
+  Map<String, dynamic>? _seed;
+  String? _deleting;
+  String? _assignTo;
 
-  String? _previewFor;
-  String? _previewHtml;
-  bool _previewLoaded = false;
-  Timer? _previewTimer;
+  /// "Given A-1 standard to 2 people": the picker keeps the choice and this
+  /// says it took (Jose 11-10: it "reverts back", so it looked like nothing).
+  String? _assignNote;
 
   final _search = TextEditingController();
   final Set<String> _selected = {};
@@ -452,18 +455,17 @@ class _WorkspaceViewState extends State<WorkspaceView> {
     for (final p in _data['placeholders'] as List? ?? const []) '$p',
   ];
 
+  List<Map<String, dynamic>> get _templates => _maps(_data['templates']);
+
   @override
   void initState() {
     super.initState();
-    _template.addListener(_templateChanged);
     _search.addListener(() => setState(() {}));
     _load();
   }
 
   @override
   void dispose() {
-    _previewTimer?.cancel();
-    _template.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -480,73 +482,53 @@ class _WorkspaceViewState extends State<WorkspaceView> {
         return;
       }
       _error = null;
-      final first = _data.isEmpty;
       _data = Map<String, dynamic>.from(response.data as Map);
-      if (first || _template.text == _savedTemplate) {
-        _savedTemplate = '${_data['template'] ?? ''}';
-        _template.text = _savedTemplate;
-      }
-      _previewFor ??= _people
-          .where((p) => p['suspended'] != true)
-          .map((p) => '${p['address']}')
-          .firstOrNull;
     });
     if (response.ok) widget.onPeople?.call(_people);
-    _schedulePreview();
   }
 
-  void _templateChanged() {
-    if (_template.text != _savedTemplate) setState(() => _templateNote = null);
-    _schedulePreview();
+  Future<void> _makeDefault(String? id) async {
+    final response = await widget.api.put('$_base/signature-default', {
+      'template_id': id,
+    });
+    if (!mounted) return;
+    if (!response.ok) _say(response.reason);
+    await _load();
   }
 
-  void _schedulePreview() {
-    _previewTimer?.cancel();
-    _previewTimer = Timer(const Duration(milliseconds: 400), _runPreview);
+  Future<void> _deleteTemplate(String id) async {
+    final response = await widget.api.delete('$_base/signature-templates/$id');
+    if (!mounted) return;
+    setState(() => _deleting = null);
+    if (!response.ok) _say(response.reason);
+    await _load();
   }
 
-  Future<void> _runPreview() async {
-    final address = _previewFor;
-    final html = _template.text;
-    if (address == null || html.trim().isEmpty) {
-      if (mounted) {
-        setState(() {
-          _previewHtml = null;
-          _previewLoaded = true;
-        });
-      }
+  /// [template] null puts the selected people back on the default.
+  Future<void> _assign(String? template) async {
+    final response = await widget.api.put('$_base/signatures/assign', {
+      'addresses': _selected.toList(),
+      'template_id': template,
+    });
+    if (!mounted) return;
+    if (!response.ok) {
+      _say(response.reason);
       return;
     }
-    final response = await widget.api.post('$_base/signatures/preview', {
-      'address': address,
-      'html': html,
-    });
-    if (!mounted) return;
-    setState(() {
-      _previewLoaded = true;
-      final data = response.ok ? response.data : null;
-      _previewHtml = data is Map ? data['html'] as String? : null;
-    });
+    final count = _selected.length;
+    final name = template == null
+        ? 'the default'
+        : '${_templates.firstWhere((t) => '${t['id']}' == template, orElse: () => const {})['name'] ?? 'the template'}';
+    setState(
+      () => _assignNote =
+          'Given $name to $count ${count == 1 ? 'person' : 'people'}. '
+          'Set in Gmail sends it.',
+    );
+    await _load();
   }
 
-  Future<void> _saveTemplate() async {
-    setState(() => _savingTemplate = true);
-    final text = _template.text;
-    final response = await widget.api.put('$_base/signature-template', {
-      'html': text.trim().isEmpty ? null : text,
-    });
-    if (!mounted) return;
-    setState(() {
-      _savingTemplate = false;
-      if (response.ok) {
-        _savedTemplate = text;
-        _templateNote = 'Template saved.';
-      } else {
-        _templateNote = response.reason;
-      }
-    });
-    if (response.ok) _load();
-  }
+  void _say(String text) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   Future<void> _link(String address, String? userId) async {
     final response = await widget.api.put(
@@ -597,6 +579,8 @@ class _WorkspaceViewState extends State<WorkspaceView> {
       if (error == null) {
         _applied = {'set': set, 'results': results};
         _selected.clear();
+        _assignTo = null;
+        _assignNote = null;
       }
     });
     if (error == null) _load();
@@ -613,11 +597,40 @@ class _WorkspaceViewState extends State<WorkspaceView> {
         final phone = constraints.maxWidth < 600;
         final person = _openPerson;
 
+        if (_editing case final editing?) {
+          void close() => setState(() {
+            _editing = null;
+            _seed = null;
+          });
+          return SidePanel(
+            key: const ValueKey('workspace-signature-builder'),
+            docked: true,
+            title: editing['name'] == null
+                ? 'New signature template'
+                : '${editing['name']}',
+            subtitle: '${widget.card['domain'] ?? ''}',
+            onBack: close,
+            onClose: close,
+            child: SignatureBuilder(
+              api: widget.api,
+              base: _base,
+              people: _people,
+              maxLength: (_data['max_length'] as num?)?.toInt() ?? 10000,
+              template: editing['id'] == null ? null : editing,
+              seed: _seed,
+              onSaved: () async {
+                await _load();
+                if (mounted) close();
+              },
+            ),
+          );
+        }
+
         if (phone && _phoneTemplate) {
           return SidePanel(
             key: const ValueKey('workspace-phone-template'),
             docked: true,
-            title: 'Signature template',
+            title: 'Signature templates',
             subtitle: '${widget.card['domain'] ?? ''}',
             onBack: () => setState(() => _phoneTemplate = false),
             child: _templateSection(context, narrow: true),
@@ -671,6 +684,7 @@ class _WorkspaceViewState extends State<WorkspaceView> {
         base: _base,
         person: person,
         placeholders: _placeholders,
+        templates: _templates,
         mayEdit: _mayEdit,
         link: _linkControl(context, person),
         onChanged: _load,
@@ -799,130 +813,137 @@ class _WorkspaceViewState extends State<WorkspaceView> {
 
   Widget _templateSection(BuildContext context, {required bool narrow}) {
     final theme = Theme.of(context);
-    final editor = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Signature template', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 4),
-        Text(
-          'Everyone without their own signature gets this. The chips put in '
-          'a value filled for each person.',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          key: const ValueKey('workspace-template-field'),
-          controller: _template,
-          readOnly: !_mayEdit,
-          minLines: 5,
-          maxLines: 12,
-          maxLength: _mayEdit ? 10000 : null,
-          style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
-          decoration: const InputDecoration(
-            hintText: '<b>{{name}}</b><br>{{title}} · {{company}}',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        if (_mayEdit) ...[
-          PlaceholderChips(
-            placeholders: _placeholders,
-            controller: _template,
-            keyPrefix: 'workspace-chip',
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              FilledButton(
-                key: const ValueKey('workspace-save-template'),
-                onPressed: _savingTemplate || _template.text == _savedTemplate
-                    ? null
-                    : _saveTemplate,
-                child: const Text('Save template'),
-              ),
-              if (_templateNote != null) ...[
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Text(
-                    _templateNote!,
-                    key: const ValueKey('workspace-template-note'),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ],
-    );
-
-    final candidates = [
-      for (final p in _people)
-        if (p['suspended'] != true)
-          SearchOption<String>(
-            value: '${p['address']}',
-            label: '${p['name'] ?? p['address']}',
-            detail: '${p['address']}',
-          ),
-    ];
-    final preview = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Preview', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 8),
-        SearchPickerField<String>(
-          key: const ValueKey('workspace-preview-person'),
-          value: _previewFor,
-          options: candidates,
-          label: 'Preview for',
-          isDense: true,
-          onChanged: (address) {
-            setState(() => _previewFor = address);
-            _schedulePreview();
-          },
-        ),
-        const SizedBox(height: 10),
-        Container(
-          key: const ValueKey('workspace-template-preview'),
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.4,
-            ),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: _previewHtml == null
-              ? Text(
-                  !_previewLoaded
-                      ? 'Getting the preview…'
-                      : _template.text.trim().isEmpty
-                      ? 'Write the template to see it here.'
-                      : 'Nothing to show for this person.',
-                  style: theme.textTheme.bodySmall,
-                )
-              : SignatureText(_previewHtml!),
-        ),
-      ],
-    );
+    final using = <String, int>{};
+    for (final p in _people) {
+      final id = (p['using'] as Map?)?['id'];
+      if (id != null) using['$id'] = (using['$id'] ?? 0) + 1;
+    }
+    final templates = _templates;
 
     return Column(
       key: const ValueKey('tour-email-workspace-template'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (narrow) ...[
-          editor,
-          const SizedBox(height: 16),
-          preview,
-        ] else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        Text('Signature templates', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(
+          'The default goes to everyone who is not given another. Saving or '
+          'assigning changes nothing in Gmail until you set it.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 10),
+        if (templates.isEmpty)
+          Text(
+            'No templates yet.',
+            key: const ValueKey('workspace-no-templates'),
+            style: theme.textTheme.bodySmall,
+          ),
+        for (final t in templates)
+          _templateRow(context, t, using['${t['id']}'] ?? 0, narrow: narrow),
+        if (_mayEdit) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
             children: [
-              Expanded(flex: 3, child: editor),
-              const SizedBox(width: 20),
-              Expanded(flex: 2, child: preview),
+              FilledButton.icon(
+                key: const ValueKey('workspace-new-template'),
+                onPressed: () => setState(() => _editing = {}),
+                icon: const Icon(Icons.add),
+                label: const Text('New template'),
+              ),
+              OutlinedButton(
+                key: const ValueKey('workspace-new-a1-template'),
+                onPressed: () => setState(() {
+                  _seed = a1StandardDesign();
+                  _editing = {};
+                }),
+                child: const Text('Start from the A-1 standard'),
+              ),
             ],
           ),
+        ],
       ],
+    );
+  }
+
+  Widget _templateRow(
+    BuildContext context,
+    Map<String, dynamic> t,
+    int count, {
+    required bool narrow,
+  }) {
+    final theme = Theme.of(context);
+    final id = '${t['id']}';
+    final isDefault = t['is_default'] == true;
+    final confirming = _deleting == id;
+    return Container(
+      key: ValueKey('workspace-template-$id'),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          Text(
+            '${t['name']}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (isDefault)
+            const Chip(
+              key: ValueKey('workspace-template-default'),
+              label: Text('Default'),
+              visualDensity: VisualDensity.compact,
+            ),
+          Text(
+            isDefault
+                ? 'everyone else'
+                : count == 1
+                ? '1 person'
+                : '$count people',
+            style: theme.textTheme.bodySmall,
+          ),
+          if (_mayEdit) ...[
+            TextButton(
+              key: ValueKey('workspace-edit-template-$id'),
+              onPressed: () => setState(() => _editing = t),
+              child: const Text('Edit'),
+            ),
+            if (!isDefault)
+              TextButton(
+                key: ValueKey('workspace-default-template-$id'),
+                onPressed: () => _makeDefault(id),
+                child: const Text('Make default'),
+              ),
+            if (confirming) ...[
+              TextButton(
+                key: ValueKey('workspace-delete-confirm-$id'),
+                onPressed: () => _deleteTemplate(id),
+                child: Text(
+                  'Delete it',
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _deleting = null),
+                child: const Text('Keep'),
+              ),
+            ] else
+              TextButton(
+                key: ValueKey('workspace-delete-template-$id'),
+                onPressed: () => setState(() => _deleting = id),
+                child: const Text('Delete'),
+              ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -971,14 +992,54 @@ class _WorkspaceViewState extends State<WorkspaceView> {
                   ),
                 ),
                 TextButton(
-                  onPressed: _applying ? null : () => setState(_selected.clear),
+                  onPressed: _applying
+                      ? null
+                      : () => setState(() {
+                          _selected.clear();
+                          _assignTo = null;
+                          _assignNote = null;
+                        }),
                   child: const Text('Clear'),
                 ),
+                if (_templates.isNotEmpty)
+                  SizedBox(
+                    width: 240,
+                    child: SearchPickerField<String>(
+                      key: const ValueKey('workspace-bulk-assign'),
+                      value: _assignTo,
+                      hint: 'Give them a template',
+                      isDense: true,
+                      options: [
+                        const SearchOption<String>(
+                          value: '',
+                          label: 'The default',
+                        ),
+                        for (final t in _templates)
+                          SearchOption<String>(
+                            value: '${t['id']}',
+                            label: '${t['name']}',
+                          ),
+                      ],
+                      onChanged: (id) {
+                        if (id == null) return;
+                        setState(() => _assignTo = id);
+                        _assign(id.isEmpty ? null : id);
+                      },
+                    ),
+                  ),
                 FilledButton(
                   key: const ValueKey('workspace-bulk-apply'),
                   onPressed: _applying ? null : _apply,
-                  child: Text(_applying ? 'Setting…' : 'Set signature'),
+                  child: Text(_applying ? 'Setting…' : 'Set in Gmail'),
                 ),
+                if (_assignNote != null)
+                  Text(
+                    _assignNote!,
+                    key: const ValueKey('workspace-assign-note'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1196,10 +1257,21 @@ class _WorkspaceViewState extends State<WorkspaceView> {
     if (!_selected.remove(address)) _selected.add(address);
   });
 
+  /// Which signature, and whether Gmail has it: "A-1 standard · in Gmail".
   String _signatureWord(Map<String, dynamic> p) {
-    if (p['has_own_signature'] == true) return 'Own';
-    if (_data['has_template'] == true) return 'Template';
-    return 'Not set';
+    final using = p['using'] as Map?;
+    final which = switch (using?['kind']) {
+      'own' => 'Own',
+      'template' || 'default' => '${using?['name']}',
+      'legacy' => 'Old template',
+      _ => 'None',
+    };
+    final pushed = switch (p['pushed']) {
+      'current' => 'in Gmail',
+      'changed' => 'changed since set',
+      _ => 'not set yet',
+    };
+    return which == 'None' ? 'None' : '$which · $pushed';
   }
 
   /// Who this address is in EzBizi, and the way to change it.
@@ -1289,11 +1361,11 @@ class _WorkspaceViewState extends State<WorkspaceView> {
           margin: EdgeInsets.zero,
           child: ListTile(
             key: const ValueKey('workspace-phone-template-open'),
-            title: const Text('Signature template'),
+            title: const Text('Signature templates'),
             subtitle: Text(
-              _savedTemplate.trim().isEmpty
-                  ? 'Not written yet'
-                  : 'Everyone without their own gets it',
+              _templates.isEmpty
+                  ? 'None yet'
+                  : '${_templates.length} · default: ${_templates.where((t) => t['is_default'] == true).map((t) => t['name']).firstOrNull ?? 'none'}',
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => setState(() => _phoneTemplate = true),
@@ -1406,6 +1478,7 @@ class PersonPane extends StatefulWidget {
     required this.base,
     required this.person,
     required this.placeholders,
+    this.templates = const [],
     required this.mayEdit,
     required this.link,
     required this.onChanged,
@@ -1417,6 +1490,7 @@ class PersonPane extends StatefulWidget {
   final String base;
   final Map<String, dynamic> person;
   final List<String> placeholders;
+  final List<Map<String, dynamic>> templates;
   final bool mayEdit;
 
   /// The EzBizi person control, the list's own.
@@ -1437,6 +1511,27 @@ class _PersonPaneState extends State<PersonPane> {
   bool _busy = false;
   String? _note;
 
+  /// What a template fills that no directory holds, kept for this person.
+  static const _fieldLabels = {
+    'title': 'Title',
+    'mobile': 'Mobile',
+    'office_phone': 'Office phone',
+    'extension': 'Extension',
+    'address': 'Address',
+    'photo_url': 'Photo address',
+  };
+  late final Map<String, TextEditingController> _fields = {
+    for (final key in _fieldLabels.keys)
+      key: TextEditingController(
+        // A person with nothing set arrives as [] from PHP, not {}.
+        text:
+            '${switch (widget.person['fields']) {
+              final Map f => f[key] ?? '',
+              _ => '',
+            }}',
+      ),
+  };
+
   String get _address => '${widget.person['address']}';
   String get _path =>
       '${widget.base}/people/${Uri.encodeComponent(_address)}/signature';
@@ -1450,7 +1545,70 @@ class _PersonPaneState extends State<PersonPane> {
   @override
   void dispose() {
     _editor.dispose();
+    for (final c in _fields.values) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _saveFields() async {
+    setState(() => _busy = true);
+    final response = await widget.api.put(
+      '${widget.base}/people/${Uri.encodeComponent(_address)}/fields',
+      {
+        'fields': {for (final e in _fields.entries) e.key: e.value.text},
+      },
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _note = response.ok ? 'Their details are saved.' : response.reason;
+    });
+    if (response.ok) {
+      await _load();
+      await widget.onChanged();
+    }
+  }
+
+  Future<void> _uploadPhoto() async {
+    final picked = await Files.pickImage();
+    if (picked == null || !mounted) return;
+    setState(() => _busy = true);
+    final response = await widget.api.postFile(
+      '${widget.base}/people/${Uri.encodeComponent(_address)}/photo',
+      'photo',
+      picked.name,
+      picked.bytes,
+    );
+    if (!mounted) return;
+    final data = response.ok ? response.data : null;
+    final url = data is Map ? data['photo_url'] : null;
+    setState(() {
+      _busy = false;
+      if (url != null) _fields['photo_url']!.text = '$url';
+      _note = response.ok ? 'Photo uploaded.' : response.reason;
+    });
+    if (response.ok) {
+      await _load();
+      await widget.onChanged();
+    }
+  }
+
+  Future<void> _giveTemplate(String? id) async {
+    setState(() => _busy = true);
+    final response = await widget.api.put('${widget.base}/signatures/assign', {
+      'addresses': [_address],
+      'template_id': id,
+    });
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _note = response.ok ? null : response.reason;
+    });
+    if (response.ok) {
+      await _load();
+      await widget.onChanged();
+    }
   }
 
   Future<void> _load() async {
@@ -1565,6 +1723,19 @@ class _PersonPaneState extends State<PersonPane> {
     );
 
     final fills = (widget.person['fills'] as Map?)?.cast<String, dynamic>();
+    final stacked = MediaQuery.sizeOf(context).width < 600;
+    final gmailNow = box(
+      'In Gmail now',
+      _current,
+      'Nothing set, or Google could not be read.',
+      const ValueKey('workspace-person-current'),
+    );
+    final willBe = box(
+      'Will be',
+      _preview,
+      'Nothing yet: write the template first.',
+      const ValueKey('workspace-person-preview'),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1579,28 +1750,21 @@ class _PersonPaneState extends State<PersonPane> {
         else
           widget.link,
         const SizedBox(height: 16),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: box(
-                'In Gmail now',
-                _current,
-                'Nothing set, or Google could not be read.',
-                const ValueKey('workspace-person-current'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: box(
-                'Will be',
-                _preview,
-                'Nothing yet: write the template first.',
-                const ValueKey('workspace-person-preview'),
-              ),
-            ),
-          ],
-        ),
+        // Side by side, or stacked on a phone, where two halves broke the
+        // address mid-word (phone audit 2026-11-04).
+        if (stacked) ...[
+          gmailNow,
+          const SizedBox(height: 10),
+          willBe,
+        ] else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: gmailNow),
+              const SizedBox(width: 10),
+              Expanded(child: willBe),
+            ],
+          ),
         if (widget.mayEdit && !suspended) ...[
           const SizedBox(height: 16),
           Wrap(
@@ -1610,7 +1774,7 @@ class _PersonPaneState extends State<PersonPane> {
             children: [
               ChoiceChip(
                 key: const ValueKey('workspace-use-template'),
-                label: const Text('Use the template'),
+                label: const Text('Use a template'),
                 selected: !_ownChosen,
                 onSelected: _busy
                     ? null
@@ -1664,9 +1828,67 @@ class _PersonPaneState extends State<PersonPane> {
             alignment: Alignment.centerLeft,
             child: FilledButton(
               key: const ValueKey('workspace-person-set-now'),
-              onPressed: _busy ? null : _setNow,
+              // Nothing to set until there is something it will be.
+              onPressed:
+                  _busy || (!_ownChosen && (_preview ?? '').trim().isEmpty)
+                  ? null
+                  : _setNow,
               child: const Text('Set it now'),
             ),
+          ),
+          if (widget.templates.isNotEmpty && !_ownChosen) ...[
+            const SizedBox(height: 16),
+            SearchPickerField<String>(
+              key: const ValueKey('workspace-person-template'),
+              value: '${widget.person['template_id'] ?? ''}',
+              label: 'Template',
+              isDense: true,
+              options: [
+                const SearchOption<String>(value: '', label: 'The default'),
+                for (final t in widget.templates)
+                  SearchOption<String>(
+                    value: '${t['id']}',
+                    label: '${t['name']}',
+                  ),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (id) => _giveTemplate(id == null || id.isEmpty ? null : id),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Text('Their details', style: theme.textTheme.labelMedium),
+          const SizedBox(height: 2),
+          Text(
+            'Filled into their signature. Left empty, the line is left out.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 6),
+          for (final MapEntry(key: key, value: label) in _fieldLabels.entries)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: TextField(
+                key: ValueKey('workspace-field-$key'),
+                controller: _fields[key],
+                decoration: InputDecoration(labelText: label, isDense: true),
+              ),
+            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              OutlinedButton.icon(
+                key: const ValueKey('workspace-photo-upload'),
+                onPressed: _busy ? null : _uploadPhoto,
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text('Upload photo'),
+              ),
+              FilledButton(
+                key: const ValueKey('workspace-fields-save'),
+                onPressed: _busy ? null : _saveFields,
+                child: const Text('Save details'),
+              ),
+            ],
           ),
         ],
         if (_note != null) ...[

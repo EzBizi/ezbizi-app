@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
+use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
 use App\Support\Audit\AuditLogger;
+use App\Support\Tasks\ColumnConverter;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -129,14 +131,33 @@ class TaskBoardSettingsController extends Controller
         $input = $request->validate($this->columnRules(required: false));
         $type = $input['type'] ?? $row->type;
 
+        // A new type carries the values over where it can (Jose, 2026-11-09)
+        // and says first how many it cannot; accept_loss goes ahead anyway.
+        $plan = null;
         if ($type !== $row->type && $row->values()->exists()) {
-            throw ValidationException::withMessages(['type' => 'This column has values: its type cannot change.']);
+            $target = $row->replicate();
+            $target->type = $type;
+            $target->settings = $this->settings($type, array_key_exists('settings', $input) ? $input['settings'] : $row->settings);
+            $plan = app(ColumnConverter::class)->plan($row, $target);
+            $lost = count(array_filter($plan['rows'], fn ($r) => $r === null));
+            if ($lost > 0 && ! $request->boolean('accept_loss')) {
+                throw ValidationException::withMessages(['type' => trans_choice(
+                    ':count value cannot become '.$type.' and would be cleared.|:count values cannot become '.$type.' and would be cleared.',
+                    $lost, ['count' => $lost])]);
+            }
         }
 
-        DB::transaction(function () use ($row, $input, $type, $request) {
+        DB::transaction(function () use ($row, $input, $type, $request, $plan) {
             $row->fill(array_intersect_key($input, array_flip(['name', 'position', 'hidden'])));
             $row->type = $type;
-            if (array_key_exists('settings', $input) || $type !== $row->getOriginal('type')) {
+            if ($plan !== null) {
+                $row->settings = $this->settings($type, ['options' => $plan['options']] + ($input['settings'] ?? $row->settings ?? []));
+                foreach ($plan['rows'] as $id => $values) {
+                    $values === null
+                        ? TaskColumnValue::query()->whereKey($id)->delete()
+                        : TaskColumnValue::query()->whereKey($id)->update($values);
+                }
+            } elseif (array_key_exists('settings', $input) || $type !== $row->getOriginal('type')) {
                 $row->settings = $this->settings($type, array_key_exists('settings', $input) ? $input['settings'] : $row->settings);
                 // A value pointing at an option that no longer exists is cleared.
                 if (in_array($type, TaskColumn::WITH_OPTIONS, true)) {
@@ -284,6 +305,24 @@ class TaskBoardSettingsController extends Controller
         if (in_array($type, TaskColumn::WITH_OPTIONS, true)) {
             $out['options'] = $this->options($settings['options'] ?? []);
         }
+        if (in_array($type, ['number', 'currency', 'formula'], true)) {
+            foreach (['format' => TaskColumn::FORMATS, 'footer' => TaskColumn::FOOTERS] as $k => $allowed) {
+                if (isset($settings[$k])) {
+                    in_array($settings[$k], $allowed, true)
+                        ?: throw ValidationException::withMessages(["settings.$k" => 'One of '.implode(', ', $allowed).'.']);
+                    $out[$k] = $settings[$k];
+                }
+            }
+        }
+        if ($type === 'formula') {
+            // Column names in brackets, numbers and + - * / ( ): the client works it out.
+            $expr = $settings['expression'] ?? null;
+            $bare = is_string($expr) ? preg_replace('/\[[^\[\]]{1,255}\]/u', '1', $expr) : null;
+            if ($bare === null || mb_strlen($expr) > 500 || ! preg_match('/^[\d\s.+\-*\/()]+$/', $bare)) {
+                throw ValidationException::withMessages(['settings.expression' => 'Columns in [brackets], numbers and + - × ÷ ( ).']);
+            }
+            $out['expression'] = $expr;
+        }
 
         return $out === [] ? null : $out;
     }
@@ -305,7 +344,10 @@ class TaskBoardSettingsController extends Controller
                 throw ValidationException::withMessages(["settings.options.{$i}.id" => 'Two options share an id.']);
             }
             $colour = $o['colour'] ?? null;
-            $out[$id] = ['id' => $id, 'label' => trim($label), 'colour' => is_string($colour) ? mb_substr($colour, 0, 16) : null];
+            $out[$id] = ['id' => $id, 'label' => trim($label), 'colour' => is_string($colour) ? mb_substr($colour, 0, 16) : null]
+                // Retired (Jose, 2026-11-09, monday's deactivated label): kept on
+                // the tasks that have it, left out of every picker.
+                + (($o['retired'] ?? false) === true ? ['retired' => true] : []);
         }
 
         return array_values($out);
@@ -331,6 +373,7 @@ class TaskBoardSettingsController extends Controller
             'name' => [...$req, 'string', 'max:100'],
             'type' => [...$req, Rule::in(TaskColumn::TYPES)],
             'settings' => ['sometimes', 'nullable', 'array'],
+            'accept_loss' => ['sometimes', 'boolean'],
             'hidden' => ['sometimes', 'boolean'],
             'position' => ['sometimes', 'integer', 'min:0'],
         ];

@@ -14,7 +14,7 @@ use Illuminate\Console\Command;
 use Throwable;
 
 /**
- * One AI-written Google post per listing per week (Jose, 2026-11-03): "make a
+ * One AI-written Google post waiting per listing (Jose, 2026-11-03): "make a
  * screen that shows what the post will be like and then approve - disapprove ...
  * once im 100% sure it doesnt need my approvals we can automatize it".
  *
@@ -26,7 +26,7 @@ class WeeklyBusinessProfilePosts extends Command
 {
     protected $signature = 'ezbizi:gbp-weekly-posts';
 
-    protected $description = 'Draft one AI Google post per listing for the week, for approval';
+    protected $description = 'Make sure every listing has one AI Google post waiting for approval';
 
     public function handle(TenantContext $tenant): int
     {
@@ -37,42 +37,53 @@ class WeeklyBusinessProfilePosts extends Command
         }
 
         Organization::query()->each(fn (Organization $org) => $tenant->run($org, function () use ($org) {
-            $made = 0;
-            BusinessLocation::query()->whereNull('not_listed_since')->whereNotNull('connection_id')
+            $made = BusinessLocation::query()->whereNull('not_listed_since')->whereNotNull('connection_id')
                 ->with(['connection', 'company', 'franchise'])->get()
-                ->each(function (BusinessLocation $place) use (&$made) {
-                    $where = GoogleBusinessProfilePublisher::v4Name($place, $place->connection);
-                    $recent = SocialPostTarget::query()->where('options->gbp_location', $where)
-                        ->where('created_at', '>=', now()->subDays(60))->with('post')->latest()->get();
-                    if ($recent->contains(fn ($t) => $t->created_at->gt(now()->subDays(6)))) {
-                        return; // this week's is already written
-                    }
-                    $before = $recent->map(fn ($t) => (string) $t->post?->body)->filter()->values();
-                    try {
-                        $body = self::write($place, $before->all());
-                    } catch (Throwable $e) {
-                        report($e);
-
-                        return;
-                    }
-                    if ($body === '' || $before->contains(fn ($b) => self::norm($b) === self::norm($body))) {
-                        return;
-                    }
-                    $post = SocialPost::create(['body' => $body]);
-                    $target = $post->targets()->create([
-                        'social_connection_id' => $place->connection_id,
-                        'options' => ['gbp_location' => $where, 'gbp_title' => $place->title, 'weekly' => true],
-                        'status' => $place->auto_post ? SocialPostTarget::STATUS_QUEUED : SocialPostTarget::STATUS_AWAITING_APPROVAL,
-                    ]);
-                    if ($place->auto_post) {
-                        PublishSocialTarget::dispatch($target->getKey());
-                    }
-                    $made++;
-                });
-            $this->line("{$org->name}: {$made} weekly posts drafted");
+                ->filter(fn (BusinessLocation $place) => self::draftFor($place))->count();
+            $this->line("{$org->name}: {$made} posts drafted");
         }));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Keeps one draft waiting for this listing (Jose, 2026-11-04: always something to approve,
+     * the next written as soon as one is decided). True when a new one was written.
+     */
+    public static function draftFor(BusinessLocation $place): bool
+    {
+        // Suspended, unverified or unpublished: Google would refuse or never show it.
+        if (! $place->isLive()) {
+            return false;
+        }
+        $where = GoogleBusinessProfilePublisher::v4Name($place, $place->connection);
+        $recent = SocialPostTarget::query()->where('options->gbp_location', $where)
+            ->where('created_at', '>=', now()->subDays(90))->with('post')->latest()->get();
+        if ($recent->contains(fn ($t) => $t->status === SocialPostTarget::STATUS_AWAITING_APPROVAL)) {
+            return false;
+        }
+        $before = $recent->map(fn ($t) => (string) $t->post?->body)->filter()->values();
+        try {
+            $body = self::write($place, $before->take(10)->all());
+        } catch (Throwable $e) {
+            report($e);
+
+            return false;
+        }
+        if ($body === '' || $before->contains(fn ($b) => self::norm($b) === self::norm($body))) {
+            return false;
+        }
+        $post = SocialPost::create(['body' => $body]);
+        $target = $post->targets()->create([
+            'social_connection_id' => $place->connection_id,
+            'options' => ['gbp_location' => $where, 'gbp_title' => $place->title, 'weekly' => true],
+            'status' => $place->auto_post ? SocialPostTarget::STATUS_QUEUED : SocialPostTarget::STATUS_AWAITING_APPROVAL,
+        ]);
+        if ($place->auto_post) {
+            PublishSocialTarget::dispatch($target->getKey());
+        }
+
+        return true;
     }
 
     /** @param  string[]  $before  this listing's recent posts, so the new one says something else */

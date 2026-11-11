@@ -19,9 +19,21 @@ class TaskColumn extends Model implements StatesRetention
     use BelongsToTenant;
     use HasUuids;
 
-    public const TYPES = ['text', 'number', 'status', 'date', 'person', 'dropdown', 'checkbox'];
+    /**
+     * Jose, 2026-11-09, Monday-style: long_text, currency, phone, email, url,
+     * datetime, tags (several options, a JSON list of ids) and link (a
+     * customer or job, "customer:<id>" / "job:<id>") joined the first nine.
+     */
+    public const TYPES = ['text', 'number', 'status', 'date', 'person', 'dropdown', 'checkbox', 'timeline', 'formula',
+        'long_text', 'currency', 'phone', 'email', 'url', 'datetime', 'tags', 'link'];
 
-    public const WITH_OPTIONS = ['status', 'dropdown'];
+    /** How a number or formula shows (design 178): plain, currency or a percentage. */
+    public const FORMATS = ['plain', 'currency', 'percent'];
+
+    /** What a group's footer shows under a number or formula column. */
+    public const FOOTERS = ['sum', 'average', 'none'];
+
+    public const WITH_OPTIONS = ['status', 'dropdown', 'tags'];
 
     protected $fillable = ['organization_id', 'board_id', 'name', 'type', 'settings', 'hidden', 'position'];
 

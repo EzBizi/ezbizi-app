@@ -19,8 +19,12 @@ import '../widgets/status_pill.dart';
 import 'task_board_automate.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
+import '../widgets/list_filters.dart';
+import '../widgets/list_toolbar.dart';
+import '../widgets/mention_field.dart';
 import 'task_board_move.dart';
 import 'task_board_people.dart';
+import 'task_board_plan_views.dart';
 import 'task_board_sidebar.dart';
 
 typedef _Json = Map<String, dynamic>;
@@ -269,9 +273,27 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// A phone showing the boards tree in place of the board (UI queue 152, 4).
   bool _choosing = false;
 
-  bool _kanban = false;
+  /// Administrators' view of the personal boards of people who left
+  /// (Jose, 2026-11-09), and how many there are.
+  bool _archived = false;
+  int _archivedCount = 0;
+
+  Future<void> _toggleArchived() async {
+    setState(() {
+      _archived = !_archived;
+      _board = null;
+      _selected = 0;
+    });
+    await _load();
+  }
+
+  /// table, kanban, calendar or timeline (design 178).
+  String _view = 'table';
   String _query = '';
   final Set<String?> _folded = {};
+
+  /// Filter, sort and person filter in force (Jose, 2026-11-09).
+  ListQuery _filter = const ListQuery();
 
   /// Tasks with their subtasks open under them (UI queue 84).
   final Set<String> _expanded = {};
@@ -320,7 +342,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       _loading = _board == null;
       _error = null;
     });
-    final res = await widget.api.get('/task-boards');
+    final res = await widget.api.get(
+      '/task-boards',
+      _archived ? {'archived': '1'} : null,
+    );
     if (!mounted) return;
     if (!res.ok) {
       setState(() {
@@ -329,7 +354,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       });
       return;
     }
-    _boards = (res.body['data'] as List).cast<_Json>();
+    _boards = [
+      for (final b in (res.body['data'] as List).cast<_Json>())
+        // An archived board says what still needs handing over.
+        if (b['archived'] == true && (b['open_tasks'] as int? ?? 0) > 0)
+          {...b, 'name': '${b['name']} · ${b['open_tasks']} open to reassign'}
+        else
+          b,
+    ];
+    if (!_archived) {
+      _archivedCount =
+          ((res.body['meta'] as Map?)?['archived_count'] as int?) ?? 0;
+    }
     if (_boards.isEmpty) {
       setState(() => _loading = false);
       return;
@@ -380,8 +416,25 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       if (_board?['id'] != id) {
         _board = null;
         _loading = true;
+        _filter = const ListQuery();
       }
     });
+    // A deleted board cannot be fetched: shown empty, its menu offers Restore.
+    if (_boards[index]['deleted'] == true) {
+      setState(() {
+        _loading = false;
+        _board = {
+          ..._boards[index],
+          'tasks': const [],
+          'groups': const [],
+          'columns': const [],
+          'statuses': const [],
+          'views': const [],
+          'can_edit': false,
+        };
+      });
+      return;
+    }
     final res = await widget.api.get('/task-boards/$id');
     if (!mounted || _boards[_selected]['id'] != id) return;
     setState(() {
@@ -427,15 +480,70 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final ids = (_board?['groups'] as List? ?? const [])
         .map((g) => (g as Map)['id'])
         .toSet();
-    return [
+    return _filter.sorted([
       for (final t in _tasks)
         if (t['parent_task_id'] == null &&
             (groupId == null
                 ? !ids.contains(_groupOf(t))
                 : _groupOf(t) == groupId))
           t,
-    ];
+    ], _filterFields);
   }
+
+  // ── Filter, sort, person and saved views (Jose, 2026-11-09) ──────────
+
+  List<_Json> get _views =>
+      (_board?['views'] as List? ?? const []).whereType<_Json>().toList();
+
+  /// Saves the current filter, sort and person filter as [name]: shared with
+  /// the board when you can edit it, else your own.
+  Future<void> _saveView(String name) async {
+    final r = await widget.api.post('/task-boards/${_board!['id']}/views', {
+      'name': name,
+      'shared': _canEdit,
+      'config': _filter.toJson(),
+    });
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    await _open(_selected);
+  }
+
+  Future<void> _deleteView(String id) async {
+    final r = await widget.api.delete(
+      '/task-boards/${_board!['id']}/views/$id',
+    );
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    await _open(_selected);
+  }
+
+  /// UI-UX's shared toolbar (Search · Person · Filter · Sort · Hide · Views).
+  Widget _listToolbar() => ListToolbar(
+    key: const Key('tasks-toolbar'),
+    fields: _filterFields.values.toList(),
+    query: _filter,
+    onChanged: (q) => setState(() => _filter = q),
+    views: [
+      for (final v in _views)
+        (
+          id: '${v['id']}',
+          name: '${v['name']}',
+          query: ListQuery.fromJson(v['config'] as Map?),
+        ),
+    ],
+    onSaveView: _saveView,
+    onDeleteView: _deleteView,
+  );
 
   /// The group a row sits in here. A branch task shown on its company board
   /// (rolled_up_from) sits in this board's group of the same name.
@@ -677,8 +785,92 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
   }
 
-  /// Search reads the task, its owner, its status and what it is about.
+  /// What the filter and sort can read: the built-in columns, then the
+  /// board's own.
+  Map<String, FilterField> get _filterFields {
+    final board = _board;
+    if (board == null) return const {};
+    final people = [for (final e in _people.entries) (e.key, e.value)];
+    final out = <FilterField>[
+      (
+        key: 'title',
+        label: 'Task',
+        kind: 'text',
+        options: const [],
+        read: (t) => t['title'],
+      ),
+      (
+        key: 'status',
+        label: _builtinLabel(board, 'status'),
+        kind: 'options',
+        options: [for (final s in _statuses(board)) (s.id, s.name)],
+        read: (t) => _statusOf(t),
+      ),
+      (
+        key: 'owner',
+        label: _builtinLabel(board, 'owner'),
+        kind: 'people',
+        options: people,
+        read: (t) => _ownerIds(t),
+      ),
+      (
+        key: 'due',
+        label: _builtinLabel(board, 'due'),
+        kind: 'date',
+        options: const [],
+        read: (t) => t['due_on'],
+      ),
+      (
+        key: 'created',
+        label: _builtinLabel(board, 'created'),
+        kind: 'date',
+        options: const [],
+        read: (t) => t['created_at'],
+      ),
+      for (final c in boardColumns(board))
+        (
+          key: c.id,
+          label: c.name,
+          kind: switch (c.type) {
+            'number' || 'currency' || 'formula' => 'number',
+            'date' || 'datetime' || 'timeline' => 'date',
+            'status' || 'dropdown' || 'tags' => 'options',
+            'person' => 'people',
+            'checkbox' => 'checkbox',
+            _ => 'text',
+          },
+          options: c.type == 'person'
+              ? people
+              : [for (final o in c.options) (o.id, o.label)],
+          read: (t) {
+            final v = columnValue(t, c);
+            return switch (c.type) {
+              'timeline' => (v as Map?)?['from'],
+              'link' => (v as Map?)?['label'],
+              _ => v,
+            };
+          },
+        ),
+    ];
+    return {for (final f in out) f.key: f};
+  }
+
+  /// Every owner's id, for the person filter.
+  List<String> _ownerIds(_Json t) {
+    final ids = [
+      for (final o in (t['owners'] as List? ?? const []))
+        if (o is Map && o['id'] != null) '${o['id']}',
+    ];
+    final one = (t['owner'] as Map?)?['id'];
+    return ids.isNotEmpty ? ids : [if (one != null) '$one'];
+  }
+
+  /// Search reads the task, its owner, its status and what it is about; the
+  /// filter and person filter go first.
   bool _matches(_Json t) {
+    if (!_filter.isEmpty && !_filter.matches(t, _filterFields, _ownerIds(t))) {
+      return false;
+    }
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return true;
     return [
@@ -975,13 +1167,132 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Future<void> _addColumn(String type) async {
     await showSidePanel<bool>(
       context,
-      builder: (_) =>
-          ColumnPanel(api: widget.api, boardId: '${_board!['id']}', type: type),
+      builder: (_) => ColumnPanel(
+        api: widget.api,
+        boardId: '${_board!['id']}',
+        type: type,
+        others: boardColumns(_board),
+      ),
     );
     if (mounted) await _load();
   }
 
-  Future<void> _editColumn(BoardColumn c) async {
+  /// A column's header menu (Jose, 2026-11-09, Monday-style): edit it,
+  /// change its type, move, hide or delete it, all from the header.
+  Widget _columnHeader(BoardColumn c, Widget title) {
+    final raw = (_board!['columns'] as List? ?? const [])
+        .whereType<Map>()
+        .firstWhere((x) => '${x['id']}' == c.id, orElse: () => const {});
+    final at = (raw['position'] as num?)?.toInt() ?? 0;
+    Future<void> patch(Map<String, dynamic> body) async {
+      final r = await widget.api.patch(
+        columnsPath('${_board!['id']}', c.id),
+        body,
+      );
+      if (!mounted) return;
+      if (!r.ok) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(r.reason)));
+      }
+      await _load();
+    }
+
+    return MenuAnchor(
+      menuChildren: [
+        MenuItemButton(
+          key: ValueKey('column-menu-edit-${c.id}'),
+          leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+          onPressed: () => _editColumn(c),
+          child: Text(
+            const {'status', 'dropdown', 'tags'}.contains(c.type)
+                ? 'Rename, labels and colours…'
+                : 'Rename and settings…',
+          ),
+        ),
+        SubmenuButton(
+          key: ValueKey('column-menu-type-${c.id}'),
+          leadingIcon: const Icon(Icons.swap_horiz, size: 18),
+          menuChildren: [
+            for (final (type, label, icon) in columnTypes)
+              if (type != c.type)
+                MenuItemButton(
+                  key: ValueKey('column-menu-type-${c.id}-$type'),
+                  leadingIcon: Icon(icon, size: 18),
+                  onPressed: () => _editColumn(c, type: type),
+                  child: Text(label),
+                ),
+          ],
+          child: Text('Type: ${columnTypeLabel(c.type)}'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.arrow_back, size: 18),
+          onPressed: () => patch({'position': (at - 1).clamp(0, 1000)}),
+          child: const Text('Move left'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.arrow_forward, size: 18),
+          onPressed: () => patch({'position': at + 1}),
+          child: const Text('Move right'),
+        ),
+        MenuItemButton(
+          key: ValueKey('column-menu-hide-${c.id}'),
+          leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
+          onPressed: () => patch({'hidden': true}),
+          child: const Text('Hide'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.delete_outline, size: 18),
+          onPressed: () => _editColumn(c),
+          child: const Text('Delete…'),
+        ),
+      ],
+      builder: (context, menu, _) => InkWell(
+        key: ValueKey('column-head-${c.id}'),
+        onTap: _canEdit ? () => menu.isOpen ? menu.close() : menu.open() : null,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Tooltip(message: c.name, child: title),
+        ),
+      ),
+    );
+  }
+
+  /// "+ Add tag" from a cell: the option joins the column, and its id comes
+  /// back so the cell can pick it.
+  Future<String?> _addOption(BoardColumn c, String label) async {
+    final raw = (_board!['columns'] as List? ?? const [])
+        .whereType<Map>()
+        .firstWhere((x) => '${x['id']}' == c.id, orElse: () => const {});
+    final settings = {...((raw['settings'] as Map?) ?? const {})};
+    final options = [...((settings['options'] as List?) ?? const [])];
+    final existing = options.whereType<Map>().where(
+      (o) => '${o['label']}'.toLowerCase() == label.toLowerCase(),
+    );
+    if (existing.isNotEmpty) return '${existing.first['id']}';
+    options.add({
+      'label': label,
+      'colour': swatches[options.length % swatches.length],
+    });
+    final r = await widget.api.patch(columnsPath('${_board!['id']}', c.id), {
+      'settings': {...settings, 'options': options},
+    });
+    if (!mounted) return null;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return null;
+    }
+    await _load();
+    final saved = (((r.data as Map?)?['settings'] as Map?)?['options'] as List?)
+        ?.whereType<Map>()
+        .where((o) => '${o['label']}' == label)
+        .firstOrNull;
+    return saved == null ? null : '${saved['id']}';
+  }
+
+  Future<void> _editColumn(BoardColumn c, {String? type}) async {
     final raw = (_board!['columns'] as List? ?? const [])
         .whereType<Map>()
         .firstWhere((x) => '${x['id']}' == c.id, orElse: () => const {});
@@ -991,8 +1302,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         api: widget.api,
         boardId: '${_board!['id']}',
         type: c.type,
+        newType: type,
         column: c,
         raw: raw.cast<String, dynamic>(),
+        others: boardColumns(_board),
       ),
     );
     if (mounted) await _load();
@@ -1112,6 +1425,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         board: _board!,
         where: '${group['name']}',
         people: people,
+        unreadNotes: (task['unread_notes'] as num? ?? 0).toInt(),
       ),
     );
     if (mounted) await _load();
@@ -1139,9 +1453,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                         children: [
                           _toolbar(context, phone: cards),
                           Expanded(
-                            child: _kanban
-                                ? _kanbanView(context, narrow: cards)
-                                : _tableView(context, cards: cards),
+                            child: switch (_view) {
+                              'kanban' => _kanbanView(context, narrow: cards),
+                              'calendar' => _calendarView(phone: cards),
+                              'timeline' => _timelineView(phone: cards),
+                              _ => _tableView(context, cards: cards),
+                            },
                           ),
                         ],
                       ),
@@ -1331,23 +1648,24 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          SegmentedButton<bool>(
+          SegmentedButton<String>(
             key: const Key('tasks-view'),
             showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(
-                value: false,
-                label: Text('Table'),
-                icon: Icon(Icons.table_rows_outlined, size: 18),
-              ),
-              ButtonSegment(
-                value: true,
-                label: Text('Kanban'),
-                icon: Icon(Icons.view_kanban_outlined, size: 18),
-              ),
+            segments: [
+              for (final (v, label, icon) in const [
+                ('table', 'Table', Icons.table_rows_outlined),
+                ('kanban', 'Kanban', Icons.view_kanban_outlined),
+                ('calendar', 'Calendar', Icons.calendar_month_outlined),
+                ('timeline', 'Timeline', Icons.view_timeline_outlined),
+              ])
+                ButtonSegment(
+                  value: v,
+                  label: Text(label),
+                  icon: phone ? null : Icon(icon, size: 18),
+                ),
             ],
-            selected: {_kanban},
-            onSelectionChanged: (v) => setState(() => _kanban = v.first),
+            selected: {_view},
+            onSelectionChanged: (v) => setState(() => _view = v.first),
           ),
           SizedBox(
             width: phone ? 200 : 240,
@@ -1357,17 +1675,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
-          if (_canEdit &&
-              (_board?['statuses'] as List? ?? const []).any(
-                (s) => s is Map && s.containsKey('id'),
-              ))
-            OutlinedButton.icon(
-              key: const Key('tasks-statuses'),
-              onPressed: _editStatuses,
-              icon: const Icon(Icons.label_outline, size: 18),
-              label: const Text('Statuses…'),
+          if (_board != null) _listToolbar(),
+          // On a phone the rest of the toolbar folds behind one button: all
+          // pinned, it left about 300 px for tasks (phone audit 2026-11-04,
+          // Section 4 #4).
+          if (phone)
+            IconButton(
+              key: const Key('tasks-more-tools'),
+              tooltip: _toolsOpen ? 'Fewer controls' : 'More controls',
+              isSelected: _toolsOpen,
+              icon: const Icon(Icons.tune),
+              onPressed: () => setState(() => _toolsOpen = !_toolsOpen),
             ),
-          if (_canEdit && _board?['builtin_columns'] is Map) _columnsControl(),
+          if (!phone || _toolsOpen) ..._moreTools(phone: phone),
+          // People stays a chip on a phone (UI queue 95, phone 7).
           ..._boardFaces(phone: phone),
           if (!_canEdit)
             Text(
@@ -1380,6 +1701,207 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         ],
       ),
     );
+  }
+
+  /// Folded away on a phone until asked for.
+  bool _toolsOpen = false;
+
+  /// Archive, delete and restore (Jose, 2026-11-09: "I can't delete boards").
+  Widget _boardMenu() {
+    final board = _board!;
+    final deleted = board['deleted'] == true;
+    return MenuAnchor(
+      menuChildren: [
+        if (deleted)
+          MenuItemButton(
+            key: const Key('board-restore'),
+            leadingIcon: const Icon(Icons.restore, size: 18),
+            onPressed: () => _boardAction('restore'),
+            child: Text('Restore (until ${board['restore_until'] ?? ''})'),
+          )
+        else ...[
+          MenuItemButton(
+            key: const Key('board-archive'),
+            leadingIcon: Icon(
+              board['archived'] == true
+                  ? Icons.unarchive_outlined
+                  : Icons.archive_outlined,
+              size: 18,
+            ),
+            onPressed: () => _boardAction(
+              board['archived'] == true ? 'unarchive' : 'archive',
+            ),
+            child: Text(
+              board['archived'] == true ? 'Unarchive board' : 'Archive board',
+            ),
+          ),
+          if (board['can_delete'] == true)
+            MenuItemButton(
+              key: const Key('board-delete'),
+              leadingIcon: const Icon(Icons.delete_outline, size: 18),
+              onPressed: _deleteBoard,
+              child: const Text('Delete board…'),
+            ),
+        ],
+      ],
+      builder: (context, menu, _) => IconButton(
+        key: const Key('board-menu'),
+        tooltip: 'Board',
+        icon: const Icon(Icons.more_horiz),
+        onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+      ),
+    );
+  }
+
+  Future<void> _boardAction(String action) async {
+    final id = _board!['id'];
+    // Literal paths, so the route guard can match each one.
+    final path = switch (action) {
+      'archive' => '/task-boards/$id/archive',
+      'unarchive' => '/task-boards/$id/unarchive',
+      _ => '/task-boards/$id/restore',
+    };
+    final r = await widget.api.post(path, const {});
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          !r.ok
+              ? r.reason
+              : switch (action) {
+                  'archive' => 'Board archived. Find it under Archived boards.',
+                  'unarchive' => 'Board is back in the list.',
+                  _ => 'Board restored.',
+                },
+        ),
+      ),
+    );
+    if (!r.ok) return;
+    setState(() {
+      _archived = false;
+      _board = null;
+      _selected = 0;
+    });
+    await _load();
+  }
+
+  /// Two steps, as a job's delete: what goes, then the name typed back.
+  Future<void> _deleteBoard() async {
+    final name = '${_board!['name']}';
+    final typed = TextEditingController();
+    final ok = await showSidePanel<bool>(
+      context,
+      builder: (panel) => StatefulBuilder(
+        builder: (panel, set) => SidePanel(
+          title: 'Delete $name?',
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(panel).pop(false),
+              child: const Text('Keep it'),
+            ),
+            FilledButton(
+              key: const Key('board-delete-confirm'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(panel).colorScheme.error,
+              ),
+              onPressed: typed.text.trim() == name.trim()
+                  ? () => Navigator.of(panel).pop(true)
+                  : null,
+              child: const Text('Delete board'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'The board and its tasks leave every list. You can restore it '
+                'from Archived boards for 30 days; after that it is gone.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                key: const Key('board-delete-name'),
+                controller: typed,
+                autofocus: true,
+                onChanged: (_) => set(() {}),
+                decoration: InputDecoration(
+                  labelText: 'Type $name to delete it',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final r = await widget.api.delete('/task-boards/${_board!['id']}', {
+      'confirm': name,
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(r.ok ? 'Board deleted.' : r.reason)));
+    if (!r.ok) return;
+    setState(() {
+      _board = null;
+      _selected = 0;
+    });
+    await _load();
+  }
+
+  List<Widget> _moreTools({required bool phone}) => [
+    if (_board?['can_set_edit_mode'] == true || _board?['deleted'] == true)
+      _boardMenu(),
+    if (_archived || _archivedCount > 0)
+      OutlinedButton.icon(
+        key: const Key('tasks-archived'),
+        onPressed: _toggleArchived,
+        icon: Icon(
+          _archived ? Icons.arrow_back : Icons.inventory_2_outlined,
+          size: 18,
+        ),
+        label: Text(
+          _archived ? 'Back to boards' : 'Archived boards · $_archivedCount',
+        ),
+      ),
+    if (_canEdit &&
+        (_board?['statuses'] as List? ?? const []).any(
+          (s) => s is Map && s.containsKey('id'),
+        ))
+      OutlinedButton.icon(
+        key: const Key('tasks-statuses'),
+        onPressed: _editStatuses,
+        icon: const Icon(Icons.label_outline, size: 18),
+        label: const Text('Statuses…'),
+      ),
+    if (_canEdit && _board?['builtin_columns'] is Map) _columnsControl(),
+    // Assignee mode (Jose, 2026-11-09, monday's NW board).
+    if (_board?['can_set_edit_mode'] == true)
+      FilterChip(
+        key: const Key('tasks-edit-mode'),
+        avatar: const Icon(Icons.lock_person_outlined, size: 18),
+        showCheckmark: false,
+        label: const Text('Only assignees edit'),
+        tooltip:
+            'On: each person changes only the tasks assigned to them or that '
+            'they made. Owners and Administrators still change everything.',
+        selected: _board?['edit_mode'] == 'assignee',
+        onSelected: (on) => _setEditMode(on ? 'assignee' : 'everyone'),
+      ),
+  ];
+
+  Future<void> _setEditMode(String mode) async {
+    final r = await widget.api.patch('/task-boards/${_board!['id']}', {
+      'edit_mode': mode,
+    });
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    await _open(_selected);
   }
 
   /// Who is on the board, on EVERY board (Jose could not find People: it
@@ -1679,6 +2201,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           ),
                       ],
                     ],
+                    ?_footer(context, shown),
                     if (_canEdit && id != null)
                       _cellBorder(
                         context,
@@ -1747,6 +2270,76 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     child: child,
   );
 
+  /// Under a group's rows: each number or formula column's sum or average,
+  /// as its settings say (design 178). Null when no column asks for one.
+  Widget? _footer(BuildContext context, List<_Json> tasks) {
+    final columns = boardColumns(_board);
+    if (tasks.isEmpty || columns.every((c) => c.footer == 'none')) return null;
+    final theme = Theme.of(context);
+    final style = theme.textTheme.bodySmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      color: theme.colorScheme.onSurfaceVariant,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    bool shown(String key) => _builtinShown(_board, key);
+    Widget blank(double w) => SizedBox(width: w);
+    String? total(BoardColumn c) {
+      if (c.footer == 'none' || (c.type != 'number' && c.type != 'formula')) {
+        return null;
+      }
+      final values = [
+        for (final t in tasks)
+          if (columnValue(t, c) case final num n) n,
+      ];
+      if (values.isEmpty) return null;
+      final sum = values.fold<num>(0, (a, b) => a + b);
+      return c.footer == 'average'
+          ? 'avg ${formatColumnNumber(sum / values.length, c)}'
+          : formatColumnNumber(sum, c);
+    }
+
+    return _cellBorder(
+      context,
+      SizedBox(
+        height: 30,
+        child: Row(
+          children: [
+            const SizedBox(width: 6),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text('Total', style: style),
+              ),
+            ),
+            if (shown('creator')) blank(_widths.creator),
+            if (shown('owner')) blank(_widths.owner),
+            if (shown('status')) blank(_widths.status),
+            if (shown('created')) blank(_widths.created),
+            if (shown('due')) blank(_widths.due),
+            for (final c in columns)
+              SizedBox(
+                width: _widths.custom,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    total(c) ?? '',
+                    key: ValueKey('column-footer-${c.id}'),
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: style,
+                  ),
+                ),
+              ),
+            if (shown('about')) blank(_widths.about),
+            if (shown('updates')) blank(_widths.updates),
+            if (_canEdit) blank(_widths.add),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _headings(BuildContext context, Object? group) {
     final theme = Theme.of(context);
     final style = theme.textTheme.bodySmall?.copyWith(
@@ -1789,18 +2382,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             if (shown('created')) b('created', _widths.created),
             if (shown('due')) b('due', _widths.due),
             for (final c in boardColumns(_board))
-              _cell(
-                context,
-                _widths.custom,
-                InkWell(
-                  key: ValueKey('column-head-${c.id}'),
-                  onTap: _canEdit ? () => _editColumn(c) : null,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Tooltip(message: c.name, child: h(c.name)),
-                  ),
-                ),
-              ),
+              _cell(context, _widths.custom, _columnHeader(c, h(c.name))),
             if (shown('about')) b('about', _widths.about),
             if (shown('updates')) b('updates', _widths.updates),
             if (_canEdit)
@@ -1971,6 +2553,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           onChanged: _canEdit
                               ? (v) => _setValue(t, c.id, v)
                               : null,
+                          onAddOption: _canEdit
+                              ? (label) => _addOption(c, label)
+                              : null,
+                          onEditOptions: _canEdit ? () => _editColumn(c) : null,
                         ),
                       )
                     : _cell(
@@ -1984,6 +2570,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           onChanged: _canEdit
                               ? (v) => _setValue(t, c.id, v)
                               : null,
+                          onAddOption: _canEdit
+                              ? (label) => _addOption(c, label)
+                              : null,
+                          onEditOptions: _canEdit ? () => _editColumn(c) : null,
                         ),
                       ),
               if (shown('about'))
@@ -2010,10 +2600,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                       ? const SizedBox.shrink()
                       : Row(
                           children: [
-                            Icon(
-                              Icons.chat_bubble_outline,
-                              size: 14,
-                              color: theme.colorScheme.onSurfaceVariant,
+                            unreadNotesBadge(
+                              Icon(
+                                Icons.chat_bubble_outline,
+                                size: 14,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              t['unread_notes'],
+                              key: ValueKey('task-unread-${t['id']}'),
                             ),
                             const SizedBox(width: 4),
                             Text('$updates'),
@@ -2422,6 +3016,69 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   // ── Kanban ─────────────────────────────────────────────────────
 
+  /// Every task the table would show, in its groups' order.
+  List<_Json> get _shownTasks => [
+    for (final g in _groups(_board!)) ..._tasksIn(g['id']).where(_matches),
+  ];
+
+  Color _planColour(_Json t) =>
+      _statusColours(context, _statusFor(_board, _statusOf(t))).fill;
+
+  Future<void> _patchTask(_Json task, _Json body) async {
+    final res = await widget.api.patch('/tasks/${task['id']}', body);
+    if (!mounted) return;
+    if (res.ok) {
+      _replace(res.body['data'] as _Json);
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(res.reason)));
+    }
+  }
+
+  Widget _calendarView({required bool phone}) => TaskBoardCalendar(
+    tasks: _shownTasks,
+    canEdit: _canEdit,
+    formats: _formats,
+    compact: phone,
+    colourOf: _planColour,
+    onOpen: _openTask,
+    onMoveDate: (t, day) => _patchTask(t, {'due_on': day}),
+  );
+
+  Widget _timelineView({required bool phone}) {
+    final column = (_board!['columns'] as List? ?? const [])
+        .whereType<Map>()
+        .where((c) => c['type'] == 'timeline')
+        .firstOrNull;
+    return TaskBoardTimeline(
+      groups: _groups(_board!),
+      tasksIn: (id) => _tasksIn(id).where(_matches).toList(),
+      columnId: column?['id'] as String?,
+      canEdit: _canEdit,
+      compact: phone,
+      colourOf: _planColour,
+      onOpen: _openTask,
+      onSetRange: (t, from, to) => _patchTask(t, {
+        'values': {
+          column!['id']: {'from': from, 'to': to},
+        },
+      }),
+      onAddColumn: () async {
+        final res = await widget.api.post(
+          '/task-boards/${_board!['id']}/columns',
+          {'name': 'Timeline', 'type': 'timeline'},
+        );
+        if (!mounted) return;
+        res.ok
+            ? await _load()
+            : ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(res.reason)));
+      },
+    );
+  }
+
   Widget _kanbanView(BuildContext context, {required bool narrow}) {
     final columns = [
       for (final s in _statuses(_board))
@@ -2523,11 +3180,15 @@ class _TaskPanel extends StatefulWidget {
     required this.board,
     required this.where,
     required this.people,
+    this.unreadNotes = 0,
   });
 
   final ApiClient api;
   final DisplayFormats formats;
   final String taskId;
+
+  /// Updates by others it has not read; opening it reads them.
+  final int unreadNotes;
   final _Json board;
 
   /// The group, under the board's name.
@@ -2555,6 +3216,7 @@ class _TaskPanelState extends State<_TaskPanel> {
   final _title = TextEditingController();
   final _due = TextEditingController();
   final _update = TextEditingController();
+  final _mentions = MentionController();
 
   bool get _canEdit => widget.board['can_edit'] == true;
 
@@ -2587,8 +3249,25 @@ class _TaskPanelState extends State<_TaskPanel> {
       }
       _task = res.body['data'] as _Json;
       _title.text = '${_task!['title']}';
+      // Its updates are read now (unread notes, monday port 2026-11-09).
+      if (widget.unreadNotes > 0) {
+        widget.api.post('/note-reads', {'type': 'task', 'id': widget.taskId});
+      }
       _due.text = _task!['due_on'] as String? ?? '';
     });
+  }
+
+  /// The task's Activity log, newest first; null until asked for.
+  List<_Json>? _activity;
+
+  Future<void> _loadActivity() async {
+    final r = await widget.api.get('/tasks/${widget.taskId}/activity');
+    if (!mounted) return;
+    setState(
+      () => _activity = r.ok && r.data is List
+          ? (r.data as List).whereType<_Json>().toList()
+          : const [],
+    );
   }
 
   Future<void> _patch(_Json body) async {
@@ -2603,6 +3282,8 @@ class _TaskPanelState extends State<_TaskPanel> {
       // The answer has no updates in it; keep the ones on screen.
       _task = {...res.body['data'] as _Json, 'updates': _task!['updates']};
     });
+    // An open Activity log shows the change just made.
+    if (res.ok && _activity != null) await _loadActivity();
   }
 
   Future<void> _attach() async {
@@ -2630,13 +3311,20 @@ class _TaskPanelState extends State<_TaskPanel> {
       _postError = null;
     });
     final path = '/tasks/${widget.taskId}/updates';
+    final mentions = _mentions.ids(body);
     final res = _files.isEmpty
-        ? await widget.api.post(path, {'body': body})
+        ? await widget.api.post(path, {
+            'body': body,
+            if (mentions.isNotEmpty) 'mentions': mentions,
+          })
         : await widget.api.postFiles(
             path,
             'files',
             List.of(_files),
-            fields: {if (body.isNotEmpty) 'body': body},
+            fields: {
+              if (body.isNotEmpty) 'body': body,
+              for (final (i, m) in mentions.indexed) 'mentions[$i]': m,
+            },
           );
     if (!mounted) return;
     setState(() {
@@ -2646,6 +3334,7 @@ class _TaskPanelState extends State<_TaskPanel> {
         return;
       }
       _update.clear();
+      _mentions.clear();
       _files.clear();
       _task = {
         ..._task!,
@@ -2747,6 +3436,10 @@ class _TaskPanelState extends State<_TaskPanel> {
           ] else
             TextButton.icon(
               key: const Key('task-delete'),
+              // Red, the colour of what it does (phone audit 2026-11-04).
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
               onPressed: () => setState(() => _confirmDelete = true),
               icon: const Icon(Icons.delete_outline, size: 18),
               label: const Text('Delete…'),
@@ -2929,6 +3622,7 @@ class _TaskPanelState extends State<_TaskPanel> {
               value: columnValue(task, c),
               people: people,
               formats: widget.formats,
+              api: widget.api,
               onChanged: _canEdit
                   ? (v) => _patch({
                       'values': {c.id: v},
@@ -2936,6 +3630,57 @@ class _TaskPanelState extends State<_TaskPanel> {
                   : null,
             ),
           ),
+        // Activity log (Jose, 2026-11-09, monday's): loaded when opened.
+        ExpansionTile(
+          key: const Key('task-activity'),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          title: Text(
+            'Activity',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          onExpansionChanged: (open) {
+            if (open && _activity == null) _loadActivity();
+          },
+          children: [
+            if (_activity == null)
+              const LinearProgressIndicator()
+            else if (_activity!.isEmpty)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text('No changes yet.', style: muted),
+              )
+            else
+              for (final a in _activity!)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '${a['who'] ?? 'An automation'}  ',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        TextSpan(
+                          text:
+                              '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
+                        ),
+                        TextSpan(
+                          text: formatStamp(
+                            a['at'],
+                            '',
+                            formats: widget.formats,
+                          ),
+                          style: muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+        ),
         const Divider(height: 24),
         Text(
           updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',
@@ -2996,14 +3741,21 @@ class _TaskPanelState extends State<_TaskPanel> {
           ),
         if (_canEdit) ...[
           const SizedBox(height: 4),
-          TextField(
-            key: const Key('task-update-body'),
+          MentionField(
+            api: widget.api,
+            type: 'task',
+            id: widget.taskId,
             controller: _update,
-            minLines: 2,
-            maxLines: 6,
-            decoration: const InputDecoration(
-              hintText: 'Write an update…',
-              border: OutlineInputBorder(),
+            mentions: _mentions,
+            child: TextField(
+              key: const Key('task-update-body'),
+              controller: _update,
+              minLines: 2,
+              maxLines: 6,
+              decoration: const InputDecoration(
+                hintText: 'Write an update… (@ to mention)',
+                border: OutlineInputBorder(),
+              ),
             ),
           ),
           if (_files.isNotEmpty) ...[

@@ -128,6 +128,15 @@ interface TwilioGateway
      */
     public function listAccountIncoming(string $accountSid): array;
 
+    /**
+     * A test call from an account the platform credentials reach, running the
+     * given TwiML. Only the line answer test uses it: it dials our own lines.
+     */
+    public function platformCall(string $accountSid, string $from, string $to, string $twiml): string;
+
+    /** @return array{status: string, duration: int} */
+    public function platformCallStatus(string $accountSid, string $callSid): array;
+
     public function purchaseIncoming(PhoneConnection $connection, string $phoneNumber, array $params = []): array;
 
     /**
@@ -140,7 +149,7 @@ interface TwilioGateway
      *
      * @return array{sid: string, phone_number: string, friendly_name: string, capabilities: array<string, bool>, emergency_status: ?string, emergency_address_sid: ?string, voice_caller_id_lookup: bool, address_requirements: ?string}
      */
-    public function fetchIncoming(PhoneConnection $connection, string $incomingSid): array;
+    public function fetchIncoming(PhoneConnection $connection, string $incomingSid, ?string $accountSid = null): array;
 
     /**
      * Addresses registered on this Twilio account.
@@ -315,7 +324,8 @@ interface TwilioGateway
      */
     public function sendPlatformMessage(string $accountSid, string $from, string $to, string $body): array;
 
-    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null): array;
+    /** @param  list<string>  $mediaUrls  pictures sent with it (MMS); Twilio fetches each URL */
+    public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null, array $mediaUrls = []): array;
 
     /**
      * @return array{phone_number: string, caller_name: ?string}

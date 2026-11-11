@@ -84,6 +84,13 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
      */
     public const EMPLOYER_ADDRESS = 'employer_address';
 
+    /**
+     * The field key a template gives its Social Security card photo (Merav,
+     * 2026-11-09): a required, sensitive file field. The HR record reads it to
+     * show "on file" or "missing" for people hired before it was asked.
+     */
+    public const SSN_CARD = 'ssn_card';
+
     public const STATUSES = [
         self::IN_PROGRESS, self::SUBMITTED, self::AWAITING_APPROVAL, self::COMPLETED, self::CANCELLED,
     ];
@@ -314,7 +321,13 @@ class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalD
             ->exists();
 
         if (! $isRenderedContract) {
-            return null;
+            // An upload answering a sensitive file field — a Social Security
+            // card photo (Merav, 2026-11-09) — is itself the sensitive value.
+            $keys = $this->answers()->whereIn('field_key', $this->sensitiveAnswerKeys())->get()
+                ->filter(fn (OnboardingAnswer $a) => $a->getAttribute('value') === $attachment->getKey())
+                ->pluck('field_key')->values()->all();
+
+            return $keys === [] ? null : $keys;
         }
 
         $keys = $this->sensitiveAnswerKeys();

@@ -4,6 +4,7 @@ namespace Tests\Feature\WhatsApp;
 
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
+use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppPendingReport;
 use App\Support\Social\WhatsAppGroups;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -16,8 +17,8 @@ use Tests\TestCase;
 /**
  * Reports to "the NJ daily group" (docs/REPLACING-RODRIGO-BOT.md): one message
  * to a real WhatsApp group, or - until the number is an Official Business
- * Account - one to one, held behind the report_ready template for anybody
- * outside the 24-hour window.
+ * Account - one to one: the text (a template outside the 24-hour window),
+ * then the report as a PDF.
  */
 class WhatsAppGroupsTest extends TestCase
 {
@@ -51,6 +52,7 @@ class WhatsAppGroupsTest extends TestCase
             return match (true) {
                 str_ends_with($request->url(), '/groups') => Http::response(['id' => 'GROUP-1']),
                 str_ends_with($request->url(), '/invite_link') => Http::response(['invite_link' => 'https://chat.whatsapp.com/ABC']),
+                str_ends_with($request->url(), '/media') => Http::response(['id' => 'MEDIA-1']),
                 default => Http::response(['messages' => [['id' => 'wamid.OUT'.$n]]]),
             };
         });
@@ -64,16 +66,16 @@ class WhatsAppGroupsTest extends TestCase
         ]);
     }
 
-    public function test_a_real_group_gets_one_message(): void
+    /** 2026-11-10 (Jose: "just ONE message, just the message + the attachment"): a real group gets the PDF, the report its caption. */
+    public function test_a_real_group_gets_one_message_the_pdf_under_its_text(): void
     {
         $this->group(['remote_id' => 'GROUP-1']);
 
         $this->assertSame(1, $this->deliver());
 
-        $this->assertCount(1, $this->sent);
-        $this->assertSame('group', $this->sent[0]['recipient_type']);
-        $this->assertSame('GROUP-1', $this->sent[0]['to']);
-        $this->assertSame('NJ: 50 jobs', $this->sent[0]['text']['body']);
+        $posts = collect($this->sent)->filter(fn ($m) => isset($m['to']))->values();
+        $this->assertSame([['GROUP-1', 'group', 'document']], $posts->map(fn ($m) => [$m['to'], $m['recipient_type'], $m['type']])->all());
+        $this->assertSame("*A1 NJ Same-Day Report*\n\nNJ: 50 jobs", $posts[0]['document']['caption']);
     }
 
     public function test_without_a_group_each_member_gets_it_one_to_one(): void
@@ -87,29 +89,99 @@ class WhatsAppGroupsTest extends TestCase
         // Only the first wrote to the line today.
         $this->inTenant($this->t['org'], fn () => WhatsAppMessage::create([
             'phone_number_id' => self::NUMBER, 'direction' => WhatsAppMessage::DIRECTION_IN,
-            'counterparty' => '13055550101', 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi',
+            'counterparty' => '13055550101', 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi', 'wamid' => 'wamid.IN1',
         ]));
 
         $this->assertSame(2, $this->deliver());
 
-        $byTo = collect($this->sent)->keyBy('to');
-        $this->assertSame('NJ: 50 jobs', $byTo['13055550101']['text']['body']);
-        $this->assertSame('automation_alert', $byTo['13055550102']['template']['name']);
-        $this->assertSame('A1 NJ Same-Day Report', $byTo['13055550102']['template']['components'][0]['parameters'][0]['text']);
-        $this->assertCount(2, $this->sent);
+        // 2026-11-10 (Jose): ONE message each, the PDF under the report; outside the window the document template, the report its value.
+        $messages = collect($this->sent)->filter(fn ($m) => isset($m['to']))->map(fn ($m) => [$m['to'], $m['type'], $m['template']['name'] ?? null])
+            ->sortBy(fn ($m) => $m[0])->values()->all();
+        $this->assertSame([
+            ['13055550101', 'document', null],
+            ['13055550102', 'template', 'account_report_pdf'],
+        ], $messages);
+        $this->assertSame("*A1 NJ Same-Day Report*\n\nNJ: 50 jobs", collect($this->sent)->firstWhere('type', 'document')['document']['caption']);
+        $this->assertSame([['type' => 'text', 'text' => 'A1 NJ Same-Day Report'], ['type' => 'text', 'text' => 'NJ: 50 jobs']],
+            collect(collect($this->sent)->firstWhere('type', 'template')['template']['components'])->firstWhere('type', 'body')['parameters']);
+        $this->assertCount(1, collect($this->sent)->filter(fn ($m) => str_ends_with($m['url'], '/media')), 'one upload for every member');
+        $this->assertSame(0, WhatsAppPendingReport::query()->withoutGlobalScopes()->count());
+    }
 
-        $this->assertSame(
-            ['13055550102'],
-            WhatsAppPendingReport::query()->withoutGlobalScopes()->whereNull('delivered_at')->pluck('counterparty')->all(),
-        );
+    public function test_an_approval_prompt_goes_as_text_alone(): void
+    {
+        $group = $this->group();
+        $this->member($group, '(305) 555-0102');
+
+        $this->assertSame(1, $this->inTenant($this->t['org'],
+            fn () => app(WhatsAppGroups::class)->deliver('daily:NJ', 'Weekly P&L', 'Reply *APPROVE*', file: false)));
+
+        $this->assertSame(['account_report'], collect($this->sent)->pluck('template.name')->all());
+    }
+
+    /** Bar, 2026-11-04..09 (131047): only a message Meta delivered opens the window, and Meta's refusal shuts it. */
+    public function test_only_meta_opens_the_window_and_its_refusal_shuts_it(): void
+    {
+        $group = $this->group();
+        $ours = $this->member($group, '(305) 555-0101');
+        $refused = $this->member($group, '(305) 555-0102');
+        $this->inTenant($this->t['org'], function () {
+            $in = fn (string $from, ?string $wamid) => WhatsAppMessage::create(['phone_number_id' => self::NUMBER, 'direction' => WhatsAppMessage::DIRECTION_IN,
+                'counterparty' => $from, 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi', 'wamid' => $wamid]);
+            $in('13055550101', null);
+            $in('13055550102', 'wamid.IN2');
+            (new WhatsAppMessage)->forceFill(['phone_number_id' => self::NUMBER, 'direction' => WhatsAppMessage::DIRECTION_OUT, 'counterparty' => '13055550102',
+                'status' => WhatsAppMessage::STATUS_FAILED, 'status_reason' => 'Re-engagement message', 'kind' => 'text', 'body' => 'x'])->save();
+        });
+
+        $this->inTenant($this->t['org'], function () use ($ours, $refused) {
+            $number = WhatsAppNumber::query()->firstOrFail();
+            app(WhatsAppGroups::class)->deliverTextToUser($number, $ours, 'Revenue collected · Nov 9', 'NJ: $1');
+            app(WhatsAppGroups::class)->deliverTextToUser($number, $refused, 'Revenue collected · Nov 9', 'NJ: $1');
+        });
+
+        $this->assertSame(['template'], collect($this->sent)->filter(fn ($m) => isset($m['to']))->pluck('type')->unique()->values()->all());
+    }
+
+    /** 2026-11-10: a report is one message in the window or not; one over WhatsApp's 1024-character caption says its headings and totals. */
+    public function test_a_long_report_is_one_message_with_its_headings_and_totals_in_the_window_or_not(): void
+    {
+        $group = $this->group();
+        $recent = $this->member($group, '(305) 555-0101');
+        $quiet = $this->member($group, '(305) 555-0102');
+        $this->inTenant($this->t['org'], fn () => WhatsAppMessage::create([
+            'phone_number_id' => self::NUMBER, 'direction' => WhatsAppMessage::DIRECTION_IN,
+            'counterparty' => '13055550101', 'status' => WhatsAppMessage::STATUS_RECEIVED, 'kind' => 'text', 'body' => 'hi', 'wamid' => 'wamid.IN1',
+        ]));
+        $body = "\u{1F4B5} *Revenue collected*\n_Mon, Nov 9, 2026 · payments received_\n\n".str_repeat("• *A-1 Chimney · New Jersey*: $17,744.11\n", 30)."\n*TOTAL: $532,323.30*";
+
+        $this->inTenant($this->t['org'], function () use ($recent, $quiet, $body) {
+            $number = WhatsAppNumber::query()->firstOrFail();
+            $this->assertTrue(app(WhatsAppGroups::class)->deliverTextToUser($number, $recent, 'Revenue collected · Nov 9', $body, 'report.text:R:revenue_collected:2026-11-09:U'));
+            $this->assertTrue(app(WhatsAppGroups::class)->deliverTextToUser($number, $quiet, 'Revenue collected · Nov 9', $body));
+        });
+
+        $sent = collect($this->sent)->filter(fn ($m) => isset($m['to']))->values();
+        $this->assertCount(2, $sent);
+        // In the window: the PDF, its caption the title, the headings and the total.
+        $this->assertSame(['id' => 'MEDIA-1', 'filename' => 'revenue-collected-nov-9.pdf',
+            'caption' => "*Revenue collected · Nov 9*\n\n\u{1F4B5} *Revenue collected*\n*TOTAL: $532,323.30*\n\n_Full detail in the PDF_"], $sent[0]['document']);
+        // Outside it: the document template, the title and the same on one line its values.
+        $this->assertSame('account_report_pdf', $sent[1]['template']['name']);
+        $this->assertSame([['type' => 'text', 'text' => 'Revenue collected · Nov 9'],
+            ['type' => 'text', 'text' => "\u{1F4B5} *Revenue collected* | *TOTAL: $532,323.30* | _Full detail in the PDF_"]],
+            collect($sent[1]['template']['components'])->firstWhere('type', 'body')['parameters']);
+        $this->assertSame(0, WhatsAppPendingReport::query()->withoutGlobalScopes()->count());
+        $this->assertSame(['report.text:R:revenue_collected:2026-11-09:U'],
+            WhatsAppMessage::query()->withoutGlobalScopes()->where('counterparty', '13055550101')->where('direction', WhatsAppMessage::DIRECTION_OUT)
+                ->pluck('idempotency_key')->all());
     }
 
     public function test_show_report_delivers_what_was_held_and_nothing_else(): void
     {
-        $group = $this->group();
-        $this->member($group, '(305) 555-0102');
-        $this->deliver();
-        $this->sent = [];
+        // Held before 2026-11-09, when reports stopped waiting behind a notice.
+        $this->inTenant($this->t['org'], fn () => WhatsAppPendingReport::create(['organization_id' => $this->t['org']->id,
+            'phone_number_id' => self::NUMBER, 'counterparty' => '13055550102', 'body' => 'NJ: 50 jobs']));
 
         $this->inbound(['type' => 'button', 'button' => ['text' => 'Show report', 'payload' => 'Show report']])->assertOk();
 

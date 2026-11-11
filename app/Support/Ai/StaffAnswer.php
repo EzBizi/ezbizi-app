@@ -45,7 +45,7 @@ final class StaffAnswer
 
     /**
      * @param  array<string, string>  $files  a photo, for the Tech Assistant only
-     * @return array{source: string, reply: string, entry_ids: list<string>, tech: ?array}|null
+     * @return array{source: string, reply: string, entry_ids: list<string>, tech: ?array, media?: list<string>}|null
      *
      * @throws \RuntimeException when every step that ran failed rather than found nothing
      */
@@ -78,7 +78,8 @@ final class StaffAnswer
         }
 
         try {
-            $library = $left() >= 10 ? app(AssistantBrain::class)->aiAnswer($user, $organization, $question, min(35, $left()), forWhatsApp: true) : null;
+            // 15 s: a 2-3 s step that hung to its 35 s timeout starved the app read (prod 11-07).
+            $library = $left() >= 10 ? app(AssistantBrain::class)->aiAnswer($user, $organization, $question, min(15, $left()), forWhatsApp: true) : null;
             if ($library !== null) {
                 return ['source' => self::LIBRARY, 'reply' => (string) $library['reply'], 'entry_ids' => $library['entry_ids'] ?? [], 'tech' => null];
             }
@@ -87,9 +88,9 @@ final class StaffAnswer
         }
 
         try {
-            $reply = $left() >= 20 ? AppAsk::answer($user, $question, $left() - 5) : null;
-            if ($reply !== null) {
-                return ['source' => self::APP, 'reply' => $reply, 'entry_ids' => [], 'tech' => null];
+            $app = $left() >= 20 ? AppAsk::answerWithMedia($user, $question, $left() - 5) : null;
+            if ($app !== null) {
+                return ['source' => self::APP, 'reply' => $app['reply'], 'entry_ids' => [], 'tech' => null, 'media' => $app['media']];
             }
         } catch (\RuntimeException $e) {
             $failed = $e;

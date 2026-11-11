@@ -6,6 +6,7 @@ use App\Models\Franchise;
 use App\Services\Ads\AdsCost;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
+use App\Support\Settings\Lists\BusinessLists;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -24,11 +25,27 @@ use Illuminate\Support\Facades\DB;
  */
 final class MarketingReport
 {
-    /** Workiz job source => the Google Ads channel that pays for it. */
-    public const PAID = ['LS Ads' => 'lsa', 'PPC' => 'ppc'];
+    /** Workiz job source => the Google Ads channel that pays for it, until the business edits its list. */
+    public const PAID = ['LS Ads' => 'lsa', 'PPC' => 'ppc', 'Meta' => 'meta'];
 
-    /** Lead source => the Workiz job source it arrives as. */
-    private const LEAD_SOURCES = ['local_services' => 'LS Ads'];
+    /** @return array<string, string> job source => channel (lsa or ppc), as the business has it (Settings › Lists) */
+    public static function paid(): array
+    {
+        $out = [];
+        foreach (app(BusinessLists::class)->rows('reports.paid_sources') as $row) {
+            $out[(string) ($row['value']['source'] ?? $row['key'])] = strtolower(trim((string) ($row['value']['channel'] ?? '')));
+        }
+
+        return $out;
+    }
+
+    /** The job source a channel's jobs arrive as; null when the business named none. */
+    public static function sourceOf(string $channel): ?string
+    {
+        $source = array_search($channel, self::paid(), true);
+
+        return $source === false ? null : (string) $source;
+    }
 
     /** @var (callable(Franchise, string, string): ?array)|null */
     private $cost;
@@ -66,14 +83,15 @@ final class MarketingReport
         $ads = $this->cost ? ($this->cost)($branch, $from, $to) : null;
         $leads = $this->leads($branch, $from, $to);
 
-        $sources = array_unique([...array_keys($f['created']), ...array_keys($f['closed']), ...array_keys(self::PAID)]);
+        $paid = self::paid();
+        $sources = array_unique([...array_keys($f['created']), ...array_keys($f['closed']), ...array_keys($paid)]);
         $rows = [];
 
         foreach ($sources as $source) {
             $created = $f['created'][$source]['all'] ?? 0;
             $done = $f['closed'][$source]['done'] ?? 0;
             $gross = (int) round(($f['closed'][$source]['gross'] ?? 0) * 100);
-            $channel = $ads[self::PAID[$source] ?? ''] ?? null;
+            $channel = $ads[$paid[$source] ?? ''] ?? null;
             $cost = $channel['cost_minor'] ?? null;
             $profit = $margin === null ? null : (int) round($gross * $margin);
             $lead = $leads[$source] ?? null;
@@ -138,11 +156,16 @@ final class MarketingReport
      */
     private function leads(Franchise $branch, string $from, string $to): array
     {
+        // Local Services leads arrive as the job source its channel pays for.
+        if (($source = self::sourceOf('lsa')) === null) {
+            return [];
+        }
+
         $rows = DB::table('leads')
             ->join('social_connections', 'social_connections.id', '=', 'leads.connection_id')
             ->where('social_connections.leads_franchise_id', $branch->getKey())
             ->where('leads.is_test', false)
-            ->whereIn('leads.source', array_keys(self::LEAD_SOURCES))
+            ->where('leads.source', 'local_services')
             ->whereBetween('leads.received_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->groupBy('leads.source')
             ->selectRaw('leads.source, count(*) leads, sum(leads.job_id is not null) jobs')
@@ -150,7 +173,7 @@ final class MarketingReport
 
         $out = [];
         foreach ($rows as $r) {
-            $out[self::LEAD_SOURCES[$r->source]] = ['leads' => (int) $r->leads, 'jobs' => (int) $r->jobs];
+            $out[$source] = ['leads' => (int) $r->leads, 'jobs' => (int) $r->jobs];
         }
 
         return $out;

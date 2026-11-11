@@ -360,21 +360,24 @@ class _ApiActivityState extends State<ApiActivity> {
         tile('keys', 'keys used · 24 h', summary['keys']),
         tile(
           'calls',
-          'calls',
+          'calls · 24 h',
           summary['calls'],
           on: !_changesOnly && !_refusedOnly,
           onTap: () => show(changes: false, refused: false),
         ),
         tile(
           'changes',
-          'changes',
+          // Every tile counts the last day, not the list below it: "0 changes"
+          // over a list of last week's changes read as a wrong count (UI
+          // audit, 2026-11-04). The list's own window is the whole history.
+          'changes · 24 h',
           summary['changes'],
           on: _changesOnly && !_refusedOnly,
           onTap: () => show(changes: true, refused: false),
         ),
         tile(
           'refused',
-          'refused',
+          'refused · 24 h',
           summary['refused'],
           warn: true,
           on: _refusedOnly,

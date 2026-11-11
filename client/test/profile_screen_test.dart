@@ -93,6 +93,24 @@ void main() {
       findsNothing,
     );
   });
+  // Phone audit 2026-11-04: beside a long address the label was drawn one
+  // letter per line.
+  testWidgets('on a phone a long address sits under its label', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      size: const Size(390, 780),
+      address: '1200 Brightside Avenue, Apartment 14B, Springfield, IL 62701',
+    );
+
+    expect(tester.getSize(find.text('Home address')).height, lessThan(30));
+    expect(
+      tester.getTopLeft(find.textContaining('1200 Brightside')).dy,
+      greaterThan(tester.getTopLeft(find.text('Home address')).dy),
+    );
+  });
+
   testWidgets('on a phone the API keys row says how many there are', (
     tester,
   ) async {
@@ -164,7 +182,11 @@ void main() {
 }
 
 
-Future<void> _pump(WidgetTester tester, {required Size size}) async {
+Future<void> _pump(
+  WidgetTester tester, {
+  required Size size,
+  String address = '',
+}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -212,7 +234,7 @@ Future<void> _pump(WidgetTester tester, {required Size size}) async {
           'middle_name': '',
           'last_name': 'Demasi',
           'phone': '+13057242199',
-          'address': '',
+          'address': address,
           'gender': 'Male',
           'has_avatar': false,
           'date_of_birth': '1994-04-14',

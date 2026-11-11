@@ -44,6 +44,10 @@ class BlockRenderer
         return '<!DOCTYPE html>'
             .'<html><head><meta charset="utf-8">'
             .'<meta name="viewport" content="width=device-width,initial-scale=1">'
+            // Columns stack on a phone. The inline widths stay for clients that strip <style>.
+            .'<style>@media only screen and (max-width:620px){'
+            .'.ez-col{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box;}'
+            .'}</style>'
             .'</head>'
             .'<body style="margin:0;padding:0;background:#EDF1F4;">'
             .'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
@@ -148,6 +152,34 @@ class BlockRenderer
 
         return '<tr><td style="padding:0 4px;"><table role="presentation" width="100%" '
             .'cellpadding="0" cellspacing="0"><tr>'.$cells.'</tr></table></td></tr>';
+    }
+
+    /**
+     * Custom HTML gets the same protected footer the blocks do.
+     *
+     * An imported document was sent and previewed exactly as pasted, so a
+     * mailing with no postal address or way out could leave (audit
+     * 2026-11-10). The footer is added unless the document already links to
+     * this unsubscribe address or Mailchimp's `*|UNSUB|*`, which the author
+     * placed on purpose; adding a second would only double it.
+     *
+     * @param  array{company: string, address: string, unsubscribe_url: string}  $f
+     */
+    public function withFooter(string $html, array $f): string
+    {
+        $targets = array_unique(['*|UNSUB|*', $f['unsubscribe_url'], $this->esc($f['unsubscribe_url'])]);
+        foreach ($targets as $target) {
+            if (preg_match('/href\s*=\s*["\']\s*'.preg_quote($target, '/').'\s*["\']/i', $html)) {
+                return $html;
+            }
+        }
+
+        $footer = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            .'data-ez-footer="1" style="max-width:'.self::WIDTH.'px;margin:0 auto;">'
+            .$this->footer($f).'</table>';
+        $at = strripos($html, '</body>');
+
+        return $at === false ? $html.$footer : substr($html, 0, $at).$footer.substr($html, $at);
     }
 
     private function row(string $inner): string

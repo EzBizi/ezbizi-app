@@ -24,16 +24,24 @@ class InboxPeople extends StatefulWidget {
 }
 
 class _Person {
-  const _Person(this.id, this.name, this.email);
+  const _Person(this.id, this.name, this.email, [this.why]);
 
   final String id;
   final String name;
   final String email;
 
+  /// When this grant is the only reason they would see it, said beside them.
+  final String? why;
+
   static List<_Person> list(Object? json) => [
     for (final row in (json as List?) ?? const [])
       if (row is Map)
-        _Person('${row['id']}', '${row['name'] ?? ''}', '${row['email'] ?? ''}'),
+        _Person(
+          '${row['id']}',
+          '${row['name'] ?? ''}',
+          '${row['email'] ?? ''}',
+          row['note'] as String?,
+        ),
   ];
 }
 
@@ -132,18 +140,29 @@ class _InboxPeopleState extends State<InboxPeople> {
                   label: Text(person.name),
                   tooltip: person.email,
                   onDeleted: _busy ? null : () => _remove(person),
-                  deleteButtonTooltipMessage: 'Take ${person.name} off this inbox',
+                  deleteButtonTooltipMessage:
+                      'Take ${person.name} off this inbox',
                 ),
             ],
           ),
         const SizedBox(height: 8),
         SearchPickerField<String>(
           value: null,
-          hint: _candidates.isEmpty ? 'Nobody else could open it' : 'Add a person',
+          hint: _candidates.isEmpty
+              ? 'Nobody else is on staff'
+              : 'Add a person',
           isDense: true,
           options: [
+            // Anybody on staff (Jose, 2026-11-09); the note says when this
+            // grant is what lets them see it.
             for (final person in _candidates)
-              SearchOption(value: person.id, label: person.name, detail: person.email),
+              SearchOption(
+                value: person.id,
+                label: person.name,
+                detail: person.why == null
+                    ? person.email
+                    : '${person.email} · ${person.why}',
+              ),
           ],
           onChanged: _busy || _candidates.isEmpty ? null : _add,
         ),
@@ -151,7 +170,9 @@ class _InboxPeopleState extends State<InboxPeople> {
           const SizedBox(height: 6),
           Text(
             _error!,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
           ),
         ],
       ],

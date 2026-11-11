@@ -39,7 +39,7 @@ class InboxController extends Controller
 {
     private const FOLDERS = ['inbox' => 'INBOX', 'starred' => 'STARRED', 'sent' => 'SENT', 'drafts' => 'DRAFT', 'all' => 'ALL'];
 
-    private const PER_INBOX = 25;
+    private const PER_INBOX = 50; // Gmail's page (Jose, 11-04)
 
     /** With a tab chosen, at most this many Gmail pages per inbox per request. */
     private const MAX_PAGES = 4;
@@ -152,8 +152,9 @@ class InboxController extends Controller
                     // A filter: hide drops the mail from this view, notifications files it there.
                     $action = $mine->first(fn ($f) => $f->matches($summary->fromName, $summary->fromAddress, $summary->subject))?->action;
 
-                    // Hidden, or moved to its filter's folder.
-                    if ($action === EmailFilter::ACTION_HIDE || $action === EmailFilter::ACTION_FOLDER) {
+                    // Hidden, or moved to its filter's folder; the All tab (no category) keeps
+                    // folder mail too, so it is the whole inbox (Jose, 2026-11-03).
+                    if ($action === EmailFilter::ACTION_HIDE || ($action === EmailFilter::ACTION_FOLDER && $category !== null)) {
                         continue;
                     }
 

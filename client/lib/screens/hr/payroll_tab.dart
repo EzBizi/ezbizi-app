@@ -520,7 +520,7 @@ class _PayrollTabState extends State<PayrollTab> {
 
     return signed
         ? const StatusPill('✓ Signed', tone: Tone.ok)
-        : const StatusPill('✕ Not signed', tone: Tone.bad);
+        : const StatusPill('Not signed', tone: Tone.caution);
   }
 
   Widget _w2Cell(BuildContext context, Map<String, dynamic> row) {

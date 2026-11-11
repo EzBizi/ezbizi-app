@@ -126,6 +126,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCE_EZ_TEXTS = 'ez_texts';
 
     /**
+     * A customer's answer to a promotion text sent from Memberships >
+     * Promotions (Jose, 2026-11-06). Opened by Promotions::absorbReply,
+     * answered by text on the thread like an EZ Text.
+     */
+    public const SOURCE_PROMOTIONS = 'promotions';
+
+    /**
      * The sources that arrive THROUGH a connected account.
      *
      * Not a list of "external" sources: the website is external too. It is the
@@ -191,6 +198,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_RINGCENTRAL,
         self::SOURCE_EZ_CALLS,
         self::SOURCE_EZ_TEXTS,
+        self::SOURCE_PROMOTIONS,
     ];
 
     /**
@@ -292,6 +300,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_FACEBOOK,
         self::SOURCE_INSTAGRAM,
         self::SOURCE_WORKIZ,
+        self::SOURCE_PROMOTIONS,
         self::SOURCE_WHATSAPP,
         self::SOURCE_RINGCENTRAL,
         self::SOURCE_EZ_CALLS,
@@ -539,7 +548,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         'organization_id', 'company_id', 'franchise_id', 'connection_id', 'remote_customer_id', 'job_id', 'job_matched_by',
         'source', 'is_test', 'remote_id', 'contact_name', 'handle', 'avatar_url', 'phone', 'email', 'phone_digits', 'postal_code', 'address', 'city', 'referral',
         'marketing_consent_at', 'marketing_consent_text',
-        'lead_type', 'category', 'service', 'locale', 'summary', 'site_host', 'note', 'note_by_user_id', 'note_updated_at',
+        'lead_type', 'category', 'service', 'locale', 'summary', 'site_host', 'note', 'note_by_user_id', 'note_updated_at', 'note_mentions',
         'status', 'dispatcher', 'dispatcher_by_user_id', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'service_state', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
         'form_answers', 'form_name', 'form_submitted_at',
@@ -559,6 +568,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'follow_up_raised_at' => 'datetime',
             'starred_at' => 'datetime',
             'note_updated_at' => 'datetime',
+            'note_mentions' => 'array',
             'classified_at' => 'datetime',
             'credit_requested_at' => 'datetime',
             'marketing_consent_at' => 'datetime',
@@ -610,22 +620,17 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * occurred_at now carries fractions too; the tiebreak stays for rows that
      * predate that and for two stamps that are genuinely equal.
      */
-    /**
-     * How long a customer's message may wait for an answer before the lead is
-     * flagged and `lead.reply_overdue` raised (Jose, 2026-09-28: "they have
-     * not replied to x customer in 10 mins").
-     */
-    public const REPLY_OVERDUE_AFTER_MINUTES = 10;
-
-    /**
-     * How long after the automatic first reply a quiet customer gets the one
-     * follow-up (`lead.follow_up_due`) - three hours, as Rodrigo's bot did.
-     */
-    public const FOLLOW_UP_AFTER_HOURS = 3;
+    /** "Hi Mark" or "Hi there", as leads.greeting_named / _unnamed say. */
+    public static function greeting(?string $first, ?string $organizationId = null): string
+    {
+        return $first === null
+            ? (string) SettingsResolver::forOrganization('leads.greeting_unnamed', $organizationId)
+            : str_replace('{first}', $first, (string) SettingsResolver::forOrganization('leads.greeting_named', $organizationId));
+    }
 
     /**
      * The customer spoke last, a reply is possible, nobody has answered for
-     * REPLY_OVERDUE_AFTER_MINUTES, and the lead is still New - a booked,
+     * leads.reply_overdue_minutes, and the lead is still New - a booked,
      * archived or not-a-lead lead owes nothing ("not every response needs a
      * reply").
      */
@@ -639,7 +644,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             && $this->status === self::STATUS_NEW
             && $this->last_contact_from === LeadConversation::FROM_CONSUMER
             && $this->last_contact_at !== null
-            && $this->last_contact_at->lte(now()->subMinutes(self::REPLY_OVERDUE_AFTER_MINUTES));
+            && $this->last_contact_at->lte(now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes', $this->organization_id)));
     }
 
     /**
@@ -720,7 +725,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     {
         $first = self::firstNameOf($this->contact_name);
 
-        return $first === null ? 'Thank you' : "Hi {$first}, thank you";
+        return $first === null ? 'Thank you' : self::greeting($first, $this->organization_id).', thank you';
     }
 
     /**
@@ -894,9 +899,6 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         return ['closed_reply_due', 'office_open', 'photos_email_due'];
     }
 
-    /** Only a message this fresh is answered automatically; older ones were imported late. */
-    private const AUTO_ANSWER_WITHIN_MINUTES = 60;
-
     private const MENTIONS_PHOTOS = '/\b(photos?|pictures?|pics?|images?|videos?|attach\w*|documents?|reports?|files?)\b/i';
 
     public function getOfficeOpenAttribute(): bool
@@ -971,7 +973,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             ->orderByDesc('occurred_at')
             ->first();
 
-        return $latest !== null && $latest->occurred_at?->gte(now()->subMinutes(self::AUTO_ANSWER_WITHIN_MINUTES))
+        return $latest !== null && $latest->occurred_at?->gte(now()->subMinutes((int) SettingsResolver::forOrganization('leads.auto_answer_minutes', $this->organization_id)))
             ? $latest
             : null;
     }

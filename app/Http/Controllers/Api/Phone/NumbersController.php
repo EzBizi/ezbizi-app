@@ -1027,7 +1027,7 @@ class NumbersController extends Controller
         }
 
         try {
-            $live = $this->twilio->fetchIncoming($connection, (string) $number->twilio_sid);
+            $live = $this->twilio->fetchIncoming($connection, (string) $number->twilio_sid, $number->account_sid);
         } catch (Throwable) {
             return response()->json([
                 'data' => null,

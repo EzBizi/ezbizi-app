@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Console\Commands\LabelReportCalls;
 use App\Console\Commands\ScoreReportCalls;
+use App\Models\CallReportOverride;
 use App\Models\CallReportPersonReview;
 use App\Models\ReportScoringWeight;
 use App\Models\WorkizCall;
 use App\Support\Reports\Experimental\PerformancePeople;
+use App\Support\Reports\Experimental\PersonNames;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Reports\ReportView;
@@ -29,9 +31,6 @@ use Illuminate\Validation\ValidationException;
  */
 class ScoringReportController extends Controller
 {
-    /** Fewer scored calls than this and a person is shown but not ranked. */
-    public const MIN_CALLS = 3;
-
     /**
      * GET /api/v1/reports/scoring/calls?person=&from=&to=[&q=]
      *
@@ -53,17 +52,22 @@ class ScoringReportController extends Controller
             'q' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $zone = (string) config('app.timezone');
+        $zone = ReportView::zone();
         $from = max(CarbonImmutable::parse($q['from'], $zone)->startOfDay(), LabelReportCalls::aiSince());
         $to = CarbonImmutable::parse($q['to'], $zone)->endOfDay();
         $search = trim((string) ($q['q'] ?? ''));
         $digits = preg_replace('/\D/', '', $search);
+        // Every stored spelling that is this person now (PersonNames).
+        $names = PersonNames::forTenant();
+        $spellings = DB::table('call_report_transcripts')->where('organization_id', app(TenantContext::class)->idOrFail())
+            ->whereNotNull('answered_by')->distinct()->pluck('answered_by')
+            ->filter(fn ($n) => ($names->canonical($n) ?? $n) === $q['person'])->push($q['person'])->unique()->values()->all();
 
         $base = fn () => DB::table('call_report_scores as s')
             ->join('call_report_transcripts as t', fn ($j) => $j->on('t.organization_id', '=', 's.organization_id')->on('t.call_id', '=', 's.call_id'))
             ->where('s.organization_id', app(TenantContext::class)->idOrFail())
             ->whereNotNull('s.score')
-            ->where('t.answered_by', $q['person'])
+            ->whereIn('t.answered_by', $spellings)
             ->whereBetween('t.call_started_at', [$from->utc(), $to->utc()])
             ->select(['t.call_id', 't.call_started_at', 't.caller_number', 't.recording_id', 's.score', 's.strength', 's.improve', 't.transcript_labelled', 't.transcript']);
 
@@ -101,7 +105,9 @@ class ScoringReportController extends Controller
                 $calls[$r->call_id]['tags'][] = $tag;
             }
         }
-        $calls = array_values($calls);
+        // What was set by hand on the call (design 179): call id => field => value, by.
+        $set = CallReportOverride::forCalls(array_keys($calls));
+        $calls = array_map(fn ($c) => $c + ['set' => $set[$c['call_id']] ?? null], array_values($calls));
 
         return response()->json(['data' => $calls]);
     }
@@ -142,7 +148,7 @@ class ScoringReportController extends Controller
         // has none (2026-10-19).
         if (ReportView::franchiseIds() !== null && ! app(RingCentralCallLog::class)->configured()) {
             return response()->json(['data' => ['from' => $request->query('from'), 'to' => $request->query('to'),
-                'min_calls_to_rank' => self::MIN_CALLS, 'weights' => ScoringWeights::current(), 'people' => []]]);
+                'min_calls_to_rank' => ReportView::minCalls(), 'weights' => ScoringWeights::current(), 'people' => []]]);
         }
 
         $q = $request->validate([
@@ -150,7 +156,7 @@ class ScoringReportController extends Controller
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
         ]);
 
-        $zone = (string) config('app.timezone');
+        $zone = ReportView::zone();
         $from = max(CarbonImmutable::parse($q['from'], $zone)->startOfDay(), LabelReportCalls::aiSince());
         $to = CarbonImmutable::parse($q['to'], $zone)->endOfDay();
 
@@ -162,6 +168,10 @@ class ScoringReportController extends Controller
             ->whereBetween('t.call_started_at', [$from->utc(), $to->utc()])
             ->orderByDesc('t.call_started_at')
             ->get(['t.answered_by', 't.call_id', 't.call_started_at', 's.score', 's.checks', 's.strength', 's.improve']);
+        // A stored name as Performance shows it today: a pair added since the
+        // call was transcribed applies to it too, with nothing rewritten.
+        $names = PersonNames::forTenant();
+        $rows->each(fn ($r) => $r->answered_by = $names->canonical($r->answered_by) ?? $r->answered_by);
 
         $workiz = WorkizCall::query()
             ->whereBetween('called_at', [$from->toDateString().' 00:00:00', $to->toDateString().' 23:59:59'])
@@ -176,7 +186,7 @@ class ScoringReportController extends Controller
             ->where('to', '<=', $to->toDateString())
             ->orderByDesc('to')
             ->get(['person', 'period', 'from', 'to', 'calls', 'avg_score', 'summary', 'strengths', 'work_on', 'trend'])
-            ->groupBy('person');
+            ->groupBy(fn ($r) => $names->canonical($r->person) ?? $r->person);
         $review = fn ($person, $period) => ($r = $reviews->get($person)?->firstWhere('period', $period)) === null ? null : [
             'from' => $r->from->toDateString(), 'to' => $r->to->toDateString(), 'calls' => $r->calls,
             'avg_score' => $r->avg_score, 'summary' => $r->summary, 'strengths' => $r->strengths,
@@ -188,7 +198,8 @@ class ScoringReportController extends Controller
         $perf = $performance->for($request->user(), $from, $to);
         $weights = ScoringWeights::current();
 
-        $people = $rows->groupBy('answered_by')->map(function ($calls, $person) use ($workiz, $review, $perf, $weights) {
+        $min = ReportView::minCalls();
+        $people = $rows->groupBy('answered_by')->map(function ($calls, $person) use ($workiz, $review, $perf, $weights, $min) {
             $checks = [];
             foreach (ScoreReportCalls::CHECKS as $check) {
                 $met = $calls->filter(fn ($c) => (json_decode((string) $c->checks, true)[$check] ?? false) === true)->count();
@@ -197,7 +208,13 @@ class ScoringReportController extends Controller
             $notes = fn (string $field) => $calls->pluck($field)->filter()->unique()->take(3)->values()->all();
             $newClient = (int) ($perf[$person]['new_client'] ?? 0);
             $jobs = (int) ($perf[$person]['jobs'] ?? 0);
-            $conversion = $newClient > 0 ? (int) round($jobs / $newClient * 100) : null;
+            // Booked out of the new-client calls they answered, as Performance's
+            // booking rate (Jose, 2026-11-04). Every job they created over those
+            // calls ranked Existing-client staff first: 6 jobs on 1 call, 600%.
+            // Not judged on it when they handle Existing, or answered too few new
+            // calls for a rate: their weight goes to the other measures.
+            $judged = ($perf[$person]['tag'] ?? null) !== 'existing' && $newClient >= $min;
+            $conversion = $judged ? (int) round(($perf[$person]['booked_new'] ?? 0) / $newClient * 100) : null;
 
             return [
                 'person' => $person,
@@ -222,7 +239,7 @@ class ScoringReportController extends Controller
 
         $rank = 0;
         foreach ($people as &$p) {
-            if ($p['calls_scored'] >= self::MIN_CALLS) {
+            if ($p['calls_scored'] >= $min) {
                 $p['rank'] = ++$rank;
             }
         }
@@ -230,7 +247,7 @@ class ScoringReportController extends Controller
         return response()->json(['data' => [
             'from' => $from->toDateString(),
             'to' => $to->toDateString(),
-            'min_calls_to_rank' => self::MIN_CALLS,
+            'min_calls_to_rank' => $min,
             'weights' => $weights,
             'people' => $people,
             // Its jobs are read from these, the reader's ticked ones only, so

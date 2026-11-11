@@ -1983,6 +1983,51 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             ),
           ],
 
+          // From a review link, inferred by name (Jose, 2026-11-09).
+          if (review['link_match'] case final Map lm)
+            Padding(
+              key: const ValueKey('review-link-match'),
+              padding: const EdgeInsets.only(top: 8),
+              child: Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    'From a review link · ${lm['confidence']} match'
+                    '${lm['clicked'] == true ? '' : ' · without a click'}'
+                    '${lm['status'] == 'auto' ? '' : ' · ${lm['status']}'}',
+                    style: small,
+                  ),
+                  if (manage && lm['status'] == 'auto') ...[
+                    TextButton(
+                      key: const ValueKey('review-link-confirm'),
+                      onPressed: _busy
+                          ? null
+                          : () => _write(
+                              widget.api.put(
+                                '/reviews/${review['id']}/link-match',
+                                {'confirmed': true},
+                              ),
+                            ),
+                      child: const Text('Confirm'),
+                    ),
+                    TextButton(
+                      key: const ValueKey('review-link-reject'),
+                      onPressed: _busy
+                          ? null
+                          : () => _write(
+                              widget.api.put(
+                                '/reviews/${review['id']}/link-match',
+                                {'confirmed': false},
+                              ),
+                            ),
+                      child: const Text('Not this customer'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
           _section(theme, 'Reply'),
           _reply(theme, review),
 

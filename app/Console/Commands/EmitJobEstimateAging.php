@@ -16,7 +16,7 @@ use Illuminate\Support\Carbon;
 /**
  * `job.estimate_aging`: once a day, each job in a status the organization says
  * waits on an estimate (jobs.estimate_aging_statuses), with how many days since
- * its LATEST estimate and what has been paid (Jose's Project Management rule 2,
+ * its LATEST estimate and what has been paid (Jose's rule 2,
  * 2026-10-21). The rule keeps the threshold.
  *
  * The estimate date is the latest of EzBizi's own (issued_on, else the day it

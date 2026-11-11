@@ -204,32 +204,77 @@ void reviewLinkTests() {
     expect(find.text('10 · 50%'), findsWidgets, reason: 'opened of sent');
     expect(find.text('8 · 80%'), findsOneWidget, reason: 'green of opened');
     expect(find.text('6 · 75%'), findsOneWidget, reason: 'google of green');
+    // Jose, 2026-11-09: the fifth step, matched reviews.
+    expect(find.text('3 · 50%'), findsOneWidget, reason: 'reviewed of google');
+    expect(
+      find.textContaining(
+        'exact 1 · likely 1 · confirmed 1 · without a click 1 · 4.7 ★',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('+4 possible matches, confirm in Reviews'),
+      findsOneWidget,
+    );
     expect(find.textContaining('counted since'), findsOneWidget);
 
     // Siblings are one size (Jose: "you always make that mistake").
     final sizes = {
-      for (final k in ['sent', 'opened', 'happy', 'sad', 'google', 'submitted'])
+      for (final k in [
+        'sent',
+        'opened',
+        'happy',
+        'sad',
+        'google',
+        'submitted',
+        'reviewed',
+      ])
         tester.getSize(find.byKey(Key('review-links-tile-$k'))),
     };
     expect(sizes.length, 1);
   });
 
-  testWidgets(
-    'on a phone: two columns of tiles and a list, nothing overflows',
-    (tester) async {
-      final errors = <FlutterErrorDetails>[];
-      final previous = FlutterError.onError;
-      FlutterError.onError = errors.add;
-      addTearDown(() => FlutterError.onError = previous);
+  testWidgets('on a phone: two columns of tiles and a list, nothing overflows', (
+    tester,
+  ) async {
+    final errors = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previous);
 
+    try {
       await _pump(tester, _handler(reachable: const ['reviews']));
       tester.view.physicalSize = const Size(390, 844);
+      await tester.pumpAndSettle();
+      // The chip row scrolls on a phone; Auto-replies pushed this one past the edge.
+      await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'Review links'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('review-links-table')), findsNothing);
+      // Seven tiles push the list below the fold on a phone (2026-11-09).
+      await tester.scrollUntilVisible(
+        find.text('North Branch'),
+        200,
+        scrollable: find
+            .ancestor(
+              of: find.byKey(const Key('review-links-reviewed-detail')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       expect(find.text('North Branch'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('review-links-tile-sent')),
+        -200,
+        scrollable: find
+            .ancestor(
+              of: find.byKey(const Key('review-links-reviewed-detail')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       final sent = tester.getTopLeft(
         find.byKey(const Key('review-links-tile-sent')),
       );
@@ -237,20 +282,25 @@ void reviewLinkTests() {
         find.byKey(const Key('review-links-tile-opened')),
       );
       expect(sent.dy, opened.dy, reason: 'two tiles per row');
-      expect(
-        errors,
-        isEmpty,
-        reason: errors.map((e) => e.exceptionAsString()).join(' | '),
-      );
-    },
-  );
+    } finally {
+      // Restored before any failure, so the real one is reported (2026-11-09).
+      FlutterError.onError = previous;
+    }
+    expect(
+      errors,
+      isEmpty,
+      reason: errors.map((e) => e.exceptionAsString()).join(' | '),
+    );
+  });
 
   testWidgets('review links open on today', (tester) async {
     await _pump(tester, _handler(reachable: const ['reviews']));
     await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
     await tester.pumpAndSettle();
 
-    final today = tester.widget<ChoiceChip>(find.byKey(const ValueKey('report-dates-Today')));
+    final today = tester.widget<ChoiceChip>(
+      find.byKey(const ValueKey('report-dates-Today')),
+    );
     expect(today.selected, isTrue);
   });
 
@@ -369,6 +419,17 @@ MockClientHandler _handler({List<String>? reachable, bool withLeads = false}) {
             'sad': 2,
             'submitted': 1,
             'google': 6,
+            'reviewed': 3,
+          },
+          'reviewed': {
+            'by': {
+              'exact': 1,
+              'likely': 1,
+              'confirmed': 1,
+              'possible': 4,
+              'without_click': 1,
+            },
+            'stars': 4.67,
           },
           'by_branch': [
             {

@@ -20,6 +20,7 @@ use App\Support\Modules\ModuleRegistry;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Notifications\PushSender;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -206,15 +207,26 @@ class NotificationsController extends Controller
 
         $user = $request->user();
 
-        $device = DeviceToken::withoutGlobalScopes()->where('token', $data['token'])->first()
-            ?? new DeviceToken(['token' => $data['token'], 'created_at' => now()]);
+        $claim = function () use ($data, $user): void {
+            $device = DeviceToken::withoutGlobalScopes()->where('token', $data['token'])->first()
+                ?? new DeviceToken(['token' => $data['token'], 'created_at' => now()]);
 
-        $device->forceFill([
-            'organization_id' => $user->organization_id,
-            'user_id' => $user->getKey(),
-            'platform' => $data['platform'],
-            'last_registered_at' => now(),
-        ])->save();
+            $device->forceFill([
+                'organization_id' => $user->organization_id,
+                'user_id' => $user->getKey(),
+                'platform' => $data['platform'],
+                'last_registered_at' => now(),
+            ])->save();
+        };
+
+        // Two registrations of one token can both miss the lookup and both
+        // insert; the loser hit the unique index as a 500 in production. The
+        // row exists by then, so a second pass finds it and takes it over.
+        try {
+            $claim();
+        } catch (UniqueConstraintViolationException) {
+            $claim();
+        }
 
         return response()->json(['data' => ['registered' => true]]);
     }
@@ -284,12 +296,26 @@ class NotificationsController extends Controller
                 'id' => $notification->subject_id,
             ],
             'meta' => $this->destination($notification, $events),
+            // The inbox's "Assigned to me" and "Mentioned" tabs (monday port,
+            // 2026-11-09): handed this person something, or @mentioned them.
+            'kind' => $this->kindOf($notification, $events),
             // Jose, 2026-10-22: the panel and the desktop toast lead with the
             // same "EzBizi - Company - Branch" as the push and the mail.
             'header' => $this->headerFor($notification),
             'read_at' => $notification->read_at?->toIso8601String(),
             'created_at' => $notification->created_at->toIso8601String(),
         ];
+    }
+
+    private function kindOf(Notification $notification, $events): ?string
+    {
+        if ($notification->source === 'mention') {
+            return 'mentioned';
+        }
+
+        $key = $notification->event_id === null ? null : $events->get($notification->event_id)?->event_key;
+
+        return $key !== null && preg_match('/\.(assigned|assign|assign_to_user|assignment_added)$/', $key) ? 'assigned' : null;
     }
 
     /**
@@ -310,6 +336,8 @@ class NotificationsController extends Controller
     private const SUBJECT_MODULES = [
         Suggestion::class => 'suggestions',
         Lead::class => 'leads',
+        \App\Models\Job::class => 'jobs',
+        \App\Models\Task::class => 'tasks',
         TimeClockCorrectionRequest::class => 'work_hours',
         TimeClockDayApproval::class => 'work_hours',
         PtoRequest::class => 'work_hours',

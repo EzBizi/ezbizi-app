@@ -390,8 +390,22 @@ final class WorkizJobWriter
             ->reject(fn ($a) => $a === null || trim((string) $a) === '' || $a === 'null')->values()->all();
     }
 
-    /** Workiz's own words for a status (v2 lists exactly these, measured 2026-10-20). */
-    public const STATUSES = ['Submitted', 'In progress', 'Pending', 'done pending approval', 'Canceled', 'Done'];
+    /**
+     * The branch's own Workiz statuses, as its account says them: the parents
+     * of its mirrored sub-statuses and every status its mirrored jobs carry
+     * (Jose, 2026-11-04: no business value in code; "done pending approval"
+     * is A-1's own). Matched without case, so EzBizi's word goes up as Workiz spells it.
+     *
+     * @return list<string>
+     */
+    private function statuses(string $franchiseId): array
+    {
+        $parents = WorkizRecord::query()->where('franchise_id', $franchiseId)->where('type', 'sub_status')->get(['payload'])
+            ->toBase()->map(fn (WorkizRecord $r) => $r->payload['parentName'] ?? null);
+
+        return $parents->merge(WorkizJob::query()->where('franchise_id', $franchiseId)->distinct()->pluck('status'))
+            ->filter(fn ($s) => is_string($s) && trim($s) !== '')->map(fn ($s) => trim($s))->unique()->values()->all();
+    }
 
     /**
      * Move a job to a status, and a sub-status by its name in that account
@@ -402,8 +416,8 @@ final class WorkizJobWriter
     public function setStatus(WorkizJob $job, string $status, ?string $subStatusName = null): WorkizJob
     {
         [$connection, $id] = $this->v2Job($job);
-        $word = collect(self::STATUSES)->first(fn (string $s) => strcasecmp($s, trim($status)) === 0)
-            ?? throw new RuntimeException('Workiz has no status "'.$status.'". It takes: '.implode(', ', self::STATUSES).'.');
+        // One the branch never used goes as typed: Workiz's own refusal is the answer.
+        $word = collect($this->statuses($job->franchise_id))->first(fn (string $s) => strcasecmp($s, trim($status)) === 0) ?? trim($status);
         $body = ['status' => $word];
 
         if ($subStatusName !== null && trim($subStatusName) !== '') {
@@ -434,7 +448,7 @@ final class WorkizJobWriter
     }
 
     /**
-     * Take the job off Workiz's schedule (Jose's Project Management Action 1,
+     * Take the job off Workiz's schedule (Jose's Action 1,
      * 2026-10-22: payment in, time removed). Measured on NY's test job
      * 900018655: PUT {isScheduled: false} clears date and endDate; a null or
      * empty date is refused.
@@ -450,9 +464,10 @@ final class WorkizJobWriter
      * Make the job's tags exactly these names (Jose, 2026-10-21: "existing
      * tags should be removed"). Each name is the account's own tag (GET
      * /tags), matched without case and spacing, or by one close spelling,
-     * since accounts spell them differently ("DEPOSIT RECIEVED" on NY). A tag
-     * the account lacks is refused, never created. The tags dropped are
-     * audited under `removed`.
+     * since accounts spell them differently. A tag the account lacks is
+     * refused, never created. v2 only adds, so the tags to drop are taken off
+     * through the web login (WorkizWebSession::removeJobTags); the audit says
+     * which came off (`removed`) and which Workiz still holds (`not_removed`).
      *
      * @param  list<string>  $names
      */
@@ -471,7 +486,10 @@ final class WorkizJobWriter
         $current = is_array($current) && array_is_list($current) ? ($current[0] ?? []) : (array) $current;
         $removed = collect($current['tags'] ?? [])->reject(fn ($t) => in_array($t['id'] ?? null, $ids, true))->pluck('name')->values()->all();
 
-        return $this->put($connection, $job, $id, ['tags' => $ids], 'workiz.job_tags_set', ['tags' => $names, 'removed' => $removed]);
+        $dropped = $removed === [] ? ['removed' => [], 'refused' => null] : WorkizWebSession::removeJobTags($job->franchise_id, (string) $job->remote_id, $removed);
+
+        return $this->put($connection, $job, $id, ['tags' => $ids], 'workiz.job_tags_set', ['tags' => $names, 'removed' => $dropped['removed'],
+            'not_removed' => array_values(array_diff($removed, $dropped['removed'])), 'not_removed_because' => $dropped['refused']]);
     }
 
     /** @return array{0: SocialConnection, 1: string} */

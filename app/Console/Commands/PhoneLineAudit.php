@@ -19,19 +19,11 @@ use Throwable;
  * and the Calls screen just goes quiet. This compares Twilio's list with ours
  * and with last night's snapshot, and logs every difference as a warning.
  *
- * ponytail: log-only alert; send it to a person when Jose picks who.
+ * Findings also go to the people in each organization's phone.audit_alert_emails.
  */
 class PhoneLineAudit extends Command
 {
     protected $signature = 'ezbizi:phone-line-audit';
-
-    /**
-     * Lines whose voice is known to point away from us, and why. Remove the
-     * entry when the reason is gone, or the audit stays blind to that line.
-     */
-    private const VOICE_ELSEWHERE_EXPECTED = [
-        '+18559553322' => 'main profile, waiting on Twilio re-parent (ticket #29486941)',
-    ];
 
     protected $description = 'Check every Twilio line still routes to EzBizi and report changes';
 
@@ -46,6 +38,13 @@ class PhoneLineAudit extends Command
             ->get();
 
         foreach ($connections as $connection) {
+            $organization = \App\Models\Organization::query()->find($connection->organization_id);
+            if ($organization === null) {
+                continue;
+            }
+            // Lines whose voice points away from us on purpose (setting); texts are still checked.
+            $elsewhere = array_map('trim', explode(',', (string) app(\App\Support\Tenancy\TenantContext::class)->run($organization, fn () => app(\App\Support\Settings\SettingsResolver::class)->get('phone.voice_elsewhere_ok', $organization))));
+            $issues[$organization->id] ??= [];
             $ours = PhoneNumber::query()->withoutGlobalScopes()
                 ->where('connection_id', $connection->id)
                 ->get(['e164', 'twilio_sid', 'account_sid']);
@@ -56,21 +55,24 @@ class PhoneLineAudit extends Command
                 $read = $account === $connection->account_sid
                     ? fn () => $twilio->listIncoming($connection)
                     : fn () => $twilio->listAccountIncoming((string) $account);
-                $this->check($read, $lines->pluck('e164', 'twilio_sid')->all(), "{$connection->id}:{$account}", $host, $issues);
+                $this->check($read, $lines->pluck('e164', 'twilio_sid')->all(), "{$connection->id}:{$account}", $host, $elsewhere, $issues[$organization->id]);
             }
         }
 
-        foreach ($issues as $issue) {
-            Log::warning('phone-line-audit: '.$issue);
-            $this->warn($issue);
+        foreach ($issues as $organizationId => $found) {
+            foreach ($found as $issue) {
+                Log::warning('phone-line-audit: '.$issue);
+                $this->warn($issue);
+            }
+            \App\Support\Phone\PhoneAuditAlert::send(\App\Models\Organization::query()->findOrFail($organizationId), 'nightly line audit', $found);
         }
-        $this->info(count($connections).' accounts, '.count($issues).' issues.');
+        $this->info(count($connections).' accounts, '.count(array_merge(...array_values($issues ?: [[]]))).' issues.');
 
         return self::SUCCESS;
     }
 
     /** @param array<string, string> $ours sid => e164 */
-    private function check(callable $read, array $ours, string $key, string $host, array &$issues): void
+    private function check(callable $read, array $ours, string $key, string $host, array $elsewhere, array &$issues): void
     {
         try {
             $live = collect($read())->keyBy('sid');
@@ -84,7 +86,7 @@ class PhoneLineAudit extends Command
             $line = $live->get($sid);
             if ($line === null) {
                 $issues[] = "{$e164}: gone from Twilio";
-            } elseif (! str_starts_with($line['voice_url'], $host.'/') && ! isset(self::VOICE_ELSEWHERE_EXPECTED[$e164])) {
+            } elseif (! str_starts_with($line['voice_url'], $host.'/') && ! in_array($e164, $elsewhere, true)) {
                 $issues[] = "{$e164}: voice goes to ".($line['voice_url'] ?: 'nothing');
             } elseif (! str_starts_with($line['sms_url'], $host.'/')) {
                 $issues[] = "{$e164}: texts go to ".($line['sms_url'] ?: 'nothing');

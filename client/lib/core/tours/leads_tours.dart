@@ -5,11 +5,141 @@ import '../tab_tours.dart';
 /// reports_tours.dart for the pattern).
 ///
 /// Leads' sources are keyed by their names in the module's permission tabs:
-/// `leads/Messenger` is the source the rail calls Facebook. The rail is not a
+/// `leads/Facebook` is the Meta tab's Facebook source. The rail is not a
 /// TabBarLike, so these run once it says which source is open. Manage's own
 /// strip is one, so its tabs are `leads/Connections`, `leads/Templates`,
 /// `leads/Dashboard`, `leads/Stats` and `leads/Office hours`.
 const Map<String, Tour> leadsTours = {
+  'leads/Calls': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'Calls',
+        body:
+            'Every call that came in as a lead: Google Local Services, your '
+            'own lines (RC) and your EzBizi lines (EZ), with how many are '
+            'unread.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'Calls',
+        body:
+            'Every call that came in as a lead: Google Local Services, your '
+            'own lines (RC) and your EzBizi lines (EZ).',
+      ),
+      TourStep(
+        anchor: 'group-sources',
+        title: 'One kind at a time',
+        body:
+            'All of them, or only LS Call, RC Calls or EZ Calls. Each lead '
+            'keeps its own tag either way.',
+      ),
+      TourStep(
+        anchor: 'leads-list',
+        title: 'One caller, one lead',
+        body:
+            'Each caller is one lead, with every call they made and the line '
+            'they rang.',
+      ),
+      TourStep(
+        anchor: 'thread-list',
+        title: 'Recording and transcript',
+        body:
+            'Each call has its recording and a short part of what was said; '
+            'open it for the whole transcript, line by line.',
+      ),
+      TourStep(
+        anchor: 'lead-call',
+        title: 'Call them back',
+        body: "Opens EzBizi's dial pad with their number on it.",
+      ),
+      TourStep(
+        anchor: 'book-open',
+        title: 'Book',
+        body: 'Creates a customer and a job, and marks the lead booked.',
+      ),
+    ],
+  ),
+  'leads/SMS Texts': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'SMS Texts',
+        body:
+            'Texts from Google Local Services (LS) and to your EzBizi lead '
+            'lines (EZ), with how many are unread.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'SMS Texts',
+        body:
+            'Texts from Google Local Services (LS) and to your EzBizi lead '
+            'lines (EZ).',
+      ),
+      TourStep(
+        anchor: 'group-sources',
+        title: 'One kind at a time',
+        body:
+            'All of them, or only LS Text or EZ Texts. Each lead keeps its '
+            'own tag either way.',
+      ),
+      TourStep(
+        anchor: 'thread-list',
+        title: 'The conversation',
+        body:
+            'Every text both ways, the newest at the bottom, including the '
+            'ones your automations and the booking bot sent.',
+      ),
+      TourStep(
+        anchor: 'reply-box',
+        title: 'Reply',
+        body:
+            'Your reply goes back the way they wrote: through Google for LS, '
+            'as a text from the same line for EZ.',
+      ),
+      TourStep(
+        anchor: 'book-open',
+        title: 'Book',
+        body:
+            'Creates a customer and a job. A window the booking bot held '
+            'waits under Online Booking for you to approve instead.',
+      ),
+    ],
+  ),
+  'leads/Meta': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'Meta',
+        body:
+            'Facebook Messenger, Instagram and WhatsApp in one tab, with how '
+            'many are unread.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'Meta',
+        body: 'Facebook Messenger, Instagram and WhatsApp in one tab.',
+      ),
+      TourStep(
+        anchor: 'group-sources',
+        title: 'One app at a time',
+        body:
+            'All of them, or only Facebook, Instagram or WhatsApp. Each lead '
+            'keeps its own tag either way.',
+      ),
+      TourStep(
+        anchor: 'reply-box',
+        title: 'Reply in their app',
+        body:
+            'Your reply goes back in the app they wrote from, and only within '
+            '24 hours of their last message. After that a note stands in '
+            'place of the box.',
+      ),
+    ],
+  ),
   'leads/Thumbtack': Tour(
     version: 1,
     steps: [
@@ -103,7 +233,7 @@ const Map<String, Tour> leadsTours = {
     ],
   ),
   'leads/Forms': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'source-rail',
@@ -116,6 +246,14 @@ const Map<String, Tour> leadsTours = {
         body: 'Only forms sent from your website, with how many are unread.',
       ),
       TourStep(
+        anchor: 'group-sources',
+        since: 2,
+        title: 'Forms or Job applicants',
+        body:
+            'All of them, or one at a time: forms from customers, and people '
+            'asking for a job.',
+      ),
+      TourStep(
         anchor: 'leads-list',
         title: 'The forms',
         body:
@@ -125,9 +263,15 @@ const Map<String, Tour> leadsTours = {
       TourStep(
         anchor: 'thread-list',
         title: 'What they sent',
+        body: 'The form as it came in, and every text sent about it since.',
+      ),
+      TourStep(
+        anchor: 'reply-box',
+        since: 2,
+        title: 'Text them',
         body:
-            'The form as it came in. A form has no chat to answer into, so '
-            'there is no reply box.',
+            'When the form left a phone number, your reply goes to it as a text '
+            "from your company's texting line, and stays on this thread.",
       ),
       TourStep(
         anchor: 'lead-call',
@@ -149,7 +293,7 @@ const Map<String, Tour> leadsTours = {
     ],
   ),
   'leads/Online Booking': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'source-rail',
@@ -166,6 +310,14 @@ const Map<String, Tour> leadsTours = {
             'with how many are unread.',
       ),
       TourStep(
+        anchor: 'leads-list',
+        since: 2,
+        title: 'Held from a text chat',
+        body:
+            'A window the booking bot agreed with a customer by text waits here '
+            'too, until you approve it.',
+      ),
+      TourStep(
         anchor: 'lead-booking',
         title: 'The requested day',
         body:
@@ -177,7 +329,8 @@ const Map<String, Tour> leadsTours = {
         title: 'Approve or decline',
         body:
             'Approve holds the window until the job is booked; Decline gives '
-            'it back. Neither one messages the customer.',
+            'it back. Approving a window the bot held books the job straight '
+            'away, with the address and service from the chat.',
       ),
       TourStep(
         anchor: 'booking-fit',
@@ -193,8 +346,8 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
-  'leads/Messenger': Tour(
-    version: 1,
+  'leads/Facebook': Tour(
+    version: 2,
     steps: [
       TourStep(
         anchor: 'source-rail',
@@ -209,6 +362,14 @@ const Map<String, Tour> leadsTours = {
         body:
             'Only Messenger messages to your Facebook Page, with how many are '
             'unread.',
+      ),
+      TourStep(
+        anchor: 'group-sources',
+        since: 2,
+        title: 'Inside Meta',
+        body:
+            'Facebook is one chip inside the Meta tab. All shows every '
+            'source in it, each lead keeping its own tag.',
       ),
       TourStep(
         anchor: 'leads-list',
@@ -228,7 +389,7 @@ const Map<String, Tour> leadsTours = {
     ],
   ),
   'leads/Instagram': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'source-rail',
@@ -243,6 +404,14 @@ const Map<String, Tour> leadsTours = {
         body:
             'Only direct messages to your Instagram account, with how many '
             'are unread.',
+      ),
+      TourStep(
+        anchor: 'group-sources',
+        since: 2,
+        title: 'Inside Meta',
+        body:
+            'Instagram is one chip inside the Meta tab. All shows every '
+            'source in it, each lead keeping its own tag.',
       ),
       TourStep(
         anchor: 'leads-list',
@@ -294,7 +463,7 @@ const Map<String, Tour> leadsTours = {
     ],
   ),
   'leads/RC Calls': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'source-rail',
@@ -313,11 +482,35 @@ const Map<String, Tour> leadsTours = {
             'shown here twice.',
       ),
       TourStep(
+        anchor: 'group-sources',
+        since: 2,
+        title: 'Inside Calls',
+        body:
+            'RC Calls is one chip inside the Calls tab. All shows every '
+            'source in it, each lead keeping its own tag.',
+      ),
+      TourStep(
         anchor: 'leads-list',
         title: 'One caller, one lead',
         body:
             'Each caller is one lead, with every call they made, the line '
             'they rang, the recording and what was said.',
+      ),
+      TourStep(
+        anchor: 'thread-list',
+        since: 2,
+        title: 'The transcript',
+        body:
+            'Each call shows a short part of what was said; open it for the '
+            'whole transcript, line by line.',
+      ),
+      TourStep(
+        anchor: 'reply-box',
+        since: 2,
+        title: 'Text them back',
+        body:
+            "Your reply goes as a text from your company's texting line, and "
+            'stays on this thread.',
       ),
       TourStep(
         anchor: 'lead-call',
@@ -346,7 +539,7 @@ const Map<String, Tour> leadsTours = {
     ],
   ),
   'leads/EZ Calls': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'source-rail',
@@ -363,6 +556,14 @@ const Map<String, Tour> leadsTours = {
             'Calls to your EzBizi phone lines marked as lead lines, one lead '
             'per caller, tagged Missed call, Voicemail, Possible spam or '
             'Existing client.',
+      ),
+      TourStep(
+        anchor: 'group-sources',
+        since: 2,
+        title: 'Inside Calls',
+        body:
+            'EZ Calls is one chip inside the Calls tab. All shows every '
+            'source in it, each lead keeping its own tag.',
       ),
       TourStep(
         anchor: 'leads-list',
@@ -373,8 +574,32 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
-  'leads/EZ Texts': Tour(
+  'leads/Promotions': Tour(
     version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'Promotions',
+        body:
+            'Answers to the promotion texts sent from Memberships. Your reply '
+            'goes back as a text from the same line.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'Promotions',
+        body:
+            'Answers to the promotion texts sent from Memberships. Your reply '
+            'goes back as a text from the same line.',
+      ),
+      TourStep(
+        anchor: 'leads-list',
+        title: 'The text and the answer',
+        body: 'Each lead shows the promotion text and what the customer wrote.',
+      ),
+    ],
+  ),
+  'leads/EZ Texts': Tour(
+    version: 2,
     steps: [
       TourStep(
         anchor: 'source-rail',
@@ -391,11 +616,19 @@ const Map<String, Tour> leadsTours = {
             'Texts to your EzBizi lead lines. They wait for an answer like '
             'any message, and your reply goes back as a text from the same '
             'line.',
+      ),
+      TourStep(
+        anchor: 'group-sources',
+        since: 2,
+        title: 'Inside SMS Texts',
+        body:
+            'EZ Texts is one chip inside the SMS Texts tab. All shows every '
+            'source in it, each lead keeping its own tag.',
       ),
     ],
   ),
   'leads/WhatsApp': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'source-rail',
@@ -410,6 +643,14 @@ const Map<String, Tour> leadsTours = {
         body:
             'Only people who messaged your WhatsApp number and picked I need '
             'a service, with how many are unread.',
+      ),
+      TourStep(
+        anchor: 'group-sources',
+        since: 2,
+        title: 'Inside Meta',
+        body:
+            'WhatsApp is one chip inside the Meta tab. All shows every '
+            'source in it, each lead keeping its own tag.',
       ),
       TourStep(
         anchor: 'leads-list',
@@ -593,7 +834,8 @@ const Map<String, Tour> leadsTours = {
       TourStep(
         anchor: 'hidden-list',
         title: 'Who is hidden',
-        body: 'Who hid each one, when and why. Unhide, or stop hiding a number.',
+        body:
+            'Who hid each one, when and why. Unhide, or stop hiding a number.',
       ),
       TourStep(
         anchor: 'hide-number-open',
@@ -729,6 +971,56 @@ const Map<String, Tour> leadsTours = {
         anchor: 'member-cancel',
         title: 'Cancel membership',
         body: 'Ends this membership, after asking once.',
+      ),
+    ],
+  ),
+  'customers/Memberships/Promotions': Tour(
+    version: 2,
+    steps: [
+      TourStep(
+        anchor: 'promotions-dates',
+        title: 'Pick the jobs',
+        body:
+            'The dates of the Done jobs whose customers get the text: a '
+            'preset, or your own From and To.',
+      ),
+      TourStep(
+        anchor: 'promotions-filters',
+        title: 'Narrow it down',
+        body:
+            'Branch, job type, service, tags, amount, no job since a date, '
+            'and leave out open jobs or members. The count updates as you go.',
+      ),
+      TourStep(
+        anchor: 'promotions-list',
+        title: 'Everyone on the list',
+        body: 'Search it, and untick anyone who should not get the text.',
+      ),
+      TourStep(
+        anchor: 'promotions-body',
+        title: 'The message',
+        body:
+            'First names and the company name are filled in for each '
+            'customer, and the opt-out line is added.',
+      ),
+      TourStep(
+        anchor: 'promotions-phones',
+        title: 'How it looks',
+        body:
+            'The text on an Android phone and an iPhone, as the first '
+            'customer on the list gets it.',
+      ),
+      TourStep(
+        anchor: 'promotions-test',
+        title: 'Test it',
+        body: 'Send one text, marked TEST, to your own phone.',
+      ),
+      TourStep(
+        anchor: 'promotions-send',
+        title: 'Send',
+        body:
+            'Press twice to send. One text per phone; numbers that replied '
+            'STOP are skipped. Answers arrive in Leads, Promotions.',
       ),
     ],
   ),
@@ -914,6 +1206,32 @@ const Map<String, Tour> leadsTours = {
   ),
   // Its own chip since 2026-10-20 (Jose: "Reviews - GBP Listings - GBP
   // Performance - Review Links").
+  // Design 176 (Jose, 2026-11-03).
+  'customer_experience/Posts to approve': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'gbp-post-preview',
+        title: 'How it will look',
+        body: 'The weekly post for this listing, as Google shows it.',
+      ),
+      TourStep(
+        anchor: 'gbp-post-approve',
+        title: 'Approve',
+        body: 'Sends it to Google. Edit first if a word is wrong.',
+      ),
+      TourStep(
+        anchor: 'gbp-post-disapprove',
+        title: 'Disapprove',
+        body: 'Drops it. You can say why.',
+      ),
+      TourStep(
+        anchor: 'gbp-post-auto',
+        title: 'Publish without approval',
+        body: 'Off: every post waits here. On: this listing posts by itself.',
+      ),
+    ],
+  ),
   'customer_experience/GBP Performance': Tour(
     version: 1,
     steps: [
@@ -935,7 +1253,8 @@ const Map<String, Tour> leadsTours = {
       TourStep(
         anchor: 'gbp-performance-table',
         title: 'Each listing',
-        body: 'Its calls, clicks, directions and views. Open one for the '
+        body:
+            'Its calls, clicks, directions and views. Open one for the '
             'searches that found it.',
       ),
     ],

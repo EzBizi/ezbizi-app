@@ -23,7 +23,7 @@ class WhatsAppSameDayReportsTest extends TestCase
         Http::fake(function ($request) use (&$sent) {
             $sent[] = $request->data();
 
-            return Http::response(['messages' => [['id' => 'wamid.OUT'.count($sent)]]]);
+            return Http::response(['id' => 'MEDIA-'.count($sent), 'messages' => [['id' => 'wamid.OUT'.count($sent)]]]);
         });
 
         $t = $this->provisionTenant('A1-Group');
@@ -42,8 +42,10 @@ class WhatsAppSameDayReportsTest extends TestCase
         $this->artisan('ezbizi:whatsapp-same-day-reports', ['--date' => '2026-10-05'])->assertSuccessful();
         $this->artisan('ezbizi:whatsapp-same-day-reports', ['--date' => '2026-10-05'])->assertSuccessful();
 
-        $this->assertSame(['GROUP-DAILY', 'GROUP-FIN'], array_column($sent, 'to'));
-        $this->assertStringContainsString('Same-Day Report', $sent[0]['text']['body']);
-        $this->assertStringContainsString('Same-Day Company Summary', $sent[1]['text']['body']);
+        // Each group ONE message, the PDF under its text (Jose, 2026-11-10); once.
+        $posts = array_values(array_filter($sent, fn ($m) => isset($m['to'])));
+        $this->assertSame([['GROUP-DAILY', 'document'], ['GROUP-FIN', 'document']], array_map(fn ($m) => [$m['to'], $m['type']], $posts));
+        $this->assertStringContainsString('Same-Day Report', $posts[0]['document']['caption']);
+        $this->assertStringContainsString('Same-Day Company Summary', $posts[1]['document']['caption']);
     }
 }

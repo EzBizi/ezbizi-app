@@ -624,10 +624,10 @@ Future<void> playHelpVideo(
     builder: (_) => _VideoPanel(video: video, label: label, player: player),
   );
 
-  if (small != true) {
-    player.dispose();
-    return;
-  }
+  // Closed: the panel disposes the player itself, once its exit animation
+  // has stopped drawing VideoPlayer. Disposing here, while the panel still
+  // slid out, threw "No active player with ID n" on Android.
+  if (small != true) return;
 
   late final OverlayEntry entry;
   entry = OverlayEntry(
@@ -666,6 +666,9 @@ class _VideoPanelState extends State<_VideoPanel> {
   bool _downloading = false;
   OverlayEntry? _full;
 
+  /// Set when "Keep it small" hands the player on to the corner window.
+  bool _handedOn = false;
+
   @override
   void initState() {
     super.initState();
@@ -684,6 +687,7 @@ class _VideoPanelState extends State<_VideoPanel> {
   @override
   void dispose() {
     if (_full != null) _leaveFullscreen();
+    if (!_handedOn) widget.player.dispose();
     super.dispose();
   }
 
@@ -765,7 +769,10 @@ class _VideoPanelState extends State<_VideoPanel> {
         if (!_cannotPlay)
           OutlinedButton(
             key: const Key('help-video-small'),
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () {
+              _handedOn = true;
+              Navigator.of(context).pop(true);
+            },
             child: const Text('Keep it small'),
           ),
       ],

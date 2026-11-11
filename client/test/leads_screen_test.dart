@@ -7,6 +7,7 @@ import 'package:ezbizi_client/screens/leads_screen.dart';
 import 'package:ezbizi_client/widgets/lead_thread.dart';
 import 'package:ezbizi_client/widgets/leads_accounts.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:http/http.dart' as http;
@@ -75,6 +76,70 @@ void main() {
 
     expect(find.text('Dana Whitfield'), findsNWidgets(2));
     expect(find.text('Marcus Bell'), findsOneWidget);
+  });
+
+  /// Jose, 2026-11-05: a notification for A1 Garage Doors opened while the
+  /// view was on Ace Fireplace, and every reply was refused as out of view.
+  testWidgets('a notification for another company moves the view there', (
+    tester,
+  ) async {
+    final inCompany = {
+      ..._me,
+      'scope': {'type': 'company', 'id': 'co-1', 'label': 'Everdoors', 'path': ['Everdoors']},
+      'companies': [
+        {'id': 'co-1', 'name': 'Everdoors', 'parent_company_id': null},
+        {'id': 'co-2', 'name': 'Garage Doors', 'parent_company_id': null},
+      ],
+    };
+    Map<String, dynamic> at(String company, [String id = 'lead-2']) => {
+      ..._lead(id, id == 'lead-2' ? 'Dana Whitfield' : 'Ruth Okafor'),
+      'company': {'id': company, 'name': company},
+    };
+    Map<String, dynamic> viewing(String company) => {
+      ...inCompany,
+      'scope': {'type': 'company', 'id': company, 'label': company, 'path': [company]},
+    };
+    Future<void> remount(String company, List<Map<String, dynamic>> leads, String? open) async {
+      await tester.pumpWidget(const SizedBox());
+      await _pump(
+        tester,
+        leads: leads,
+        connections: _connected,
+        initialLeadId: open,
+        me: viewing(company),
+      );
+    }
+
+    // Leads opened the ordinary way first, as between two notifications: an
+    // earlier test opened lead-2 too.
+    await remount('co-1', const [], null);
+    final leads = [_lead('lead-1', 'Marcus Bell'), at('co-2')];
+    await remount('co-1', leads, 'lead-2');
+    expect(_preferences, [
+      {'navigation.scope': 'company:co-2'},
+    ]);
+
+    // The switch's own remount opens the lead there.
+    await remount('co-2', leads, 'lead-2');
+    expect(_preferences, isEmpty);
+    expect(find.text('Dana Whitfield'), findsNWidgets(2));
+
+    // Then another company picked by hand: the shell hands over the same
+    // lead, and it must neither switch back nor stay selected (Jose,
+    // 2026-11-05: switching company unselects).
+    await remount('co-1', leads, 'lead-2');
+    expect(_preferences, isEmpty);
+    expect(find.text('Dana Whitfield'), findsOneWidget, reason: 'not selected');
+
+    // A notification lead the view already covers moves nothing, and a
+    // company picked afterwards does not snap back to it either.
+    final here = [_lead('lead-1', 'Marcus Bell'), at('co-1', 'lead-3')];
+    await remount('co-1', here, 'lead-3');
+    expect(_preferences, isEmpty);
+    expect(find.text('Ruth Okafor'), findsNWidgets(2));
+    await remount('co-2', here, 'lead-3');
+    expect(_preferences, isEmpty);
+    expect(find.text('Ruth Okafor'), findsOneWidget, reason: 'not selected');
   });
 
   testWidgets('search runs as you type, without Enter', (tester) async {
@@ -1831,6 +1896,60 @@ void _conversationRowTests() {
     );
   });
 
+  /// Jose, 2026-11-10: "add a third line, move all the tags to the third
+  /// line instead, maybe make them a bit smaller too". Name, time and star on
+  /// line 1; every tag on line 3, under the name, status first. Same on phone.
+  for (final size in const [Size(1400, 900), Size(390, 844)]) {
+    testWidgets('every tag is on line 3, under the name (${size.width})', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        leads: [
+          {
+            ..._lead('lead-1', 'Christopher Wellington', canReply: true),
+            'customer': {'id': 'c1'},
+            'status': 'booked',
+          },
+        ],
+        connections: _connected,
+        size: size,
+      );
+
+      Rect at(String key) => tester.getRect(find.byKey(ValueKey(key)));
+      final name = tester.getRect(find.text('Christopher Wellington').first);
+      final line3 = at('lead-tags-lead-1');
+      expect(line3.top, greaterThan(name.bottom));
+      expect((line3.left - name.left).abs(), lessThan(1));
+      // The star stays on line 1, beside the time.
+      expect(at('star-lead-1').center.dy, lessThan(line3.top));
+      // Status, then reply, then Customer, then the source, in reading
+      // order across however many runs the pane needs; none hidden.
+      final order = [
+        'status-pill-lead-1',
+        'reply-badge-lead-1',
+        'customer-badge-lead-1',
+        'source-badge-lead-1',
+      ].map((k) => at(k).top.round() * 10000 + at(k).left).toList();
+      expect(order, [...order]..sort());
+      for (final k in ['status-pill', 'reply-badge', 'customer-badge']) {
+        expect(at('$k-lead-1').top, greaterThanOrEqualTo(line3.top));
+      }
+      expect(find.textContaining(RegExp(r'^\+\d$')), findsNothing);
+      // Smaller than today's labelSmall.
+      expect(
+        tester
+            .renderObject<RenderParagraph>(find.text('Customer'))
+            .text
+            .style
+            ?.fontSize,
+        10,
+      );
+      expect(name.width, greaterThan(150));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   /// Tapping a row opens the thread in place, with a way back: never a page
   /// pushed over the app (the containment rule; design 30).
   testWidgets('on a phone, tapping a row opens the thread with a back bar', (
@@ -2021,6 +2140,7 @@ Future<void> _pump(
   Size size = const Size(1200, 900),
   String? initialSource,
   String? initialLeadId,
+  Map<String, dynamic> me = _me,
   Map<String, dynamic> preferences = const {},
   Map<String, int> unreadBySource = const {},
 }) async {
@@ -2157,7 +2277,7 @@ Future<void> _pump(
         return http.Response(
           jsonEncode({
             'data': {
-              ..._me,
+              ...me,
               'permissions': permissions,
               'preferences': preferences,
             },

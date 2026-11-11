@@ -179,6 +179,7 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame(0, $events['lead.customer_replied'] ?? 0);
         $this->assertSame(0, $events['lead.contact_received'] ?? 0);
         $this->assertSame(1, $events['lead.missed_call'] ?? 0, 'the one missed call, once');
+        $this->assertSame(1, $events['lead.received'] ?? 0, 'one new caller in the window; the second call is the same lead');
 
         $unreplied = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?unreplied=1')->json('data');
         $this->assertSame([], array_column($unreplied, 'id'), 'a call owes no reply');
@@ -217,6 +218,7 @@ class RingCentralLeadCallsTest extends TestCase
 
         $events = \App\Models\AutomationEvent::withoutGlobalScopes()->pluck('event_key')->countBy();
         $this->assertSame(2, $events['lead.missed_call'] ?? 0, 'missed and voicemail, not the hang-ups');
+        $this->assertSame(2, $events['lead.received'] ?? 0, 'the two new callers, not the hang-up or the catch-up run');
 
         $rc = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?source=ringcentral')->json('data');
         $this->assertCount(5, $rc, 'all five under RC Calls');

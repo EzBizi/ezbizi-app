@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * A job's money, the one definition both Project Managements read (Jose,
+ * A job's money, the one definition every reader uses (Jose,
  * 2026-10-27: "EzBizi is the master system and Workiz a mirror"; "Pending,
  * Paid, Total"). When Jobs records its own payments, this is the one file
  * that changes.
@@ -51,7 +51,11 @@ final class JobMoney
     /** The jobs' totals, or what they still owe, summed in cents. */
     public static function sum(Builder $jobs, string $what): int
     {
-        return (int) (clone $jobs)->toBase()->sum(\DB::raw(['total' => 'COALESCE('.self::total().', 0)', 'due' => self::dueSql()][$what]));
+        return (int) (clone $jobs)->toBase()->sum(\DB::raw([
+            'total' => 'COALESCE('.self::total().', 0)',
+            'due' => self::dueSql(),
+            'paid' => 'COALESCE('.self::paid().', 0)',
+        ][$what]));
     }
 
     /** @return Collection<string, Collection<int, array{job_id: string, at: Carbon, cents: int}>> each job's payments, oldest first */

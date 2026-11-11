@@ -5,6 +5,7 @@ namespace Tests\Feature\Reports;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Support\Reports\Texts\NewClientConversion;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\SocialProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,8 +16,22 @@ use Tests\TestCase;
 /** The staff bot's "Daily Conversion Updates (new clients only)". */
 class NewClientConversionTest extends TestCase
 {
-    use BuildsTenants;
+    use BuildsTenants {
+        provisionTenant as private tenantWithoutQueues;
+    }
     use RefreshDatabase;
+
+    /** A tenant with A-1's two queue names set, as Settings holds them (no names in code). */
+    protected function provisionTenant(string $name = 'Alpha', ?string $email = null): array
+    {
+        $t = $this->tenantWithoutQueues($name, $email);
+        $this->inTenant($t['org'], function () use ($t) {
+            app(SettingsResolver::class)->set('leads.new_client_queue', $t['org'], 'A1 - New Client');
+            app(SettingsResolver::class)->set('leads.existing_client_queue', $t['org'], 'A1 - Existing Client');
+        });
+
+        return $t;
+    }
 
     protected function tearDown(): void
     {

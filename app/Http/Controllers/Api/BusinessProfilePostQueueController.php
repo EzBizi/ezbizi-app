@@ -6,6 +6,7 @@ use App\Jobs\PublishSocialTarget;
 use App\Models\BusinessLocation;
 use App\Models\SocialPostTarget;
 use App\Support\Audit\AuditLogger;
+use App\Support\Social\SocialConnectionAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,14 +18,17 @@ use Illuminate\Http\Request;
 class BusinessProfilePostQueueController extends Controller
 {
     /** GET /business-profile/post-queue */
-    public function index(): JsonResponse
+    public function index(Request $request, SocialConnectionAccess $access): JsonResponse
     {
         $this->authorize('viewAny', BusinessLocation::class);
+        $user = $request->user();
         $places = BusinessLocation::query()->get()->keyBy(fn ($l) => $l->connection
             ? \App\Support\Social\Publishing\GoogleBusinessProfilePublisher::v4Name($l, $l->connection) : $l->id);
 
         $rows = SocialPostTarget::query()->where('status', SocialPostTarget::STATUS_AWAITING_APPROVAL)
-            ->with('post')->oldest()->get()
+            ->with(['post', 'connection'])->oldest()->get()
+            // The view, not the organization: a company sees its own listings' drafts only.
+            ->filter(fn (SocialPostTarget $t) => $t->connection !== null && $access->inView($user, $t->connection))
             ->map(function (SocialPostTarget $t) use ($places) {
                 $place = $places[$t->options['gbp_location'] ?? ''] ?? null;
 
@@ -42,14 +46,19 @@ class BusinessProfilePostQueueController extends Controller
     {
         $place = $this->awaiting($target);
         $input = $request->validate(['body' => ['nullable', 'string', 'min:20', 'max:1500']]);
+        abort_unless($place->isLive(), 422, $place->title.' is not live on Google, so Google would not show the post. Nothing was sent.');
+        // One decision per draft: two Approves (two tabs, two people) flip it once and send once.
+        if (! $this->decide($target, ['status' => SocialPostTarget::STATUS_QUEUED])) {
+            abort(409, 'This post was already decided.');
+        }
         if (($input['body'] ?? null) !== null) {
             $target->post->forceFill(['body' => trim($input['body'])])->save();
         }
-        $target->forceFill(['status' => SocialPostTarget::STATUS_QUEUED])->save();
         app(AuditLogger::class)->log('business_profile.post_approved', $place);
         PublishSocialTarget::dispatch($target->getKey());
+        $this->writeNext($place);
 
-        return response()->json(['data' => ['id' => $target->id, 'status' => $target->status]]);
+        return response()->json(['data' => ['id' => $target->id, 'status' => SocialPostTarget::STATUS_QUEUED]]);
     }
 
     /** POST /business-profile/post-queue/{target}/disapprove {reason?} */
@@ -57,10 +66,21 @@ class BusinessProfilePostQueueController extends Controller
     {
         $place = $this->awaiting($target);
         $input = $request->validate(['reason' => ['nullable', 'string', 'max:500']]);
-        $target->forceFill(['status' => SocialPostTarget::STATUS_DISAPPROVED, 'failure' => $input['reason'] ?? null])->save();
+        if (! $this->decide($target, ['status' => SocialPostTarget::STATUS_DISAPPROVED, 'failure' => $input['reason'] ?? null])) {
+            abort(409, 'This post was already decided.');
+        }
         app(AuditLogger::class)->log('business_profile.post_disapproved', $place, metadata: ['reason' => $input['reason'] ?? null]);
+        $this->writeNext($place);
 
-        return response()->json(['data' => ['id' => $target->id, 'status' => $target->status]]);
+        return response()->json(['data' => ['id' => $target->id, 'status' => SocialPostTarget::STATUS_DISAPPROVED]]);
+    }
+
+    /** Conditional UPDATE: true only for the request that moved it out of awaiting_approval. */
+    private function decide(SocialPostTarget $target, array $values): bool
+    {
+        return SocialPostTarget::query()->whereKey($target->getKey())
+            ->where('status', SocialPostTarget::STATUS_AWAITING_APPROVAL)
+            ->update($values) === 1;
     }
 
     /** PUT /business-profile/locations/{location}/auto-post {on}: skip the queue for this listing. */
@@ -74,6 +94,16 @@ class BusinessProfilePostQueueController extends Controller
         }
 
         return response()->json(['data' => ['id' => $location->id, 'auto_post' => $location->auto_post]]);
+    }
+
+    /** The listing's next draft, written after the response so the button answers at once. */
+    private function writeNext(BusinessLocation $place): void
+    {
+        // Ids, not models: a model would be restored before the tenant is back in context.
+        [$orgId, $placeId] = [app(\App\Support\Tenancy\TenantContext::class)->idOrFail(), $place->id];
+        dispatch(fn () => app(\App\Support\Tenancy\TenantContext::class)->run(\App\Models\Organization::query()->findOrFail($orgId),
+            fn () => \App\Console\Commands\WeeklyBusinessProfilePosts::draftFor(
+                BusinessLocation::query()->with(['connection', 'company', 'franchise'])->findOrFail($placeId))))->afterResponse();
     }
 
     private function awaiting(SocialPostTarget $target): BusinessLocation

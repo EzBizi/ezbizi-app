@@ -234,7 +234,15 @@ class Attachment extends Model implements HoldsPersonalData
 
     protected function casts(): array
     {
-        return ['size_bytes' => 'integer'];
+        return ['size_bytes' => 'integer', 'encrypted' => 'boolean'];
+    }
+
+    /** The file's bytes, decrypted when stored encrypted; null when it has gone. */
+    public function bytes(): ?string
+    {
+        $stored = app(\App\Support\Files\FileStore::class)->contents($this->path, $this->disk);
+
+        return $stored !== null && $this->encrypted ? \Illuminate\Support\Facades\Crypt::decryptString($stored) : $stored;
     }
 
     /**

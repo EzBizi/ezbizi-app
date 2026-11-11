@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/files.dart';
@@ -7,6 +8,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/email/message_html.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_blocks.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_import_panel.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_tab.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
@@ -22,6 +24,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:video_player/video_player.dart';
 
 /// Marketing — Newsletter and Social Media Management, both built.
 ///
@@ -813,6 +816,78 @@ void main() {
   /// UI queue 76 (Jose, 2026-10-12, "2 definitely"): Social opens on a
   /// dashboard whose timeline puts what is coming above each day's posts.
   group('the social dashboard', () {
+    // Bug review 2026-11-09 #7: a turned-down draft never went out.
+    testWidgets('a disapproved post reads Not posted, never Sent', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          posts: [
+            {
+              ..._landed('disapproved'),
+              'id': 'd1',
+              'body': 'Weekly Google post',
+            },
+          ],
+        ),
+      );
+
+      expect(find.widgetWithText(StatusPill, 'Not posted'), findsOneWidget);
+      expect(find.widgetWithText(StatusPill, 'Sent'), findsNothing);
+    });
+
+    // Bug review 2026-11-09 #9: fixing the words does not re-send the time,
+    // which the server would re-read; a moved time is sent.
+    testWidgets('editing only the words leaves the time out of the save', (
+      tester,
+    ) async {
+      final patches = <Map<String, dynamic>>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [
+          {
+            ..._landed('scheduled', scheduledFor: '2099-03-04 09:00'),
+            'id': 'c1',
+            'body': 'Free inspection week',
+          },
+        ],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'PATCH') {
+          patches.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return _json({'data': {}});
+        }
+        return inner(request);
+      });
+
+      Future<void> edit(String? when) async {
+        await tester.tap(find.text('Free inspection week').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('social-post-edit')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('social-edit-body')),
+          'Free inspection week, all week',
+        );
+        if (when != null) {
+          await tester.enterText(find.byKey(const Key('social-edit-when')), when);
+        }
+        await tester.tap(find.byKey(const Key('social-edit-save')));
+        await tester.pumpAndSettle();
+      }
+
+      await edit(null);
+      expect(patches.last.containsKey('scheduled_for'), isFalse);
+      expect(patches.last['body'], 'Free inspection week, all week');
+
+      await edit('2099-03-05 10:00');
+      expect(patches.last['scheduled_for'], '2099-03-05 10:00');
+    });
+
     testWidgets('what is coming sits above today, and a refusal is said with '
         'its Retry', (tester) async {
       await _pumpSocial(
@@ -827,7 +902,7 @@ void main() {
               'body': 'A look inside a flue camera inspection',
             },
             {
-              ..._landed('sent'),
+              ..._landed('sent', url: 'https://www.pinterest.com/pin/9/'),
               'id': 's1',
               'body': 'Chimney season is here',
             },
@@ -835,6 +910,11 @@ void main() {
               ..._landed('scheduled', scheduledFor: '2099-03-04 09:00'),
               'id': 'c1',
               'body': 'Free inspection week',
+            },
+            {
+              ..._landed('awaiting_approval'),
+              'id': 'w1',
+              'body': 'Weekly Google post',
             },
           ],
         ),
@@ -856,7 +936,20 @@ void main() {
       expect(find.textContaining('That account has no boards.'), findsOneWidget);
       expect(find.byKey(const ValueKey('social-retry-f1')), findsOneWidget);
       expect(find.byKey(const ValueKey('social-retry-s1')), findsNothing);
+      // A sent post opens where it went out, from the timeline itself.
+      expect(
+        find.byKey(const ValueKey('social-open-s1-target-1')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Open post on Pinterest'), findsOneWidget);
       expect(find.widgetWithText(StatusPill, 'Scheduled'), findsOneWidget);
+
+      // A post waiting for approval has not gone out: never "Sent".
+      expect(
+        find.widgetWithText(StatusPill, 'Waiting for approval'),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(StatusPill, 'Sent'), findsOneWidget);
 
       // A fact beside the filters, and the composer one tab away.
       expect(find.text('it can post'), findsOneWidget);
@@ -1030,6 +1123,29 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('has no boards'), findsWidgets);
+    });
+
+    testWidgets('a post deleted after it went out still reads as posted', (
+      tester,
+    ) async {
+      var reads = 0;
+
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          postsFor: () => reads++ == 0 ? const [] : [_landed('removed')],
+        ),
+      );
+      await _openCompose(tester);
+
+      await _write(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Not posted'), findsNothing);
+      expect(find.text('Posted · deleted from Pinterest'), findsOneWidget);
     });
 
     testWidgets('a scheduled post says when, and the calendar goes to it', (
@@ -1540,6 +1656,103 @@ void main() {
       expect(sent?['library_item'], 'lib-1');
     });
 
+    // Bug review 2026-11-09 #6: a library video has no upload, so the post
+    // goes as JSON, and TikTok's choices must ride in it too.
+    testWidgets('a library video to TikTok carries the TikTok choices', (
+      tester,
+    ) async {
+      Map<String, dynamic>? sent;
+      final inner = _handler(canEdit: true, connections: const [_tiktokDirect]);
+      await _pumpSocial(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/social/library')) {
+          return _json({
+            'data': [
+              {
+                'id': 'lib-1',
+                'name': 'Truck at dawn',
+                'kind': 'video',
+                'size': 1000,
+                'scope_type': 'company',
+                'created_at': '2026-10-16T12:00:00Z',
+              },
+            ],
+          });
+        }
+        if (request.method == 'POST' && path.endsWith('/social/posts')) {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+        }
+        return inner(request);
+      });
+      await _openCompose(tester);
+
+      await tester.tap(find.byKey(const ValueKey('social-from-library')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-item-lib-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-use')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-7')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('tiktok-privacy-ezbizi_us')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Everyone').last);
+      await tester.pumpAndSettle();
+      expect(_publishRefusal(tester), isNull);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
+      await tester.pumpAndSettle();
+
+      final choices = (sent?['tiktok'] as Map<String, dynamic>?)?['conn-7'];
+      expect(choices, isA<Map<String, dynamic>>());
+      expect(choices['privacy_level'], 'PUBLIC_TO_EVERYONE');
+      expect(choices['allow_comment'], isFalse);
+    });
+
+    // Bug review 2026-11-09 #8: Pinterest's 800 and a ticked listing's
+    // Google 1500 are checked before Publish, like X's 280.
+    testWidgets('too long for Pinterest, or for a ticked listing, is refused', (
+      tester,
+    ) async {
+      final inner = _handler(canEdit: true, connections: const [_pinterestBoard]);
+      await _pumpSocial(tester, (request) async {
+        if (request.url.path.endsWith('/social/places')) {
+          return _json({
+            'data': [
+              {
+                'id': 'place-1',
+                'title': 'Brightside Home',
+                'label': 'Brightside Home · Springfield, IL',
+                'branch': 'Springfield',
+                'address': '14 Elm St, Springfield',
+                'connection_id': 'conn-g',
+                'state': 'verified',
+                'postable': true,
+              },
+            ],
+          });
+        }
+        return inner(request);
+      });
+      await _openCompose(tester);
+
+      final words = find.widgetWithText(TextField, 'What should go out?');
+      await tester.enterText(words, 'a' * 1501);
+      await tester.tap(find.byKey(const ValueKey('social-places-expand')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('social-place-place-1')));
+      await tester.pumpAndSettle();
+      expect(
+        _publishRefusal(tester),
+        contains('Google Business Profile takes 1500'),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('social-place-place-1')));
+      await tester.tap(find.widgetWithText(FilterChip, 'Everdoors Boards'));
+      await tester.pumpAndSettle();
+      expect(_publishRefusal(tester), contains('Pinterest takes 800'));
+    });
+
     testWidgets('the TikTok drafts detour is on the account, before Publish', (
       tester,
     ) async {
@@ -1662,6 +1875,84 @@ void main() {
       expect(find.byType(Image), findsNothing);
       expect(find.textContaining('sweep.mp4'), findsWidgets);
       expect(find.textContaining('2 KB'), findsOneWidget);
+    });
+
+    /// Jose, 2026-11-10: "I attached a video, on the preview on the right
+    /// side, it should actually show the video".
+    Future<List<_FakeVideo>> attachVideo(
+      WidgetTester tester, {
+      bool fails = false,
+    }) async {
+      final made = <_FakeVideo>[];
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard, _tiktokDirect],
+        ),
+        pickMedia: () async =>
+            PickedBytes('sweep.mp4', List<int>.filled(2048, 7)),
+        videoPlayer: (uri) {
+          final video = _FakeVideo(uri, fails: fails);
+          made.add(video);
+          return video;
+        },
+      );
+      await _openCompose(tester);
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-7')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Attach a picture or video'),
+      );
+      await tester.pumpAndSettle();
+      return made;
+    }
+
+    testWidgets('one player plays the video in the box and every card', (
+      tester,
+    ) async {
+      final made = await attachVideo(tester);
+
+      expect(made, hasLength(1));
+      final players = tester
+          .widgetList<VideoPlayer>(find.byType(VideoPlayer))
+          .toList();
+      // The attachment box and both network cards.
+      expect(players, hasLength(3));
+      for (final p in players) {
+        expect(identical(p.controller, made.single), isTrue);
+      }
+      expect(made.single.volume, 0);
+      expect(find.text('0:42'), findsNWidgets(3));
+
+      await tester.tap(find.byKey(const ValueKey('social-video-toggle')).first);
+      await tester.pump();
+      expect(made.single.value.isPlaying, isTrue);
+    });
+
+    testWidgets('Remove disposes the player once nothing draws it', (
+      tester,
+    ) async {
+      final made = await attachVideo(tester);
+      expect(made.single.disposed, isFalse);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Remove'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VideoPlayer), findsNothing);
+      expect(made.single.disposed, isTrue);
+    });
+
+    testWidgets('a video that will not load says Preview not available', (
+      tester,
+    ) async {
+      await attachVideo(tester, fails: true);
+
+      expect(find.byType(VideoPlayer), findsNothing);
+      expect(find.text('Preview not available'), findsNWidgets(3));
+      expect(find.textContaining('sweep.mp4'), findsWidgets);
     });
   });
 
@@ -1877,12 +2168,12 @@ void main() {
       final x = tester.widget<Text>(find.byKey(const ValueKey('social-count-x')));
       expect(x.data, 'X 281/280');
       expect(x.style?.fontWeight, FontWeight.w700);
-      // Pinterest has no limit in the map: counted, never warned.
+      // Under Pinterest's 800: counted against it, not warned.
       expect(
         tester
             .widget<Text>(find.byKey(const ValueKey('social-count-pinterest')))
             .data,
-        'Pinterest 281',
+        'Pinterest 281/800',
       );
       expect(_publishRefusal(tester), contains('X takes 280 characters'));
       expect(
@@ -1925,7 +2216,10 @@ void main() {
       final pinterest = find.byKey(const ValueKey('social-likeness-pinterest'));
       expect(pinterest, findsOneWidget);
       expect(
-        find.descendant(of: pinterest, matching: find.text('14 characters')),
+        find.descendant(
+          of: pinterest,
+          matching: find.text('14 / 800 characters'),
+        ),
         findsOneWidget,
       );
 
@@ -2389,6 +2683,26 @@ void main() {
           reason: 'A newsletter is open and saved; the state must show.');
     });
 
+    testWidgets('a block written as HTML is drawn, not described', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: EmailBlockView(
+              block: {'type': 'text', 'html': '<p>Hand-made sweep offer</p>'},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Hand-made sweep offer', findRichText: true),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('the preview is given the height its viewer needs', (
       tester,
     ) async {
@@ -2565,6 +2879,252 @@ void main() {
       // adds a block, and silently loses the markup. The screen says which
       // wins rather than leaving it to be discovered.
       expect(find.textContaining('it is what goes out'), findsOneWidget);
+    });
+
+    // ── Newsletter audit 2026-11-10 (Rodrigo) ─────────────────────
+
+    testWidgets('the composer says which version goes out, and Back to blocks '
+        'clears the HTML with an Undo', (tester) async {
+      final puts = <Map<String, dynamic>>[];
+      final base = _handler(canEdit: true, newsletters: const [_draftWithHtml]);
+      await _pumpComposer(tester, (request) async {
+        if (request.method == 'PUT') {
+          puts.add(jsonDecode(request.body) as Map<String, dynamic>);
+        }
+        return base(request);
+      });
+
+      expect(find.byKey(const ValueKey('newsletter-mode')), findsOneWidget);
+      expect(find.text('Sending: custom HTML'), findsOneWidget);
+
+      await tester.tap(find.text('Back to blocks'));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Sending: the blocks'), findsOneWidget);
+      expect(puts.last['html_override'], anyOf(isNull, ''));
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Sending: custom HTML'), findsOneWidget);
+      expect(puts.last['html_override'], '<p>Mine</p>');
+    });
+
+    testWidgets('pasted HTML is checked, previewed, refused with a script, and '
+        'undoable once used', (tester) async {
+      await _pumpComposer(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft]),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.text('There is no HTML to import.'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<p>x</p><script>alert(1)</script>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-import-error')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-import-use')), findsNothing);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<p>Imported</p>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widgetList<MessageHtmlView>(find.byType(MessageHtmlView))
+            .any((v) => v.html == '<p>Imported</p>'),
+        isTrue,
+      );
+      expect(find.textContaining('unsubscribe footer'), findsWidgets);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sending: custom HTML'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sending: the blocks'), findsOneWidget);
+      expect(find.text('Autumn sweeps'), findsWidgets);
+    });
+
+    testWidgets('an SVG design becomes editable blocks', (tester) async {
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) async {
+        if (request.url.path.endsWith('/newsletter/import/svg')) {
+          return _json({
+            'data': {
+              'blocks': [
+                {'type': 'heading', 'text': 'Spring sale', 'size': 32, 'align': 'center'},
+                {'type': 'button', 'text': 'Book now', 'url': 'https://e.com', 'align': 'center'},
+              ],
+              'artwork_svg': null,
+              'alt': 'Spring',
+              'warnings': ['Custom fonts are not carried over.'],
+            },
+          });
+        }
+        return base(request);
+      });
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SVG design'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<svg xmlns="http://www.w3.org/2000/svg"><text>Spring sale</text></svg>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Custom fonts'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-import-panel')), findsNothing);
+      expect(find.text('Spring sale'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(NewsletterEmail),
+          matching: find.text('Autumn sweeps'),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(NewsletterEmail),
+          matching: find.text('Autumn sweeps'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('SVG artwork is rasterised, uploaded and placed first with '
+        'its alt text', (tester) async {
+      Map<String, dynamic>? uploaded;
+      List<Map<String, dynamic>>? used;
+      final api = ApiClient(client: MockClient((request) async {
+        if (request.url.path.endsWith('/newsletter/import/svg')) {
+          return _json({
+            'data': {
+              'blocks': [
+                {'type': 'text', 'text': 'Hello', 'align': 'center'},
+              ],
+              'artwork_svg': '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4"/></svg>',
+              'alt': 'Spring art',
+              'warnings': [],
+            },
+          });
+        }
+        if (request.url.path.endsWith('/newsletter/import/artwork')) {
+          uploaded = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {'url': 'https://app.test/api/v1/newsletter/artwork/o/x.png'},
+          }, 201);
+        }
+        return _json({}, 404);
+      }));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: NewsletterImportPanel(
+              api: api,
+              rasterise: (svg, width) async => Uint8List.fromList([1, 2, 3]),
+              onUseHtml: (_) {},
+              onUseBlocks: (b) => used = b,
+              onClose: () {},
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('SVG design'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<svg/>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.pumpAndSettle();
+
+      expect(uploaded!['png'], base64Encode([1, 2, 3]));
+      expect(used!.first, {
+        'type': 'image',
+        'src': 'https://app.test/api/v1/newsletter/artwork/o/x.png',
+        'alt': 'Spring art',
+      });
+      expect(used![1]['text'], 'Hello');
+    });
+
+    testWidgets('preflight lists the checks and a test goes to the one typed '
+        'address', (tester) async {
+      Map<String, dynamic>? tested;
+      final base = _handler(
+        canEdit: true,
+        newsletters: const [_draft],
+        audiences: const [_audience],
+      );
+      await _pumpComposer(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/preflight')) {
+          return _json({
+            'data': {
+              'checks': [
+                {'key': 'footer', 'ok': true, 'label': 'Address and unsubscribe footer', 'detail': '1 Main St'},
+                {'key': 'from_name', 'ok': true, 'label': 'From name', 'detail': 'A-1 Chimney'},
+              ],
+            },
+          });
+        }
+        if (path.endsWith('/n-1/test')) {
+          tested = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': {'sent_to': 'me@example.com'}});
+        }
+        return base(request);
+      });
+
+      expect(find.byKey(const ValueKey('newsletter-audience-explainer')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-test-email')));
+      await tester.enterText(find.byKey(const ValueKey('newsletter-test-email')), 'me@example.com');
+      await tester.tap(find.byKey(const ValueKey('newsletter-test-send')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+
+      expect(find.textContaining('Address and unsubscribe footer: 1 Main St'), findsOneWidget);
+      expect(find.textContaining('From name: A-1 Chimney'), findsOneWidget);
+      expect(tested, {'email': 'me@example.com'});
+      expect(find.textContaining('Test sent to me@example.com'), findsOneWidget);
+    });
+
+    testWidgets('the chosen list shows which Mailchimp list it sends through', (
+      tester,
+    ) async {
+      await _pumpComposer(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: const [_draft],
+          audiences: const [
+            {'id': 'a-1', 'name': 'Customers', 'kind': 'customers', 'mailchimp_list_id': 'mc-9'},
+          ],
+        ),
+      );
+
+      expect(
+        find.text('Customers (EzBizi, built from your customers) → Mailchimp list mc-9'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('it lays out on a 375-point window without overflowing', (
@@ -2944,6 +3504,103 @@ void main() {
       expect(find.descendant(of: block, matching: find.text('Winter sweeps')), findsOneWidget);
     });
 
+    testWidgets('dragging a block by its handle reorders it, and the save follows', (tester) async {
+      final saved = <Map<String, dynamic>>[];
+      final inner = _handler(canEdit: true, newsletters: const [_draftOfThree]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': _draftOfThree}));
+        }
+        return inner(request);
+      });
+
+      // The first block's handle, dragged below the third.
+      final handle = find.byKey(const Key('newsletter-block-handle-0'));
+      final third = tester.getBottomLeft(find.byKey(const Key('newsletter-block-2')));
+      final gesture = await tester.startGesture(tester.getCenter(handle));
+      await gesture.moveTo(tester.getCenter(handle) + const Offset(0, 10));
+      await tester.pump();
+      await gesture.moveTo(Offset(tester.getCenter(handle).dx, third.dy + 20));
+      await tester.pump(const Duration(milliseconds: 300));
+      await gesture.up();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(saved, isNotEmpty, reason: 'A drag must autosave.');
+      expect([for (final b in saved.last['blocks'] as List) b['text']], ['Two', 'Three', 'One']);
+    });
+
+    testWidgets('a block dragged from "Add a block" lands where it is dropped', (tester) async {
+      final saved = <Map<String, dynamic>>[];
+      final inner = _handler(canEdit: true, newsletters: const [_draftOfThree]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': _draftOfThree}));
+        }
+        return inner(request);
+      });
+
+      // Dropped on the second block: it goes above it, not at the end.
+      final source = tester.getCenter(find.byKey(const Key('newsletter-add-divider')));
+      final target = tester.getCenter(find.byKey(const Key('newsletter-block-1')));
+      final gesture = await tester.startGesture(source);
+      await gesture.moveTo(source + const Offset(20, 0));
+      await tester.pump();
+      await gesture.moveTo(target);
+      await tester.pump();
+      await gesture.up();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(saved, isNotEmpty, reason: 'A drop must autosave.');
+      expect([for (final b in saved.last['blocks'] as List) b['type']], ['text', 'divider', 'text', 'text']);
+    });
+
+    testWidgets('Send stops with the error when the save before it fails', (tester) async {
+      final posts = <String>[];
+      final inner = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          return Future.value(_json({'message': 'That is not a time this can read.'}, 422));
+        }
+        if (request.method == 'POST') posts.add(request.url.path);
+        return inner(request);
+      });
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send now'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Send this newsletter?'), findsNothing,
+          reason: 'A failed save must not reach the confirm panel.');
+      expect(posts.where((p) => p.endsWith('/send')), isEmpty);
+      expect(find.textContaining('That is not a time this can read.'), findsWidgets);
+    });
+
+    testWidgets('saved custom HTML opens in the HTML box and is sent back on save', (tester) async {
+      final saved = <Map<String, dynamic>>[];
+      const custom = {..._draft, 'html_override': '<p>Mine</p>'};
+      final inner = _handler(canEdit: true, newsletters: const [custom]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': custom}));
+        }
+        return inner(request);
+      });
+
+      expect(find.text('Back to blocks'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '<p>Mine</p>'), findsOneWidget);
+
+      await tester.enterText(find.widgetWithText(TextField, 'Autumn sweeps').first, 'Renamed');
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(saved, isNotEmpty);
+      expect(saved.last['html_override'], '<p>Mine</p>');
+    });
+
     testWidgets('the dashboard lays out on a 375-point window', (tester) async {
       await _pumpNewsletter(
         tester,
@@ -3078,6 +3735,29 @@ const _draft = {
   ],
 };
 
+const _draftOfThree = {
+  'id': 'n-3',
+  'subject': 'Three blocks',
+  'status': 'draft',
+  'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+  'blocks': [
+    {'type': 'text', 'text': 'One', 'align': 'left'},
+    {'type': 'text', 'text': 'Two', 'align': 'left'},
+    {'type': 'text', 'text': 'Three', 'align': 'left'},
+  ],
+};
+
+const _draftWithHtml = {
+  'id': 'n-1',
+  'subject': 'Autumn sweeps',
+  'status': 'draft',
+  'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+  'html_override': '<p>Mine</p>',
+  'blocks': [
+    {'type': 'heading', 'text': 'Autumn sweeps', 'align': 'left'},
+  ],
+};
+
 const _draftWithoutAudience = {
   'id': 'n-2',
   'subject': 'No list yet',
@@ -3171,13 +3851,49 @@ Future<void> _pumpSocial(
   WidgetTester tester,
   MockClientHandler handler, {
   Future<PickedBytes?> Function()? pickMedia,
+  VideoPlayerController? Function(Uri)? videoPlayer,
   Size size = const Size(1400, 1600),
 }) =>
     _pump(tester, handler, size, (api, session) => SocialMediaTab(
           api: api,
           session: session,
           pickMedia: pickMedia ?? () async => null,
+          videoPlayer: videoPlayer ?? (_) => null,
         ));
+
+/// A player with no platform behind it: 16:9, 42 seconds, or a refusal.
+class _FakeVideo extends VideoPlayerController {
+  _FakeVideo(super.url, {this.fails = false}) : super.networkUrl();
+
+  final bool fails;
+  bool disposed = false;
+  double? volume;
+
+  @override
+  Future<void> initialize() async {
+    if (fails) throw Exception('cannot decode');
+    value = value.copyWith(
+      isInitialized: true,
+      size: const Size(1920, 1080),
+      duration: const Duration(seconds: 42),
+    );
+  }
+
+  @override
+  Future<void> setVolume(double volume) async => this.volume = volume;
+
+  @override
+  Future<void> play() async => value = value.copyWith(isPlaying: true);
+
+  @override
+  Future<void> pause() async => value = value.copyWith(isPlaying: false);
+
+  @override
+  Future<void> dispose() async {
+    disposed = true;
+    await super.dispose();
+  }
+}
 
 /// Marketing → Social Media Management → Posts, which is where compose lives.
 Future<void> _openPosts(WidgetTester tester) async {

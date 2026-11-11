@@ -1110,7 +1110,7 @@ function ezbizi_booking_shortcode($atts) {
         . $s . ' .ezb-track li.on:after,' . $s . ' .ezb-track li.done:after{background:' . $accent . '}'
         // One fixed size for every step (Jose, 2026-10-08: "it needs to have a
         // fixed size"); a step taller than the card scrolls inside it.
-        . $s . ' .ezb-body{padding:16px 40px 24px;height:540px;box-sizing:border-box;overflow-y:auto;display:flex;flex-direction:column}'
+        . $s . ' .ezb-body{padding:16px 40px 24px;min-height:540px;box-sizing:border-box;display:flex;flex-direction:column}'
         // A short step sits in the middle of the fixed card, not at its top.
         . $s . ' .ezb-body>[data-step]{flex:0 0 auto}'
         // The first step is the shortest: what happens next fills its foot.
@@ -1147,7 +1147,7 @@ function ezbizi_booking_shortcode($atts) {
         . $s . ' button{text-transform:none!important;letter-spacing:normal!important;box-shadow:none!important;font-family:inherit}'
         . $s . ' .ezb-back{border:0!important;background:none!important}'
         . $s . ' .ezb-done{text-align:center;padding:20px 0}'
-        . '@media (max-width:600px){' . $s . ' .ezb-body{padding:12px 16px 20px;height:500px}' . $s . ' .ezb-grid{grid-template-columns:repeat(2,1fr)}' . $s . ' .ezb-times{grid-template-columns:1fr 1fr}'
+        . '@media (max-width:600px){' . $s . ' .ezb-body{padding:12px 16px 20px;min-height:500px}' . $s . ' .ezb-grid{grid-template-columns:repeat(2,1fr)}' . $s . ' .ezb-times{grid-template-columns:1fr 1fr}'
         . $s . ' .ezb-track{padding:16px 8px 4px}' . $s . ' .ezb-track li{font-size:11px}'
         . $s . ' .ezb-how{grid-template-columns:1fr;gap:10px}' . $s . ' .ezb-how div{display:flex;align-items:center;gap:10px;text-align:left}' . $s . ' .ezb-how b{display:inline;margin:0}}'
         . '</style>'

@@ -67,6 +67,11 @@ class _FieldMapTabState extends State<FieldMapTab> {
 
   /// Null until the first build: open on a wide screen, a chip on a phone.
   bool? _panelOpen;
+
+  /// How far down the open People/Jobs panel reaches on a phone, where it
+  /// lies over the map's top 60 %. A fitted point is kept below it (phone
+  /// audit 2026-11-04: a chosen job panned behind the panel).
+  double _phoneCover = 0;
   bool _wide = true;
   bool _legendOpen = false;
   bool _firstFit = true;
@@ -323,7 +328,8 @@ class _FieldMapTabState extends State<FieldMapTab> {
           (bounds.north - bounds.south).abs() < 0.0005 &&
           (bounds.east - bounds.west).abs() < 0.0005;
       if (tiny) {
-        _map.move(bounds.center, 16);
+        // Offset is from the centre: half the cover pushes it below.
+        _map.move(bounds.center, 16, offset: Offset(0, _phoneCover / 2));
       } else {
         _map.fitCamera(
           CameraFit.bounds(
@@ -331,7 +337,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
             // Clear of the floating list, the bar and the job card.
             padding: EdgeInsets.fromLTRB(
               _wide ? 300 : 48,
-              72,
+              72 + _phoneCover,
               _wide && _jobId != null ? 340 : 48,
               48,
             ),
@@ -378,6 +384,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
     final size = MediaQuery.sizeOf(context);
     final wide = _wide = size.width >= 600;
     final panelOpen = _panelOpen ?? wide;
+    _phoneCover = !wide && panelOpen ? size.height * 0.6 + 24 : 0;
     final person = _person(_personId);
     final job = _job;
 

@@ -37,9 +37,70 @@ final class FacebookOAuth implements SocialOAuth
         // Ad spend and results for Reports, from the same connect - the
         // ad accounts become Facebook Ads connections (SocialAuthController).
         'ads_read',
+        // Pausing, resuming and re-budgeting those campaigns (MetaAdsManager).
+        'ads_management',
+        // Listing a Page's lead forms, so forms submitted while EzBizi was not
+        // listening are read back (MetaLeadForms::catchUp); Meta refuses
+        // leadgen_forms without it.
+        'pages_manage_ads',
+    ];
+
+    /**
+     * What a person chooses to connect, and the scopes each needs (design 183,
+     * Jose 2026-11-05: "it asks me what connections from facebook i want to
+     * make, before proceeding"). Every product reads Pages, because Messenger,
+     * Instagram comments and lead forms all reach Meta through a Page.
+     *
+     * @var array<string, array{label: string, description: string, provider: string, scopes: string[]}>
+     */
+    public const PRODUCTS = [
+        'pages' => [
+            'label' => 'Pages and posting',
+            'description' => 'Post to your Pages and read how posts do.',
+            'provider' => 'facebook_page',
+            'scopes' => ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_manage_metadata', 'business_management'],
+        ],
+        'messenger' => [
+            'label' => 'Messenger',
+            'description' => 'Messages to your Pages arrive in Leads, and you reply from EzBizi.',
+            'provider' => 'facebook_page',
+            'scopes' => ['pages_show_list', 'pages_manage_metadata', 'business_management', 'pages_messaging'],
+        ],
+        'instagram' => [
+            'label' => 'Instagram comments',
+            'description' => 'Comments on the Instagram account linked to your Page.',
+            'provider' => 'facebook_page',
+            'scopes' => ['pages_show_list', 'business_management', 'instagram_basic', 'instagram_manage_comments'],
+        ],
+        'ads' => [
+            'label' => 'Ad accounts',
+            'description' => 'Spend and results in Reports, pausing and re-budgeting campaigns, and lead-ad forms into Leads.',
+            'provider' => 'facebook_ads',
+            'scopes' => ['pages_show_list', 'pages_manage_metadata', 'business_management', 'ads_read', 'ads_management', 'leads_retrieval', 'pages_manage_ads'],
+        ],
+    ];
+
+    /** The scope that says a product was granted, on a row's recorded scopes. */
+    public const MARKS = [
+        'pages' => 'pages_manage_posts',
+        'messenger' => 'pages_messaging',
+        'instagram' => 'instagram_basic',
+        'ads' => 'ads_read',
     ];
 
     private const TIMEOUT = 10;
+
+    /** @var string[] the products chosen for this sign-in; none is all of them */
+    private array $products = [];
+
+    /** This sign-in asks only for these products' scopes. */
+    public function withProducts(array $keys): self
+    {
+        $chosen = clone $this;
+        $chosen->products = array_values(array_intersect(array_keys(self::PRODUCTS), $keys));
+
+        return $chosen;
+    }
 
     public function provider(): SocialProvider
     {
@@ -53,7 +114,9 @@ final class FacebookOAuth implements SocialOAuth
 
     public function scopes(): array
     {
-        return self::SCOPES;
+        return $this->products === []
+            ? self::SCOPES
+            : array_values(array_unique(array_merge(...array_map(fn (string $k) => self::PRODUCTS[$k]['scopes'], $this->products))));
     }
 
     public function usesPkce(): bool
@@ -86,9 +149,10 @@ final class FacebookOAuth implements SocialOAuth
             'client_id' => MetaApp::id(),
             'redirect_uri' => $this->redirectUri(),
             'response_type' => 'code',
-            'scope' => implode(',', self::SCOPES),
+            'scope' => implode(',', $this->scopes()),
             'state' => $state,
-        ]);
+            // Adding a product to an earlier grant: Meta asks again for what was declined.
+        ] + ($this->products === [] ? [] : ['auth_type' => 'rerequest']));
     }
 
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
@@ -122,8 +186,10 @@ final class FacebookOAuth implements SocialOAuth
         // and data-deletion callbacks arrive carrying nothing else, and
         // without it there is no way to tell which connections belong to the
         // person who removed the app.
+        // And what was granted: a person can untick any product on Meta's
+        // screen, and Integrations says which ones came through.
         $me = $this->get('https://graph.facebook.com/'.self::GRAPH_VERSION.'/me', [
-            'fields' => 'id',
+            'fields' => 'id,permissions',
             'access_token' => $access,
         ], 'Facebook');
 
@@ -131,6 +197,10 @@ final class FacebookOAuth implements SocialOAuth
 
         return new SocialOAuthGrant(
             accessToken: $access,
+            scopes: array_values(array_map(
+                fn (array $p) => (string) $p['permission'],
+                array_filter((array) ($me['permissions']['data'] ?? []), fn ($p) => is_array($p) && ($p['status'] ?? null) === 'granted' && isset($p['permission'])),
+            )),
             expiresIn: is_numeric($long['expires_in'] ?? null) ? (int) $long['expires_in'] : null,
             extra: $metaUser === null ? [] : ['meta_user_id' => $metaUser],
         );

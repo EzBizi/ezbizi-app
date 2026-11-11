@@ -326,6 +326,34 @@ class PreferenceRegistry
                 'help' => 'Drag the edge of a column heading to change it.',
             ],
 
+            // Any ListTable: a column dragged wider stays that wide for this
+            // person (monday port, desk 2026-11-09). "<list id>:<column>" => pixels.
+            'lists.column_widths' => [
+                'label' => 'List column widths',
+                'type' => 'widths',
+                'keys' => '/^[a-z0-9_.-]{1,60}:\d{1,2}$/',
+                'default' => [],
+                'help' => 'Drag the edge of a column heading to change it.',
+            ],
+
+            // Project Management's sort, "<column>:<asc|desc>" (Jose,
+            // 2026-11-10: "clicking the column orders it"). Empty is newest first.
+            'project_board.sort' => [
+                'label' => 'Project Management sort',
+                'type' => 'string',
+                'default' => '',
+                'help' => 'Click a column heading in Project Management to change it.',
+            ],
+
+            // One-time "New: …" tips this person dismissed with "Got it"
+            // (monday port, desk 2026-11-09). Slugs, e.g. list_toolbar.
+            'callouts.seen' => [
+                'label' => 'Dismissed tips',
+                'type' => 'keys',
+                'default' => [],
+                'help' => 'Tips you closed with "Got it" stay closed.',
+            ],
+
             'hr.records.list_width' => [
                 'label' => 'People list width',
                 'type' => 'int',
@@ -427,8 +455,12 @@ class PreferenceRegistry
             'ids' => is_array($value)
                 ? array_values(array_unique(array_filter($value, fn ($id) => is_string($id) && Str::isUuid($id))))
                 : [],
+            // ponytail: capped at 200 slugs; nobody dismisses that many tips.
+            'keys' => is_array($value)
+                ? array_slice(array_values(array_unique(array_filter($value, fn ($k) => is_string($k) && preg_match('/^[a-z0-9_.-]{1,60}$/', $k)))), 0, 200)
+                : [],
             'versions' => $this->cleanVersions($value),
-            'widths' => $this->cleanWidths($value),
+            'widths' => $this->cleanWidths($value, $definition['keys'] ?? '/^[0-9a-f-]{36}:[0-9a-f-]{36}$/'),
             default => (string) $value,
         };
     }
@@ -486,8 +518,8 @@ class PreferenceRegistry
      * version that is not a small whole number, is dropped, and what is left
      * is always readable.
      */
-    /** "<table uuid>:<field uuid>" => 60..800 pixels, at most 500 of them. */
-    private function cleanWidths(mixed $value): array
+    /** Key matching $keys ("<table uuid>:<field uuid>" by default) => 60..800 pixels, at most 500 of them. */
+    private function cleanWidths(mixed $value, string $keys): array
     {
         if (! is_array($value)) {
             return [];
@@ -495,7 +527,7 @@ class PreferenceRegistry
 
         $out = [];
         foreach ($value as $key => $width) {
-            if (is_string($key) && preg_match('/^[0-9a-f-]{36}:[0-9a-f-]{36}$/', $key) && is_numeric($width)) {
+            if (is_string($key) && preg_match($keys, $key) && is_numeric($width)) {
                 $out[$key] = max(60, min(800, (int) $width));
             }
         }

@@ -16,6 +16,7 @@ import 'templates_pane.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/shortcode_button.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/social_network_mark.dart';
 import '../../widgets/tab_bar_like.dart';
 import 'hours.dart';
 import 'hours_bulk.dart';
@@ -895,6 +896,10 @@ class _SiteDetailState extends State<_SiteDetail> {
   List<Map<String, dynamic>> _fields = [];
   final Map<String, TextEditingController> _controllers = {};
 
+  /// General fields this site marked "Not needed for this site": greyed, never
+  /// amber, never counted (Jose, 2026-11-09).
+  final Set<String> _notNeeded = {};
+
   String get _id => widget.site['id'] as String;
   String get _host => widget.site['host'] as String;
   bool get _connected => widget.site['connected_at'] != null;
@@ -976,6 +981,12 @@ class _SiteDetailState extends State<_SiteDetail> {
           .where((f) => f['section'] != 'page' && f['section'] != 'template')
           .toList();
 
+      _notNeeded
+        ..clear()
+        ..addAll(
+          (data['not_needed'] as List<dynamic>? ?? const []).whereType<String>(),
+        );
+
       for (final field in _fields) {
         final key = field['key'] as String;
         _controllers.putIfAbsent(key, TextEditingController.new).text =
@@ -1009,6 +1020,7 @@ class _SiteDetailState extends State<_SiteDetail> {
         for (final entry in _controllers.entries) entry.key: entry.value.text,
       },
       'hours_timezone': ?_hoursZone,
+      'not_needed': _notNeeded.toList(),
     });
 
     if (!mounted) return;
@@ -1417,10 +1429,11 @@ class _SiteDetailState extends State<_SiteDetail> {
     final inherited = _inherited[key] ?? '';
     final isInheriting = controller.text.trim().isEmpty && inherited.isNotEmpty;
     final isMissing = _isMissing(field);
+    final notNeeded = _notNeeded.contains(key);
 
     final input = TextField(
       controller: controller,
-      enabled: widget.canEdit,
+      enabled: widget.canEdit && !notNeeded,
       style: theme.textTheme.bodyMedium,
       onChanged: (_) => setState(() {}),
       // Empty and inheriting nothing: amber, "Not filled in", label above
@@ -1435,6 +1448,13 @@ class _SiteDetailState extends State<_SiteDetail> {
           // publishes is legible without pretending somebody typed it — in
           // italics, which nothing typed ever is.
           hintText: isInheriting ? inherited : null,
+          // Social links wear their network's mark (Jose, 2026-11-09).
+          prefixIcon: field['section'] == 'social'
+              ? Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: SocialNetworkMark(network: key, size: 20),
+                )
+              : null,
           hintStyle: theme.textTheme.bodyMedium?.copyWith(
             fontStyle: FontStyle.italic,
             color: theme.colorScheme.outline,
@@ -1451,7 +1471,45 @@ class _SiteDetailState extends State<_SiteDetail> {
       ),
     );
 
-    return _withShortcode(theme, input, field['shortcode'] as String);
+    if (!_canBeNotNeeded(field)) {
+      return _withShortcode(theme, input, field['shortcode'] as String);
+    }
+
+    // Jose, 2026-11-09: a field the site has no use for (a-1chimney.com has no
+    // street address) is marked resolved instead of staying amber. Beside the
+    // shortcode, not under the box: below it read as part of the next field.
+    final toggle = Tooltip(
+      message: notNeeded
+          ? 'Not needed for this site (tap to need it again)'
+          : 'Not needed for this site',
+      child: IconButton(
+        isSelected: notNeeded,
+        visualDensity: VisualDensity.compact,
+        icon: const Icon(Icons.remove_circle_outline),
+        selectedIcon: const Icon(Icons.remove_circle),
+        onPressed: widget.canEdit
+            ? () => setState(
+                () => notNeeded ? _notNeeded.remove(key) : _notNeeded.add(key),
+              )
+            : null,
+      ),
+    );
+
+    return withShortcode(
+      input,
+      field['shortcode'] as String,
+      trailing: toggle,
+    );
+  }
+
+  /// A General field the site could have; only those count, so only those can
+  /// be marked "Not needed for this site".
+  bool _canBeNotNeeded(Map<String, dynamic> field) {
+    final key = field['key'] as String;
+
+    return (field['section'] as String? ?? 'general') == 'general' &&
+        key != 'address' &&
+        key != 'website_url';
   }
 
   /// Publishes nothing: no value of its own and none inherited.
@@ -1462,8 +1520,7 @@ class _SiteDetailState extends State<_SiteDetail> {
   bool _isMissing(Map<String, dynamic> field) {
     final key = field['key'] as String;
 
-    if ((field['section'] as String? ?? 'general') != 'general') return false;
-    if (key == 'address' || key == 'website_url') return false;
+    if (!_canBeNotNeeded(field) || _notNeeded.contains(key)) return false;
 
     return (_controllers[key]?.text.trim() ?? '').isEmpty &&
         (_inherited[key] ?? '').trim().isEmpty;

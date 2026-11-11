@@ -113,6 +113,32 @@ class SyncWorkizRecordsTest extends TestCase
         $this->assertGreaterThan(0, $lists(), 'at :05');
     }
 
+    /** Jose 11-04: where a full read starts is the branch's setting, not a date in code. */
+    public function test_a_full_read_starts_at_the_branchs_import_date(): void
+    {
+        [$tenant] = $this->branch();
+        $this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('workiz.import_since', $tenant['org'], '2025-03-01'));
+
+        $this->assertSame('2025-03-01', $this->inTenant($tenant['org'], fn () => \App\Support\Workiz\WorkizRecords::cursor(null, $tenant['franchise'])));
+        $this->assertSame('2023-01-01', \App\Support\Workiz\WorkizRecords::cursor(null), 'no branch: the default');
+    }
+
+    /** Jose 11-10: a tag Workiz renames reaches every mirrored job, though Workiz leaves the jobs' modified time alone. */
+    public function test_a_renamed_tag_is_renamed_on_every_mirrored_job(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $this->fake();
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['tag']])->assertSuccessful();
+        $job = $this->inTenant($tenant['org'], fn () => \App\Models\WorkizJob::query()->create(['franchise_id' => $tenant['franchise']->id,
+            'connection_id' => $connection->id, 'remote_id' => 'J1', 'status' => 'Done', 'payload' => ['Tags' => ['DEPOSIT RECIEVED', 'VIP']], 'synced_at' => now()]));
+
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        $this->fake(['tags' => [['id' => 'TG-1', 'name' => 'DEPOSIT RECEIVED', 'color' => '#00aa00', 'type' => 'job']]]);
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['tag']])->assertSuccessful();
+
+        $this->assertSame(['DEPOSIT RECEIVED', 'VIP'], $this->inTenant($tenant['org'], fn () => $job->fresh()->payload['Tags']));
+    }
+
     public function test_each_type_lands_with_the_columns_readers_filter_on_and_without_the_free_text(): void
     {
         [$tenant] = $this->branch();

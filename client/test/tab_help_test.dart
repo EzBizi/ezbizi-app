@@ -126,7 +126,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('tour-next')));
     await tester.pumpAndSettle();
-    expect(find.text('Table or Kanban'), findsOneWidget);
+    expect(find.text('Table, Kanban, Calendar or Timeline'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('tour-next')));
     await tester.pumpAndSettle();

@@ -473,7 +473,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       title: glance['label'] as String,
       icon: dashboardPanelIcon(glance['key'] as String),
       badge: glance['coming_soon'] == true
-          ? const Tag('Coming soon', warn: true)
+          ? const Tag('Coming soon')
           : null,
       // A Small box with figures draws its headline and no chart, so a menu
       // of charts would switch something that is not on screen.

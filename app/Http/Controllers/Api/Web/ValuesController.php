@@ -15,6 +15,7 @@ use App\Support\Web\ValueResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /**
  * What one site publishes — the SEO panel behind Web Management.
@@ -58,7 +59,11 @@ class ValuesController extends Controller
 
         $input = $request->validate([
             'path' => ['sometimes', 'string', 'max:191'],
-            'values' => ['required', 'array'],
+            // Required unless the request only changes `not_needed`, which may be [].
+            'values' => [Rule::requiredIf(! $request->has('not_needed')), 'array'],
+            // The whole list of fields this site marks "Not needed" (Jose, 2026-11-09).
+            'not_needed' => ['sometimes', 'array'],
+            'not_needed.*' => ['string', 'distinct'],
             'values.*' => ['nullable', 'string', 'max:2000'],
             // The zone `values.hours` was typed in; converted into the site's own.
             'hours_timezone' => ['nullable', 'timezone:all'],
@@ -71,6 +76,18 @@ class ValuesController extends Controller
          * fill in.
          */
         $path = $this->normalizePath($input['path'] ?? '');
+        $input['values'] ??= [];
+
+        if (array_key_exists('not_needed', $input)) {
+            $bad = array_diff($input['not_needed'], SeoFields::keys());
+
+            if ($bad !== []) {
+                return response()->json(['message' => 'This build has no field '.implode(', ', $bad).'.'], 422);
+            }
+
+            $site->not_needed_fields = array_values($input['not_needed']) ?: null;
+            $site->save();
+        }
 
         /*
          * Every key must be one this build knows how to render. An unknown key
@@ -246,6 +263,7 @@ class ValuesController extends Controller
         return [
             'fields' => [...SeoFields::catalogue(), ...PageFields::catalogueFor($site)],
             ...$payload,
+            'not_needed' => $site->not_needed_fields ?? [],
         ];
     }
 

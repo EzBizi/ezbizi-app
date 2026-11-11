@@ -576,6 +576,42 @@ void main() {
       expect(find.text('Inboxes'), findsOneWidget);
     });
 
+    // Jose 11-10: "No inboxes granted" read as "Lucas cannot read office@nj".
+    testWidgets('a role with no inboxes says how many of its people were given '
+        'some by name', (tester) async {
+      _wide(tester);
+      await _pumpRoles(
+        tester,
+        roles: [
+          _role(
+            'r-2',
+            'Local Manager',
+            permissions: const ['email.view'],
+            users: 14,
+            ownInboxes: 9,
+          ),
+        ],
+        catalogue: [
+          _catalogueModule(
+            'email',
+            'Email',
+            actions: const [('view', 'View')],
+            inboxes: [_inbox('mb-1', 'office@nj.a-1chimney.com')],
+          ),
+        ],
+      );
+      await tester.tap(_firstRole);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining(
+          '9 of its 14 people have inboxes given to them by name',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('The tab on its own opens none'), findsNothing);
+    });
+
     /// The control that carries the whole point: the tab is one grant and the
     /// inbox is another.
     testWidgets('ticking the tab grants no inbox, and says so', (tester) async {
@@ -1107,6 +1143,58 @@ void main() {
     expect(find.byKey(const ValueKey('action:customers.view')), findsOneWidget);
     expect(find.textContaining('needs'), findsNothing);
     expect(find.textContaining('Needs'), findsNothing);
+  });
+
+  testWidgets('a tab inside another tab sits under it, as the app draws it', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [
+        _catalogueModule(
+          'marketing',
+          'Marketing',
+          actions: const [
+            ('view', 'Social Media Management'),
+            ('compose.view', 'Compose'),
+            ('ez_calls.view', 'EZ Calls'),
+            ('edit', 'Edit'),
+          ],
+          tabs: const ['view', 'compose.view', 'ez_calls.view'],
+          within: const {
+            'compose.view': 'Social Media Management',
+            'ez_calls.view': 'Calls',
+          },
+        ),
+      ],
+    );
+
+    await tester.tap(_firstRole);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Marketing'));
+    await tester.pumpAndSettle();
+
+    // Under a tab that is a tick of its own: indented, no extra heading.
+    expect(
+      find.byKey(const ValueKey('tab-nested:marketing.compose.view')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('tab-group:marketing:Social Media Management')),
+      findsNothing,
+    );
+    // Under a group with no tick (Leads › Calls): its name as a heading.
+    expect(
+      find.byKey(const ValueKey('tab-group:marketing:Calls')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('tab-nested:marketing.view')),
+      findsNothing,
+    );
   });
 
   testWidgets('a tick the module describes says what it lets someone do', (
@@ -1740,8 +1828,10 @@ Map<String, dynamic> _role(
   List<String> inboxes = const [],
   bool editable = true,
   int users = 1,
+  int ownInboxes = 0,
   List<Map<String, String>>? people,
 }) => {
+  'people_with_own_inboxes': ownInboxes,
   'id': id,
   'name': name,
   'is_administrator': !editable,
@@ -1798,6 +1888,7 @@ Map<String, dynamic> _catalogueModule(
   Map<String, List<String>> requires = const {},
   Map<String, String> descriptions = const {},
   List<String> tabs = const [],
+  Map<String, String> within = const {},
 }) => {
   'key': key,
   'label': label,
@@ -1820,6 +1911,7 @@ Map<String, dynamic> _catalogueModule(
         'requires': requires[action] ?? const <String>[],
         'description': ?descriptions[action],
         if (tabs.contains(action)) 'tab': true,
+        'within': ?within[action],
       },
   ],
   'inboxes': ?inboxes,

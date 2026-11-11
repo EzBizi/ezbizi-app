@@ -8,14 +8,17 @@ use App\Models\SocialConnection;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\SocialProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -38,8 +41,22 @@ use Tests\TestCase;
  */
 class ExperimentalCallReportTest extends TestCase
 {
-    use BuildsTenants;
+    use BuildsTenants {
+        provisionTenant as private tenantWithoutQueues;
+    }
     use RefreshDatabase;
+
+    /** A tenant with A-1's two queue names set, as Settings holds them (no names in code). */
+    protected function provisionTenant(string $name = 'Alpha', ?string $email = null): array
+    {
+        $t = $this->tenantWithoutQueues($name, $email);
+        $this->inTenant($t['org'], function () use ($t) {
+            app(SettingsResolver::class)->set('leads.new_client_queue', $t['org'], 'A1 - New Client');
+            app(SettingsResolver::class)->set('leads.existing_client_queue', $t['org'], 'A1 - Existing Client');
+        });
+
+        return $t;
+    }
 
     // ── where the person is ──────────────────────────────────────
 
@@ -101,7 +118,7 @@ class ExperimentalCallReportTest extends TestCase
     {
         // `Missed`: it reached a queue. An IVR-only `Accepted` call is spam
         // since 2026-10-05 and is not counted at all - see the test below.
-        $this->fakeCallLog([$this->inbound(rang: [], queue: RingCentralCallLog::NEW_CLIENT_QUEUE, result: 'Missed')]);
+        $this->fakeCallLog([$this->inbound(rang: [], queue: 'A1 - New Client', result: 'Missed')]);
 
         $day = $this->reconcile();
 
@@ -137,7 +154,7 @@ class ExperimentalCallReportTest extends TestCase
     {
         $this->fakeCallLog([
             $this->inbound(rang: [], result: 'Accepted'),
-            $this->inbound(rang: [], queue: RingCentralCallLog::NEW_CLIENT_QUEUE, result: 'Missed'),
+            $this->inbound(rang: [], queue: 'A1 - New Client', result: 'Missed'),
             $this->inbound(rang: [], result: 'Voicemail'),
             $this->inbound(rang: [], result: 'Blocked'),
             $this->inbound(rang: [], result: 'Rejected'),
@@ -162,7 +179,7 @@ class ExperimentalCallReportTest extends TestCase
     {
         $this->fakeCallLog([
             $this->inbound(rang: [], result: 'Accepted'), // sat in the menu
-            $this->inbound(rang: [], queue: RingCentralCallLog::NEW_CLIENT_QUEUE, result: 'Missed'),
+            $this->inbound(rang: [], queue: 'A1 - New Client', result: 'Missed'),
             $this->inbound(rang: [['Trey Brannan', 'Call connected']]),
         ]);
 
@@ -182,14 +199,14 @@ class ExperimentalCallReportTest extends TestCase
     {
         $t = $this->provisionTenant('Alpha');
         $this->fakeCallLog([
-            ['id' => 'c-wrong'] + $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
-            ['id' => 'c-right'] + $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
+            ['id' => 'c-wrong'] + $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - New Client'),
+            ['id' => 'c-right'] + $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - New Client'),
         ]);
 
         $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
         $day = $this->inTenant($t['org'], function () use ($t, $calls) {
             CallTypeCorrection::query()->create(['organization_id' => $t['org']->id, 'call_id' => 'c-wrong',
-                'pressed_queue' => RingCentralCallLog::NEW_CLIENT_QUEUE, 'corrected_type' => 'existing',
+                'pressed_queue' => 'A1 - New Client', 'corrected_type' => 'existing',
                 'reason' => 'An open job from before the call', 'evidence' => 'job_match', 'confidence' => 95, 'decided_at' => now()]);
 
             return app(CallReconciliation::class)->forRange($calls, [], '2026-09-14', '2026-09-14');
@@ -198,8 +215,8 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertSame(1, $day['totals']['new_client']);
         $this->assertSame(1, $day['totals']['existing_client']);
         $byId = array_column($day['calls'], null, 'id');
-        $this->assertSame(RingCentralCallLog::EXISTING_CLIENT_QUEUE, $byId['c-wrong']['queue']);
-        $this->assertSame(RingCentralCallLog::NEW_CLIENT_QUEUE, $byId['c-wrong']['reclassified']['pressed']);
+        $this->assertSame('A1 - Existing Client', $byId['c-wrong']['queue']);
+        $this->assertSame('A1 - New Client', $byId['c-wrong']['reclassified']['pressed']);
         $this->assertSame('An open job from before the call', $byId['c-wrong']['reclassified']['reason']);
         $this->assertNull($byId['c-right']['reclassified']);
     }
@@ -207,7 +224,7 @@ class ExperimentalCallReportTest extends TestCase
     public function test_not_booked_matches_jobs_by_phone_and_honours_a_manual_mark(): void
     {
         $call = fn (string $id, string $phone) => array_merge(
-            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - New Client'),
             ['id' => $id, 'from' => ['phoneNumber' => $phone, 'name' => 'X']],
         );
 
@@ -217,15 +234,19 @@ class ExperimentalCallReportTest extends TestCase
             $call('c-open', '+12125559999'),
         ]);
 
-        $day = app(CallReconciliation::class)->forRange(
-            app(RingCentralCallLog::class)->forDate('x', 'y'),
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+        $day = $this->inTenant($this->provisionTenant('Reconcile')['org'], fn () => app(CallReconciliation::class)->forRange(
+            $calls,
             [['created_at' => '2026-09-14 10:00:00', 'phone' => '(212) 555-1212', 'created_by' => 'Trey Brannan']],
             '2026-09-14',
             '2026-09-14',
             converted: ['c-marked'],
-        );
+        ));
 
         $this->assertSame(1, $day['totals']['not_booked']);
+        // The booking rate's parts (Trey, 2026-11-04): 2 of 3 answered new calls.
+        $this->assertSame(2, $this->person($day, 'Trey Brannan')['booked_new']);
+        $this->assertSame([3, 2], [$day['totals']['answered_new'], $day['totals']['booked_new']]);
         $byId = array_column($day['calls'], null, 'id');
         $this->assertTrue($byId['c-booked']['booked']);
         $this->assertTrue($byId['c-marked']['booked']);
@@ -240,7 +261,7 @@ class ExperimentalCallReportTest extends TestCase
     public function test_a_job_booked_under_the_second_phone_books_the_call(): void
     {
         $this->fakeCallLog([array_merge(
-            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - New Client'),
             ['id' => 'c-second', 'from' => ['phoneNumber' => '+12125557777', 'name' => 'X']],
         )]);
 
@@ -262,21 +283,22 @@ class ExperimentalCallReportTest extends TestCase
     public function test_a_caller_with_an_open_earlier_job_is_an_existing_job_not_a_lost_booking(): void
     {
         $call = fn (string $id, string $phone) => array_merge(
-            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - New Client'),
             ['id' => $id, 'from' => ['phoneNumber' => $phone, 'name' => 'X']],
         );
 
         $this->fakeCallLog([$call('c-open-job', '+12342014951'), $call('c-done-job', '+12125550000')]);
 
-        $day = app(CallReconciliation::class)->forRange(
-            app(RingCentralCallLog::class)->forDate('x', 'y'),
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+        $day = $this->inTenant($this->provisionTenant('Reconcile')['org'], fn () => app(CallReconciliation::class)->forRange(
+            $calls,
             [
                 ['created_at' => '2026-09-05 10:00:00', 'phone' => '2342014951', 'status' => 'Submitted', 'scheduled_for' => '2026-09-19 09:00:00'],
                 ['created_at' => '2026-09-05 10:00:00', 'phone' => '2125550000', 'status' => 'Done'],
             ],
             '2026-09-14',
             '2026-09-14',
-        );
+        ));
 
         $this->assertSame(1, $day['totals']['not_booked']);
         $byId = array_column($day['calls'], null, 'id');
@@ -294,7 +316,7 @@ class ExperimentalCallReportTest extends TestCase
     public function test_an_unanswered_outbound_call_is_listed_but_not_counted_as_missed(): void
     {
         $this->fakeCallLog([
-            array_merge($this->inbound(rang: [], queue: RingCentralCallLog::NEW_CLIENT_QUEUE), ['result' => 'Missed']),
+            array_merge($this->inbound(rang: [], queue: 'A1 - New Client'), ['result' => 'Missed']),
             ['id' => 'out-1', 'direction' => 'Outbound', 'result' => 'No Answer', 'startTime' => '2026-09-14T15:00:00Z',
                 'from' => ['phoneNumber' => '+15550001111', 'name' => 'Trey Brannan'], 'to' => ['phoneNumber' => '+12125551212'],
                 'legs' => [['legType' => 'SipToPstnUnmetered', 'result' => 'No Answer']]],
@@ -324,8 +346,8 @@ class ExperimentalCallReportTest extends TestCase
     public function test_new_and_existing_come_from_the_queue(): void
     {
         $this->fakeCallLog([
-            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
-            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::EXISTING_CLIENT_QUEUE),
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - New Client'),
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: 'A1 - Existing Client'),
         ]);
 
         $trey = $this->person($this->reconcile(), 'Trey Brannan');
@@ -347,7 +369,7 @@ class ExperimentalCallReportTest extends TestCase
     {
         $this->fakeCallLog([$this->inbound(
             rang: [['Jared Prescott', 'No Answer'], ['Nelly Escobar', 'Call connected']],
-            queue: RingCentralCallLog::NEW_CLIENT_QUEUE,
+            queue: 'A1 - New Client',
         )]);
 
         $day = $this->reconcile();
@@ -384,12 +406,17 @@ class ExperimentalCallReportTest extends TestCase
     {
         $day = app(CallReconciliation::class)->forDay(
             [],
-            [['account' => 'CT', 'created_by' => null, 'created_at' => '2026-09-14 10:00:00']],
+            [
+                ['account' => 'CT', 'created_by' => null, 'created_at' => '2026-09-14 10:00:00'],
+                // Blank in Workiz is nobody too, not a person named "" (2026-11-04).
+                ['account' => 'CT', 'created_by' => ' ', 'created_at' => '2026-09-14 11:00:00'],
+            ],
             '2026-09-14',
         );
 
-        $this->assertSame(1, $day['totals']['jobs']);
-        $this->assertSame(1, $this->person($day, 'No one recorded')['jobs']);
+        $this->assertSame(2, $day['totals']['jobs']);
+        $this->assertSame(2, $this->person($day, 'No one recorded')['jobs']);
+        $this->assertSame(['No one recorded'], array_column($day['people'], 'person'));
     }
 
     // ── the two systems disagree about names ─────────────────────
@@ -411,7 +438,8 @@ class ExperimentalCallReportTest extends TestCase
     {
         $this->fakeCallLog([$this->inbound(rang: [['Adeline Pierre Louis-Aghaji', 'Call connected']])]);
 
-        $day = $this->reconcile([
+        // Stored for the organization now, not a constant (Jose, 2026-11-04).
+        $day = $this->reconcileWithPair('Adeline Pierre Louis-Aghaji', 'Adeline Pierrelouis', [
             ['account' => 'NJ', 'created_by' => 'Adeline Pierrelouis', 'created_at' => '2026-09-14 11:00:00'],
         ]);
 
@@ -427,6 +455,31 @@ class ExperimentalCallReportTest extends TestCase
             ['Adeline Pierrelouis'],
             array_column($day['people'], 'person'),
         );
+    }
+
+    /** Jose, 2026-11-04, "yes to all 3": a suffix takes a stored pair. */
+    public function test_a_stored_pair_joins_the_phone_name_to_workiz(): void
+    {
+        $this->fakeCallLog([$this->inbound(rang: [['Rolando De Lara', 'Call connected']])]);
+
+        $day = $this->reconcileWithPair('Rolando De Lara', 'Rolando De Lara Jr', [
+            ['account' => 'NJ', 'created_by' => 'Rolando De Lara Jr', 'created_at' => '2026-09-14 11:00:00'],
+        ]);
+
+        $this->assertSame(['Rolando De Lara Jr'], array_column($day['people'], 'person'));
+        $this->assertSame([1, 1], [$this->person($day, 'Rolando De Lara Jr')['answered'], $this->person($day, 'Rolando De Lara Jr')['jobs']]);
+    }
+
+    /** The day, read in a tenant that holds one phone-to-Workiz pair. */
+    private function reconcileWithPair(string $phone, string $name, array $jobs): array
+    {
+        $legs = app(RingCentralCallLog::class)->forDate('x', 'y');
+        $t = $this->provisionTenant('Alpha');
+        DB::table('business_list_items')->insert(['id' => (string) Str::uuid(), 'organization_id' => $t['org']->id,
+            'list_key' => 'reports.staff_names', 'item_key' => $phone, 'value' => json_encode(['phone_name' => $phone, 'name' => $name]),
+            'created_at' => now(), 'updated_at' => now()]);
+
+        return $this->inTenant($t['org'], fn () => app(CallReconciliation::class)->forDay($legs, $jobs, '2026-09-14'));
     }
 
     public function test_similar_names_are_not_merged(): void
@@ -759,6 +812,10 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertSame(3, $asked);
 
         $log->forPeriod($start, $end);
+        $this->assertSame(3, $asked, 'today is shared for a minute');
+
+        $this->travel(61)->seconds();
+        $log->forPeriod($start, $end);
         $this->assertSame(4, $asked, 'only today should have been asked again');
 
         CarbonImmutable::setTestNow();
@@ -959,13 +1016,12 @@ class ExperimentalCallReportTest extends TestCase
     }
 
     /** @param  list<array<string, mixed>>  $jobs */
+    /** In a tenant: which queue is which is the business's own setting. */
     private function reconcile(array $jobs = []): array
     {
-        return app(CallReconciliation::class)->forDay(
-            app(RingCentralCallLog::class)->forDate('x', 'y'),
-            $jobs,
-            '2026-09-14',
-        );
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+
+        return $this->inTenant($this->provisionTenant('Reconcile')['org'], fn () => app(CallReconciliation::class)->forDay($calls, $jobs, '2026-09-14'));
     }
 
     /** @param  array<string, mixed>  $day */

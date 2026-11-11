@@ -57,7 +57,7 @@ final class FinishInstagramPost implements ShouldQueue
 
         if ($container === '' || $target->connection === null) {
             $handoff->release();
-            $job->failed($target, $events, 'Instagram refused it: EzBizi lost track of the video while it was processing. Nothing was posted. Try again.');
+            $job->markFailedAndEmit($target, $events, 'Instagram refused it: EzBizi lost track of the video while it was processing. Nothing was posted. Try again.');
 
             return;
         }
@@ -66,7 +66,7 @@ final class FinishInstagramPost implements ShouldQueue
             $remoteId = $instagram->finish($target->connection, $container);
         } catch (SocialPublishFailed $e) {
             $handoff->release();
-            $job->failed($target, $events, $e->getMessage());
+            $job->markFailedAndEmit($target, $events, $e->getMessage());
 
             return;
         } catch (Throwable $e) {
@@ -83,7 +83,7 @@ final class FinishInstagramPost implements ShouldQueue
 
         if ($this->look >= self::LOOKS) {
             $handoff->release();
-            $job->failed($target, $events,
+            $job->markFailedAndEmit($target, $events,
                 'Instagram refused it: it was still processing the video after more than ten minutes, '
                 .'so EzBizi stopped waiting. Nothing was posted. A shorter or smaller video will go through.');
 
@@ -91,5 +91,11 @@ final class FinishInstagramPost implements ShouldQueue
         }
 
         self::dispatch($target->getKey(), $this->look + 1)->delay(now()->addSeconds(self::EVERY));
+    }
+
+    /** Laravel's failure hook: a crash here must not leave the target `queued`. */
+    public function failed(?Throwable $e = null): void
+    {
+        (new PublishSocialTarget($this->targetId))->failed($e);
     }
 }

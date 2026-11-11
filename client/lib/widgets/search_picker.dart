@@ -29,6 +29,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'side_panel.dart';
+
 /// One choosable thing.
 class SearchOption<T> {
   const SearchOption({
@@ -213,8 +215,8 @@ class SearchPickerField<T> extends StatelessWidget {
   }
 
   Future<void> _open(BuildContext context) async {
-    final picked = await showDialog<_Picked<T>>(
-      context: context,
+    final picked = await showSidePanel<_Picked<T>>(
+      context,
       builder: (context) => _SearchPickerDialog<T>(
         title: label,
         options: options,
@@ -242,8 +244,8 @@ Future<T?> showSearchPicker<T>(
   int searchFrom = 8,
   T Function(String typed)? create,
 }) async {
-  final picked = await showDialog<_Picked<T>>(
-    context: context,
+  final picked = await showSidePanel<_Picked<T>>(
+    context,
     builder: (context) => _SearchPickerDialog<T>(
       title: title,
       options: options,
@@ -276,11 +278,7 @@ Future<T?> showSearchPicker<T>(
 /// A picker cannot stop somebody passing a paragraph, but it can stop a
 /// paragraph from eating the list.
 class _Row<T> extends StatelessWidget {
-  const _Row({
-    required this.option,
-    required this.chosen,
-    required this.onTap,
-  });
+  const _Row({required this.option, required this.chosen, required this.onTap});
 
   final SearchOption<T> option;
   final bool chosen;
@@ -305,7 +303,8 @@ class _Row<T> extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: option.child ??
+              child:
+                  option.child ??
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -413,13 +412,15 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
     final hits = _hits;
     final fresh = _new;
 
-    return AlertDialog(
-      contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
-      title: widget.title == null ? null : Text(widget.title!),
-      content: SizedBox(
-        width: 420,
+    // A SidePanel, never a centred dialog (the standing rule; phone audit
+    // 2026-11-04 found Role, Person and Company's pickers dimming the form).
+    return SidePanel(
+      title: widget.title ?? 'Choose',
+      width: 420,
+      scrollable: false,
+      child: SizedBox(
+        width: double.infinity,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (_searchable)
@@ -443,7 +444,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                         ).pop(_Picked<T>(widget.create!(fresh))),
                 ),
               ),
-            Flexible(
+            Expanded(
               child: hits.isEmpty && fresh == null
                   ? Padding(
                       padding: const EdgeInsets.all(24),
@@ -570,8 +571,8 @@ class SearchMultiPickerField<T> extends StatelessWidget {
   }
 
   Future<void> _open(BuildContext context) async {
-    final picked = await showDialog<Set<T>>(
-      context: context,
+    final picked = await showSidePanel<Set<T>>(
+      context,
       builder: (context) => _SearchMultiDialog<T>(
         title: label,
         options: options,
@@ -617,13 +618,25 @@ class _SearchMultiDialogState<T> extends State<_SearchMultiDialog<T>> {
           o,
     ];
 
-    return AlertDialog(
-      contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
-      title: widget.title == null ? null : Text(widget.title!),
-      content: SizedBox(
-        width: 420,
+    // A SidePanel, never a centred dialog (the standing rule; phone audit
+    // 2026-11-04 found Role, Person and Company's pickers dimming the form).
+    return SidePanel(
+      title: widget.title ?? 'Choose',
+      width: 420,
+      scrollable: false,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(<T>{}),
+          child: const Text('Clear'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_chosen),
+          child: const Text('Done'),
+        ),
+      ],
+      child: SizedBox(
+        width: double.infinity,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (widget.options.length >= widget.searchFrom)
@@ -639,7 +652,7 @@ class _SearchMultiDialogState<T> extends State<_SearchMultiDialog<T>> {
                   onChanged: (value) => setState(() => _term = value),
                 ),
               ),
-            Flexible(
+            Expanded(
               child: hits.isEmpty
                   ? Padding(
                       padding: const EdgeInsets.all(24),
@@ -681,16 +694,6 @@ class _SearchMultiDialogState<T> extends State<_SearchMultiDialog<T>> {
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(<T>{}),
-          child: const Text('Clear'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_chosen),
-          child: const Text('Done'),
-        ),
-      ],
     );
   }
 }

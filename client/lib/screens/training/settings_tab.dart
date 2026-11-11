@@ -287,7 +287,10 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
                       key: ValueKey('training.settings-guide-${guide['id']}'),
                       title: guide['title'] as String? ?? '',
                       published: guide['status'] == 'published',
-                      trailing: '${guide['screen_count'] ?? 0} screens',
+                      trailing: switch (guide['screen_count'] ?? 0) {
+                        1 => '1 screen',
+                        final n => '$n screens',
+                      },
                       onTap: () => _openGuide(guide['id'] as String),
                       id: guide['id'] as String,
                       noun: 'guide',

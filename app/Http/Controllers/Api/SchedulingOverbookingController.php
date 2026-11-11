@@ -15,6 +15,7 @@ use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Scheduling › Overbooking (Jose, 2026-09-29: "a new tab on scheduling that
@@ -25,7 +26,6 @@ use Illuminate\Http\Request;
 class SchedulingOverbookingController extends Controller
 {
     /** How far ahead the fully-booked check looks — the warning email's window. */
-    public const FULL_DAYS = Overbooking::FULL_DAYS;
 
     /**
      * GET /api/v1/scheduling/overbooking[?days=30 | ?date=2026-10-05]
@@ -63,8 +63,8 @@ class SchedulingOverbookingController extends Controller
                 'days' => $days,
                 'overbooked' => $check->overbooked($areas, $from, $days),
                 'full_from' => $tomorrow->toDateString(),
-                'full_days' => self::FULL_DAYS,
-                'fully_booked' => $check->fullyBooked($areas, $tomorrow, self::FULL_DAYS),
+                'full_days' => Overbooking::fullDays(),
+                'fully_booked' => $check->fullyBooked($areas, $tomorrow, Overbooking::fullDays()),
             ],
         ]);
     }
@@ -98,7 +98,7 @@ class SchedulingOverbookingController extends Controller
     {
         [$area, $date] = $this->offerTarget($request);
 
-        return response()->json(['data' => $offers->preview($area, $date)]);
+        return response()->json(['data' => $offers->preview($area, $date, $this->kind($request))]);
     }
 
     /** POST /scheduling/overbooking/offers/send {area_id, date, job_ids} (scheduling.edit) */
@@ -108,7 +108,14 @@ class SchedulingOverbookingController extends Controller
         [$area, $date] = $this->offerTarget($request);
         $ids = $request->validate(['job_ids' => ['required', 'array', 'min:1'], 'job_ids.*' => ['uuid']])['job_ids'];
 
-        return response()->json(['data' => $offers->send($area, $date, $ids, $request->user())]);
+        return response()->json(['data' => $offers->send($area, $date, $ids, $request->user(), $this->kind($request))]);
+    }
+
+    /** `kind`: underbooked (an open spot, the default) or overbooked (move off a full day). */
+    private function kind(Request $request): string
+    {
+        return $request->validate(['kind' => ['nullable', Rule::in([RescheduleOffers::UNDERBOOKED, RescheduleOffers::OVERBOOKED])]])['kind']
+            ?? RescheduleOffers::UNDERBOOKED;
     }
 
     /** GET /scheduling/reschedule-offers?lead_id= : the offer a lead's thread is about, if any */
@@ -249,7 +256,7 @@ class SchedulingOverbookingController extends Controller
         return response()->json(['data' => [[
             'id' => 'overbooking',
             'name' => 'Overbooking warning',
-            'description' => 'Service areas with no spot left for the next '.self::FULL_DAYS.' days or more',
+            'description' => 'Service areas with no spot left for the next '.Overbooking::fullDays().' days or more',
             'covers' => 'Every service area',
             'sent_automatically' => $rules->contains(fn (array $r) => $r['is_active'] && $r['disabled_at'] === null),
             'sent_by' => $request->user()->hasPermission('automations.view') ? $rules->all() : null,

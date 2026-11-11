@@ -165,7 +165,9 @@ class _NumbersPaneState extends State<NumbersPane> {
               width: 180,
               child: SearchPickerField<String>(
                 key: const ValueKey('bulk-record'),
-                value: _bulkRecord == null ? null : (_bulkRecord! ? 'on' : 'off'),
+                value: _bulkRecord == null
+                    ? null
+                    : (_bulkRecord! ? 'on' : 'off'),
                 label: 'Recording',
                 isDense: true,
                 border: const OutlineInputBorder(),
@@ -268,7 +270,10 @@ class _NumbersPaneState extends State<NumbersPane> {
 
     if (!mounted) return;
 
-    final failed = results.firstWhere((r) => !r.ok, orElse: () => results.first);
+    final failed = results.firstWhere(
+      (r) => !r.ok,
+      orElse: () => results.first,
+    );
 
     if (!failed.ok) {
       setState(() {
@@ -313,7 +318,9 @@ class _NumbersPaneState extends State<NumbersPane> {
     if (!mounted) return;
 
     setState(() {
-      _importable = response.ok ? _Importable.listFrom(response.body) : const [];
+      _importable = response.ok
+          ? _Importable.listFrom(response.body)
+          : const [];
       _importNote = response.ok
           ? response.body['message'] as String?
           : response.reason;
@@ -357,10 +364,10 @@ class _NumbersPaneState extends State<NumbersPane> {
       _formError = null;
     });
 
-    final response = await widget.api.post(
-      '/phone/numbers/${line.id}/move',
-      {'scope_type': 'company', 'scope_id': companyId},
-    );
+    final response = await widget.api.post('/phone/numbers/${line.id}/move', {
+      'scope_type': 'company',
+      'scope_id': companyId,
+    });
 
     if (!mounted) return;
 
@@ -497,16 +504,13 @@ class _NumbersPaneState extends State<NumbersPane> {
         ButtonSegment(value: 0, label: Text('Lines · ${_lines.length}')),
         ButtonSegment(
           value: 1,
-          label: Text(
-            waiting == 0 ? 'Import' : 'Import · $waiting waiting',
-          ),
+          label: Text(waiting == 0 ? 'Import' : 'Import · $waiting waiting'),
         ),
         if (_canEdit && _scope != null)
           const ButtonSegment(value: 2, label: Text('Buy a number')),
       ],
       selected: {_segment},
-      onSelectionChanged: (picked) =>
-          setState(() => _segment = picked.first),
+      onSelectionChanged: (picked) => setState(() => _segment = picked.first),
     );
   }
 
@@ -562,10 +566,7 @@ class _NumbersPaneState extends State<NumbersPane> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(width: listWidth, child: _linesList(theme)),
-            VerticalDivider(
-              width: 1,
-              color: theme.colorScheme.outlineVariant,
-            ),
+            VerticalDivider(width: 1, color: theme.colorScheme.outlineVariant),
             Expanded(
               child: editing == null
                   ? _noLineChosen(theme)
@@ -721,7 +722,7 @@ class _NumbersPaneState extends State<NumbersPane> {
   /// The company a line belongs to, by name, when this view spans several.
   /// The row carries `scope_id`; the name is the one `/me` already has.
   String _company(_Line line) {
-    final company = _me.companiesInView
+    final company = _me.companies
         .where((c) => c.id == line.scopeId)
         .firstOrNull;
 
@@ -746,8 +747,8 @@ class _NumbersPaneState extends State<NumbersPane> {
     // So does any list whose lines all belong to one company - A-1's 13 did,
     // and on a narrow pane it was the word that pushed every row to a third
     // line (Jose, 2026-10-05: "these are too fat").
-    final showCompany = _me.scope.type != 'company' &&
-        shown.map(_company).toSet().length > 1;
+    final showCompany =
+        _me.scope.type != 'company' && shown.map(_company).toSet().length > 1;
 
     if (shown.isEmpty) {
       return Padding(
@@ -766,7 +767,9 @@ class _NumbersPaneState extends State<NumbersPane> {
         // The number rides in the Line cell rather than a column of its own,
         // so a stacked row is two lines, not three.
         const ListColumn('Line', flex: 6),
-        const ListColumn('What answers it', flex: 4),
+        // Unnamed when stacked: the value ("Ring group · Office") says what
+        // it is, and the words made the row three lines (Jose, 2026-10-05).
+        const ListColumn('What answers it', flex: 4, namedWhenStacked: false),
         if (showCompany) const ListColumn('Company', flex: 3),
         // No Recorded or Written down columns: stacked on a narrow pane they
         // were a bare "Yes Yes" with nothing saying what (Jose, 2026-10-05:
@@ -808,7 +811,8 @@ class _NumbersPaneState extends State<NumbersPane> {
                     ),
                   ),
                 ),
-                if (line.label.trim().isNotEmpty && line.label != line.e164) ...[
+                if (line.label.trim().isNotEmpty &&
+                    line.label != line.e164) ...[
                   const SizedBox(width: 8),
                   Text(formatPhoneNumber(line.e164), style: small),
                 ],
@@ -883,7 +887,9 @@ class _NumbersPaneState extends State<NumbersPane> {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          width: 260,
+          // Narrower on a phone, where 260 ran off the screen's right edge
+          // (phone audit 2026-11-04).
+          width: MediaQuery.sizeOf(context).width < 600 ? 170 : 260,
           child: SearchPickerField<String>(
             value: _scope?.id,
             // The label goes INSIDE the field rather than beside it. Beside it
@@ -912,7 +918,10 @@ class _NumbersPaneState extends State<NumbersPane> {
   List<Widget> _importSection(ThemeData theme) {
     if (_importNote != null && _importable.isEmpty) {
       return [
-        Text('Already on this phone account', style: theme.textTheme.labelLarge),
+        Text(
+          'Already on this phone account',
+          style: theme.textTheme.labelLarge,
+        ),
         const SizedBox(height: 6),
         Text(_importNote!, style: theme.textTheme.bodySmall),
       ];
@@ -920,7 +929,10 @@ class _NumbersPaneState extends State<NumbersPane> {
 
     if (_importable.isEmpty) {
       return [
-        Text('Already on this phone account', style: theme.textTheme.labelLarge),
+        Text(
+          'Already on this phone account',
+          style: theme.textTheme.labelLarge,
+        ),
         const SizedBox(height: 6),
         Text(
           'Every line on this phone account is already set up in EzBizi.',
@@ -1166,7 +1178,9 @@ class _LineFormState extends State<_LineForm> {
   void initState() {
     super.initState();
     _label = TextEditingController(text: widget.line.label);
-    _forwardTo = TextEditingController(text: widget.line.afterHoursNumber ?? '');
+    _forwardTo = TextEditingController(
+      text: widget.line.afterHoursNumber ?? '',
+    );
     _fallback = TextEditingController(text: widget.line.fallbackNumber ?? '');
     _notice = TextEditingController(text: widget.line.recordingNotice ?? '');
     _groupId = widget.line.ringGroupId;
@@ -1263,7 +1277,10 @@ class _LineFormState extends State<_LineForm> {
           options: const [
             SearchOption(value: 'voicemail', label: 'Take a voicemail'),
             SearchOption(value: 'forward', label: 'Forward the call'),
-            SearchOption(value: 'closed', label: 'Say it is closed and hang up'),
+            SearchOption(
+              value: 'closed',
+              label: 'Say it is closed and hang up',
+            ),
           ],
           onChanged: (v) => setState(() => _afterHours = v ?? 'voicemail'),
         ),
@@ -1494,37 +1511,42 @@ class _Line {
     final data = payload is Map ? payload['data'] : payload;
     if (data is! List) return const [];
 
-    return data.whereType<Map<String, dynamic>>().map((row) {
-      return _Line(
-        id: row['id'].toString(),
-        e164: row['e164']?.toString() ?? '',
-        label: row['label']?.toString() ?? '',
-        record: row['record'] == true,
-        leadLine: row['lead_line'] == true,
-        transcribe: row['transcribe'] == true,
-        afterHours: row['after_hours']?.toString() ?? 'voicemail',
-        afterHoursNumber: row['after_hours_number'] as String?,
-        ringGroupId: row['ring_group_id'] as String?,
-        hoursScheduleId: row['hours_schedule_id'] as String?,
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map((row) {
+          return _Line(
+            id: row['id'].toString(),
+            e164: row['e164']?.toString() ?? '',
+            label: row['label']?.toString() ?? '',
+            record: row['record'] == true,
+            leadLine: row['lead_line'] == true,
+            transcribe: row['transcribe'] == true,
+            afterHours: row['after_hours']?.toString() ?? 'voicemail',
+            afterHoursNumber: row['after_hours_number'] as String?,
+            ringGroupId: row['ring_group_id'] as String?,
+            hoursScheduleId: row['hours_schedule_id'] as String?,
 
-        // The server decides this, from the same condition the call renderer
-        // branches on. Only when it does not say — an older server — is it
-        // worked out here, and then by that same rule rather than by assuming
-        // the line is fine: assuming fine is how this went unnoticed before.
-        scopeId: (row['scope_id'] ?? '').toString(),
-        answers:
-            row['answers'] as bool? ??
-            (row['ring_group_id'] != null || row['flow_id'] != null),
-        voiceCallerIdLookup: row['voice_caller_id_lookup'] == true,
-        voicemailTranscribe: row['voicemail_transcribe'] == true,
-        emergencyAddressSid: row['emergency_address_sid'] as String?,
-        fallbackNumber: row['fallback_number'] as String?,
-        recordingNotice: row['recording_notice'] as String?,
-        answerTitle: _answerTitle(row['steps']),
-        lastCallAt: DateTime.tryParse(row['last_call_at']?.toString() ?? ''),
-        assignedTo: row['assigned_to'] as String?,
-      );
-    }).toList(growable: false);
+            // The server decides this, from the same condition the call renderer
+            // branches on. Only when it does not say — an older server — is it
+            // worked out here, and then by that same rule rather than by assuming
+            // the line is fine: assuming fine is how this went unnoticed before.
+            scopeId: (row['scope_id'] ?? '').toString(),
+            answers:
+                row['answers'] as bool? ??
+                (row['ring_group_id'] != null || row['flow_id'] != null),
+            voiceCallerIdLookup: row['voice_caller_id_lookup'] == true,
+            voicemailTranscribe: row['voicemail_transcribe'] == true,
+            emergencyAddressSid: row['emergency_address_sid'] as String?,
+            fallbackNumber: row['fallback_number'] as String?,
+            recordingNotice: row['recording_notice'] as String?,
+            answerTitle: _answerTitle(row['steps']),
+            lastCallAt: DateTime.tryParse(
+              row['last_call_at']?.toString() ?? '',
+            ),
+            assignedTo: row['assigned_to'] as String?,
+          );
+        })
+        .toList(growable: false);
   }
 
   static String? _answerTitle(Object? steps) {
@@ -1562,14 +1584,17 @@ class _Importable {
     final data = payload is Map ? payload['data'] : payload;
     if (data is! List) return const [];
 
-    return data.whereType<Map<String, dynamic>>().map((row) {
-      return _Importable(
-        sid: row['sid'].toString(),
-        e164: row['e164']?.toString() ?? '',
-        label: row['label']?.toString() ?? '',
-        answersElsewhere: row['answers_elsewhere'] == true,
-      );
-    }).toList(growable: false);
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map((row) {
+          return _Importable(
+            sid: row['sid'].toString(),
+            e164: row['e164']?.toString() ?? '',
+            label: row['label']?.toString() ?? '',
+            answersElsewhere: row['answers_elsewhere'] == true,
+          );
+        })
+        .toList(growable: false);
   }
 }
 
@@ -1591,14 +1616,20 @@ class _Conn {
     final data = payload is Map ? payload['data'] : payload;
     if (data is! List) return const [];
 
-    return data.whereType<Map<String, dynamic>>().map((row) {
-      return _Conn(
-        id: row['id'].toString(),
-        label: row['scope_name']?.toString() ?? row['scope_type']?.toString() ?? 'This place',
-        scopeType: row['scope_type']?.toString() ?? 'company',
-        scopeId: row['scope_id']?.toString() ?? '',
-      );
-    }).toList(growable: false);
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map((row) {
+          return _Conn(
+            id: row['id'].toString(),
+            label:
+                row['scope_name']?.toString() ??
+                row['scope_type']?.toString() ??
+                'This place',
+            scopeType: row['scope_type']?.toString() ?? 'company',
+            scopeId: row['scope_id']?.toString() ?? '',
+          );
+        })
+        .toList(growable: false);
   }
 }
 
@@ -1615,7 +1646,12 @@ class _Schedule {
 
     return data
         .whereType<Map<String, dynamic>>()
-        .map((r) => _Schedule(id: r['id'].toString(), name: r['name']?.toString() ?? 'Hours'))
+        .map(
+          (r) => _Schedule(
+            id: r['id'].toString(),
+            name: r['name']?.toString() ?? 'Hours',
+          ),
+        )
         .toList(growable: false);
   }
 }

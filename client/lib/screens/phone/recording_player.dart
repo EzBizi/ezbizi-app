@@ -64,12 +64,17 @@ String? audioMimeType(List<int> bytes) {
   bool starts(List<int> magic) =>
       bytes.length >= magic.length &&
       List.generate(magic.length, (i) => bytes[i] == magic[i]).every((b) => b);
-  if (starts([0x49, 0x44, 0x33]) || (bytes.length > 1 && bytes[0] == 0xFF && bytes[1] & 0xE0 == 0xE0)) {
+  if (starts([0x49, 0x44, 0x33]) ||
+      (bytes.length > 1 && bytes[0] == 0xFF && bytes[1] & 0xE0 == 0xE0)) {
     return 'audio/mpeg';
   }
   if (starts([0x52, 0x49, 0x46, 0x46])) return 'audio/wav';
   if (starts([0x4F, 0x67, 0x67, 0x53])) return 'audio/ogg';
-  if (bytes.length > 8 && bytes[4] == 0x66 && bytes[5] == 0x74 && bytes[6] == 0x79 && bytes[7] == 0x70) {
+  if (bytes.length > 8 &&
+      bytes[4] == 0x66 &&
+      bytes[5] == 0x74 &&
+      bytes[6] == 0x79 &&
+      bytes[7] == 0x70) {
     return 'audio/mp4';
   }
   return null;
@@ -123,21 +128,28 @@ class AudioplayersRecordingPlayer implements RecordingPlayer {
     _subscriptions = [
       _player.onPositionChanged.listen(
         (position) => _set(_state.copyWith(position: position)),
+        onError: _failed,
       ),
       _player.onDurationChanged.listen(
         (duration) => _set(_state.copyWith(duration: duration)),
+        onError: _failed,
       ),
 
       // The end of the track. Without this the button stays on Pause forever
       // after the recording finishes, which is a transport describing a state
       // the sound left a minute ago.
       _player.onPlayerComplete.listen(
-        (_) => _set(
-          _state.copyWith(playing: false, position: Duration.zero),
-        ),
+        (_) => _set(_state.copyWith(playing: false, position: Duration.zero)),
+        onError: _failed,
       ),
     ];
   }
+
+  /// A platform error arrives on the event stream, not from [play]: Windows
+  /// with no audio output says "failed to create mediasink" as the player is
+  /// made, which is when Reports opens. Unheard, each was an uncaught error
+  /// (health sweep, 2026-11-06: 290 from one person). It stops the transport.
+  void _failed(Object _) => _set(const RecordingPlayback());
 
   final AudioPlayer _player = AudioPlayer();
   final _changes = StreamController<RecordingPlayback>.broadcast();
@@ -175,7 +187,9 @@ class AudioplayersRecordingPlayer implements RecordingPlayer {
       // The type is named: iOS and macOS play bytes from an extensionless
       // temp file, and AVPlayer cannot open one it cannot identify (Jose,
       // 2026-10-14: recordings would not play on iOS).
-      await _player.play(BytesSource(Uint8List.fromList(bytes), mimeType: audioMimeType(bytes)));
+      await _player.play(
+        BytesSource(Uint8List.fromList(bytes), mimeType: audioMimeType(bytes)),
+      );
       // A new source can start at normal speed; the one picked carries on.
       if (_speed != 1) await _player.setPlaybackRate(_speed);
     } catch (error) {

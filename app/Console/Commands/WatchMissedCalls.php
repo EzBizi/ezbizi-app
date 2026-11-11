@@ -27,16 +27,8 @@ class WatchMissedCalls extends Command
 
     protected $description = 'Raise reports.call.missed for each new missed call in RingCentral';
 
-    /** A call older than this is history, not news: no burst of the whole day after a deploy or an outage. */
-    private const FRESH_MINUTES = 30;
-
-    /** Brands by the start of the line the call reached. Anything else, a person's own line included, is no company. */
-    private const COMPANIES = [
-        'A1' => 'A-1 Chimney',
-        'Speedy Chimney Sweep' => 'Speedy Chimney Sweep',
-        'Ace Fireplace' => 'Ace Fireplace',
-        'TX Chimney & Chimney Services Pro' => 'TX Chimney & Chimney Services Pro',
-    ];
+    /** Brands by the start of the line the call reached (setting phone.ringcentral_companies). Anything else is no company. */
+    private array $companies = [];
 
     public function handle(RingCentralCallLog $log, EventEmitter $events, TenantContext $tenant): int
     {
@@ -52,6 +44,9 @@ class WatchMissedCalls extends Command
             return self::FAILURE;
         }
 
+        // A call older than this is history, not news: no burst of the whole day after a deploy or an outage.
+        $fresh = (int) $tenant->run($organization, fn () => app(\App\Support\Settings\SettingsResolver::class)->get('phone.missed_call_fresh_minutes', $organization));
+        $this->companies = (array) $tenant->run($organization, fn () => app(\App\Support\Settings\SettingsResolver::class)->get('phone.ringcentral_companies', $organization));
         $now = CarbonImmutable::now((string) config('app.timezone'));
         // Every call on this account is its company's.
         $companyId = $tenant->run($organization, fn () => $log->companyId());
@@ -59,13 +54,13 @@ class WatchMissedCalls extends Command
         $names = null;
         $raised = 0;
 
-        // From FRESH_MINUTES ago, not from midnight: a call at 23:59 is still
+        // From phone.missed_call_fresh_minutes ago, not from midnight: a call at 23:59 is still
         // read by the run at 00:01. Yesterday then comes from its day cache.
-        foreach ($log->forPeriod($now->subMinutes(self::FRESH_MINUTES), $now) as $call) {
+        foreach ($log->forPeriod($now->subMinutes($fresh), $now) as $call) {
             if ($call['answered_by'] !== null
                 || ! in_array($call['result'], ['Missed', 'Voicemail'], true)
                 || $call['id'] === null
-                || CarbonImmutable::parse((string) $call['started_at'])->lt($now->subMinutes(self::FRESH_MINUTES))
+                || CarbonImmutable::parse((string) $call['started_at'])->lt($now->subMinutes($fresh))
                 // Atomic: the first run to see the call claims it.
                 || ! Cache::add('missed-call-raised:'.$call['id'], 1, now()->addDays(2))) {
                 continue;
@@ -101,9 +96,9 @@ class WatchMissedCalls extends Command
 
     private function company(?string $line): ?string
     {
-        foreach (self::COMPANIES as $prefix => $company) {
-            if ($line !== null && str_starts_with($line, $prefix)) {
-                return $company;
+        foreach ($this->companies as $prefix => $company) {
+            if ($line !== null && $prefix !== '' && str_starts_with($line, (string) $prefix)) {
+                return (string) $company;
             }
         }
 

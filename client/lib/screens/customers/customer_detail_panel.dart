@@ -17,6 +17,7 @@ import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
 import '../jobs/job_detail_panel.dart';
+import 'customer_tags.dart';
 import 'customer_workiz.dart';
 
 /// One customer, opened from the list.
@@ -32,6 +33,7 @@ class CustomerDetailPanel extends StatefulWidget {
     required this.id,
     this.onDone,
     this.dirty,
+    this.knownTags = const [],
   });
 
   final ApiClient api;
@@ -45,6 +47,9 @@ class CustomerDetailPanel extends StatefulWidget {
   /// True while something typed here is unsaved, so the list beside a docked
   /// panel can refuse to switch customers underneath it. See JobDetailPanel.
   final ValueNotifier<bool>? dirty;
+
+  /// Tags already used on the list beside this panel, offered as you type.
+  final Iterable<String> knownTags;
 
   @override
   State<CustomerDetailPanel> createState() => _CustomerDetailPanelState();
@@ -107,7 +112,11 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     _load();
   }
 
+  /// A tag saved on its own, so a plain close still refreshes the list.
+  bool _changed = false;
+
   void _done(bool? changed) {
+    changed ??= _changed ? true : null;
     final onDone = widget.onDone;
     if (onDone != null) {
       onDone(changed ?? false);
@@ -223,6 +232,21 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     });
 
     _done(true);
+  }
+
+  /// Tags save on their own, at once, with the whole list (UI queue 174).
+  Future<bool> _saveTags(List<String> tags) async {
+    final response =
+        await widget.api.patch('/customers/${widget.id}', {'tags': tags});
+    if (!mounted) return false;
+    if (!response.ok) {
+      setState(() => _error = response.reason);
+      return false;
+    }
+    final saved = (response.data as Map?)?['tags'] ?? tags;
+    setState(() => _row = {...?_row, 'tags': saved});
+    _changed = true;
+    return true;
   }
 
   Future<void> _reassign() async {
@@ -417,6 +441,16 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                       ],
                     ),
                   ),
+                if (row != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: CustomerTagsEditor(
+                      tags: customerTags(row),
+                      suggestions: widget.knownTags,
+                      enabled: _editRefusal == null && !_loading,
+                      onChanged: _saveTags,
+                    ),
+                  ),
                 TextField(
                   controller: _name,
                   decoration: const InputDecoration(labelText: 'Name'),
@@ -553,6 +587,10 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                     Refused(
                       reason: _deleteRefusal,
                       child: OutlinedButton(
+                        // Red: it destroys the record (phone audit 2026-11-04).
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                        ),
                         onPressed:
                             (_deleteRefusal == null && !_busy && !_loading)
                             ? _delete

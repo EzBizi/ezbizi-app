@@ -25,6 +25,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -77,8 +78,7 @@ class WhatsAppStaffBotTest extends TestCase
             }
 
             return Http::response(['messages' => [['id' => 'wamid.REPLY'.$n]]]);
-        });
-    }
+        });    }
 
     private function number(array $t, string $phoneNumberId): void
     {
@@ -148,6 +148,8 @@ class WhatsAppStaffBotTest extends TestCase
             'phone' => $phone,
             'is_active' => $active,
         ])->save());
+        // The one-time parts tip is spent; TechAssistantWhatsAppTest covers it.
+        Cache::put('whatsapp.parts_tip.'.$t['admin']->getKey(), true);
     }
 
     private function menuIds(): array
@@ -1174,5 +1176,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertStringContainsString('9 scheduled', $replies[0]);
         $this->assertStringContainsString('read by AI with your access', $replies[0], 'the same source as the app: AppAsk');
         $this->assertSame([], array_filter($asked, fn ($p) => str_contains($p, 'ORDER CHECK')), 'the parts template was never asked');
+        $planner = collect($asked)->first(fn ($p) => str_contains($p, 'ENDPOINTS:'));
+        $this->assertStringContainsString('['.$t['company']->id.']', $planner, 'the planner can fill company_id');
     }
 }

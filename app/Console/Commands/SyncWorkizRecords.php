@@ -8,6 +8,7 @@ use App\Models\WorkizRecord;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizRecords;
+use App\Support\Workiz\WorkizTags;
 use App\Support\Workiz\WorkizV2;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -101,7 +102,7 @@ class SyncWorkizRecords extends Command
         $column = self::CURSOR[$type] ?? null;
         $newest = $column === null || $this->option('full') ? null
             : WorkizRecord::query()->where('franchise_id', $connection->scope_id)->where('type', $type)->max($column);
-        $since = WorkizRecords::cursor($newest);
+        $since = WorkizRecords::cursor($newest, \App\Models\Franchise::query()->find($connection->scope_id));
         $landed = 0;
 
         for ($page = 1; $page <= max(1, (int) $this->option('pages')); $page++) {
@@ -118,7 +119,10 @@ class SyncWorkizRecords extends Command
                 ? array_filter($rows, fn ($r) => (string) ($r['startDate'] ?? '') < $since)
                 : [];
             $fresh = $type === 'payment' ? self::unheld($connection, array_column($rows, 'id')) : [];
+            // A tag renamed, recoloured, added or deleted: logged, told, followed (WorkizTags).
+            $tagChanges = $type === 'tag' ? WorkizTags::diff($connection, $rows, $page === 1 && ! ($read['data']['hasMore'] ?? false)) : [];
             $landed += WorkizRecords::land($connection, $type, array_diff_key($rows, $older));
+            WorkizTags::record($connection, $tagChanges);
             self::announce($connection, $fresh);
 
             if ($older !== [] || ! ($read['data']['hasMore'] ?? false)) {
@@ -142,7 +146,7 @@ class SyncWorkizRecords extends Command
 
     /**
      * `job.payment_received`, once per payment new to the mirror, on its
-     * EzBizi job (Automations, 2026-10-21: Jose's Project Management rules).
+     * EzBizi job (Automations, 2026-10-21).
      * A payment dated more than two days back is history arriving (a first
      * read, a full sweep) and is not announced.
      */

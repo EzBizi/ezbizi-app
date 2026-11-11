@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/tag.dart';
@@ -148,7 +149,8 @@ class _TrainingCardState extends State<TrainingCard> {
 
     return [
       _counts(context, rows),
-      const SizedBox(height: 8),
+      const SizedBox(height: 12),
+      _header(context),
       for (final row in rows) _line(context, row),
     ];
   }
@@ -168,34 +170,59 @@ class _TrainingCardState extends State<TrainingCard> {
     int of(Set<_State> states) =>
         rows.where((r) => states.contains(r.state)).length;
 
-    Widget cell(int n, String label, {bool bad = false}) => Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: bad
-            ? BoxDecoration(
-                border: Border.all(color: scheme.error),
-                borderRadius: BorderRadius.circular(8),
-              )
-            : null,
-        child: Column(
-          children: [
-            Text(
-              '$n',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: bad ? scheme.error : null,
-                fontWeight: FontWeight.w700,
-              ),
+    // Design 190: equal tiles, each with a tinted icon, so the strip reads by
+    // colour before it is read by number.
+    Widget cell(int n, String label, IconData icon, Tone tone) {
+      final tint = ToneColours.of(context, tone);
+
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: tone == Tone.bad ? scheme.error : scheme.outlineVariant,
             ),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: bad ? scheme.error : scheme.outline,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: tint.fill,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(icon, size: 18, color: tint.ink),
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$n',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            color: tone == Tone.bad ? scheme.error : null,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }
 
     return Row(
       key: TrainingCard.countsKey,
@@ -205,18 +232,72 @@ class _TrainingCardState extends State<TrainingCard> {
         cell(
           of({_State.lapsed, _State.notPassed}),
           'Needs a pass',
-          bad: of({_State.lapsed, _State.notPassed}) > 0,
+          Icons.priority_high,
+          of({_State.lapsed, _State.notPassed}) > 0 ? Tone.bad : Tone.neutral,
         ),
-        const SizedBox(width: 8),
-        cell(of({_State.notStarted, _State.inProgress}), 'Outstanding'),
-        const SizedBox(width: 8),
-        cell(of({_State.passed}), 'Passed'),
+        const SizedBox(width: 12),
+        cell(
+          of({_State.notStarted, _State.inProgress}),
+          'Outstanding',
+          Icons.schedule,
+          Tone.neutral,
+        ),
+        const SizedBox(width: 12),
+        cell(of({_State.passed}), 'Passed', Icons.check, Tone.ok),
       ],
+    );
+  }
+
+  /// Design 190: a header, then aligned columns (course, status, score,
+  /// completed, retake by) so each can be compared down the card.
+  static const _status = 150.0, _scoreW = 140.0, _dateW = 120.0;
+
+  Widget _header(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+      color: Theme.of(context).colorScheme.outline,
+      fontWeight: FontWeight.w700,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        children: [
+          Expanded(child: Text('Course', style: style)),
+          SizedBox(
+            width: _status,
+            child: Text('Status', style: style),
+          ),
+          SizedBox(
+            width: _scoreW,
+            child: Text('Score', style: style),
+          ),
+          SizedBox(
+            width: _dateW,
+            child: Text('Completed', style: style),
+          ),
+          SizedBox(
+            width: _dateW,
+            child: Text('Retake by', style: style),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _line(BuildContext context, _Row row) {
     final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.outline,
+    );
+    Widget cell(String? text, {Key? key}) => SizedBox(
+      width: _dateW,
+      child: Text(
+        text ?? '—',
+        key: key,
+        overflow: TextOverflow.ellipsis,
+        style: muted,
+      ),
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -229,61 +310,100 @@ class _TrainingCardState extends State<TrainingCard> {
               style: theme.textTheme.bodyMedium,
             ),
           ),
-          Tag(row.state.label, warn: row.state.bad),
-          if (row.detail.isNotEmpty) ...[
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                row.detail,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
-                ),
-              ),
+          SizedBox(
+            width: _status,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _tag(row.state.label, row),
             ),
-          ],
+          ),
+          SizedBox(width: _scoreW, child: _score(context, row, muted)),
+          cell(row.completed),
+          cell(row.retake),
         ],
       ),
     );
   }
 
-  /// Mobile 6: a small card per row, tinted when lapsed. The order does the
-  /// work that headings would.
+  /// Green passed, amber lapsed, red not passed (design 190).
+  Widget _tag(String label, _Row row) => Tag(
+    label,
+    good: row.state == _State.passed,
+    warn: row.state == _State.lapsed,
+    bad: row.state == _State.notPassed,
+  );
+
+  /// A test's score as a bar and its figure; a guide's progress as words.
+  Widget _score(BuildContext context, _Row row, TextStyle? muted) {
+    final score = row.score;
+    if (score == null) {
+      return Text(row.progress ?? '—', style: muted);
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: (score / 100).clamp(0, 1).toDouble(),
+              minHeight: 6,
+              backgroundColor: ToneColours.of(context, Tone.neutral).fill,
+              color: row.state == _State.notPassed
+                  ? Theme.of(context).colorScheme.error
+                  : EzBiziTheme.clockIn(context),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(width: 40, child: Text('$score%', style: muted)),
+        const SizedBox(width: 12),
+      ],
+    );
+  }
+
+  /// Phone option 4: the course and its dates on the left, the status and
+  /// score as one pill on the right; the order does the work of headings.
   Widget _mini(BuildContext context, _Row row) {
     final theme = Theme.of(context);
+    final dates = [
+      ?row.completed,
+      ?row.progress,
+      if (row.retake != null) 'retake by ${row.retake}',
+    ].join(' · ');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
       decoration: BoxDecoration(
-        color: row.state == _State.lapsed
-            ? theme.colorScheme.errorContainer.withValues(alpha: 0.35)
-            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(row.title, style: theme.textTheme.bodyMedium),
-          const SizedBox(height: 6),
-          // Both halves shorten: at 390 a pill and a date together are wider
-          // than the card, and a row that runs off the edge hides the date.
-          Row(
-            children: [
-              Flexible(child: Tag(row.state.label, warn: row.state.bad)),
-              if (row.detail.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    row.detail,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(row.title, style: theme.textTheme.bodyMedium),
+                if (dates.isNotEmpty)
+                  Text(
+                    dates,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.outline,
                     ),
                   ),
-                ),
               ],
-            ],
+            ),
+          ),
+          Flexible(
+            child: _tag(
+              row.score == null
+                  ? row.state.label
+                  : '${row.state.label} ${row.score}%',
+              row,
+            ),
           ),
         ],
       ),
@@ -343,36 +463,38 @@ class _TrainingCardState extends State<TrainingCard> {
     final title = json['title'] as String? ?? '';
 
     if (json['type'] == 'test') {
-      final score = json['score'];
+      final score = json['score'] is num ? json['score'] as num : null;
       final expires = _date(json['expires_on']);
+      final taken = _date(json['passed_at'] ?? json['taken_at']);
 
       if (json['due_for_retaking'] == true) {
         return _Row(
           title,
           _State.lapsed,
-          expires == null ? '' : 'lapsed $expires',
+          score: score,
+          completed: taken,
+          retake: expires == null ? null : 'lapsed $expires',
         );
       }
       if (json['passed'] == true) {
         return _Row(
           title,
           _State.passed,
-          [
-            if (score != null) '$score%',
-            if (expires != null) 'runs out $expires',
-          ].join(' · '),
+          score: score,
+          completed: taken,
+          retake: expires,
         );
       }
       if (json['passed'] == false) {
-        return _Row(title, _State.notPassed, score == null ? '' : '$score%');
+        return _Row(title, _State.notPassed, score: score, completed: taken);
       }
-      return _Row(title, _State.notStarted, '');
+      return _Row(title, _State.notStarted);
     }
 
     final completed = _date(json['completed_at']);
 
     if (completed != null) {
-      return _Row(title, _State.passed, 'completed $completed');
+      return _Row(title, _State.passed, completed: completed);
     }
     // `last_screen` is a 0-indexed high-water mark (ProgressController::seen),
     // so the screen reached is one more than stored — the same arithmetic as
@@ -384,10 +506,12 @@ class _TrainingCardState extends State<TrainingCard> {
       return _Row(
         title,
         _State.inProgress,
-        total == null ? '' : 'screen ${reached.toInt() + 1} of $total',
+        progress: total == null
+            ? null
+            : 'screen ${reached.toInt() + 1} of $total',
       );
     }
-    return _Row(title, _State.notStarted, '');
+    return _Row(title, _State.notStarted);
   }
 
   String? _date(Object? iso) {
@@ -412,9 +536,27 @@ enum _State {
 }
 
 class _Row {
-  const _Row(this.title, this.state, this.detail);
+  const _Row(
+    this.title,
+    this.state, {
+    this.score,
+    this.progress,
+    this.completed,
+    this.retake,
+  });
 
   final String title;
   final _State state;
-  final String detail;
+
+  /// A test's percentage; null for a guide or a test never taken.
+  final num? score;
+
+  /// A guide under way: "screen 4 of 9".
+  final String? progress;
+
+  /// When it was passed or finished, when the server says.
+  final String? completed;
+
+  /// When a pass runs out, or "lapsed …" once it has.
+  final String? retake;
 }

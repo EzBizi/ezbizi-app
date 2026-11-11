@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_html/flutter_html.dart';
 
 import '../../core/theme.dart';
 
@@ -97,7 +98,11 @@ class NewsletterAudience {
     required this.name,
     required this.kind,
     this.tag,
+    this.mailchimpListId,
   });
+
+  /// The Mailchimp list this EzBizi list sends through.
+  final String? mailchimpListId;
 
   final String id;
   final String name;
@@ -118,6 +123,7 @@ class NewsletterAudience {
         name: json['name'] as String? ?? '',
         kind: json['kind'] as String? ?? '',
         tag: json['tag'] as String?,
+        mailchimpListId: json['mailchimp_list_id'] as String?,
       );
 }
 
@@ -136,6 +142,8 @@ class NewsletterEmail extends StatelessWidget {
     this.selected,
     this.onSelect,
     this.editorFor,
+    this.onReorder,
+    this.onDropNew,
   });
 
   final List<Map<String, dynamic>> blocks;
@@ -148,6 +156,13 @@ class NewsletterEmail extends StatelessWidget {
   /// Null when the newsletter cannot be changed: nothing is tappable then.
   final ValueChanged<int>? onSelect;
   final Widget Function(int index)? editorFor;
+
+  /// Moves a block, `to` already counted after the removal. Null hides the
+  /// drag handles.
+  final void Function(int from, int to)? onReorder;
+
+  /// Inserts a block dragged from the palette at an index. Null accepts none.
+  final void Function(BlockKind kind, int at)? onDropNew;
 
   /// The renderer's 600px table, and a phone's width less its margins.
   static const desktopWidth = 600.0;
@@ -181,24 +196,93 @@ class NewsletterEmail extends StatelessWidget {
                       style: TextStyle(fontSize: 15, color: EmailInk.body),
                     ),
                   ),
-                for (var i = 0; i < blocks.length; i++)
-                  if (i == selected && editorFor != null)
-                    Container(
-                      key: Key('newsletter-block-$i'),
-                      margin: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: primary, width: 2),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: editorFor!(i),
-                    )
-                  else
-                    _tappable(i, EmailBlockView(block: blocks[i], phone: phone)),
-                _footer(),
+                if (onReorder == null)
+                  for (var i = 0; i < blocks.length; i++) _block(i, primary)
+                else
+                  ReorderableListView(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    buildDefaultDragHandles: false,
+                    onReorder: (from, to) => onReorder!(from, to > from ? to - 1 : to),
+                    children: [
+                      for (var i = 0; i < blocks.length; i++)
+                        KeyedSubtree(key: ObjectKey(blocks[i]), child: _draggable(i, primary)),
+                    ],
+                  ),
+                _dropAt(blocks.length, primary, _footer()),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _block(int i, Color primary) {
+    if (i == selected && editorFor != null) {
+      return Container(
+        key: Key('newsletter-block-$i'),
+        margin: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          border: Border.all(color: primary, width: 2),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: editorFor!(i),
+      );
+    }
+    return _tappable(i, EmailBlockView(block: blocks[i], phone: phone));
+  }
+
+  /// A block with its drag handle in the corner, and a new block from the
+  /// palette dropped on it lands above it.
+  Widget _draggable(int i, Color primary) {
+    return _dropAt(
+      i,
+      primary,
+      Stack(
+        children: [
+          _block(i, primary),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: ReorderableDragStartListener(
+              index: i,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.grab,
+                child: Tooltip(
+                  message: 'Drag to move',
+                  child: Icon(
+                    Icons.drag_indicator,
+                    key: Key('newsletter-block-handle-$i'),
+                    size: 18,
+                    color: EmailInk.body,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Accepts a [BlockKind] dragged from the palette, inserting it at [index];
+  /// a line above [child] shows where it will land.
+  Widget _dropAt(int index, Color primary, Widget child) {
+    if (onDropNew == null) return child;
+    return DragTarget<BlockKind>(
+      onAcceptWithDetails: (details) => onDropNew!(details.data, index),
+      builder: (context, candidates, _) => Container(
+        key: Key('newsletter-drop-$index'),
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: candidates.isEmpty ? Colors.transparent : primary,
+              width: 3,
+            ),
+          ),
+        ),
+        child: child,
       ),
     );
   }
@@ -258,18 +342,10 @@ class EmailBlockView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Kept exactly as typed on the server; its HTML is not drawn here.
+    // Kept exactly as typed on the server; drawn here close enough to edit
+    // by, and exactly under Server preview.
     if (isHandWritten(block)) {
-      return _row(
-        const Text(
-          'This block was written as HTML. Turn on Server preview to see it.',
-          style: TextStyle(
-            fontSize: 13,
-            fontStyle: FontStyle.italic,
-            color: EmailInk.footerInk,
-          ),
-        ),
-      );
+      return _row(Html(data: block['html'] as String));
     }
 
     final align = _align(block);

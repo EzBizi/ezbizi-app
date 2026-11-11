@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
@@ -139,14 +140,12 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
   DateTime _lastInput = DateTime.now();
   DateTime _lastRefresh = DateTime.now();
 
-
   void _onPointer(PointerEvent _) => _lastInput = DateTime.now();
 
   bool _onKey(KeyEvent _) {
     _lastInput = DateTime.now();
     return false;
   }
-
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -261,9 +260,14 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     _search.text = label;
     setState(() => _suggestions = []);
 
+    // A zip is asked as a zip even though it names its area: asking the area
+    // lost the zip, and with it the map and the nearby-day suggestion
+    // (Jose, 2026-11-06: picking from the list did nothing Check did).
     final areaId = s['area_id'] as String?;
     await _run(
-      areaId != null
+      s['type'] == 'zip'
+          ? {'zip': label}
+          : areaId != null
           ? {'area_id': areaId}
           : s['type'] == 'city'
           ? {'city': label}
@@ -335,11 +339,9 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
       });
     }
 
-    final response = await widget.api.get(
-      '/scheduling/availability',
-      query,
-      {if (quiet && _etag != null) 'If-None-Match': _etag!},
-    );
+    final response = await widget.api.get('/scheduling/availability', query, {
+      if (quiet && _etag != null) 'If-None-Match': _etag!,
+    });
     if (!mounted || ticket != _request) return;
     // Unchanged since the answer on screen: nothing to redraw, nothing to
     // ask about the suggestion either.
@@ -367,10 +369,10 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
 
   /// Asked beside the availability, not instead of it: a failure here only
   /// means no cards and no map, never a broken answer.
-  Future<void> _askSuggestion(String zip, int ticket) async {
+  Future<void> _askSuggestion(String zip, int ticket, {String? date}) async {
     final response = await widget.api.get(
       '/scheduling/availability/suggestion',
-      {'zip': zip},
+      {'zip': zip, 'date': ?date},
     );
     if (!mounted || ticket != _request) return;
     final data = response.ok ? response.body['data'] : null;
@@ -633,6 +635,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
           if ((day['date'] as String).compareTo(from) > 0) day,
       ]..sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
     }
+
     final heading = [
       area['franchise_name'],
       area['area_name'],
@@ -658,6 +661,8 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
                 fontWeight: FontWeight.w700,
               ),
             ),
+            const SizedBox(height: 8),
+            _office(theme, area),
             const SizedBox(height: 10),
             if (area['configured'] != true ||
                 (first == null && area['none_because'] != 'closed'))
@@ -730,31 +735,114 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
                       child: _closedRow(theme, day),
                     )
                   else
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 92,
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              _shortDate(day['date'] as String),
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 92,
+                            // Another day the customer can take: its own
+                            // suggestion, the way the first one was worked out
+                            // (Jose, 2026-11-06).
+                            child: _suggestionZip == null
+                                ? Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      _shortDate(day['date'] as String),
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  )
+                                : TextButton(
+                                    key: ValueKey(
+                                      'availability-day-${day['date']}',
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      alignment: Alignment.centerLeft,
+                                    ),
+                                    onPressed: () => _askSuggestion(
+                                      _suggestionZip!,
+                                      _request,
+                                      date: day['date'] as String,
+                                    ),
+                                    child: Text(
+                                      _shortDate(day['date'] as String),
+                                    ),
+                                  ),
                           ),
-                        ),
-                        Expanded(child: _windowRow(day)),
-                      ],
+                          Expanded(child: _windowRow(day)),
+                        ],
+                      ),
                     ),
-                  ),
               ],
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// The branch's physical office, in the accent so it is hard to miss (Jose,
+  /// 2026-11-09: "a lot of dispatchers do not know where our physical
+  /// locations are"), with Copy and Maps. No address says so, same colour.
+  Widget _office(ThemeData theme, Map<String, dynamic> area) {
+    final office = (area['office'] as Map?)?.cast<String, dynamic>();
+    final line = '${office?['line'] ?? ''}'.trim();
+    final accent = theme.colorScheme.primary;
+    final style = theme.textTheme.bodyMedium?.copyWith(
+      color: accent,
+      fontWeight: FontWeight.w700,
+    );
+
+    return Container(
+      key: ValueKey('availability-office-${area['area_id']}'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.storefront_outlined, size: 18, color: accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              line.isEmpty
+                  ? 'No address on file for this branch'
+                  : 'Our office: $line',
+              style: style,
+            ),
+          ),
+          if (line.isNotEmpty) ...[
+            IconButton(
+              key: const Key('availability-office-copy'),
+              tooltip: 'Copy the address',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.copy, size: 18, color: accent),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: line));
+                if (!mounted) return;
+                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                  const SnackBar(content: Text('Address copied.')),
+                );
+              },
+            ),
+            IconButton(
+              key: const Key('availability-office-maps'),
+              tooltip: 'Open in Maps',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.map_outlined, size: 18, color: accent),
+              onPressed: () => launchUrl(
+                Uri.parse('${office?['maps_url']}'),
+                mode: LaunchMode.externalApplication,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -3,6 +3,7 @@
 namespace App\Support\TimeClock;
 
 use App\Models\AuditEvent;
+use App\Models\PtoRequest;
 use App\Models\TimeClockDayApproval;
 use App\Models\TimeClockShift;
 use App\Models\User;
@@ -51,7 +52,7 @@ class TimeClockApprovals
         );
         $shifts = $this->shiftsOn($people->modelKeys(), $day);
         $approvals = TimeClockDayApproval::query()->with('approver:id,name')
-            ->whereIn('user_id', $shifts->keys())->whereDate('date', $day->toDateString())->get()->keyBy('user_id');
+            ->whereIn('user_id', $people->modelKeys())->whereDate('date', $day->toDateString())->get()->keyBy('user_id');
         $adjustments = $this->adjustmentsOf($shifts->flatten()->pluck('id')->all(), $tz, $timeFormat);
 
         $rows = [];
@@ -60,7 +61,7 @@ class TimeClockApprovals
             $window = WorkSchedule::windowFor($this->clock->scheduleFor($person), $day->copy()->setTime(12, 0));
             // A scheduled day with no punch is a no-show row; anyone else with
             // no shifts and no schedule that day is not on the list.
-            if ($theirs->isEmpty() && $window === null) {
+            if ($theirs->isEmpty() && ($window === null || $this->onPto($person, $day))) {
                 continue;
             }
             $approval = $approvals->get($person->id);
@@ -83,7 +84,18 @@ class TimeClockApprovals
                 'early_seconds' => $window === null || $last?->clocked_out_at === null ? null
                     : (int) Carbon::parse($last->clocked_out_at)->diffInSeconds(Carbon::parse($window['end_at']), false),
                 'no_show' => $theirs->isEmpty(),
-                'status' => $approval?->status === TimeClockDayApproval::APPROVED ? 'approved' : 'waiting',
+                // A no-show has nothing to approve (Jose, 2026-11-09): it is
+                // a no-show until excused, or until hours are added for it.
+                'status' => match (true) {
+                    $approval?->status === TimeClockDayApproval::EXCUSED => 'excused',
+                    $theirs->isEmpty() => 'no_show',
+                    $approval?->status === TimeClockDayApproval::APPROVED => 'approved',
+                    default => 'waiting',
+                },
+                'scheduled_local' => $window === null ? null : [
+                    'start' => Carbon::parse($window['start_at'])->timezone($tz)->format('Y-m-d H:i'),
+                    'end' => Carbon::parse($window['end_at'])->timezone($tz)->format('Y-m-d H:i'),
+                ],
                 'approved_by' => $approval?->approver === null ? null : ['id' => $approval->approver->id, 'name' => $approval->approver->name],
                 'approved_at' => $approval?->approved_at?->toIso8601String(),
                 'adjustments' => $theirs->flatMap(fn (TimeClockShift $s) => $adjustments[$s->id] ?? [])->values()->all(),
@@ -96,9 +108,10 @@ class TimeClockApprovals
             'date' => $day->toDateString(),
             'label' => $day->copy()->locale($locale)->isoFormat('dddd, MMM D'),
             'counts' => [
-                'waiting' => $rowsC->where('status', 'waiting')->where('no_show', false)->count(),
+                'waiting' => $rowsC->where('status', 'waiting')->count(),
                 'approved' => $rowsC->where('status', 'approved')->count(),
-                'no_shows' => $rowsC->where('no_show', true)->count(),
+                'no_shows' => $rowsC->where('status', 'no_show')->count(),
+                'excused' => $rowsC->where('status', 'excused')->count(),
             ],
             'rows' => $rows,
         ];
@@ -124,13 +137,32 @@ class TimeClockApprovals
         return $row;
     }
 
+    /** A no-show the approver excuses: a day off, sick, anything with nothing to pay. */
+    public function excuse(User $actor, User $person, string $date): void
+    {
+        $this->clock->assertReaches($actor, $person);
+        $day = $this->resolveDay($date, $this->clock->viewTimezone($actor))->toDateString();
+        $row = TimeClockDayApproval::query()->firstOrNew(['user_id' => $person->id, 'date' => $day], [
+            'organization_id' => $person->organization_id,
+        ]);
+        $row->forceFill(['status' => TimeClockDayApproval::EXCUSED, 'approved_by' => $actor->id, 'approved_at' => now()])->save();
+        $this->audit->log('time_clock.day_excused', $row, metadata: ['user_id' => $person->id, 'date' => $day]);
+    }
+
+    /** Approved PTO covering the day: not a no-show. */
+    private function onPto(User $person, Carbon $day): bool
+    {
+        return PtoRequest::query()->where('user_id', $person->id)->where('status', 'approved')
+            ->where('days', 'like', '%"'.$day->toDateString().'"%')->exists();
+    }
+
     /** Approve every row of the day still waiting, in the approver's view. */
     public function approveAll(User $actor, ?string $date): int
     {
         $data = $this->day($actor, $date);
         $count = 0;
         foreach ($data['rows'] as $row) {
-            if ($row['status'] === 'waiting' && ! $row['no_show']) {
+            if ($row['status'] === 'waiting') {
                 $this->approve($actor, User::query()->findOrFail($row['person']['id']), $data['date']);
                 $count++;
             }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../screens/financials_screen.dart';
 import '../screens/ai_assistance_screen.dart';
 import '../screens/guidelines_screen.dart';
+import '../screens/ads_manager_screen.dart';
 import '../screens/ads_performance_screen.dart';
 import '../screens/automations_screen.dart';
 import '../screens/customers/memberships_screen.dart';
@@ -22,11 +23,11 @@ import '../screens/reviews_screen.dart';
 import '../screens/customer_experience_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/profit_loss_screen.dart';
-import '../screens/project_management_2_screen.dart';
-import '../screens/project_management_screen.dart';
 import '../screens/phone_screen.dart';
+import '../screens/project_board_screen.dart';
 import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
+import '../screens/company_screen.dart';
 import '../screens/task_board_screen.dart';
 import '../screens/training_screen.dart';
 import '../screens/web_screen.dart';
@@ -75,16 +76,10 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.construction_outlined,
     (api, session) => JobsScreen(api: api, session: session),
   ),
-  // Its own module since 2026-10-21 (Jose: "its own tab, not a sub tab of
-  // Jobs"), with the timeline mark it had as a Jobs tab.
-  'project_management': ModuleScreen(
-    Icons.timeline_outlined,
-    (api, session) => ProjectManagementScreen(api: api, session: session),
-  ),
-  // Project Management rebuilt from scratch beside the first (Jose, 2026-10-26).
-  'project_management_2': ModuleScreen(
-    Icons.view_timeline_outlined,
-    (api, session) => ProjectManagement2Screen(api: api, session: session),
+  // Project Management, built from scratch (Jose, 2026-11-06).
+  'project_board': ModuleScreen(
+    Icons.view_kanban_outlined,
+    (api, session) => ProjectBoardScreen(api: api, session: session),
   ),
   'scheduling': ModuleScreen(
     Icons.calendar_month_outlined,
@@ -160,6 +155,11 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.table_chart_outlined,
     (api, session) => FinancialsScreen(api: api, session: session),
   ),
+  // Design 175: ownership chart, step owners and KPIs.
+  'company': ModuleScreen(
+    Icons.account_tree_outlined,
+    (api, session) => CompanyScreen(api: api, session: session),
+  ),
   'tasks': ModuleScreen(
     Icons.view_kanban_outlined,
     (api, session) => TaskBoardScreen(api: api, session: session),
@@ -206,6 +206,12 @@ final Map<String, ModuleScreen> moduleScreens = {
   'ads_performance': ModuleScreen(
     Icons.show_chart_outlined,
     (api, session) => AdsPerformanceScreen(api: api, session: session),
+  ),
+  // A megaphone: Marketing › Ads is where advertising is switched and
+  // budgeted (Jose, 2026-11-09); the chart line above is its report.
+  'ads_manager': ModuleScreen(
+    Icons.campaign_outlined,
+    (api, session) => AdsManagerScreen(api: api, session: session),
   ),
   // A ledger, not a currency symbol or a chart. What the tab holds is a
   // business's own books read out of its accounting sheet - $ would say

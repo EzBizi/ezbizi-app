@@ -9,6 +9,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use App\Support\Settings\SettingsResolver;
 
 /**
  * Calls straight to the business's own lines, in Leads beside the Local
@@ -92,9 +93,6 @@ final class RingCentralLeadCalls
     /** Answered in the business's existing-customer queue (Settings: leads.existing_client_queue). */
     public const EXISTING_CLIENT = 'EXISTING_CLIENT';
 
-    /** A call older than this files quietly: a catch-up run announces nothing. */
-    private const ANNOUNCE_WITHIN_MINUTES = 60;
-
     private const WORDS = [self::POSSIBLE_SPAM => 'Possible spam', self::MISSED => 'Missed call', self::VOICEMAIL => 'Voicemail', self::IN_PROGRESS => 'In progress', self::FETCHING => 'Fetching recording'];
 
     public function __construct(
@@ -169,7 +167,9 @@ final class RingCentralLeadCalls
                 continue;
             }
             DB::transaction(function () use ($call, $out, $digits, $line, $companyId, $franchiseId, $times, $i, $outcome, $lineNames) {
-                $lead = $this->leadFor($digits, $times[$i]) ?? Lead::create([
+                $lead = $this->leadFor($digits, $times[$i]);
+                $created = $lead === null;
+                $lead ??= Lead::create([
                     'organization_id' => app(\App\Support\Tenancy\TenantContext::class)->idOrFail(),
                     'company_id' => $companyId,
                     'franchise_id' => $franchiseId,
@@ -221,8 +221,18 @@ final class RingCentralLeadCalls
                 // 2026-10-15: "just report the Missed Calls instead from now on";
                 // 2026-10-16: menu hang-ups excluded, voicemails included).
                 if (($outcome === self::MISSED || $outcome === self::VOICEMAIL)
-                    && $times[$i]->gte(CarbonImmutable::now()->subMinutes(self::ANNOUNCE_WITHIN_MINUTES))) {
+                    && $times[$i]->gte(CarbonImmutable::now()->subMinutes((int) SettingsResolver::forOrganization('leads.announce_minutes', $lead->organization_id)))) {
                     $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $times[$i])]);
+                }
+                // A new caller is a new lead like any other source's (UI-UX
+                // parity audit, 2026-11-06): never a repeat call, a menu
+                // hang-up, an existing client or a catch-up run. Its kind,
+                // ringcentral, keeps it out of every text auto-reply.
+                if ($created && ! $out && ! in_array($outcome, [self::POSSIBLE_SPAM, self::EXISTING_CLIENT], true)
+                    && $times[$i]->gte(CarbonImmutable::now()->subMinutes((int) SettingsResolver::forOrganization('leads.announce_minutes', $lead->organization_id)))) {
+                    $this->events->emitAfterCommit('lead.received', $lead, [
+                        'after' => $lead->only(['source', 'contact_name', 'phone', 'category', 'received_at']) + ['kind' => $lead->kind()],
+                    ]);
                 }
             });
             $filed++;
@@ -277,7 +287,7 @@ final class RingCentralLeadCalls
         }
         // Held back while it was live: told now that it ended unanswered.
         if ($was === self::WORDS[self::IN_PROGRESS] && ($outcome === self::MISSED || $outcome === self::VOICEMAIL)
-            && $at->gte(CarbonImmutable::now()->subMinutes(self::ANNOUNCE_WITHIN_MINUTES))) {
+            && $at->gte(CarbonImmutable::now()->subMinutes((int) SettingsResolver::forOrganization('leads.announce_minutes', $lead->organization_id)))) {
             $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $at)]);
         }
     }

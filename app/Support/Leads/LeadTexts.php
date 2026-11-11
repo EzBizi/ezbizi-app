@@ -47,7 +47,7 @@ final class LeadTexts
         $number = $this->line($lead) ?? throw new RuntimeException('No texting line is cleared to send for this lead\'s company.');
         $connection = $number->connection ?? throw new RuntimeException('That texting line has no phone account behind it.');
 
-        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body) ?? throw new RuntimeException(\App\Support\Phone\SmsConsent::REFUSAL);
+        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, $automatic) ?? throw new RuntimeException(\App\Support\Phone\SmsConsent::REFUSAL);
 
         try {
             $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body, $number->account_sid);
@@ -121,7 +121,7 @@ final class LeadTexts
      * then the organization's, cleared for outbound texts.
      * ponytail: first cleared line per scope; a setting if a branch has two.
      */
-    private function line(Lead $lead): ?PhoneNumber
+    public function line(Lead $lead): ?PhoneNumber
     {
         $cleared = PhoneNumber::query()->where('sms_outbound_allowed', true)->get()
             ->filter(fn (PhoneNumber $n) => $n->sms_outbound_allowed);

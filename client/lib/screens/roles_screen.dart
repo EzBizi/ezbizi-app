@@ -277,7 +277,6 @@ class _RolesScreenState extends State<RolesScreen> {
     return (value == null || value.isEmpty) ? null : value;
   }
 
-
   /// Returns null when the server accepted it, or the sentence to show when it
   /// did not — the panel stays open on a refusal, because a permission tree
   /// somebody has just spent a minute on is not something to throw away.
@@ -1119,7 +1118,8 @@ class _RolePageState extends State<_RolePage> {
           selected: {chosen != null},
           onSelectionChanged: _writable
               ? (value) => setState(
-                  () => _invitable = value.first ? (chosen ?? <String>{}) : null,
+                  () =>
+                      _invitable = value.first ? (chosen ?? <String>{}) : null,
                 )
               : null,
         ),
@@ -1427,7 +1427,7 @@ class _RolePageState extends State<_RolePage> {
         key: const ValueKey('role-search'),
         hint: 'Find a permission',
         onChanged: (value) =>
-              setState(() => _query = value.trim().toLowerCase()),
+            setState(() => _query = value.trim().toLowerCase()),
       ),
     );
 
@@ -1622,7 +1622,10 @@ class _RolePageState extends State<_RolePage> {
       child: Row(
         children: [
           Expanded(flex: 3, child: cell('MODULE')),
-          SizedBox(width: _openWidth, child: Center(child: cell('OPEN'))),
+          SizedBox(
+            width: _openWidth,
+            child: Center(child: cell('OPEN')),
+          ),
           SizedBox(width: _tabsWidth, child: cell('TABS')),
           Expanded(flex: 4, child: cell('WHAT THEY CAN DO')),
           Expanded(flex: 2, child: cell('INVITE')),
@@ -1630,10 +1633,7 @@ class _RolePageState extends State<_RolePage> {
             SizedBox(
               width: _compareWidth,
               child: Center(
-                child: cell(
-                  other.name,
-                  key: const ValueKey('compare-heading'),
-                ),
+                child: cell(other.name, key: const ValueKey('compare-heading')),
               ),
             ),
           const SizedBox(width: _chevronWidth),
@@ -1690,8 +1690,7 @@ class _RolePageState extends State<_RolePage> {
     // view and nothing else; unticking it clears the module, or refuses.
     final open = Checkbox(
       value: viewKey != null && _held.contains(viewKey),
-      onChanged:
-          live && viewKey != null && widget.catalogue.mayGrant(viewKey)
+      onChanged: live && viewKey != null && widget.catalogue.mayGrant(viewKey)
           ? (_) => _toggleModule(module)
           : null,
     );
@@ -1749,7 +1748,10 @@ class _RolePageState extends State<_RolePage> {
       row = Row(
         children: [
           Expanded(flex: 3, child: name),
-          SizedBox(width: _openWidth, child: Center(child: open)),
+          SizedBox(
+            width: _openWidth,
+            child: Center(child: open),
+          ),
           SizedBox(
             width: _tabsWidth,
             child: Text(
@@ -1855,8 +1857,7 @@ class _RolePageState extends State<_RolePage> {
     // Searching for "export" inside Customers shows the Export row, not the
     // other eleven; searching for "Customers" shows all of them.
     final everything = _labelMatches(module);
-    bool shown(PermissionAction action) =>
-        everything || _actionMatches(action);
+    bool shown(PermissionAction action) => everything || _actionMatches(action);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1891,10 +1892,19 @@ class _RolePageState extends State<_RolePage> {
                   'Tabs',
                   'Which tabs inside ${module.label} this role may open.',
                 ),
-                for (final action in module.actions.where(
-                  (a) => a.tab && shown(a),
-                ))
-                  _actionRow(context, module, action, muted, live, constraints),
+                ..._tabRows(
+                  module,
+                  shown,
+                  theme,
+                  (action) => _actionRow(
+                    context,
+                    module,
+                    action,
+                    muted,
+                    live,
+                    constraints,
+                  ),
+                ),
                 _grantHeading(
                   theme,
                   'What they can do',
@@ -1913,6 +1923,48 @@ class _RolePageState extends State<_RolePage> {
         ..._inboxRows(module, theme, live: live, muted: muted),
       ],
     );
+  }
+
+  /// Tab rows nested the way the app draws them (Jose, 2026-11-09): a tab
+  /// inside another sits indented under it, and a group with no tick of its
+  /// own (Leads › Calls) gets its name as a small heading.
+  List<Widget> _tabRows(
+    PermissionModule module,
+    bool Function(PermissionAction) shown,
+    ThemeData theme,
+    Widget Function(PermissionAction) row,
+  ) {
+    final tabs = module.actions.where((a) => a.tab).toList();
+    final labels = {for (final a in tabs) a.label};
+    final rows = <Widget>[];
+    String? group;
+
+    for (final action in tabs.where(shown)) {
+      final within = action.within;
+      if (within != null && within != group && !labels.contains(within)) {
+        rows.add(
+          Padding(
+            key: ValueKey('tab-group:${module.key}:$within'),
+            padding: const EdgeInsets.fromLTRB(24, 8, 0, 2),
+            child: Text(within, style: theme.textTheme.labelMedium),
+          ),
+        );
+      }
+      group = within;
+      rows.add(
+        within == null
+            ? row(action)
+            : Padding(
+                key: ValueKey('tab-nested:${action.key}'),
+                padding: EdgeInsets.only(
+                  left: labels.contains(within) ? 24 : 40,
+                ),
+                child: row(action),
+              ),
+      );
+    }
+
+    return rows;
   }
 
   /// "Who has it": a few faces and names, and "+N" for the rest.
@@ -2189,12 +2241,21 @@ class _RolePageState extends State<_RolePage> {
     }
 
     final held = _inboxesUnder(module.key).length;
+    // Inboxes given by name open regardless of the role (Jose, 2026-11-10:
+    // "No inboxes granted" read as "Lucas cannot read office@nj").
+    final own = words.plural == 'inboxes'
+        ? widget.role.peopleWithOwnInboxes
+        : 0;
+    final byName = own == 0
+        ? ''
+        : ' $own of its ${widget.role.userCount} people '
+              '${own == 1 ? 'has' : 'have'} inboxes given to them by name.';
 
     return Text(
       held == 0
-          ? 'No ${words.plural} granted, of ${all.length}. '
-                'The tab on its own opens none.'
-          : '$held of ${all.length} ${words.plural} granted.',
+          ? 'No ${words.plural} granted, of ${all.length}.'
+                '${own == 0 ? ' The tab on its own opens none.' : byName}'
+          : '$held of ${all.length} ${words.plural} granted.$byName',
       style: theme.textTheme.bodySmall,
     );
   }

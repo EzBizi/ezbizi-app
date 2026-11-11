@@ -23,7 +23,7 @@ void main() {
           return _json({
             'data': {
               ..._me,
-              'permissions': ['reports.view', 'scheduling.overbooking.view'],
+              'permissions': ['reports.view', 'scheduling.rescheduling.view'],
               'modules': <Object>[],
             },
           });

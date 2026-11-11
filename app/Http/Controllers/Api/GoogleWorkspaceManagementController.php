@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\GoogleWorkspaceConnection;
+use App\Models\GoogleWorkspaceSignatureTemplate;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Email\GoogleWorkspace;
@@ -11,6 +12,8 @@ use App\Support\Email\WorkspaceSignatures;
 use App\Support\Access\Refusal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -26,6 +29,9 @@ class GoogleWorkspaceManagementController extends Controller
 {
     /** One request writes at most this many signatures. */
     private const MAX_APPLY = 200;
+
+    /** Signature pictures, on the local disk and served by photo(). */
+    private const PHOTO_DIR = 'signature-photos';
 
     public function __construct(
         private readonly GoogleWorkspace $workspace,
@@ -66,6 +72,15 @@ class GoogleWorkspaceManagementController extends Controller
             ...$this->card($connection),
             'template'     => $connection->signature_template,
             'placeholders' => WorkspaceSignatures::PLACEHOLDERS,
+            'person_fields' => WorkspaceSignatures::PERSON_FIELDS,
+            'templates'    => $this->signatures->templates($connection)->map(fn (GoogleWorkspaceSignatureTemplate $t) => [
+                'id'         => $t->id,
+                'name'       => $t->name,
+                'design'     => $t->design,
+                'html'       => $t->html,
+                'is_default' => $t->id === $connection->default_signature_template_id,
+            ])->values(),
+            'max_length'   => WorkspaceSignatures::MAX_LENGTH,
             'people'       => $people,
             'candidates'   => User::query()->where('is_active', true)->orderBy('name')
                 ->get(['id', 'name', 'email'])->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email]),
@@ -142,12 +157,14 @@ class GoogleWorkspaceManagementController extends Controller
         $this->assertMayManage($request, $connection, write: false);
 
         $input   = $request->validate([
-            'address' => ['required', 'string', 'max:254'],
-            'html'    => ['nullable', 'string', 'max:'.WorkspaceSignatures::MAX_LENGTH],
+            'address'     => ['required', 'string', 'max:254'],
+            'html'        => ['nullable', 'string', 'max:'.WorkspaceSignatures::MAX_LENGTH],
+            'template_id' => ['nullable', 'string'],
         ]);
         $address = $this->addressOn($connection, $input['address']);
+        $html    = $input['html'] ?? (isset($input['template_id']) ? $this->template($connection, $input['template_id'])->html : null);
 
-        return response()->json(['data' => ['address' => $address, 'html' => $this->rendered($connection, $address, $input['html'] ?? null)]]);
+        return response()->json(['data' => ['address' => $address, 'html' => $this->rendered($connection, $address, $html)]]);
     }
 
     /**
@@ -203,6 +220,147 @@ class GoogleWorkspaceManagementController extends Controller
         return response()->json(['data' => ['set' => $done, 'results' => $results]]);
     }
 
+    /** POST /api/v1/email/workspaces/{connection}/signature-templates  { name, html, design? } */
+    public function storeTemplate(Request $request, GoogleWorkspaceConnection $connection): JsonResponse
+    {
+        $this->assertMayManage($request, $connection);
+        $input = $this->validateTemplate($request, creating: true);
+
+        $template = GoogleWorkspaceSignatureTemplate::query()->create([
+            'google_workspace_connection_id' => $connection->getKey(),
+            ...$input,
+        ]);
+        $this->audit->log('workspace.signature_template_created', $connection, metadata: ['template' => $template->id]);
+
+        return response()->json(['data' => ['id' => $template->id]], 201);
+    }
+
+    /** PUT /api/v1/email/workspaces/{connection}/signature-templates/{template}  { name?, html?, design? } */
+    public function updateTemplate(Request $request, GoogleWorkspaceConnection $connection, string $template): JsonResponse
+    {
+        $this->assertMayManage($request, $connection);
+        $row = $this->template($connection, $template);
+        $row->fill($this->validateTemplate($request, creating: false))->save();
+        $this->audit->log('workspace.signature_template_changed', $connection, metadata: ['template' => $row->id]);
+
+        return response()->json(['data' => ['id' => $row->id]]);
+    }
+
+    /** DELETE /api/v1/email/workspaces/{connection}/signature-templates/{template} -- its people go back to the default. */
+    public function destroyTemplate(Request $request, GoogleWorkspaceConnection $connection, string $template): JsonResponse
+    {
+        $this->assertMayManage($request, $connection);
+        $row = $this->template($connection, $template);
+
+        \App\Models\GoogleWorkspacePerson::query()
+            ->where('google_workspace_connection_id', $connection->getKey())
+            ->where('signature_template_id', $row->id)
+            ->update(['signature_template_id' => null]);
+
+        if ($connection->default_signature_template_id === $row->id) {
+            $connection->forceFill(['default_signature_template_id' => null])->save();
+        }
+
+        $row->delete();
+        $this->audit->log('workspace.signature_template_deleted', $connection, metadata: ['template' => $template]);
+
+        return response()->json(['data' => ['deleted' => true]]);
+    }
+
+    /** PUT /api/v1/email/workspaces/{connection}/signature-default  { template_id: ?string } -- everyone not given another. */
+    public function setDefault(Request $request, GoogleWorkspaceConnection $connection): JsonResponse
+    {
+        $this->assertMayManage($request, $connection);
+        $input = $request->validate(['template_id' => ['present', 'nullable', 'string']]);
+        $id    = $input['template_id'] === null ? null : $this->template($connection, $input['template_id'])->id;
+
+        $connection->forceFill(['default_signature_template_id' => $id])->save();
+        $this->audit->log('workspace.signature_default_changed', $connection, metadata: ['template' => $id]);
+
+        return response()->json(['data' => ['template_id' => $id]]);
+    }
+
+    /** PUT /api/v1/email/workspaces/{connection}/signatures/assign  { addresses: [..], template_id: ?string } */
+    public function assign(Request $request, GoogleWorkspaceConnection $connection): JsonResponse
+    {
+        $this->assertMayManage($request, $connection);
+        $input = $request->validate([
+            'addresses'   => ['required', 'array', 'min:1', 'max:500'],
+            'addresses.*' => ['string', 'max:254'],
+            'template_id' => ['present', 'nullable', 'string'],
+        ]);
+        $id        = $input['template_id'] === null ? null : $this->template($connection, $input['template_id'])->id;
+        $addresses = array_values(array_unique(array_map(fn ($a) => $this->addressOn($connection, $a), $input['addresses'])));
+
+        $this->signatures->assign($connection, $addresses, $id);
+        $this->audit->log('workspace.signature_assigned', $connection, metadata: ['template' => $id, 'count' => count($addresses)]);
+
+        return response()->json(['data' => ['assigned' => count($addresses)]]);
+    }
+
+    /** PUT /api/v1/email/workspaces/{connection}/people/{address}/fields  { fields: { mobile: "...", ... } } */
+    public function setFields(Request $request, GoogleWorkspaceConnection $connection, string $address): JsonResponse
+    {
+        $this->assertMayManage($request, $connection);
+        $address = $this->addressOn($connection, $address);
+        $input   = $request->validate(['fields' => ['required', 'array'], 'fields.*' => ['nullable', 'string', 'max:500']]);
+
+        $this->signatures->setFields($connection, $address, $input['fields']);
+
+        return response()->json(['data' => ['address' => $address]]);
+    }
+
+    /**
+     * POST /api/v1/email/workspaces/{connection}/people/{address}/photo  (multipart `photo`)
+     *
+     * Gmail shows a signature picture by fetching it, so it has to sit at a
+     * public address. Kept apart from the profile photo, which is private to
+     * the organization; this one is meant to be seen by everyone mailed.
+     */
+    public function uploadPhoto(Request $request, GoogleWorkspaceConnection $connection, string $address): JsonResponse
+    {
+        $this->assertMayManage($request, $connection);
+        $address = $this->addressOn($connection, $address);
+        $request->validate(['photo' => ['required', 'image', 'mimes:jpeg,png,gif,webp', 'max:2048']]);
+
+        $file = $request->file('photo');
+        $name = Str::random(40).'.'.$file->extension();
+        Storage::disk('local')->putFileAs(self::PHOTO_DIR, $file, $name);
+        $url = url('/api/v1/signature-photos/'.$name);
+
+        $this->signatures->setFields($connection, $address, ['photo_url' => $url]);
+
+        return response()->json(['data' => ['photo_url' => $url]]);
+    }
+
+    /** GET /api/v1/signature-photos/{name} -- public on purpose, see uploadPhoto(). */
+    public function photo(string $name): Response
+    {
+        abort_unless(preg_match('/^[A-Za-z0-9]{40}\.(jpg|jpeg|png|gif|webp)$/', $name) === 1, 404);
+        abort_unless(Storage::disk('local')->exists(self::PHOTO_DIR.'/'.$name), 404);
+
+        return Storage::disk('local')->response(self::PHOTO_DIR.'/'.$name, null, ['Cache-Control' => 'public, max-age=86400']);
+    }
+
+    /** @return array<string, mixed> */
+    private function validateTemplate(Request $request, bool $creating): array
+    {
+        $need = $creating ? 'required' : 'sometimes';
+
+        return $request->validate([
+            'name'   => [$need, 'string', 'max:80'],
+            'html'   => [$need, 'string', 'max:'.WorkspaceSignatures::MAX_LENGTH],
+            'design' => ['sometimes', 'nullable', 'array'],
+        ]);
+    }
+
+    private function template(GoogleWorkspaceConnection $connection, string $id): GoogleWorkspaceSignatureTemplate
+    {
+        return GoogleWorkspaceSignatureTemplate::query()
+            ->where('google_workspace_connection_id', $connection->getKey())
+            ->findOrFail($id);
+    }
+
     /** @return array<string, mixed> */
     private function card(GoogleWorkspaceConnection $connection): array
     {
@@ -218,7 +376,7 @@ class GoogleWorkspaceManagementController extends Controller
             // Shown as "Update permissions" while something is missing: Google
             // Admin, pre-filled, so the company's admin only clicks Authorize.
             'authorize_url'     => $this->workspace->delegationUrl([WorkspaceSignatures::SCOPE_SETTINGS]),
-            'has_template'      => $connection->signature_template !== null,
+            'has_template'      => $connection->signature_template !== null || $this->signatures->templates($connection)->isNotEmpty(),
             'may_edit'          => request()->user()?->hasPermission('email.edit') ?? false,
         ];
     }

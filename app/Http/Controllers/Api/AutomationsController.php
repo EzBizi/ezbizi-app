@@ -137,6 +137,7 @@ class AutomationsController extends Controller
         'resend',
         'revoke',
         'reply',
+        'book_by_chat',
         'report.send',
 
         // Not subject-bound: it exists so a rule on something with no phone in
@@ -2163,6 +2164,7 @@ class AutomationsController extends Controller
         'inspection_report.workiz' => [\App\Models\InspectionReport::class],
         'add_to_audience' => [\App\Models\Lead::class],
         'reply' => [\App\Models\Lead::class],
+        'book_by_chat' => [\App\Models\Lead::class],
     ];
 
     /** Refused at save when the trigger is about a record this step does not work on. */
@@ -2460,6 +2462,8 @@ class AutomationsController extends Controller
             $type('reply', 'Reply to the lead', true, [
                 $parameter('message', 'Message', 'rich_text', variables: true),
             ]),
+            // The booking bot writes its own reply; nothing to fill in.
+            $type('book_by_chat', 'Book through the chat', true, []),
 
             // Task Board (2026-10-13). A task's status is "Change the status".
             $type('task.create', 'Add a task', true, [

@@ -146,6 +146,29 @@ enum SocialProvider: string
         };
     }
 
+    /**
+     * The provider whose sign-in brings this one in: one card, one connect,
+     * one disconnect per sign-in (Jose, 2026-11-05: "1 facebook connections
+     * grabs social and ads ... Same for disconnecting. And this goes for
+     * everything"). The Facebook connect already stores the ad accounts of
+     * its grant as facebook_ads rows.
+     */
+    public function signIn(): self
+    {
+        return match ($this) {
+            self::FacebookAds => self::FacebookPage,
+            // One Google sign-in: GoogleAdsOAuth::PRODUCTS.
+            self::GoogleBusinessProfile, self::YouTube => self::GoogleAds,
+            default => $this,
+        };
+    }
+
+    /** @return self[] every provider one sign-in brings, this one included */
+    public function family(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $p) => $p->signIn() === $this->signIn()));
+    }
+
     /** Path segment in /social/{key}/start — the reserved callback name. */
     public function routeKey(): string
     {
@@ -682,6 +705,41 @@ enum SocialProvider: string
             // A Business Profile post: words, with a photo or without (v4 localPosts).
             self::GoogleBusinessProfile => [SocialMediaKind::Text, SocialMediaKind::Image],
         };
+    }
+
+    /**
+     * The most characters this network's post text takes, or null where
+     * EzBizi's own 5000 is the tighter limit. One place for the composer
+     * check and the publishers: a post that is too long is refused, never
+     * cut mid-sentence (bug review 2026-11-09).
+     */
+    public function maxBodyLength(): ?int
+    {
+        return match ($this) {
+            self::X => 280,
+            self::Bluesky => 300,
+            self::Threads => 500,
+            // The Pin's description.
+            self::Pinterest => 800,
+            self::GoogleBusinessProfile => 1500,
+            self::InstagramProfessional, self::TikTok => 2200,
+            self::LinkedIn => 3000,
+            default => null,
+        };
+    }
+
+    /** Why this text is too long for this network, or null when it fits. */
+    public function refusesLength(string $body): ?string
+    {
+        $limit = $this->maxBodyLength();
+        $length = mb_strlen($body);
+
+        if ($limit === null || $length <= $limit) {
+            return null;
+        }
+
+        return sprintf('%s takes %d characters at most and this post is %d. Shorten it, or untick %s.',
+            $this->label(), $limit, $length, $this->label());
     }
 
     public function takes(SocialMediaKind $kind): bool

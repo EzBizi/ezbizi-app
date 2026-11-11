@@ -430,6 +430,25 @@ void main() {
     expect(queries.last.containsKey('missing'), isFalse);
   });
 
+  testWidgets('Active and Inactive ask the server, not the loaded page', (
+    tester,
+  ) async {
+    final queries = <Map<String, String>>[];
+
+    await _pump(tester, _handler(onPeopleQuery: queries.add));
+    await _tap(tester, _tab('Records'));
+    expect(queries.last.containsKey('status'), isFalse);
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Inactive'));
+    expect(queries.last['status'], 'inactive');
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Active'));
+    expect(queries.last['status'], 'active');
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Everyone'));
+    expect(queries.last.containsKey('status'), isFalse);
+  });
+
   // Jose, 2026-09-30: the invite can start the paperwork, "but toggable, some
   // people dont need contracts". Off sends no contract; on needs one chosen.
   testWidgets('an invitation can start the paperwork with a contract', (
@@ -490,23 +509,19 @@ void main() {
     // The organization first — it is the widest thing on offer — then
     // everything else by its whole path, so a company is followed by the
     // franchises under it rather than by an alphabetical run of Connecticuts.
+    // §4: an assignment to a deactivated scope grants nothing, and a
+    // switched-off place does not show up at all (Jose, 2026-11-10), so
+    // Rhode Island (fr-4) is not drawn.
     expect(scopes.options.map((o) => o.value), [
       'organization:org-1',
       'company:co-1',
       'franchise:fr-9',
-      'franchise:fr-4',
     ]);
 
     expect(scopes.options.map((o) => o.label), [
       'Everdoors',
       'Serenisima',
       'Serenisima › Connecticut',
-      // §4: an assignment to a deactivated scope grants nothing, so it is drawn
-      // and refused rather than offered as a silent mistake.
-      'Serenisima › Rhode Island — deactivated',
-    ]);
-    expect(scopes.options.where((o) => !o.enabled).map((o) => o.value), [
-      'franchise:fr-4',
     ]);
 
     // `/me` knows about Texas and does not know about Connecticut. Neither
@@ -742,22 +757,41 @@ void main() {
     expect(patched, {'role_id': 'role-2'});
   });
 
-  // Mia, 2026-10-02: "assigning andy to A1-Group instead so she has full
-  // access to all companies and franchises".
-  testWidgets('Works at moves somebody, and saves the place as a pair', (
+  // Design 188: several places, each added or removed on its own.
+  testWidgets('Works at adds a place and removes one after a second tap', (
     tester,
   ) async {
-    Map<String, dynamic>? patched;
+    final sent = <(String, String, String)>[];
 
-    await _pump(tester, _handler(onPatchPerson: (_, body) => patched = body));
+    await _pump(
+      tester,
+      _handler(
+        onPlaces: (method, path, body) => sent.add((method, path, body)),
+      ),
+    );
 
     await _tap(tester, _tab('Records'));
     await _openPerson(tester, 'Bea Okafor');
     await _tap(tester, _section('Employment'));
-    await _choose(tester, 'Works at', 'Everdoors');
-    await _tap(tester, find.text('Save employment'));
 
-    expect(patched, {'scope_type': 'organization', 'scope_id': 'org-1'});
+    expect(find.byKey(const ValueKey('hr-place:a-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('hr-place:a-3')), findsOneWidget);
+
+    await _tap(tester, find.byKey(const ValueKey('hr-add-place')));
+    await _tap(tester, find.text('Everdoors').last);
+    expect(sent.single.$1, 'POST');
+    expect(sent.single.$2, endsWith('/hr/people/u-2/places'));
+    expect(jsonDecode(sent.single.$3), {
+      'scope_type': 'organization',
+      'scope_id': 'org-1',
+    });
+
+    sent.clear();
+    await _tap(tester, find.byKey(const ValueKey('hr-place-x:a-3')));
+    expect(sent, isEmpty, reason: 'The first tap only asks.');
+    await _tap(tester, find.byKey(const ValueKey('hr-place-remove:a-3')));
+    expect(sent.single.$1, 'DELETE');
+    expect(sent.single.$2, endsWith('/hr/people/u-2/places/a-3'));
   });
 
   // Layout A (Mia, 2026-10-02): the tiles are the server's counts, and one
@@ -1257,11 +1291,13 @@ void main() {
     TextField box(String label) =>
         tester.widget<TextField>(find.widgetWithText(TextField, label));
 
-    expect(box('Gender').decoration?.hintText, 'Not filled in');
-    expect(box('Gender').decoration?.filled, isTrue);
+    // Gender is a picker now (design 186), saying so while empty.
     expect(
-      box('Gender').decoration?.floatingLabelBehavior,
-      FloatingLabelBehavior.always,
+      find.descendant(
+        of: find.byKey(const ValueKey('hr-gender')),
+        matching: find.text('Not filled in'),
+      ),
+      findsOneWidget,
     );
     // The control: a box with something in it is not amber.
     expect(box('Phone').decoration?.hintText, isNull);
@@ -1297,10 +1333,28 @@ void main() {
       findsOneWidget,
     );
 
-    // Typing takes a box out of amber there and then.
-    await tester.enterText(find.widgetWithText(TextField, 'Gender'), 'Female');
-    await tester.pump();
-    expect(box('Gender').decoration?.hintText, isNull);
+    // Picking takes it out of amber there and then, from the three answers
+    // Jose named (2026-11-06).
+    await tester.ensureVisible(find.byKey(const ValueKey('hr-gender')));
+    await tester.tap(find.byKey(const ValueKey('hr-gender')));
+    await tester.pumpAndSettle();
+    expect(find.text('Prefers not to answer'), findsWidgets);
+    await tester.tap(find.text('Female').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('hr-gender')),
+        matching: find.text('Not filled in'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('hr-gender')),
+        matching: find.text('Female'),
+      ),
+      findsOneWidget,
+    );
   });
 
   // Jose, 2026-09-30: "it should highlight all the missing stuff", not only
@@ -1781,6 +1835,7 @@ MockClientHandler _handler({
   void Function(String path, Map<String, dynamic> body)? onResendBody,
   void Function(String path, Map<String, dynamic> body)? onPatchPerson,
   void Function(String path)? onPostPerson,
+  void Function(String method, String path, String body)? onPlaces,
   void Function(String? user)? onTraining,
   void Function(String id)? onRecord,
   // The four lists on a record (2026-09-29). `payRates` null is what the server
@@ -1932,6 +1987,10 @@ MockClientHandler _handler({
 
     // One person's record — HrPeopleController::show, the list row plus what
     // the list deliberately leaves out.
+    if (path.contains('/places')) {
+      onPlaces?.call(request.method, path, request.body);
+      return _json({'data': _people[1]});
+    }
     if (request.method == 'GET' &&
         RegExp(r'/hr/people/u-\d+$').hasMatch(path)) {
       final id = path.split('/').last;

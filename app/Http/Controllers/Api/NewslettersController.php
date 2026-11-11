@@ -12,7 +12,9 @@ use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Newsletter\BlockRenderer;
 use App\Support\Newsletter\NewsletterAccess;
+use App\Support\Newsletter\NewsletterIdentity;
 use App\Support\Newsletter\NewsletterSenders;
+use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Scoping\OwnedScope;
 use App\Support\Scoping\ViewScope;
 use App\Support\Social\SocialConnectionAccess;
@@ -83,6 +85,7 @@ class NewslettersController extends Controller
         $status = $request->query('status');
         $filter = in_array($status, [
             Newsletter::STATUS_DRAFT, Newsletter::STATUS_SCHEDULED, Newsletter::STATUS_SENT,
+            Newsletter::STATUS_FAILED,
         ], true) ? $status : null;
 
         $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
@@ -142,6 +145,7 @@ class NewslettersController extends Controller
             'drafts' => $all->where('status', Newsletter::STATUS_DRAFT)->count(),
             'scheduled' => $all->where('status', Newsletter::STATUS_SCHEDULED)->count(),
             'sent' => $sent->count(),
+            'failed' => $all->where('status', Newsletter::STATUS_FAILED)->count(),
 
             /*
              * Addresses the provider ACCEPTED, summed across every send. Not
@@ -233,9 +237,13 @@ class NewslettersController extends Controller
         $row->fill([
             'subject' => $data['subject'],
             'blocks' => $data['blocks'] ?? [],
-            'html_override' => $data['html_override'] ?? null,
             'newsletter_audience_id' => $this->audienceIdFor($user, $data['audience_id'] ?? null),
         ]);
+        // Only a request that names it changes the custom HTML; a save that
+        // leaves it out (an older client, the subject alone) keeps it.
+        if (array_key_exists('html_override', $data)) {
+            $row->html_override = $data['html_override'];
+        }
 
         $this->applySchedule($request, $row, $data['scheduled_for'] ?? null);
         $row->save();
@@ -288,6 +296,134 @@ class NewslettersController extends Controller
     }
 
     /**
+     * GET /newsletters/{id}/preflight — what a send would trip on, before it does.
+     *
+     * Each check is `{key, ok, label, detail}`. Read-only: nothing here calls
+     * the provider.
+     */
+    public function preflight(Request $request, string $newsletter): JsonResponse
+    {
+        $user = $this->mayView($request);
+        $row = $this->findInView($user, $newsletter);
+
+        return response()->json(['data' => ['checks' => $this->checks($user, $row)]]);
+    }
+
+    /**
+     * POST /newsletters/{id}/test — one test email to one address the user typed.
+     *
+     * Goes through Mailchimp's campaign test path, so the list never receives
+     * it and no address is pushed. Refused while a preflight check fails.
+     */
+    public function test(Request $request, string $newsletter): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->hasPermission('newsletter.send'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('send a test newsletter')->message(),
+        );
+
+        $data = $request->validate(['email' => ['required', 'email:rfc', 'max:254']], [
+            'email.required' => 'Type the address the test should go to.',
+            'email.email' => 'That is not an email address this can send to.',
+        ]);
+
+        $row = $this->findInView($user, $newsletter);
+        $failed = array_values(array_filter($this->checks($user, $row), fn (array $c) => ! $c['ok']));
+        if ($failed !== []) {
+            throw ValidationException::withMessages(['email' => $failed[0]['label'].': '.$failed[0]['detail']]);
+        }
+
+        $connection = $this->sendingConnection($user, $row);
+        $sender = NewsletterSenders::for($connection?->providerEnum());
+        $html = $this->renderer->withFooter($this->bodyFor($row),
+            NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*']);
+
+        try {
+            $sender->sendTest($connection, $row, $html, (string) $data['email']);
+        } catch (NewsletterSendFailed $e) {
+            throw ValidationException::withMessages(['email' => $e->getMessage()]);
+        }
+
+        $this->audit->log('newsletter.test_sent', $row, ['to' => $data['email']], actor: $user);
+
+        return response()->json(['data' => ['sent_to' => $data['email']]]);
+    }
+
+    /** @return list<array{key: string, ok: bool, label: string, detail: string}> */
+    private function checks(User $user, Newsletter $row): array
+    {
+        $connection = $this->sendingConnection($user, $row);
+        $sender = NewsletterSenders::for($connection?->providerEnum());
+        $fromName = $connection === null || $sender === null ? '' : trim($sender->fromName($connection, $row));
+        $address = trim(NewsletterIdentity::footer($row)['address']);
+        $listId = (string) ($row->audience?->mailchimp_list_id ?? '');
+        $sendHtml = $this->renderer->withFooter($this->bodyFor($row),
+            NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*']);
+        $badLinks = $this->badLinks($sendHtml);
+
+        $check = fn (string $key, bool $ok, string $label, string $detail) => compact('key', 'ok', 'label', 'detail');
+
+        return [
+            $check('subject', trim((string) $row->subject) !== '', 'Subject line',
+                trim((string) $row->subject) !== '' ? (string) $row->subject : 'Add a subject line.'),
+            $check('account', $connection !== null && $sender !== null, 'Sending account',
+                $connection !== null && $sender !== null
+                    ? (string) ($connection->display_name ?: 'Mailchimp')
+                    : (string) NewsletterSenders::refusalForView($this->connectionsInView($user))),
+            $check('from_name', $fromName !== '', 'From name',
+                $fromName !== '' ? $fromName : 'Connect a sending account to set who this is from.'),
+            $check('audience', $row->audience !== null && $listId !== '', 'Audience',
+                $row->audience === null ? 'Choose who this goes to.'
+                    : ($listId === '' ? 'This audience has no Mailchimp list behind it.'
+                        : $row->audience->name.' → Mailchimp list '.$listId)),
+            $check('footer', $address !== '' && preg_match('/href\s*=\s*["\']\*\|UNSUB\|\*["\']/i', $sendHtml) === 1,
+                'Address and unsubscribe footer',
+                $address !== '' ? $address : 'Add the company postal address in Settings.'),
+            $check('links', $badLinks === [], 'Links',
+                $badLinks === [] ? 'Every link and image is a full web address.'
+                    : 'Fix: '.implode(', ', array_slice($badLinks, 0, 3))),
+        ];
+    }
+
+    /** The newsletter body before the footer is ensured. */
+    private function bodyFor(Newsletter $row): string
+    {
+        if (is_string($row->html_override) && $row->html_override !== '') {
+            return $row->html_override;
+        }
+
+        return $this->renderer->render((array) ($row->blocks ?? []),
+            NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*']);
+    }
+
+    /**
+     * Links and image sources an inbox cannot follow: empty, `#`, relative, or
+     * a scheme other than web, mail and phone. Merge tags are Mailchimp's own.
+     *
+     * @return list<string>
+     */
+    private function badLinks(string $html): array
+    {
+        preg_match_all('/\b(href|src)\s*=\s*["\']([^"\']*)["\']/i', $html, $m);
+        $bad = [];
+        foreach ($m[2] as $i => $url) {
+            $url = trim(html_entity_decode($url));
+            if (preg_match('/^\*\|[A-Z_]+\|\*$/', $url)) {
+                continue;
+            }
+            $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+            $allowed = strtolower($m[1][$i]) === 'src' ? ['https', 'http'] : ['https', 'http', 'mailto', 'tel'];
+            if (! in_array($scheme, $allowed, true)) {
+                $bad[] = $url === '' ? '(empty '.strtolower($m[1][$i]).')' : $url;
+            }
+        }
+
+        return array_values(array_unique($bad));
+    }
+
+    /**
      * POST /newsletters/{id}/send
      *
      * Everything that can refuse, refuses before a row is written — the same
@@ -337,6 +473,14 @@ class NewslettersController extends Controller
         if ($row->audience === null) {
             throw ValidationException::withMessages([
                 'audience_id' => 'Choose who this goes to before sending it.',
+            ]);
+        }
+
+        // The law asks every marketing email for a postal address, and the footer carries it.
+        if (trim(NewsletterIdentity::footer($row)['address']) === '') {
+            throw ValidationException::withMessages([
+                'subject' => 'This company has no postal address yet, and every newsletter must show one. '
+                    .'Add the address in Settings, then send.',
             ]);
         }
 
@@ -485,7 +629,7 @@ class NewslettersController extends Controller
             'blocks.*.type' => ['required_with:blocks', 'string', 'max:40'],
             'html_override' => ['nullable', 'string'],
             'audience_id' => ['nullable', 'string'],
-            'scheduled_for' => ['nullable', 'string', 'date_format:Y-m-d H:i'],
+            'scheduled_for' => ['nullable', 'string', 'date_format:Y-m-d H:i,Y-m-d H:i:s'],
         ], [
             'subject.required' => 'A newsletter needs a subject line — it is the first thing '
                 .'anybody sees.',
@@ -503,6 +647,16 @@ class NewslettersController extends Controller
          */
         if (array_key_exists('blocks', $data)) {
             $data['blocks'] = $request->input('blocks');
+        }
+
+        // Imported HTML is refused, not cleaned: a mailing that silently lost its
+        // script would differ from what the author previewed. Nothing saves.
+        if (is_string($data['html_override'] ?? null)
+            && preg_match('/<\s*script\b|<[^>]*\son[a-z]+\s*=|javascript\s*:/i', $data['html_override'])) {
+            throw ValidationException::withMessages([
+                'html_override' => 'This HTML contains scripts, which email cannot run and Mailchimp refuses. '
+                    .'Remove them and import it again.',
+            ]);
         }
 
         return $data;
@@ -524,6 +678,13 @@ class NewslettersController extends Controller
             return;
         }
 
+        // The time already saved, sent back unchanged by an autosave, is kept as
+        // it is: a draft whose time has passed must still save its typo fixes.
+        if ($row->exists && is_string($row->scheduled_for)
+            && substr($row->scheduled_for, 0, 16) === substr(trim($wall), 0, 16)) {
+            return;
+        }
+
         $timezone = ViewTimezone::forUser($request->user());
         $moment = Carbon::parse($wall, $timezone);
 
@@ -540,15 +701,17 @@ class NewslettersController extends Controller
 
     private function htmlFor(Newsletter $row): string
     {
+        // As SendNewsletter fills it, so the preview shows the real footer.
+        $footer = NewsletterIdentity::footer($row) + [
+            // APP_URL, not the request's host: a preview fetched via localhost said localhost.
+            'unsubscribe_url' => rtrim((string) config('app.url'), '/').'/api/v1/newsletter/unsubscribe/preview',
+        ];
+
         if (is_string($row->html_override) && $row->html_override !== '') {
-            return $row->html_override;
+            return $this->renderer->withFooter($row->html_override, $footer);
         }
 
-        return $this->renderer->render((array) ($row->blocks ?? []), [
-            'company' => (string) ($row->organization?->name ?? 'EzBizi'),
-            'address' => '',
-            'unsubscribe_url' => url('/api/v1/newsletter/unsubscribe/preview'),
-        ]);
+        return $this->renderer->render((array) ($row->blocks ?? []), $footer);
     }
 
     /** @return array<string, mixed> */
@@ -566,14 +729,17 @@ class NewslettersController extends Controller
                 'name' => $n->audience->name,
                 'kind' => $n->audience->kind,
             ],
-            'scheduled_for' => $n->scheduled_for,
+            // The wall time as the composer writes it back, without seconds.
+            'scheduled_for' => is_string($n->scheduled_for) ? substr($n->scheduled_for, 0, 16) : null,
             'scheduled_timezone' => $n->scheduled_timezone,
             'author' => $n->author?->name,
             'has_html_override' => is_string($n->html_override) && $n->html_override !== '',
+            'html_override' => is_string($n->html_override) && $n->html_override !== '' ? $n->html_override : null,
             'last_send' => $send === null ? null : [
                 'status' => $send->status,
                 'recipients' => $send->recipients,
                 'failure' => $send->failure,
+                'notice' => $send->notice,
                 'sent_at' => $send->sent_at?->toIso8601String(),
             ],
             'created_at' => $n->created_at?->toIso8601String(),

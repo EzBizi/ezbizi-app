@@ -2,7 +2,9 @@
 
 namespace App\Support\Reports;
 
+use App\Support\Settings\Lists\BusinessLists;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -19,8 +21,9 @@ use Illuminate\Support\Facades\DB;
  * Columns every caller can rely on:
  *   jobs():     ref, serial, job_source, service_area, status ('Done' |
  *               'Canceled' | anything else is open), booked_at, closed_at,
- *               total (decimal), team (JSON list of {id, Name}), phone, created_by
+ *               total (decimal), team (JSON list of {id, Name}), tags (JSON list), phone, created_by
  *   payments(): user_ref, amount (decimal), paid_at
+ *   sales():    job_source, profit (decimal), job_date: Workiz's Sales report, a row a job
  */
 final class ReportJobs
 {
@@ -41,26 +44,45 @@ final class ReportJobs
                 DB::raw("json_unquote(json_extract(j.payload, '$.SerialId')) as serial"),
                 DB::raw("coalesce(nullif(trim(json_unquote(json_extract(ec.payload, '$.company_name'))), ''), j.job_source) as job_source"),
                 'j.service_area', 'j.status', 'j.sub_status', 'j.booked_at',
-                'j.last_status_update as closed_at',
+                DB::raw('coalesce(j.closed_at, j.last_status_update) as closed_at'),
                 DB::raw("cast(coalesce(json_unquote(json_extract(j.payload, '$.JobTotalPrice')), 0) as decimal(12,2)) as total"),
                 DB::raw("coalesce(json_extract(j.payload, '$.Team'), json_array()) as team"),
+                DB::raw("coalesce(json_extract(j.payload, '$.Tags'), json_array()) as tags"),
+            ]);
+    }
+
+    /** A branch's jobs as Workiz's Sales report has them: what each made the company (SyncWorkizWebSales). */
+    public static function sales(string $branchId): Builder
+    {
+        return DB::table('workiz_records')->where('franchise_id', $branchId)->where('type', 'web_sale')
+            ->select([
+                DB::raw("json_unquote(json_extract(payload, '$.ad_group')) as job_source"),
+                DB::raw("cast(coalesce(json_unquote(json_extract(payload, '$.profit')), 0) as decimal(12,2)) as profit"),
+                'starts_at as job_date',
             ]);
     }
 
     /** A branch's payments received, one row each. */
     public static function payments(string $branchId): Builder
     {
-        return DB::table('workiz_records')->where('franchise_id', $branchId)->where('type', 'payment')
+        return self::received($branchId)
             ->select(['user_remote_id as user_ref', 'amount', 'starts_at as paid_at']);
     }
 
     /** What each person collected between two wall-clock stamps. @return array<string, float> user_ref => amount */
     public static function paidBy(string $branchId, string $from, string $to): array
     {
-        return DB::table('workiz_records')->where('franchise_id', $branchId)->where('type', 'payment')
+        return self::received($branchId)
             ->whereBetween('starts_at', [$from, $to])->groupBy('user_remote_id')
             ->selectRaw('user_remote_id, sum(amount) amount')->pluck('amount', 'user_remote_id')
             ->map(fn ($a) => (float) $a)->all();
+    }
+
+    /** A branch's payments that went through: a pending ACH is not money yet ($1,459.08 at 1 AM, 2026-11-10). */
+    private static function received(string $branchId): Builder
+    {
+        return DB::table('workiz_records')->where('franchise_id', $branchId)->where('type', 'payment')
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', 'succeeded'));
     }
 
     /** Who a user_ref / team id is, by name, in a branch. @return array<string, string> */
@@ -88,5 +110,42 @@ final class ReportJobs
         $team = json_decode((string) $row->team, true) ?: [];
 
         return $team === [] ? [['id' => 'none', 'Name' => 'Unassigned']] : $team;
+    }
+
+    /**
+     * The jobs that count as created: less those with a tag the business
+     * leaves out (Settings › Lists, reports.tags_not_created: "Paid –
+     * Estimated", 22% of Nov 2-8's). Every "jobs created" figure reads it.
+     *
+     * @param  Collection<int, object|array>  $jobs  rows with their tags
+     * @return Collection<int, object|array>
+     */
+    public static function created(Collection $jobs): Collection
+    {
+        $skip = self::tags('reports.tags_not_created');
+
+        return $jobs->reject(fn ($job) => self::tagged(data_get($job, 'tags') ?? [], $skip))->values();
+    }
+
+    /** A tag as a person reads it, letters and digits only: "Paid – Estimated" with any dot in front is "paidestimated". */
+    public static function tagKey(string $tag): string
+    {
+        return (string) preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($tag));
+    }
+
+    /** @return array<string, string> a list's tags as written => as matched */
+    public static function tags(string $list): array
+    {
+        return collect(app(BusinessLists::class)->rows($list))
+            ->mapWithKeys(fn (array $row) => [(string) ($row['value']['tag'] ?? $row['key']) => self::tagKey((string) ($row['value']['tag'] ?? $row['key']))])
+            ->all();
+    }
+
+    /** @param  array<string, string>  $tags  from tags() */
+    public static function tagged(mixed $jobTags, array $tags): bool
+    {
+        $have = array_map(fn ($t) => self::tagKey((string) $t), (array) (is_string($jobTags) ? json_decode($jobTags, true) : $jobTags));
+
+        return array_intersect(array_values($tags), $have) !== [];
     }
 }

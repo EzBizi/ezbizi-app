@@ -4,6 +4,8 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/email/email_screen.dart';
+import 'package:ezbizi_client/screens/email/message_html.dart';
+import 'package:ezbizi_client/screens/email/signature_builder.dart';
 import 'package:ezbizi_client/screens/email/workspace_tab.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
@@ -77,73 +79,143 @@ void main() {
     );
   });
 
-  testWidgets('a placeholder chip goes in where the cursor is', (tester) async {
-    await _pump(tester, _Server(cards: [_ready]));
-
-    final field = find.byKey(const ValueKey('workspace-template-field'));
-    final controller = tester.widget<TextField>(field).controller!;
-    expect(controller.text, _template);
-
-    // Just after the opening <b>.
-    controller.selection = const TextSelection.collapsed(offset: 3);
-    await _tap(tester, find.byKey(const ValueKey('workspace-chip-title')));
-
-    expect(
-      controller.text,
-      '<b>{{title}}{{name}}</b><br>{{title}} · {{company}}',
-    );
-    expect(controller.selection.baseOffset, 3 + '{{title}}'.length);
-    expect(find.text('+ First name'), findsOneWidget);
-  });
-
-  testWidgets('the preview is asked for 400 ms after typing stops, and its '
-      'HTML is drawn as text', (tester) async {
+  testWidgets('the A-1 standard opens in the builder, the server fills the '
+      'preview, and saving sends the design with its HTML', (tester) async {
     final server = _Server(cards: [_ready]);
-    await _pump(tester, server);
+    await _pump(tester, server, size: const Size(1400, 1000));
 
-    final first = server.asked('POST', '/signatures/preview');
-    expect(first, hasLength(1));
-    expect(first.single, {
-      'address': 'dana@brightside.example',
-      'html': _template,
-    });
-    expect(
-      find.text(
-        'Dana Reyes\nOffice manager · Brightside Home Services',
-        findRichText: true,
-      ),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('workspace-no-templates')), findsOne);
+    await _tap(tester, find.byKey(const ValueKey('workspace-new-a1-template')));
+    expect(find.byKey(const ValueKey('sig-builder')), findsOne);
 
-    await tester.enterText(
-      find.byKey(const ValueKey('workspace-template-field')),
-      '{{name}}<br>{{phone}}',
-    );
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(server.asked('POST', '/signatures/preview'), hasLength(1));
-
-    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     final asked = server.asked('POST', '/signatures/preview');
-    expect(asked, hasLength(2));
-    expect(asked.last!['html'], '{{name}}<br>{{phone}}');
-  });
-
-  testWidgets('saving the template sends it', (tester) async {
-    final server = _Server(cards: [_ready]);
-    await _pump(tester, server);
+    expect(asked, isNotEmpty);
+    final html = '${asked.last!['html']}';
+    expect(html, contains('{{name}}'));
+    expect(html, contains('(888) 984-4344'));
+    expect(html, contains('>A-1</strong>'));
+    expect(html, contains('{{^photo_url}}'));
+    expect(find.byKey(const ValueKey('sig-preview-html')), findsOne);
+    // Drawn by a browser engine, the server's filled HTML whole.
+    final view = tester.widget<MessageHtmlView>(find.byType(MessageHtmlView));
+    expect(view.ownHtml, isTrue);
+    expect(
+      view.html,
+      contains('<table><tr><td><b>Dana Reyes</b></td></tr></table>'),
+    );
+    expect(view.html, contains('--<br>'));
 
     await tester.enterText(
-      find.byKey(const ValueKey('workspace-template-field')),
-      '{{name}}',
+      find.byKey(const ValueKey('sig-name')),
+      'A-1 standard',
     );
-    await tester.pumpAndSettle();
-    await _tap(tester, find.byKey(const ValueKey('workspace-save-template')));
+    await tester.ensureVisible(find.byKey(const ValueKey('sig-save')));
+    await _tap(tester, find.byKey(const ValueKey('sig-save')));
+    final saved = server.asked('POST', '/signature-templates').single!;
+    expect(saved['name'], 'A-1 standard');
+    expect(saved['html'], html);
+    expect((saved['design'] as Map)['company_phone'], '(888) 984-4344');
+    // Saved and closed; nothing was pushed to Gmail.
+    expect(find.byKey(const ValueKey('sig-builder')), findsNothing);
+    expect(server.asked('POST', '/signatures/apply'), isEmpty);
+  });
 
-    expect(server.asked('PUT', '/signature-template'), [
-      {'html': '{{name}}'},
-    ]);
-    expect(find.text('Template saved.'), findsOneWidget);
+  testWidgets('a setting changed in the builder changes the HTML it previews', (
+    tester,
+  ) async {
+    final server = _Server(cards: [_ready]);
+    await _pump(tester, server, size: const Size(1400, 1000));
+    await _tap(tester, find.byKey(const ValueKey('workspace-new-template')));
+    await _tap(tester, find.byKey(const ValueKey('sig-layout-none')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      '${server.asked('POST', '/signatures/preview').last!['html']}',
+      isNot(contains('<img')),
+    );
+
+    // The code view shows the same HTML; typing there makes it code.
+    await _tap(tester, find.byKey(const ValueKey('sig-view-code')));
+    await tester.enterText(find.byKey(const ValueKey('sig-code')), '{{name}}');
+    await tester.enterText(find.byKey(const ValueKey('sig-name')), 'Short');
+    await tester.ensureVisible(find.byKey(const ValueKey('sig-save')));
+    await _tap(tester, find.byKey(const ValueKey('sig-save')));
+    expect(server.asked('POST', '/signature-templates').single, {
+      'name': 'Short',
+      'html': '{{name}}',
+      'design': null,
+    });
+  });
+
+  testWidgets('templates: make one the default, give ticked people another, '
+      'and delete only after confirming', (tester) async {
+    final server = _Server(cards: [_ready], templates: true);
+    await _pump(tester, server, size: const Size(1400, 1000));
+
+    expect(find.byKey(const ValueKey('workspace-template-default')), findsOne);
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('workspace-default-template-t-short')),
+    );
+    expect(server.asked('PUT', '/signature-default').single, {
+      'template_id': 't-short',
+    });
+
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('workspace-tick-dana@brightside.example')),
+    );
+    await _tap(tester, find.byKey(const ValueKey('workspace-bulk-assign')));
+    await _tap(tester, find.text('Short reply').last);
+    expect(server.asked('PUT', '/signatures/assign').single, {
+      'addresses': ['dana@brightside.example'],
+      'template_id': 't-short',
+    });
+    // It says it took, and the picker keeps the choice (Jose 11-10: it reverted).
+    expect(
+      find.text('Given Short reply to 1 person. Set in Gmail sends it.'),
+      findsOne,
+    );
+    expect(
+      tester
+          .widget<SearchPickerField<String>>(
+            find.byKey(const ValueKey('workspace-bulk-assign')),
+          )
+          .value,
+      't-short',
+    );
+    // And Set in Gmail sends it for the same people.
+    await _tap(tester, find.byKey(const ValueKey('workspace-bulk-apply')));
+    expect(server.asked('POST', '/signatures/apply').last, {
+      'addresses': ['dana@brightside.example'],
+    });
+
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('workspace-delete-template-t-short')),
+    );
+    expect(server.asked('DELETE', '/signature-templates/t-short'), isEmpty);
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('workspace-delete-confirm-t-short')),
+    );
+    expect(
+      server.asked('DELETE', '/signature-templates/t-short'),
+      hasLength(1),
+    );
+  });
+
+  test('an empty value hides its line: optional items are wrapped', () {
+    final html = compileSignature(a1StandardDesign());
+    expect(html, contains('{{#title}}'));
+    expect(html, contains('{{#mobile}}'));
+    expect(html, contains('{{#extension}} ext. {{extension}}{{/extension}}'));
+    expect(html, isNot(contains('test')));
+    expect(html.length, lessThan(10000));
+    final none = compileSignature(mergeDesign({'layout': 'none'}));
+    expect(none, isNot(contains('<img')));
   });
 
   testWidgets('linking: same email, unlink, and picking a person', (
@@ -252,7 +324,7 @@ void main() {
       {'html': 'Pat at {{company}}'},
     ]);
 
-    await _tap(tester, find.text('Use the template'));
+    await _tap(tester, find.text('Use a template'));
     expect(
       server.asked('PUT', '/people/pat@brightside.example/signature').last,
       {'html': null},
@@ -348,23 +420,10 @@ void main() {
     );
 
     expect(find.byType(Checkbox), findsNothing);
-    expect(find.byKey(const ValueKey('workspace-save-template')), findsNothing);
-    expect(find.byKey(const ValueKey('workspace-chip-name')), findsNothing);
+    expect(find.byKey(const ValueKey('workspace-new-template')), findsNothing);
     expect(find.text('Same email · Link'), findsNothing);
     expect(find.text('Unlink'), findsNothing);
-    expect(
-      find.byType(SearchPickerField<String>),
-      findsOneWidget,
-      reason: 'Only the preview person picker.',
-    );
-    expect(
-      tester
-          .widget<TextField>(
-            find.byKey(const ValueKey('workspace-template-field')),
-          )
-          .readOnly,
-      isTrue,
-    );
+    expect(find.byType(SearchPickerField<String>), findsNothing);
 
     await _tap(
       tester,
@@ -430,7 +489,7 @@ void main() {
       find.byKey(const ValueKey('workspace-phone-template-open')),
     );
     expect(find.byKey(const ValueKey('workspace-phone-template')), findsOne);
-    expect(find.byKey(const ValueKey('workspace-template-field')), findsOne);
+    expect(find.byKey(const ValueKey('workspace-new-template')), findsOne);
     expect(tester.takeException(), isNull);
     await _tap(tester, find.byTooltip('Back'));
     expect(
@@ -684,6 +743,8 @@ final _people = [
   },
   {
     'address': 'pat@brightside.example',
+    // As PHP sends an empty array: [] not {}. The pane once cast it and threw (Jose 11-10).
+    'fields': <Object>[],
     'name': 'Pat Lin',
     'title': 'Technician',
     'phone': '',
@@ -727,7 +788,9 @@ final _people = [
 ];
 
 class _Server {
-  _Server({required this.cards, this.peopleRefusal});
+  _Server({required this.cards, this.peopleRefusal, this.templates = false});
+
+  final bool templates;
 
   final List<Map<String, Object?>> cards;
   final String? peopleRefusal;
@@ -779,6 +842,25 @@ class _Server {
             'title',
             'company',
           ],
+          'templates': [
+            if (templates) ...[
+              {
+                'id': 't-a1',
+                'name': 'A-1 standard',
+                'design': null,
+                'html': '{{name}}',
+                'is_default': true,
+              },
+              {
+                'id': 't-short',
+                'name': 'Short reply',
+                'design': null,
+                'html': '{{first_name}}',
+                'is_default': false,
+              },
+            ],
+          ],
+          'max_length': 10000,
           'people': [
             for (final p in _people)
               {
@@ -835,9 +917,17 @@ class _Server {
         'data': {
           'address': body?['address'],
           'html':
-              '<b>Dana Reyes</b><br>Office manager · Brightside Home Services',
+              // Tables, as the builder makes them: the renderer once drew none.
+              '<table><tr><td><b>Dana Reyes</b></td></tr></table>',
         },
       });
+    }
+    if (rest.startsWith('/signature-templates') ||
+        rest == '/signature-default' ||
+        rest == '/signatures/assign') {
+      return _json({
+        'data': {'id': 't-new'},
+      }, request.method == 'POST' ? 201 : 200);
     }
     if (rest == '/signatures/apply') {
       final results = [

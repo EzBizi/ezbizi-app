@@ -23,8 +23,8 @@ IconData dashboardPanelIcon(String key) {
     'customers': Icons.people_outline,
     'jobs': Icons.construction_outlined,
     // Same mark as its sidebar entry (module_screens.dart).
-    'project_management': Icons.timeline_outlined,
-    'project_management_2': Icons.view_timeline_outlined,
+    // Same mark as its sidebar entry (module_screens.dart).
+    'project_board': Icons.view_kanban_outlined,
     'scheduling': Icons.calendar_month_outlined,
     // Same mark as its sidebar entry (module_screens.dart).
     'field': Icons.near_me_outlined,
@@ -37,6 +37,7 @@ IconData dashboardPanelIcon(String key) {
     'fleet_management': Icons.local_shipping_outlined,
     'inventory': Icons.inventory_2_outlined,
     'financials': Icons.table_chart_outlined,
+    'company': Icons.account_tree_outlined,
     'tasks': Icons.view_kanban_outlined,
     'services': Icons.handyman_outlined,
     'email': Icons.inbox_outlined,
@@ -47,6 +48,8 @@ IconData dashboardPanelIcon(String key) {
     // which is what reusing assessment_outlined would do.
     // Matches module_screens.dart, so the sidebar and the dashboard agree.
     'ads_performance': Icons.show_chart_outlined,
+    // Marketing › Ads, running the campaigns. Matches module_screens.dart.
+    'ads_manager': Icons.campaign_outlined,
     // A ledger rather than a chart or a currency symbol: the tab holds a
     // business's own books read out of its accounting sheet. Matches
     // module_screens.dart, so the sidebar and the dashboard agree.

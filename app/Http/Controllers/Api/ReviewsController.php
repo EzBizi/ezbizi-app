@@ -221,6 +221,58 @@ class ReviewsController extends Controller
         return $this->show($review);
     }
 
+    /**
+     * GET /api/v1/reviews/auto-replies — every review EzBizi's AI answered or drafted, with our reply
+     * (Jose, 2026-11-10: "are auto-replies going out? ... shows the customer review and our reply").
+     * ?status=published|draft|failed, branch, stars, from, to, q; counts for the three states.
+     */
+    public function autoReplies(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Review::class);
+        $input = $request->validate(['status' => ['nullable', 'in:published,draft,failed'], 'branch' => ['nullable', 'uuid'],
+            'stars' => ['nullable', 'integer', 'between:1,5'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date'],
+            'q' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1']]);
+        $ai = fn ($q) => $q->whereIn('drafted_by', [ReviewReply::BY_AUTOMATION, ReviewReply::BY_DRAFTING_JOB]);
+        $base = Review::query()->whereHas('reply', $ai)
+            ->when($input['branch'] ?? null, fn ($q, $b) => $q->where('franchise_id', $b))
+            ->when($input['stars'] ?? null, fn ($q, $s) => $q->where('rating', $s))
+            ->when($input['from'] ?? null, fn ($q, $d) => $q->where('reviewed_at', '>=', $d))
+            ->when($input['to'] ?? null, fn ($q, $d) => $q->where('reviewed_at', '<=', $d))
+            ->when(trim((string) ($input['q'] ?? '')), fn ($q, $t) => $q->where(fn ($w) => $w
+                ->where('reviewer_name', 'like', '%'.addcslashes($t, '%_').'%')->orWhere('comment', 'like', '%'.addcslashes($t, '%_').'%')));
+        \App\Support\CustomerExperience\Places::scope($base, $request->user());
+
+        $counts = [];
+        foreach ([ReviewReply::STATUS_PUBLISHED, ReviewReply::STATUS_DRAFT, ReviewReply::STATUS_FAILED] as $status) {
+            $counts[$status] = (clone $base)->whereHas('reply', fn ($q) => $ai($q)->where('status', $status))->count();
+        }
+        $page = (clone $base)->when($input['status'] ?? null, fn ($q, $s) => $q->whereHas('reply', fn ($r) => $ai($r)->where('status', $s)))
+            ->with(['reply', 'company:id,name', 'franchise:id,name', 'customer', 'job.performedBy'])
+            ->orderByDesc('reviewed_at')->paginate(50);
+
+        return response()->json(['data' => collect($page->items())->map(fn (Review $r) => $this->present($r))->all(),
+            'meta' => ['counts' => $counts, 'total' => $page->total(), 'last_page' => $page->lastPage(),
+                // Why drafts wait, in one line (desk, 2026-11-10).
+                'drafts_note' => 'Drafts wait for one of three reasons: 3 stars or less are never posted by themselves; '
+                    .'"Draft replies" in Reviews writes drafts for a person to post; and a review on a listing that is '
+                    .'not on a Google profile connected in Integrations (today: Roofirst) cannot be answered.']]);
+    }
+
+    /** PUT /api/v1/reviews/{review}/link-match {confirmed: bool}: a person settles the inferred match. */
+    public function settleLinkMatch(Request $request, Review $review): JsonResponse
+    {
+        $this->authorize('manage', $review);
+        $confirmed = (bool) $request->validate(['confirmed' => ['required', 'boolean']])['confirmed'];
+        $match = \App\Models\ReviewLinkMatch::query()->where('review_id', $review->id)->firstOrFail();
+        $match->forceFill(['status' => $confirmed ? 'confirmed' : 'rejected'])->save();
+        // A rejected match takes back the customer it set, never one a person chose.
+        if (! $confirmed && $review->customer_match === 'link') {
+            $review->forceFill(['customer_id' => null, 'job_id' => null, 'customer_match' => null])->save();
+        }
+
+        return $this->show($review);
+    }
+
     /** The customer's job last scheduled before the review, else their latest. */
     public static function jobFor(Customer $customer, Review $review): ?string
     {
@@ -624,6 +676,9 @@ class ReviewsController extends Controller
             'note_count'    => (int) ($review->notes_count ?? 0),
             'customer'      => $review->customer?->only(['id', 'name', 'phone', 'email']),
             'match'         => $review->customer_match,
+            // Which review link probably produced this review, for Confirm / Reject (Jose, 2026-11-09).
+            'link_match'    => ($lm = \App\Models\ReviewLinkMatch::query()->where('review_id', $review->id)->first()) === null ? null
+                : $lm->only(['id', 'confidence', 'clicked', 'status']) + ['sent_at' => $lm->sent_at?->toIso8601String()],
             'job'           => $review->job === null ? null : [
                 'id'         => $review->job->id,
                 'number'     => $review->job->number,

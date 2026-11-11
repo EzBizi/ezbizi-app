@@ -55,5 +55,5 @@ call PUT "$API/edits/$EDIT/tracks/$TRACK" -H 'Content-Type: application/json' \
   -d "{\"track\":\"$TRACK\",\"releases\":[{\"name\":\"$NAME\",\"versionCodes\":[\"$CODE\"],\"status\":\"completed\"}]}" >/dev/null
 echo "→ $TRACK set to $NAME ($CODE)"
 
-call POST "$API/edits/$EDIT:commit" >/dev/null
+call POST "$API/edits/$EDIT:commit" -H 'Content-Length: 0' >/dev/null
 echo "✓ committed: $NAME ($CODE) on $TRACK — Play reviews it before phones get it"

@@ -56,6 +56,7 @@ use App\Support\Hr\InvitationActions;
 use App\Support\Inspection\ReportPdf;
 use App\Support\Inventory\InventoryItemStatus;
 use App\Support\Inventory\InventoryUnit;
+use App\Support\Leads\BookingBot;
 use App\Support\Leads\LeadReplies;
 use App\Support\Leads\LeadTexts;
 use App\Support\Mail\CannotSendMail;
@@ -69,6 +70,7 @@ use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Reports\SendSavedReport;
 use App\Support\Reports\Texts\DailyTexts;
+use App\Support\Reports\Texts\ReportPdf as ReportTextPdf;
 use App\Support\Reviews\ReviewReplyWriter;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -176,7 +178,7 @@ class ActionRunner
             // column directly, so calling it "Price" here would invite exactly
             // that mistake through the other door.
             'amount_minor' => 'Amount in cents',
-            // Jose's Project Management rules (Jobs, cff7eceae, 2026-10-20).
+            // Jobs, cff7eceae, 2026-10-20.
             'job_type' => 'Job type',
             'sub_status' => 'Sub-status',
             // One tag in or out, never replace-all, so two rules cannot erase each other's.
@@ -272,6 +274,7 @@ class ActionRunner
                 'ringcentral' => 'RingCentral call',
                 'ez_calls' => 'EZ call',
                 'ez_texts' => 'EZ text',
+                'promotions' => 'promotion reply',
             ],
             'status' => [
                 'new' => 'New',
@@ -508,6 +511,7 @@ class ActionRunner
             'resend' => $this->resendInvitation($subject),
             'revoke' => $this->revokeInvitation($subject),
             'reply' => $this->replyToLead($action, $event, $subject),
+            'book_by_chat' => $this->bookByChat($action, $event, $subject),
             'report.send' => $this->sendReport($action, $event, $automation),
             'email.send' => $this->sendEmail($action, $event, $automation, $subject),
             'whatsapp.send' => $this->sendWhatsApp($action, $event, $subject),
@@ -721,7 +725,7 @@ class ActionRunner
      * not have, is left alone.
      */
     /**
-     * Jose's Project Management rules (2026-10-21): status, sub-status and
+     * Jose, 2026-10-21: status, sub-status and
      * "set tags to" on the job's Workiz copy, through WorkizJobWriter, which
      * resolves each account's own names and ids and audits what it removed.
      */
@@ -1229,9 +1233,20 @@ class ActionRunner
             ];
         }
 
-        if (! $this->leadReplies->canReply($subject)) {
+        // Google takes no text against a call, so the reply goes by SMS from
+        // the cleared line instead: skipping left 71 of 125 not-booked
+        // customers with nothing (Jose via Desk, 2026-11-04).
+        $bySms = ! $this->leadReplies->canReply($subject)
+            && $subject->source === Lead::SOURCE_LOCAL_SERVICES
+            && $subject->lead_type !== 'MESSAGE'
+            && Lead::e164($subject->phone) !== null;
+
+        // A channel gone: the enquiry is the wrong kind, not the rule broken,
+        // so it skips like Not connected does and the failure count cannot
+        // switch the rule off.
+        if (! $bySms && ! $this->leadReplies->canReply($subject)) {
             return [
-                'type' => $type, 'ok' => false,
+                'type' => $type, 'ok' => true, 'skipped' => true,
                 'detail' => $this->leadReplies->whyNot($subject)
                     ?? 'This enquiry cannot be replied to just now.',
             ];
@@ -1239,8 +1254,24 @@ class ActionRunner
 
         $text = $this->interpolate($message, $event, $subject);
 
+        // Skips, not failures, so the count cannot switch the rule off: a lead
+        // with no online booking drops a one-line "book here" message whole,
+        // and a company with no cleared line has nothing to text from (health
+        // sweep 2026-11-06: 15 such failures in a day on Triplex's rule).
+        $skip = trim($text) === ''
+            ? 'Every line of this message needs a field this enquiry does not have (a '
+                .'booking link, with no booking page or open area for their ZIP), so nothing was sent.'
+            : ($bySms && app(LeadTexts::class)->line($subject) === null
+                ? "No texting line is cleared to send for this lead's company, so nothing was sent."
+                : null);
+        if ($skip !== null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $skip];
+        }
+
         try {
-            $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
+            $bySms
+                ? app(LeadTexts::class)->send($subject, $text, automatic: true)
+                : $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
         }
@@ -1260,9 +1291,26 @@ class ActionRunner
         return [
             'type' => $type,
             'ok' => true,
-            'detail' => 'Replied in the chat. It is recorded as automatic, so the enquiry still '
-                .'shows as awaiting a reply.',
+            'detail' => ($bySms ? 'Texted the customer, as Google takes no reply to a call.' : 'Replied in the chat.')
+                .' It is recorded as automatic, so the enquiry still shows as awaiting a reply.',
         ];
+    }
+
+    /** The booking bot's next line, sent as an automatic reply (BookingBot). */
+    private function bookByChat(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        if (! $subject instanceof Lead) {
+            return ['type' => 'book_by_chat', 'ok' => false, 'detail' => 'This step can only answer an enquiry.'];
+        }
+
+        $next = app(BookingBot::class)->next($subject);
+        if ($next['reply'] === null) {
+            return ['type' => 'book_by_chat', 'ok' => true, 'skipped' => true, 'detail' => $next['why']];
+        }
+
+        $sent = $this->replyToLead(['message' => $next['reply']] + $action, $event, $subject);
+
+        return ['type' => 'book_by_chat'] + ($sent['ok'] ? ['detail' => $next['why']] : []) + $sent;
     }
 
     /**
@@ -1739,15 +1787,26 @@ class ActionRunner
             return ['type' => $type, 'ok' => false, 'detail' => $refusal];
         }
 
+        $issuer = $this->scopeModelFor($automation) ?? $event->organization()->withoutGlobalScopes()->firstOrFail();
+        // $record, not $subject: in THIS arm `$subject` is the email's
+        // subject line. The record the rule fired on is the other one.
+        $subjectLine = $this->interpolate($subject, $event, $record);
+        // A report's subject says whose it is, as its WhatsApp title does (Jose, 2026-11-10).
+        if (in_array($event->event_key, self::REPORT_EVENTS, true) && ! str_contains($subjectLine, (string) ($issuer->name ?? ''))) {
+            $subjectLine = $issuer->name.' · '.$subjectLine;
+        }
+        $body = $this->interpolate((string) $action['body'], $event, $record, forMarkdown: AutomationMessage::RENDERS_MARKDOWN);
+        // A report to staff carries its formatted copy, as on WhatsApp (Jose, 2026-11-10); never to a customer.
+        $pdf = in_array($event->event_key, self::REPORT_EVENTS, true) && $field !== self::RECIPIENT_CUSTOMER
+            ? ReportTextPdf::render('*'.$subjectLine."*\n\n".AutomationMessage::plain($body), $issuer, CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of()))
+            : null;
+
         try {
             $this->mail->platformForTenant(
-                $this->scopeModelFor($automation) ?? $event->organization()->withoutGlobalScopes()->firstOrFail(),
+                $issuer,
                 new AutomationMessage(
-                    // $record, not $subject: in THIS arm `$subject` is the email's
-                    // subject line. The record the rule fired on is the other one.
-                    subjectLine: $this->interpolate($subject, $event, $record),
-                    body: $this->interpolate((string) $action['body'], $event, $record,
-                        forMarkdown: AutomationMessage::RENDERS_MARKDOWN),
+                    subjectLine: $subjectLine,
+                    body: $body,
                     businessName: (string) ($event->organization()->withoutGlobalScopes()->value('name') ?? 'this business'),
                     // EzBizi's band only when EzBizi composed the substance: a
                     // trigger that declares composedFields. Never widened to
@@ -1755,6 +1814,7 @@ class ActionRunner
                     kind: ($trigger = app(ModuleRegistry::class)->findTrigger($event->event_key)) !== null
                         && $trigger->composedFields !== [] ? $trigger->label : null,
                     automationName: $automation?->name,
+                    pdf: $pdf,
                 ),
                 $to,
             );
@@ -1772,6 +1832,9 @@ class ActionRunner
 
         return ['type' => $type, 'ok' => true, 'detail' => "Emailed {$shown}: {$subject}"];
     }
+
+    /** The events whose email is a report: the weekly AI summary, overbooking, empty spots. */
+    private const REPORT_EVENTS = ['reports.ai_summary_ready', 'scheduling.overbooking_found', 'scheduling.area_underfilled'];
 
     /** Prefix marking a stored recipient as a person rather than a field or an address. */
     private const RECIPIENT_USER = 'user:';
@@ -2038,7 +2101,7 @@ class ActionRunner
             ];
         }
 
-        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body);
+        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true);
         if ($body === null) {
             return ['type' => $type, 'ok' => false, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
         }
@@ -2051,9 +2114,9 @@ class ActionRunner
             return [
                 'type' => $type,
                 'ok' => false,
-                'detail' => $e->getMessage() !== ''
+                'detail' => \App\Support\Phone\PhoneTexts::refusal($e) ?? ($e->getMessage() !== ''
                     ? 'Twilio refused it: '.$e->getMessage()
-                    : 'Twilio refused to send from this phone line.',
+                    : 'Twilio refused to send from this phone line.'),
             ];
         }
 
@@ -2730,7 +2793,11 @@ class ActionRunner
 
         // Meta's limit for one message.
         $body = mb_substr($body, 0, 4096);
+        // Whose and when, as every report's title says (Jose, 2026-11-10): "A1-Group · Weekly AI summary · Nov 9".
+        $org = $automation === null ? null : Organization::query()->find($automation->organization_id);
+        $whose = $automation?->scope_type === 'company' ? Company::query()->find($automation->scope_id)?->name : $org?->name;
         $title = mb_substr((string) ($automation?->name ?? 'EzBizi alert'), 0, 60);
+        $title = ($whose === null ? '' : $whose.' · ').$title.' · '.CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of())->format('M j');
 
         $reached = app(WhatsAppGroups::class)->deliver($purpose, $title, $body);
 
@@ -3114,7 +3181,15 @@ class ActionRunner
             ? User::query()->find($automation->activeVersion->created_by)
             : null;
 
-        if ($author === null || ! Gate::forUser($author)->allows('publish', $subject)) {
+        // The author's grant and reach, not the view they last stood in: a rule runs from a
+        // queue, and the policy's write check reads the saved view, so a rule made by someone
+        // looking at one company refused every other company's reviews (sweep, 2026-11-04).
+        $reaches = $author !== null && $author->hasPermission('reviews.publish') && match (true) {
+            $subject->franchise_id !== null => ($f = \App\Models\Franchise::query()->find($subject->franchise_id)) !== null && $author->canActOnFranchise($f),
+            $subject->company_id !== null => ($c = \App\Models\Company::query()->find($subject->company_id)) !== null && $author->canActOnCompany($c),
+            default => $author->canActOnOrganization($author->organization),
+        };
+        if (! $reaches) {
             return ['type' => $type, 'ok' => false,
                 'detail' => 'The person who built this rule may not publish replies to this review, so nothing '
                     .'was posted. Somebody who can should open the rule and save it again.'];
@@ -3653,8 +3728,12 @@ class ActionRunner
         // was refused on theirs. Their own board only when there is no place.
         $owner = (($scope['type'] ?? null) === 'franchise' ? Franchise::query()->find($scope['id'] ?? null) : null)
             ?? (($scope['type'] ?? null) === 'company' ? Company::query()->find($scope['id'] ?? null) : null)
-            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null)
-            ?? $assignee;
+            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null);
+        // A Sub Company and its franchises have no board (Jose, 2026-11-06).
+        if ($owner !== null && ! TaskBoards::hasPlaceBoard($owner)) {
+            $owner = null;
+        }
+        $owner ??= $assignee;
 
         if ($owner === null) {
             return ['type' => 'task.create', 'ok' => false, 'detail' => 'No board to put the task on: give it to somebody, or use a trigger about a place.'];
@@ -3680,7 +3759,7 @@ class ActionRunner
 
         return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
             // A rule's group is made on the branch's board the first time it is
-            // needed (2026-10-22: PM Action 1's "Project Management" group was on
+            // needed (2026-10-22: a rule's group was on
             // no board). By name, any case; a person's API call still refuses an unknown one.
             if ($group !== '' && ! $board->groups()->get()->contains(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower($group))) {
                 $board->groups()->create(['organization_id' => $board->organization_id, 'name' => $group,
@@ -3771,11 +3850,12 @@ class ActionRunner
         // A company's sub-companies are in it too (desk review, 2026-10-27).
         $branches = $automation->scope_type === null ? null
             : ViewScope::forStoredAutomationScope($creator, $automation->scope_type, $automation->scope_id)->franchiseIds();
-        $text = app(DailyTexts::class)->render($kind, $org, $day, $branches);
+        // A company's rule says whose report it is (Ace Fireplace's daily beside A-1's, 2026-11-09).
+        $company = $automation->scope_type === 'company' ? Company::query()->find($automation->scope_id)?->name : null;
+        [$title, $text] = app(DailyTexts::class)->headed($kind, $company ?? $org->name, $org, $day, $branches);
         if (trim($text) === '') {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nothing to report today, so nothing was sent.'];
         }
-        $title = DailyTexts::KINDS[$kind].' · '.$day->format('M j');
 
         // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
         $sent = self::deliverReportText((string) ($action['from'] ?? ''), self::idList($action['user_ids'] ?? []),
@@ -3799,7 +3879,9 @@ class ActionRunner
      */
     public static function deliverReportText(string $from, array $userIds, ?string $scopeType, ?string $scopeId, string $title, string $text, ?string $once = null): int|string
     {
-        $number = WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
+        // The Reports number when there is one, whatever the rule names (Jose, 2026-11-09).
+        $number = WhatsAppNumber::forPurpose('reports')
+            ?? WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
         if ($number === null) {
             return 'This organization has no WhatsApp number to send from.';
         }
@@ -3813,7 +3895,9 @@ class ActionRunner
                 continue;
             }
             try {
-                $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text) ? 1 : 0;
+                // The key names the rule, so ReportDeliveryCheck can tell its maker one did not arrive.
+                $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text, $once === null ? null : "{$once}:{$user->id}",
+                    $scopeType === 'company' ? Company::query()->find($scopeId) : null) ? 1 : 0;
             } catch (RuntimeException $refusal) {
                 // Not sent, so a retry may try again rather than report "nobody has a phone".
                 if ($once !== null) {

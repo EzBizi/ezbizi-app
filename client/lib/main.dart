@@ -60,6 +60,8 @@ import 'widgets/profile_aura.dart';
 import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/availability_button.dart';
+import 'widgets/callout.dart';
+import 'widgets/quick_search.dart';
 import 'widgets/incoming_call_bar.dart';
 import 'widgets/incoming_call_popup.dart';
 import 'core/phone_call_service.dart';
@@ -461,6 +463,13 @@ class _HomeShellState extends State<HomeShell> {
   /// The countdown before a scheduled shift ends (design 2026-09-08 §10.1).
   late final ShiftReminderController _reminder;
   Timer? _clockPoll;
+
+  /// Access changed elsewhere (an inbox granted, a role edited) reaches an
+  /// open app without a reload: /me is asked again every minute and when the
+  /// app comes back, and the page is keyed on its access_version (Jose,
+  /// 2026-11-10).
+  Timer? _accessPoll;
+  AppLifecycleListener? _accessOnResume;
   VoidCallback? _stopClockListening;
 
   _Rail _rail = _Rail.modules;
@@ -537,9 +546,40 @@ class _HomeShellState extends State<HomeShell> {
   /// whether to share and starts or stops itself; null off a phone.
   FieldTracker? _fieldTracker;
 
+  /// Ctrl+K / ⌘K from anywhere in the shell; set by _shell, which knows the
+  /// destinations (monday port, desk 2026-11-09).
+  VoidCallback? _quickSearch;
+
+  bool _quickSearchKey(KeyEvent event) {
+    final k = HardwareKeyboard.instance;
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.keyK &&
+        (k.isControlPressed || k.isMetaPressed) &&
+        _quickSearch != null) {
+      _quickSearch!();
+      return true;
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_quickSearchKey);
+
+    // One-time tips: what this person already dismissed, and where a new
+    // dismissal is written.
+    Callouts.seen.value = {
+      for (final id
+          in widget.session.me?.preferences['callouts.seen'] as List? ??
+              const [])
+        '$id',
+    };
+    Callouts.ready = widget.session.me != null;
+    Callouts.onDismiss = (_) => widget.session.setPreference(
+      'callouts.seen',
+      Callouts.seen.value.toList(),
+    );
 
     // SECURITY exemption: the Lead Developer's own device still beats (online)
     // and reports specs, but never captures, live-views or is remote-driven —
@@ -603,6 +643,15 @@ class _HomeShellState extends State<HomeShell> {
     // One small block every minute while the organization has the clock on,
     // so an exemption, a schedule change or a server-side close reaches an
     // open app (design 2026-09-08 §3.12). Same cadence as the bell.
+    _accessPoll = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => widget.session.refresh(),
+    );
+    _accessOnResume = AppLifecycleListener(
+      onResume: widget.session.refresh,
+      onShow: widget.session.refresh,
+    );
+
     _clockPoll = Timer.periodic(const Duration(seconds: 60), (_) async {
       final status = widget.session.me?.timeClock;
       if (status == null ||
@@ -632,7 +681,15 @@ class _HomeShellState extends State<HomeShell> {
     _apply(widget.address?.path);
     // The day-before email's "Open Booked vs available" link carries its day
     // in the query, which the address bar's path drops (UI queue 147).
-    if (DeepLinks.fromUri(Uri.base) case final link?) DeepLinks.open(link);
+    // Leads opens one lead through its constructor (see [_screenFor]); every
+    // other module takes the link from [DeepLinks].
+    if (DeepLinks.fromUri(Uri.base) case final link?) {
+      if (link.module == 'leads') {
+        _leadsOpen = link.id;
+      } else {
+        DeepLinks.open(link);
+      }
+    }
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
       setState(() => _apply(path));
@@ -699,6 +756,8 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_quickSearchKey);
+    Callouts.ready = false;
     _stopListening?.call();
     _heartbeat.dispose();
     stopLighting();
@@ -716,6 +775,8 @@ class _HomeShellState extends State<HomeShell> {
     PhoneCallService.current.stop();
 
     _clockPoll?.cancel();
+    _accessPoll?.cancel();
+    _accessOnResume?.dispose();
     _stopClockListening?.call();
     _reminder.dispose();
 
@@ -1429,6 +1490,12 @@ class _HomeShellState extends State<HomeShell> {
                     },
                   ),
                 ),
+              IconButton(
+                key: const Key('shell-quick-search'),
+                tooltip: 'Search (Ctrl+K)',
+                icon: const Icon(Icons.search),
+                onPressed: _quickSearch,
+              ),
               NotificationBell(
                 api: widget.api,
                 // The shell already knows how to select a module; the bell
@@ -1907,7 +1974,11 @@ class _HomeShellState extends State<HomeShell> {
                     child: FocusTraversalGroup(
                       key: shellPageGroup,
                       child: KeyedSubtree(
-                        key: ValueKey('${me.scope.type}:${me.scope.id}'),
+                        // And by what they may reach, so a grant made
+                        // elsewhere remounts the page and its lists reload.
+                        key: ValueKey(
+                          '${me.scope.type}:${me.scope.id}:${me.accessVersion}',
+                        ),
                         // Their own account is the last fallback, and the only honest
                         // one: it is the single screen that is theirs by definition and
                         // cannot answer 403. It is what somebody whose role reaches no
@@ -1974,6 +2045,35 @@ class _HomeShellState extends State<HomeShell> {
               (order) =>
                   widget.session.setPreference('navigation.order', order),
             ),
+    );
+    _quickSearch = () => showQuickSearch(
+      context,
+      api: widget.api,
+      screens: [
+        for (final d in destinations)
+          (
+            module: d.id,
+            record: null,
+            label: d.label,
+            detail: 'Screen',
+            icon: d.icon,
+          ),
+      ],
+      onOpen: (module, record) {
+        if (record != null && module == 'leads') {
+          return _show(_Rail.modules, 'leads', openLead: record);
+        }
+        if (record != null) {
+          DeepLinks.open(
+            DeepLink(
+              module: module,
+              type: module.substring(0, module.length - 1),
+              id: record,
+            ),
+          );
+        }
+        _open(module);
+      },
     );
     return OpenDestination(
       open: _open,

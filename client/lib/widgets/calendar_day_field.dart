@@ -41,6 +41,8 @@ class CalendarDayField extends StatefulWidget {
     this.lastDate,
     this.onChanged,
     this.flagEmpty = false,
+    this.fill = true,
+    this.trailing,
   });
 
   /// Holds `YYYY-MM-DD`, or `YYYY-MM-DD HH:MM` with [withTime]; empty for none.
@@ -58,6 +60,14 @@ class CalendarDayField extends StatefulWidget {
 
   /// Marks an empty field "Not filled in" (an optional answer left blank).
   final bool flagEmpty;
+
+  /// Takes the full width, as every other box in a form does (Jose,
+  /// 2026-11-06: "the date of birth field is not the same size as the
+  /// rest"); false keeps a date's 220.
+  final bool fill;
+
+  /// An extra control after the calendar button, e.g. a copy button.
+  final Widget? trailing;
 
   @override
   State<CalendarDayField> createState() => _CalendarDayFieldState();
@@ -128,9 +138,7 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
         )
         .join(sep);
     if (!widget.withTime) return day;
-    return widget.formats.timeFormat == '12h'
-        ? '$day 9:00 AM'
-        : '$day 09:00';
+    return widget.formats.timeFormat == '12h' ? '$day 9:00 AM' : '$day 09:00';
   }
 
   void _onController() {
@@ -282,21 +290,27 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
       labelText: label == null || label.isEmpty ? null : label,
       hintText: _pattern,
       floatingLabelBehavior: FloatingLabelBehavior.always,
-      isDense: true,
-      contentPadding: EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: widget.dense ? 10 : 12,
-      ),
-      suffixIcon: IconButton(
-        key: const Key('calendar-day-pick'),
-        tooltip: _open ? 'Hide the calendar' : 'Pick a day on the calendar',
-        onPressed: widget.enabled
-            ? () => setState(() => _open = !_open)
-            : null,
-        icon: Icon(
-          _open ? Icons.calendar_month : Icons.calendar_today_outlined,
-          size: 20,
-        ),
+      // The theme's own height unless dense, so it matches the boxes beside it.
+      isDense: widget.dense ? true : null,
+      contentPadding: widget.dense
+          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 10)
+          : null,
+      suffixIcon: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            key: const Key('calendar-day-pick'),
+            tooltip: _open ? 'Hide the calendar' : 'Pick a day on the calendar',
+            onPressed: widget.enabled
+                ? () => setState(() => _open = !_open)
+                : null,
+            icon: Icon(
+              _open ? Icons.calendar_month : Icons.calendar_today_outlined,
+              size: 20,
+            ),
+          ),
+          ?widget.trailing,
+        ],
       ),
     );
     if (unfilled) {
@@ -313,7 +327,11 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
         Align(
           alignment: Alignment.centerLeft,
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: widget.withTime ? 280 : 220),
+            constraints: BoxConstraints(
+              maxWidth: widget.fill
+                  ? double.infinity
+                  : (widget.withTime ? 280 : 220),
+            ),
             child: TextField(
               key: const Key('calendar-day-text'),
               controller: _text,

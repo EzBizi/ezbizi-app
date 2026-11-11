@@ -38,10 +38,32 @@ class TaskBoardsController extends Controller
         $user = $request->user();
         $this->boards->ensureFor($user);
 
-        $boards = $this->boards->visibleTo($user)
+        // A personal board whose owner is deactivated or erased is archived
+        // (Jose, 2026-11-09: "Removed accounts should not show up on boards").
+        // Derived from the owner, never stored, so it cannot drift; an
+        // Administrator opens them with ?archived=1, each with its open tasks
+        // to hand over.
+        // Anyone sees the boards they could see that were archived; only an
+        // Administrator sees the personal boards of people who left.
+        $archived = $request->boolean('archived');
+        $ownerGone = fn ($q) => $q->where(fn ($q) => $q->whereNotNull('archived_at')
+            ->orWhere(fn ($q) => $q->where('kind', TaskBoard::KIND_USER)
+                ->whereHas('owner', fn ($o) => $o->where('is_active', false))));
+
+        // A board of a switched-off company or place, or one filed on either,
+        // is not listed (Jose, 2026-11-10: "on task board, switched off
+        // companies should not show up"). Its rows and tasks stay.
+        $switchedOn = fn ($q) => $q->whereDoesntHave('company', fn ($c) => $c->switchedOff())
+            ->whereDoesntHave('franchise', fn ($f) => $f->switchedOff());
+
+        $boards = $this->boards->visibleTo($user)->where($switchedOn)
+            ->when($archived, $ownerGone, fn ($q) => $q->whereNot($ownerGone))
+            ->when($archived && ! $user->isAdministrator(), fn ($q) => $q->whereNotNull('archived_at'))
             ->withCount(['tasks as open_for_me' => fn ($q) => $q
                 ->where('assignee_user_id', $user->getKey())
                 ->where('status', '!=', Task::STATUS_DONE)])
+            ->when($archived, fn ($q) => $q->withCount(['tasks as open_tasks' => fn ($t) => $t
+                ->where('status', '!=', Task::STATUS_DONE)]))
             ->with([
                 'company:id,name',
                 'franchise' => fn ($q) => $q->withTrashed()->with('company:id,name'),
@@ -52,7 +74,7 @@ class TaskBoardsController extends Controller
             ->sortBy(fn (TaskBoard $b) => [array_search($b->kind, self::ORDER, true), $b->name])
             ->values();
 
-        return response()->json(['data' => $boards->map(function (TaskBoard $b) use ($user) {
+        return response()->json(['data' => $boards->map(function (TaskBoard $b) use ($user, $archived) {
             $owner = $b->kind === TaskBoard::KIND_USER
                 ? $b->owner
                 : $b->members->firstWhere('role', TaskBoardMember::OWNER)?->user;
@@ -76,8 +98,72 @@ class TaskBoardsController extends Controller
                 'can_manage' => $this->boards->canManageMembers($user, $b),
                 'section' => $this->boards->sectionOf($user, $b, $role),
                 'owner' => $owner ? ['id' => $owner->id, 'name' => $owner->name] : null,
+                ...($archived ? ['archived' => true, 'open_tasks' => (int) $b->open_tasks] : []),
             ];
-        })->all()]);
+        })->concat($archived ? $this->deleted($user) : [])->all(), 'meta' => [
+            // The Archived list's switch, with how many wait there.
+            'archived_count' => $archived ? null : $this->boards->visibleTo($user)->where($switchedOn)->where($ownerGone)
+                ->when(! $user->isAdministrator(), fn ($q) => $q->whereNotNull('archived_at'))->count()
+                + $this->deleted($user)->count(),
+        ]]);
+    }
+
+    /**
+     * Boards deleted in the last 30 days that this person could restore,
+     * listed under Archived with the day they go for good.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function deleted(User $user): \Illuminate\Support\Collection
+    {
+        return $this->boards->visibleTo($user)->onlyTrashed()
+            ->where('deleted_at', '>=', now()->subDays(\App\Console\Commands\PurgeDeletedTaskBoards::DAYS))
+            ->get()->filter(fn (TaskBoard $b) => $this->canRestore($user, $b))
+            ->map(fn (TaskBoard $b) => ['id' => $b->id, 'kind' => $b->kind, 'name' => $b->name, 'archived' => true,
+                'deleted' => true, 'open_tasks' => 0, 'section' => null, 'owner' => null, 'can_edit' => false,
+                'restore_until' => $b->deleted_at->copy()->addDays(\App\Console\Commands\PurgeDeletedTaskBoards::DAYS)->toDateString()])
+            ->values();
+    }
+
+    /** POST task-boards/{id}/archive: out of the list, reversibly. Automatic boards too. */
+    public function archive(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorizeArchive($request->user(), $taskBoard);
+        $taskBoard->forceFill(['archived_at' => now()])->save();
+
+        return response()->json(['data' => ['id' => $taskBoard->id, 'archived' => true]]);
+    }
+
+    public function unarchive(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorizeArchive($request->user(), $taskBoard);
+        $taskBoard->forceFill(['archived_at' => null])->save();
+
+        return response()->json(['data' => ['id' => $taskBoard->id, 'archived' => false]]);
+    }
+
+    /** POST task-boards/{id}/restore: a deleted board back, within 30 days. */
+    public function restore(Request $request, string $id): JsonResponse
+    {
+        $user = $request->user();
+        $board = $this->boards->visibleTo($user)->onlyTrashed()->findOrFail($id);
+        abort_unless($this->canRestore($user, $board), 403, 'Only an owner of this board or an Administrator can do that.');
+        abort_if($board->deleted_at->lt(now()->subDays(\App\Console\Commands\PurgeDeletedTaskBoards::DAYS)), 404);
+        $board->restore();
+
+        return response()->json(['data' => ['id' => $board->id]]);
+    }
+
+    /** canManage without its canView, which a deleted board no longer passes. */
+    private function canRestore(User $user, TaskBoard $board): bool
+    {
+        return $user->isAdministrator() || $this->boards->roleOf($user, $board) === TaskBoardMember::OWNER;
+    }
+
+    private function authorizeArchive(User $user, TaskBoard $board): void
+    {
+        $this->authorize('view', $board);
+        abort_unless($this->boards->canManage($user, $board), 403, 'Only an owner of this board or an Administrator can do that.');
     }
 
     public function show(Request $request, TaskBoard $taskBoard): JsonResponse
@@ -106,11 +192,22 @@ class TaskBoardsController extends Controller
             ->orderBy('created_at')
             ->get();
 
+        $unread = \App\Support\Notes\NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
+            $tasks->concat($rolled)->map(fn (Task $t) => (string) $t->id)->all(), (string) $user->id);
+        $present = fn (Task $t) => TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0];
+
         return response()->json(['data' => [
             'id' => $taskBoard->id,
             'kind' => $taskBoard->kind,
             'name' => $taskBoard->name,
             'visibility' => $taskBoard->visibility,
+            'edit_mode' => $taskBoard->edit_mode ?? 'everyone',
+            'can_set_edit_mode' => $this->boards->canManage($user, $taskBoard),
+            'archived' => $taskBoard->archived_at !== null,
+            // Delete: custom boards only; automatic ones can only be archived.
+            'can_delete' => ! $taskBoard->isAutomatic() && $this->boards->canManage($user, $taskBoard),
+            // In assignee mode: whether this person may change any task, not only their own.
+            'can_edit_all' => ($taskBoard->edit_mode ?? 'everyone') !== 'assignee' || $this->boards->canManage($user, $taskBoard),
             'my_role' => $this->boards->roleOf($user, $taskBoard),
             'members_count' => count($people = $this->effectiveMembers($taskBoard)),
             // The first four people on it, owners first, for the header avatars.
@@ -126,10 +223,12 @@ class TaskBoardsController extends Controller
             'columns' => $taskBoard->columns->map(fn (TaskColumn $c) => TaskBoardSettingsController::presentColumn($c))->all(),
             // Owner, Status, Due, About, Created, Updates: {key: {label, visible}}, every key.
             'builtin_columns' => $taskBoard->resolvedBuiltinColumns(),
+            // Saved views: the board's shared ones and this person's own.
+            'views' => TaskBoardViewsController::visible($taskBoard, $user->id),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
             'assignable' => $this->boards->assignable($taskBoard)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
-            'tasks' => $tasks->map(fn (Task $t) => TasksController::present($t))
-                ->concat($rolled->map(fn (Task $t) => TasksController::present($t) + ['rolled_up_from' => [
+            'tasks' => $tasks->map($present)
+                ->concat($rolled->map(fn (Task $t) => $present($t) + ['rolled_up_from' => [
                     'board_id' => $t->board_id,
                     'board_name' => $sources[$t->board_id]->name,
                     // The client files it under this board's group of the same name.
@@ -180,7 +279,13 @@ class TaskBoardsController extends Controller
      */
     public function update(Request $request, TaskBoard $taskBoard): JsonResponse
     {
-        if ($request->hasAny(['name', 'visibility']) || ! $request->has('builtin_columns')) {
+        if ($request->hasAny(['name', 'visibility'])) {
+            $this->authorizeManage($request->user(), $taskBoard);
+        } elseif ($request->has('edit_mode')) {
+            // Automatic boards too: A-1's busiest place board is the one that needs it.
+            $this->authorize('view', $taskBoard);
+            abort_unless($this->boards->canManage($request->user(), $taskBoard), 403, 'Only an owner of this board or an Administrator can do that.');
+        } elseif (! $request->has('builtin_columns')) {
             $this->authorizeManage($request->user(), $taskBoard);
         } else {
             $this->authorize('update', $taskBoard);
@@ -188,6 +293,7 @@ class TaskBoardsController extends Controller
         $input = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'visibility' => ['sometimes', 'required', Rule::in([TaskBoard::MAIN, TaskBoard::PRIVATE])],
+            'edit_mode' => ['sometimes', 'required', Rule::in(['everyone', 'assignee'])],
             'builtin_columns' => ['sometimes', 'array:'.implode(',', array_keys(TaskBoard::BUILTIN_COLUMNS))],
             'builtin_columns.*' => ['array:label,visible'],
             'builtin_columns.*.label' => ['sometimes', 'string', 'min:1', 'max:60'],
@@ -230,6 +336,8 @@ class TaskBoardsController extends Controller
     public function destroy(Request $request, TaskBoard $taskBoard): Response
     {
         $this->authorizeManage($request->user(), $taskBoard);
+        // Typed back (Jose, 2026-11-09), as a job's number is before it goes.
+        abort_unless(trim((string) $request->input('confirm')) === trim($taskBoard->name), 422, 'Type the board\'s name to delete it.');
         $taskBoard->delete();
 
         return response()->noContent();

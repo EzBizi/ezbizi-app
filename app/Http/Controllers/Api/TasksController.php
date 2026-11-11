@@ -275,6 +275,8 @@ class TasksController extends Controller
             'body' => ['nullable', 'string', 'max:5000', 'required_without:files'],
             'files' => ['sometimes', 'array', 'max:'.self::UPDATE_MAX_FILES],
             'files.*' => ['file', 'mimes:'.implode(',', $extensions), 'max:'.self::UPDATE_MAX_KB],
+            'mentions' => ['sometimes', 'array', 'max:50'],
+            'mentions.*' => ['uuid'],
         ], [
             'body.required_without' => 'Write something or attach a file.',
             'files.max' => 'An update takes at most '.self::UPDATE_MAX_FILES.' files.',
@@ -287,8 +289,9 @@ class TasksController extends Controller
             throw ValidationException::withMessages(['body' => 'Write something or attach a file.']);
         }
 
-        $update = DB::transaction(function () use ($task, $request, $body, $files) {
-            $update = $this->writer->comment($task, $request->user(), $body);
+        $update = DB::transaction(function () use ($task, $request, $body, $files, $input) {
+            $mentions = app(\App\Support\Notes\NoteActivity::class)->mention($task, $input['mentions'] ?? [], $request->user(), $body);
+            $update = $this->writer->comment($task, $request->user(), $body, $mentions);
             foreach ($files as $file) {
                 $this->uploader->upload($request->user(), $update, $file, 'task_updates');
             }
@@ -336,12 +339,27 @@ class TasksController extends Controller
         ];
     }
 
+    /** GET tasks/{task}/activity: its Activity log, newest first (Jose, 2026-11-09). */
+    public function activity(Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+
+        return response()->json(['data' => \App\Models\TaskActivity::query()->where('task_id', $task->id)
+            ->with('user:id,name')->latest('created_at')->limit(200)->get()
+            ->map(fn ($a) => ['id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->user?->name,
+                'field' => $a->field, 'label' => $a->label, 'from' => $a->from, 'to' => $a->to])->values()]);
+    }
+
     /** A stored value as the client reads it, by its column's type. */
     public static function valueOf(TaskColumnValue $v): mixed
     {
         return match ($v->column?->type) {
-            'number' => $v->value_number,
+            'number', 'currency' => $v->value_number,
+            'tags' => json_decode((string) $v->value_text, true) ?: [],
+            'link' => TaskWriter::linkOf($v->value_text),
             'date' => $v->value_date?->toDateString(),
+            // Stored as its start (value_date) and end (value_text).
+            'timeline' => $v->value_date ? ['from' => $v->value_date->toDateString(), 'to' => $v->value_text] : null,
             'person' => $v->value_user_id,
             'checkbox' => (bool) $v->value_number,
             default => $v->value_text,

@@ -55,7 +55,7 @@ class SendRequestedReport implements ShouldQueue
                 ->keyBy(fn ($b) => BranchName::of($b));
 
             try {
-                $ask = ReportFileRequest::read($this->text, $branches->keys()->all(), CarbonImmutable::now('America/New_York'));
+                $ask = ReportFileRequest::read($this->text, $branches->keys()->all(), CarbonImmutable::now(\App\Support\Settings\OrgTimezone::of()));
             } catch (RuntimeException) {
                 $say("\u{26A0}\u{FE0F} I couldn't read that just now. Try again in a minute.");
 
@@ -87,7 +87,26 @@ class SendRequestedReport implements ShouldQueue
 
             preg_match('/filename="([^"]+)"/', (string) $file->headers->get('Content-Disposition'), $m);
             $name = $m[1] ?? 'report.'.$ask['format'];
+            $title = pathinfo($name, PATHINFO_FILENAME);
+            // The figures as text first, then the file (Jose, 2026-11-10: every report, both).
+            $text = ($ask['report'] ?? 'period') === 'period'
+                ? app(PeriodReport::class)->summaryText($title, $ask['branch'] === null ? $branches->values() : [$branches[$ask['branch']]], $ask['from'], $ask['to'])
+                : "\u{1F4CA} *{$title}*";
+
+            // Reports come from the Reports number (Jose, 2026-11-09); this chat says where.
+            // No phone on their profile and it comes here instead.
+            $reports = WhatsAppNumber::forPurpose('reports');
+            if ($reports !== null && $reports->isNot($number) && app(WhatsAppGroups::class)->deliverDocumentsToUser($reports, $user, $title, [[
+                'title' => $title, 'pdf' => (string) $file->getContent(), 'filename' => $name,
+                'type' => (string) $file->headers->get('Content-Type'), 'text' => $text,
+            ]]) > 0) {
+                $say("\u{1F4C4} Sent from the Reports number, {$reports->display_number}.");
+
+                return;
+            }
+
             $id = app(WhatsAppGroups::class)->upload($number, (string) $file->getContent(), $name, (string) $file->headers->get('Content-Type'));
+            $say($text);
             $cloud->replyFreeForm($number, $this->to, ['type' => 'document', 'document' => ['id' => $id, 'filename' => $name, 'caption' => "\u{1F4C4} *".pathinfo($name, PATHINFO_FILENAME).'*']], $name);
         });
     }

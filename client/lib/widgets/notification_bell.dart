@@ -94,6 +94,11 @@ class _NotificationBellState extends State<NotificationBell>
 
   int _unread = 0;
 
+  /// The inbox's tab and switch (monday port, 2026-11-09). Kept on the bell,
+  /// not the panel, so reopening it shows what was last chosen.
+  String _show = 'all';
+  bool _unreadOnly = false;
+
   // A failed fetch used to render as "Nothing yet.", so an outage and an empty
   // inbox were indistinguishable — and the one that needs action looked like
   // the one that does not.
@@ -185,7 +190,7 @@ class _NotificationBellState extends State<NotificationBell>
       _inFlight ??= _fetch().whenComplete(() => _inFlight = null);
 
   Future<void> _fetch() async {
-    final response = await widget.api.get('/notifications', {'limit': '20'});
+    final response = await widget.api.get('/notifications', {'limit': '50'});
 
     if (!mounted) return;
 
@@ -454,6 +459,35 @@ class _NotificationBellState extends State<NotificationBell>
     await _refresh();
   }
 
+  /// The rows the panel draws: the tab and switch applied, with a heading
+  /// string before each of Today / Yesterday / Last 7 days / Older.
+  List<Object> _inboxRows() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    String bucket(Object? stamp) {
+      final at = DateTime.tryParse('$stamp')?.toLocal();
+      if (at == null) return 'Older';
+      final ago = today.difference(DateTime(at.year, at.month, at.day)).inDays;
+      if (ago <= 0) return 'Today';
+      if (ago == 1) return 'Yesterday';
+      if (ago < 7) return 'Last 7 days';
+      return 'Older';
+    }
+
+    final rows = <Object>[];
+    String? last;
+    for (final n in _items) {
+      if (_unreadOnly && n['read_at'] != null) continue;
+      if (_show != 'all' && n['kind'] != _show) continue;
+      final b = bucket(n['created_at']);
+      if (b != last) {
+        rows.add(last = b);
+      }
+      rows.add(n);
+    }
+    return rows;
+  }
+
   Future<void> _open() async {
     // The user gesture the permission prompt has to come from. Its answer is
     // deliberately not checked: a refusal is a perfectly good outcome that
@@ -517,22 +551,86 @@ class _NotificationBellState extends State<NotificationBell>
                 CompanyFocus(api: widget.api, session: session),
                 const Divider(height: 1),
               ],
-              _items.isEmpty
-              ? Padding(
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SegmentedButton<String>(
+                      key: const Key('notifications-show'),
+                      segments: const [
+                        ButtonSegment(value: 'all', label: Text('All')),
+                        ButtonSegment(
+                          value: 'mentioned',
+                          label: Text('Mentioned'),
+                        ),
+                        ButtonSegment(
+                          value: 'assigned',
+                          label: Text('Assigned to me'),
+                        ),
+                      ],
+                      selected: {_show},
+                      onSelectionChanged: (v) {
+                        _show = v.first;
+                        repaint(() {});
+                      },
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Unread only'),
+                        Switch(
+                          key: const Key('notifications-unread-only'),
+                          value: _unreadOnly,
+                          onChanged: (on) {
+                            _unreadOnly = on;
+                            repaint(() {});
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (_inboxRows().isEmpty)
+                Padding(
                   padding: const EdgeInsets.symmetric(vertical: 48),
-                  child: Center(child: Text(_error ?? 'Nothing yet.')),
+                  child: Center(
+                    child: Text(
+                      _error ??
+                          (_items.isEmpty ? 'Nothing yet.' : 'Nothing here.'),
+                    ),
+                  ),
                 )
-              : ListView.separated(
+              else
+                ListView.separated(
                   // The panel scrolls the body already, so the list lays itself
                   // out at full height inside it. Two nested scrollers would
                   // fight over the same drag.
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   padding: EdgeInsets.zero,
-                  itemCount: _items.length,
+                  itemCount: _inboxRows().length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, i) {
-                    final n = _items[i];
+                    final row = _inboxRows()[i];
+                    if (row is String) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 12, bottom: 4),
+                        child: Text(
+                          row,
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      );
+                    }
+                    final n = row as Map<String, dynamic>;
                     final unread = n['read_at'] == null;
                     final scheme = Theme.of(context).colorScheme;
                     final module =
@@ -723,9 +821,13 @@ class _CompanyFocusState extends State<CompanyFocus> {
     final response = await widget.api.get('/companies');
     if (!mounted || !response.ok) return;
     final rows = <(String, String, int)>[];
+    // A switched-off company, and every Sub Company under it, is not offered
+    // (Jose, 2026-11-10); Settings › Organization still lists them.
     for (final c in (response.body['companies'] as List? ?? const [])) {
+      if (c['is_active'] == false) continue;
       rows.add((c['id'] as String, c['name'] as String, 0));
       for (final s in (c['sub_companies'] as List? ?? const [])) {
+        if (s['is_active'] == false) continue;
         rows.add((s['id'] as String, s['name'] as String, 1));
       }
     }

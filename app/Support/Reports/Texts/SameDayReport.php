@@ -4,6 +4,7 @@ namespace App\Support\Reports\Texts;
 
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Support\Reports\LocationOrder;
 use App\Support\Reports\ReportJobs;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -67,10 +68,12 @@ final class SameDayReport
     {
         $branches = Franchise::query()->withoutGlobalScopes()
             ->where('organization_id', $organization->getKey())
-            ->where('is_active', true)
+            ->switchedOn()
             ->whereIn('id', ReportJobs::branchesWithJobs())
             ->orderBy('name')
             ->get();
+        // Sorting reads each branch's company and the org's list setting: inside its org.
+        $branches = app(\App\Support\Tenancy\TenantContext::class)->run($organization, fn () => LocationOrder::sort($branches));
 
         $sources = [];
         $rows = [];
@@ -158,16 +161,15 @@ final class SameDayReport
         $out = ['jobs' => null, 'sources' => [], 'areas' => [], 'techs' => null, 'deposits' => null, 'reviews' => self::reviews($branch, $date)];
 
         if ($fresh('jobs', self::JOBS_STALE_MINUTES)) {
-            $booked = (clone $jobs)->whereBetween('j.booked_at', $day)->get();
+            $booked = ReportJobs::created((clone $jobs)->whereBetween('j.booked_at', $day)->get());
             $out['jobs'] = $booked->count();
             $out['sources'] = self::tally($booked->pluck('job_source'), 'No source');
             $out['areas'] = self::tally($booked->pluck('service_area'), 'No service area');
 
-            // ponytail: last_status_update is the job's latest change, so a job
-            // done today and edited tomorrow leaves today's count; Workiz has no
-            // "completed at" in the API.
+            // When the sweep first saw it closed (closed_at); a row closed before
+            // that was kept reads its latest change, as it always did.
             $techs = [];
-            $closed = (clone $jobs)->whereBetween('j.last_status_update', $day)
+            $closed = (clone $jobs)->whereBetween(DB::raw('coalesce(j.closed_at, j.last_status_update)'), $day)
                 ->whereIn('j.status', ['Done', 'Canceled'])->get();
 
             foreach ($closed as $job) {
@@ -185,6 +187,8 @@ final class SameDayReport
             }
 
             $out['techs'] = $techs;
+            // Jobs, not technicians: a job two worked is one (2026-11-10).
+            $out['closed'] = ['completed' => $closed->where('status', 'Done')->count(), 'canceled' => $closed->where('status', 'Canceled')->count()];
         }
 
         if ($fresh('payments', self::PAYMENTS_STALE_MINUTES)) {
@@ -213,7 +217,10 @@ final class SameDayReport
 
         $zone = self::zone($branch);
         $from = CarbonImmutable::parse($date, $zone)->startOfDay()->utc();
-        $reviews = DB::table('reviews')->whereIn('location_name', $locations->pluck('remote_name'))->get(['location_name', 'rating', 'reviewed_at']);
+        // Reviews name a location "accounts/X/locations/ID", the location itself "locations/ID" (always 0, 2026-11-10).
+        $reviews = DB::table('reviews')->where(fn ($q) => $locations->each(fn ($l) => $q->orWhere('location_name', $l->remote_name)
+            ->orWhere('location_name', 'like', '%/'.$l->remote_name)))->get(['location_name', 'rating', 'reviewed_at'])
+            ->each(fn ($r) => $r->location_name = (string) strstr((string) $r->location_name, 'locations/') ?: $r->location_name);
         $isNew = fn ($r) => $r->reviewed_at !== null
             && CarbonImmutable::parse($r->reviewed_at, 'UTC')->between($from, $from->addDay()->subSecond());
 
@@ -334,8 +341,8 @@ final class SameDayReport
         $rows = self::techRows($f);
 
         return [
-            'completed' => array_sum(array_column($rows, 'completed')),
-            'canceled' => array_sum(array_column($rows, 'canceled')),
+            'completed' => $f['closed']['completed'] ?? array_sum(array_column($rows, 'completed')),
+            'canceled' => $f['closed']['canceled'] ?? array_sum(array_column($rows, 'canceled')),
             'sales' => array_sum(array_column($rows, 'sales')),
             'deposits' => array_sum(array_column($rows, 'deposits')),
         ];
@@ -365,7 +372,7 @@ final class SameDayReport
 
     private static function zone(?Franchise $branch): string
     {
-        return $branch?->timezone ?: 'America/New_York';
+        return $branch?->timezone ?: \App\Support\Settings\OrgTimezone::of();
     }
 
     private static function dateLabel(string $date): string

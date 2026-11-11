@@ -73,7 +73,9 @@ class SmsWebhookController extends Controller
             // Never at the cost of the text itself: a failure here must not roll back
             // the PhoneMessage above (desk, 2026-10-13).
             try {
-                app(\App\Support\Leads\LeadTexts::class)->absorbInbound($from, $body, $sid);
+                // A first answer to a promotion text opens its lead (2026-11-06).
+                app(\App\Support\Leads\LeadTexts::class)->absorbInbound($from, $body, $sid)
+                    || app(\App\Support\Promotions\Promotions::class)->absorbReply($from, $body, $sid);
             } catch (\Throwable $e) {
                 report($e);
             }

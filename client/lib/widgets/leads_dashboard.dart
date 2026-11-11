@@ -54,6 +54,7 @@ const _sources = <({String word, String source, String? leadType})>[
   (word: 'RC Calls', source: 'ringcentral', leadType: null),
   (word: 'EZ Calls', source: 'ez_calls', leadType: null),
   (word: 'EZ Texts', source: 'ez_texts', leadType: null),
+  (word: 'Promotions', source: 'promotions', leadType: null),
 ];
 
 /// The badge word for a (source, lead_type) pair, as the list says it.
@@ -216,7 +217,7 @@ class _LeadsDashboardState extends State<LeadsDashboard> {
 
   Widget _filters(BuildContext context, {required bool desk}) {
     final formats = widget.session.me?.display ?? DisplayFormats.fallback;
-    final companies = widget.session.me?.companies ?? const [];
+    final companies = widget.session.me?.switchableCompanies ?? const [];
 
     return Wrap(
       spacing: 8,

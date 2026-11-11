@@ -10,6 +10,7 @@ use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
 use App\Support\Newsletter\BlockRenderer;
+use App\Support\Newsletter\NewsletterIdentity;
 use App\Support\Newsletter\NewsletterSenders;
 use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Tenancy\TenantContext;
@@ -36,10 +37,39 @@ final class SendNewsletter implements ShouldQueue
 
     public int $tries = 1;
 
+    /**
+     * A customer list is pushed 500 addresses a call, but a large one still
+     * outlasts the default worker's 60 s. `database-long` runs with a 160 s
+     * worker timeout and retry_after 200, both above this.
+     */
+    public int $timeout = 150;
+
+    /** The sentence a send carries when it stopped without an answer. */
+    public const OUTCOME_UNKNOWN = 'The send stopped before Mailchimp answered, so its outcome is unknown. '
+        .'Check Mailchimp before sending again.';
+
     public function __construct(
         public readonly string $sendId,
         public readonly string $connectionId,
-    ) {}
+    ) {
+        // Where queued work runs at all; a sync queue (tests, local) runs it inline.
+        if (config('queue.default') !== 'sync') {
+            $this->onConnection('database-long')->onQueue('long');
+        }
+    }
+
+    /** A timeout or crash: the send must not stay "sending" for good. */
+    public function failed(?Throwable $e = null): void
+    {
+        $send = NewsletterSend::query()->withoutGlobalScopes()->find($this->sendId);
+        if ($send === null || $send->status !== NewsletterSend::STATUS_SENDING) {
+            return;
+        }
+        $send->forceFill(['status' => NewsletterSend::STATUS_FAILED, 'failure' => self::OUTCOME_UNKNOWN])->saveQuietly();
+        Newsletter::query()->withoutGlobalScopes()->whereKey($send->newsletter_id)
+            ->where('status', Newsletter::STATUS_SENDING)
+            ->update(['status' => Newsletter::STATUS_FAILED]);
+    }
 
     public function handle(TenantContext $tenant, EventEmitter $events, BlockRenderer $renderer): void
     {
@@ -96,13 +126,10 @@ final class SendNewsletter implements ShouldQueue
             return;
         }
 
+        $footer = NewsletterIdentity::footer($newsletter) + ['unsubscribe_url' => '*|UNSUB|*'];
         $html = is_string($newsletter->html_override) && $newsletter->html_override !== ''
-            ? $newsletter->html_override
-            : $renderer->render((array) ($newsletter->blocks ?? []), [
-                'company' => (string) $organization->name,
-                'address' => (string) ($organization->address ?? ''),
-                'unsubscribe_url' => '*|UNSUB|*',
-            ]);
+            ? $renderer->withFooter($newsletter->html_override, $footer)
+            : $renderer->render((array) ($newsletter->blocks ?? []), $footer);
 
         try {
             $result = $sender->send($connection, $newsletter, $html, $this->people($newsletter));
@@ -119,6 +146,12 @@ final class SendNewsletter implements ShouldQueue
         }
 
         $send->markSent($result['remote_id'], $result['recipients']);
+        $refused = (int) ($result['refused'] ?? 0);
+        if ($refused > 0) {
+            $send->forceFill(['notice' => $refused === 1
+                ? '1 address was refused by Mailchimp and skipped.'
+                : $refused.' addresses were refused by Mailchimp and skipped.'])->save();
+        }
         $newsletter->forceFill(['status' => Newsletter::STATUS_SENT])->save();
 
         $events->emit('newsletter.sent', $newsletter, [
@@ -149,20 +182,32 @@ final class SendNewsletter implements ShouldQueue
 
         $tag = trim((string) $audience->tag);
 
-        return Customer::query()
+        // The audience's own scope decides whose customers it holds; a sibling
+        // company's customers are never on it.
+        $query = NewsletterIdentity::customersOf(Customer::query(),
+            $audience->scope_type ?? $newsletter->scope_type, $audience->scope_id ?? $newsletter->scope_id);
+
+        return $query
             ->when($tag !== '', fn ($q) => $q->where(fn ($w) => $w
                 // The customer's own tag (any case) or a tag on one of their jobs.
                 ->whereRaw("JSON_SEARCH(LOWER(customers.tags), 'one', ?) IS NOT NULL", [addcslashes(mb_strtolower($tag), '%_'.chr(92))])
                 ->orWhereHas('jobs', fn ($j) => $j->whereJsonContains('tags', $tag))))
             ->whereNotNull('email')
             ->where('email', '!=', '')
+            ->where('is_active', true)
+            ->whereNull('email_opt_out_at')
             ->get()
             ->reject(fn (Customer $c) => in_array(mb_strtolower((string) $c->email), $gone, true))
-            ->map(fn (Customer $c) => array_filter([
-                'email' => (string) $c->email,
-                'first_name' => (string) ($c->first_name ?? ''),
-                'last_name' => (string) ($c->last_name ?? ''),
-            ], fn ($v) => $v !== ''))
+            ->map(function (Customer $c) {
+                // `customers` holds one name; its first word is the FNAME merge field.
+                $parts = preg_split('/\s+/', trim((string) $c->name), 2) ?: [];
+
+                return array_filter([
+                    'email' => (string) $c->email,
+                    'first_name' => (string) ($parts[0] ?? ''),
+                    'last_name' => (string) ($parts[1] ?? ''),
+                ], fn ($v) => $v !== '');
+            })
             ->values()
             ->all();
     }

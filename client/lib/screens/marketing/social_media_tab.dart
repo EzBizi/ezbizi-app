@@ -40,6 +40,7 @@ class SocialMediaTab extends StatefulWidget {
     required this.session,
     this.openConsent = openConsentWindow,
     this.pickMedia = _pickMedia,
+    this.videoPlayer = _videoPlayer,
   });
 
   final ApiClient api;
@@ -52,11 +53,19 @@ class SocialMediaTab extends StatefulWidget {
   /// point of attaching a file you are about to publish under your own name.
   final Future<PickedBytes?> Function() pickMedia;
 
+  /// The one player for an attached video, or null where none can run.
+  /// Injectable so a test can stand in for the platform player.
+  final VideoPlayerController? Function(Uri) videoPlayer;
+
   @override
   State<SocialMediaTab> createState() => _SocialMediaTabState();
 }
 
 Future<PickedBytes?> _pickMedia() => Files.pickBytes(accept: 'image/*,video/*');
+
+/// No platform player answers under `flutter test`; null keeps the label.
+VideoPlayerController? _videoPlayer(Uri uri) =>
+    Files.underTest ? null : VideoPlayerController.networkUrl(uri);
 
 class _SocialMediaTabState extends State<SocialMediaTab> {
   /// Roughly a minute at three seconds a try. Long enough for a video upload
@@ -498,9 +507,8 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   Future<void> _editPost(_SentPost post) async {
     final body = TextEditingController(text: post.body);
     final wall = post.scheduledFor ?? '';
-    final when = TextEditingController(
-      text: wall.length > 16 ? wall.substring(0, 16) : wall,
-    );
+    final shownWhen = wall.length > 16 ? wall.substring(0, 16) : wall;
+    final when = TextEditingController(text: shownWhen);
     final saved = await showSidePanel<bool>(
       context,
       builder: (panel) => SidePanel(
@@ -548,7 +556,10 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     await _act(
       widget.api.patch('/social/posts/${post.id}', {
         'body': body.text,
-        if (when.text.trim().isNotEmpty) 'scheduled_for': when.text.trim(),
+        // Only a moved time is sent: re-sending an unchanged one would be
+        // re-read as new (bug review 2026-11-09 #9).
+        if (when.text.trim().isNotEmpty && when.text.trim() != shownWhen)
+          'scheduled_for': when.text.trim(),
       }),
     );
   }
@@ -689,6 +700,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   onRetryPost: _canPost ? _retryPost : null,
                   stillWaiting: _gaveUpWaiting,
                   pickMedia: widget.pickMedia,
+                  videoPlayer: widget.videoPlayer,
                   landing: _landing,
                   outlined: _outlined,
                   focusDay: _focusDay,
@@ -795,6 +807,7 @@ class _PostsPane extends StatelessWidget {
     required this.view,
     required this.stillWaiting,
     required this.pickMedia,
+    required this.videoPlayer,
     required this.landing,
     required this.outlined,
     required this.focusDay,
@@ -841,6 +854,7 @@ class _PostsPane extends StatelessWidget {
   final VoidCallback? onAccounts;
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
+  final VideoPlayerController? Function(Uri) videoPlayer;
   final _SentPost? landing;
 
   /// Try again on a failed account; null without the right to post.
@@ -903,6 +917,7 @@ class _PostsPane extends StatelessWidget {
           connections: connections,
           stillWaiting: stillWaiting,
           pickMedia: pickMedia,
+          videoPlayer: videoPlayer,
           landing: landing,
           formats: formats,
           onSent: onSent,
@@ -1416,7 +1431,12 @@ class _PostsDashboard extends StatelessWidget {
   }
 
   return switch (post.tone) {
+    Tone.neutral when post.wentNowhere => ('Not posted', Tone.neutral),
     Tone.neutral => ('Posting $sent of $total', Tone.neutral),
+    Tone.info when post.targets.any((t) => t.status == 'awaiting_approval') => (
+      'Waiting for approval',
+      Tone.info,
+    ),
     Tone.info => ('Scheduled', Tone.info),
     _ => ('Sent', Tone.ok),
   };
@@ -1625,12 +1645,30 @@ class _TimelineRow extends StatelessWidget {
                                   style: small,
                                 ),
                               ),
+                              // Where it went out, one tap from the timeline.
+                              if (target.status == 'sent' && target.url != null)
+                                IconButton(
+                                  key: ValueKey(
+                                    'social-open-${post.id}-${target.id}',
+                                  ),
+                                  tooltip:
+                                      'Open post on ${target.providerLabel}',
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 16,
+                                  onPressed: () => launchUrl(
+                                    Uri.parse(target.url!),
+                                    mode: LaunchMode.externalApplication,
+                                  ),
+                                  icon: const Icon(Icons.open_in_new),
+                                ),
                             ],
                           ),
                     ],
                   ),
                   // How far a post going out has got (UI queue 100).
-                  if (post.tone == Tone.neutral && post.targets.isNotEmpty)
+                  if (post.tone == Tone.neutral &&
+                      post.targets.isNotEmpty &&
+                      !post.wentNowhere)
                     Padding(
                       padding: const EdgeInsets.only(top: 6, right: 12),
                       child: LinearProgressIndicator(
@@ -1702,11 +1740,16 @@ class _TimelineRow extends StatelessWidget {
 /// (SocialPostsController::MAX_BODY) because most of these networks have no
 /// publisher yet. This is the warning before Publish, in the network's own
 /// number. A network missing here is counted without a limit.
+/// The same numbers as SocialProvider::maxBodyLength() on the server, which
+/// refuses (never cuts) a post over them.
 const Map<String, int> _bodyLimits = {
   'x': 280,
   'bluesky': 300,
+  'threads': 500,
+  'pinterest': 800,
   'linkedin': 3000,
   'instagram_professional': 2200,
+  'tiktok': 2200,
   'google_business_profile': 1500,
   'facebook_page': 63206,
 };
@@ -1730,6 +1773,7 @@ class _ComposeColumn extends StatefulWidget {
     required this.connections,
     required this.stillWaiting,
     required this.pickMedia,
+    required this.videoPlayer,
     required this.landing,
     required this.formats,
     required this.onSent,
@@ -1744,6 +1788,7 @@ class _ComposeColumn extends StatefulWidget {
   final List<_SocialConnection> connections;
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
+  final VideoPlayerController? Function(Uri) videoPlayer;
   final void Function(_SentPost, _SentTarget)? onRetry;
 
   /// The post just published. While set, the composer IS the result
@@ -1799,6 +1844,19 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       _media = null;
       _libraryItem = item;
     });
+    if (item['kind'] != 'video') return;
+
+    // The stored file, through the signed-in API: a <video> on the web
+    // cannot send the token, so it plays from the bytes like a fresh pick.
+    final bytes = await widget.api.getBytes(
+      '/social/library/${item['id']}/file',
+    );
+    if (!mounted || _libraryItem != item) return;
+    if (bytes == null) {
+      setState(() => _videoFailed = true);
+      return;
+    }
+    await _loadVideo(bytes, '${item['name'] ?? ''}');
   }
 
   @override
@@ -1833,6 +1891,12 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   String? _mediaUrl;
   VideoPlayerController? _player;
 
+  /// The attached video could not be played; the label stays, with a note.
+  bool _videoFailed = false;
+
+  /// Bumped on every release, so a load that finishes late is ignored.
+  int _videoGen = 0;
+
   /// Wall clock in this view's timezone, `YYYY-MM-DD HH:MM`, empty for "now".
   final TextEditingController _when = TextEditingController();
   bool _scheduling = false;
@@ -1863,6 +1927,13 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       }
     }
 
+    // A ticked Business Profile listing is a Google post too.
+    final google = _bodyLimits['google_business_profile']!;
+    if (_pickedPlaces.isNotEmpty && length > google) {
+      return 'Google Business Profile takes $google characters at most and '
+          'this is $length. Shorten it, or untick the listings.';
+    }
+
     return null;
   }
 
@@ -1871,7 +1942,8 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     _body.dispose();
     _when.dispose();
     _ctaUrl.dispose();
-    _releaseMedia();
+    // Nothing draws this column any more, so the player can go now.
+    _releaseMedia(now: true);
     super.dispose();
   }
 
@@ -1879,13 +1951,29 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   ///
   /// A blob is held until revoked, so picking three videos while deciding
   /// would otherwise keep all three in memory for the life of the page.
-  void _releaseMedia() {
-    _player?.dispose();
-    _player = null;
-
+  ///
+  /// Disposed only after the frame that stops drawing it (as the help video,
+  /// bc7dad52f): disposing while VideoPlayer is still on screen threw
+  /// "No active player with ID n" on Android.
+  void _releaseMedia({bool now = false}) {
+    final player = _player;
     final url = _mediaUrl;
-    if (url != null) Files.releasePreviewUrl(url);
+    _player = null;
     _mediaUrl = null;
+    _videoFailed = false;
+    _videoGen++;
+
+    void release() {
+      player?.dispose();
+      if (url != null) Files.releasePreviewUrl(url);
+    }
+
+    if (now || (player == null && url == null)) {
+      release();
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => release());
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   /// Why Publish cannot be pressed, or null when it can.
@@ -2026,34 +2114,38 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 
     if (_looksLikeImage(picked.name)) return;
 
-    // Video: hand the bytes to the browser as a blob and play them from there.
-    // Nothing is uploaded — the file is being looked at precisely because
-    // nobody is sure yet that it is the right one.
-    final url = Files.previewUrl(picked.bytes, _mimeFor(picked.name));
-    if (url == null || !mounted) return;
+    await _loadVideo(picked.bytes, picked.name);
+  }
 
-    final player = VideoPlayerController.networkUrl(Uri.parse(url));
+  /// One player over [bytes], shared by the attachment box and every
+  /// preview card. A blob URL on the web, a temporary file elsewhere.
+  /// Nothing is uploaded — the file is being looked at precisely because
+  /// nobody is sure yet that it is the right one.
+  Future<void> _loadVideo(List<int> bytes, String name) async {
+    final gen = _videoGen;
+    final url = Files.previewUrl(bytes, _mimeFor(name));
+    final player = url == null ? null : widget.videoPlayer(Uri.parse(url));
+
+    if (player == null) {
+      if (url != null) Files.releasePreviewUrl(url);
+      if (mounted && gen == _videoGen) setState(() => _videoFailed = true);
+      return;
+    }
+
+    // Held from here, so Remove or Replace mid-load still disposes it.
+    _player = player;
+    _mediaUrl = url;
 
     try {
       await player.initialize();
+      await player.setVolume(0);
     } catch (_) {
-      // A container the browser will not decode. The placeholder below says
-      // what the file is; claiming a broken player is worse than saying less.
-      player.dispose();
-      if (mounted) Files.releasePreviewUrl(url);
+      // A container this platform will not decode: keep the label, say so.
+      if (mounted && gen == _videoGen) setState(() => _videoFailed = true);
       return;
     }
 
-    if (!mounted) {
-      player.dispose();
-      Files.releasePreviewUrl(url);
-      return;
-    }
-
-    setState(() {
-      _mediaUrl = url;
-      _player = player;
-    });
+    if (mounted && gen == _videoGen) setState(() {});
   }
 
   /// Read what this TikTok account allows, for its panel. Asked fresh on
@@ -2107,6 +2199,13 @@ class _ComposeColumnState extends State<_ComposeColumn> {
             'connections': _picked.toList(),
             'places': _pickedPlaces.toList(),
             if (_libraryItem != null) 'library_item': _libraryItem!['id'],
+            // TikTok's choices, nested: a JSON body is not parsed from
+            // `tiktok[id][field]` names the way a multipart one is.
+            if (_picked.any((id) => _tiktok[id] != null))
+              'tiktok': {
+                for (final id in _picked)
+                  if (_tiktok[id] != null) id: _tiktok[id]!.json(),
+              },
             if (_pickedPlaces.isNotEmpty && _cta != null) 'cta_type': _cta,
             if (_pickedPlaces.isNotEmpty && _cta != null && _cta != 'CALL')
               'cta_url': _ctaUrl.text.trim(),
@@ -2386,10 +2485,16 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       ),
     );
 
+    final fromLibrary = _libraryItem;
     final preview = _PreviewCard(
       networks: networks,
       body: _words,
       media: _media,
+      libraryVideo: _media == null && fromLibrary?['kind'] == 'video'
+          ? '${fromLibrary!['name'] ?? ''}'
+          : null,
+      video: _player,
+      videoFailed: _videoFailed,
       when: _scheduling && when.isNotEmpty ? 'Scheduled $when' : 'Now',
     );
 
@@ -2574,7 +2679,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 
     final fromLibrary = _libraryItem;
     if (media == null && fromLibrary != null) {
-      return Row(
+      final row = Row(
         key: const ValueKey('social-library-picked'),
         children: [
           Icon(
@@ -2590,9 +2695,36 @@ class _ComposeColumnState extends State<_ComposeColumn> {
           TextButton(
             onPressed: _sending
                 ? null
-                : () => setState(() => _libraryItem = null),
+                : () => setState(() {
+                    _releaseMedia();
+                    _libraryItem = null;
+                  }),
             child: const Text('Remove'),
           ),
+        ],
+      );
+      if (fromLibrary['kind'] != 'video') return row;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              height: 160,
+              child: _AttachedVideo(
+                player: _player,
+                failed: _videoFailed,
+                placeholder: _mediaFallback(
+                  context,
+                  Icons.movie_outlined,
+                  '${fromLibrary['name'] ?? ''}',
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          row,
         ],
       );
     }
@@ -2717,36 +2849,14 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   /// still tells somebody which file they attached and how big it is — less
   /// than Jose asked for, and not a pretence that it is something else.
   Widget _videoPreview(BuildContext context, PickedBytes media) {
-    final player = _player;
-
-    if (player == null || !player.value.isInitialized) {
-      return _mediaFallback(
+    return _AttachedVideo(
+      player: _player,
+      failed: _videoFailed,
+      placeholder: _mediaFallback(
         context,
         Icons.movie_outlined,
         '${media.name} · ${_sizeOf(media.bytes.length)}',
-      );
-    }
-
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Center(
-          child: AspectRatio(
-            aspectRatio: player.value.aspectRatio,
-            child: VideoPlayer(player),
-          ),
-        ),
-        // Play and pause, and nothing else. Reviewing a clip before it goes out
-        // needs to start and stop it; a scrubber, volume and fullscreen are a
-        // media player, which is not what this is.
-        IconButton.filled(
-          onPressed: () => setState(() {
-            player.value.isPlaying ? player.pause() : player.play();
-          }),
-          icon: Icon(player.value.isPlaying ? Icons.pause : Icons.play_arrow),
-          tooltip: player.value.isPlaying ? 'Pause' : 'Play',
-        ),
-      ],
+      ),
     );
   }
 
@@ -2820,6 +2930,9 @@ class _PreviewCard extends StatelessWidget {
     required this.body,
     required this.media,
     required this.when,
+    this.libraryVideo,
+    this.video,
+    this.videoFailed = false,
   });
 
   /// One ticked account per network.
@@ -2828,10 +2941,24 @@ class _PreviewCard extends StatelessWidget {
   final PickedBytes? media;
   final String when;
 
+  /// The name of a library video, when that is what is attached.
+  final String? libraryVideo;
+
+  /// The composer's one player, shared by every card — never one each.
+  final VideoPlayerController? video;
+  final bool videoFailed;
+
   @override
   Widget build(BuildContext context) {
-    Widget likeness(_SocialConnection network) =>
-        _PostLikeness(account: network, body: body, media: media, when: when);
+    Widget likeness(_SocialConnection network) => _PostLikeness(
+      account: network,
+      body: body,
+      media: media,
+      when: when,
+      libraryVideo: libraryVideo,
+      video: video,
+      videoFailed: videoFailed,
+    );
 
     return DashboardCard(
       key: const ValueKey('tour-marketing-compose-preview'),
@@ -2982,12 +3109,18 @@ class _PostLikeness extends StatelessWidget {
     required this.body,
     required this.media,
     required this.when,
+    this.libraryVideo,
+    this.video,
+    this.videoFailed = false,
   });
 
   final _SocialConnection account;
   final String body;
   final PickedBytes? media;
   final String when;
+  final String? libraryVideo;
+  final VideoPlayerController? video;
+  final bool videoFailed;
 
   /// Networks that lead with the picture and put the words under it, after
   /// the account's name.
@@ -3035,8 +3168,21 @@ class _PostLikeness extends StatelessWidget {
       ],
     );
 
+    final videoName = media?.name ?? libraryVideo;
+    Widget playing(String name) => _AttachedVideo(
+      player: video,
+      failed: videoFailed,
+      placeholder: _thumbnailLabel(theme, Icons.movie_outlined, name),
+    );
+
     final Widget? picture = media == null
-        ? null
+        ? (videoName == null
+              ? null
+              : ClipRRect(
+                  key: const ValueKey('social-preview-media'),
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(height: 150, child: playing(videoName)),
+                ))
         : ClipRRect(
             key: const ValueKey('social-preview-media'),
             borderRadius: BorderRadius.circular(8),
@@ -3053,7 +3199,7 @@ class _PostLikeness extends StatelessWidget {
                         media.name,
                       ),
                     )
-                  : _thumbnailLabel(theme, Icons.movie_outlined, media.name),
+                  : playing(media.name),
             ),
           );
 
@@ -3135,6 +3281,139 @@ class _PostLikeness extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The attached video in its frame: first frame, muted, play in the middle,
+/// a thin progress bar and the length. One [player] serves every frame that
+/// shows it; this widget never creates or disposes one.
+///
+/// Until it can play, [placeholder]; when it cannot, the placeholder with
+/// a quiet note rather than an alarm.
+class _AttachedVideo extends StatelessWidget {
+  const _AttachedVideo({
+    required this.player,
+    required this.failed,
+    required this.placeholder,
+  });
+
+  final VideoPlayerController? player;
+  final bool failed;
+  final Widget placeholder;
+
+  static String _clock(Duration d) =>
+      '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final player = this.player;
+
+    Widget waiting() => Stack(
+      fit: StackFit.expand,
+      children: [
+        placeholder,
+        if (failed)
+          Positioned(
+            left: 8,
+            right: 8,
+            bottom: 6,
+            child: Text(
+              'Preview not available',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (player == null) return waiting();
+
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: player,
+      builder: (context, value, _) {
+        if (!value.isInitialized || failed) return waiting();
+
+        return ColoredBox(
+          color: theme.colorScheme.surfaceContainerHighest,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Center(
+                child: AspectRatio(
+                  aspectRatio: value.aspectRatio,
+                  child: VideoPlayer(player),
+                ),
+              ),
+              // Tap anywhere to play or pause. A scrubber, volume and
+              // fullscreen would be a media player, which this is not.
+              GestureDetector(
+                key: const ValueKey('social-video-toggle'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => value.isPlaying ? player.pause() : player.play(),
+                child: Center(
+                  child: value.isPlaying
+                      ? const SizedBox.shrink()
+                      : Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: theme.colorScheme.primary,
+                          ),
+                          child: Icon(
+                            Icons.play_arrow,
+                            size: 28,
+                            color: theme.colorScheme.onPrimary,
+                          ),
+                        ),
+                ),
+              ),
+              Positioned(
+                right: 6,
+                bottom: 8,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.inverseSurface,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      _clock(value.duration),
+                      key: const ValueKey('social-video-length'),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onInverseSurface,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 3,
+                child: VideoProgressIndicator(
+                  player,
+                  allowScrubbing: false,
+                  padding: EdgeInsets.zero,
+                  colors: VideoProgressColors(
+                    playedColor: theme.colorScheme.primary,
+                    bufferedColor: theme.colorScheme.outlineVariant,
+                    backgroundColor: theme.colorScheme.surfaceContainerHigh,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -3613,6 +3892,31 @@ class _AccountsPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final connected = {for (final c in connections) c.provider: c};
+    final phone = MediaQuery.sizeOf(context).width < 600;
+    String subtitleOf(_SocialConnection page) => page.handle != null
+        ? '${page.providerLabel} · @${page.handle}'
+        : page.providerLabel;
+    List<Widget> actionsOf(BuildContext context, _SocialConnection page) => [
+
+                        // Instagram comments are moderated through the Page
+                        // the Instagram account is linked to.
+                        if (page.provider == 'facebook_page')
+                          TextButton(
+                            onPressed: () => onComments(page),
+                            child: const Text('Instagram comments'),
+                          ),
+                        // Muted, not the accent: a destructive link styled as
+                        // the main action (deep dive 2026-11-02 #11).
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                          onPressed: () => onDisconnect(page),
+                          child: const Text('Disconnect'),
+                        ),
+    ];
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -3642,33 +3946,23 @@ class _AccountsPane extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    subtitle: Text(
-                      page.handle != null
-                          ? '${page.providerLabel} · @${page.handle}'
-                          : page.providerLabel,
-                    ),
-                    trailing: Row(
+                    subtitle: phone
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(subtitleOf(page)),
+                              Wrap(children: actionsOf(context, page)),
+                            ],
+                          )
+                        : Text(subtitleOf(page)),
+                    // On a phone the links go under the name: beside it they
+                    // squeezed "Facebook" to one letter a line (phone audit
+                    // 2026-11-04).
+                    trailing: phone
+                        ? null
+                        : Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Instagram comments are moderated through the Page
-                        // the Instagram account is linked to.
-                        if (page.provider == 'facebook_page')
-                          TextButton(
-                            onPressed: () => onComments(page),
-                            child: const Text('Instagram comments'),
-                          ),
-                        // Muted, not the accent: a destructive link styled as
-                        // the main action (deep dive 2026-11-02 #11).
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                          onPressed: () => onDisconnect(page),
-                          child: const Text('Disconnect'),
-                        ),
-                      ],
+                      children: actionsOf(context, page),
                     ),
                   ),
               const SizedBox(height: 12),
@@ -3896,12 +4190,23 @@ class _SentPost {
   Tone get tone {
     if (targets.any((t) => t.status == 'failed')) return Tone.bad;
     if (targets.any((t) => t.status == 'queued')) return Tone.neutral;
-    if (targets.isNotEmpty && targets.every((t) => t.status == 'scheduled')) {
+    if (wentNowhere) return Tone.neutral;
+    // Waiting for approval has not gone out: it counts with Scheduled, not Sent.
+    if (targets.isNotEmpty &&
+        targets.every(
+          (t) => t.status == 'scheduled' || t.status == 'awaiting_approval',
+        )) {
       return Tone.info;
     }
 
     return Tone.ok;
   }
+
+  /// Nothing went out and nothing is on its way: every account was turned
+  /// down or taken back down. Not Sent (bug review 2026-11-09 #7).
+  bool get wentNowhere =>
+      targets.isNotEmpty &&
+      targets.every((t) => t.status == 'disapproved' || t.status == 'removed');
 
   /// The Posts tile it counts under, read as the server reads it
   /// (SocialPostsController::inStatus); null while it is still sending.
@@ -4477,6 +4782,17 @@ class _PostOutcome extends StatelessWidget {
       );
     }
 
+    // Published, then deleted from EzBizi: it did go out.
+    final removed = withStatus('removed');
+    if (sent.isEmpty && removed.isNotEmpty && failed.isEmpty) {
+      return (
+        Icons.delete_outline,
+        Tone.neutral,
+        'Posted · deleted from ${_names(removed)}',
+        'It was published, then deleted from EzBizi.',
+      );
+    }
+
     if (sent.isEmpty) {
       return (
         Icons.error_outline,
@@ -4683,7 +4999,7 @@ class _TargetLine extends StatelessWidget {
       'queued' => ('Posting…', Tone.neutral, Icons.hourglass_top),
       'scheduled' => ('Scheduled', Tone.info, Icons.schedule),
       'awaiting_approval' => (
-        'Waiting for approval in Reviews',
+        'Waiting for your approval in Customer Experience › Posts to approve',
         Tone.info,
         Icons.hourglass_empty,
       ),
@@ -4904,7 +5220,7 @@ class _PostChip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             child: Row(
               children: [
-                Icon(_toneIcon(post.tone), size: 11, color: colours.ink),
+                Icon(_postIcon(post), size: 11, color: colours.ink),
                 const SizedBox(width: 3),
                 Expanded(
                   child: Text(
@@ -5061,7 +5377,7 @@ class _AgendaRow extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(_toneIcon(post.tone), size: 20, color: colours.ink),
+                Icon(_postIcon(post), size: 20, color: colours.ink),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -5133,8 +5449,12 @@ IconData _toneIcon(Tone tone) => switch (tone) {
   _ => Icons.check_circle_outline,
 };
 
+IconData _postIcon(_SentPost post) =>
+    post.wentNowhere ? Icons.block : _toneIcon(post.tone);
+
 /// A post's state in a word or two.
 String _postWord(_SentPost post) => switch (post.tone) {
+  Tone.neutral when post.wentNowhere => 'not posted',
   Tone.bad => 'needs a look',
   Tone.neutral => 'posting…',
   Tone.info => 'scheduled',

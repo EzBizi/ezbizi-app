@@ -318,6 +318,37 @@ const Map<String, Tour> marketingTours = {
     ],
   ),
 
+  // ── Ads ──────────────────────────────────────────────────────────
+  'marketing/Ads': Tour(
+    version: 2,
+    steps: [
+      TourStep(
+        anchor: 'ads-source',
+        title: 'Google or Meta',
+        body:
+            'The same controls for both. The Google report is in '
+            'Reports › Google Ads.',
+      ),
+      TourStep(
+        anchor: 'google-ads-range',
+        title: 'Dates',
+        body: 'What each campaign spent and brought in over these days.',
+      ),
+      TourStep(
+        anchor: 'google-ads-search',
+        title: 'Find a campaign',
+        body: 'Narrows the campaigns as you type.',
+      ),
+      TourStep(
+        anchor: 'google-ads-table',
+        title: 'Run them',
+        body:
+            'Switch a campaign on or off, schedule it, and change its daily '
+            'budget or bid target. Every change asks you to confirm first.',
+      ),
+    ],
+  ),
+
   // ── Web Management ───────────────────────────────────────────────
   'marketing/Web Management': Tour(
     version: 1,

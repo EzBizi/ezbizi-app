@@ -117,7 +117,7 @@ class LeadInsights
         $asked = array_filter($threads, fn ($t) => $t !== '');
         $answers = $asked === [] ? [] : array_combine(array_keys($asked),
             GrokCli::about(array_values(array_intersect_key($leads, $asked)), fn () => GrokCli::askMany(
-                array_values(array_map(fn ($t) => self::READ_PROMPT.$t, $asked)), self::READ_SCHEMA)));
+                array_values(array_map(fn ($t, $i) => strtr(self::READ_PROMPT, ['{trades}' => GrokCli::trades($leads[$i]->organization_id), '{org}' => (string) $leads[$i]->organization?->name]).$t, $asked, array_keys($asked))), self::READ_SCHEMA)));
 
         return array_map(fn ($i) => match (true) {
             ! isset($answers[$i]) => null,
@@ -126,9 +126,9 @@ class LeadInsights
         }, array_keys($leads));
     }
 
-    private const READ_PROMPT = 'You read enquiries for a home-services business (chimneys, fireplaces, garage doors, '
-        ."inspections). Calls are machine transcripts and start with the business's own phone "
-        ."menu (\"Thank you for calling A1 Chimney, press 1...\"): ignore that. Answer:\n"
+    private const READ_PROMPT = 'You read enquiries for a home-services business ({trades}). '
+        ."Calls are machine transcripts and start with the business's own phone "
+        ."menu (\"Thank you for calling {org}, press 1...\"): ignore that. Answer:\n"
         .'- classification: BOOK (wants work done, quoted or scheduled), SUPPORT (an existing '
         .'customer about a booking, invoice, follow-up or complaint), ARCHIVE (spam, wrong number, '
         ."a vendor selling something, a hang-up, or nothing to act on).\n"
@@ -304,6 +304,43 @@ class LeadInsights
         $draft = trim($answer);
 
         return $draft === '' ? null : mb_substr($draft, 0, 1000);
+    }
+
+    /**
+     * The draft with its clear spelling and grammar mistakes fixed, or null
+     * when it has none (Jose, 2026-11-05: "Yes, I call you right away").
+     * Never sent by itself: the composer offers it and a person taps it.
+     */
+    public function proofread(?Lead $lead, string $text): ?string
+    {
+        $text = trim($text);
+
+        if (mb_strlen($text) < 3 || ! $this->enabled()) {
+            return null;
+        }
+
+        $brief = 'Fix only clear spelling and grammar mistakes in this text message from a '
+            .'home-services business to a customer. Keep its words, tone, names, numbers, '
+            .'emoji and line breaks; do not rephrase, shorten or add anything. If nothing '
+            .'is clearly wrong, return it unchanged.';
+
+        if (! $this->bedrock()) {
+            try {
+                $json = GrokCli::about($lead, fn () => GrokCli::ask(
+                    $brief."\n\nText:\n".$text,
+                    ['type' => 'object', 'properties' => ['fixed' => ['type' => 'string']], 'required' => ['fixed'], 'additionalProperties' => false],
+                ));
+            } catch (Throwable $e) {
+                Log::warning('Grok did not proofread a reply.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);
+
+                return null;
+            }
+            $fixed = trim((string) ($json['fixed'] ?? ''));
+        } else {
+            $fixed = trim($this->ask($brief.' Answer with the text only.', $text));
+        }
+
+        return $fixed === '' || $fixed === $text || mb_strlen($fixed) > 2 * mb_strlen($text) ? null : $fixed;
     }
 
     /** The conversation as the model reads it: who said what, oldest first, capped. */

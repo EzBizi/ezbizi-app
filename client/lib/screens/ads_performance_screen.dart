@@ -7,6 +7,7 @@ import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../core/theme.dart';
+import '../widgets/ad_schedule.dart';
 import '../widgets/dashboard_chart.dart';
 import '../widgets/date_range_picker.dart';
 import '../widgets/report_grid.dart';
@@ -431,6 +432,34 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       _memory.readAt[key] = DateTime.now();
       _apply(response.body, manager);
     });
+    if (!manager) _loadSchedules(id);
+  }
+
+  /// The on/off schedules of this account, by campaign id (design 185).
+  Map<String, Map<String, dynamic>> _schedules = const {};
+
+  Future<void> _loadSchedules(String id) async {
+    final response = await widget.api.get('/ad-schedules', {'connection_id': id});
+    if (!mounted || _selected != id || !response.ok) return;
+    setState(() => _schedules = {
+      for (final row in (response.body['data'] as List? ?? const []).cast<Map>())
+        '${row['object_id']}': Map<String, dynamic>.from(row),
+    });
+  }
+
+  Future<void> _editSchedule(Map<String, dynamic> c) async {
+    final id = _selected;
+    if (id == null) return;
+    final changed = await editAdSchedule(
+      context,
+      api: widget.api,
+      connectionId: id,
+      objectId: '${c['id']}',
+      objectName: '${c['name']}',
+      schedule: _schedules['${c['id']}'],
+      canManage: _canManage,
+    );
+    if (changed && mounted) _loadSchedules(id);
   }
 
   void _apply(Map<String, dynamic> body, bool manager) {
@@ -1280,6 +1309,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   List<({String key, String label, double width, bool numeric})> get _tableColumns => [
     (key: 'name', label: 'Campaign', width: 340, numeric: false),
     (key: 'status', label: 'Status', width: 96, numeric: false),
+    (key: 'schedule', label: 'Schedule', width: 250, numeric: false),
     (key: 'cost', label: 'Cost', width: 130, numeric: true),
     (key: 'clicks', label: 'Clicks', width: 90, numeric: true),
     (key: 'impressions', label: 'Impressions', width: 116, numeric: true),
@@ -1341,7 +1371,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   SizedBox(
                     width: c.width,
                     child: InkWell(
-                      onTap: () => _sortOn(c.key),
+                      onTap: c.key == 'schedule' ? null : () => _sortOn(c.key),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: Row(
@@ -1431,12 +1461,22 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                           width: col.width,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Text(
-                              _cell(col.key, c, currency),
-                              textAlign: col.numeric ? TextAlign.end : TextAlign.start,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium,
-                            ),
+                            child: col.key == 'schedule'
+                                ? Align(
+                                    alignment: AlignmentDirectional.centerStart,
+                                    child: AdScheduleChip(
+                                      key: ValueKey('ads-schedule-${c['id']}'),
+                                      schedule: _schedules['${c['id']}'],
+                                      canManage: _canManage,
+                                      onTap: () => _editSchedule(c),
+                                    ),
+                                  )
+                                : Text(
+                                    _cell(col.key, c, currency),
+                                    textAlign: col.numeric ? TextAlign.end : TextAlign.start,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
                           ),
                         ),
                     ],
@@ -1494,7 +1534,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     return i < 0 ? null : i;
   }
 
-  bool get _canManage => widget.session.me?.can('ads_performance.manage') ?? false;
+  bool get _canManage => widget.session.me?.can('ads_manager.manage') ?? false;
 
   /// An optional figure in its own unit. Null is a dash: a rate with nothing
   /// under it (no impressions, no clicks) has no value, and zero would claim

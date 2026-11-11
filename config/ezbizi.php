@@ -321,4 +321,7 @@ return [
             'a1-kitchens.com', 'achdutisraeldallas.org', 'leshemshamayim.org', 'americanfriendsofleshemshamaim.org',
         ]],
     ],
+
+    // Who public lookup services (OpenStreetMap, Census) can contact about our traffic.
+    'contact_email' => env('EZBIZI_CONTACT_EMAIL', 'development@ezbizi.com'),
 ];

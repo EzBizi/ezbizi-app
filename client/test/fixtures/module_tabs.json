@@ -1,5 +1,10 @@
 {
     "modules": {
+        "ads_manager": {
+            "label": "Ads",
+            "parent": "marketing",
+            "tabs": []
+        },
         "ads_performance": {
             "label": "Google Ads",
             "parent": "reports",
@@ -46,6 +51,15 @@
             "label": "Companies",
             "parent": null,
             "tabs": []
+        },
+        "company": {
+            "label": "Company",
+            "parent": null,
+            "tabs": [
+                "Ownership",
+                "Processes",
+                "KPIs"
+            ]
         },
         "customer_experience": {
             "label": "Customer Experience",
@@ -170,40 +184,58 @@
             "label": "Jobs",
             "parent": null,
             "tabs": [
-                "Work",
-                "Materials"
+                "Jobs"
             ]
         },
         "leads": {
             "label": "Leads",
             "parent": null,
             "tabs": [
-                "LS Call, LS Text and LS Booking",
+                "Google Local Services",
+                "RC Calls",
+                "EZ Calls",
+                "EZ Texts",
                 "Thumbtack",
                 "Chat",
                 "Forms",
                 "Bad Ratings",
                 "Online Booking",
-                "Messenger",
+                "Facebook",
                 "Instagram",
-                "Workiz",
                 "WhatsApp",
-                "RC Calls",
-                "EZ Calls",
-                "EZ Texts",
+                "Workiz",
+                "Promotions",
                 "Hidden"
-            ]
+            ],
+            "within": {
+                "RC Calls": "Calls",
+                "EZ Calls": "Calls",
+                "EZ Texts": "SMS Texts",
+                "Forms": "Forms",
+                "Facebook": "Meta",
+                "Instagram": "Meta",
+                "WhatsApp": "Meta",
+                "Hidden": "Manage"
+            }
         },
         "marketing": {
             "label": "Marketing",
             "parent": null,
             "tabs": [
+                "Social Media Management",
                 "Dashboard",
                 "Compose",
                 "Calendar",
                 "Accounts",
                 "QR Codes"
-            ]
+            ],
+            "within": {
+                "Dashboard": "Social Media Management",
+                "Compose": "Social Media Management",
+                "Calendar": "Social Media Management",
+                "Accounts": "Social Media Management",
+                "QR Codes": "Social Media Management"
+            }
         },
         "memberships": {
             "label": "Memberships",
@@ -211,7 +243,8 @@
             "tabs": [
                 "Dashboard",
                 "Members",
-                "Settings"
+                "Settings",
+                "Promotions"
             ]
         },
         "monitoring": {
@@ -241,7 +274,7 @@
             "parent": null,
             "tabs": [
                 "Organization",
-                "Settings",
+                "Preferences",
                 "Integrations",
                 "API activity"
             ]
@@ -263,23 +296,18 @@
             "parent": "reports",
             "tabs": []
         },
-        "project_management": {
-            "label": "Project Management - 1",
+        "project_board": {
+            "label": "Project Management",
             "parent": null,
             "tabs": [
-                "Overview",
-                "Jobs",
-                "Assignments",
-                "Repair team",
-                "Rules",
-                "Logs",
+                "Unscheduled",
+                "Ready to Schedule",
+                "Scheduled",
+                "In Progress",
+                "Done Waiting Payment",
+                "Complete",
                 "Settings"
             ]
-        },
-        "project_management_2": {
-            "label": "Project Management - 2",
-            "parent": null,
-            "tabs": []
         },
         "reports": {
             "label": "Reports",
@@ -311,7 +339,6 @@
             "tabs": [
                 "Availability",
                 "Schedule",
-                "Overbooking",
                 "Re-Scheduling",
                 "Routing",
                 "Helpers",
@@ -372,7 +399,8 @@
         }
     },
     "permissions": [
-        "ads_performance.manage",
+        "ads_manager.manage",
+        "ads_manager.view",
         "ads_performance.view",
         "ai_assistance.ai.view",
         "ai_assistance.answers.view",
@@ -395,14 +423,17 @@
         "automations.edit",
         "automations.rules.view",
         "automations.view",
-        "business_profile.create",
-        "business_profile.delete",
         "business_profile.edit",
         "business_profile.view",
         "companies.create",
         "companies.delete",
         "companies.edit",
         "companies.view",
+        "company.edit",
+        "company.kpis.view",
+        "company.ownership.view",
+        "company.processes.view",
+        "company.view",
         "customer_experience.complaints.manage",
         "customer_experience.complaints.view",
         "customer_experience.view",
@@ -501,6 +532,7 @@
         "invoices.edit",
         "invoices.invoices.view",
         "invoices.send",
+        "invoices.settings.view",
         "invoices.view",
         "jobs.create",
         "jobs.delete",
@@ -510,11 +542,8 @@
         "jobs.materials.view",
         "jobs.view",
         "leads.bad_rating.view",
-        "leads.create",
-        "leads.delete",
         "leads.dispatcher",
         "leads.edit",
-        "leads.export",
         "leads.ez_calls.view",
         "leads.ez_texts.view",
         "leads.facebook.view",
@@ -522,6 +551,7 @@
         "leads.instagram.view",
         "leads.local_services.view",
         "leads.manage",
+        "leads.promotions.view",
         "leads.reclassify",
         "leads.ringcentral.view",
         "leads.thumbtack.view",
@@ -543,6 +573,7 @@
         "memberships.delete",
         "memberships.edit",
         "memberships.members.view",
+        "memberships.promotions.view",
         "memberships.settings.view",
         "memberships.view",
         "monitoring.cameras.manage",
@@ -579,8 +610,7 @@
         "phone.users.view",
         "phone.view",
         "profit_loss.view",
-        "project_management.view",
-        "project_management_2.view",
+        "project_board.view",
         "reports.build",
         "reports.builder.view",
         "reports.correct",
@@ -596,8 +626,6 @@
         "reports.thumbtack.view",
         "reports.view",
         "reports.workspace.view",
-        "reviews.create",
-        "reviews.delete",
         "reviews.edit",
         "reviews.manage",
         "reviews.publish",
@@ -612,7 +640,6 @@
         "scheduling.edit",
         "scheduling.helpers.view",
         "scheduling.locations.view",
-        "scheduling.overbooking.view",
         "scheduling.rescheduling.view",
         "scheduling.routing.view",
         "scheduling.schedule.view",

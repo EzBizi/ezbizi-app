@@ -25,10 +25,19 @@ final class PhoneTexts
         private readonly PhoneLineHealth $health,
     ) {}
 
+    /** A Twilio refusal we can say plainly; null to use Twilio's own words. */
+    public static function refusal(Throwable $e): ?string
+    {
+        return str_contains($e->getMessage(), 'not been enabled for the region')
+            ? "Texts to that number's country are switched off on this phone account, so nothing was sent."
+            : null;
+    }
+
     /**
      * @throws TextRefused when the line may not send, or Twilio refused
      */
-    public function send(PhoneNumber $number, string $to, string $body): PhoneMessage
+    /** @param  list<string>  $mediaUrls  pictures (MMS), public URLs Twilio fetches */
+    public function send(PhoneNumber $number, string $to, string $body, bool $automated = false, array $mediaUrls = []): PhoneMessage
     {
         if (! $number->sms_outbound_allowed) {
             throw new TextRefused(PhoneNumber::SMS_REFUSAL, 403);
@@ -40,12 +49,12 @@ final class PhoneTexts
         }
 
         $from = (string) $number->e164;
-        $body = SmsConsent::prepare($connection, $to, $body) ?? throw new TextRefused(SmsConsent::REFUSAL, 422);
+        $body = SmsConsent::prepare($connection, $to, $body, $automated) ?? throw new TextRefused(SmsConsent::REFUSAL, 422);
 
         try {
-            $sent = $this->twilio->sendMessage($connection, $from, $to, $body, $number->account_sid);
+            $sent = $this->twilio->sendMessage($connection, $from, $to, $body, $number->account_sid, $mediaUrls);
         } catch (Throwable $e) {
-            $reason = $e->getMessage() !== '' ? $e->getMessage() : 'Twilio refused to send from this phone line.';
+            $reason = self::refusal($e) ?? ($e->getMessage() !== '' ? $e->getMessage() : 'Twilio refused to send from this phone line.');
             if (PhoneLineHealth::isLineBreakingFault(null, $e)) {
                 $this->health->reportBroken($connection, $reason, $number);
             }

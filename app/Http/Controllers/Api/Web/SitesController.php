@@ -398,7 +398,7 @@ class SitesController extends Controller
                 $site->host,
             );
 
-            return [$site->id => count(SeoFields::missing($effective))];
+            return [$site->id => count(SeoFields::missing($effective, $site->not_needed_fields ?? []))];
         })->all();
     }
 

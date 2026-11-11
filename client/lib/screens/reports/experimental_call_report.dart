@@ -9,6 +9,7 @@ import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/ai_mark.dart';
+import '../../widgets/call_correction.dart';
 import '../../widgets/call_text.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
@@ -188,35 +189,22 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   String _notBookedQuery = '';
   String _missedQuery = '';
 
-  static const _existingLabels = {
-    'complaint': 'Complaint',
-    'reschedule': 'Reschedule',
-    'eta': 'ETA',
-    'billing': 'Billing',
-    'cancel': 'Cancel',
-    'estimate_question': 'Estimate question',
-    'job_status': 'Job status',
-    'confirmation': 'Confirmation',
-    'not_a_customer': 'Not a customer',
-    'no_conversation': 'No conversation',
-    'other': 'Other',
+  // The two label lists as the business has them (Settings › Lists), sent
+  // with the report: label => the name shown.
+  Map<String, String> _labels(String which) => switch ((_report?['labels']
+      as Map?)?[which]) {
+    final Map list => {for (final e in list.entries) '${e.key}': '${e.value}'},
+    _ => const {},
   };
+  Map<String, String> get _existingLabels => _labels('existing');
+  Map<String, String> get _notBookedLabels => _labels('not_booked');
 
-  static const _notBookedLabels = {
-    'price': 'Price',
-    'availability': 'Availability',
-    'reschedule': 'Reschedule',
-    'cancel': 'Cancel',
-    'confirmation': 'Confirmation',
-    'service_question': 'Service question',
-    'not_a_customer': 'Not a customer',
-    'no_conversation': 'No conversation',
-    'other': 'Other',
-    'booked': 'AI heard a booking, no job yet',
-  };
-
-  static const _newQueue = 'A1 - New Client';
-  static const _existingQueue = 'A1 - Existing Client';
+  // The business's two queue names (Settings: leads.new_client_queue and
+  // leads.existing_client_queue), sent with the report. Unset is '', which no
+  // call's queue is, so it splits nothing.
+  String get _newQueue => '${(_report?['queues'] as Map?)?['new'] ?? ''}';
+  String get _existingQueue =>
+      '${(_report?['queues'] as Map?)?['existing'] ?? ''}';
 
   @override
   void dispose() {
@@ -580,9 +568,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       );
     }
 
-    final people = (report['people'] as List? ?? const [])
-        .map((row) => (row as Map).cast<String, dynamic>())
-        .toList();
+    // Only people the phones rang: someone who only created Workiz jobs
+    // (a technician, the office) is an empty row here (2026-11-04, 18 of 48).
+    final people = [
+      for (final row in (report['people'] as List? ?? const []))
+        if (row is Map &&
+            (((row['rang'] as num?) ?? 0) > 0 ||
+                ((row['answered'] as num?) ?? 0) > 0))
+          row.cast<String, dynamic>(),
+    ];
 
     final totals = (report['totals'] as Map? ?? const {})
         .cast<String, dynamic>();
@@ -818,7 +812,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ),
       ('New client', totals['new_client'], 'new', 'stat-new'),
       ('Jobs created', totals['jobs'], null, null),
-      ('Conv. rate', _rate(totals['jobs'], totals['new_client']), null, null),
+      (
+        'Conv. rate',
+        _rate(totals['booked_new'], totals['answered_new']),
+        null,
+        null,
+      ),
       ('Not booked', totals['not_booked'], 'not_booked', 'stat-not-booked'),
     ];
     const gap = 12.0;
@@ -863,18 +862,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     'Inbound calls': 'New + Existing + other lines',
     'Missed calls': 'Nobody picked up, incl. voicemail',
     'Jobs created': 'Workiz jobs for these dates',
-    'Conv. rate': 'Jobs ÷ answered New-client calls',
+    'Conv. rate': 'Booked ÷ answered New-client calls',
   };
 
   /// Jobs over answered new-client calls, the same rule as each person's
   /// row, never above 100% (review item 3): more jobs than calls is said as
   /// "11 jobs · 6 calls". A dash when there were no new-client calls.
-  static String _rate(Object? jobs, Object? newClient) {
-    final n = (newClient as num?) ?? 0;
-    final j = (jobs as num?) ?? 0;
+  /// Booked out of answered new-client calls, as each person's booking rate.
+  static String _rate(Object? booked, Object? answered) {
+    final n = (answered as num?) ?? 0;
     if (n == 0) return '—';
-    if (j > n) return '$j jobs · $n calls';
-    return '${(j / n * 100).round()}%';
+    return '${(((booked as num?) ?? 0) / n * 100).round()}%';
   }
 
   Widget _stat(
@@ -1012,7 +1010,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         'Not read yet $n',
       if (all.where((c) => _labelOf(c, _labeller) == 'booked').length
           case final n when n > 0)
-        '· ${_notBookedLabels['booked']} $n',
+        '· ${_notBookedLabels['booked'] ?? 'booked'} $n',
     ];
 
     return _listCard(
@@ -1235,7 +1233,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               SliverToBoxAdapter(child: _nothing(context))
             else if (wide) ...[
               PinnedHeaderSliver(
-                child: SizedBox(height: 70, child: _headerRow(context)),
+                child: SizedBox(height: 88, child: _headerRow(context)),
               ),
               SliverList.builder(
                 itemCount: ordered.length,
@@ -1897,19 +1895,23 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ),
   ];
 
-  /// Calls [person] answered that were booked: the credit goes to who took
-  /// the call, never to everyone it rang (Jose, 2026-11-03).
-  int _booked(Map<String, dynamic> person) => [
+  /// New-client calls [person] answered: the credit goes to who took the
+  /// call, never to everyone it rang (Jose, 2026-11-03).
+  List<Map> _answeredNew(Map<String, dynamic> person) => [
     for (final call in (_report?['calls'] as List? ?? const []))
       if (call is Map &&
           call['answered_by'] == person['person'] &&
-          call['booked'] == true)
+          call['queue'] == _newQueue)
         call,
-  ].length;
+  ];
 
-  /// Booked out of answered (design 170); null when they answered nothing.
+  int _booked(Map<String, dynamic> person) =>
+      _answeredNew(person).where((c) => c['booked'] == true).length;
+
+  /// Booked out of the new-client calls they answered (Trey, 2026-11-04:
+  /// existing clients are not bookings); null when they answered none.
   double? _bookingRate(Map<String, dynamic> person) {
-    final answered = (person['answered'] as num?) ?? 0;
+    final answered = _answeredNew(person).length;
     if (answered == 0) return null;
 
     return _booked(person) / answered * 100;
@@ -2128,14 +2130,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     return (teammate: teammate, nobody: nobody);
   }
 
-  /// Answered out of the calls they could have taken: those a teammate took
-  /// do not count against them. Null when nothing rang them.
+  /// Answered out of every call that rang them (Jose, 2026-11-04: 192 of
+  /// 250 read 99% when a teammate's pick-ups were left out). Null when
+  /// nothing rang them.
   double? _answerRate(Map<String, dynamic> person) {
-    final answered = (person['answered'] as num?) ?? 0;
-    final chances = answered + _missedBy(person).nobody;
-    if (chances == 0) return null;
+    final rang = (person['rang'] as num?) ?? 0;
+    if (rang == 0) return null;
 
-    return answered / chances * 100;
+    return ((person['answered'] as num?) ?? 0) / rang * 100;
   }
 
   /// Ranks two possibly-absent numbers, keeping absence at the bottom.
@@ -2193,6 +2195,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
+            key: const ValueKey('tour-people-groups'),
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
             child: Row(
               children: [
@@ -2224,14 +2227,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                                 ),
                                 if (group == 'Sales')
                                   Tooltip(
-                                    message: 'Rates count answered calls only.',
+                                    message:
+                                        'Booking rate: booked out of the new-client calls they answered.',
                                     child: Padding(
                                       padding: const EdgeInsets.only(left: 4),
                                       child: Icon(
                                         Icons.info_outline,
                                         size: 13,
                                         semanticLabel:
-                                            'Rates count answered calls only.',
+                                            'Booking rate: booked out of the new-client calls they answered.',
                                         color:
                                             theme.colorScheme.onSurfaceVariant,
                                       ),
@@ -2259,11 +2263,20 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                             ? MainAxisAlignment.end
                             : MainAxisAlignment.start,
                         children: [
+                          // Two lines rather than run into the next title
+                          // ("RangAnswe…" at a laptop's width).
                           Flexible(
-                            child: Text(
-                              column.label,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelLarge,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: Text(
+                                column.label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: column.numeric
+                                    ? TextAlign.end
+                                    : TextAlign.start,
+                                style: theme.textTheme.labelLarge,
+                              ),
                             ),
                           ),
 
@@ -2374,9 +2387,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     return SegmentedButton<String>(
       key: ValueKey('handles-$name'),
       showSelectedIcon: false,
-      style: const ButtonStyle(
+      // Tight enough that "Existing" stays on one line at a laptop's width.
+      style: ButtonStyle(
         visualDensity: VisualDensity.compact,
-        padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 4),
+        ),
+        textStyle: WidgetStatePropertyAll(
+          Theme.of(context).textTheme.labelMedium,
+        ),
       ),
       segments: const [
         ButtonSegment(value: 'new', label: Text('New')),
@@ -2496,6 +2515,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           _coaching(context, name),
           const SizedBox(height: 8),
           Wrap(
+            key: const ValueKey('tour-person-filters'),
             spacing: 20,
             runSpacing: 8,
             children: [
@@ -2586,7 +2606,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     // A caller who pressed the other key is shown as what they were, marked
     // ↺ with what was pressed and why (Leads' correction, 2026-10-16).
     final fix = (call['reclassified'] as Map?)?.cast<String, dynamic>();
-    final mark = fix == null ? '' : ' ↺';
+    // Design 179 (Jose, 2026-11-03): a value set by hand carries ✎ and says
+    // who set it; Leads' own reclassification keeps ↺.
+    final setBy = (call['set_by'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final mark = setBy['client'] != null
+        ? ' ✎'
+        : fix == null
+        ? ''
+        : ' ↺';
     final pill = call['queue'] == _newQueue
         ? StatusPill('New$mark', tone: Tone.info)
         : call['queue'] == _existingQueue
@@ -2596,10 +2623,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? pill
         : Tooltip(
             key: ValueKey('reclassified-$callId'),
-            message:
-                'Re-classified: pressed '
-                '${fix['pressed'] == _newQueue ? 'new' : 'existing'}'
-                '${fix['reason'] == null ? '' : ' · ${fix['reason']}'}',
+            message: setBy['client'] != null
+                ? 'Set by ${setBy['client']}'
+                : 'Re-classified: pressed '
+                      '${fix['pressed'] == _newQueue ? 'new' : 'existing'}'
+                      '${fix['reason'] == null ? '' : ' · ${fix['reason']}'}',
             child: pill,
           );
     final result = missed
@@ -2611,7 +2639,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           )
         : call['queue'] == _newQueue
         ? call['booked'] == true
-              ? const StatusPill('Booked', tone: Tone.ok)
+              ? _setMark(
+                  setBy['booking'],
+                  StatusPill(
+                    setBy['booking'] == null ? 'Booked' : 'Booked ✎',
+                    tone: Tone.ok,
+                  ),
+                )
               // The caller already had an open job (Jose, 2026-10-13): a
               // reschedule or a question, not a lost booking.
               : call['existing_job'] is Map
@@ -2624,7 +2658,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                         : 'Existing job',
                   ),
                 )
-              : const StatusPill('Not booked', tone: Tone.caution)
+              : _setMark(
+                  setBy['booking'],
+                  StatusPill(
+                    setBy['booking'] == null ? 'Not booked' : 'Not booked ✎',
+                    tone: Tone.caution,
+                  ),
+                )
         : StatusPill(outbound ? 'Connected' : 'Answered');
 
     final small = theme.textTheme.bodySmall?.copyWith(color: muted);
@@ -2635,6 +2675,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.visible,
+    );
+    // The table's Date and Time, a column each (Jose, 2026-11-04).
+    final stamp = DateTime.tryParse('${call['started_at']}')?.toLocal();
+    Text plain(String text) =>
+        Text(text, style: small, maxLines: 1, softWrap: false);
+    final date = plain(stamp == null ? '' : widget.formats.formatDate(stamp));
+    final time = plain(
+      stamp == null ? '' : widget.formats.formatTime(stamp.hour, stamp.minute),
     );
     final direction = Text(
       outbound ? 'Out' : 'In',
@@ -2764,7 +2812,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                           )
                         : null,
                     child: _cells([
-                      when,
+                      date,
+                      time,
                       direction,
                       caller,
                       number,
@@ -2940,7 +2989,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       );
     }
 
-    final convertible = widget.canEdit && _unbooked([call]).isNotEmpty;
+    final correctable = widget.canEdit && !outbound;
 
     return Wrap(
       spacing: 32,
@@ -2975,15 +3024,38 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               ],
               const Divider(height: 16),
               numbers,
-              if (convertible) ...[
-                const SizedBox(height: 6),
-                OutlinedButton(
-                  key: ValueKey('convert-${call['id']}'),
-                  onPressed: _converting.contains('${call['id']}')
-                      ? null
-                      : () => _convert(call),
-                  child: const Text('Convert to booked'),
-                ),
+              if (correctable) ...[
+                const SizedBox(height: 10),
+                for (final (field, label, values, current) in [
+                  (
+                    'client',
+                    'Client',
+                    CallCorrection.client,
+                    call['queue'] == _newQueue ? 'new' : 'existing',
+                  ),
+                  (
+                    'booking',
+                    'Booking',
+                    CallCorrection.booking,
+                    call['booked'] == true ? 'booked' : 'not_booked',
+                  ),
+                ]) ...[
+                  CallCorrection(
+                    key: field == 'client'
+                        ? const ValueKey('tour-call-corrections')
+                        : null,
+                    api: widget.api,
+                    callId: '${call['id']}',
+                    field: field,
+                    label: label,
+                    values: values,
+                    current: current,
+                    setBy: (call['set_by'] as Map?)?[field],
+                    onSaved: _load,
+                    onError: (m) => setState(() => _error = m),
+                  ),
+                  const SizedBox(height: 6),
+                ],
               ],
             ],
           ),
@@ -2991,6 +3063,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ],
     );
   }
+
+  /// A pill set by hand, with who set it on hover (design 179).
+  Widget _setMark(Object? by, Widget pill) =>
+      by == null ? pill : Tooltip(message: 'Set by $by', child: pill);
 
   /// A reason's words, from either AI's list.
   String? _labelName(String? label) => label == null
@@ -3008,25 +3084,26 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
     return Row(
       children: [
-        SizedBox(width: _timeWidth, child: pad(c[0])),
-        SizedBox(width: 40, child: pad(c[1])),
-        Expanded(flex: 4, child: pad(c[2])),
-        SizedBox(width: 136, child: pad(c[3])),
-        SizedBox(width: 92, child: pad(c[4])),
-        SizedBox(width: 116, child: pad(c[5])),
-        Expanded(flex: 3, child: pad(c[6])),
+        SizedBox(width: _dateWidth, child: pad(c[0])),
+        SizedBox(width: _timeWidth, child: pad(c[1])),
+        SizedBox(width: 40, child: pad(c[2])),
+        Expanded(flex: 4, child: pad(c[3])),
+        SizedBox(width: 136, child: pad(c[4])),
+        SizedBox(width: 92, child: pad(c[5])),
+        SizedBox(width: 116, child: pad(c[6])),
         Expanded(flex: 3, child: pad(c[7])),
+        Expanded(flex: 3, child: pad(c[8])),
         SizedBox(
           width: 112,
-          child: Align(alignment: Alignment.centerRight, child: c[8]),
-        ),
-        SizedBox(
-          width: 44,
           child: Align(alignment: Alignment.centerRight, child: c[9]),
         ),
         SizedBox(
-          width: 92,
+          width: 44,
           child: Align(alignment: Alignment.centerRight, child: c[10]),
+        ),
+        SizedBox(
+          width: 92,
+          child: Align(alignment: Alignment.centerRight, child: c[11]),
         ),
       ],
     );
@@ -3051,6 +3128,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           SizedBox(
             height: 36,
             child: _cells([
+              heading('Date'),
               heading('Time'),
               const SizedBox.shrink(),
               heading('Caller'),
@@ -3092,15 +3170,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// A row this wide or wider is the table; narrower, a card's lines.
   static const _tableRow = 1000.0;
 
-  /// The time, and the day too when the dates span several.
-  double get _timeWidth => _span.single ? 56 : 108;
+  /// The Date and Time columns; the date wide enough for any date format,
+  /// the time for "12:59 PM" (at 56 the AM ran into In/Out: "9:04 AMn").
+  static const _dateWidth = 96.0;
+  static const _timeWidth = 80.0;
 
   /// What hangs under a call - its details, its recording - starts under the
   /// caller on a wide row, so the columns stay readable.
   Widget _under(Widget child) => LayoutBuilder(
     builder: (context, box) => Padding(
       padding: EdgeInsets.only(
-        left: box.maxWidth >= _tableRow ? _timeWidth + 40 : 0,
+        left: box.maxWidth >= _tableRow ? _dateWidth + _timeWidth + 40 : 0,
         top: 4,
         bottom: 10,
       ),

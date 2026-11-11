@@ -29,6 +29,7 @@ use App\Support\Assistant\AssistantBrain;
 use App\Support\Assistant\TechAssistant;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * The staff line: a tech texts it, it answers.
@@ -46,7 +47,9 @@ use Illuminate\Support\Collection;
  * `handles()` answers only for `services.meta.whatsapp_bot_number_id`. Without
  * that guard every inbound message on every WhatsApp number would be answered
  * by a robot - including EzBizi's own line, where a person is expected. Unset,
- * it answers for nothing, which is the right way to fail.
+ * it answers for nothing, which is the right way to fail. A number marked
+ * `purpose = support` answers too (Jose, 2026-11-09: Main is for the AI
+ * support questions).
  *
  * ── What it says is the business's, not this file's ──────────────
  *
@@ -59,6 +62,9 @@ use Illuminate\Support\Collection;
  */
 final class WhatsAppStaffBot
 {
+    /** Sent once to each tech with the parts tab, on their first message. */
+    public const PARTS_TIP = "\u{1F527} Tip for your jobs: send this chat a rating-plate photo or the model number and I will find the part.";
+
     /** Menu row ids. Kept short: WhatsApp caps a row id at 200 characters. */
     public const FIND_LOCATION = 'find_location';
 
@@ -73,7 +79,6 @@ final class WhatsAppStaffBot
     private const MENU_WORDS = ['menu', 'hi', 'hello', 'hey', 'hola', 'start', 'help', '?'];
 
     /** More than this and the reply stops being readable on a phone. */
-    private const MAX_LOCATIONS = 5;
 
     /** WhatsApp's cap on rows in one list, across all its sections. */
     private const MAX_ROWS = 10;
@@ -88,7 +93,9 @@ final class WhatsAppStaffBot
     {
         $bot = (string) config('services.meta.whatsapp_bot_number_id');
 
-        return $bot !== '' && hash_equals($bot, $phoneNumberId);
+        return ($bot !== '' && hash_equals($bot, $phoneNumberId))
+            || WhatsAppNumber::query()->withoutGlobalScopes()
+                ->where('phone_number_id', $phoneNumberId)->where('purpose', 'support')->exists();
     }
 
     /**
@@ -162,9 +169,15 @@ final class WhatsAppStaffBot
         $techMode = $viewer !== null && GrokCli::configured() && $viewer->hasPermission(StaffAnswer::PARTS)
             && app(TechAssistant::class)->enabled(Organization::findOrFail($number->organization_id));
 
+        // The parts tip, once per tech, on their first message (2026-11-03: Meta
+        // files it as MARKETING and blocks the template; their own message opens the window).
+        if ($techMode && Cache::add('whatsapp.parts_tip.'.$viewer->getKey(), true)) {
+            $this->text($number, $to, self::PARTS_TIP, preview: false);
+        }
+
         // A photo captioned results or ACE: a lead source's results (WhatsAppResults).
         if ($viewer?->hasPermission(WhatsAppResults::PERMISSION) && $inbound->kind === 'image'
-            && $inbound->media_id !== null && GrokCli::configured() && preg_match(WhatsAppResults::CAPTION, $text) === 1) {
+            && $inbound->media_id !== null && GrokCli::configured() && preg_match(WhatsAppResults::caption($number->organization_id), $text) === 1) {
             ReadWhatsAppResults::dispatch($number->id, $to, $viewer->getKey(), (string) $inbound->media_id, $inbound->body);
             $this->text($number, $to, "\u{1F440} Reading the results in that photo\u{2026}", preview: false);
 
@@ -654,12 +667,13 @@ final class WhatsAppStaffBot
         }
 
         $name = $this->brain->name($organization);
-        $reply = $matches->take(self::MAX_LOCATIONS)
+        $max = max(1, (int) app(SettingsResolver::class)->get('ai_assistance.max_locations', $organization));
+        $reply = $matches->take($max)
             ->map(fn (array $site) => self::describe($site, $name))
             ->implode("\n\n");
 
-        if ($matches->count() > self::MAX_LOCATIONS) {
-            $reply .= "\n\n\u{2139}\u{FE0F} _Showing ".self::MAX_LOCATIONS.' of '.$matches->count()
+        if ($matches->count() > $max) {
+            $reply .= "\n\n\u{2139}\u{FE0F} _Showing ".$max.' of '.$matches->count()
                 .'. Text a city for fewer._';
         }
 
@@ -755,6 +769,26 @@ final class WhatsAppStaffBot
             StaffAnswer::APP => $found['reply']."\n\n_From EzBizi, read by AI with your access._",
             default => $found['reply']."\n\n_Answered by AI from the Library._",
         }, preview: false);
+        $this->media($number, $to, $found['media'] ?? []);
+    }
+
+    /**
+     * Photos and clips after the text, one a message, fetched by Meta from the
+     * link (Cloud API: an mp4 up to 16 MB goes as video; a bigger one Meta
+     * refuses on the webhook, and the link is in the text already).
+     *
+     * @param  list<string>  $links
+     */
+    private function media(WhatsAppNumber $number, string $to, array $links): void
+    {
+        foreach ($links as $link) {
+            $type = str_ends_with(strtolower($link), '.mp4') ? 'video' : 'image';
+            try {
+                $this->cloud->replyFreeForm($number, $to, ['type' => $type, $type => ['link' => $link]], $link);
+            } catch (\RuntimeException $e) {
+                report($e);
+            }
+        }
     }
 
     public static function isCommand(string $query): bool
@@ -862,14 +896,18 @@ final class WhatsAppStaffBot
     public function appReply(WhatsAppNumber $number, string $to, User $viewer, string $query): void
     {
         try {
-            $reply = AppAsk::answer($viewer, $query);
+            $app = AppAsk::answerWithMedia($viewer, $query);
         } catch (\RuntimeException) {
-            $reply = null;
+            $app = null;
         }
 
-        $reply === null
-            ? $this->nothingMatched($number, $to, $viewer, $query)
-            : $this->text($number, $to, $reply."\n\n_From EzBizi, read by AI with your access._", preview: false);
+        if ($app === null) {
+            $this->nothingMatched($number, $to, $viewer, $query);
+
+            return;
+        }
+        $this->text($number, $to, $app['reply']."\n\n_From EzBizi, read by AI with your access._", preview: false);
+        $this->media($number, $to, $app['media']);
     }
 
     /** AnswerWhatsAppWithTech's half: the tech assistant's answer, a photo read when one came. */

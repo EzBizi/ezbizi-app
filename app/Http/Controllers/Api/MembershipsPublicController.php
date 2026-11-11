@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Settings\SettingsResolver;
 use App\Jobs\SendMembershipVisitToWorkiz;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
@@ -30,9 +31,6 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class MembershipsPublicController extends Controller
 {
-    /** How far past the year's end the next visit may be booked. */
-    public const VISIT_MONTHS_AFTER = 6;
-
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
@@ -244,7 +242,7 @@ class MembershipsPublicController extends Controller
             $date = $request->input('date');
             // From tomorrow to six months past the year's end: the visit is
             // the next year's, and a typo of 2062 is not a booking.
-            $last = $m->ends_on->addMonths(self::VISIT_MONTHS_AFTER);
+            $last = $m->ends_on->addMonths(max(1, (int) app(SettingsResolver::class)->get('customers.membership_visit_months', Organization::query()->withoutGlobalScopes()->findOrFail($m->organization_id))));
             $valid = is_string($date) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1
                 && CarbonImmutable::parse($date)->gt(CarbonImmutable::today())
                 && CarbonImmutable::parse($date)->lte($last);
@@ -306,6 +304,8 @@ class MembershipsPublicController extends Controller
             'company'    => $this->companyName($customer),
             'job'        => $m->visit_job_id ? \App\Models\Job::query()->find($m->visit_job_id) : null,
             'error'      => $error,
+            'lastDay'    => $m->ends_on->addMonths(max(1, (int) app(SettingsResolver::class)->get('customers.membership_visit_months',
+                Organization::query()->withoutGlobalScopes()->findOrFail($m->organization_id))))->toDateString(),
         ]);
     }
 

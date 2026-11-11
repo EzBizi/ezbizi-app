@@ -27,6 +27,7 @@ class WatchMissedCallsTest extends TestCase
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 15:00', 'America/New_York'));
         config(['app.timezone' => 'America/New_York']);
         $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('phone.ringcentral_companies', $tenant['org'], ['A1' => 'A-1 Chimney', 'Ace Fireplace' => 'Ace Fireplace']));
 
         config([
             'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
@@ -74,6 +75,7 @@ class WatchMissedCallsTest extends TestCase
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 15:00', 'America/New_York'));
         config(['app.timezone' => 'America/New_York']);
         $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('phone.ringcentral_companies', $tenant['org'], ['A1' => 'A-1 Chimney', 'Ace Fireplace' => 'Ace Fireplace']));
         config([
             'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
             'experimental_reports.ringcentral.client_id' => 'id',
@@ -99,6 +101,7 @@ class WatchMissedCallsTest extends TestCase
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 00:01', 'America/New_York'));
         config(['app.timezone' => 'America/New_York']);
         $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('phone.ringcentral_companies', $tenant['org'], ['A1' => 'A-1 Chimney', 'Ace Fireplace' => 'Ace Fireplace']));
 
         config([
             'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',

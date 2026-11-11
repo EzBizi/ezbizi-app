@@ -44,10 +44,22 @@ class WhatsAppNumber extends Model implements StatesRetention
     protected $table = 'whatsapp_numbers';
 
     protected $fillable = [
-        'organization_id', 'phone_number_id', 'waba_id', 'display_number', 'display_name', 'social_connection_id', 'auto_reply',
+        'organization_id', 'phone_number_id', 'waba_id', 'display_number', 'display_name', 'purpose', 'social_connection_id', 'auto_reply',
     ];
 
     protected $casts = ['auto_reply' => 'boolean'];
+
+    /** What a number is for. Reports send from `reports`, the staff bot answers on `support`. */
+    public const PURPOSES = ['reports', 'support', 'authentication', 'company'];
+
+    /**
+     * This organization's number for $purpose, or null when none is marked
+     * for it: the caller keeps its own choice then. Inside the tenant.
+     */
+    public static function forPurpose(string $purpose): ?self
+    {
+        return static::query()->where('purpose', $purpose)->first();
+    }
 
     public function organization(): BelongsTo
     {

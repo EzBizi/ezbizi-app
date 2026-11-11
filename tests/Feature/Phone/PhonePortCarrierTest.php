@@ -94,8 +94,10 @@ class PhonePortCarrierTest extends TestCase
         $this->app['auth']->forgetGuards();
         $response = $this->signedInAs($viewer)->getJson('/api/v1/phone/ports')->assertOk();
 
-        $this->assertStringNotContainsString('4321', $response->getContent());
-        $this->assertStringNotContainsString('55501234', $response->getContent());
+        // The carrier block only: the faked Twilio SID is random hex and can contain 4321.
+        $carrier = json_encode($response->json('data.0.carrier'));
+        $this->assertStringNotContainsString('4321', $carrier);
+        $this->assertStringNotContainsString('55501234', $carrier);
         $this->assertSame('••21', $response->json('data.0.carrier.pin'));
     }
 

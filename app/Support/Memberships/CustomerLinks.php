@@ -21,10 +21,8 @@ use Illuminate\Support\Str;
  */
 final class CustomerLinks
 {
-    public const JOIN_DAYS = 60;
 
     /** How long a job's review link works (Jose, 2026-10-08: "a unique one"). */
-    public const REVIEW_DAYS = 90;
 
     public static function token(Customer $customer): string
     {
@@ -39,7 +37,7 @@ final class CustomerLinks
      */
     public static function jobToken(Customer $customer, Job $job): string
     {
-        $body = $customer->getKey().'.'.$job->getKey().'.'.now()->addDays(self::REVIEW_DAYS)->timestamp;
+        $body = $customer->getKey().'.'.$job->getKey().'.'.now()->addDays(self::days('customers.review_link_days', $customer))->timestamp;
 
         return $body.'.'.self::mac($body);
     }
@@ -122,7 +120,7 @@ final class CustomerLinks
         } while (ReviewCode::query()->withoutGlobalScopes()->whereKey($code)->exists());
 
         ReviewCode::create(['code' => $code, 'customer_id' => $customer->getKey(), 'job_id' => $job->getKey(),
-            'expires_at' => now()->addDays(self::REVIEW_DAYS)]);
+            'expires_at' => now()->addDays(self::days('customers.review_link_days', $customer))]);
 
         return $code;
     }
@@ -144,7 +142,7 @@ final class CustomerLinks
             } while (ReviewCode::query()->withoutGlobalScopes()->whereKey($code)->exists());
 
             ReviewCode::create(['code' => $code, 'customer_id' => $customer->getKey(), 'job_id' => null,
-                'expires_at' => now()->addDays(self::JOIN_DAYS)]);
+                'expires_at' => now()->addDays(self::days('customers.join_link_days', $customer))]);
         }
 
         return url('/api/m/'.$code);
@@ -152,7 +150,7 @@ final class CustomerLinks
 
     public static function joinUrl(Customer $customer): string
     {
-        return URL::temporarySignedRoute('memberships.join', now()->addDays(self::JOIN_DAYS), ['customer' => $customer->getKey()]);
+        return URL::temporarySignedRoute('memberships.join', now()->addDays(self::days('customers.join_link_days', $customer)), ['customer' => $customer->getKey()]);
     }
 
     /**
@@ -194,5 +192,16 @@ final class CustomerLinks
     private static function mac(string $id): string
     {
         return substr(hash_hmac('sha256', 'membership-customer:'.$id, (string) config('app.key')), 0, 24);
+    }
+
+    /** A link lifetime from the organization's settings (Jose, 11-04: no constants). */
+    private static function days(string $key, Customer $customer): int
+    {
+        $organization = \App\Models\Organization::query()->withoutGlobalScopes()->findOrFail($customer->organization_id);
+
+        // Inside the customer's organization: a link is built from jobs, public
+        // pages and commands too, and Setting refuses an unscoped read.
+        return max(1, (int) app(\App\Support\Tenancy\TenantContext::class)->run($organization,
+            fn () => app(\App\Support\Settings\SettingsResolver::class)->get($key, $organization)));
     }
 }

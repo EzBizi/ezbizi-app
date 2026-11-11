@@ -5,10 +5,12 @@ namespace App\Support\Dashboard;
 use App\Models\User;
 use App\Support\Dashboard\Glances\AutomationsGlance;
 use App\Support\Dashboard\Glances\BusinessProfileGlance;
+use App\Support\Dashboard\Glances\CompanyGlance;
 use App\Support\Dashboard\Glances\CustomersGlance;
 use App\Support\Dashboard\Glances\EmailGlance;
 use App\Support\Dashboard\Glances\FieldGlance;
 use App\Support\Dashboard\Glances\FleetGlance;
+use App\Support\Dashboard\Glances\ProjectBoardGlance;
 use App\Support\Dashboard\Glances\HrGlance;
 use App\Support\Dashboard\Glances\InspectionGlance;
 use App\Support\Dashboard\Glances\InventoryGlance;
@@ -17,6 +19,7 @@ use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\MarketingGlance;
 use App\Support\Dashboard\Glances\PhoneGlance;
 use App\Support\Dashboard\Glances\ReportsGlance;
+use App\Support\Dashboard\Glances\AdsManagerGlance;
 use App\Support\Dashboard\Glances\AdsPerformanceGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Dashboard\Glances\SchedulingGlance;
@@ -43,8 +46,9 @@ class GlanceRegistry
      */
     public const ORDER = [
         // work_hours beside hr, where its sidebar entry sits (2026-09-24).
-        'hr', 'work_hours', 'customers', 'jobs', 'project_management', 'project_management_2', 'scheduling', 'inspection', 'marketing',
-        'web_management', 'phone', 'fleet_management', 'inventory',
+        'hr', 'work_hours', 'customers', 'jobs', 'project_board', 'scheduling', 'inspection', 'marketing',
+        // Ads beside Web Management, where Marketing draws it (2026-11-09).
+        'web_management', 'ads_manager', 'phone', 'fleet_management', 'inventory',
         // Sales before Leads, where its sidebar entry sits (2026-10-14).
         'services', 'leads',
         // The container Reviews and Business Profile moved into (2026-09-25).
@@ -68,6 +72,8 @@ class GlanceRegistry
         'financials',
         // Task Board, on the end (2026-10-13).
         'tasks',
+        // Company (design 175, 2026-11-03).
+        'company',
     ];
 
     /**
@@ -181,14 +187,6 @@ class GlanceRegistry
             'label' => 'Customer Experience',
             'sentence' => 'Reviews and Business Profile have their own boxes on this screen. Open the Customer Experience tab for both.',
         ],
-        'project_management' => [
-            'label' => 'Project Management - 1',
-            'sentence' => 'Project Management keeps its own list: every job waiting on an estimate, with its cancel clock. Open the Project Management - 1 tab for it.',
-        ],
-        'project_management_2' => [
-            'label' => 'Project Management - 2',
-            'sentence' => 'Project Management - 2 lists every job done pending approval. Open the Project Management - 2 tab for it.',
-        ],
         'newsletter' => [
             'label' => 'Newsletter',
             'sentence' => 'Newsletter keeps its own dashboard inside the tab: the month ahead, what has gone out, and who it reached. Open the Newsletter tab for it.',
@@ -222,6 +220,7 @@ class GlanceRegistry
         WorkHoursGlance::class,
         CustomersGlance::class,
         JobsGlance::class,
+        ProjectBoardGlance::class,
         InspectionGlance::class,
         FleetGlance::class,
         InventoryGlance::class,
@@ -234,6 +233,8 @@ class GlanceRegistry
         // Live since 2026-09-28: certification and paused campaigns, from
         // what the watchers stored. Spend stays in the tab.
         AdsPerformanceGlance::class,
+        // Marketing › Ads (2026-11-09): accounts and schedules, counts only.
+        AdsManagerGlance::class,
         SchedulingGlance::class,
         EmailGlance::class,
         AutomationsGlance::class,
@@ -241,6 +242,7 @@ class GlanceRegistry
         MarketingGlance::class,
         ReportsGlance::class,
         FieldGlance::class,
+        CompanyGlance::class,
     ];
 
     public function __construct(

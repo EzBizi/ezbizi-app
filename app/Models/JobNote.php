@@ -11,13 +11,15 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** A note somebody left on a job (2026-10-20). Append-only, as complaint notes are. */
-#[Fillable(['organization_id', 'job_id', 'user_id', 'body'])]
+#[Fillable(['organization_id', 'job_id', 'user_id', 'body', 'mentions'])]
 class JobNote extends Model implements StatesRetention
 {
     use BelongsToTenant;
     use HasUuids;
 
     public const UPDATED_AT = null;
+
+    protected $casts = ['mentions' => 'array'];
 
     public function user(): BelongsTo
     {

@@ -120,10 +120,79 @@ class TaskBoardCustomizationTest extends TestCase
             ->assertJsonPath("data.values.{$dropdown['id']}", $small)
             ->assertJsonPath("data.values.{$check}", true);
 
-        // Type cannot change once values exist; null clears.
-        $this->api()->patchJson("/api/v1/task-boards/{$this->board->id}/columns/{$number}", ['type' => 'text'])->assertStatus(422);
+        // A type change carries the values over (Jose, 2026-11-09); null clears.
+        $this->api()->patchJson("/api/v1/task-boards/{$this->board->id}/columns/{$number}", ['type' => 'text'])->assertOk();
+        $this->api()->getJson("/api/v1/tasks/{$id}")->assertJsonPath("data.values.{$number}", '12.5');
         $this->api()->patchJson("/api/v1/tasks/{$id}", ['values' => [$number => null]])->assertOk()
             ->assertJsonMissingPath("data.values.{$number}");
+    }
+
+    public function test_the_new_types_validate_and_read_back(): void
+    {
+        $col = fn (string $type, array $settings = []) => $this->api()->postJson("/api/v1/task-boards/{$this->board->id}/columns",
+            ['name' => ucfirst($type), 'type' => $type] + ($settings ? ['settings' => $settings] : []))->assertCreated()->json('data');
+        $phone = $col('phone')['id'];
+        $email = $col('email')['id'];
+        $url = $col('url')['id'];
+        $when = $col('datetime')['id'];
+        $money = $col('currency')['id'];
+        $long = $col('long_text')['id'];
+        $tags = $col('tags', ['options' => [['label' => 'Complaint'], ['label' => 'Bad Review']]]);
+        $link = $col('link')['id'];
+        [$a, $b] = array_column($tags['settings']['options'], 'id');
+        $customer = $this->inTenant($this->tenant['org'], fn () => \App\Models\Customer::create(
+            ['owning_franchise_id' => $this->tenant['franchise']->id, 'number' => 'C-9', 'name' => 'Ann Smith']));
+        $id = $this->newTask();
+
+        foreach ([$phone => 'call me', $email => 'nope', $url => 'ftp://x.y', $when => '2026-11-09', $money => 'ten',
+            $tags['id'] => ['zzz'], $link => 'customer:not-a-uuid'] as $column => $bad) {
+            $this->api()->patchJson("/api/v1/tasks/{$id}", ['values' => [$column => $bad]])->assertStatus(422)->assertJsonValidationErrors("values.{$column}");
+        }
+
+        $this->api()->patchJson("/api/v1/tasks/{$id}", ['values' => [
+            $phone => '(305) 724-2199', $email => 'ann@example.com', $url => 'https://example.com', $when => '2026-11-09 14:30',
+            $money => '99.5', $long => str_repeat('a', 6000), $tags['id'] => [$a, $b], $link => 'customer:'.$customer->id,
+        ]])->assertOk()
+            ->assertJsonPath("data.values.{$phone}", '(305) 724-2199')
+            ->assertJsonPath("data.values.{$money}", 99.5)
+            ->assertJsonPath("data.values.{$tags['id']}", [$a, $b])
+            ->assertJsonPath("data.values.{$link}.label", 'Ann Smith');
+    }
+
+    public function test_a_retired_label_stays_on_its_tasks(): void
+    {
+        $col = $this->api()->postJson("/api/v1/task-boards/{$this->board->id}/columns", ['name' => 'Reason', 'type' => 'dropdown',
+            'settings' => ['options' => [['label' => 'Parts'], ['label' => 'Spam']]]])->assertCreated()->json('data');
+        [$parts, $spam] = array_column($col['settings']['options'], 'id');
+        $id = $this->newTask(['values' => [$col['id'] => $spam]]);
+
+        $options = [['id' => $parts, 'label' => 'Parts'], ['id' => $spam, 'label' => 'Spam', 'retired' => true]];
+        $this->api()->patchJson("/api/v1/task-boards/{$this->board->id}/columns/{$col['id']}", ['settings' => ['options' => $options]])
+            ->assertOk()->assertJsonPath('data.settings.options.1.retired', true)
+            ->assertJsonMissingPath('data.settings.options.0.retired');
+        $this->api()->getJson("/api/v1/tasks/{$id}")->assertJsonPath("data.values.{$col['id']}", $spam);
+    }
+
+    public function test_a_type_change_warns_before_it_clears_values_and_makes_labels_options(): void
+    {
+        $text = $this->api()->postJson("/api/v1/task-boards/{$this->board->id}/columns", ['name' => 'Kind', 'type' => 'text'])
+            ->assertCreated()->json('data.id');
+        $one = $this->newTask(['values' => [$text => 'Complaint, Bad Review']]);
+        $two = $this->newTask(['values' => [$text => 'abc']]);
+        $url = "/api/v1/task-boards/{$this->board->id}/columns/{$text}";
+
+        // To a number: 'abc' and the list are lost, so it asks first.
+        $this->api()->patchJson($url, ['type' => 'number'])->assertStatus(422)
+            ->assertJsonPath('errors.type.0', '2 values cannot become number and would be cleared.');
+
+        // To tags: every label becomes an option, nothing lost.
+        $options = $this->api()->patchJson($url, ['type' => 'tags'])->assertOk()->json('data.settings.options');
+        $this->assertSame(['Complaint', 'Bad Review', 'abc'], array_column($options, 'label'));
+        $this->assertCount(2, $this->api()->getJson("/api/v1/tasks/{$one}")->json("data.values.{$text}"));
+
+        // Back to a checkbox loses both; accept_loss clears them.
+        $this->api()->patchJson($url, ['type' => 'checkbox', 'accept_loss' => true])->assertOk();
+        $this->api()->getJson("/api/v1/tasks/{$two}")->assertJsonMissingPath("data.values.{$text}");
     }
 
     public function test_subtasks_are_one_level_on_the_same_board_and_go_with_their_parent(): void

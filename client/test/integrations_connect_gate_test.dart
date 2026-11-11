@@ -126,12 +126,15 @@ void main() {
       find.byKey(const ValueKey('connection-detail:w-2')),
     );
     expect(current.data, isNot(contains(WorkizSessionLogin.legacyNote)));
-    expect(find.byKey(const ValueKey('disconnect:w-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('actions:w-1')), findsOneWidget);
     // Moved rather than sent again; only the legacy row offers it.
     expect(find.byKey(const ValueKey('workiz-move:w-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('workiz-move:w-2')), findsNothing);
 
     // A company's login disconnects through the ask-first panel.
+    // Disconnect is behind the row's actions (design 184).
+    await tester.tap(find.byKey(const ValueKey('actions:w-2')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('disconnect:w-2')));
     await tester.pumpAndSettle();
     expect(sent.where((r) => r.method == 'DELETE'), isEmpty);
@@ -185,7 +188,7 @@ void main() {
     await _open(tester, 'workiz');
     // One company in view, so it is picked and names the button.
     expect(find.text('Move to Harbor Home Services'), findsOneWidget);
-    expect(find.byKey(const ValueKey('disconnect:w-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('actions:w-1')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('workiz-move:w-1')));
     await tester.pumpAndSettle();
@@ -269,7 +272,10 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('provider:ringcentral')), findsOneWidget);
-    expect(find.textContaining('Reporting ·'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:reporting')),
+      findsOneWidget,
+    );
 
     await _open(tester, 'ringcentral');
     expect(find.text('Connect account'), findsOneWidget);
@@ -311,7 +317,10 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('provider:telegram')), findsOneWidget);
-    expect(find.textContaining('Messaging ·'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:messaging')),
+      findsOneWidget,
+    );
 
     await _open(tester, 'telegram');
     expect(find.text('Connect bot'), findsOneWidget);

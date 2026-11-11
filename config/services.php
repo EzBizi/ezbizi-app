@@ -153,7 +153,7 @@ return [
         // Login for Business configuration carries the scopes (whatsapp_
         // business_management + _messaging) and a never-expiring business
         // system user token, so the dialog takes config_id and no scope.
-        'whatsapp_signup_config' => env('META_WHATSAPP_SIGNUP_CONFIG_ID', '1772377890501449'),
+        'whatsapp_signup_config' => env('META_WHATSAPP_SIGNUP_CONFIG_ID'),
         'whatsapp_redirect' => env('META_WHATSAPP_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/whatsapp/callback',
         /*
@@ -191,6 +191,8 @@ return [
         // verify token. Separate from WhatsApp's on purpose: rotating one
         // subscription must not silently break the other.
         'messages_verify_token' => env('META_MESSAGES_VERIFY_TOKEN'),
+        // On once App Review approves Human Agent: people may answer Messenger/Instagram for 7 days.
+        'human_agent' => (bool) env('META_HUMAN_AGENT', false),
 
         // The ONE WhatsApp number the staff bot answers on (a phone_number_id).
         // Unset means the bot answers nothing - the safe way to fail, since the
@@ -425,6 +427,10 @@ return [
     |
     */
     'twilio' => [
+        // Phone check alerts on WhatsApp: null until Meta approves the template.
+        // Who gets them, and the test-call number, are settings (phone.*).
+        'audit_alert_whatsapp_template' => env('PHONE_AUDIT_ALERT_WHATSAPP_TEMPLATE'),
+
         'platform_account_sid' => env('TWILIO_PLATFORM_ACCOUNT_SID'),
         'platform_api_key_sid' => env('TWILIO_PLATFORM_API_KEY_SID'),
         'platform_api_secret' => env('TWILIO_PLATFORM_API_SECRET'),
@@ -559,6 +565,21 @@ return [
     // ~43 spots open that are taken.
     'workiz' => [
         'retire_deleted' => (bool) env('WORKIZ_RETIRE_DELETED', false),
+    ],
+
+    // Payments: Stripe Connect, Standard accounts (Jose 2026-11-06), direct
+    // charges on the invoicing company's own account
+    // (App\Support\Payments\StripeGateway). Unset secret: invoices carry no
+    // Pay link and connecting says "not set up on this server yet".
+    'stripe' => [
+        'secret' => env('STRIPE_SECRET', ''),
+        // Optional: no platform (non-Connect) endpoint exists today.
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET', ''),
+        'connect_webhook_secret' => env('STRIPE_CONNECT_WEBHOOK_SECRET', ''),
+        // `full` (Standard, chosen) or `express` (EzBizi carries losses).
+        'connect_dashboard' => env('STRIPE_CONNECT_DASHBOARD', 'full'),
+        // EzBizi's cut of each payment, percent; 0 takes nothing.
+        'application_fee_percent' => (float) env('STRIPE_APPLICATION_FEE_PERCENT', 0),
     ],
 
     // The Grok Build CLI's home on the box, signed in to Jose's Grok

@@ -880,216 +880,152 @@ const Map<String, Tour> operationsTours = {
       _jobMaterials,
     ],
   ),
-  // ── Project Management ───────────────────────────────────────────────
-  // Its own module since 2026-10-21. Design 144: Overview (was Dashboard),
-  // Jobs, Assignments, Repair team (Reports and Table merged), Rules (new),
-  // Logs and Settings, all in one frame.
-  'project_management': Tour(
-    version: 4,
-    steps: [
-      TourStep(
-        anchor: 'tour-pm-dash-areas',
-        title: 'Service areas',
-        body: 'All, or one service area. Every number below follows it.',
-        since: 3,
-      ),
-      TourStep(
-        anchor: 'tour-pm-dash-flags',
-        title: 'Filters',
-        body:
-            'Redo or one go, disputes, stopped payments and external '
-            'companies.',
-        since: 3,
-      ),
-      TourStep(
-        anchor: 'tour-pm-dash-tiles',
-        title: 'The flow',
-        body:
-            'The five stages in the order a job moves through them, each '
-            'with its rule and count. Click one to open exactly those jobs; '
-            'ⓘ says how it is counted.',
-        since: 4,
-      ),
-      TourStep(
-        anchor: 'tour-pm-dash-attention',
-        title: 'Needs attention',
-        body:
-            'Paid but not started past the warning days, payments stopped, '
-            'and jobs waiting review with no reason. Red means something to '
-            'do.',
-        since: 4,
-      ),
-      TourStep(
-        anchor: 'tour-pm-dash-review',
-        title: 'Waiting review',
-        body: 'Each service area, split by why its jobs wait.',
-        since: 3,
-      ),
-      TourStep(
-        anchor: 'tour-pm-dash-teams',
-        title: 'By technician',
-        body: 'How many open jobs each technician has.',
-        since: 4,
-      ),
-    ],
-  ),
-  'project_management/Repair team': Tour(
+  // ── Project Management (project_board, Jose 2026-11-06) ──────────────
+  'project_board': Tour(
     version: 1,
     steps: [
       TourStep(
-        anchor: 'tour-pm-report-mode',
-        title: 'Cards or Table',
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
         body:
-            'Cards: one week, a card per technician. Table: eight weeks, a '
-            'row per technician per week, every field.',
+            'Unscheduled: jobs waiting, with no date yet. Which statuses each sub-tab lists is in Settings.',
       ),
       TourStep(
-        anchor: 'tour-pm-report-week',
-        title: 'The week',
-        body: 'Monday to Sunday. The arrows go a week back or forward.',
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
       ),
       TourStep(
-        anchor: 'tour-pm-report-cards',
-        title: 'The Repair Team report',
-        body:
-            'A card per technician and the repair team combined. Cost from '
-            'gross is red above the limit in Settings. Copy for WhatsApp '
-            'copies it as text.',
-      ),
-    ],
-  ),
-  'project_management/Rules': Tour(
-    version: 1,
-    steps: [
-      TourStep(
-        anchor: 'tour-pm-rules-scope',
-        title: 'Which jobs count',
-        body:
-            'Every number in Project Management counts only these jobs. '
-            'Change opens the card in Settings.',
-      ),
-      TourStep(
-        anchor: 'tour-pm-rules-stages',
-        title: 'How a job moves',
-        body: 'Which statuses put a job in each stage, and how many are there.',
-      ),
-      TourStep(
-        anchor: 'tour-pm-rules-automations',
-        title: 'What changes jobs',
-        body:
-            'Each rule as When, Only if and Then, whether it is on, and what '
-            'it did this week.',
-      ),
-      TourStep(
-        anchor: 'tour-pm-rules-numbers',
-        title: 'How numbers are measured',
-        body: 'Every number on the other tabs, in plain words.',
-      ),
-    ],
-  ),
-  'project_management/Settings': Tour(
-    version: 2,
-    steps: [
-      TourStep(
-        anchor: 'tour-pm-settings-stages',
-        title: 'Stages',
-        body:
-            'The statuses that put a job in each stage, and whether it must be '
-            'scheduled or have money due.',
-        since: 2,
-      ),
-      TourStep(
-        anchor: 'tour-pm-settings-reasons',
-        title: 'Review reasons',
-        body: 'Why a job waits for review.',
-        since: 2,
-      ),
-      TourStep(
-        anchor: 'tour-pm-settings-warn',
-        title: 'Paid but not started',
-        body:
-            'After how many days, and to which address, the daily warning goes.',
-        since: 2,
-      ),
-      TourStep(
-        anchor: 'tour-pm-settings-watched',
-        title: 'Estimate clock',
-        body:
-            'Jobs in these statuses are checked daily for how long their estimate waited.',
-      ),
-    ],
-  ),
-  // UI queue 139: what rules and people changed on jobs, and why a rule skipped.
-  'project_management/Logs': Tour(
-    version: 1,
-    steps: [
-      TourStep(
-        anchor: 'tour-pm-logs-range',
-        title: 'Dates',
-        body: 'Today, Yesterday, This week, This month, or dates you choose.',
-      ),
-      TourStep(
-        anchor: 'tour-pm-logs-outcome',
-        title: 'What to show',
-        body:
-            'Changes a rule or a person made, runs that failed, runs a rule '
-            'skipped, or all of them.',
-      ),
-      TourStep(
-        anchor: 'tour-pm-logs-list',
-        title: 'What happened',
-        body:
-            'Each change, the job and who made it. Click a job number for its '
-            'timeline, or a rule to open it. Why? says why a rule skipped.',
-      ),
-    ],
-  ),
-  // Design 143: the cards Action 1 made when a payment arrived.
-  'project_management/Assignments': Tour(
-    version: 1,
-    steps: [
-      TourStep(
-        anchor: 'tour-pm-assign-filters',
+        anchor: 'project-board-search',
         title: 'Search',
         body:
-            'A card title, or its job, customer, address or phone. The line '
-            'above says which jobs Project Management shows; Change opens '
-            'Settings.',
-      ),
-      TourStep(
-        anchor: 'tour-pm-assign-board',
-        title: 'By technician',
-        body:
-            'Task Board cards the payment rule made on every branch board, '
-            'grouped by their Technician column, To assign first. Drag a card '
-            'to a technician, or set Technician on the card.',
+            'Customer, job number or address. It stays as you change sub-tab.',
       ),
     ],
   ),
-  'project_management/Jobs': Tour(
-    version: 2,
+  'project_board/Ready to Schedule': Tour(
+    version: 1,
     steps: [
       TourStep(
-        anchor: 'tour-pm-jobs-stages',
-        title: 'The flow',
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
         body:
-            'Waiting review to Done, waiting payment, each with how many jobs '
-            'are in it. Click one to list it.',
-        since: 2,
+            'Ready to Schedule: jobs ready to book. Which statuses each sub-tab lists is in Settings.',
       ),
       TourStep(
-        anchor: 'tour-pm-jobs-filters',
-        title: 'Filters and search',
-        body:
-            'A service area, redo or one go, disputes, stopped payments, '
-            'external companies and, in progress, a second visit.',
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
       ),
       TourStep(
-        anchor: 'tour-pm-jobs-list',
-        title: 'The jobs',
+        anchor: 'project-board-search',
+        title: 'Search',
         body:
-            'Newest change first, 100 to a page. Click one for its timeline, '
-            'its review reason, external company and second visit.',
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/Scheduled': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'Scheduled: jobs waiting, with a date. Which statuses each sub-tab lists is in Settings.',
+      ),
+      TourStep(
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
+      ),
+      TourStep(
+        anchor: 'project-board-search',
+        title: 'Search',
+        body:
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/In Progress': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'In Progress: jobs under way. Which statuses each sub-tab lists is in Settings.',
+      ),
+      TourStep(
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
+      ),
+      TourStep(
+        anchor: 'project-board-search',
+        title: 'Search',
+        body:
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/Done Waiting Payment': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'Done Waiting Payment: work done, money still to come. Which statuses each sub-tab lists is in Settings.',
+      ),
+      TourStep(
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
+      ),
+      TourStep(
+        anchor: 'project-board-search',
+        title: 'Search',
+        body:
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/Complete': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'Complete: finished jobs. Which statuses each sub-tab lists is in Settings.',
+      ),
+      TourStep(
+        anchor: 'project-board-franchise',
+        title: 'Franchise',
+        body: 'All, or one franchise of this company.',
+      ),
+      TourStep(
+        anchor: 'project-board-search',
+        title: 'Search',
+        body:
+            'Customer, job number or address. It stays as you change sub-tab.',
+      ),
+    ],
+  ),
+  'project_board/Settings': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-board-columns',
+        title: 'Columns',
+        body:
+            'Rename, drag to reorder, show or hide, and show as coloured labels. Each card has its own Save.',
+      ),
+      TourStep(
+        anchor: 'project-board-part-tags',
+        title: 'Part status',
+        body: 'The job tags shown in the Part Status column.',
       ),
     ],
   ),
@@ -1101,7 +1037,8 @@ const Map<String, Tour> operationsTours = {
   'jobs/Jobs/Photos & files': _jobPanelFiles,
   'jobs/Photos & files': _jobPanelFiles,
   'jobs/Estimates': Tour(
-    version: 1,
+    // 2: List | Board (design 172).
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-jobs-estimates-list',
@@ -1114,6 +1051,14 @@ const Map<String, Tour> operationsTours = {
         anchor: 'estimate-new',
         title: 'New estimate',
         body: 'Starts a draft for a customer.',
+      ),
+      TourStep(
+        anchor: 'estimate-view',
+        title: 'List or Board',
+        body:
+            'Board shows a column per status: drag an estimate to move it on. '
+            'Columns it cannot go to fade. On a phone, use Move to.',
+        since: 2,
       ),
       TourStep(
         anchor: 'tour-jobs-estimates-chips',
@@ -1259,8 +1204,17 @@ const _jobTabs = TourStep(
 );
 
 const _jobPanelJob = Tour(
-  version: 1,
+  // 2: the Record pill (design 177).
+  version: 2,
   steps: [
+    TourStep(
+      anchor: 'job-record-start',
+      title: 'Record',
+      body:
+          'Records the visit for safety, after you confirm what it records. '
+          'While it runs it turns red with a timer; tap Stop to end it.',
+      since: 2,
+    ),
     TourStep(
       anchor: 'tour-jobs-job-work',
       title: 'The work',
@@ -1317,8 +1271,17 @@ const _jobPanelMoney = Tour(
 );
 
 const _jobPanelFiles = Tour(
-  version: 1,
+  // 2: Before and After on the photos (inspection pairs).
+  version: 2,
   steps: [
+    TourStep(
+      anchor: 'job-own-files',
+      title: 'Added in EzBizi',
+      body:
+          'Photos and files added here, and the before and after photos from '
+          'its inspections, marked Before or After.',
+      since: 2,
+    ),
     TourStep(
       anchor: 'job-workiz-files',
       title: 'Photos and files',

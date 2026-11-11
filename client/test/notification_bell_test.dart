@@ -108,6 +108,51 @@ void main() {
     expect(colourOf('n1'), scheme.primary);
   });
 
+  testWidgets('the inbox groups by day and filters to assigned and unread', (
+    tester,
+  ) async {
+    final now = DateTime.now().toUtc();
+    Map<String, dynamic> row(String id, DateTime at, {String? kind, bool read = false}) => {
+      'id': id,
+      'source': 'automation',
+      'title': 'Row $id',
+      'body': null,
+      'urgent': false,
+      'kind': kind,
+      'subject': {'type': null, 'id': null},
+      'meta': {'module': null, 'filter': null},
+      'read_at': read ? now.toIso8601String() : null,
+      'created_at': at.toIso8601String(),
+    };
+
+    await _pumpWithItem(
+      tester,
+      item: row('a', now, kind: 'assigned'),
+      also: [
+        row('b', now.subtract(const Duration(days: 3)), read: true),
+        row('c', now.subtract(const Duration(days: 30))),
+      ],
+      onOpenModule: (_, _, _) {},
+    );
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Last 7 days'), findsOneWidget);
+    expect(find.text('Older'), findsOneWidget);
+
+    await tester.tap(find.text('Assigned to me'));
+    await tester.pumpAndSettle();
+    expect(find.text('Row a'), findsOneWidget);
+    expect(find.text('Row c'), findsNothing);
+
+    await tester.tap(find.text('All'));
+    await tester.tap(find.byKey(const Key('notifications-unread-only')));
+    await tester.pumpAndSettle();
+    expect(find.text('Row b'), findsNothing);
+    expect(find.text('Row c'), findsOneWidget);
+  });
+
   testWidgets('a notification wears the icon of its module and says when', (
     tester,
   ) async {

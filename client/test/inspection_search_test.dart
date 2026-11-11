@@ -107,13 +107,15 @@ void main() {
     ]);
   });
 
-  testWidgets('on a phone the bar sits in the top third, no overflow', (
+  // Phone audit 2026-11-04: a third of the way down left the suggestions
+  // under the keyboard, so on a phone the bar sits at the top.
+  testWidgets('on a phone the bar sits at the top, no overflow', (
     tester,
   ) async {
     await _pump(tester, const Size(390, 844));
 
     final bar = tester.getRect(find.byKey(const Key('tour-inspection-search')));
-    expect(bar.center.dy, closeTo(844 / 3, 4));
+    expect(bar.top, lessThan(120));
     expect(bar.left, greaterThanOrEqualTo(16));
 
     await tester.enterText(find.byType(TextField), 'Mar');

@@ -56,6 +56,17 @@ class NotificationDestinationTest extends TestCase
         $this->assertSame(['type' => 'email_message', 'id' => 'msg-123', 'mailbox' => 'info@alpha.test'], $meta['record']);
     }
 
+    public function test_an_assignment_is_kind_assigned_and_anything_else_is_not(): void
+    {
+        $tenant = $this->provisionTenant('Gamma');
+        $this->metaFor($tenant, [], ['key' => 'job.assigned', 'payload' => []]);
+        $this->assertSame('assigned', $this->signedInAs($tenant['admin'])->getJson('/api/v1/notifications')->json('data.0.kind'));
+
+        $other = $this->provisionTenant('Delta');
+        $this->metaFor($other, [], ['key' => 'vehicle.unassigned', 'payload' => []]);
+        $this->assertNull($this->signedInAs($other['admin'])->getJson('/api/v1/notifications')->json('data.0.kind'));
+    }
+
     public function test_a_missed_call_opens_that_call(): void
     {
         $tenant = $this->provisionTenant('Beta');

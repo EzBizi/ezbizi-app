@@ -32,6 +32,18 @@ class ModuleTabsFixtureTest extends TestCase
                 'parent' => $module->parent,
                 'tabs' => array_map(fn ($tab) => $tab->label, $module->tabs),
             ];
+
+            // A tab drawn inside another (Marketing › Social Media Management › Compose).
+            $labels = array_column(array_map(fn ($t) => ['k' => $t->key, 'l' => $t->label], $module->tabs), 'l', 'k');
+            $within = [];
+            foreach ($module->tabs as $tab) {
+                if ($tab->within !== null) {
+                    $within[$tab->label] = $labels[$tab->within] ?? $tab->within;
+                }
+            }
+            if ($within !== []) {
+                $modules[$module->key]['within'] = $within;
+            }
         }
         ksort($modules);
 

@@ -88,7 +88,7 @@ class MembershipsPublicTest extends TestCase
         $this->assertSame($this->customer->id, $event->subject_id);
         $this->assertSame($job->id, $event->payload['after']['job_id']);
 
-        $this->travel(CustomerLinks::REVIEW_DAYS + 1)->days();
+        $this->travel(91)->days();   // past the 90-day default
         $this->assertNull($this->inTenant($this->t['org'], fn () => CustomerLinks::customerId($q['c'])));
     }
 
@@ -249,5 +249,26 @@ class MembershipsPublicTest extends TestCase
         AutomationEvent::withoutGlobalScopes()->delete();
         $this->postJson('/api/v1/web/review', ['key' => $this->site->public_key, 'rating' => 'happy', 'c' => $c])->assertOk();
         $this->assertTrue($offered());
+    }
+
+    public function test_the_join_link_lifetime_is_the_organizations_setting(): void
+    {
+        $this->inTenant($this->t['org'], function () {
+            \App\Models\Setting::create(['organization_id' => $this->t['org']->id, 'scope_type' => \App\Support\Settings\SettingDefinition::SCOPE_ORGANIZATION,
+                'scope_id' => $this->t['org']->id, 'key' => 'customers.join_link_days', 'value' => 5]);
+            app()->forgetInstance(\App\Support\Settings\SettingsResolver::class);   // it caches per organization
+            $url = CustomerLinks::joinUrl($this->customer);
+            parse_str(parse_url($url, PHP_URL_QUERY), $q);
+            $this->assertEqualsWithDelta(now()->addDays(5)->timestamp, (int) $q['expires'], 5);
+        });
+    }
+
+    public function test_a_link_can_be_built_outside_any_tenant(): void
+    {
+        // 2026-11-09 prod: "No tenant in context" from CustomerLinks::days().
+        $customer = $this->inTenant($this->t['org'], fn () => $this->customer->fresh());
+        app()->forgetInstance(\App\Support\Settings\SettingsResolver::class);   // no cached read to hide it
+        // No context at all, as in a queued job or a public page before it resolves.
+        $this->assertStringContainsString('/memberships/join/', CustomerLinks::joinUrl($customer));
     }
 }

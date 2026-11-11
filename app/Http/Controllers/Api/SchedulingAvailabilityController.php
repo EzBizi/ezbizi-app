@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Support\Leads\AddressCheck;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
+use App\Support\Leads\AddressCheck;
+use App\Support\Scheduling\BranchOffice;
 use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Reschedules;
@@ -64,7 +65,7 @@ class SchedulingAvailabilityController extends Controller
     public function suggestion(Request $request): JsonResponse
     {
         $this->authorize('viewAny', ServiceArea::class);
-        $data = $request->validate(['zip' => ['required', 'string', 'max:16']]);
+        $data = $request->validate(['zip' => ['required', 'string', 'max:16'], 'date' => ['nullable', 'date_format:Y-m-d']]);
         $zip = $this->zip5((string) $data['zip']);
         $area = $this->areaForZip($zip, ViewScope::forUser($request->user())->franchiseIds());
 
@@ -74,8 +75,8 @@ class SchedulingAvailabilityController extends Controller
 
         $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $request->user()->organization));
 
-        return response()->json(['data' => ['area_id' => $area->id, 'area_name' => $area->name]
-            + app(NearbySuggestion::class)->for($area, $zip, $from)]);
+        return response()->json(['data' => ['area_id' => $area->id, 'area_name' => $area->name, 'for_date' => $data['date'] ?? null]
+            + app(NearbySuggestion::class)->for($area, $zip, $from, $data['date'] ?? null)]);
     }
 
     /**
@@ -230,7 +231,8 @@ class SchedulingAvailabilityController extends Controller
             ]);
         }
 
-        $franchiseIds = ViewScope::forUser($request->user())->franchiseIds();
+        // A switched-off branch's areas are not offered (Jose, 2026-11-10).
+        $franchiseIds = ViewScope::forUser($request->user())->switchedOnFranchiseIds();
         $franchiseNames = Franchise::whereIn('id', $franchiseIds)->pluck('name', 'id');
 
         [$areas, $by] = match (true) {
@@ -279,7 +281,7 @@ class SchedulingAvailabilityController extends Controller
                 'resolved' => $resolved,
                 'basis' => 'remaining',
                 'from' => $from->toDateString(),
-                'areas' => $areas->map(function (ServiceArea $area) use ($from, $franchises) {
+                'areas' => $areas->map(function (ServiceArea $area) use ($from, $franchises, $data) {
                     $this->authorize('view', $area);
 
                     $configured = Openings::hasCapacity($area);
@@ -296,6 +298,8 @@ class SchedulingAvailabilityController extends Controller
                         'after' => $next['after'] ?? [],
                         'closed' => $next['closed'] ?? [],
                         'none_because' => $next['none_because'] ?? null,
+                        // The branch's physical office, for the caller asking where we are.
+                        'office' => BranchOffice::for($area, isset($data['zip']) ? $this->zip5((string) $data['zip']) : null),
                     ];
                 })->values()->all(),
             ],
@@ -315,7 +319,7 @@ class SchedulingAvailabilityController extends Controller
     {
         $this->authorize('viewAny', ServiceArea::class);
 
-        $ids = ServiceArea::whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
+        $ids = ServiceArea::whereIn('franchise_id', ViewScope::forUser($request->user())->switchedOnFranchiseIds())
             ->distinct()
             ->pluck('franchise_id');
 

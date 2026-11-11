@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\CallReportLabel;
+use App\Models\CallReportOverride;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
 use App\Models\WorkizCall;
@@ -12,6 +13,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\Experimental\WorkizJobs;
+use App\Support\Reports\ReportView;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,17 +45,6 @@ use Symfony\Component\HttpFoundation\Response as Status;
 class ExperimentalCallReportController extends Controller
 {
     public function __construct(private readonly AuditLogger $audit) {}
-
-    /**
-     * A booking can be entered AFTER the appointment, so the window reaches back.
-     *
-     * Workiz's `start_date` filters the appointment date, not the booking date,
-     * so a day's bookings have to be found inside a window of appointments.
-     * Measured across all nine accounts: six jobs have an appointment earlier
-     * than their booking, the worst by 13 days. 30 gives room and costs 17
-     * requests for ~840 rows.
-     */
-    public const LOOKBACK_DAYS = 30;
 
     /**
      * Books that exist, are missing from every total, and always will be.
@@ -146,7 +137,7 @@ class ExperimentalCallReportController extends Controller
             'timezone' => ['nullable', 'string', 'timezone'],
         ]);
 
-        $zone = $validated['timezone'] ?? (string) config('app.timezone');
+        $zone = $validated['timezone'] ?? ReportView::zone();
         $day = CarbonImmutable::parse($validated['day'] ?? 'today', $zone)->startOfDay();
 
         /*
@@ -203,7 +194,7 @@ class ExperimentalCallReportController extends Controller
 
         if ($accounts !== []) {
             // The synced copy, not Workiz live - see WorkizJobs::stored().
-            $stored = $workiz->storedAll($start->subDays(self::LOOKBACK_DAYS)->toDateString());
+            $stored = $workiz->storedAll($start->subDays(ReportView::lookbackDays())->toDateString());
             $jobs = $stored['jobs'];
             $syncedAt = $stored['synced_at'];
         }
@@ -391,5 +382,42 @@ class ExperimentalCallReportController extends Controller
             'converted_at' => $row->created_at?->toIso8601String(),
             'converted_by' => $row->converter?->name,
         ]]);
+    }
+
+    /**
+     * PUT /api/v1/reports/experimental/calls/{call}/override {field, value}:
+     * sets a call's client (new | existing) or booking (booked | not_booked)
+     * by hand (Jose, 2026-11-03, for Trey). reports.handles, on the route.
+     */
+    public function override(Request $request, string $call): JsonResponse
+    {
+        $data = $request->validate([
+            'field' => ['required', 'in:client,booking'],
+            'value' => ['required', 'string'],
+        ]);
+        if (! in_array($data['value'], CallReportOverride::VALUES[$data['field']], true)) {
+            abort(Status::HTTP_UNPROCESSABLE_ENTITY, 'Choose '.implode(' or ', CallReportOverride::VALUES[$data['field']]).'.');
+        }
+
+        $row = CallReportOverride::query()->updateOrCreate(
+            ['organization_id' => $request->user()->organization_id, 'call_id' => $call, 'field' => $data['field']],
+            ['value' => $data['value'], 'set_by' => $request->user()->getKey()],
+        );
+        $this->audit->log('call_report.overridden', $row, metadata: ['call_id' => $call, 'field' => $data['field'], 'value' => $data['value']]);
+
+        return response()->json(['data' => ['call_id' => $call, 'field' => $row->field, 'value' => $row->value, 'set_by' => $request->user()->name]]);
+    }
+
+    /** DELETE .../calls/{call}/override?field=: back to what the phones and Workiz say. */
+    public function revert(Request $request, string $call): JsonResponse
+    {
+        $field = $request->validate(['field' => ['required', 'in:client,booking']])['field'];
+        $row = CallReportOverride::query()->where('call_id', $call)->where('field', $field)->first();
+        if ($row !== null) {
+            $this->audit->log('call_report.override_reverted', $row, metadata: ['call_id' => $call, 'field' => $field, 'was' => $row->value]);
+            $row->delete();
+        }
+
+        return response()->json(['data' => ['call_id' => $call, 'field' => $field, 'value' => null]]);
     }
 }

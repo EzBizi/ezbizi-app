@@ -9,6 +9,7 @@ use App\Support\Social\Publishing\LinksToPosts;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Social\Publishing\StillProcessing;
+use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -43,7 +44,22 @@ final class PublishSocialTarget implements ShouldQueue
 
     public int $tries = 1;
 
-    public function __construct(public readonly string $targetId) {}
+    /*
+     * YouTube, LinkedIn and TikTok give an upload up to 120 s, and the default
+     * worker kills a job at 60 s. On `database-long` (retry_after 200) a slow
+     * upload finishes instead of being cut off mid-send.
+     */
+    public int $timeout = 150;
+
+    public function __construct(public readonly string $targetId)
+    {
+        // Only where the long worker exists: under `sync` (tests) the job runs inline.
+        if (config('queue.default') === 'database') {
+            $this->onConnection('database-long');
+        }
+
+        $this->onQueue('long');
+    }
 
     public function handle(TenantContext $tenant, EventEmitter $events): void
     {
@@ -77,12 +93,18 @@ final class PublishSocialTarget implements ShouldQueue
             return;
         }
 
+        // Whoever queued it owns it once. A second job for the same target
+        // (two approvals, a retry racing a sweep) finds it no longer queued.
+        if ($target->status !== SocialPostTarget::STATUS_QUEUED) {
+            return;
+        }
+
         $publisher = Publishers::for($connection->providerEnum());
 
         if ($publisher === null) {
             // The controller refuses these before a row is written, so reaching
             // here means a publisher was removed after something was queued.
-            $this->failed($target, $events, (string) Publishers::refusalFor($connection->providerEnum()));
+            $this->markFailedAndEmit($target, $events, (string) Publishers::refusalFor($connection->providerEnum()));
 
             return;
         }
@@ -103,7 +125,7 @@ final class PublishSocialTarget implements ShouldQueue
 
             return;
         } catch (SocialPublishFailed $e) {
-            $this->failed($target, $events, $e->getMessage());
+            $this->markFailedAndEmit($target, $events, $e->getMessage());
 
             return;
         } catch (Throwable $e) {
@@ -114,7 +136,7 @@ final class PublishSocialTarget implements ShouldQueue
              * (§R8), and the real message goes to the log where it belongs.
              */
             report($e);
-            $this->failed(
+            $this->markFailedAndEmit(
                 $target,
                 $events,
                 'EzBizi could not reach '.$connection->providerLabel().'. Nothing was posted. '
@@ -126,6 +148,21 @@ final class PublishSocialTarget implements ShouldQueue
             if ($temp !== null && is_file($temp)) {
                 unlink($temp);
             }
+        }
+
+        if ($publisher instanceof TikTokPublisher) {
+            /*
+             * The bytes landed; TikTok has not accepted the video yet. It can
+             * still refuse it during processing, so "sent" waits for
+             * FinishTikTokPost to hear PUBLISH_COMPLETE (or the inbox).
+             */
+            $target->forceFill(['options' => array_merge((array) ($target->options ?? []), [
+                'tiktok_publish_id' => $remoteId,
+            ])])->save();
+
+            FinishTikTokPost::dispatch($target->getKey())->delay(now()->addSeconds(FinishTikTokPost::EVERY));
+
+            return;
         }
 
         $this->succeeded($target, $publisher, $remoteId, $events);
@@ -157,7 +194,38 @@ final class PublishSocialTarget implements ShouldQueue
         ]);
     }
 
-    public function failed(SocialPostTarget $target, EventEmitter $events, string $because): void
+    /**
+     * Laravel's own failure hook: the worker timed out or something threw
+     * outside the try above. The target must not stay `queued`, where nothing
+     * can retry, edit or cancel it.
+     */
+    public function failed(?Throwable $e = null): void
+    {
+        $target = SocialPostTarget::query()->withoutGlobalScopes()->find($this->targetId);
+        $organization = $target === null ? null
+            : Organization::query()->withoutGlobalScopes()->find($target->organization_id);
+
+        if ($target === null || $organization === null || $target->status !== SocialPostTarget::STATUS_QUEUED) {
+            return;
+        }
+
+        app(TenantContext::class)->run($organization, fn () => $this->markFailedAndEmit(
+            $target,
+            app(EventEmitter::class),
+            self::unknownOutcome((string) $target->connection?->providerLabel()),
+        ));
+    }
+
+    /** The sentence for a send that stopped without an answer. */
+    public static function unknownOutcome(string $network): string
+    {
+        $network = $network !== '' ? $network : 'the network';
+
+        return 'EzBizi stopped waiting for '.$network.' before it answered, so it cannot tell whether the post went out. '
+            .'Check '.$network.' before you try again.';
+    }
+
+    public function markFailedAndEmit(SocialPostTarget $target, EventEmitter $events, string $because): void
     {
         $target->markFailed($because);
 

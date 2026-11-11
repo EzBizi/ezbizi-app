@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\TenantScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -32,6 +34,26 @@ class Franchise extends Model
     protected function casts(): array
     {
         return ['is_active' => 'boolean'];
+    }
+
+    /**
+     * Switched off: its own switch is off, or its company is switched off
+     * (Company::scopeSwitchedOff, which carries the rule).
+     */
+    public function scopeSwitchedOff(Builder $query): void
+    {
+        $query->where(fn (Builder $q) => $q->where($q->qualifyColumn('is_active'), false)
+            ->orWhereHas('company', fn (Builder $c) => $c->withoutGlobalScope(TenantScope::class)->switchedOff()));
+    }
+
+    public function scopeSwitchedOn(Builder $query): void
+    {
+        $query->whereNot(fn (Builder $q) => $q->switchedOff());
+    }
+
+    public static function isSwitchedOff(?string $id): bool
+    {
+        return $id !== null && static::query()->whereKey($id)->switchedOff()->exists();
     }
 
     public function company(): BelongsTo

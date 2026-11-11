@@ -5280,10 +5280,70 @@ Marketing asked for this (server 2b9173a4: POST newsletter/audiences takes an op
 
 Customers asked for this (server 8975174c: tags on every customer, PATCH the whole list, GET ?tag=). Jose wants newsletters and automations "by tag". Recommended: 1 + phone 4. Neutral chips with × under the name in the panel, an inline "+ Tag" field that suggests existing tags and saves at once, up to 2 chips then "+N" on each row, and a Tag search picker in the filter bar. Alternatives: 2, a Tags field in Info with Save; 3, quick-filter chips for the most-used tags.
 
-### 175 · Ownership chart, process map, KPI report — **sent 2026-11-03** (`docs/previews/ownership-process-kpi-layouts.html`)
+### 175 · Ownership chart, process map, KPI report — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as you recommend with everything") (`docs/previews/ownership-process-kpi-layouts.html`)
 
 Jose's Monday list; Jose 11-03: "B, everything we do is for ezbizi" (a screen, not a document). Recommended: 1 (a Company module with Ownership | Processes | KPIs tabs) + phone 4. Data gaps: no reports-to field (HR); no area or step owner record (new); no answer, booking or close rate goals and no tech KPI goals (Reports). HR and Reports were asked.
 
-### 176 · Business Profile: Google posts to approve — **sent 2026-11-03** (`docs/previews/gbp-post-approval-layouts.html`)
+### 176 · Business Profile: Google posts to approve — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as you recommend with everything") (`docs/previews/gbp-post-approval-layouts.html`)
 
 For CX (ba397315f). Recommended 1 + phone 4: a Posts to approve (N) tab, list + Google preview, Approve / Edit / Disapprove, per-listing Publish without approval switch (off).
+
+### 177 · Field recordings: summary + transcript, Record on the job — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend for everything as usual") (`docs/previews/field-recording-transcript-layouts.html`)
+
+For Field (c60be2fc) and Jobs. Jose's "AI Tech Recorder & Summary". Recommended 1 + phone 4: labelled summary sections with copy, transcript with clock times; Record pill in the job header (red ● 00:12 · Stop while recording), first start asks "I told the customer" in a SidePanel.
+
+### 178 · Task Board: Calendar, Timeline, Number and Formula columns — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend for everything as usual") (`docs/previews/task-board-calendar-timeline-layouts.html`)
+
+For Task Board (Monday survey 131037c3a; A-1 off Monday by Nov 10). Recommended 1 + phone 4: Calendar (Month|Week, drag to re-date, no-date tray) and Timeline (range column + Gantt, drag/resize, today line, Week|Month|Quarter) join the existing Table|Kanban|Cards switcher; Number gets Plain|Currency|% and a Formula column is built in the column settings SidePanel, with group-footer sums. Phone: Calendar is an agenda list, Timeline scrolls sideways.
+
+### 179 · Calls: set New/Existing and Booked/Not booked by hand — **APPROVED 2026-11-03, option 1 + phone 4** (Jose: "as u recommend on the trey stuff") (`docs/previews/call-reclassify-layouts.html`)
+
+For Reports (backend 1e45b6f06, gated on reports.handles). Jose for Trey: "reclassify from existing to new and viceverse as well as to booke from not booked and viceversa". Recommended 1 + phone 4: Client and Booking segmented controls in the call details, "Set by X · Automatic ↺" to undo, a ✎ mark with a tooltip on the row pills.
+
+### 180 · Ads performance: control Meta campaigns — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/meta-campaigns-layouts.html`)
+
+For Meta API (backend a24e0de6f). Jose 11-04: "we need to be able to control meta campaigns from the app." Recommended 1 + phone 4: a Google | Meta switch on Ads performance; an expandable campaign › ad set › ad table with an on/off switch per row ("Paused by campaign" from effective_status); the budget edit only on the row that owns daily_budget, in a SidePanel; pausing takes effect with an Undo snackbar; read-only without ads_performance.manage; an empty state with "Open Integrations" when nothing is connected.
+
+### 181 · Settings › Lists: edit every business list — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/settings-lists-layouts.html`)
+
+For Settings (11-04 ruling: every business value editable; GET/POST/PATCH/DELETE settings/lists). Recommended 1 + phone 4: a Lists tab in Settings; searchable lists grouped by module on the left, the chosen list in place on the right; cells edit inline and save on blur (one PATCH per row) with the 422 under the row; tick boxes save at once; ✕ removes with Undo; drag handle sorts; + Add row last; no typed keys; "Default values" chip while unedited; read-only without may_edit; empty state while the registry is empty. Phone: list of lists, then the list in place with ‹.
+
+### 182 · Settings › Integrations: one card per sign-in — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/integrations-sign-in-cards-layouts.html`)
+
+For Meta API (Facebook family) and the desk (Google family backend). Jose 11-05: "1 facebook connections grabs social and ada and whatever scopes we have etc. Same for disconnecting. And this goes for everything". Recommended 1 + phone 4: a Facebook card (Pages, Ad accounts, Lead forms) and a Google card (Business Profile, Google Ads, YouTube, Gmail/Workspace), one sign-in each, each product with its own status line; a product the grant missed shows "Add access", re-running the same sign-in for more scopes; one Disconnect per card, red, an inline two-step listing "This removes: …" with Confirm/Cancel that lapses after 5 s; Instagram and single-product services stay plain cards; search kept. Phone: cards stack, Disconnect at the card foot.
+
+### 183 · Settings › Integrations redesigned: choose what to connect — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/integrations-choose-products-layouts.html`)
+
+For Meta API (Facebook family), Leads + Google API (Google family); client by UI/UX. Jose 11-05: "it asks me what connections from facebook i want to make, before proceeding to the connection" and "this may need a re-design of the Integrations screen then". **Supersedes 182's layout.** Recommended 1 + phone 4: Needs attention / Connected / Available sections with search and category chips; one card per sign-in with per-product status lines; a "Choose what to connect" SidePanel before sign-in; Manage re-opens it, ticking more signs in for just those scopes, unticking is an inline red two-step. Contract: products[] per family in GET social/providers, products[] on connect start, DELETE ?product=.
+
+### 184 · Settings › Integrations: one provider, one list — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/integration-detail-layouts.html`)
+
+Client by UI/UX. Jose 11-05: "can we improve these connections screens, like something cohesive, unified, modern". Replaces the per-place cards and the "Connect another" card in `integration_provider_screen.dart`: a header card (logo, purpose, working / to-reconnect pills, Connect top-right, or the existing note + Open module when Connect is not here), one list card with places as section labels, a status pill per row, Name / Edit / Disconnect in a ⋯ menu (SidePanel on phone). Google login cards (design 167) keep their grouping inside the same list shape. No server change.
+
+### 185 · Marketing › Ads: on/off schedule per campaign — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/ad-schedule-layouts.html`)
+
+Client by Meta API (both the Meta and Google campaign tables; coordinate with Google API for its table). Jose, relayed by the desk: "can we build a switch so it can turn it on/off at designated times?" Row: the switch stays; a clock chip "Mon–Fri 8a–6p ET · off at 6:00 PM", amber when last_error is set ("Couldn't turn on at 8:00 AM"), dashed "＋ Schedule" when none (hidden without ads_performance.manage). Chip opens a SidePanel: last_error sentence first, day toggles, on/off times, timezone (org default), overnight hint, next/last change, Remove schedule as an inline red two-step; read-only without manage. Contract (Meta API): GET /ad-schedules?connection_id= → [{id, connection_id, object_id, object_name, days[1..7], on_at, off_at, timezone, next_change_at, next_state, last_state, last_applied_at, last_error}]; PUT /ad-schedules; DELETE /ad-schedules/{id}; acts on edges only.
+
+### 186 · HR › Records › Personal: gender picker, no gaps, copy, HR sets the photo — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-personal-tab-layouts.html`)
+
+Client by UI/UX; server by HR. Jose 11-06 (relayed by Website Changes): Gender a picker (Male / Female / Prefers not to answer); "I don't like gaps" between Date of birth and Gender; a copy icon on each field; HR can upload a person's picture. Option 1: equal 2-column grid with Date of birth stretched, copy icon as each field's suffix, avatar at the top with Change photo opening a SidePanel (upload / remove). Needs from HR: has_avatar on the person payload, POST/DELETE hr/people/{id}/avatar.
+
+### 187 · Lists: tags line up beside the time (Phone › Recent calls, Leads inbox) — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/list-tags-right-layouts.html`)
+
+Jose 11-06: "I'm also thinking if it would not be best to always put the tags at the opposite side, like for example in this scenario moving all the tabs to the left side of the time, so they all line up. same on leads as well. i feel it would be a lot cleaner." Option 1: fixed-width right-aligned tag column just left of the time; lead tags (status, Customer, Facebook, Lead/Teammate) in it, max 2 then "+N"; message chips (Text, Call, Chat, Form) stay on line 2 before the preview. Phone: pills right-aligned under the time.
+
+### 188 · HR › Records › Employment: works at several places — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-places-layouts.html`)
+
+Client by UI/UX; server HR 17fb4c40e. Jose via the desk: show current access as a clear list with Add place / remove, plus what the role grants. A "Works at" card: one row per place (Company · Branch) with ×, inline red two-step remove, the last place shows HR's 422 sentence instead; Add place opens the SidePanel search picker from GET hr/people/scope-options; under it, the role and that it applies at every place.
+
+### 190 · HR › Records › Training tab — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-training-tab-layouts.html`)
+
+Jose 11-06 on the Work tab: "this can definitely be shown in a better way, use green and red as well for clock in - out times"; on Training: "same here". Three equal tinted KPI tiles; an aligned table Course | Status (green Passed / amber Due / red Failed-Overdue) | Score bar | Completed | Retake by; empty state; the footnote rewritten plainly. Client by UI/UX (`client/lib/screens/hr/training_card.dart`).
+
+### 191 · Integrations › Workiz › Tags — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/workiz-tags-layouts.html`)
+
+Client by UI/UX on the Workiz backend (session/workiz 5b905b31b). Jose 11-10: "a sub tab where we can see all existing tags per account so if someone in the future changes a tag, we know about it and get a warning". A Tags section on the Workiz provider screen: caution banner for changes in the last 7 days linking to the log, a tags × accounts matrix (sticky tag column and header, colour chip + name, differing cell tinted caution, missing cell "—" in caution), Show only differences + search, Approve current tags as standard (SidePanel confirm, disabled when nothing differs), then the change log (Deleted is Tone.bad, the rest caution). No baseline yet: one line asking to approve the current tags.
+
+### 189 · HR › Work: work schedule — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-work-schedule-layouts.html`)
+
+Client by UI/UX. Jose 11-06: "this can definitely be shown in a better way, use green and red as well for clock in - out times". All seven days as rows (a day off reads "Off" instead of vanishing), green in chip (Tone.ok), red out chip (Tone.bad; his ruling for this screen), a 24 h day bar, hours per day and a weekly total. Times through DisplayFormats.formatWallClock. Phone drops the bar.

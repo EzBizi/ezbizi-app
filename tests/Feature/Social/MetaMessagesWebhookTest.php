@@ -195,6 +195,22 @@ class MetaMessagesWebhookTest extends TestCase
         $this->assertSame(3, LeadConversation::query()->withoutGlobalScopes()->count());
     }
 
+    /** Jose, 11-04: seven Messenger messages and her row stayed at "49m ago". */
+    public function test_a_later_message_moves_the_enquiry_to_its_time(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->pageBelongsTo($t);
+
+        $this->deliver($this->body(['mid' => 'm_1', 'text' => 'Hello?']))->assertOk();
+        $this->deliver(str_replace('1789000000000', '1789000600000',
+            $this->body(['mid' => 'm_2', 'text' => 'Anyone there?'])))->assertOk();
+
+        $lead = Lead::query()->withoutGlobalScopes()->sole();
+        $this->assertSame(1789000600, $lead->last_contact_at?->getTimestamp());
+        $this->assertSame('Anyone there?', $lead->last_contact_preview);
+    }
+
     /** A-1, 2026-10-29: questions tapped from a Click-to-Message ad are not typed by the customer. */
     public function test_questions_tapped_from_an_ad_are_marked_and_typed_text_is_not(): void
     {
@@ -247,6 +263,35 @@ class MetaMessagesWebhookTest extends TestCase
     private function holdsToken(SocialConnection $connection, array $t): void
     {
         $this->inTenant($t['org'], fn () => $connection->forceFill(['credentials' => ['access_token' => 'page-token']])->save());
+    }
+
+    /** Health sweep, 2026-11-05: 551 is permanent, so it is a 422 with a sentence, not a bare 502. */
+    public function test_a_person_who_cannot_be_messaged_is_a_plain_refusal(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->pageBelongsTo($t);
+        $this->holdsToken($page, $t);
+        Http::fake(['graph.facebook.com/*' => Http::sequence()
+            ->push(['error' => ['code' => 551, 'error_subcode' => 1545041, 'message' => 'This person is not available right now.']], 400)
+            ->push(['error' => ['code' => 10, 'message' => 'Outside the window']], 400)]);
+
+        $send = fn () => $this->inTenant($t['org'], fn () => app(MetaMessages::class)->send($page, 'PSID-1', 'Hello'));
+
+        try {
+            $send();
+            $this->fail('551 was not refused');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(422, $e->getCode());
+            $this->assertStringContainsString('cannot receive messages', $e->getMessage());
+        }
+
+        // The control: any other refusal stays a provider failure.
+        try {
+            $send();
+            $this->fail('code 10 was not refused');
+        } catch (\RuntimeException $e) {
+            $this->assertSame(0, $e->getCode());
+        }
     }
 
     public function test_a_messenger_lead_is_named_from_the_conversation(): void
@@ -410,9 +455,11 @@ class MetaMessagesWebhookTest extends TestCase
             '*' => Http::response([]),
         ]);
 
-        $this->deliver($this->body(['mid' => 'm_PHOTO', 'attachments' => [['type' => 'image', 'payload' => ['url' => 'https://cdn.meta.test/expires.jpg']]]]))->assertOk();
+        $this->deliver($this->body(['mid' => 'm_PHOTO', 'attachments' => [['type' => 'image', 'payload' => ['url' => 'https://cdn.meta.test/expires.jpg']], ['type' => 'fallback', 'payload' => ['url' => 'https://example.test/shared']]]]))->assertOk();
 
-        $ref = LeadConversation::query()->withoutGlobalScopes()->firstOrFail()->attachments[0];
+        $refs = LeadConversation::query()->withoutGlobalScopes()->firstOrFail()->attachments;
+        $this->assertCount(1, $refs);   // a share has no media to stream: no ref, no 404
+        $ref = $refs[0];
         $this->assertStringStartsWith(MetaMediaController::PREFIX, $ref);   // not Meta's expiring URL
 
         $res = $this->get(MetaMediaController::url($ref))->assertOk();

@@ -555,6 +555,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     VoidCallback onTap,
   ) {
     final theme = Theme.of(context);
+    final shown = value == null ? null : (value.isEmpty ? 'Not given' : value);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    // On a phone the value goes under the label: beside it, a long address
+    // took the row and left "Home address" one letter wide (phone audit
+    // 2026-11-04, Section 4 #2).
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return ListTile(
+        leading: Icon(icon, size: 20),
+        title: Text(label, style: theme.textTheme.bodyMedium),
+        subtitle: shown == null
+            ? null
+            : Text(
+                shown,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: muted,
+              ),
+        trailing: const Icon(Icons.chevron_right, size: 18),
+        onTap: onTap,
+      );
+    }
     return ListTile(
       leading: Icon(icon, size: 20),
       title: Text(label, style: theme.textTheme.bodyMedium),

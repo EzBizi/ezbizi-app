@@ -11,6 +11,7 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\ServiceArea;
+use App\Models\ServiceAreaZip;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Models\WebBooking;
@@ -56,6 +57,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
+use App\Support\Social\LeadWhatsApp;
+use App\Support\Social\WhatsAppReplies;
+use Illuminate\Support\Arr;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -308,7 +312,7 @@ class LeadsController extends Controller
             $query->where('leads.status', Lead::STATUS_NEW)
                 ->whereNotIn('leads.source', Lead::SOURCES_NO_REPLY_OWED)
                 ->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
-                ->where('leads.last_contact_at', '<=', now()->subMinutes(Lead::REPLY_OVERDUE_AFTER_MINUTES))
+                ->where('leads.last_contact_at', '<=', now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes')))
                 ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_LOCAL_SERVICES)
                     ->orWhere('leads.lead_type', 'MESSAGE'))
                 ->where(fn ($q) => $q->whereNotIn('leads.source', Lead::SOURCES_VIA_CONNECTION)
@@ -440,12 +444,15 @@ class LeadsController extends Controller
         // the page (8 ms on production's 7,869 customers), so a known caller
         // is shown by name. Jose, 2026-09-28.
         $customers = $user->hasPermission('customers.view')
-            ? $this->customersByNumber(array_map(fn (Lead $l) => $l->phone_digits, $leads->items()))
+            ? $this->customersFor($leads->items())
             : [];
 
         $viewers = LeadPresence::others(array_map(fn (Lead $l) => (string) $l->id, $leads->items()), $user);
 
         // The preview is an ad's preset question (Meta's is_ad_question): the list says so in muted text.
+        $unreadNotes = \App\Support\Notes\NoteActivity::unreadLeadNotes(
+            array_map(fn (Lead $l) => (string) $l->id, $leads->items()), (string) $user->getKey());
+
         $adAsked = LeadConversation::query()->whereIn('lead_id', array_map(fn (Lead $l) => $l->id, $leads->items()))
             ->where('is_ad_question', true)->selectRaw('lead_id, MAX(occurred_at) as at')->groupBy('lead_id')->pluck('at', 'lead_id');
 
@@ -454,9 +461,10 @@ class LeadsController extends Controller
                 ...$this->present($l),
                 // Who else has it open right now (Jose, 2026-09-29).
                 'viewers' => $viewers[(string) $l->id] ?? [],
+                'unread_notes' => $unreadNotes[(string) $l->id] ?? 0,
                 'last_contact_ad_question' => isset($adAsked[$l->id]) && $l->last_contact_at !== null
                     && Carbon::parse($adAsked[$l->id])->equalTo($l->last_contact_at),
-                'customer' => ($c = $customers[self::tenDigits($l->phone_digits)] ?? null) === null
+                'customer' => ($c = $customers[(string) $l->id] ?? null) === null
                     ? null
                     : ['id' => $c->id, 'number' => $c->number, 'name' => $c->name],
             ], $leads->items()),
@@ -507,7 +515,8 @@ class LeadsController extends Controller
             ]);
 
         // The day and window a website booking asked for, and where it stands (Jose, 2026-10-08).
-        $booking = WebBooking::query()->where('lead_id', $lead->getKey())->first();
+        // A window only offered in a chat is not a booking yet (BookingBot).
+        $booking = WebBooking::query()->where('lead_id', $lead->getKey())->where('status', '!=', WebBooking::OFFERED)->first();
         $data['booking'] = $booking === null ? null : $this->presentBooking($booking, $lead);
 
         $conversations = $lead->conversations;
@@ -545,6 +554,18 @@ class LeadsController extends Controller
         $data['details']['checked_address'] = $checked;
         $data['details']['zip'] ??= $checked['zip'] ?? null;
 
+        // The branch to book into when the lead names none: the one in its
+        // company whose service areas cover its ZIP (Jose, 2026-11-05: Kristen,
+        // 06820, left Franchise blank and "No area covers 06820").
+        $zip = substr(preg_replace('/\D/', '', (string) ($data['details']['zip'] ?? $lead->postal_code)), 0, 5);
+        $covering = strlen($zip) === 5 && $lead->franchise_id === null
+            ? ServiceAreaZip::query()->where('zip', $zip)
+                ->whereIn('franchise_id', Franchise::query()
+                    ->when($lead->company_id !== null, fn ($q) => $q->where('company_id', $lead->company_id))->pluck('id'))
+                ->distinct()->pluck('franchise_id')
+            : collect();
+        $data['book_franchise_id'] = $lead->franchise_id ?? ($covering->count() === 1 ? $covering->first() : null);
+
         // Whether a reply can go anywhere, and when it cannot, WHY — in the
         // refusing channel's own words. The screen used to carry one sentence
         // for every source, and it named Google; the first Thumbtack enquiry
@@ -552,6 +573,18 @@ class LeadsController extends Controller
         // heard of.
         $data['can_reply'] = $this->replies->canReply($lead);
         $data['cannot_reply_because'] = $this->replies->whyNot($lead);
+        // Messenger, Instagram and WhatsApp take replies for 24 hours after the
+        // person last wrote: the screen says how long is left (Jose, 2026-11-09).
+        $data['reply_window_ends_at'] = $this->replies->windowEndsAt($lead)?->toIso8601String();
+        // Once WhatsApp's window has closed, an approved template is what can still go.
+        $channel = $this->replies->for($lead);
+        try {
+            $data['whatsapp_templates'] = $channel instanceof WhatsAppReplies && ! $data['can_reply']
+                ? array_map(fn (array $t) => Arr::only($t, ['name', 'preview', 'parameters']), $channel->templates($lead))
+                : [];
+        } catch (RuntimeException) {
+            $data['whatsapp_templates'] = [];
+        }
 
         // Canned replies beside Send, filled in for this customer and brand.
         // {{missing}} asks only for what we do not already have (Jose,
@@ -573,7 +606,7 @@ class LeadsController extends Controller
         )->map(fn ($t) => [
             'name' => (string) ($t['label'] ?? $t),
             'text' => strtr((string) ($t['value'] ?? $t), [
-                '{{greeting}}' => $first === null ? 'Hi there' : "Hi {$first}",
+                '{{greeting}}' => Lead::greeting($first, $lead->organization_id),
                 '{{company}}' => (string) ($lead->company?->name ?? request()->user()->organization->name),
                 '{{missing}}' => $missingText,
                 '{{availability}}' => str_contains((string) ($t['value'] ?? ''), '{{availability}}')
@@ -584,6 +617,9 @@ class LeadsController extends Controller
 
         // A draft is offered only where a reply can go and the model is on.
         $data['can_suggest'] = $data['can_reply'] && $this->insights->enabled();
+        // The composer's "Did you mean" (leads.proofread, Jose 2026-11-05).
+        $data['can_proofread'] = $data['can_suggest']
+            && (bool) SettingsResolver::forOrganization('leads.proofread', $lead->organization_id);
 
         // Customers this number already belongs to, so booking can attach to
         // one instead of making a second Jane Doe. Same digits-only match the
@@ -671,6 +707,9 @@ class LeadsController extends Controller
             // Forms, without the Bad Ratings that have their own tab now.
             Lead::SOURCE_WEBSITE_FORM => $query->where('leads.source', Lead::SOURCE_WEBSITE_FORM)
                 ->where(fn ($q) => $q->whereNull('leads.lead_type')->orWhere('leads.lead_type', '!=', 'BAD_RATING')),
+            // With the windows the booking bot held in a chat (Jose, 2026-11-03).
+            Lead::SOURCE_WEBSITE_BOOKING => $query->where(fn ($q) => $q->where('leads.source', $key)
+                ->orWhereIn('leads.id', WebBooking::query()->whereNull('site_id')->whereIn('status', WebBooking::HOLDING)->select('lead_id'))),
             default => $query->where('leads.source', $key),
         };
     }
@@ -715,7 +754,7 @@ class LeadsController extends Controller
         $digits = $lead->phone_digits;
 
         if ($digits === null || strlen($digits) < 7) {
-            return collect();
+            return collect(array_filter([$this->customersFor([$lead])[(string) $lead->id] ?? null]));
         }
 
         // Google sends +1 216 555 0100; a customer typed in by hand may be
@@ -731,7 +770,74 @@ class LeadsController extends Controller
             )
             ->orderBy('name')
             ->limit(3)
-            ->get();
+            ->get()
+            ->whenEmpty(fn () => collect(array_filter([$this->customersFor([$lead])[(string) $lead->id] ?? null])));
+    }
+
+    /**
+     * The customer each lead already is, on every source (Jose, 2026-11-06:
+     * "All the leads should, like this things need to be basic"): by the
+     * lead's phone, then a phone or email the customer wrote, then the lead's
+     * own email. Never by name alone - that would attach the wrong Jane Doe.
+     * The thread is read only for leads their phone did not match.
+     *
+     * @param  list<Lead>  $leads
+     * @return array<string, Customer> by lead id
+     */
+    private function customersFor(array $leads): array
+    {
+        // phone_digits is filled by the importers; a lead written another way may carry only phone.
+        $digits = fn (Lead $l) => $l->phone_digits ?? (preg_replace('/\D/', '', (string) $l->phone) ?: null);
+        $byNumber = $this->customersByNumber(array_map($digits, $leads));
+        $found = [];
+        $rest = [];
+        foreach ($leads as $l) {
+            ($c = $byNumber[self::tenDigits($digits($l))] ?? null) !== null
+                ? $found[(string) $l->id] = $c
+                : $rest[] = $l;
+        }
+        if ($rest === []) {
+            return $found;
+        }
+
+        $texts = LeadConversation::query()
+            ->whereIn('lead_id', array_map(fn (Lead $l) => $l->id, $rest))
+            ->where('participant', LeadConversation::FROM_CONSUMER)
+            ->where('channel', '!=', LeadConversation::CHANNEL_PHONE_CALL)
+            ->whereNotNull('text')
+            ->orderBy('occurred_at')
+            ->get(['lead_id', 'text'])
+            ->groupBy('lead_id');
+        $written = [];
+        foreach ($rest as $l) {
+            $w = LeadDetails::contacts($texts->get($l->id)?->pluck('text')->all() ?? []);
+            $written[(string) $l->id] = [$w['phone'], array_values(array_unique(array_filter([
+                $w['email'], strtolower(trim((string) $l->email)) ?: null,
+            ])))];
+        }
+
+        $phones = $this->customersByNumber(array_column($written, 0));
+        $emails = Customer::query()
+            ->whereIn(DB::raw('LOWER(email)'), array_values(array_unique(array_merge(...array_column($written, 1)))) ?: [''])
+            ->orderBy('name')
+            ->get()
+            ->reduce(function (array $by, Customer $c) {
+                $by[strtolower((string) $c->email)] ??= $c;
+
+                return $by;
+            }, []);
+
+        foreach ($written as $id => [$phone, $mails]) {
+            $c = $phones[self::tenDigits($phone)] ?? null;
+            foreach ($mails as $mail) {
+                $c ??= $emails[$mail] ?? null;
+            }
+            if ($c !== null) {
+                $found[$id] = $c;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -754,6 +860,13 @@ class LeadsController extends Controller
         // customer the window they did not get.
         if ($decision === 'approve' && ! $wasApproved && $lead->job_id !== null) {
             return response()->json(['message' => 'This customer already has a job booked. Nothing was sent.'], 409);
+        }
+
+        // A window the booking bot held in a chat (Jose, 2026-11-03: "one tap
+        // approvals"): approving books the job, into Workiz too, before the
+        // confirmation goes. A refusal leaves it pending, for Book by hand.
+        if ($decision === 'approve' && ! $wasApproved && $booking->site_id === null) {
+            $this->book($this->holdAsBooking($request, $lead, $booking), $lead);
         }
 
         $booking->forceFill([
@@ -779,6 +892,37 @@ class LeadsController extends Controller
         }
 
         return response()->json(['data' => $this->presentBooking($booking, $lead)]);
+    }
+
+    /** What the Book panel would have sent for a chat hold, filled from the chat. */
+    private function holdAsBooking(Request $request, Lead $lead, WebBooking $booking): Request
+    {
+        $franchiseId = $lead->franchise_id ?? $booking->serviceArea?->franchise_id;
+        $franchise = $franchiseId === null ? null : Franchise::query()->find($franchiseId);
+        $choices = $franchiseId === null ? null : app(WorkizJobWriter::class)->choices($franchiseId, $lead->postal_code);
+        $existing = $this->customersByNumber([$lead->phone_digits])[self::tenDigits($lead->phone_digits)] ?? null;
+
+        $sub = Request::create('/', 'POST', array_filter([
+            'franchise_id' => $franchiseId,
+            'customer_id' => $existing?->getKey(),
+            'customer' => $existing !== null ? null : array_filter([
+                'name' => $lead->contact_name, 'phone' => $lead->phone, 'email' => $lead->email,
+                'address_line1' => $lead->address, 'city' => $lead->city,
+                'state' => strlen((string) $lead->service_state) === 2 ? $lead->service_state : null,
+                'postal_code' => $lead->postal_code,
+            ]),
+            'title' => $lead->service ?: 'Service visit',
+            'status' => $franchise === null ? null : (Job::allowedStatuses($franchise)[0] ?? null),
+            'description' => 'Booked from the chat for '.self::bookingWhen($booking).'.',
+            // Wall clock in the branch's zone, as a job holds it (FranchiseWallTime).
+            'scheduled_for' => $booking->date->toDateString().' '.substr((string) $booking->start_time, 0, 5),
+            'workiz_job_type' => $booking->job_type,
+            'workiz_job_source' => collect($choices['job_sources'] ?? [])->first(fn ($s) => preg_match('/local services|lsa|google/i', $s) === 1),
+            'workiz_service_area' => $choices['zip_areas'][0] ?? null,
+        ], fn ($v) => $v !== null));
+        $sub->setUserResolver(fn () => $request->user());
+
+        return $sub;
     }
 
     /** "Thursday, October 16, between 8:00 AM and 11:00 AM" */
@@ -1205,6 +1349,21 @@ class LeadsController extends Controller
     }
 
     /**
+     * POST /api/v1/leads/{lead}/proofread {text}: the draft with its clear
+     * spelling and grammar fixed, or null. Offered, never sent by itself.
+     */
+    public function proofread(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        $text = $request->validate(['text' => ['required', 'string', 'max:1000']])['text'];
+
+        $on = $this->insights->enabled()
+            && (bool) SettingsResolver::forOrganization('leads.proofread', $lead->organization_id);
+
+        return response()->json(['data' => ['suggestion' => $on ? $this->insights->proofread($lead, $text) : null]]);
+    }
+
+    /**
      * POST /api/v1/leads/{lead}/messages
      *
      * Reply to the enquirer. The message goes through Google into the chat
@@ -1306,8 +1465,9 @@ class LeadsController extends Controller
             $row = $channel->send($lead, $text);
         } catch (RuntimeException $e) {
             // The provider refused, with a sentence written for the screen.
-            // Only the provider can act on it, so 502.
-            abort(Response::HTTP_BAD_GATEWAY, $e->getMessage());
+            // Only the provider can act on it, so 502 - unless the channel
+            // marked it permanent (422), which no retry will change.
+            abort($e->getCode() === Response::HTTP_UNPROCESSABLE_ENTITY ? $e->getCode() : Response::HTTP_BAD_GATEWAY, $e->getMessage());
         }
 
         $this->audit->log('lead.replied', $lead, [
@@ -1320,6 +1480,44 @@ class LeadsController extends Controller
         // unless somebody already said who (dispatcher_by_user_id).
         Lead::query()->whereKey($lead->getKey())->whereNull('dispatcher')->whereNull('dispatcher_by_user_id')
             ->toBase()->update(['dispatcher' => mb_substr((string) $request->user()->name, 0, 120)]);
+
+        return response()->json(['data' => $this->presentConversation($row)], Response::HTTP_CREATED);
+    }
+
+    /**
+     * POST /leads/{lead}/whatsapp-template {template, variables[]}: the one
+     * message WhatsApp accepts once its 24-hour window has closed, from the
+     * number the lead wrote to (Jose, 2026-11-09).
+     */
+    public function sendWhatsAppTemplate(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        $input = $request->validate([
+            'template' => ['required', 'string', 'max:512'],
+            'variables' => ['array', 'max:10'],
+            'variables.*' => ['required', 'string', 'max:500'],
+        ]);
+
+        $channel = $this->replies->for($lead);
+        abort_unless($channel instanceof WhatsAppReplies, Response::HTTP_UNPROCESSABLE_ENTITY, 'Only a WhatsApp enquiry can be sent a WhatsApp template.');
+
+        try {
+            $template = collect($channel->templates($lead))->firstWhere('name', $input['template']);
+        } catch (RuntimeException $e) {
+            abort(Response::HTTP_BAD_GATEWAY, $e->getMessage());
+        }
+        abort_if($template === null, Response::HTTP_UNPROCESSABLE_ENTITY, 'That template is not an approved template of this WhatsApp number.');
+        $variables = array_values($input['variables'] ?? []);
+        abort_if(count($variables) !== (int) $template['parameters'], Response::HTTP_UNPROCESSABLE_ENTITY,
+            'This template needs '.$template['parameters'].' value'.((int) $template['parameters'] === 1 ? '' : 's').'.');
+
+        try {
+            $row = app(LeadWhatsApp::class)->sendTemplate($lead, $template['name'], $variables, false, $channel->fromNumber($lead));
+        } catch (RuntimeException $e) {
+            abort(Response::HTTP_BAD_GATEWAY, $e->getMessage());
+        }
+
+        $this->audit->log('lead.replied', $lead, ['conversation_id' => $row->id, 'template' => $template['name']], actor: $request->user());
 
         return response()->json(['data' => $this->presentConversation($row)], Response::HTTP_CREATED);
     }
@@ -1404,6 +1602,8 @@ class LeadsController extends Controller
             'status' => ['sometimes', 'string', Rule::in(Lead::STATUSES)],
             'starred' => ['sometimes', 'boolean'],
             'note' => ['sometimes', 'nullable', 'string', 'max:4000'],
+            'mentions' => ['sometimes', 'array', 'max:50'],
+            'mentions.*' => ['uuid'],
             'contact_name' => ['sometimes', 'nullable', 'string', 'max:191'],
             'postal_code' => ['sometimes', 'nullable', 'string', 'max:10'],
             'classification' => ['sometimes', 'nullable', 'string', Rule::in(['BOOK', 'SUPPORT', 'ARCHIVE'])],
@@ -1445,6 +1645,9 @@ class LeadsController extends Controller
                 $lead->note = $note;
                 $lead->note_by_user_id = $note === null ? null : $request->user()->getKey();
                 $lead->note_updated_at = $note === null ? null : now();
+                // @mentions (monday port, 2026-11-09), cleared with the note.
+                $lead->note_mentions = $note === null ? null
+                    : (app(\App\Support\Notes\NoteActivity::class)->mention($lead, $input['mentions'] ?? [], $request->user(), $note) ?: null);
             }
         }
 
@@ -1817,7 +2020,7 @@ class LeadsController extends Controller
                     ? null
                     : $certifications->get($c->getKey())?->campaigns,
                 'may_pause' => $c->provider === SocialProvider::GoogleAds->value
-                    && ($user?->hasPermission('ads_performance.manage') ?? false),
+                    && ($user?->hasPermission('ads_manager.manage') ?? false),
             ])
             ->values()
             ->all();
@@ -1826,13 +2029,11 @@ class LeadsController extends Controller
     /**
      * "Connected" while nothing is being read. A Google Ads account is read
      * every few minutes and each read stamps `last_reached_at`; one that has
-     * not been reached in SYNC_FAILING_AFTER_HOURS is failing every read
+     * not been reached in leads.sync_failing_hours is failing every read
      * (2026-09-30: a row with no lasting permission stayed "connected" while
      * every tick refused it). Thumbtack is pushed to us, not read, so its
      * stamp says nothing and it never counts.
      */
-    private const SYNC_FAILING_AFTER_HOURS = 6;
-
     private static function syncFailing(SocialConnection $c): bool
     {
         if ($c->provider !== SocialProvider::GoogleAds->value || $c->status !== SocialConnection::STATUS_CONNECTED) {
@@ -1841,7 +2042,7 @@ class LeadsController extends Controller
 
         $since = $c->last_reached_at ?? $c->created_at;
 
-        return $since !== null && $since->lt(now()->subHours(self::SYNC_FAILING_AFTER_HOURS));
+        return $since !== null && $since->lt(now()->subHours((int) SettingsResolver::forOrganization('leads.sync_failing_hours', $c->organization_id)));
     }
 
     /**
@@ -2075,9 +2276,13 @@ class LeadsController extends Controller
              * No N+1: every rule reads columns already on the row.
              */
             'can_reply' => $canReply = $this->replies->canReply($lead),
+            // ponytail: one more max(occurred_at) per Meta/WhatsApp row; batch it if the list slows.
+            'reply_window_ends_at' => $windowEndsAt = $this->replies->windowEndsAt($lead)?->toIso8601String(),
             // The customer has waited longer than the business should let
-            // them - the list's red mark (Jose, 2026-09-28).
-            'reply_overdue' => $lead->replyOverdue($canReply),
+            // them - the list's red mark (Jose, 2026-09-28). A closed Meta
+            // window stops the reply box, not the debt: the Overdue filter
+            // already counts it, so the row's mark does too (Jose, 2026-11-10).
+            'reply_overdue' => $lead->replyOverdue($canReply || $windowEndsAt !== null),
             // Whether this status owes anybody an answer: the list's Awaiting
             // reply chip reads it (Lead::STATUSES_NO_REPLY_OWED).
             'reply_owed' => ! in_array($lead->status, Lead::STATUSES_NO_REPLY_OWED, true),

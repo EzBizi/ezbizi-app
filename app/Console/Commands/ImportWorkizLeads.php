@@ -6,6 +6,7 @@ use App\Models\Franchise;
 use App\Models\Lead;
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Time\ViewTimezone;
@@ -64,11 +65,7 @@ class ImportWorkizLeads extends Command
      * comparison lowercases and collapses everything that is not a letter or a
      * digit. An exact-string match would have let one spelling through.
      */
-    private const ALREADY_OURS = [
-        'lsads',        // "LS Ads" — Google Local Services, ingested by SyncLeads
-        'localservices',
-        'thumbtack',
-    ];
+    // leads.workiz_skip_sources (Jose, 2026-11-04: no business values in code).
 
     public function __construct(private readonly TenantContext $tenant)
     {
@@ -310,8 +307,9 @@ class ImportWorkizLeads extends Command
             return false;
         }
 
-        foreach (self::ALREADY_OURS as $ours) {
-            if (str_contains($source, $ours)) {
+        foreach ((array) SettingsResolver::forOrganization('leads.workiz_skip_sources') as $ours) {
+            $ours = strtolower((string) preg_replace('/[^a-z0-9]/i', '', (string) $ours));
+            if ($ours !== '' && str_contains($source, $ours)) {
                 return true;
             }
         }

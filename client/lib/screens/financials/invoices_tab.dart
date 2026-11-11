@@ -46,8 +46,8 @@ class _InvoicesTabState extends State<InvoicesTab> {
         ('charge_sheets', 'Charge sheets', Icons.grid_on_outlined),
       if (_me.can('invoices.invoices.view'))
         ('invoices', 'Invoices', Icons.receipt_outlined),
-      // The registry's Settings tab is the edit tick.
-      if (_me.can('invoices.edit')) ('settings', 'Settings', Icons.tune),
+      if (_me.can('invoices.settings.view'))
+        ('settings', 'Settings', Icons.tune),
     ];
     if (tabs.isEmpty) {
       return const Center(

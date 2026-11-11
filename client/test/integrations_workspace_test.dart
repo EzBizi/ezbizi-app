@@ -25,7 +25,14 @@ void main() {
     final calls = <String>[];
     await _pump(tester, calls: calls);
 
-    expect(find.textContaining('Email · 1 of 1 connected'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:email')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('integrations-section:connected')),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey('provider:google_workspace')));
     await tester.pumpAndSettle();
 
@@ -46,6 +53,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('provider:google_workspace')));
     await tester.pumpAndSettle();
     await tester.tap(
+      find.byKey(const ValueKey('actions:google_workspace:company:co-a1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
       find.byKey(const ValueKey('disconnect:google_workspace:company:co-a1')),
     );
     await tester.pumpAndSettle();
@@ -55,18 +66,20 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('disconnect-confirm')));
     await tester.pumpAndSettle();
 
-    expect(
-      calls,
-      contains(
-        'DELETE /api/v1/email/workspace',
-      ),
-    );
+    expect(calls, contains('DELETE /api/v1/email/workspace'));
   });
 
   testWidgets('connect opens Email\'s own Workspace panel', (tester) async {
     await _pump(tester, calls: [], canConnect: true, rows: const []);
 
-    expect(find.textContaining('Email · 0 of 1 connected'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('integrations-category:email')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('integrations-section:available')),
+      findsOneWidget,
+    );
     await tester.tap(
       find.byKey(const ValueKey('connect-card:google_workspace')),
     );

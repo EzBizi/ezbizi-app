@@ -135,7 +135,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String? _schedulingError;
 
   bool get _seesScheduling =>
-      widget.session.me?.can('scheduling.overbooking.view') ?? false;
+      widget.session.me?.can('scheduling.rescheduling.view') ?? false;
 
   /// The call a missed-call notification was about, opened in Performance
   /// (Bar, via Jose, 2026-10-12: a notification opens "the exact thing").
@@ -437,6 +437,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
             canWeigh:
                 widget.session.me?.can('reports.scoring_weights') ?? false,
+            canCorrect: widget.session.me?.can('reports.handles') ?? false,
           ),
         ),
       // Ad cost against jobs and profit (Jose, 2026-10-12). Its profit is the

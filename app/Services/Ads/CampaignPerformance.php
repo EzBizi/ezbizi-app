@@ -335,21 +335,230 @@ class CampaignPerformance
     }
 
     /**
+     * Marketing › Ads › Google (Jose, 2026-11-09): every campaign not removed,
+     * with what can be changed on it here - status, daily budget, the bid
+     * target its strategy carries - and what it did over the range. Campaign
+     * level only, like the rest of this class (see the module's comment).
+     *
+     * Two reads, joined: the settings without a date (a campaign with no
+     * traffic in the range is still a campaign somebody may want to switch
+     * on) and the metrics with one.
+     *
+     * @return array{currency: ?string, campaigns: list<array<string, mixed>>}
+     *
+     * @throws RuntimeException
+     */
+    public function manageable(SocialConnection $connection, Carbon $from, Carbon $to): array
+    {
+        $token = GoogleToken::forConnection($connection, 'google_ads');
+        $settings = $this->search($connection, $token,
+            'SELECT customer.currency_code, campaign.id, campaign.name, campaign.status, campaign.primary_status, '
+            .'campaign.advertising_channel_type, campaign.bidding_strategy_type, campaign.bidding_strategy, '
+            .'campaign.target_cpa.target_cpa_micros, campaign.target_roas.target_roas, '
+            .'campaign.maximize_conversions.target_cpa_micros, campaign.maximize_conversion_value.target_roas, '
+            .'campaign_budget.amount_micros, campaign_budget.explicitly_shared, campaign_budget.reference_count '
+            ."FROM campaign WHERE campaign.status != 'REMOVED'");
+        $metrics = collect($this->search($connection, $token, sprintf(
+            'SELECT campaign.id, metrics.cost_micros, metrics.clicks, metrics.conversions FROM campaign '
+            ."WHERE segments.date BETWEEN '%s' AND '%s' AND campaign.status != 'REMOVED'",
+            $from->toDateString(), $to->toDateString(),
+        )))->keyBy(fn ($r) => (string) ($r['campaign']['id'] ?? ''));
+
+        $campaigns = [];
+        foreach ($settings as $r) {
+            $c = $r['campaign'] ?? [];
+            $id = (string) ($c['id'] ?? '');
+            $m = $metrics[$id]['metrics'] ?? [];
+            $budget = $r['campaignBudget'] ?? [];
+            $cost = ((int) ($m['costMicros'] ?? 0)) / 1_000_000;
+            $conversions = (float) ($m['conversions'] ?? 0);
+            [$targetKind, $target] = self::target($c);
+            $campaigns[] = [
+                'id' => $id,
+                'name' => (string) ($c['name'] ?? ''),
+                'status' => (string) ($c['status'] ?? ''),
+                'primary_status' => $c['primaryStatus'] ?? null,
+                'type' => (string) ($c['advertisingChannelType'] ?? ''),
+                'bidding' => (string) ($c['biddingStrategyType'] ?? ''),
+                // A portfolio strategy holds its target for every campaign
+                // sharing it; changing it here would change those too.
+                'portfolio' => filled($c['biddingStrategy'] ?? null),
+                'target_kind' => $targetKind,
+                'target' => $target,
+                'daily_budget' => isset($budget['amountMicros']) ? ((int) $budget['amountMicros']) / 1_000_000 : null,
+                'shared_budget' => ($budget['explicitlyShared'] ?? false) || ((int) ($budget['referenceCount'] ?? 1)) > 1,
+                'spend' => round($cost, 2),
+                'clicks' => (int) ($m['clicks'] ?? 0),
+                'conversions' => round($conversions, 2),
+                'cost_per_conversion' => $conversions > 0 ? round($cost / $conversions, 2) : null,
+            ];
+        }
+
+        return ['currency' => $settings[0]['customer']['currencyCode'] ?? null, 'campaigns' => $campaigns];
+    }
+
+    /**
+     * The daily budget of one campaign. A budget shared with other campaigns
+     * is refused: changing it here would change theirs, unseen.
+     *
+     * @return float the budget it had
+     *
+     * @throws RuntimeException
+     */
+    public function setDailyBudget(SocialConnection $connection, string $campaignId, float $amount): float
+    {
+        $budget = $this->campaignRow($connection, $campaignId,
+            'campaign_budget.resource_name, campaign_budget.amount_micros, campaign_budget.explicitly_shared, campaign_budget.reference_count')['campaignBudget'] ?? [];
+        if (! isset($budget['resourceName'])) {
+            throw new RuntimeException('This campaign has no budget of its own to change.');
+        }
+        if (($budget['explicitlyShared'] ?? false) || ((int) ($budget['referenceCount'] ?? 1)) > 1) {
+            throw new RuntimeException('This budget is shared with other campaigns; change it in Google Ads.');
+        }
+        if ($amount <= 0 || $amount > 100_000) {
+            throw new RuntimeException('A daily budget is more than $0 and at most $100,000.');
+        }
+
+        $this->mutate($connection, 'campaignBudgets', [
+            'update' => ['resourceName' => $budget['resourceName'], 'amountMicros' => (string) (int) round($amount * 1_000_000)],
+            'updateMask' => 'amountMicros',
+        ]);
+
+        return ((int) ($budget['amountMicros'] ?? 0)) / 1_000_000;
+    }
+
+    /**
+     * The bid target of one campaign, in the field its strategy reads: a
+     * target cost per action in money, or a target return on ad spend as a
+     * ratio (3.5 = 350%). Manual and portfolio bidding are refused - their
+     * bids live on ad groups or on a shared strategy, neither of which this
+     * screen shows.
+     *
+     * @return array{kind: string, before: ?float}
+     *
+     * @throws RuntimeException
+     */
+    public function setTarget(SocialConnection $connection, string $campaignId, float $value): array
+    {
+        $c = $this->campaignRow($connection, $campaignId,
+            'campaign.bidding_strategy_type, campaign.bidding_strategy, campaign.target_cpa.target_cpa_micros, '
+            .'campaign.target_roas.target_roas, campaign.maximize_conversions.target_cpa_micros, '
+            .'campaign.maximize_conversion_value.target_roas')['campaign'] ?? [];
+        if (filled($c['biddingStrategy'] ?? null)) {
+            throw new RuntimeException('This campaign uses a shared bid strategy; change it in Google Ads.');
+        }
+        [$kind, $before] = self::target($c);
+        $field = match ((string) ($c['biddingStrategyType'] ?? '')) {
+            'TARGET_CPA' => ['targetCpa', 'targetCpaMicros'],
+            'MAXIMIZE_CONVERSIONS' => ['maximizeConversions', 'targetCpaMicros'],
+            'TARGET_ROAS' => ['targetRoas', 'targetRoas'],
+            'MAXIMIZE_CONVERSION_VALUE' => ['maximizeConversionValue', 'targetRoas'],
+            default => throw new RuntimeException('This campaign\'s bidding has no target to set here.'),
+        };
+        if ($value <= 0 || ($kind === 'cpa' && $value > 10_000) || ($kind === 'roas' && $value > 100)) {
+            throw new RuntimeException($kind === 'cpa' ? 'A target cost per conversion is more than $0 and at most $10,000.' : 'A target return is more than 0% and at most 10,000%.');
+        }
+
+        $this->mutate($connection, 'campaigns', [
+            'update' => [
+                'resourceName' => $this->campaignResource($connection, $campaignId),
+                $field[0] => [$field[1] => $kind === 'cpa' ? (string) (int) round($value * 1_000_000) : $value],
+            ],
+            'updateMask' => $field[0].'.'.$field[1],
+        ]);
+
+        return ['kind' => $kind, 'before' => $before];
+    }
+
+    /**
+     * 'cpa' with the target in money, 'roas' with a ratio, or [null, null]
+     * when the strategy has no target this screen sets.
+     *
+     * @param  array<string, mixed>  $c  a `campaign` from a search row
+     * @return array{0: ?string, 1: ?float}
+     */
+    private static function target(array $c): array
+    {
+        return match ((string) ($c['biddingStrategyType'] ?? '')) {
+            'TARGET_CPA' => ['cpa', isset($c['targetCpa']['targetCpaMicros']) ? ((int) $c['targetCpa']['targetCpaMicros']) / 1_000_000 : null],
+            'MAXIMIZE_CONVERSIONS' => ['cpa', isset($c['maximizeConversions']['targetCpaMicros']) ? ((int) $c['maximizeConversions']['targetCpaMicros']) / 1_000_000 : null],
+            'TARGET_ROAS' => ['roas', isset($c['targetRoas']['targetRoas']) ? (float) $c['targetRoas']['targetRoas'] : null],
+            'MAXIMIZE_CONVERSION_VALUE' => ['roas', isset($c['maximizeConversionValue']['targetRoas']) ? (float) $c['maximizeConversionValue']['targetRoas'] : null],
+            default => [null, null],
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     *
+     * @throws RuntimeException
+     */
+    private function campaignRow(SocialConnection $connection, string $campaignId, string $fields): array
+    {
+        if (! ctype_digit($campaignId)) {
+            throw new RuntimeException('That is not a Google Ads campaign id.');
+        }
+        $rows = $this->search($connection, GoogleToken::forConnection($connection, 'google_ads'),
+            "SELECT campaign.id, {$fields} FROM campaign WHERE campaign.id = {$campaignId}");
+
+        return $rows[0] ?? throw new RuntimeException('Google has no such campaign on this account.');
+    }
+
+    private function campaignResource(SocialConnection $connection, string $campaignId): string
+    {
+        return 'customers/'.(preg_replace('/\D/', '', (string) $connection->remote_id) ?? '').'/campaigns/'.$campaignId;
+    }
+
+    /**
+     * One mutate operation against `customers/{id}/{service}:mutate`, with
+     * Google's own sentence when it refuses.
+     *
+     * @param  array<string, mixed>  $operation
+     *
+     * @throws RuntimeException
+     */
+    private function mutate(SocialConnection $connection, string $service, array $operation): void
+    {
+        $token = GoogleToken::forConnection($connection, 'google_ads');
+        $customerId = preg_replace('/\D/', '', (string) $connection->remote_id) ?? '';
+
+        try {
+            $response = Http::withToken($token)
+                ->withHeaders([
+                    'developer-token' => (string) config('services.google_ads.developer_token'),
+                    'login-customer-id' => $connection->login_customer_id ?: $customerId,
+                ])
+                ->timeout(self::TIMEOUT)
+                ->post(GoogleAdsOAuth::endpoint().'/customers/'.$customerId.'/'.$service.':mutate', ['operations' => [$operation]]);
+        } catch (ConnectionException) {
+            throw new RuntimeException('Google did not answer while changing this campaign.');
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException((string) ($response->json('error.details.0.errors.0.message')
+                ?? $response->json('error.message')
+                ?? 'Google refused the change (HTTP '.$response->status().').'));
+        }
+    }
+
+    /**
      * Cost, clicks and conversions split LOCAL_SERVICES / everything else,
      * read at campaign-channel level and summed: one query per account
      * (Reports' ad cost vs Workiz jobs, 2026-10-12: "LS Ads" and "PPC").
+     * $activeOnly: the campaigns switched on now (Jose's daily texts, 2026-11-06: "only for active campaigns").
      *
      * @return array{currency: ?string, lsa: array{cost_minor: int, clicks: int, conversions: float}, ppc: array{cost_minor: int, clicks: int, conversions: float}}
      *
      * @throws RuntimeException
      */
-    public function channelCost(SocialConnection $connection, Carbon $from, Carbon $to): array
+    public function channelCost(SocialConnection $connection, Carbon $from, Carbon $to, bool $activeOnly = false): array
     {
         $rows = $this->search($connection, GoogleToken::forConnection($connection, 'google_ads'), sprintf(
-            "SELECT customer.currency_code, campaign.advertising_channel_type, metrics.cost_micros, "
-            ."metrics.clicks, metrics.conversions FROM campaign WHERE segments.date BETWEEN '%s' AND '%s'",
+            'SELECT customer.currency_code, campaign.advertising_channel_type, metrics.cost_micros, '
+            ."metrics.clicks, metrics.conversions FROM campaign WHERE segments.date BETWEEN '%s' AND '%s'%s",
             $from->format('Y-m-d'),
             $to->format('Y-m-d'),
+            $activeOnly ? " AND campaign.status = 'ENABLED'" : '',
         ));
 
         $out = ['currency' => null];

@@ -3,6 +3,7 @@
 namespace App\Support\Leads;
 
 use App\Models\Lead;
+use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
 
 /**
@@ -18,8 +19,6 @@ use Carbon\CarbonImmutable;
  */
 final class CallerLead
 {
-    private const SAME_PERSON_DAYS = 30;
-
     public static function find(?string $digits, CarbonImmutable $at): ?Lead
     {
         if ($digits === null || $digits === '') {
@@ -31,7 +30,7 @@ final class CallerLead
             ->where('status', '!=', Lead::STATUS_JOB_APPLICANT)
             ->orderByDesc('received_at');
 
-        return $theirs()->where('received_at', '>=', $at->subDays(self::SAME_PERSON_DAYS))->first()
+        return $theirs()->where('received_at', '>=', $at->subDays((int) SettingsResolver::forOrganization('leads.same_person_days')))->first()
             ?? (($latest = $theirs()->first()) !== null && $latest->status === Lead::STATUS_ARCHIVED ? $latest : null);
     }
 

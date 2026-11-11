@@ -266,6 +266,37 @@ void main() {
     expect(calls, contains('DELETE /api/v1/email/mailboxes/mb-1/people/u-ana'));
   });
 
+  testWidgets('anybody on staff can be picked; the note says when the grant '
+      'is what lets them in (Jose 11-09)', (tester) async {
+    final calls = <String>[];
+    await _pump(tester, _handler(
+      mailboxes: [_row(id: 'mb-1', address: 'info@a-1chimney.com')],
+      people: const {
+        'people': [],
+        'roles': [],
+        'candidates': [
+          {
+            'id': 'u-lucas',
+            'name': 'Lucas Snyder',
+            'email': 'lucas@a1.test',
+            'note': 'Gets this inbox through this grant: it is outside their branch.',
+          },
+        ],
+      },
+      onRequest: (method, path, body) {
+        if (method == 'POST' && path.contains('/people')) {
+          calls.add('${body?['user_id']}');
+        }
+      },
+    ));
+    await _openSettings(tester);
+
+    await _tap(tester, find.text('Add a person'));
+    expect(find.textContaining('through this grant'), findsOneWidget);
+    await _tap(tester, find.text('Lucas Snyder'));
+    expect(calls, ['u-lucas']);
+  });
+
   // The control: somebody who may not manage the inbox is not shown the
   // section at all, and is not made to fetch it — the server would refuse.
   testWidgets('somebody who cannot manage an inbox is not shown who can open it', (
@@ -1063,6 +1094,28 @@ void main() {
     expect(find.widgetWithText(TextFormField, 'Incoming server'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Connect it'), findsOneWidget);
     expect(find.text('Not available here'), findsNothing);
+  });
+
+  testWidgets('a @gmail.com address fills the Gmail servers, so it is the '
+      'address and an app password (Jose, 11-05: like A1 Tools)', (tester) async {
+    await _pump(tester, _handler(imapUsable: true));
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add an inbox'));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Mail service'),
+    );
+    await _tap(tester, find.text('IMAP').last);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Address'),
+      'acehomecaretx@gmail.com',
+    );
+    await tester.pump();
+
+    expect(find.widgetWithText(TextFormField, 'imap.gmail.com'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'smtp.gmail.com'), findsOneWidget);
   });
 
   // ── connecting by signing in ───────────────────────────────────

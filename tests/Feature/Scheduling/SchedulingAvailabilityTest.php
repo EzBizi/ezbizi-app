@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\ServiceArea;
+use App\Models\WebLocation;
 use App\Models\WorkizJob;
 use App\Support\Scheduling\Openings;
 use App\Support\Tenancy\TenantContext;
@@ -200,6 +201,35 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame('2026-10-12', $area['after'][0]['date']);
     }
 
+    /** Jose, 2026-11-09: dispatchers are told where the branch's office is; most specific address first. */
+    public function test_the_answer_names_the_branch_office_or_says_there_is_none(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $office = fn () => $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/availability?zip=75201')->json('data.areas.0.office');
+
+        $this->assertNull($office(), 'Nothing on file: the screen says so.');
+
+        $this->inTenant($tenant['org'], fn () => $tenant['company']->update(['address_line1' => '1 Main St', 'city' => 'Dallas', 'state' => 'TX', 'postal_code' => '75201']));
+        $this->assertSame(['1 Main St, Dallas, TX 75201', 'company'], [$office()['line'], $office()['source']]);
+
+        // A website location inside the area is more specific than the company.
+        $this->inTenant($tenant['org'], fn () => WebLocation::create(['company_id' => $tenant['company']->id, 'name' => 'Dallas',
+            'address_line1' => '11836 Judd Ct', 'city' => 'Dallas', 'state' => 'TX', 'postal_code' => '75201']));
+        $this->assertSame('11836 Judd Ct, Dallas, TX 75201', $office()['line']);
+        $this->assertStringStartsWith('https://www.google.com/maps/search/?api=1&query=11836', $office()['maps_url']);
+
+        // Several listings on one branch (DMV, 2026-11-09: DC showed Baltimore): the one inside the area wins.
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            foreach ([['9 Far Rd', 'Austin', '78701'], ['5 Near St', 'Dallas', '75201']] as [$street, $city, $zip]) {
+                \App\Models\BusinessLocation::create(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
+                    'franchise_id' => $tenant['franchise']->id, 'remote_name' => 'locations/'.$city, 'title' => 'A1',
+                    'address_line1' => $street, 'city' => $city, 'state' => 'TX', 'postal_code' => $zip]);
+            }
+        });
+        $this->assertSame(['5 Near St, Dallas, TX, 75201', 'google_business_profile'], [$office()['line'], $office()['source']]);
+    }
+
     /**
      * Mia, 2026-10-02: San Antonio is set up closed every day, and Availability
      * said "check Workiz" as if nobody had set it up. A week saved with every
@@ -314,13 +344,28 @@ class SchedulingAvailabilityTest extends TestCase
 
         $this->booked($tenant, '2026-10-05 07:00:00', 'Canceled');
         $this->booked($tenant, '2026-10-05 08:00:00', 'Done');
-        $this->booked($tenant, '2026-10-05 09:00:00', 'Submitted', ['DONT CHANGE TECH', 'DEPOSIT RECIEVED']);
+        $this->booked($tenant, '2026-10-05 09:00:00', 'Submitted', ['DONT CHANGE TECH', 'DEPOSIT RECEIVED']);
         $this->booked($tenant, '2026-10-05 09:30:00', 'Submitted', ['deposit received ']);
         $this->booked($tenant, '2026-10-05 10:00:00', 'Something new');
 
         $first = $this->first($tenant, 'zip=75201')['first'];
 
         $this->assertSame(1, $first['windows'][0]['taken'], 'Only the unclassified status should count.');
+    }
+
+    /** The lists are the organization's settings, not code (Jose, 2026-11-04). */
+    public function test_the_free_statuses_and_tags_are_settings(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->booked($tenant, '2026-10-05 07:00:00', 'Something new');
+        $this->booked($tenant, '2026-10-05 08:00:00', 'Canceled');
+        $this->booked($tenant, '2026-10-05 09:00:00', 'Submitted', ['Paid upfront']);
+        $settings = app(\App\Support\Settings\SettingsResolver::class);
+        $this->inTenant($tenant['org'], fn () => $settings->set('scheduling.free_statuses', $tenant['org'], [['value' => 'Something new', 'label' => 'Something new']]));
+        $this->inTenant($tenant['org'], fn () => $settings->set('scheduling.excluded_tags', $tenant['org'], [['value' => 'paid upfront', 'label' => 'Paid upfront']]));
+
+        $this->assertSame(1, $this->first($tenant, 'zip=75201')['first']['windows'][0]['taken'], 'Only Canceled, no longer listed, should count.');
     }
 
     /** A full day is skipped; the first Monday that still has room is offered. */
@@ -735,7 +780,7 @@ class SchedulingAvailabilityTest extends TestCase
             ->assertJsonPath('data.0.sent_automatically', true)
             ->assertJsonPath('data.0.sent_by.0.name', 'Morning overbooking mail');
 
-        $reader = $this->userWithRole($tenant, 'Dispatcher', ['scheduling.view', 'scheduling.overbooking.view']);
+        $reader = $this->userWithRole($tenant, 'Dispatcher', ['scheduling.view', 'scheduling.rescheduling.view']);
         $body = $this->signedInAs($reader)->getJson('/api/v1/scheduling/reports')
             ->assertOk()
             ->assertJsonPath('data.0.sent_automatically', true)
@@ -893,6 +938,18 @@ class SchedulingAvailabilityTest extends TestCase
             $data['suggested']['jobs'][0]['number'], $data['suggested']['jobs'][0]['status'],
         ]);
         $this->assertEqualsWithDelta(32.788, $data['origin']['latitude'], 0.002, 'The centre of the zip from its jobs.');
+
+        // The customer cannot take the 12th and asks for the 5th: that day's own suggestion (Jose, 2026-11-06).
+        $day = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201&date=2026-10-05')->assertOk()->json('data');
+        $this->assertSame(['2026-10-05', '2026-10-05'], [$day['for_date'], $day['earliest']['date']]);
+        $this->assertNull($day['suggested'], 'Nothing nearby on the 5th, so no better window that day.');
+        $this->assertSame('2026-10-12', $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201&date=2026-10-12')->json('data.suggested.date'));
+        // A day past the 14-day look-ahead still answers for itself (Jose, 2026-11-09: Dec 3 did nothing).
+        $far = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201&date=2026-12-07')->assertOk()->json('data');
+        $this->assertSame('2026-12-07', $far['earliest']['date']);
 
         // A wider radius from Settings changes nothing here, a 1-mile one still
         // finds the job, and nothing nearby means no suggestion at all.
@@ -1387,7 +1444,7 @@ class SchedulingAvailabilityTest extends TestCase
             ['weekday' => 4, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 1],
         ]])->assertOk();
 
-        $this->artisan('scheduling:warn-overbooking')->assertSuccessful();
+        $this->artisan('scheduling:warn-overbooking', ['--now' => true])->assertSuccessful();
         $this->assertSame(0, $events()->count(), 'Overbooked and open on Thursday: nothing to pause.');
 
         // Mondays only again: nothing until Oct 12, twelve days from today.
@@ -1396,7 +1453,7 @@ class SchedulingAvailabilityTest extends TestCase
             ['weekday' => 1, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1],
         ]])->assertOk();
 
-        $this->artisan('scheduling:warn-overbooking')->assertSuccessful();
+        $this->artisan('scheduling:warn-overbooking', ['--now' => true])->assertSuccessful();
 
         $after = json_decode($events()->first()->payload, true)['after'];
         $this->assertSame(1, $after['fully_booked_areas']);

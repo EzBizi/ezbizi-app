@@ -188,7 +188,7 @@ class LabelReportCalls extends Command
                     return;
                 }
 
-                $reads = TranscriptSpeakers::readMany($batch->map(fn ($row) => (string) $row->transcript)->values()->all());
+                $reads = TranscriptSpeakers::readMany($batch->map(fn ($row) => (string) $row->transcript)->values()->all(), $batch->pluck('organization_id')->values()->all());
 
                 foreach ($batch->values() as $n => $row) {
                     if ($reads[$n] instanceof Throwable) {

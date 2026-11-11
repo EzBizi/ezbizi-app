@@ -96,6 +96,7 @@ class PermissionAction {
     this.requires = const [],
     this.tab = false,
     this.description,
+    this.within,
   });
 
   /// The permission key itself, which is what gets stored and sent.
@@ -154,6 +155,10 @@ class PermissionAction {
   /// (Task Board's "Add people to any board", UI queue 95, Roles 10).
   final String? description;
 
+  /// The tab this one is drawn inside, by its label (Marketing › Social Media
+  /// Management › Dashboard). Null for a tab at the module's own level.
+  final String? within;
+
   factory PermissionAction.fromJson(Map<String, dynamic> json) =>
       PermissionAction(
         key: json['key'] as String,
@@ -163,6 +168,7 @@ class PermissionAction {
         requires: (json['requires'] as List?)?.cast<String>() ?? const [],
         tab: json['tab'] == true,
         description: json['description'] as String?,
+        within: json['within'] as String?,
       );
 }
 
@@ -333,7 +339,12 @@ class RoleSummary {
     this.invitableRoles,
     this.hiddenOnLeads = false,
     this.people,
+    this.peopleWithOwnInboxes = 0,
   });
+
+  /// How many of its people were given an inbox by name in Email settings,
+  /// which opens that inbox whatever the role holds.
+  final int peopleWithOwnInboxes;
 
   /// Some of the people who hold it, for "Who has it" (UI queue 111).
   ///
@@ -388,6 +399,8 @@ class RoleSummary {
   factory RoleSummary.fromJson(Map<String, dynamic> json) => RoleSummary(
     id: json['id'].toString(),
     hiddenOnLeads: json['hidden_on_leads'] as bool? ?? false,
+    peopleWithOwnInboxes:
+        (json['people_with_own_inboxes'] as num?)?.toInt() ?? 0,
     invitableRoles: (json['invitable_roles'] as List<dynamic>?)
         ?.whereType<String>()
         .toList(),

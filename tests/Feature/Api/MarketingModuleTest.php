@@ -200,7 +200,8 @@ class MarketingModuleTest extends TestCase
         // drafting a mailing and putting it in front of twelve hundred
         // customers are different acts, and only a module can express that.
         $this->assertSame(
-            ['newsletter', 'web_management'],
+            // Ads (running Google and Meta campaigns) since 2026-11-09; Google's report is Reports.
+            ['newsletter', 'web_management', 'ads_manager'],
             array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
             'Registry order is the tab order, so this is the order of the strip.',
         );

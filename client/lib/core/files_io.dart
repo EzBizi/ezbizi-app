@@ -1,4 +1,3 @@
-import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'dart:io';
 import 'dart:async';
@@ -72,8 +71,14 @@ List<fs.XTypeGroup> acceptGroups(String accept) {
 
   if (extensions.isEmpty) return const <fs.XTypeGroup>[];
 
+  // iOS refuses a group without UTIs; public.data lets any file through there
+  // and the extensions still filter on every other platform.
   return [
-    fs.XTypeGroup(label: 'Allowed files', extensions: extensions.toList()),
+    fs.XTypeGroup(
+      label: 'Allowed files',
+      extensions: extensions.toList(),
+      uniformTypeIdentifiers: const ['public.data'],
+    ),
   ];
 }
 
@@ -85,7 +90,11 @@ Future<PickedBytes?> _openBytes(List<fs.XTypeGroup> groups) async {
 }
 
 Future<PickedBytes?> pickImage() => _openBytes(const [
-  fs.XTypeGroup(label: 'Images', extensions: _imageExtensions),
+  fs.XTypeGroup(
+    label: 'Images',
+    extensions: _imageExtensions,
+    uniformTypeIdentifiers: ['public.image'],
+  ),
 ]);
 
 Future<PickedBytes?> pickBytes({String accept = ''}) =>
@@ -156,13 +165,14 @@ Future<void> Function(Uint8List bytes, String filename) sharePdf =
 
 Future<void> _share(String filename, List<int> content) async {
   try {
-    if (filename.toLowerCase().endsWith('.pdf')) {
-      await sharePdf(Uint8List.fromList(content), filename);
-      return;
-    }
-    // Anything else lands in the app's documents, where Files can reach it.
-    final dir = await getApplicationDocumentsDirectory();
-    await File('${dir.path}/$filename').writeAsBytes(content, flush: true);
+    // Every file goes to the share sheet. Writing non-PDFs silently into
+    // the app's documents showed nothing, so an email attachment "did
+    // nothing" on iPhone (Jose, 2026-11-03). iOS shares the file by its name
+    // and extension, so any type opens or saves there.
+    // ponytail: Android's intent is typed application/pdf by printing; Save
+    // to Files/Drive keeps the name, but a viewer may refuse a non-PDF. Swap
+    // to share_plus if that bites.
+    await sharePdf(Uint8List.fromList(content), filename);
   } catch (_) {
     // As below: the caller has moved on.
   }
@@ -195,6 +205,33 @@ Future<void> _saveAs(String filename, List<int> content) async {
 
 void clearQuery() {}
 
-String? previewUrl(List<int> bytes, String mime) => null;
+/// The bytes written to a temporary file, as a `file:` URL a video player
+/// opens on desktop and phone. Deleted again by [releasePreviewUrl].
+String? previewUrl(List<int> bytes, String mime) {
+  try {
+    final ext = switch (mime) {
+      'video/quicktime' => 'mov',
+      'video/webm' => 'webm',
+      _ => 'mp4',
+    };
+    final file = File(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}'
+      'ezbizi-preview-${DateTime.now().microsecondsSinceEpoch}.$ext',
+    )..writeAsBytesSync(bytes, flush: true);
+    return Uri.file(file.path).toString();
+  } catch (_) {
+    return null;
+  }
+}
 
-void releasePreviewUrl(String url) {}
+void releasePreviewUrl(String url) {
+  try {
+    final uri = Uri.parse(url);
+    if (uri.isScheme('file')) File(uri.toFilePath()).deleteSync();
+  } catch (_) {
+    // Already gone, or the temp folder was cleared: nothing to give back.
+  }
+}
+
+/// `flutter test` sets this; no platform video player answers there.
+bool get underTest => Platform.environment.containsKey('FLUTTER_TEST');

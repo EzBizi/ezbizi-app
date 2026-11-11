@@ -88,7 +88,10 @@ class _GuideBuilderState extends State<GuideBuilder> {
   String? _error;
 
   late TextEditingController _title;
-  String _status = 'draft';
+  /// Null until the guide has loaded: a published guide read "Draft — nobody
+  /// sees it yet" with a Publish button for five seconds (phone audit
+  /// 2026-11-04, Section 3 #14).
+  String? _status;
   List<Map<String, dynamic>> _screens = [];
   int? _selected;
 
@@ -344,11 +347,13 @@ class _GuideBuilderState extends State<GuideBuilder> {
                     decoration: const InputDecoration(isDense: true, border: InputBorder.none),
                   ),
                 ),
-                Tag(_status == 'published' ? 'Published' : 'Draft — nobody sees it yet'),
-                OutlinedButton(
-                  onPressed: _togglePublish,
-                  child: Text(_status == 'published' ? 'Unpublish' : 'Publish'),
-                ),
+                if (_status != null) ...[
+                  Tag(_status == 'published' ? 'Published' : 'Draft — nobody sees it yet'),
+                  OutlinedButton(
+                    onPressed: _togglePublish,
+                    child: Text(_status == 'published' ? 'Unpublish' : 'Publish'),
+                  ),
+                ],
                 ElevatedButton(
                   key: const Key('training.save-guide'),
                   onPressed: _saving ? null : _save,
@@ -1050,13 +1055,13 @@ String _scopeLabel(Me? me, Map<String, dynamic> entry) {
 
   final franchiseId = entry['franchise_id'] as String?;
   if (franchiseId != null) {
-    final franchise = me.franchisesInView.where((f) => f.id == franchiseId).firstOrNull;
+    final franchise = me.franchises.where((f) => f.id == franchiseId).firstOrNull;
     if (franchise != null) return franchise.name;
   }
 
   final companyId = entry['company_id'] as String?;
   if (companyId != null) {
-    final company = me.companiesInView.where((c) => c.id == companyId).firstOrNull;
+    final company = me.companies.where((c) => c.id == companyId).firstOrNull;
     if (company != null) return company.name;
   }
 

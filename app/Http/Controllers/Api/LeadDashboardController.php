@@ -87,7 +87,7 @@ class LeadDashboardController extends Controller
         $waiting = $scoped()->whereIn('leads.source', Lead::INBOX_SOURCES)
             ->where('leads.status', Lead::STATUS_NEW)
             ->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
-            ->whereBetween('leads.last_contact_at', [now()->subDay(), now()->subMinutes(Lead::REPLY_OVERDUE_AFTER_MINUTES)])
+            ->whereBetween('leads.last_contact_at', [now()->subDay(), now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes'))])
             ->get()
             ->filter(fn (Lead $l) => $l->replyOverdue($this->replies->canReply($l)))
             ->count();

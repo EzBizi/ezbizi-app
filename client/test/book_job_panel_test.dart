@@ -63,6 +63,30 @@ void main() {
     expect(_optionsAsked.map((q) => q['zip']), contains('10001'));
   });
 
+  /// Jose, 2026-11-05: Kristen's checked address, branch and summary did
+  /// not carry over; only the ZIP did.
+  test('a lead carries its checked address, branch and summary', () {
+    final p = BookPrefill.fromLead(
+      {..._lead, 'franchise': null, 'summary': 'Chimney cleaning in Darien.'},
+      details: const {
+        'checked_address': {
+          'exact': true,
+          'line1': '14 Edgerton St',
+          'city': 'Darien',
+          'state': 'CT',
+          'zip': '06820',
+        },
+      },
+      bookFranchiseId: 'fr-ct',
+    );
+    expect(
+      [p.line1, p.city, p.state, p.postal],
+      ['14 Edgerton St', 'Darien', 'CT', '06820'],
+    );
+    expect(p.franchiseId, 'fr-ct');
+    expect(p.description, 'Chimney cleaning in Darien.');
+  });
+
   testWidgets('a job type is required only when the branch books into Workiz', (
     tester,
   ) async {

@@ -2,8 +2,10 @@
 
 namespace App\Support\Reports\Experimental;
 
+use App\Models\CallReportOverride;
 use App\Support\Leads\CallTypeCorrections;
 use App\Support\Phone\NumberNames;
+use App\Support\Reports\Tagging\CallLabels;
 use App\Support\Tenancy\TenantContext;
 
 /**
@@ -42,49 +44,29 @@ use App\Support\Tenancy\TenantContext;
  * obvious duplicate row. The union of both name sets is returned and a person
  * who appears on only one side is visible as a row of zeroes on the other.
  *
- * ── AN ALIAS IS SOMEBODY'S ANSWER, NEVER A RESEMBLANCE ──────────
+ * ── ONE PERSON, TWO SPELLINGS ──────────
  *
- * `ALIASES` is how two spellings become one person, and every entry in it is a
- * human saying so. Jose, asked whether the two Adelines were the same person:
- * "YES". That is the only thing that may put a row in this list.
- *
- * It is deliberately not a similarity rule, not a normaliser, not an initials
- * match. Those would work on this pair and would also merge two real people
- * who happen to share a surname — silently, and in the direction where one
- * person's work lands on another's row. A list of confirmed pairs cannot do
- * that: it can only be incomplete, which is visible as a duplicate row.
+ * PersonNames decides, from data: a pair stored on somebody's word, Workiz's
+ * own team list, or the one Workiz person with the same first and last word.
+ * It was a constant here (ALIASES) until Jose, 2026-11-04: "Shouldnt u be able
+ * to update them without an update?" A pair is now a row, not a release.
  */
 final class CallReconciliation
 {
-    /**
-     * Spellings confirmed to be one person, mapped to the name to keep.
-     *
-     * Keyed by the RingCentral spelling because that is the one the phone
-     * directory holds; the value is the name the report shows. Add only on
-     * somebody's word.
-     */
-    public const ALIASES = [
-        // Jose, 2026-09-14, asked whether these are the same person: "YES".
-        'Adeline Pierre Louis-Aghaji' => 'Adeline Pierrelouis',
+    /** @var array<string, array<string, array{value: string, by: ?string}>> call id => field => override */
+    private array $overrides = [];
 
-        // Jose, 2026-10-06, asked whether each pair is one person: "Yes, all three".
-        'Chevel Richards' => 'Chevel Richards Turner',
-        'Hyanne Faelnar' => 'Hyanne Kylla Faelnar',
-        'Danika Kaye' => 'Danika Kaye Navarroza',
+    /** @var array<string, PersonNames> organization => its names, read once per instance */
+    private array $names = [];
 
-        // Jose, 2026-11-03, asked whether these are one person: "yes".
-        'Bryan Lagazon' => 'Bryan Nixon Lagazon',
-        // Jose, 2026-11-03, asked whether these are one person: "yes they are the same person".
-        'Jay Ticoit' => 'Dieuve Ticoit',
-    ];
+    private function names(): PersonNames
+    {
+        return $this->names[(string) app(TenantContext::class)->get()?->getKey()] ??= PersonNames::forTenant();
+    }
 
     private function canonical(?string $name): ?string
     {
-        if ($name === null) {
-            return null;
-        }
-
-        return self::ALIASES[$name] ?? $name;
+        return $this->names()->canonical($name);
     }
 
     /**
@@ -196,6 +178,7 @@ final class CallReconciliation
         $talkSeconds = [];
         $talkCalls = [];
         $new = [];
+        $bookedNew = [];
         $existing = [];
 
         $reachedNobody = 0;
@@ -216,11 +199,11 @@ final class CallReconciliation
                 $rang[$person] = ($rang[$person] ?? 0) + 1;
             }
 
-            $queue = $call['queue'] ?? null;
+            $client = RingCentralCallLog::clientOf($call['queue'] ?? null);
 
-            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE) {
+            if ($client === 'new') {
                 $newTotal++;
-            } elseif ($queue === RingCentralCallLog::EXISTING_CLIENT_QUEUE) {
+            } elseif ($client === 'existing') {
                 $existingTotal++;
             }
 
@@ -242,16 +225,19 @@ final class CallReconciliation
                 $talkCalls[$who] = ($talkCalls[$who] ?? 0) + 1;
             }
 
-            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
+            if ($client === 'new' && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
                 $notBooked++;
             }
 
             // Attributed to whoever TOOK it. A call that rang four people was
             // one caller with one question, and counting it for all four would
             // make the day's new-client calls outnumber the day's calls.
-            if ($queue === RingCentralCallLog::NEW_CLIENT_QUEUE) {
+            if ($client === 'new') {
                 $new[$who] = ($new[$who] ?? 0) + 1;
-            } elseif ($queue === RingCentralCallLog::EXISTING_CLIENT_QUEUE) {
+                if ($this->isBooked($call, $bookedPhones, $converted)) {
+                    $bookedNew[$who] = ($bookedNew[$who] ?? 0) + 1;
+                }
+            } elseif ($client === 'existing') {
                 $existing[$who] = ($existing[$who] ?? 0) + 1;
             }
         }
@@ -312,6 +298,9 @@ final class CallReconciliation
                 'rang' => $rang[$name] ?? 0,
                 'answered' => $answered[$name] ?? 0,
                 'new_client' => $new[$name] ?? 0,
+                // Of those new-client calls they answered, the ones booked:
+                // the booking rate's top (Trey, 2026-11-04).
+                'booked_new' => $bookedNew[$name] ?? 0,
                 'existing_client' => $existing[$name] ?? 0,
                 'jobs' => $made[$name] ?? 0,
 
@@ -331,7 +320,10 @@ final class CallReconciliation
                 // jobs without answering phones - a normal way to work - must
                 // not be flagged as a mismatch.
                 'in_calls' => isset($rang[$name]) || isset($answered[$name]),
-                'in_jobs' => isset($workizRoster[$name]),
+                // On Workiz's team list, or booked a job in the window: someone
+                // who takes existing clients books nothing and still has an
+                // account (Christine Malana, 2026-11-04).
+                'in_jobs' => isset($workizRoster[$name]) || $this->names()->inWorkiz($name),
 
                 // Set by hand per person (Jose, 2026-10-05, item 5).
                 'tag' => $tags[$name] ?? null,
@@ -347,6 +339,9 @@ final class CallReconciliation
                 'answered' => array_sum($answered),
                 'reached_nobody' => $reachedNobody,
                 'new_client' => $newTotal,
+                // The Overview's conversion: booked out of answered new-client calls.
+                'answered_new' => array_sum($new),
+                'booked_new' => array_sum($bookedNew),
                 'existing_client' => $existingTotal,
                 'jobs' => count($booked),
                 'not_booked' => $notBooked,
@@ -357,6 +352,12 @@ final class CallReconciliation
                     : null,
             ],
             'people' => $people,
+            // The business's two queue names, so the screen splits calls by
+            // the same setting the counts above used.
+            'queues' => ['new' => RingCentralCallLog::newClientQueue(), 'existing' => RingCentralCallLog::existingClientQueue()],
+            // And the label lists' names (Settings › Lists), so a label the
+            // business added is shown by its own name.
+            'labels' => CallLabels::names(),
 
             /*
              * ── THE CALLS THEMSELVES, FLAT ──────────────────────────
@@ -392,6 +393,8 @@ final class CallReconciliation
                 'booked' => $this->isBooked($call, $bookedPhones, $converted),
                 'existing_job' => $this->isBooked($call, $bookedPhones, $converted) ? null : $existingJob($call),
                 'converted' => isset($converted[(string) ($call['id'] ?? '')]),
+                // Who set the client or the booking by hand, per field.
+                'set_by' => array_map(fn ($o) => $o['by'], $this->overrides[(string) ($call['id'] ?? '')] ?? []) ?: null,
                 'talk_seconds' => $call['talk_seconds'] ?? null,
                 'recording_id' => $call['recording_id'] ?? null,
                 'answered_by' => $this->canonical($call['answered_by'] ?? null),
@@ -504,6 +507,10 @@ final class CallReconciliation
      */
     private function isBooked(array $call, array $bookedPhones, array $converted): bool
     {
+        if (($set = $this->overrides[(string) ($call['id'] ?? '')]['booking'] ?? null) !== null) {
+            return $set['value'] === 'booked';
+        }
+
         if (isset($converted[(string) ($call['id'] ?? '')])) {
             return true;
         }
@@ -527,13 +534,19 @@ final class CallReconciliation
             return $calls;
         }
 
-        $fixes = CallTypeCorrections::forCalls(array_values(array_filter(array_map(fn ($c) => isset($c['id']) ? (string) $c['id'] : null, $calls))));
+        $ids = array_values(array_filter(array_map(fn ($c) => isset($c['id']) ? (string) $c['id'] : null, $calls)));
+        $fixes = CallTypeCorrections::forCalls($ids);
+        // Set by hand on the report (Jose, 2026-11-03, for Trey): wins over
+        // Leads' read and Workiz, for the client and for the booking.
+        $this->overrides = CallReportOverride::forCalls($ids);
 
         return array_map(function (array $call) use ($fixes) {
-            $fix = $fixes[(string) ($call['id'] ?? '')] ?? null;
+            $set = $this->overrides[(string) ($call['id'] ?? '')]['client'] ?? null;
+            $fix = $set === null ? ($fixes[(string) ($call['id'] ?? '')] ?? null)
+                : ['corrected_type' => $set['value'], 'reason' => 'Set by '.($set['by'] ?? 'someone'), 'evidence' => null, 'decided_by' => $set['by'] ?? 'someone'];
             $queue = match ($fix['corrected_type'] ?? null) {
-                'new' => RingCentralCallLog::NEW_CLIENT_QUEUE,
-                'existing' => RingCentralCallLog::EXISTING_CLIENT_QUEUE,
+                'new' => RingCentralCallLog::newClientQueue(),
+                'existing' => RingCentralCallLog::existingClientQueue(),
                 default => null,
             };
 
