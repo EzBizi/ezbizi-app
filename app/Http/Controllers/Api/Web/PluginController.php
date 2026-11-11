@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\Controller;
+use App\Models\Attachment;
+use App\Models\InspectionReport;
+use App\Models\Organization;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Models\WebWidget;
+use App\Support\Inspection\BeforeAfter;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\ChatPeople;
 use App\Support\Web\PageFields;
@@ -17,6 +21,8 @@ use App\Support\Web\WebsiteEnquiries;
 use App\Support\Web\WidgetPresets;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -49,6 +55,114 @@ class PluginController extends Controller
         private readonly TenantContext $tenant,
         private readonly WebsiteEnquiries $enquiries,
     ) {}
+
+    /**
+     * GET /api/v1/web/plugin/before-after — the cleared before/after pairs for
+     * the website widget, newest first. The site's own company, or the whole
+     * organization for a site with none. No address, name or job number: the
+     * pair, its service, and the town.
+     */
+    public function beforeAfter(Request $request): JsonResponse
+    {
+        $site = $this->siteForToken($request);
+
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
+        $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
+        $limit = max(1, min(50, (int) $request->query('limit', 12)));
+
+        return $this->tenant->run($organization, function () use ($site, $limit): JsonResponse {
+            $rows = [];
+            // ponytail: walks approved photos newest first and rebuilds each pair; fine for hundreds.
+            $approved = Attachment::query()
+                ->where('attachable_type', 'inspection_reports')
+                ->whereNotNull('web_approved_at')
+                ->orderByDesc('web_approved_at')
+                ->get();
+
+            foreach ($approved as $after) {
+                $report = InspectionReport::with(['job.franchise', 'customer'])->whereNull('archived_at')->find($after->attachable_id);
+                if ($report === null || ($site->company_id !== null && $report->job?->franchise?->company_id !== $site->company_id)) {
+                    continue;
+                }
+                $pair = collect(BeforeAfter::pairs($report))->first(fn (array $p) => $p['after']->id === $after->id);
+                if ($pair === null) {
+                    continue;
+                }
+                $rows[] = [
+                    'id' => $after->id,
+                    'label' => $pair['label'],
+                    'service' => $report->job?->job_type ?: $report->definition_name,
+                    'city' => $report->customer?->city,
+                    'state' => $report->customer?->state,
+                    'approved_at' => $after->web_approved_at,
+                    'before' => $this->webPhoto($pair['before'], 'Before: '.$pair['label']),
+                    'after' => $this->webPhoto($after, 'After: '.$pair['label']),
+                ];
+                if (count($rows) >= $limit) {
+                    break;
+                }
+            }
+
+            return response()->json(['data' => $rows]);
+        });
+    }
+
+    /**
+     * GET /api/v1/web/plugin/before-after/image/{attachment} — signed, 24h. A
+     * re-encoded copy at most 1600px wide; re-encoding drops EXIF (GPS, device).
+     */
+    public function beforeAfterImage(string $attachment): Response
+    {
+        $photo = $this->tenant->runWithoutTenant(fn () => Attachment::withoutGlobalScopes()->findOrFail($attachment));
+        $organization = $this->tenant->runWithoutTenant(fn () => Organization::findOrFail($photo->organization_id));
+        $jpeg = $this->tenant->run($organization, fn () => $this->webCopy($photo));
+
+        return response($jpeg, 200, ['Content-Type' => 'image/jpeg', 'Cache-Control' => 'public, max-age=86400']);
+    }
+
+    /** @return array{url: string, width: int, height: int, alt: string} */
+    private function webPhoto(Attachment $photo, string $alt): array
+    {
+        [$width, $height] = getimagesizefromstring($this->webCopy($photo)) ?: [0, 0];
+
+        return [
+            'url' => URL::temporarySignedRoute('web.plugin.before-after.image', now()->addDay(), ['attachment' => $photo->id]),
+            'width' => $width,
+            'height' => $height,
+            'alt' => $alt,
+        ];
+    }
+
+    private function webCopy(Attachment $photo): string
+    {
+        $path = 'web-before-after/'.$photo->organization_id.'/'.$photo->id.'.jpg';
+        $disk = Storage::disk('local');
+
+        if (! $disk->exists($path)) {
+            $bytes = (string) $photo->bytes();
+            $image = @imagecreatefromstring($bytes);
+            abort_if($image === false, 404);
+            // Phones store rotation in EXIF, which the re-encode drops: apply it first.
+            $orientation = function_exists('exif_read_data') ? (@exif_read_data('data://image/jpeg;base64,'.base64_encode($bytes))['Orientation'] ?? 1) : 1;
+            $image = match ((int) $orientation) {
+                3 => imagerotate($image, 180, 0),
+                6 => imagerotate($image, -90, 0),
+                8 => imagerotate($image, 90, 0),
+                default => $image,
+            };
+            if (imagesx($image) > 1600) {
+                $image = imagescale($image, 1600);
+            }
+            ob_start();
+            imagejpeg($image, null, 82);
+            $disk->put($path, (string) ob_get_clean());
+        }
+
+        return (string) $disk->get($path);
+    }
 
     /**
      * POST /api/v1/web/plugin/form — a form the website drew itself (an

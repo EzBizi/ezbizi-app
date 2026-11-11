@@ -49,6 +49,43 @@ class BeforeAfterTest extends TestCase
         });
     }
 
+    /** Web's widget feed: nothing until a person clears the pair, then the pair and no identifying text. */
+    public function test_the_website_feed_serves_only_cleared_pairs_without_names(): void
+    {
+        Storage::fake('local');
+        $tenant = $this->provisionTenant('Alpha');
+
+        [$after, $afterPhoto] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $customer = Customer::create(['owning_franchise_id' => $tenant['franchise']->id, 'number' => 'C-1', 'name' => 'Dana Private']);
+            $job = Job::create(['franchise_id' => $tenant['franchise']->id, 'customer_id' => $customer->id, 'number' => 'J-77', 'title' => 'Sweep', 'status' => 'scheduled']);
+            $this->report($tenant, $job, 'system_image', 'System image', '2026-11-03 09:00:00');
+            $after = $this->report($tenant, $job, 'after_system_image', 'System after', '2026-11-03 12:00:00');
+
+            return [$after, $after->attachments->first()];
+        });
+
+        $site = $this->signedInAs($tenant['admin'])->postJson('/api/v1/web/sites', ['company_id' => $tenant['company']->id, 'host' => 'alpha.example'])->assertCreated()->json();
+        $feed = fn () => $this->getJson('/api/v1/web/plugin/before-after', ['Authorization' => 'Bearer '.$site['token']]);
+
+        $this->assertSame([], $feed()->assertOk()->json('data'));
+
+        $approve = '/api/v1/inspections/reports/'.$after->id.'/before-after/'.$afterPhoto->id.'/approve';
+        $this->signedInAs($tenant['admin'])->postJson($approve)->assertUnprocessable();
+        $this->signedInAs($tenant['admin'])->postJson($approve, ['privacy_checked' => true])->assertOk();
+
+        $response = $feed()->assertOk();
+        $this->assertSame('System after', $response->json('data.0.label'));
+        $this->assertStringNotContainsString('Dana', $response->getContent());
+        $this->assertStringNotContainsString('J-77', $response->getContent());
+
+        $image = $this->get($response->json('data.0.after.url'));
+        $image->assertOk()->assertHeader('Content-Type', 'image/jpeg');
+        $this->get('/api/v1/web/plugin/before-after/image/'.$afterPhoto->id)->assertForbidden();
+
+        $this->signedInAs($tenant['admin'])->deleteJson($approve)->assertOk();
+        $this->assertSame([], $feed()->json('data'));
+    }
+
     private function report(array $tenant, Job $job, string $key, string $label, string $at): InspectionReport
     {
         $screens = [['name' => 'Photos', 'fields' => [['key' => $key, 'label' => $label, 'type' => 'photo']]]];
@@ -60,7 +97,7 @@ class BeforeAfterTest extends TestCase
             'submitted_by' => $tenant['admin']->id, 'submitted_at' => $at, 'answers' => [],
             'layout_preset' => 'step_strip', 'definition_name' => $label]);
 
-        $path = 'photos/'.$key.$at.'.png';
+        $path = 'photos/'.$key.md5($at).'.png';
         Storage::disk('local')->put($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
         $photo = new Attachment(['attachable_type' => $report->getMorphClass(), 'attachable_id' => $report->id, 'original_name' => 'p.png', 'mime' => 'image/png', 'uploaded_by_user_id' => $tenant['admin']->id]);
         $photo->forceFill(['disk' => 'local', 'path' => $path, 'size_bytes' => 70, 'checksum' => hash('sha256', $path)])->save();
