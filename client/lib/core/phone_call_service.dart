@@ -815,6 +815,14 @@ class PhoneCallService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Keys pressed on the live call, for a menu at the other end.
+  void sendDigits(String digits) {
+    final device = _live;
+    if (device is SendsDigits && _onCall) {
+      (device as SendsDigits).sendDigits(digits);
+    }
+  }
+
   void hangUp() {
     final wasOnCall = _onCall;
 
