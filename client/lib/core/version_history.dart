@@ -13,6 +13,14 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0560', date: '11 Nov 2026', items: [
+      'Reports: technician sales count the jobs scheduled that day; deposits go to the job’s team; weekly Google spend includes paused campaigns; ACE and AngiSweep jobs count in their Google sections',
+      'Marketing: account health with Reconnect, approvals inside Social, a calendar that opens Compose, warnings before publishing, newsletter Unschedule and Duplicate, and a No marketing email switch per customer',
+      'Development › Releases: the current release’s progress, stage by stage',
+      'Development › Health: a delayed automation no longer reads as a stopped scheduler',
+      'Development › Staff: no audit-exemption control',
+      'Crash reports count the app’s uptime from launch',
+    ]),
     VersionRelease(version: '0.0.0559', date: '11 Nov 2026', items: [
       'Project Management: totals for Paid, Remaining Balance and Total Amount over the whole tab',
       'Project Management: a parts list per job, each part Need to order (item, quantity, price, delivery date) or In stock',
