@@ -16,10 +16,12 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Jobs\EarnedStatuses;
 use App\Support\Jobs\WorkizExtras;
 use App\Support\Jobs\WorkizMoney;
+use App\Support\Notes\NoteActivity;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Workiz\WorkizTagColours;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -214,7 +216,12 @@ class JobsController extends Controller
                             ->orWhere('number', 'like', $like)
                             ->orWhereHas('customer', function ($customers) use ($like) {
                                 $customers->where('name', 'like', $like)
-                                    ->orWhere('number', 'like', $like);
+                                    ->orWhere('number', 'like', $like)
+                                    // Phone in any format, and the address (Trey, 2026-11-11).
+                                    ->orWhere(fn ($p) => Customer::phoneLike($p, trim($like, '%')))
+                                    ->orWhere('address_line1', 'like', $like)
+                                    ->orWhere('city', 'like', $like)
+                                    ->orWhere('postal_code', 'like', $like);
                             });
                     });
                 })
@@ -387,7 +394,7 @@ class JobsController extends Controller
         $meta['statuses'] = array_values((array) app(SettingsResolver::class)
             ->get('jobs.statuses', ViewScope::forUser($request->user())->settingsScope()));
 
-        $unread = \App\Support\Notes\NoteActivity::unreadCounts('job', 'job_notes', 'job_id',
+        $unread = NoteActivity::unreadCounts('job', 'job_notes', 'job_id',
             collect($jobs->items())->map(fn (Job $j) => (string) $j->getKey())->all(), (string) $request->user()->getKey());
 
         return response()->json([
@@ -826,7 +833,7 @@ class JobsController extends Controller
             'sub_status' => $job->sub_status,
             'tags' => $job->tags ?? [],
             // Each tag's Workiz colour, where the mirror knows it (Jose, 2026-11-10).
-            'tag_colours' => (object) app(\App\Support\Workiz\WorkizTagColours::class)->for($job->franchise_id, (array) ($job->tags ?? [])),
+            'tag_colours' => (object) app(WorkizTagColours::class)->for($job->franchise_id, (array) ($job->tags ?? [])),
             // Who opened it and when (Jose, 2026-10-27): native, Workiz's for a mirrored job (backfilled).
             'created_at' => $job->created_at?->toIso8601String(),
             'created_by' => $job->created_by_label === null ? null : ['user_id' => $job->created_by_user_id, 'name' => $job->created_by_label],
@@ -844,7 +851,7 @@ class JobsController extends Controller
             // Workiz's job notes as they are now, read only in the Notes tab
             // (Jose, 2026-11-10: the Notes tab said "No notes yet").
             'workiz_notes' => (fn ($n) => is_string($n) && trim($n) !== '' ? trim($n) : null)($job->workizJob?->payload['JobNotes'] ?? null),
-            'workiz_tags' => app(\App\Support\Workiz\WorkizTagColours::class)->definitions($job->franchise_id),
+            'workiz_tags' => app(WorkizTagColours::class)->definitions($job->franchise_id),
             'description' => $job->description,
             'duration_minutes' => $job->duration_minutes,
             'allowed_statuses' => $job->franchise
