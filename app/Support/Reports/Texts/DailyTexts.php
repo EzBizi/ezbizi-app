@@ -108,7 +108,7 @@ final class DailyTexts
         $this->several = $several;
         $this->name = fn (Franchise $b) => ! $several || ($this->locations !== [] && $this->listed($b)) ? (string) $b->name : BranchName::of($b);
 
-        return match ($kind) {
+        $text = match ($kind) {
             'ppc' => $this->ppc($list, $day),
             'marketing_ppc' => $this->marketingPpc($organization, $day, $branches === null ? null : $list),
             'dispatchers' => $this->dispatchers($day, $branches),
@@ -130,6 +130,42 @@ final class DailyTexts
                 $this->lsaLosses($list, $day->subDays(6), $day),
             ]),
         };
+
+        return $text === '' ? '' : implode("\n\n", [$text, ...$this->stale($kind, $list)]);
+    }
+
+    /**
+     * A source that has not caught up, said under the report: Rodrigo held such a report back (audit #9, 2026-11-11).
+     * Workiz over two hours behind the run, Google reviews over 36.
+     *
+     * @return list<string>
+     */
+    private function stale(string $kind, Collection $branches): array
+    {
+        $lines = [];
+        $reads = match ($kind) {
+            'technician_sales', 'job_assignments', 'evening' => ['jobs'],
+            'revenue_collected' => ['payments'],
+            'weekly' => ['jobs', 'payments'],
+            default => [],
+        };
+        $when = fn (string $utc) => CarbonImmutable::parse($utc, 'UTC')->setTimezone($this->at->getTimezone())->format('M j, g:i A');
+        foreach ($reads as $what) {
+            $behind = $branches->mapWithKeys(fn (Franchise $b) => [($this->name)($b) => ReportJobs::syncedAt((string) $b->getKey(), $what)])
+                ->filter(fn ($at) => $at !== null && CarbonImmutable::parse($at, 'UTC')->lessThan($this->at->subHours(2)));
+            if ($behind->isNotEmpty()) {
+                $lines[] = "\u{26A0}\u{FE0F} Workiz {$what} last synced ".$when($behind->min()).' for '.$behind->keys()->implode(', ').': anything since is not in these figures.';
+            }
+        }
+        if ($kind === 'weekly_reviews') {
+            $read = DB::table('social_connections')->whereIn('id', DB::table('reviews')->whereIn('franchise_id', $branches->pluck('id'))->distinct()->select('connection_id'))
+                ->min('last_reached_at');
+            if ($read !== null && CarbonImmutable::parse($read, 'UTC')->lessThan($this->at->subHours(36))) {
+                $lines[] = "\u{26A0}\u{FE0F} Google reviews last read ".$when($read).': newer reviews are not in these figures.';
+            }
+        }
+
+        return $lines;
     }
 
     /**
@@ -155,7 +191,8 @@ final class DailyTexts
             $date = ($d['weekday'] !== '' ? $d['weekday'].', ' : '').$d['from'].(($d['to'] ?? '') !== '' ? ' - '.$d['to'] : '');
             $italic = preg_match('/^_(.*)_$/u', $lines[$i], $inner) === 1;
             $rest = trim(str_replace($d[0], '', $italic ? $inner[1] : $lines[$i]), ' ·');
-            if ($rest === '') {
+            // A span's bare "through 8:01 PM" goes with its date; each section says it again (the Sunday weekly, audit #14).
+            if ($rest === '' || (($d['to'] ?? '') !== '' && str_starts_with($rest, 'through '))) {
                 unset($lines[$i]);
             } else {
                 $lines[$i] = $italic ? '_'.ucfirst($rest).'_' : ucfirst($rest);
@@ -819,8 +856,9 @@ final class DailyTexts
         $withTable = $branches->count() - count($unmapped);
         $judged = $withTable - count($pending);
         $noTable = $unmapped === [] ? [] : ['', '_No P&L table mapped: '.implode(', ', $unmapped).'_'];
+        // Nothing to judge yet sends nothing: the rule runs hourly on Wednesdays until the P&L lands (desk, 2026-11-11).
         if ($judged === 0) {
-            return implode("\n", [...$lines, "\u{26A0}\u{FE0F} Can't be judged yet: no branch has a complete P&L for the week.", 'Not complete yet: '.implode(', ', $pending), ...$noTable]);
+            return '';
         }
         if ($pending !== []) {
             $lines[] = "\u{26A0}\u{FE0F} Only {$judged} of the {$withTable} branches with a P&L table have a complete week; the rest can't be judged yet.";
@@ -845,7 +883,8 @@ final class DailyTexts
     private function weeklyReviews(Collection $branches, CarbonImmutable $day): string
     {
         [$from, $to] = [$day->startOfWeek()->subWeek(), $day->startOfWeek()->subDay()->endOfDay()];
-        $counts = DB::table('reviews')->whereIn('franchise_id', $branches->pluck('id'))
+        // A review Google took down is not one of the week's (audit #12, 2026-11-11: 47 counted, 46 there).
+        $counts = DB::table('reviews')->whereIn('franchise_id', $branches->pluck('id'))->whereNull('removed_at')
             ->whereBetween('reviewed_at', [$from->utc(), $to->utc()])
             ->groupBy('franchise_id')
             ->selectRaw('franchise_id, sum(rating >= 4) positive, sum(rating between 1 and 3) negative')

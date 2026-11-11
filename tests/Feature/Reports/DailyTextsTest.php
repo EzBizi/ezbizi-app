@@ -281,13 +281,13 @@ class DailyTextsTest extends TestCase
         $this->assertSame('', $this->text('marketing_ppc'));
     }
 
-    /** Desk, 2026-11-03: a week with no complete P&L is not an all-clear. */
-    public function test_weekly_losses_without_a_complete_week_says_it_cannot_be_judged(): void
+    /**
+     * Desk, 2026-11-03: a week with no complete P&L is not an all-clear. 2026-11-11: it is no text at all,
+     * so the rule, hourly on Wednesdays, sends once the P&L lands.
+     */
+    public function test_weekly_losses_without_a_complete_week_sends_nothing_yet(): void
     {
-        $text = $this->text('weekly_losses');
-
-        $this->assertStringContainsString("Can't be judged yet", $text);
-        $this->assertStringNotContainsString('negative net profit', $text);
+        $this->assertSame('', $this->text('weekly_losses'));
     }
 
     public function test_weekly_reviews_split_positive_and_negative(): void
@@ -302,6 +302,32 @@ class DailyTextsTest extends TestCase
         $this->assertStringContainsString('*Total: 4 reviews*', $text);
         $this->assertStringContainsString('3 positive', $text);
         $this->assertStringContainsString('1 negative', $text);
+    }
+
+    /** Audit #12, 2026-11-11: a review Google took down is not the week's (47 counted, 46 there). */
+    public function test_weekly_reviews_leave_out_a_removed_review(): void
+    {
+        foreach ([null, '2026-10-16 10:00:00'] as $i => $removed) {
+            DB::table('reviews')->insert(['id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id, 'franchise_id' => $this->t['franchise']->id,
+                'remote_name' => 'r'.$i, 'location_name' => 'L', 'rating' => 5, 'reviewed_at' => '2026-10-14 15:00:00', 'removed_at' => $removed,
+                'created_at' => now(), 'updated_at' => now()]);
+        }
+
+        $this->assertStringContainsString('*Total: 1 reviews*', $this->text('weekly_reviews'));
+    }
+
+    /** Audit #9, 2026-11-11: Rodrigo held a report back on stale Workiz; ours goes out and says so, and only when it is. */
+    public function test_a_report_says_when_workiz_is_over_two_hours_behind(): void
+    {
+        $f = $this->t['franchise'];
+        $job = fn (string $ref, string $synced) => $this->inTenant($this->t['org'], fn () => WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => $ref,
+            'job_source' => 'GMB', 'status' => 'Done', 'scheduled_for' => '2026-10-20 08:00:00', 'last_status_update' => '2026-10-20 10:00:00',
+            'payload' => ['Team' => [['id' => 'U1', 'Name' => 'Ann']], 'JobTotalPrice' => 100], 'synced_at' => $synced]));
+        $job('JOB-1', '2026-10-20 15:00:00');
+
+        $this->assertStringNotContainsString('last synced', $this->text('technician_sales', '2026-10-20 16:00:00'));
+        $this->assertStringContainsString("\u{26A0}\u{FE0F} Workiz jobs last synced Oct 20, 3:00 PM for ".$f->name.': anything since is not in these figures.',
+            $this->text('technician_sales', '2026-10-20 18:00:00'));
     }
 
     public function test_marketing_ppc_reads_the_mapped_table_latest_day(): void
