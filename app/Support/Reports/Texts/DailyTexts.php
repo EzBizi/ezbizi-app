@@ -232,8 +232,9 @@ final class DailyTexts
     private function googleAds(Collection $branches, CarbonImmutable $from, CarbonImmutable $to): string
     {
         $sources = array_values(array_filter([MarketingReport::sourceOf('lsa'), MarketingReport::sourceOf('ppc')]));
-        // Today: the campaigns switched on. A past week: every campaign that spent in it, paused since or not (DMV's $142.53, 2026-11-10).
-        $live = $to->toDateString() >= $this->at->toDateString();
+        // Today alone: the campaigns switched on. Any span, even one ending today: every campaign that spent in it,
+        // paused since or not (DMV's $142.53, 2026-11-10; the Sunday weekly dropped it too, audit 2026-11-11).
+        $live = $from->isSameDay($to) && $to->isSameDay($this->at);
         $lines = ["\u{1F4CA} *Google Ads · ".($live ? 'active campaigns' : 'campaigns').'*', '_'.$this->period($from, $to).' · jobs from '.(implode(' and ', $sources) ?: 'no source').'_', ''];
         $total = ['cost' => 0, 'jobs' => 0];
         $refused = [];
@@ -246,6 +247,10 @@ final class DailyTexts
             $spent = $cost['lsa']['cost_minor'] + $cost['ppc']['cost_minor'];
             $jobs = $sources === [] ? 0 : ReportJobs::created(ReportJobs::jobs((string) $branch->getKey())->whereIn('j.job_source', $sources)
                 ->whereBetween('j.booked_at', self::range($from, $to))->get())->count();
+            // A sub-company's jobs sit in its parent's Workiz under its own source (ACE's 6 on Nov 10 read 0, audit 2026-11-11).
+            if (($company = $branch->company)?->parent_company_id !== null) {
+                $jobs += self::sourcedTo((string) $branch->organization_id, (string) $company->name, ...self::range($from, $to))->count();
+            }
             $lines[] = self::adLine(($this->name)($branch), $spent, $jobs);
             $total['cost'] += $spent;
             $total['jobs'] += $jobs;
@@ -470,6 +475,14 @@ final class DailyTexts
         return [$from->toDateString().' 00:00:00', $to->toDateString().' 23:59:59'];
     }
 
+    /** The organization's jobs created in the stamps under a company's own source: Workiz spells it its way ("Angi Sweep" for AngiSweep), letters and digits compared. */
+    private static function sourcedTo(string $organizationId, string $company, string $from, string $to): Collection
+    {
+        return ReportJobs::created(DB::table('workiz_jobs')->where('organization_id', $organizationId)->whereBetween('booked_at', [$from, $to])
+            ->get(['job_source', 'service_area', DB::raw("coalesce(json_extract(payload, '$.Tags'), json_array()) as tags")]))
+            ->filter(fn ($j) => ReportJobs::tagKey((string) $j->job_source) === ReportJobs::tagKey($company))->values();
+    }
+
     /** A range ending on the run's own day says how far it reaches: "through 8:00 PM" (audit, 2026-11-10). */
     private function period(CarbonImmutable $from, CarbonImmutable $to): string
     {
@@ -577,11 +590,7 @@ final class DailyTexts
         $ours = collect();
         if ($company !== null) {
             $lines[] = '_Spend from the '.$company.' sheet · jobs from EzBizi_';
-            // Workiz spells a company its own way ("Angi Sweep" for AngiSweep): letters and digits compared.
-            $ours = ReportJobs::created(DB::table('workiz_jobs')->where('organization_id', $organization->getKey())
-                ->whereBetween('booked_at', [$latest.' 00:00:00', $latest.' 23:59:59'])
-                ->get(['job_source', 'service_area', DB::raw("coalesce(json_extract(payload, '$.Tags'), json_array()) as tags")]))
-                ->filter(fn ($j) => ReportJobs::tagKey((string) $j->job_source) === ReportJobs::tagKey($company))
+            $ours = self::sourcedTo((string) $organization->getKey(), $company, $latest.' 00:00:00', $latest.' 23:59:59')
                 ->countBy(fn ($j) => trim((string) $j->service_area) ?: 'No area');
         }
         $lines[] = '';
@@ -744,14 +753,14 @@ final class DailyTexts
         return implode("\n", $lines);
     }
 
-    /** Each branch's technicians that day: completed, canceled, sales and deposits. */
+    /** Each branch's technicians on the jobs scheduled that day: completed, canceled, sales, and deposits on their jobs. */
     private function technicianSales(Collection $branches, CarbonImmutable $day): string
     {
         $lines = ["\u{1F477} *Technician sales*\n".$this->period($day, $day), ''];
         $all = ['done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
 
         foreach ($branches as $branch) {
-            $f = $this->report->figures($branch, $day->toDateString(), $day->toDateString());
+            $f = $this->report->figures($branch, $day->toDateString(), $day->toDateString(), scheduled: true);
             $techs = $f['techs'];
             if ($techs === []) {
                 continue;
