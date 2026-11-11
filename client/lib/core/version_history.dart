@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0562', date: '11 Nov 2026', items: [
+      'Reports on WhatsApp: one item per line with the title and date on their own lines, even when sent outside the 24-hour window; every caption carries its key figures',
+    ]),
     VersionRelease(version: '0.0.0561', date: '11 Nov 2026', items: [
       'Email: an opened email fills the whole width (Back or Esc returns to the list); the inbox tabs are Primary, Leads & customers and Notifications',
       'Leads: the lead header lines up (actions beside the name, status below); email, address, job and customer numbers can be copied like the phone; tags sit a little lower in each row',
