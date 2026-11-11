@@ -68,6 +68,7 @@ import 'core/phone_call_service.dart';
 import 'screens/phone/voice_view.dart';
 
 Future<void> main() async {
+  IssueReporter.markLaunch();
   // Bindings first: TokenStore.init reaches a platform channel (the keychain),
   // and a channel used before this call throws.
   WidgetsFlutterBinding.ensureInitialized();

@@ -306,4 +306,9 @@ void main() {
 
     expect(ran, 1);
   });
+
+  test('uptime counts from markLaunch, not from the first report', () {
+    IssueReporter.markLaunch();
+    expect(IssueReporter.uptimeRunning, isTrue);
+  });
 }
