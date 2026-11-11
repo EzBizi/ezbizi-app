@@ -364,6 +364,24 @@ void main() {
     expect(position().pixels, scrolled);
   });
 
+  testWidgets('one Primary tab holds everything, its badge is all unread '
+      '(Jose 11-11: no All beside a Primary)', (tester) async {
+    final server = _Server();
+    await _pump(tester, server);
+
+    expect(find.text('All'), findsNothing);
+    expect(find.text('Primary'), findsOneWidget);
+    expect(find.byKey(const ValueKey('email-category-primary')), findsNothing);
+    // unread_loaded is 2; the old Primary's own count was 3.
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('email-category-count-all')))
+          .data,
+      '2',
+    );
+    expect(server.lists.last.queryParameters.containsKey('category'), isFalse);
+  });
+
   testWidgets('the reading pane setting is remembered', (tester) async {
     final server = _Server();
     await _pump(tester, server);
