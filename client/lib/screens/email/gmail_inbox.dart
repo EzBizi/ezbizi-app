@@ -106,10 +106,11 @@ const _folders = [
   _Folder('all', 'All mail', Icons.all_inbox_outlined),
 ];
 
-// All first and the default: the whole inbox, newest first (Jose, 2026-11-03).
+// Primary first and the default: the whole inbox, newest first (Jose,
+// 2026-11-03). It was "All" beside a narrower Primary until Jose 11-11:
+// "get rid of Primary and rename All to Primary".
 const _categories = [
-  ('all', 'All', Icons.all_inbox_outlined),
-  ('primary', 'Primary', Icons.inbox_outlined),
+  ('all', 'Primary', Icons.inbox_outlined),
   ('people', 'Leads & customers', Icons.people_outline),
   ('notifications', 'Notifications', Icons.notifications_none),
 ];
@@ -1202,6 +1203,9 @@ class _GmailInboxState extends State<GmailInbox> {
     );
   }
 
+  /// Primary is everything, so its badge is everything unread.
+  int? _countFor(String id) => id == 'all' ? _inboxUnread : _categoryCounts[id];
+
   Widget _categoryTabs(BuildContext context, {bool compact = false}) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -1245,10 +1249,10 @@ class _GmailInboxState extends State<GmailInbox> {
                         color: _category == id ? scheme.primary : null,
                       ),
                     ),
-                    if ((_categoryCounts[id] ?? 0) > 0) ...[
+                    if ((_countFor(id) ?? 0) > 0) ...[
                       const SizedBox(width: 6),
                       Text(
-                        '${_categoryCounts[id]}',
+                        '${_countFor(id)}',
                         key: ValueKey('email-category-count-$id'),
                         style: theme.textTheme.labelSmall,
                       ),
