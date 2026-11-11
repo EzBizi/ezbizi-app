@@ -748,7 +748,7 @@ class _JobsScreenState extends State<JobsScreen> {
             child: ListSearch(
               key: const ValueKey('tour-jobs-search'),
               controller: _search,
-              hint: 'Job number, title or customer',
+              hint: 'Job number, title, customer, phone or address',
               onChanged: (_) => setState(() {}),
               onSubmitted: (_) => _load(),
               onClear: () {

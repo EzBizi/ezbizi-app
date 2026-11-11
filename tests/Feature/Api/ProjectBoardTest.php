@@ -373,6 +373,47 @@ class ProjectBoardTest extends TestCase
         $api->putJson($url, ['parts' => []])->assertOk()->assertJsonCount(0, 'data');
     }
 
+    /** Trey, 2026-11-11: search a job by the client's phone in any format, or its address. */
+    public function test_jobs_and_project_management_search_by_phone_and_address(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $id = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->findOrFail($id)->customer->update(['phone' => '+15553334444', 'address_line1' => '12 Elm Street']);
+            $this->job($alpha['franchise'], 'J-2', 'Submitted', null, ['DEPOSIT RECEIVED']);
+
+            return $id;
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        foreach (['(555) 333-4444', '555.333.4444', '+1 555 333 4444', '3334444', 'Elm Street'] as $term) {
+            $this->assertSame([$id], array_column($api->getJson('/api/v1/jobs?search='.urlencode($term))->json('data'), 'id'), $term);
+            $this->assertSame([$id], array_column($api->getJson('/api/v1/project-board/jobs?tab=unscheduled&q='.urlencode($term))->json('data'), 'id'), $term);
+        }
+        $this->assertCount(2, $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data'));
+    }
+
+    /** Jose, 2026-11-10: the repair team list is managed here, each with a phone or user. */
+    public function test_the_repair_team_list_is_added_renamed_and_deleted_here(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED', 'KENNI REPAIR TEAM']));
+        $api = $this->signedInAs($alpha['admin']);
+        $post = fn (array $body) => $api->postJson('/api/v1/project-board/repair-teams', $body);
+
+        $post(['op' => 'create', 'name' => 'OMER', 'color' => '#123456'])->assertStatus(422);
+        // The first change keeps the tags already working as repair teams.
+        $post(['op' => 'create', 'name' => 'CONTRACTOR: OMER', 'color' => '#0059a0', 'phone' => '+15550001111'])->assertOk()
+            ->assertJsonPath('data.list', [
+                ['name' => 'CONTRACTOR: OMER', 'phone' => '+15550001111', 'user_id' => null],
+                ['name' => 'KENNI REPAIR TEAM', 'phone' => null, 'user_id' => null],
+            ]);
+        $post(['op' => 'update', 'name' => 'contractor: omer', 'to' => 'OMER CONTRACTOR', 'user_id' => $alpha['admin']->id])->assertOk()
+            ->assertJsonPath('data.list.1', ['name' => 'OMER CONTRACTOR', 'phone' => null, 'user_id' => $alpha['admin']->id]);
+        $post(['op' => 'delete', 'name' => 'KENNI REPAIR TEAM'])->assertOk()->assertJsonCount(1, 'data.list');
+        // Only the list counts now: the job's KENNI tag is no longer its repair team.
+        $this->assertNull($api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.repair_team'));
+    }
+
     /** Jose, 2026-11-10: YES schedules and confirms; NO offers the alternative; NO again, the PM calls. */
     public function test_the_client_answers_the_scheduling_text_yes_or_no(): void
     {

@@ -65,6 +65,16 @@ void main() {
           });
         }
         if (request.method == 'PATCH') return _json({'data': {}});
+        if (path.endsWith('/project-board/repair-teams')) {
+          return _json({
+            'data': {
+              'outcomes': {'Ohio': 'created'},
+              'list': [
+                {'name': 'KENNI REPAIR TEAM', 'phone': '555', 'user_id': null},
+              ],
+            },
+          });
+        }
         if (path.endsWith('/project-board/options')) {
           return _json({
             'data': {
@@ -321,6 +331,41 @@ void main() {
       'On Hold',
     ]);
     expect(find.text('Project Management settings saved.'), findsOneWidget);
+    // A repair team is added here and on every Workiz account (Jose, 2026-11-10).
+    await tester.ensureVisible(
+      find.byKey(const Key('project-board-repair-tags-add')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('project-board-repair-tags-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('project-board-repair-team-name')),
+      'KENNI REPAIR TEAM',
+    );
+    await tester.enterText(
+      find.byKey(const Key('project-board-repair-team-phone')),
+      '555',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('project-board-repair-team-save')));
+    await tester.pumpAndSettle();
+    final team = requests.lastWhere(
+      (r) => r.url.path.endsWith('/project-board/repair-teams'),
+    );
+    expect(jsonDecode(team.body), {
+      'op': 'create',
+      'name': 'KENNI REPAIR TEAM',
+      'color': null,
+      'phone': '555',
+      'user_id': null,
+    });
+    expect(find.text('Ohio: created'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('project-board-repair-team:KENNI REPAIR TEAM')),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
   });
 }
 

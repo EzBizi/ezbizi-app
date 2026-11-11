@@ -1056,7 +1056,8 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_JSON,
                 default: [],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
-                help: 'The job tags that are a Repair Team / Contractor. None chosen: every tag naming a repair team or a contractor.',
+                // 2026-11-10: managed from Project Management and pushed to every Workiz account; each a name with a phone or user.
+                help: 'The Repair Team / Contractor list: each a job tag, with a phone or a user. None yet: every tag naming a repair team or a contractor.',
             ),
             new SettingDefinition(
                 key: 'project_board.ready_requires', label: 'Project Management: what Ready to schedule needs',

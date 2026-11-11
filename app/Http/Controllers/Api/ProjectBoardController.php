@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Company;
+use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\JobNote;
@@ -18,6 +19,7 @@ use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Workiz\WorkizMirror;
 use App\Support\Workiz\WorkizTagColours;
+use App\Support\Workiz\WorkizTags;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -60,8 +62,8 @@ class ProjectBoardController extends Controller
         $place = ViewScope::forUser($user)->settingsScope();
         $place = $place instanceof Franchise ? ($place->company ?? $user->organization) : $place;
         $settings = app(SettingsResolver::class);
-        $this->repairTags = array_values(array_filter(array_map(fn ($t) => self::tagKey((string) $t),
-            (array) $settings->get('project_board.repair_tags', $place))));
+        $this->repairTags = array_values(array_filter(array_map(fn (array $e) => self::tagKey($e['name']),
+            self::repairEntries($settings->get('project_board.repair_tags', $place)))));
         $this->readyRequires = array_values((array) $settings->get('project_board.ready_requires', $place));
 
         return $place;
@@ -165,7 +167,8 @@ class ProjectBoardController extends Controller
                     ->where('name', 'like', "%{$term}%")
                     ->orWhere('address_line1', 'like', "%{$term}%")
                     ->orWhere('city', 'like', "%{$term}%")
-                    ->orWhere('postal_code', 'like', "%{$term}%")))));
+                    ->orWhere('postal_code', 'like', "%{$term}%")
+                    ->orWhere(fn ($p) => Customer::phoneLike($p, $term))))));
         $page = (clone $filtered)->with(self::WITH)
             ->tap(fn (Builder $q) => $this->sorted($q, $input['sort'] ?? null, $input['dir'] ?? 'asc'))
             ->paginate(perPage: (int) ($input['per_page'] ?? 50));
@@ -249,9 +252,70 @@ class ProjectBoardController extends Controller
             'tags' => $tags = $jobs()->whereNotNull('tags')->pluck('tags')->flatten()
                 ->map(fn ($t) => trim((string) $t))->filter()->countBy()->sortDesc()->keys()->values(),
             // In their Workiz colours, read from an account inside the view.
+            // For a repair team's "user" (Jose, 2026-11-10).
+            'repair_colours' => WorkizTags::COLORS,
+            'users' => User::query()->where('organization_id', $user->organization_id)->orderBy('name')->get(['id', 'name']),
             'tag_colours' => (object) collect(ViewScope::forUser($user)->switchedOnFranchiseIds())
                 ->reduce(fn (array $c, string $f) => $c + app(WorkizTagColours::class)->for($f, $tags->all()), []),
         ]]);
+    }
+
+    /**
+     * The repair team / contractor list, managed here and pushed to every
+     * Workiz account (Jose, 2026-11-10): each a tag with a phone or a user.
+     * Older lists were bare tag names.
+     *
+     * @return list<array{name: string, phone: ?string, user_id: ?string}>
+     */
+    public static function repairEntries(mixed $value): array
+    {
+        return array_values(array_filter(array_map(fn ($e) => is_array($e)
+            ? ['name' => trim((string) ($e['name'] ?? '')), 'phone' => $e['phone'] ?? null, 'user_id' => $e['user_id'] ?? null]
+            : ['name' => trim((string) $e), 'phone' => null, 'user_id' => null], (array) $value), fn ($e) => $e['name'] !== ''));
+    }
+
+    /**
+     * POST /api/v1/project-board/repair-teams: add, change (rename, phone,
+     * user) or delete one, on every Workiz account too. Returns each
+     * account's outcome and the new list.
+     */
+    public function repairTeams(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('organizations.edit'), Response::HTTP_FORBIDDEN, 'Changing the list needs settings access.');
+        $in = $request->validate([
+            'op' => ['required', 'in:create,update,delete'],
+            'name' => ['required', 'string', 'max:60'],
+            'to' => ['nullable', 'string', 'max:60'],
+            'color' => ['nullable', 'in:'.implode(',', WorkizTags::COLORS)],
+            'phone' => ['nullable', 'string', 'max:32'],
+            'user_id' => ['nullable', 'uuid', 'exists:users,id'],
+        ]);
+        $place = $this->settingsFor($user);
+        $settings = app(SettingsResolver::class);
+        $list = collect(self::repairEntries($settings->get('project_board.repair_tags', $place)));
+        // A first change starts from the tags already working as repair teams, so none drop off the column.
+        if ($list->isEmpty()) {
+            $list = Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())->whereNotNull('tags')->pluck('tags')
+                ->flatten()->map(fn ($t) => trim((string) $t))->filter(fn ($t) => self::isRepairTeam($t))->unique(fn ($t) => self::tagKey($t))
+                ->map(fn ($t) => ['name' => $t, 'phone' => null, 'user_id' => null])->values();
+        }
+        $key = self::tagKey($in['name']);
+        $to = trim((string) ($in['to'] ?? '')) ?: trim($in['name']);
+        $outcomes = match ($in['op']) {
+            'create' => WorkizTags::create($in['name'], $in['color'] ?? WorkizTags::COLORS[0]),
+            'update' => self::tagKey($to) !== $key ? WorkizTags::rename($in['name'], $to) : [],
+            'delete' => WorkizTags::delete($in['name']),
+        };
+        $list = $list->reject(fn (array $e) => self::tagKey($e['name']) === $key)->values();
+        if ($in['op'] !== 'delete') {
+            $list->push(['name' => $to, 'phone' => $in['phone'] ?? null, 'user_id' => $in['user_id'] ?? null]);
+        }
+        $settings->set('project_board.repair_tags', $place, $list->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values()->all());
+        app(AuditLogger::class)->log('project_board.repair_team_'.$in['op'], null, ['name' => $in['name'], 'to' => $to], actor: $user);
+
+        return response()->json(['data' => ['outcomes' => (object) $outcomes,
+            'list' => self::repairEntries($settings->get('project_board.repair_tags', $place))]]);
     }
 
     /** @return list<string> the company and every company under it */
