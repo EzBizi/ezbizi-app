@@ -14,6 +14,12 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0560', date: '11 Nov 2026', items: [
+      'Phone: the web and desktop apps take calls on every company line you belong to (e.g. A-1 and EverDoors), so ring groups on another company’s number ring you',
+      'Communication › Users and ring-group pickers list only people with access to that company',
+      'Reports › Calls: Result shows Booked or Not booked, a new Call column shows Answered, Not answered or Missed; a missed call no longer counts as booked',
+      'Reports › Jobs: every created job with its Workiz and EzBizi IDs, source and the number dialed, filterable by source, number dialed and area',
+      'Reports: a weekly company report PDF every Wednesday once the P&L is in; payments re-checked against Workiz nightly',
+      'Web sign-in: the browser offers to fill and save your email and password',
       'Reports: the weekly losses wait for the P&L instead of saying nothing can be judged; a warning shows when data is behind; removed reviews no longer count',
       'Project Management: opens again for people whose saved column widths were empty (it showed a grey screen in 0.0.0559)',
       'Email signatures: a template without a logo no longer draws a broken image',
