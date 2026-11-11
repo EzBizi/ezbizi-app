@@ -52,6 +52,7 @@ class SchedulingBoardController extends Controller
             : $inView;
 
         $franchises = Franchise::whereIn('id', $franchiseIds)->pluck('name', 'id');
+        $companies = Franchise::with('company:id,name')->whereIn('id', $franchiseIds)->get()->mapWithKeys(fn ($f) => [$f->id => $f->company?->name]);
 
         // The windows of the companies on the board, each its own or the one
         // it inherits (per company since 2026-10-28).
@@ -163,6 +164,11 @@ class SchedulingBoardController extends Controller
                 'counts' => [
                     'scheduled' => count(array_unique(array_column($scheduled, 'id'))),
                     'unassigned' => count($unassigned),
+                    // Jobs per branch, "Company / Branch": the assistant reads a cut
+                    // board, and "tomorrow at A-1" was answered from Connecticut's
+                    // rows alone (prod, 2026-11-11).
+                    'by_branch' => collect(array_merge($scheduled, $unassigned))->unique('id')
+                        ->countBy(fn ($card) => ($companies[$card['franchise_id']] ?? '').' / '.$card['franchise_name'])->all(),
                 ],
             ],
         ]);
