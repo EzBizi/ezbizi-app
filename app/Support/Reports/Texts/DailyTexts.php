@@ -51,6 +51,7 @@ final class DailyTexts
         'revenue_collected' => 'Revenue collected · yesterday by location',
         'evening' => 'Daily 8 PM · jobs created, Google Ads, Meta Ads',
         'weekly' => 'Weekly · revenue, jobs, dispatchers, ads, Local Services',
+        'weekly_company' => 'Weekly company report · every branch in a PDF',
     ];
 
     /** kind => the report's name in its title; its first heading, when that says the same, is dropped under the title. */
@@ -65,6 +66,7 @@ final class DailyTexts
         'revenue_collected' => 'Revenue collected',
         'evening' => 'Daily 8 PM report',
         'weekly' => 'Weekly report',
+        'weekly_company' => 'Weekly company report',
     ];
 
     /** kind => the emoji its title starts with, its heading's where it has one (Jose, 2026-11-10). */
@@ -79,6 +81,7 @@ final class DailyTexts
         'revenue_collected' => "\u{1F4B5}",
         'evening' => "\u{1F319}",
         'weekly' => "\u{1F4C5}",
+        'weekly_company' => "\u{1F4D1}",
     ];
 
     /** A text's own date: "Mon, Nov 9, 2026", "Nov 3 - Nov 9, 2026". */
@@ -115,6 +118,7 @@ final class DailyTexts
             'technician_sales' => $this->technicianSales($list, $day),
             'weekly_losses' => $this->weeklyLosses($list, $day),
             'weekly_reviews' => $this->weeklyReviews($list, $day),
+            'weekly_company' => $this->weeklyCompany($list, $day),
             'job_assignments' => $this->jobAssignments($list, $day, $day),
             'revenue_collected' => $this->revenue($list, $day->subDay(), $day->subDay()),
             'evening' => implode(self::RULE, [$this->jobsCreated($list, $day, $day), $this->googleAds($list, $day, $day), $this->metaAds($list, $day, $day)]),
@@ -877,6 +881,47 @@ final class DailyTexts
         }
 
         return implode("\n", [...$lines, ...$noTable]);
+    }
+
+    /**
+     * Last Monday-Sunday's net per branch; the PDF is every branch in full (PeriodReport::consolidated).
+     * Desk, 2026-11-11 (audit #5): it had never reached anyone; now a rule sends it once the P&L lands.
+     */
+    private function weeklyCompany(Collection $branches, CarbonImmutable $day): string
+    {
+        [$from, $to] = [$day->startOfWeek()->subWeek(), $day->startOfWeek()->subDay()];
+        $lines = [];
+        $pending = [];
+        foreach ($branches as $branch) {
+            if (! ReportSources::mapped((string) $branch->organization_id, 'pnl', (string) $branch->getKey())) {
+                continue;
+            }
+            $net = $this->report->profitAndLoss($branch, $from->toDateString(), $to->toDateString())['net'];
+            if ($net === null) {
+                $pending[] = BranchName::of($branch);
+            } else {
+                $lines[] = '• *'.BranchName::of($branch).'*: net '.self::money((int) round($net * 100));
+            }
+        }
+        // As the losses: nothing to judge yet sends nothing, and the hourly rule asks again.
+        if ($lines === []) {
+            return '';
+        }
+
+        return implode("\n", ["\u{1F4D1} *Weekly company report*", '_'.$from->format('M j').' - '.$to->format('M j, Y').'_', '', ...$lines,
+            ...($pending === [] ? [] : ['', "\u{26A0}\u{FE0F} Not in the P&L yet: ".implode(', ', $pending)]), '', '_Every branch in full is in the PDF._']);
+    }
+
+    /**
+     * The document a report carries instead of its text printed: the weekly company PDF; null for the rest.
+     *
+     * @param  list<string>|null  $branches
+     */
+    public function attachment(string $kind, Organization $organization, CarbonImmutable $day, ?array $branches = null): ?string
+    {
+        return $kind === 'weekly_company'
+            ? $this->report->consolidated($organization, $day->startOfWeek()->subWeek()->toDateString(), $day->startOfWeek()->subDay()->toDateString(), $branches)
+            : null;
     }
 
     /** Last Monday-Sunday: new Google reviews per branch, 4-5 stars positive, 1-3 negative. */

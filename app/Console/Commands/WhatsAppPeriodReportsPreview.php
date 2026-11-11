@@ -29,6 +29,10 @@ class WhatsAppPeriodReportsPreview extends Command
             ->whereIn('id', WhatsAppGroup::query()->withoutGlobalScopes()
                 ->where('purpose', WhatsAppPeriodReports::APPROVAL)->select('organization_id'))
             ->get();
+        // Said, not silent (audit #5, 2026-11-11): the weekly PDF goes 1:1 by the "Weekly company report" rule instead.
+        if ($organizations->isEmpty()) {
+            $this->warn('No organization has a report approval WhatsApp group, so no PDF was sent.');
+        }
 
         foreach ($organizations as $organization) {
             try {

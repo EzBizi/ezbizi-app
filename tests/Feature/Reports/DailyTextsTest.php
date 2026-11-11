@@ -234,6 +234,24 @@ class DailyTextsTest extends TestCase
         $this->assertStringContainsString('• Net profit: -$500.00', $text);
     }
 
+    /** Audit #5, 2026-11-11: the weekly company PDF had reached nobody; a rule sends it, once the P&L can be judged, with each branch's net. */
+    public function test_the_weekly_company_report_waits_for_the_pnl_then_carries_every_branch_as_its_pdf(): void
+    {
+        $this->assertSame('', $this->text('weekly_company'));
+
+        $f = $this->t['franchise'];
+        $this->airtableTable($this->t, (string) $f->id, 'pnl', [
+            ['Week' => '12 Oct - 18 Oct', 'Income' => 'Cash', 'Income Amount' => 1000],
+            ['Week' => '12 Oct - 18 Oct', 'Marketing' => 'Ads', 'Marketing Amount' => 400],
+        ]);
+
+        $this->assertStringContainsString("Oct 12 - Oct 18, 2026_\n\n• *", $this->text('weekly_company'));
+        $this->assertStringContainsString('*: net $600.00', $this->text('weekly_company'));
+        $pdf = $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)->attachment('weekly_company', $this->t['org'], CarbonImmutable::parse('2026-10-20'), [$f->id]));
+        $this->assertStringStartsWith('%PDF', (string) $pdf);
+        $this->assertNull(app(DailyTexts::class)->attachment('weekly_losses', $this->t['org'], CarbonImmutable::parse('2026-10-20')));
+    }
+
     /** Audit, 2026-11-10: a branch with no P&L table is said apart, not counted as a week not in yet. */
     public function test_weekly_losses_name_a_branch_with_no_pnl_table_apart(): void
     {

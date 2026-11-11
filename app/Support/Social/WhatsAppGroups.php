@@ -143,7 +143,7 @@ final class WhatsAppGroups
      * Company or Organization whose logo and name head the PDF; the number's
      * organization when null.
      */
-    public function deliverTextToUser(WhatsAppNumber $number, User $user, string $title, string $body, ?string $key = null, ?Model $issuer = null): bool
+    public function deliverTextToUser(WhatsAppNumber $number, User $user, string $title, string $body, ?string $key = null, ?Model $issuer = null, ?string $pdf = null): bool
     {
         $e164 = ThumbtackAssociatePhoneNumbers::e164((string) $user->phone);
 
@@ -152,7 +152,8 @@ final class WhatsAppGroups
         }
 
         $filename = Str::slug($title).'.pdf';
-        $mediaId = $this->upload($number, $this->pdf($number, self::titled($title, $body), $issuer), $filename);
+        // $pdf: a report with its own document (the weekly company PDF); else the text, printed.
+        $mediaId = $this->upload($number, $pdf ?? $this->pdf($number, self::titled($title, $body), $issuer), $filename);
 
         return $this->toPerson($number, $user, $title, $mediaId, $filename, $key, $body);
     }

@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\WhatsAppGroup;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\SameDayReport;
+use App\Support\Settings\OrgTimezone;
 use App\Support\Social\WhatsAppGroups;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
@@ -30,12 +31,16 @@ class WhatsAppSameDayReports extends Command
 
     public function handle(TenantContext $tenant, WhatsAppGroups $groups): int
     {
-        $date = (string) ($this->option('date') ?: Carbon::now(\App\Support\Settings\OrgTimezone::of())->toDateString());
+        $date = (string) ($this->option('date') ?: Carbon::now(OrgTimezone::of())->toDateString());
         $sent = 0;
 
         $organizations = Organization::query()->withoutGlobalScopes()
             ->whereIn('id', WhatsAppGroup::query()->withoutGlobalScopes()->select('organization_id'))
             ->get();
+        // Said, not a silent "Sent 0" (audit #5, 2026-11-11: no group has ever existed).
+        if ($organizations->isEmpty()) {
+            $this->warn('No organization has a WhatsApp group for these reports, so nothing was sent.');
+        }
 
         foreach ($organizations as $organization) {
             $tenant->run($organization, function () use ($organization, $groups, $date, &$sent) {
