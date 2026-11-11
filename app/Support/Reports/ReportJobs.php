@@ -78,11 +78,19 @@ final class ReportJobs
             ->map(fn ($a) => (float) $a)->all();
     }
 
+    /** A branch's payments between two wall-clock stamps, each with its job's team (null when the job isn't synced). */
+    public static function paidFor(string $branchId, string $from, string $to): Collection
+    {
+        return self::received($branchId)->whereBetween('workiz_records.starts_at', [$from, $to])
+            ->leftJoin('workiz_jobs as j', fn ($on) => $on->on('j.franchise_id', '=', 'workiz_records.franchise_id')->on('j.v2_id', '=', 'workiz_records.job_remote_id'))
+            ->get(['workiz_records.user_remote_id as user_ref', 'workiz_records.amount', DB::raw("json_extract(j.payload, '$.Team') as team")]);
+    }
+
     /** A branch's payments that went through: a pending ACH is not money yet ($1,459.08 at 1 AM, 2026-11-10). */
     private static function received(string $branchId): Builder
     {
-        return DB::table('workiz_records')->where('franchise_id', $branchId)->where('type', 'payment')
-            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', 'succeeded'));
+        return DB::table('workiz_records')->where('workiz_records.franchise_id', $branchId)->where('workiz_records.type', 'payment')
+            ->where(fn ($q) => $q->whereNull('workiz_records.status')->orWhere('workiz_records.status', 'succeeded'));
     }
 
     /** Who a user_ref / team id is, by name, in a branch. @return array<string, string> */

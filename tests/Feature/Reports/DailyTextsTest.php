@@ -9,6 +9,7 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
+use App\Models\WorkizRecord;
 use App\Services\Ads\CampaignPerformance;
 use App\Support\Reports\Experimental\PerformancePeople;
 use App\Support\Reports\Texts\DailyTexts;
@@ -45,7 +46,7 @@ class DailyTextsTest extends TestCase
     {
         $f = $this->t['franchise'];
         $this->inTenant($this->t['org'], fn () => WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => 'JOB-1', 'job_source' => 'GMB',
-            'status' => 'Done', 'booked_at' => '2026-10-19 09:00:00', 'last_status_update' => '2026-10-20 10:00:00',
+            'status' => 'Done', 'booked_at' => '2026-10-19 09:00:00', 'scheduled_for' => '2026-10-20 08:00:00', 'last_status_update' => '2026-10-20 10:00:00',
             'payload' => ['Team' => [['id' => 'U1', 'Name' => 'Ann']], 'JobTotalPrice' => 450], 'synced_at' => now()]));
 
         $text = $this->text('technician_sales');
@@ -59,7 +60,7 @@ class DailyTextsTest extends TestCase
     {
         $f = $this->t['franchise'];
         $this->inTenant($this->t['org'], fn () => WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => 'JOB-9', 'job_source' => 'GMB',
-            'status' => 'Done', 'booked_at' => '2026-10-19 09:00:00', 'last_status_update' => '2026-10-20 10:00:00',
+            'status' => 'Done', 'booked_at' => '2026-10-19 09:00:00', 'scheduled_for' => '2026-10-20 08:00:00', 'last_status_update' => '2026-10-20 10:00:00',
             'payload' => ['Team' => [['id' => 'U1', 'Name' => 'Ann'], ['id' => 'U2', 'Name' => 'Bo']], 'JobTotalPrice' => 300], 'synced_at' => now()]));
 
         $text = $this->text('technician_sales');
@@ -67,6 +68,32 @@ class DailyTextsTest extends TestCase
         $this->assertStringContainsString('• *Ann*: 1 completed · 0 canceled · $150.00 sales', $text);
         $this->assertStringContainsString('• *Bo*: 1 completed · 0 canceled · $150.00 sales', $text);
         $this->assertStringContainsString("\u{1F4B0} *Total:* \u{2705} 1 completed · \u{274C} 0 canceled · \u{1F4B5} \$300.00 sales", $text);
+    }
+
+    /**
+     * Desk, 2026-11-11 (audit #2, #3): the daily counts the jobs SCHEDULED that day, as Workiz's technician
+     * report does, so a repair sold weeks ago and finished today is not today's; a deposit is the job's team's.
+     */
+    public function test_technician_sales_count_the_days_scheduled_jobs_and_credit_deposits_to_the_jobs_team(): void
+    {
+        $f = $this->t['franchise'];
+        $this->inTenant($this->t['org'], function () use ($f) {
+            WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => 'JOB-OLD', 'job_source' => 'GMB', 'status' => 'Done',
+                'booked_at' => '2026-09-01 09:00:00', 'scheduled_for' => '2026-10-19 08:00:00', 'last_status_update' => '2026-10-20 10:00:00',
+                'payload' => ['Team' => [['id' => 'U1', 'Name' => 'Ann']], 'JobTotalPrice' => 9000], 'synced_at' => now()]);
+            WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => 'JOB-NEW', 'job_source' => 'GMB', 'status' => 'Done',
+                'booked_at' => '2026-10-18 09:00:00', 'scheduled_for' => '2026-10-20 08:00:00', 'last_status_update' => '2026-10-21 10:00:00',
+                'payload' => ['Team' => [['id' => 'U2', 'Name' => 'Bo']], 'JobTotalPrice' => 200, 'v2' => ['id' => 'JOB-v2new']], 'synced_at' => now()]);
+            // Keyed in by the office on Bo's job.
+            WorkizRecord::query()->create(['franchise_id' => $f->id, 'type' => 'payment', 'remote_id' => 'PAY-1', 'user_remote_id' => 'USR-office',
+                'job_remote_id' => 'JOB-v2new', 'amount' => 120, 'starts_at' => '2026-10-20 12:00:00', 'payload' => [], 'synced_at' => now()]);
+        });
+
+        $text = $this->text('technician_sales');
+
+        $this->assertStringContainsString('• *Bo*: 1 completed · 0 canceled · $200.00 sales · $120.00 deposits', $text);
+        $this->assertStringNotContainsString('Ann', $text);
+        $this->assertStringNotContainsString('USR-office', $text);
     }
 
     public function test_ppc_spend_against_ppc_jobs_per_branch_with_google_ads(): void
