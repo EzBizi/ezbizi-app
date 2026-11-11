@@ -14,6 +14,9 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0560', date: '11 Nov 2026', items: [
+      'Project Management: opens again for people whose saved column widths were empty (it showed a grey screen in 0.0.0559)',
+      'Email signatures: a template without a logo no longer draws a broken image',
+      'A PC going to sleep is no longer reported as an app freeze',
       'Reports: technician sales count the jobs scheduled that day; deposits go to the job’s team; weekly Google spend includes paused campaigns; ACE and AngiSweep jobs count in their Google sections',
       'Marketing: account health with Reconnect, approvals inside Social, a calendar that opens Compose, warnings before publishing, newsletter Unschedule and Duplicate, and a No marketing email switch per customer',
       'Development › Releases: the current release’s progress, stage by stage',
