@@ -234,6 +234,21 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     _done(true);
   }
 
+  /// "No marketing email" saves on its own, at once.
+  Future<void> _saveOptOut(bool on) async {
+    final response = await widget.api.patch('/customers/${widget.id}', {
+      'email_opt_out': on,
+    });
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() => _error = response.reason);
+      return;
+    }
+    final saved = (response.data as Map?)?['email_opt_out'] ?? on;
+    setState(() => _row = {...?_row, 'email_opt_out': saved});
+    _changed = true;
+  }
+
   /// Tags save on their own, at once, with the whole list (UI queue 174).
   Future<bool> _saveTags(List<String> tags) async {
     final response =
@@ -471,6 +486,19 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                   keyboardType: TextInputType.emailAddress,
                   enabled: editable,
                 ),
+                // Newsletters skip this customer (customers.email_opt_out_at).
+                // Saves at once, like the tags, behind customers.edit.
+                if (row != null)
+                  SwitchListTile(
+                    key: const ValueKey('customer-email-opt-out'),
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('No marketing email'),
+                    subtitle: const Text('Newsletters are not sent to them.'),
+                    value: row['email_opt_out'] == true,
+                    onChanged: _editRefusal == null && !_loading
+                        ? _saveOptOut
+                        : null,
+                  ),
                 const SizedBox(height: 12),
                 // Found with the lookup, kept in parts (Jose, 2026-09-30).
                 AddressFields(

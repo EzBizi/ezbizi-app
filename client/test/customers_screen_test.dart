@@ -183,6 +183,50 @@ void main() {
     );
   });
 
+  // customers.email_opt_out_at had no writer: the record's own switch.
+  testWidgets('No marketing email saves at once, and needs customers.edit', (
+    tester,
+  ) async {
+    Map<String, dynamic>? patched;
+    await _pump(
+      tester,
+      customers: [_alice],
+      onRequest: (request) {
+        if (request.method == 'PATCH' &&
+            request.url.path.endsWith('/customers/c-1')) {
+          patched = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {..._aliceDetail, 'email_opt_out': true},
+          });
+        }
+        return null;
+      },
+    );
+    await tester.tap(find.text('Alice Roofing'));
+    await tester.pumpAndSettle();
+
+    final toggle = find.byKey(const ValueKey('customer-email-opt-out'));
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(patched, {'email_opt_out': true});
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+  });
+
+  testWidgets('without customers.edit the switch cannot be turned', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      customers: [_alice],
+      permissions: const ['customers.view'],
+    );
+    await tester.tap(find.text('Alice Roofing'));
+    await tester.pumpAndSettle();
+    final toggle = find.byKey(const ValueKey('customer-email-opt-out'));
+    expect(tester.widget<SwitchListTile>(toggle).onChanged, isNull);
+  });
+
   testWidgets('a customer shows every Workiz client number beside ours', (
     tester,
   ) async {

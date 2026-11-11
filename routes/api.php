@@ -623,10 +623,10 @@ Route::post('v1/social/workiz-web/handoff/{connection}', [WorkizWebSessionContro
  * records it. See the controller for what this does and does not defend against.
  */
 Route::get('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'show'])->middleware('throttle:30,1');
-// Artwork an SVG import rasterised: a PNG under a random 40-character name,
+// Artwork an SVG import rasterised, or a library picture: a raster under a random 40-character name,
 // public because the inbox fetching it has no EzBizi login.
 Route::get('v1/newsletter/artwork/{org}/{name}', [NewsletterImportController::class, 'show'])
-    ->where(['org' => '[A-Za-z0-9-]{1,64}', 'name' => '[A-Za-z0-9]{40}\.png'])
+    ->where(['org' => '[A-Za-z0-9-]{1,64}', 'name' => '[A-Za-z0-9]{40}\.(png|jpg|gif|webp)'])
     ->middleware('throttle:120,1');
 Route::post('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'store'])
     ->middleware('throttle:30,1')
@@ -2487,6 +2487,8 @@ Route::prefix('v1')
             // same class — see BlockRenderer on why nothing renders twice.
             Route::get('newsletters/{newsletter}/preview', [NewslettersController::class, 'preview']);
             Route::post('newsletters/{newsletter}/send', [NewslettersController::class, 'send']);
+            Route::post('newsletters/{newsletter}/unschedule', [NewslettersController::class, 'unschedule']);
+            Route::post('newsletters/{newsletter}/duplicate', [NewslettersController::class, 'duplicate']);
             // Checks before a send, and one test email to one typed address.
             Route::get('newsletters/{newsletter}/preflight', [NewslettersController::class, 'preflight']);
             Route::post('newsletters/{newsletter}/test', [NewslettersController::class, 'test'])
@@ -2494,6 +2496,7 @@ Route::prefix('v1')
             // An SVG design becomes editable blocks plus one rasterised artwork image.
             Route::post('newsletter/import/svg', [NewsletterImportController::class, 'svg']);
             Route::post('newsletter/import/artwork', [NewsletterImportController::class, 'artwork']);
+            Route::post('newsletter/import/library/{item}', [NewsletterImportController::class, 'library']);
 
             Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
             Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);

@@ -210,6 +210,27 @@ class NewsletterApiTest extends TestCase
         Http::assertSent(fn ($r) => str_ends_with($r->url(), '/segments') && $r['static_segment'] === ['in@example.com']);
     }
 
+    /** Review 2026-11-09 A32: the send confirmation says how many it goes to. */
+    public function test_preflight_counts_the_people_the_send_would_reach(): void
+    {
+        $t = $this->provisionTenant('Counted');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $this->inTenant($t['org'], function () use ($t, $audience) {
+            $audience->forceFill(['kind' => NewsletterAudience::KIND_CUSTOMERS, 'tag' => null])->save();
+            foreach (['a@example.com', 'b@example.com', 'out@example.com'] as $email) {
+                $c = Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-'.$email, 'name' => $email, 'email' => $email]);
+                if ($email === 'out@example.com') {
+                    $c->forceFill(['email_opt_out_at' => now()])->save();
+                }
+            }
+        });
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, ['subject' => 'Count', 'audience_id' => $audience->id])->assertCreated()->json('data.id');
+
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT."/{$id}/preflight")
+            ->assertOk()->assertJsonPath('data.recipients', 2);
+    }
+
     public function test_a_customers_tag_takes_only_customers_whose_jobs_carry_it(): void
     {
         $t = $this->provisionTenant('JobTagged');
@@ -291,6 +312,50 @@ class NewsletterApiTest extends TestCase
             // and mail the audience twice.
             $this->assertSame('queued', Newsletter::query()->sole()->sends()->sole()->status);
         });
+    }
+
+    /** Review 2026-11-09 A28: a scheduled newsletter can go back to a draft. */
+    public function test_a_scheduled_newsletter_unschedules_back_to_an_editable_draft(): void
+    {
+        $t = $this->provisionTenant('Unsched');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        Http::fake();
+
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'subject' => 'Later', 'audience_id' => $audience->getKey(),
+            'scheduled_for' => now()->addDays(3)->format('Y-m-d H:i'),
+        ])->assertCreated()->json('data.id');
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/send")->assertOk();
+
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/unschedule")
+            ->assertOk()->assertJsonPath('data.status', 'draft');
+        $this->inTenant($t['org'], fn () => $this->assertSame(0, Newsletter::query()->sole()->sends()->count()));
+        $this->signedInAs($t['admin'])->putJson(self::ENDPOINT."/{$id}", ['subject' => 'Later, edited', 'audience_id' => $audience->getKey()])
+            ->assertOk();
+
+        // A draft has nothing to unschedule.
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/unschedule")->assertUnprocessable();
+    }
+
+    /** Review 2026-11-09 A34: Duplicate starts a new draft with the same content. */
+    public function test_duplicate_makes_a_new_draft_with_the_same_content(): void
+    {
+        $t = $this->provisionTenant('Dup');
+        $this->mailchimp($t);
+        $audience = $this->audience($t, 'organization', $t['org']->id);
+        $id = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'subject' => 'Spring', 'audience_id' => $audience->getKey(),
+            'blocks' => [['type' => 'heading', 'text' => 'Spring']],
+        ])->assertCreated()->json('data.id');
+
+        $copy = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$id}/duplicate")
+            ->assertCreated()->json('data');
+
+        $this->assertNotSame($id, $copy['id']);
+        $this->assertSame('Copy of Spring', $copy['subject']);
+        $this->assertSame('draft', $copy['status']);
+        $this->assertSame('Spring', $copy['blocks'][0]['text']);
     }
 
     public function test_an_already_sent_newsletter_cannot_be_edited(): void
