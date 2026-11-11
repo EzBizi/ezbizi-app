@@ -1648,6 +1648,26 @@ class ActionRunner
             return ['type' => $type, 'ok' => true, 'detail' => "Handed the \"{$template}\" template to WhatsApp for the customer; it is on the enquiry."];
         }
 
+        // A person here hears from the Reports number, as a report; Main is for the assistant and customers (Jose, 2026-11-11).
+        $reports = str_starts_with($field, self::RECIPIENT_USER) ? \App\Models\WhatsAppNumber::forPurpose('reports') : null;
+        if ($reports !== null) {
+            $user = $this->userFromStored($field);
+            if ($user === null) {
+                return ['type' => $type, 'ok' => false, 'detail' => 'The person this step sends to no longer works here.'];
+            }
+            $parts = array_map(fn ($value) => $this->interpolate((string) $value, $event, $subject), array_values((array) ($action['parameters'] ?? [])));
+            $title = trim((string) array_shift($parts)) ?: 'EzBizi alert';
+            try {
+                $sent = app(\App\Support\Social\WhatsAppGroups::class)->deliverTextToUser($reports, $user, $title, implode("\n", $parts));
+            } catch (RuntimeException $refusal) {
+                return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+            }
+
+            return $sent
+                ? ['type' => $type, 'ok' => true, 'detail' => "Sent \"{$title}\" to {$user->name} from the Reports number."]
+                : ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => "{$user->name} has no phone number, so nothing was sent."];
+        }
+
         $to = $this->contactFromStored($field, $event, 'phone', $subject);
 
         if (! is_string($to) || trim($to) === '') {

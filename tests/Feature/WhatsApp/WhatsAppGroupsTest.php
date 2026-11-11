@@ -202,6 +202,29 @@ class WhatsAppGroupsTest extends TestCase
         $this->assertSame('approval_required', $this->sent[0]['join_approval_mode']);
     }
 
+    /** Jose, 2026-11-11: an automation's WhatsApp to a person goes from the Reports number as a report, never from Main. */
+    public function test_an_automation_message_to_a_person_goes_from_the_reports_number(): void
+    {
+        $user = $this->userWithRole($this->t, 'Manager', ['leads.view']);
+        $this->inTenant($this->t['org'], function () use ($user) {
+            $user->forceFill(['phone' => '(305) 555-0101'])->save();
+            DB::table('whatsapp_numbers')->update(['purpose' => 'support']);
+            DB::table('whatsapp_numbers')->insert(['id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id, 'phone_number_id' => 'REPORTS-1',
+                'waba_id' => 'W2', 'display_number' => '+18774508572', 'purpose' => 'reports', 'created_at' => now(), 'updated_at' => now()]);
+            $rule = \App\Models\Automation::create(['name' => 'Digest', 'trigger_key' => 'lead.daily_digest', 'is_active' => false, 'created_by' => $this->t['admin']->id]);
+
+            $done = app(\App\Support\Automations\ActionRunner::class)->run(['type' => 'whatsapp.send', 'template' => 'automation_alert', 'from' => '+19545162455',
+                'to_field' => 'user:'.$user->id, 'parameters' => ['Morning leads digest', '{{summary_lines}}']],
+                new \App\Models\AutomationEvent(['event_key' => 'lead.daily_digest', 'payload' => ['after' => ['summary_lines' => "Calls: 3\nBooked: 1"]]]), null, automation: $rule);
+
+            $this->assertTrue($done['ok'], $done['detail']);
+        });
+
+        $out = collect($this->sent)->filter(fn ($m) => $m['method'] === 'POST');
+        $this->assertNotEmpty($out);
+        $this->assertTrue($out->every(fn ($m) => str_contains($m['url'], '/REPORTS-1/')), 'every call from the Reports number');
+    }
+
     private function deliver(): int
     {
         return $this->inTenant($this->t['org'],
