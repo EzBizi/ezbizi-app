@@ -515,9 +515,11 @@ final class CallReconciliation
             return true;
         }
 
+        // Only a call somebody answered can have booked the job: the caller's
+        // missed calls showed under Booked as "Missed call" (Jose, 2026-11-11).
         $phone = NumberNames::lastTen($call['from'] ?? null);
 
-        return $phone !== null && isset($bookedPhones[$phone]);
+        return ($call['answered_by'] ?? null) !== null && $phone !== null && isset($bookedPhones[$phone]);
     }
 
     /**

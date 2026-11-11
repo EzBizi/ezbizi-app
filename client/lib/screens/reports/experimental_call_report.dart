@@ -114,9 +114,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   String _view = 'overview';
 
   /// What the Calls tab is narrowed to by result: 'all', 'booked',
-  /// 'not_booked' or 'missed'. Who called is the bar's other half,
+  /// 'not_booked' or 'ai_booked_no_job'. Who called is the bar's other half,
   /// [_clientFilter] (UI queue 71). A figure opens the tab already narrowed.
   String _result = 'all';
+
+  /// What became of the call itself, apart from the sale (Jose, 2026-11-11):
+  /// 'all', 'answered', 'not_answered' (ours out, nobody picked up) or
+  /// 'missed' (theirs in, nobody picked up).
+  String _callFilter = 'all';
 
   /// Which column the table is ordered by, and which way.
   ///
@@ -217,7 +222,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     super.initState();
     if (widget.openCall case final call?) {
       _view = 'calls';
-      _result = 'missed';
+      _callFilter = 'missed';
       _openDetails.add(call);
     }
     _load();
@@ -272,7 +277,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   void _openCalls(String filter) => setState(() {
     _view = 'calls';
     final client = filter == 'new' || filter == 'existing';
-    _result = client ? 'all' : filter;
+    // Missed and unanswered-out are what became of the call, not its result.
+    final call = switch (filter) {
+      'missed' => 'missed',
+      'outbound_no_answer' => 'not_answered',
+      _ => 'all',
+    };
+    _callFilter = call;
+    _result = client || call != 'all' ? 'all' : filter;
     _clientFilter = client ? filter : null;
     _labelFilter = null;
     _nobodyFilter = null;
@@ -1339,22 +1351,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     ) => switch (result) {
       'booked' => from.where((c) => c['booked'] == true).toList(),
       'not_booked' => _unbooked(from),
-      // Inbound only (review item 1): our calls out are their own chip.
-      'missed' => _nobody(from),
-      'outbound_no_answer' => _outbound(from),
-      // Answered, not booked and not a lost booking: the rest of All (item 4).
-      'answered_other' => () {
-        final unbooked = _unbooked(from).toSet();
-        return from
-            .where(
-              (c) =>
-                  !_isOutbound(c) &&
-                  c['outcome'] == 'answered' &&
-                  c['booked'] != true &&
-                  !unbooked.contains(c),
-            )
-            .toList();
-      }(),
       // Grok read the call as booked, but no Workiz job matches it (Jose,
       // 2026-10-13: a list for a manager to follow up).
       'ai_booked_no_job' =>
@@ -1366,8 +1362,32 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   c['existing_job'] == null,
             )
             .toList(),
+      _ => from,
+    };
+    // What became of the call (Jose, 2026-11-11: a Call column apart from Result).
+    List<Map<String, dynamic>> byCall(
+      String call,
+      List<Map<String, dynamic>> from,
+    ) => switch (call) {
+      'answered' =>
+        from
+            .where(
+              (c) => _isOutbound(c)
+                  ? c['outcome'] == 'connected'
+                  : c['outcome'] == 'answered',
+            )
+            .toList(),
+      // Ours out that nobody picked up; theirs in that nobody did (review item 1).
+      'not_answered' => _outbound(from),
+      'missed' => _nobody(from),
+      // All: theirs in, unless a number is searched or Answered is chosen.
       _ => _numberSearch ? from : from.where((c) => !_isOutbound(c)).toList(),
     };
+    List<Map<String, dynamic>> pick(
+      String result,
+      String call,
+      List<Map<String, dynamic>> from,
+    ) => byResult(result, byCall(call, from));
 
     // The search narrows everything under it, counts included, so a chip
     // never promises calls the list will not show.
@@ -1387,7 +1407,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 .contains(digits));
 
     final mine = byClient(_clientFilter).where(found).toList();
-    final shown = byResult(_result, mine);
+    final shown = pick(_result, _callFilter, mine);
 
     final reasons = <String, int>{};
     for (final call in _nobody(mine)) {
@@ -1423,36 +1443,53 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
 
     final groups = [
+      // Jose, 2026-11-11: Result is the sale only; what became of the call is Call.
       group('Result', [
         for (final (key, label) in const [
           ('all', 'All'),
           ('booked', 'Booked'),
           ('not_booked', 'Not booked'),
-          ('answered_other', 'Answered · not a sale call'),
-          ('missed', 'Missed'),
-          ('outbound_no_answer', 'Outbound, no answer'),
           ('ai_booked_no_job', 'AI heard a booking, no job yet'),
         ])
           // The follow-up list only while it has calls, or is chosen.
           if (key != 'ai_booked_no_job' ||
               _result == key ||
-              byResult(key, mine).isNotEmpty)
+              pick(key, _callFilter, mine).isNotEmpty)
             chip(
               key,
-              '$label ${byResult(key, mine).length}',
+              '$label ${pick(key, _callFilter, mine).length}',
               _result == key,
               () {
                 _result = key;
                 _labelFilter = null;
-                _nobodyFilter = null;
                 _directionFilter = null;
               },
             ),
       ]),
+      group('Call', [
+        // The chip keys Missed and Outbound, no answer had, so a figure still finds them.
+        for (final (key, state, label) in const [
+          ('every-call', 'all', 'All'),
+          ('answered', 'answered', 'Answered'),
+          ('outbound_no_answer', 'not_answered', 'Not answered'),
+          ('missed', 'missed', 'Missed call'),
+        ])
+          chip(
+            key,
+            '$label ${pick(_result, state, mine).length}',
+            _callFilter == state,
+            () {
+              _callFilter = state;
+              _labelFilter = null;
+              _nobodyFilter = null;
+              _directionFilter = null;
+            },
+          ),
+      ]),
       group('Client', [
         chip(
           'every-client',
-          'All ${byResult(_result, byClient(null)).length}',
+          'All ${pick(_result, _callFilter, byClient(null)).length}',
           _clientFilter == null,
           () => _clientFilter = null,
         ),
@@ -1463,7 +1500,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ])
           chip(
             key,
-            '$label ${byResult(_result, byClient(key)).length}',
+            '$label ${pick(_result, _callFilter, byClient(key)).length}',
             _clientFilter == key,
             () {
               _clientFilter = key;
@@ -1495,7 +1532,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           },
         ),
       ]),
-      if (_result == 'missed' && _directionFilter != 'outbound')
+      if (_callFilter == 'missed' && _directionFilter != 'outbound')
         group('Why', [
           for (final entry in _outcomes.entries)
             // A reason with no calls is still offered, at zero, so the
@@ -1546,12 +1583,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ),
     );
     // Which AI put each call where, above the table it narrows.
+    final heard = byCall(_callFilter, mine);
     final counts = switch (_result) {
-      'not_booked' => _labelCounts(context, _unbooked(mine), _notBookedLabels),
+      'not_booked' => _labelCounts(context, _unbooked(heard), _notBookedLabels),
       _
           when _clientFilter == 'existing' &&
-              _result != 'missed' &&
-              _result != 'outbound_no_answer' =>
+              _callFilter != 'missed' &&
+              _callFilter != 'not_answered' =>
         _labelCounts(context, shown, _existingLabels),
       _ => null,
     };
@@ -1565,8 +1603,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final rows = [
       ...switch (_result) {
         _ when _directionFilter == 'outbound' => _everyCall(context, directed),
-        'not_booked' => _notBooked(context, mine, conversions),
-        'missed' => _everyCall(
+        'not_booked' => _notBooked(context, heard, conversions),
+        _ when _callFilter == 'missed' => _everyCall(
           context,
           directed
               .where(
@@ -2630,42 +2668,45 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                       '${fix['reason'] == null ? '' : ' · ${fix['reason']}'}',
             child: pill,
           );
-    final result = missed
+    // Jose, 2026-11-11: Result is the sale alone - Booked, Not booked, or
+    // nothing where no sale was asked of the call; Call is what became of it.
+    final Widget? result = call['booked'] == true
+        ? _setMark(
+            setBy['booking'],
+            StatusPill(
+              setBy['booking'] == null ? 'Booked' : 'Booked ✎',
+              tone: Tone.ok,
+            ),
+          )
+        : missed || outbound || call['queue'] != _newQueue
+        ? null
+        // The caller already had an open job (Jose, 2026-10-13): a
+        // reschedule or a question, not a lost booking.
+        : call['existing_job'] is Map
+        ? Tooltip(
+            message: _existingJobTip(call['existing_job'] as Map),
+            // Jose, 2026-10-13: "maybe a rescheduled tag as well?"
+            child: StatusPill(
+              (call['labels'] as Map?)?[_labeller] == 'reschedule'
+                  ? 'Rescheduled'
+                  : 'Existing job',
+            ),
+          )
+        : _setMark(
+            setBy['booking'],
+            StatusPill(
+              setBy['booking'] == null ? 'Not booked' : 'Not booked ✎',
+              tone: Tone.caution,
+            ),
+          );
+    final callPill = missed
         ? StatusPill(
             outbound
-                ? 'No answer'
-                : _outcomes[call['outcome']] ?? 'Nobody answered',
+                ? 'Not answered'
+                : _outcomes[call['outcome']] ?? 'Missed call',
             tone: Tone.caution,
           )
-        : call['queue'] == _newQueue
-        ? call['booked'] == true
-              ? _setMark(
-                  setBy['booking'],
-                  StatusPill(
-                    setBy['booking'] == null ? 'Booked' : 'Booked ✎',
-                    tone: Tone.ok,
-                  ),
-                )
-              // The caller already had an open job (Jose, 2026-10-13): a
-              // reschedule or a question, not a lost booking.
-              : call['existing_job'] is Map
-              ? Tooltip(
-                  message: _existingJobTip(call['existing_job'] as Map),
-                  // Jose, 2026-10-13: "maybe a rescheduled tag as well?"
-                  child: StatusPill(
-                    (call['labels'] as Map?)?[_labeller] == 'reschedule'
-                        ? 'Rescheduled'
-                        : 'Existing job',
-                  ),
-                )
-              : _setMark(
-                  setBy['booking'],
-                  StatusPill(
-                    setBy['booking'] == null ? 'Not booked' : 'Not booked ✎',
-                    tone: Tone.caution,
-                  ),
-                )
-        : StatusPill(outbound ? 'Connected' : 'Answered');
+        : const StatusPill('Answered');
 
     final small = theme.textTheme.bodySmall?.copyWith(color: muted);
     final dash = Text('—', style: small);
@@ -2732,7 +2773,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         : notTheirs
         ? StatusPill('Not answered · $by took it')
         : const StatusPill('Missed', tone: Tone.bad);
-    final booking = by == name && call['queue'] == _newQueue ? result : dash;
+    final booking = by == name ? result ?? dash : dash;
     final who = Text(
       whoText,
       maxLines: 1,
@@ -2818,8 +2859,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                       caller,
                       number,
                       client ?? dash,
-                      personal ? answerPill : result,
-                      personal ? booking : who,
+                      personal ? booking : result ?? dash,
+                      personal ? answerPill : callPill,
+                      // A person's Call pill already says who took it.
+                      personal ? dash : who,
                       why,
                       score,
                       talkText,
@@ -2845,8 +2888,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                                   if (personal) ...[
                                     answerPill,
                                     if (booking != dash) booking,
-                                  ] else
-                                    result,
+                                  ] else ...[
+                                    ?result,
+                                    callPill,
+                                  ],
                                   ?client,
                                   if (aiScore != null) score,
                                   if (outbound) direction,
@@ -3091,19 +3136,21 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         SizedBox(width: 136, child: pad(c[4])),
         SizedBox(width: 92, child: pad(c[5])),
         SizedBox(width: 116, child: pad(c[6])),
-        Expanded(flex: 3, child: pad(c[7])),
+        // Call: wide enough for a person's "Not answered · Ann took it".
+        Expanded(flex: 2, child: pad(c[7])),
         Expanded(flex: 3, child: pad(c[8])),
+        Expanded(flex: 3, child: pad(c[9])),
         SizedBox(
           width: 112,
-          child: Align(alignment: Alignment.centerRight, child: c[9]),
-        ),
-        SizedBox(
-          width: 44,
           child: Align(alignment: Alignment.centerRight, child: c[10]),
         ),
         SizedBox(
-          width: 92,
+          width: 44,
           child: Align(alignment: Alignment.centerRight, child: c[11]),
+        ),
+        SizedBox(
+          width: 92,
+          child: Align(alignment: Alignment.centerRight, child: c[12]),
         ),
       ],
     );
@@ -3134,8 +3181,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               heading('Caller'),
               heading('Line'),
               heading('Client'),
-              heading(person ? 'Answer' : 'Result'),
-              heading(person ? 'Booking' : 'Answered by'),
+              // One set of headings for everyone's list and a person's (Jose, 2026-11-11).
+              heading('Result'),
+              heading('Call'),
+              heading('Answered by'),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
