@@ -709,7 +709,7 @@ void main() {
     );
     await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
-    expect(find.text('ATTACHMENTS'), findsOneWidget);
+    expect(find.byKey(const ValueKey('email-attachments')), findsOneWidget);
     expect(find.textContaining('flue.jpg'), findsOneWidget);
 
     await _tap(tester, find.textContaining('flue.jpg'));
@@ -720,6 +720,30 @@ void main() {
     );
     expect(fileUrl, contains('src=sealed-att'));
     expect(fileUrl, contains('name=flue.jpg'));
+  });
+
+  /// Eve 11-11: ten files as a list took her iPhone screen and the mail
+  /// could not be read. Four chips and "+N more", and the body still shows.
+  testWidgets('many attachments are four chips and +N more, under a body '
+      'that still shows on a phone', (tester) async {
+    final detail = {
+      ..._detail('mb-1', 'm-1'),
+      'attachments': [
+        for (var i = 1; i <= 10; i++)
+          {'name': 'file$i.pdf', 'size': 20000, 'token': 'sealed-$i'},
+      ],
+    };
+    await _pump(tester, _handler(detail: detail), size: const Size(390, 844));
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
+
+    expect(find.textContaining('the flue', findRichText: true), findsWidgets);
+    expect(find.textContaining('file4.pdf'), findsOneWidget);
+    expect(find.textContaining('file5.pdf'), findsNothing);
+    expect(find.text('+6 more'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const ValueKey('email-attachments-more')));
+    expect(find.textContaining('file10.pdf'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a link shows where it goes', (tester) async {
