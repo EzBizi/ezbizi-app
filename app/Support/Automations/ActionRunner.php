@@ -3730,8 +3730,11 @@ class ActionRunner
             ?? (($scope['type'] ?? null) === 'company' ? Company::query()->find($scope['id'] ?? null) : null)
             ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null);
         // A Sub Company and its franchises have no board (Jose, 2026-11-06).
+        // Its parent company's board then, not the first assignee's personal
+        // board, which refuses every other owner (Complaint call on AngiSweep, 11-10).
         if ($owner !== null && ! TaskBoards::hasPlaceBoard($owner)) {
-            $owner = null;
+            $owner = collect($scope['company_chain'] ?? [])->map(fn ($id) => Company::query()->find($id))
+                ->first(fn (?Company $c) => $c !== null && TaskBoards::hasPlaceBoard($c));
         }
         $owner ??= $assignee;
 
