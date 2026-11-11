@@ -636,26 +636,30 @@ class _LeadThreadState extends State<LeadThread> {
   }
 
   /// From this width of header the six moves are one segmented control on
-  /// the name row; narrower, the same moves as a picker (design 161).
-  static const double _segmentsFrom = 1100;
+  /// their own row; narrower, the same moves as a picker (design 161).
+  static const double _segmentsFrom = 640;
 
-  /// Desktop: the moves, then Book, the one that matters most, last. On a
-  /// phone Book is full width and the moves share a row under it.
-  /// Two groups, apart (Jose, 2026-09-30): where the lead stands - Archive,
-  /// Not a lead, Lead - and what to do about the customer - Call, Book.
-  Widget _actions(Map<String, dynamic> lead, {bool picker = false}) => Wrap(
-    spacing: 16,
-    runSpacing: 8,
-    alignment: WrapAlignment.end,
-    crossAxisAlignment: WrapCrossAlignment.center,
-    children: [
-      if (widget.onStatusChanged != null)
-        picker
-            ? SizedBox(width: 150, child: _moves(lead, fill: true))
-            : _moves(lead),
-      Wrap(
+  /// Desktop, row 2 (Jose, 2026-11-11: "stuff doesn't seem lined up
+  /// properly"): where the lead stands, left-aligned under the name, so the
+  /// name row is one line with Call / Edit / Book at its end.
+  Widget _movesRow(Map<String, dynamic> lead, double width) => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: width < _segmentsFrom
+          ? SizedBox(width: 180, child: _moves(lead, fill: true))
+          : _moves(lead),
+    ),
+  );
+
+  /// Desktop: what to do about the customer - Call, Edit, Book (the one that
+  /// matters most, last) and ... at the name row's end. Where the lead stands
+  /// is its own row under it ([_movesRow]); two groups, apart (Jose,
+  /// 2026-09-30).
+  Widget _actions(Map<String, dynamic> lead) => Wrap(
         spacing: 8,
         runSpacing: 8,
+        alignment: WrapAlignment.end,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           if (_canCall(lead))
@@ -688,9 +692,7 @@ class _LeadThreadState extends State<LeadThread> {
               onHidden: widget.onHidden,
             ),
         ],
-      ),
-    ],
-  );
+      );
 
   /// Design 161: the avatar, the name with its marks and chips (one source
   /// chip, the status, who else is viewing, the note), and on a desktop the
@@ -812,7 +814,7 @@ class _LeadThreadState extends State<LeadThread> {
             flex: 3,
             child: Align(
               alignment: AlignmentDirectional.centerEnd,
-              child: _actions(lead, picker: width < _segmentsFrom),
+              child: _actions(lead),
             ),
           ),
         ],
@@ -1246,6 +1248,8 @@ class _LeadThreadState extends State<LeadThread> {
                     _phoneBar(theme, lead, src)
                   else
                     _nameRow(theme, lead, src, narrow: narrow, width: box.maxWidth),
+                  if (!narrow && widget.onStatusChanged != null)
+                    _movesRow(lead, box.maxWidth),
                   if (!folded) ...[
                     if (narrow)
                       Padding(
@@ -1260,7 +1264,7 @@ class _LeadThreadState extends State<LeadThread> {
                         ),
                       ),
                     Padding(
-                      padding: const EdgeInsets.only(top: 6),
+                      padding: EdgeInsets.only(top: narrow ? 6 : 10),
                       child: _facts(
                         theme,
                         lead,
@@ -1283,7 +1287,9 @@ class _LeadThreadState extends State<LeadThread> {
                     // What it looks like, read by a model, beside what
                     // somebody decided. Only when a reading exists.
                     if (lead['classification'] is String)
-                      Text(
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
                         [
                           'Looks like ${classificationWord(lead['classification'] as String)}',
                           if ((lead['summary'] as String?)?.isNotEmpty == true)
@@ -1295,10 +1301,21 @@ class _LeadThreadState extends State<LeadThread> {
                           fontStyle: FontStyle.italic,
                         ),
                       ),
+                      ),
                     if (lead['credit'] is Map)
                       _creditLine(theme, lead['credit'] as Map),
                     if (!narrow) ...working,
-                    if (_customer != null) _customerCard(theme, _customer!),
+                    // As wide as what it says, not the pane (2026-11-11).
+                    if (_customer != null)
+                      narrow
+                          ? _customerCard(theme, _customer!)
+                          : Align(
+                              alignment: AlignmentDirectional.centerStart,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 720),
+                                child: _customerCard(theme, _customer!),
+                              ),
+                            ),
                     if (lead['job'] is Map)
                       _bookedLine(
                         theme,
