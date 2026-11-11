@@ -67,10 +67,21 @@ class LeadsDailyDigest extends Command
                     .(count($byCompany) > 1 ? ' - '.implode(', ', array_map(fn ($n, $c) => "$c $n", $byCompany, array_keys($byCompany))) : '')
                     .'.';
 
+                // The same, a line each, for a message that may break lines (sent as a report, 2026-11-11).
+                $lines = implode("\n", array_filter([
+                    '*'.$day->format('D M j').': '.$t['leads'].' leads*',
+                    ...array_map(fn ($n, $w) => "$w: $n", $bySource, array_keys($bySource)),
+                    $answeredPct === null ? null : "Texts answered: {$answeredPct}%",
+                    $median === null ? null : "First reply: {$median} min (median)",
+                    "*Booked: {$t['booked']}*",
+                    ...(count($byCompany) > 1 ? array_map(fn ($n, $c) => "$c: $n", $byCompany, array_keys($byCompany)) : []),
+                ], fn ($l) => $l !== null));
+
                 $events->emit('lead.daily_digest', $organization, [
                     'after' => [
                         'date' => $day->toDateString(),
                         'summary' => $summary,
+                        'summary_lines' => $lines,
                         'leads' => $t['leads'],
                         'answerable' => $t['answerable'],
                         'answered' => $t['answered'],
