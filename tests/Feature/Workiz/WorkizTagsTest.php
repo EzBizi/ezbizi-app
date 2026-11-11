@@ -101,4 +101,56 @@ class WorkizTagsTest extends TestCase
         $this->getJson('/api/v1/workiz/tags')->assertForbidden();
         $this->postJson('/api/v1/workiz/tags/approve')->assertForbidden();
     }
+
+    /** Jobs, 11-10: the PM settings manage tag definitions; each call reaches the account, the mirror, the jobs and the standard, and the next read sees no drift. */
+    public function test_create_rename_and_delete_reach_workiz_the_mirror_and_the_jobs_without_flagging_drift(): void
+    {
+        $this->read([['id' => 'T1', 'name' => 'CONTRACTOR RUBEN', 'color' => '#0059a0']]);
+        [$mirror, $job] = $this->inTenant($this->t['org'], function () {
+            app(\App\Support\Settings\SettingsResolver::class)->set('workiz.tag_baseline', $this->t['org'], [['name' => 'CONTRACTOR RUBEN', 'color' => '#0059a0']]);
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id]);
+            $job = \App\Models\Job::factory()->create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $customer->id, 'tags' => ['CONTRACTOR RUBEN', 'VIP']]);
+
+            return [WorkizJob::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $this->c->id, 'remote_id' => 'J1',
+                'status' => 'Done', 'job_id' => $job->id, 'payload' => ['Tags' => ['CONTRACTOR RUBEN']], 'synced_at' => now()]), $job];
+        });
+
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::fake([
+            'api.workiz.com/crm/api/v2/tags/T1' => Http::response(['id' => 'T1', 'name' => 'CONTRACTOR: RUBEN', 'color' => '#0059a0'], 200),
+            'api.workiz.com/crm/api/v2/tags' => Http::sequence()
+                ->push(['data' => [['id' => 'T1', 'name' => 'CONTRACTOR RUBEN', 'color' => '#0059a0']]])
+                ->push(['data' => [['id' => 'T1', 'name' => 'CONTRACTOR: RUBEN', 'color' => '#0059a0']]])
+                ->push(['id' => 'T2', 'name' => 'READY TO SCHEDULE', 'color' => '#0059a0', 'type' => 'job'], 201),
+        ]);
+
+        $this->inTenant($this->t['org'], function () use ($mirror, $job) {
+            $this->assertSame(['renamed'], array_values(\App\Support\Workiz\WorkizTags::rename('CONTRACTOR RUBEN', 'CONTRACTOR: RUBEN')));
+            $this->assertSame(['CONTRACTOR: RUBEN'], $mirror->fresh()->payload['Tags']);
+            $this->assertSame(['CONTRACTOR: RUBEN', 'VIP'], $job->fresh()->tags);
+            $this->assertSame(['created'], array_values(\App\Support\Workiz\WorkizTags::create('READY TO SCHEDULE', '#0059A0')));
+            $this->assertSame(['CONTRACTOR: RUBEN', 'READY TO SCHEDULE'], collect(app(\App\Support\Settings\SettingsResolver::class)->get('workiz.tag_baseline', $this->t['org']))->pluck('name')->sort()->values()->all());
+        });
+        Http::assertSent(fn ($r) => $r->method() === 'PUT' && $r['name'] === 'CONTRACTOR: RUBEN');
+        Http::assertSent(fn ($r) => $r->method() === 'POST' && $r['color'] === '#0059a0');
+
+        // The next read finds Workiz as EzBizi left it: no drift.
+        $this->read([['id' => 'T1', 'name' => 'CONTRACTOR: RUBEN', 'color' => '#0059a0'], ['id' => 'T2', 'name' => 'READY TO SCHEDULE', 'color' => '#0059a0']]);
+        $this->assertSame(0, $this->inTenant($this->t['org'], fn () => WorkizTagChange::query()->count()));
+
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::fake([
+            'api.workiz.com/crm/api/v2/tags/T1' => Http::response(null, 204),
+            'api.workiz.com/crm/api/v2/tags' => Http::response(['data' => [['id' => 'T1', 'name' => 'CONTRACTOR: RUBEN', 'color' => '#0059a0']]]),
+        ]);
+        $this->inTenant($this->t['org'], function () use ($mirror, $job) {
+            $this->assertSame(['deleted'], array_values(\App\Support\Workiz\WorkizTags::delete('contractor: ruben')));
+            $this->assertSame([], $mirror->fresh()->payload['Tags']);
+            $this->assertSame(['VIP'], $job->fresh()->tags);
+            $this->assertNull(WorkizRecord::query()->where('remote_id', 'T1')->first());
+        });
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->inTenant($this->t['org'], fn () => \App\Support\Workiz\WorkizTags::create('X', '#123456'));
+    }
 }
