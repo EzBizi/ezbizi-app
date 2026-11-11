@@ -134,6 +134,18 @@ class WorkizV2Test extends TestCase
         $this->assertSame('JOB-8ApvxXebm23oQV4E', $row->payload['v2']['id']);
     }
 
+    /** 11-10: a job booked today and dated weeks back (DMV 800020991) is found by its created date. */
+    public function test_a_job_booked_today_with_a_past_date_is_read_by_when_it_was_made(): void
+    {
+        [$tenant] = $this->branch();
+        Http::fake(['api.workiz.com/crm/api/v2/jobs*' => fn (Request $r) => Http::response($this->page($r['dateProperty'] === 'created'
+            ? [$this->v2Job(['uuid' => 'T6TDTG', 'id' => 'JOB-BACKDATED', 'date' => '2026-10-01 11:00:00'])] : [$this->v2Job()]))]);
+
+        $this->artisan('ezbizi:sync-workiz', ['--reconcile' => 0, '--verify' => 0])->assertSuccessful();
+
+        $this->assertEqualsCanonicalizing(['NYCZ7W', 'T6TDTG'], $this->inTenant($tenant['org'], fn () => WorkizJob::query()->pluck('remote_id')->all()));
+    }
+
     /**
      * Measured live on Connecticut: v2's address is the client's, not the
      * job's (0T933A: v1 Bolton CT, v2 Avon IN); a finished job Workiz marks

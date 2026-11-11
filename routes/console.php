@@ -195,6 +195,8 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
+// Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
+Schedule::command('ezbizi:sync-workiz-records --type=payment --days=35 --pages=200')->dailyAt('03:20')->withoutOverlapping(60);
 Schedule::command('ezbizi:sync-workiz-records --type=tag')->cron('1-59/2 * * * *')->withoutOverlapping(5);
 // Off the records run's minute: the ten-minute readers firing together hit Workiz's rate limit (measured 11-03).
 Schedule::command('ezbizi:sync-workiz-calls')->cron('3-59/10 * * * *')->withoutOverlapping(30);

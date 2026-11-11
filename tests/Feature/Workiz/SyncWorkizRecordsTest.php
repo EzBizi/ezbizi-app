@@ -316,4 +316,25 @@ class SyncWorkizRecordsTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    /** Audit 11-11: a payment Workiz edits or deletes after the 2-day overlap is caught by the nightly whole re-read of the window. */
+    public function test_the_window_re_read_updates_edited_payments_and_marks_deleted_ones(): void
+    {
+        [$tenant] = $this->branch();
+        $at = fn (int $days) => now()->subDays($days)->format('Y-m-d H:i:s');
+        $kept = array_replace(self::RECORDS['payments'], ['id' => 'PAY-KEPT', 'amount' => 100, 'date' => $at(10)]);
+        $gone = array_replace(self::RECORDS['payments'], ['id' => 'PAY-GONE', 'amount' => 50, 'date' => $at(10)]);
+        $old = array_replace(self::RECORDS['payments'], ['id' => 'PAY-OLD', 'amount' => 25, 'date' => $at(60)]);
+        $this->fake(['payments' => [$kept, $gone, $old]]);
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['payment'], '--full' => true])->assertSuccessful();
+
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        $this->fake(['payments' => [array_replace($kept, ['amount' => 120])]]);
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['payment'], '--days' => 35])->assertSuccessful();
+
+        $rows = $this->inTenant($tenant['org'], fn () => WorkizRecord::query()->where('type', 'payment')->get()->keyBy('remote_id'));
+        $this->assertSame(['120.00', 'succeeded'], [(string) $rows['PAY-KEPT']->amount, $rows['PAY-KEPT']->status]);
+        $this->assertSame('deleted', $rows['PAY-GONE']->status);
+        $this->assertNotSame('deleted', $rows['PAY-OLD']->status, 'outside the window: not judged');
+    }
 }

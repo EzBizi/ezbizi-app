@@ -543,6 +543,26 @@ final class WorkizJobs
             }
         }
 
+        // A job booked today with a date weeks back is outside a date window
+        // (DMV 800020991, IL 400595749, 11-10): v2 also lists by created date.
+        if (WorkizV2::uses($connection) && $since !== null) {
+            for ($page = 0; $page < 20; $page++) {
+                $read = $this->page($connection, $since, $page, by: 'created');
+
+                if ($read['failed'] !== null) {
+                    return ['jobs' => $jobs, 'failed' => $read['failed']];
+                }
+
+                array_push($jobs, ...$read['jobs']);
+
+                if (count($read['jobs']) < self::PAGE) {
+                    break;
+                }
+            }
+
+            $jobs = array_values(collect($jobs)->unique(fn ($j) => $j['UUID'] ?? $j['id'] ?? json_encode($j))->all());
+        }
+
         return ['jobs' => array_slice($jobs, 0, $limit), 'failed' => null];
     }
 
@@ -560,7 +580,7 @@ final class WorkizJobs
      *
      * @return array{jobs: list<array<string, mixed>>, failed: ?string}
      */
-    public function page(SocialConnection $connection, string $since, int $page, int $timeout = 30): array
+    public function page(SocialConnection $connection, string $since, int $page, int $timeout = 30, string $by = 'date'): array
     {
         $token = (string) ($connection->credentials['api_token'] ?? '');
 
@@ -569,7 +589,7 @@ final class WorkizJobs
         }
 
         if (WorkizV2::uses($connection)) {
-            $read = WorkizV2::send($connection, 'GET', '/jobs', self::v2Page($since, $page), $timeout);
+            $read = WorkizV2::send($connection, 'GET', '/jobs', ['dateProperty' => $by] + self::v2Page($since, $page), $timeout);
 
             if ($read['status'] >= 500) {
                 return $this->v2Around($connection, $since, $page, $timeout);
