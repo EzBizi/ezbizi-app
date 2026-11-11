@@ -3122,8 +3122,9 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Daily leads digest',
                         description: 'Every morning, yesterday in numbers: how many leads by source, '
                             .'how many were answered and how fast, how many were booked, and each '
-                            .'company\'s count. It carries a one-line summary ready for a WhatsApp or '
-                            .'email step, and each figure on its own for conditions.',
+                            .'company\'s leads and bookings. It carries a one-line summary for a WhatsApp '
+                            .'template, summary_lines (a line each) for a report or email, and each '
+                            .'figure on its own for conditions.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.follow_up_due',
