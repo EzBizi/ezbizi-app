@@ -47,7 +47,16 @@ class IssueReporter {
   // compact JSON. Module keys and actions only: never what was typed or whose
   // record it was.
 
-  static final Stopwatch _uptime = Stopwatch()..start();
+  // Started by [markLaunch], not here: a static is created on first use,
+  // which was the first report, so every launch freeze read uptime_s 0
+  // (desk, 2026-11-11).
+  static final Stopwatch _uptime = Stopwatch();
+
+  /// The first line of `main()`: uptime counts from launch.
+  static void markLaunch() => _uptime.start();
+
+  @visibleForTesting
+  static bool get uptimeRunning => _uptime.isRunning;
   static final List<String> _breadcrumbs = [];
   static const int maxBreadcrumbs = 10;
 
