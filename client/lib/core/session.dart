@@ -963,8 +963,12 @@ class Me {
   /// index => pixels, for ListTable.widths. Save with
   /// setPreference('lists.column_widths', {...all, '$list:$i': px}).
   Map<int, double> listColumnWidths(String list) => {
+    // An empty PHP array arrives as [] — not a Map (PM grey screen, 11-11).
     for (final e
-        in (preferences['lists.column_widths'] as Map? ?? const {}).entries)
+        in (preferences['lists.column_widths'] is Map
+                ? preferences['lists.column_widths'] as Map
+                : const {})
+            .entries)
       if ('${e.key}'.startsWith('$list:') && e.value is num)
         int.parse('${e.key}'.substring(list.length + 1)): (e.value as num)
             .toDouble(),

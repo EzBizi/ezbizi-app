@@ -218,8 +218,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
 
   void _resize(int column, double width) {
     final all = {
-      ...((widget.session.me?.preferences['lists.column_widths'] as Map?) ??
-          const {}),
+      if (widget.session.me?.preferences['lists.column_widths']
+          case final Map saved)
+        ...saved,
       'project-board:$column': width.roundToDouble(),
     };
     widget.session.setPreference('lists.column_widths', all);
