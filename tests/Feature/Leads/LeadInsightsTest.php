@@ -211,4 +211,34 @@ class LeadInsightsTest extends TestCase
         $this->signedInAs($t['admin'])->postJson('/api/v1/proofread', ['text' => 'Yes, I call you right away'])
             ->assertOk()->assertJsonPath('data.suggestion', "Yes, I'll call you right away");
     }
+
+    /** 11-10: 10 x 504 while Grok had its 300 s default; a proofread gives up first. */
+    public function test_a_proofread_on_grok_gives_up_inside_the_gateway_limit(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        config(['ezbizi.leads_ai_grok' => true, 'services.ai.provider' => 'grok']);
+        $grok = new class implements \App\Support\Ai\AiProvider
+        {
+            public array $timeouts = [];
+
+            public function name(): string { return 'grok'; }
+
+            public function configured(): bool { return true; }
+
+            public function askMany(array $prompts, array $schema, int $timeout, array $files = []): array
+            {
+                $this->timeouts[] = $timeout;
+
+                return [new \RuntimeException('timed out')];
+            }
+        };
+        $this->app->instance(\App\Support\Ai\GrokCliProvider::class, $grok);
+        $this->off();
+        $lead = $this->lead($t);
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/proofread", ['text' => 'Yes, I call you right away'])
+            ->assertOk()->assertJsonPath('data.suggestion', null);
+        $this->assertSame([LeadInsights::PROOFREAD_TIMEOUT], $grok->timeouts);
+        $this->assertLessThan(60, LeadInsights::PROOFREAD_TIMEOUT);
+    }
 }
