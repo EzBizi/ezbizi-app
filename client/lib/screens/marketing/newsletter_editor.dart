@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/search_picker.dart';
 import '../email/message_html.dart';
 import 'clock_label.dart';
+import 'media_library_panel.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
@@ -707,7 +708,24 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         _align(block),
       ],
       BlockKind.image => [
-        _text(block, 'src', 'Image address'),
+        // Keyed by each pick, so the field shows the address a pick wrote.
+        KeyedSubtree(
+          key: ValueKey('newsletter-image-src-$_picks'),
+          child: _text(block, 'src', 'Image address'),
+        ),
+        if (widget.api != null && widget.readOnlyBecause == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const ValueKey('newsletter-image-library'),
+                onPressed: () => _chooseFromLibrary(context, block),
+                icon: const Icon(Icons.photo_library_outlined, size: 18),
+                label: const Text('Choose picture'),
+              ),
+            ),
+          ),
         _text(block, 'alt', 'Describe the picture'),
       ],
       BlockKind.button => [
@@ -860,6 +878,47 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       final block = widget.blocks.removeAt(from);
       widget.blocks.insert(to, block);
       _selected = to;
+    });
+    widget.onChanged();
+  }
+
+  /// How many pictures were chosen from the library; keys the address field.
+  int _picks = 0;
+
+  /// A picture from the media library, copied to an address an inbox can
+  /// load (review 2026-11-09 A29), instead of a typed URL.
+  Future<void> _chooseFromLibrary(
+    BuildContext context,
+    Map<String, dynamic> block,
+  ) async {
+    final api = widget.api!;
+    final item = await showMediaLibraryPanel(
+      context,
+      api: api,
+      pickMedia: () async => null,
+      canEdit: false,
+    );
+    if (item == null || !mounted) return;
+    final response = await api.post(
+      '/newsletter/import/library/${item['id']}',
+      const {},
+    );
+    if (!mounted) return;
+    final data = response.ok ? response.data : null;
+    final url = data is Map ? data['url'] as String? : null;
+    if (url == null) {
+      ScaffoldMessenger.maybeOf(
+        this.context,
+      )?.showSnackBar(SnackBar(content: Text(response.reason)));
+      return;
+    }
+    setState(() {
+      block['src'] = url;
+      final name = '${item['name'] ?? ''}'.trim();
+      if ('${block['alt'] ?? ''}'.trim().isEmpty && name.isNotEmpty) {
+        block['alt'] = name;
+      }
+      _picks++;
     });
     widget.onChanged();
   }

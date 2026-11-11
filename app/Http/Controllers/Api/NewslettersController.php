@@ -306,7 +306,16 @@ class NewslettersController extends Controller
         $user = $this->mayView($request);
         $row = $this->findInView($user, $newsletter);
 
-        return response()->json(['data' => ['checks' => $this->checks($user, $row)]]);
+        // Who it goes to, counted the way the send picks them (review
+        // 2026-11-09 A32); null for a list Mailchimp holds, whose addresses
+        // EzBizi does not have.
+        $customers = $row->audience?->kind === \App\Models\NewsletterAudience::KIND_CUSTOMERS;
+
+        return response()->json(['data' => [
+            'checks' => $this->checks($user, $row),
+            'recipients' => $customers ? count(\App\Jobs\SendNewsletter::people($row)) : null,
+            'audience' => $row->audience?->name,
+        ]]);
     }
 
     /**
@@ -430,6 +439,71 @@ class NewslettersController extends Controller
      * promise the social composer makes, and for the same reason: a mailing
      * cannot be unsent.
      */
+    /**
+     * POST /newsletters/{id}/unschedule: a scheduled newsletter back to a
+     * draft, so it can be edited (review 2026-11-09 A28). Only while its
+     * send is still waiting for its time; one a job has taken is refused.
+     */
+    public function unschedule(Request $request, string $newsletter): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $newsletter) {
+            $user = $request->user();
+            abort_unless(
+                $user->hasPermission('newsletter.send'),
+                Status::HTTP_FORBIDDEN,
+                Refusal::permission('unschedule a newsletter')->message(),
+            );
+
+            $row = $this->findInView($user, $newsletter, lock: true);
+            $this->assertMayWrite($user, $row);
+
+            if ($row->status !== Newsletter::STATUS_SCHEDULED
+                || $row->sends()->where('status', NewsletterSend::STATUS_SENDING)->exists()) {
+                throw ValidationException::withMessages([
+                    'subject' => 'Only a newsletter still waiting for its time can be unscheduled.',
+                ]);
+            }
+
+            // The waiting send never went; nothing is kept of it.
+            $row->sends()->where('status', NewsletterSend::STATUS_QUEUED)->delete();
+            $row->forceFill(['status' => Newsletter::STATUS_DRAFT])->save();
+            $this->audit->log('newsletter.unscheduled', $row, ['subject' => $row->subject], actor: $user);
+
+            return response()->json(['data' => $this->present($row->fresh(['audience', 'sends']))]);
+        });
+    }
+
+    /** POST /newsletters/{id}/duplicate: a new draft with the same content (review 2026-11-09 A34). */
+    public function duplicate(Request $request, string $newsletter): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->hasPermission('newsletter.create'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('start a newsletter')->message(),
+        );
+
+        $source = $this->findInView($user, $newsletter);
+        [$scopeType, $scopeId] = $this->filingScope($user);
+        abort_unless(OwnedScope::mayWrite($user, $user->organization_id, $scopeType, $scopeId),
+            Status::HTTP_FORBIDDEN, 'Choose a view where your assignments allow creating newsletters.');
+
+        $copy = new Newsletter([
+            'subject' => mb_substr('Copy of '.$source->subject, 0, 255),
+            'blocks' => $source->blocks ?? [],
+            'html_override' => $source->html_override,
+            'newsletter_audience_id' => $source->newsletter_audience_id,
+            'created_by' => $user->getKey(),
+            'scope_type' => $scopeType,
+            'scope_id' => $scopeId,
+            'status' => Newsletter::STATUS_DRAFT,
+        ]);
+        $copy->save();
+        $this->audit->log('newsletter.created', $copy, ['subject' => $copy->subject, 'duplicated_from' => $source->getKey()], actor: $user);
+
+        return response()->json(['data' => $this->present($copy->fresh(['audience', 'sends']))], Status::HTTP_CREATED);
+    }
+
     public function send(Request $request, string $newsletter): JsonResponse
     {
         return DB::transaction(fn () => $this->admitSend($request, $newsletter));

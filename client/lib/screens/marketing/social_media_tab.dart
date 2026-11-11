@@ -127,6 +127,9 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// The day "See it on the calendar" asked for; the month calendar opens on it.
   DateTime? _focusDay;
 
+  /// A calendar day tapped, at 9:00: Compose opens set to it.
+  DateTime? _composeAt;
+
   /// The calendar or the agenda, to scroll to when the layout is stacked.
   final GlobalKey _calendarKey = GlobalKey();
 
@@ -330,6 +333,35 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     failed.length == 1 ? _retry(post, failed.single) : _openPost(post);
   }
 
+  /// Every failed account of one post, tried again as one action (review
+  /// 2026-11-09 B5): the ones that went out are left alone.
+  Future<void> _retryAll(_SentPost post) async {
+    final failed = [
+      for (final t in post.targets)
+        if (t.status == 'failed' && t.id != null) t,
+    ];
+    final refused = <String>[];
+    for (final target in failed) {
+      final response = await widget.api.post(
+        '/social/posts/${post.id}/targets/${target.id}/retry',
+        const {},
+      );
+      if (!response.ok) refused.add(response.reason);
+    }
+    if (!mounted) return;
+    if (refused.isNotEmpty) {
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(refused.first)));
+    }
+    setState(() {
+      _justPosted = post.id;
+      _gaveUpWaiting = false;
+      _tab = 'compose';
+    });
+    await _load();
+  }
+
   /// Only `queued` starts the poll. A `scheduled` target is waiting for a
   /// clock, not for the worker — polling it would spend twenty requests to
   /// learn nothing and then announce that the queue had stopped answering.
@@ -442,6 +474,24 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   );
                 }
               : null,
+          onRetryAll: _canPost
+              ? () {
+                  Navigator.of(panel).pop();
+                  _retryAll(post);
+                }
+              : null,
+          onDecide: _canPost
+              ? (target, approve) {
+                  Navigator.of(panel).pop();
+                  final verb = approve ? 'approve' : 'disapprove';
+                  _act(
+                    widget.api.post(
+                      '/business-profile/post-queue/${target.id}/$verb',
+                      const {},
+                    ),
+                  );
+                }
+              : null,
           onDeleteRemote: _canPost
               ? (target) async {
                   final network = target.providerLabel;
@@ -536,16 +586,18 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
               decoration: const InputDecoration(labelText: 'Post'),
             ),
             const SizedBox(height: 12),
-            TextField(
+            // The composer's own picker, not a typed date (review
+            // 2026-11-09 A21).
+            CalendarDayField(
               key: const Key('social-edit-when'),
               controller: when,
-              decoration: InputDecoration(
-                labelText: 'Goes out',
-                hintText: 'YYYY-MM-DD HH:MM',
-                helperText: clockLabel(post.scheduledTimezone).isEmpty
-                    ? 'On this view’s clock'
-                    : 'On the ${clockLabel(post.scheduledTimezone)} clock',
-              ),
+              formats: _formats,
+              label: 'Goes out',
+              withTime: true,
+              firstDate: DateTime.now(),
+              helper: clockLabel(post.scheduledTimezone).isEmpty
+                  ? 'On this view’s clock'
+                  : 'On the ${clockLabel(post.scheduledTimezone)} clock',
             ),
           ],
         ),
@@ -698,6 +750,18 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                       ? () => setState(() => _tab = 'accounts')
                       : null,
                   onRetryPost: _canPost ? _retryPost : null,
+                  composeAt: _composeAt,
+                  onComposeOn: _mayOpen('compose') && _canPost
+                      ? (day) => setState(() {
+                          _tab = 'compose';
+                          _composeAt = DateTime(
+                            day.year,
+                            day.month,
+                            day.day,
+                            9,
+                          );
+                        })
+                      : null,
                   stillWaiting: _gaveUpWaiting,
                   pickMedia: widget.pickMedia,
                   videoPlayer: widget.videoPlayer,
@@ -823,7 +887,15 @@ class _PostsPane extends StatelessWidget {
     this.onAccounts,
     this.onRetry,
     this.onRetryPost,
+    this.onComposeOn,
+    this.composeAt,
   });
+
+  /// A calendar day tapped: Compose, set for that day.
+  final void Function(DateTime)? onComposeOn;
+
+  /// The time Compose was last set to from the calendar.
+  final DateTime? composeAt;
 
   final ApiClient api;
   final Session session;
@@ -924,6 +996,7 @@ class _PostsPane extends StatelessWidget {
           onWriteAnother: onWriteAnother,
           onSeeCalendar: onSeeCalendar,
           onRetry: onRetry,
+          composeAt: composeAt,
         );
 
         final dashboard = _PostsDashboard(
@@ -965,6 +1038,8 @@ class _PostsPane extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: _CalendarsColumn(
               key: calendarKey,
+              api: api,
+              onDay: onComposeOn,
               posts: posts,
               outlined: outlined,
               focusDay: focusDay,
@@ -977,6 +1052,8 @@ class _PostsPane extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: _CalendarsColumn(
               key: calendarKey,
+              api: api,
+              onDay: onComposeOn,
               fill: true,
               posts: posts,
               outlined: outlined,
@@ -1076,6 +1153,10 @@ class _PostsDashboard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
+            if (connections.any((c) => c.broken)) ...[
+              _brokenBanner(context),
+              const SizedBox(height: 12),
+            ],
             _tiles(),
             const SizedBox(height: 12),
             if (box.maxWidth >= 1000)
@@ -1098,6 +1179,28 @@ class _PostsDashboard extends StatelessWidget {
     );
   }
 
+  /// Any account that stopped working, said once above everything, with
+  /// the way back (review 2026-11-09 A24).
+  Widget _brokenBanner(BuildContext context) {
+    final broken = connections.where((c) => c.broken).toList();
+    final names = broken.map((c) => c.displayName).join(', ');
+
+    return Row(
+      key: const ValueKey('social-broken-banner'),
+      children: [
+        Expanded(
+          child: DashboardNote(
+            broken.length == 1
+                ? '$names needs reconnecting: nothing posts there until then.'
+                : '${broken.length} accounts need reconnecting: $names.',
+          ),
+        ),
+        const SizedBox(width: 8),
+        TextButton(onPressed: onAccounts, child: const Text('Reconnect')),
+      ],
+    );
+  }
+
   Widget _tiles() {
     final count = connections.length;
     final cannot = connections.where((c) => !c.canPublish).length;
@@ -1112,7 +1215,10 @@ class _PostsDashboard extends StatelessWidget {
         FilterTile(
           key: null,
           label: 'All',
-          count: tiles.values.fold<int>(0, (a, b) => a + b),
+          // Needs approval is inside Scheduled already.
+          count: tiles.entries
+              .where((e) => e.key != 'awaiting')
+              .fold<int>(0, (a, e) => a + e.value),
           note: 'every post',
         ),
         FilterTile(
@@ -1136,11 +1242,19 @@ class _PostsDashboard extends StatelessWidget {
           note: 'an account refused it',
           tone: Tone.bad,
         ),
+        // Review 2026-11-09 A13: approving happens here, not in another module.
+        FilterTile(
+          key: 'awaiting',
+          label: 'Needs approval',
+          count: tiles['awaiting'],
+          note: 'open one to approve it',
+          tone: Tone.caution,
+        ),
       ],
       facts: [
         FactTile(
           key: const Key('social-posts-fact-pages'),
-          label: 'Pages',
+          label: 'Accounts',
           value: '$count',
           note: count == 0
               ? 'none connected yet'
@@ -1568,6 +1682,16 @@ class _TimelineRow extends StatelessWidget {
     String name(_SentTarget t) =>
         t.account.isEmpty ? t.providerLabel : t.account;
 
+    // A campaign to many listings is one line, not a wall of names (review
+    // 2026-11-09 A17): "Google · 39 listings ✓37 ✗2". Every listing is in
+    // the post's panel.
+    bool isListing(_SentTarget t) => t.provider == 'google_business_profile';
+    final listings = post.targets.where(isListing).toList();
+    final grouped = listings.length > 3;
+    bool shown(_SentTarget t) => !(grouped && isListing(t));
+    final listingsSent = listings.where((t) => t.status == 'sent').length;
+    final listingsFailed = listings.where((t) => t.status == 'failed').length;
+
     Widget dot(Tone tone) => Container(
       width: 8,
       height: 8,
@@ -1631,8 +1755,16 @@ class _TimelineRow extends StatelessWidget {
                       // The word as well as the dots: a colour alone says
                       // nothing to somebody who cannot tell red from green.
                       StatusPill(status, tone: tone),
+                      if (grouped)
+                        Text(
+                          'Google · ${listings.length} listings'
+                          '${listingsSent > 0 ? ' ✓$listingsSent' : ''}'
+                          '${listingsFailed > 0 ? ' ✗$listingsFailed' : ''}',
+                          key: ValueKey('social-post-listings-${post.id}'),
+                          style: small,
+                        ),
                       for (final target in post.targets)
-                        if (target.status != 'failed')
+                        if (target.status != 'failed' && shown(target))
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -1685,7 +1817,7 @@ class _TimelineRow extends StatelessWidget {
                   // The failure sentence is the server's when it is a plain
                   // one. A network's raw text (a URL, a snake_case code) is
                   // one line here and whole in the post's pane, its Details.
-                  for (final target in failed)
+                  for (final target in failed.where(shown))
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Row(
@@ -1754,6 +1886,37 @@ const Map<String, int> _bodyLimits = {
   'facebook_page': 63206,
 };
 
+/// "Healthy · checked 2h ago", or what broke.
+String _healthLine(_SocialConnection page) {
+  final at = page.lastCheckedAt;
+  String ago() {
+    if (at == null) return '';
+    final d = DateTime.now().difference(at.toLocal());
+    final text = d.inMinutes < 1
+        ? 'just now'
+        : d.inHours < 1
+        ? '${d.inMinutes}m ago'
+        : d.inDays < 1
+        ? '${d.inHours}h ago'
+        : '${d.inDays}d ago';
+    return ' · checked $text';
+  }
+
+  if (!page.broken) return 'Healthy${ago()}';
+  final reason = page.statusReason?.trim() ?? '';
+  return 'Needs reconnect${reason.isEmpty ? '' : ': $reason'}${ago()}';
+}
+
+/// "3 accounts and 39 listings": a listing is not an account.
+String _destinations(int accounts, int listings) {
+  String n(int count, String one) => count == 1 ? '1 $one' : '$count ${one}s';
+
+  return [
+    if (accounts > 0) n(accounts, 'account'),
+    if (listings > 0) n(listings, 'listing'),
+  ].join(' and ');
+}
+
 /// Characters as a person counts them: an emoji is one, not two code units.
 int _lengthOf(String text) => text.characters.length;
 
@@ -1780,7 +1943,11 @@ class _ComposeColumn extends StatefulWidget {
     required this.onWriteAnother,
     required this.onSeeCalendar,
     this.onRetry,
+    this.composeAt,
   });
+
+  /// Set from a calendar day: Later, at this wall time.
+  final DateTime? composeAt;
 
   final ApiClient api;
   final Session session;
@@ -1863,6 +2030,23 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   void initState() {
     super.initState();
     _loadPlaces();
+    _takeComposeAt();
+  }
+
+  @override
+  void didUpdateWidget(_ComposeColumn old) {
+    super.didUpdateWidget(old);
+    if (widget.composeAt != old.composeAt) _takeComposeAt();
+  }
+
+  void _takeComposeAt() {
+    final at = widget.composeAt;
+    if (at == null) return;
+    String two(int n) => n.toString().padLeft(2, '0');
+    _scheduling = true;
+    _when.text =
+        '${at.year}-${two(at.month)}-${two(at.day)} '
+        '${two(at.hour)}:${two(at.minute)}';
   }
 
   Future<void> _loadPlaces() async {
@@ -1920,7 +2104,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     final length = _lengthOf(_words);
 
     for (final account in _tickedNetworks) {
-      final limit = _bodyLimits[account.provider];
+      final limit = account.bodyLimit;
       if (limit != null && length > limit) {
         return '${account.providerLabel} takes $limit characters at most and '
             'this is $length. Shorten it, or untick ${account.providerLabel}.';
@@ -2367,6 +2551,20 @@ class _ComposeColumnState extends State<_ComposeColumn> {
                   ),
                 ),
               ),
+            // What a ticked network will not take, said before Publish rather
+            // than as a failed target after it (review 2026-11-09 A7).
+            for (final account in _tickedNetworks)
+              if (account.refuses[_kind] case final String why)
+                Padding(
+                  key: ValueKey('social-caution-${account.id}'),
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '${account.displayName}: $why It will be skipped.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
             // The note goes here, by the account, BEFORE anybody presses
             // Publish. "Sent" and "sent, but you must go and finish it in
             // TikTok" are different enough that learning it afterwards is
@@ -2487,7 +2685,22 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 
     final fromLibrary = _libraryItem;
     final preview = _PreviewCard(
-      networks: networks,
+      networks: [
+        ...networks,
+        // A ticked listing is a Google post even with no Google account
+        // ticked: its likeness, its limit, no video.
+        if (_pickedPlaces.isNotEmpty &&
+            !networks.any((n) => n.provider == 'google_business_profile'))
+          _SocialConnection(
+            id: 'listings',
+            displayName: _pickedPlaces.length == 1
+                ? '1 listing'
+                : '${_pickedPlaces.length} listings',
+            provider: 'google_business_profile',
+            providerLabel: 'Google Business Profile',
+            canPublish: true,
+          ),
+      ],
       body: _words,
       media: _media,
       libraryVideo: _media == null && fromLibrary?['kind'] == 'video'
@@ -2501,6 +2714,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     // Publish stays in sight however long the post (UI queue 76): the bar
     // under the scrolling form says where it goes and when, beside the button.
     final picked = _picked.length;
+    final listings = _pickedPlaces.length;
     final bar = DecoratedBox(
       key: const ValueKey('tour-marketing-compose-bar'),
       decoration: BoxDecoration(
@@ -2521,9 +2735,9 @@ class _ComposeColumnState extends State<_ComposeColumn> {
               children: [
                 Expanded(
                   child: Text(
-                    picked == 0
+                    picked == 0 && listings == 0
                         ? 'No account ticked yet'
-                        : '${picked == 1 ? 'Going to 1 account' : 'Going to $picked accounts'}'
+                        : 'Going to ${_destinations(picked, listings)}'
                               '${_scheduling && when.isNotEmpty ? ' · $when' : ' · now'}',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -2635,7 +2849,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
         for (final account in networks)
           Builder(
             builder: (context) {
-              final limit = _bodyLimits[account.provider];
+              final limit = account.bodyLimit;
               final over = limit != null && length > limit;
 
               return Text(
@@ -2893,6 +3107,15 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     );
   }
 
+  /// What is attached, as the server names the kinds.
+  String get _kind {
+    final media = _media;
+    if (media != null) return _looksLikeVideo(media.name) ? 'video' : 'image';
+    final item = _libraryItem;
+    if (item != null) return item['kind'] == 'video' ? 'video' : 'image';
+    return 'text';
+  }
+
   static bool _looksLikeVideo(String name) => const [
     'mp4',
     'mov',
@@ -3134,7 +3357,7 @@ class _PostLikeness extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final limit = _bodyLimits[account.provider];
+    final limit = account.bodyLimit;
     final length = _lengthOf(body);
     final over = limit != null && length > limit;
     final pictureFirst = _pictureFirst.contains(account.provider);
@@ -3421,6 +3644,8 @@ class _AttachedVideo extends StatelessWidget {
 class _CalendarsColumn extends StatefulWidget {
   const _CalendarsColumn({
     super.key,
+    this.api,
+    this.onDay,
     this.fill = false,
     this.posts = const [],
     this.outlined,
@@ -3428,6 +3653,13 @@ class _CalendarsColumn extends StatefulWidget {
     this.formats = DisplayFormats.fallback,
     this.onOpen,
   });
+
+  /// Asks the server for the days on screen, so a month is drawn whole and
+  /// not only from the twenty newest posts (review 2026-11-09 A1).
+  final ApiClient? api;
+
+  /// Compose on the tapped day; null without Compose.
+  final void Function(DateTime)? onDay;
 
   /// When true the column fills the pane and month squares shrink to fit,
   /// so the whole month is on screen. Off in the stacked (phone) layout,
@@ -3488,11 +3720,15 @@ class _CalendarsColumn extends StatefulWidget {
 class _CalendarsColumnState extends State<_CalendarsColumn> {
   late DateTime _month;
 
+  /// The posts on the days drawn, from the server's date range.
+  List<_SentPost> _range = const [];
+
   @override
   void initState() {
     super.initState();
     final now = widget.focusDay ?? DateTime.now();
     _month = DateTime(now.year, now.month, 1);
+    _loadRange();
   }
 
   @override
@@ -3501,6 +3737,7 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
     final focus = widget.focusDay;
     if (focus != null && focus != old.focusDay) {
       _month = DateTime(focus.year, focus.month, 1);
+      _loadRange();
     }
   }
 
@@ -3508,15 +3745,48 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
     setState(() {
       _month = DateTime(_month.year, _month.month + months, 1);
     });
+    _loadRange();
+  }
+
+  static String _day(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  /// The month's grid with a week either side, and this week for the
+  /// Weekly card.
+  Future<void> _loadRange() async {
+    final api = widget.api;
+    if (api == null) return;
+    final month = _month;
+    final monday = _CalendarsColumn.mondayOf(DateTime.now());
+    var from = month.subtract(const Duration(days: 7));
+    var to = DateTime(month.year, month.month + 1, 7);
+    if (monday.isBefore(from)) from = monday;
+    final sunday = monday.add(const Duration(days: 6));
+    if (sunday.isAfter(to)) to = sunday;
+
+    final response = await api.get('/social/posts', {
+      'from': _day(from),
+      'to': _day(to),
+    });
+    if (!mounted || month != _month || !response.ok) return;
+    setState(() => _range = _SocialMediaTabState._readPosts(response));
   }
 
   @override
   Widget build(BuildContext context) {
+    final seen = <String>{};
+    final posts = [
+      for (final p in [...widget.posts, ..._range])
+        if (seen.add(p.id)) p,
+    ];
     final entries = _DayEntries(
-      byDay: _postsByDay(widget.posts),
+      byDay: _postsByDay(posts),
       outlined: widget.outlined,
       formats: widget.formats,
       onOpen: widget.onOpen,
+      onDay: widget.onDay,
     );
     final month = _MonthCard(
       month: _month,
@@ -3709,6 +3979,9 @@ class _MonthCard extends StatelessWidget {
     final date = DateTime(month.year, month.month, day);
     return _DayCell(
       key: Key('month-day-$day'),
+      onTap: entries.onDay == null || date.isBefore(today)
+          ? null
+          : () => entries.onDay!(date),
       theme: theme,
       square: height == null,
       height: height,
@@ -3797,8 +4070,10 @@ class _DayCell extends StatelessWidget {
     this.highlight = false,
     this.empty = false,
     this.entries = const [],
+    this.onTap,
   });
 
+  final VoidCallback? onTap;
   final double? height;
   final bool square;
   final ThemeData theme;
@@ -3855,7 +4130,13 @@ class _DayCell extends StatelessWidget {
 
     final padded = Padding(
       padding: const EdgeInsets.only(right: 3, bottom: 3),
-      child: box,
+      child: onTap == null
+          ? box
+          : InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(8),
+              child: box,
+            ),
     );
 
     if (height != null) {
@@ -3896,8 +4177,23 @@ class _AccountsPane extends StatelessWidget {
     String subtitleOf(_SocialConnection page) => page.handle != null
         ? '${page.providerLabel} · @${page.handle}'
         : page.providerLabel;
+    Widget healthOf(_SocialConnection page) => Text(
+      _healthLine(page),
+      key: ValueKey('social-health-${page.id}'),
+      style: TextStyle(
+        color: page.broken
+            ? Theme.of(context).colorScheme.error
+            : Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
     List<Widget> actionsOf(BuildContext context, _SocialConnection page) => [
 
+                        if (page.broken)
+                          TextButton(
+                            key: ValueKey('social-reconnect-${page.id}'),
+                            onPressed: onConnect,
+                            child: const Text('Reconnect'),
+                          ),
                         // Instagram comments are moderated through the Page
                         // the Instagram account is linked to.
                         if (page.provider == 'facebook_page')
@@ -3951,10 +4247,14 @@ class _AccountsPane extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(subtitleOf(page)),
+                              healthOf(page),
                               Wrap(children: actionsOf(context, page)),
                             ],
                           )
-                        : Text(subtitleOf(page)),
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [Text(subtitleOf(page)), healthOf(page)],
+                          ),
                     // On a phone the links go under the name: beside it they
                     // squeezed "Facebook" to one letter a line (phone audit
                     // 2026-11-04).
@@ -4085,7 +4385,12 @@ class _SocialConnection {
     this.cannotPublishBecause,
     this.postingNote,
     this.asksTikTokChoices = false,
-  });
+    this.status = 'connected',
+    this.statusReason,
+    this.lastCheckedAt,
+    int? bodyLimit,
+    this.refuses = const {},
+  }) : _bodyLimit = bodyLimit;
 
   final String id;
   final String displayName;
@@ -4109,6 +4414,23 @@ class _SocialConnection {
   /// for this account on every post (TikTokPostChoices).
   final bool asksTikTokChoices;
 
+  /// The health check's verdict: connected, broken or revoked, with why and
+  /// when it last looked (review 2026-11-09 A24).
+  final String status;
+  final String? statusReason;
+  final DateTime? lastCheckedAt;
+
+  bool get broken => status != 'connected';
+
+  /// The network's character limit, as the server refuses at it; the local
+  /// map only for a payload from before the server sent one.
+  final int? _bodyLimit;
+  int? get bodyLimit => _bodyLimit ?? _bodyLimits[provider];
+
+  /// What this network will not take, by kind (text, image, video): the
+  /// server's sentence, or null when it takes it.
+  final Map<String, String?> refuses;
+
   factory _SocialConnection.fromJson(Map<String, dynamic> json) {
     return _SocialConnection(
       id: json['id'] as String? ?? '',
@@ -4120,6 +4442,15 @@ class _SocialConnection {
       cannotPublishBecause: json['cannot_publish_because'] as String?,
       postingNote: json['posting_note'] as String?,
       asksTikTokChoices: json['asks_tiktok_choices'] as bool? ?? false,
+      status: json['status'] as String? ?? 'connected',
+      statusReason: json['status_reason'] as String?,
+      lastCheckedAt: DateTime.tryParse('${json['last_checked_at'] ?? ''}'),
+      bodyLimit: (json['body_limit'] as num?)?.toInt(),
+      refuses: {
+        for (final e
+            in ((json['refuses'] as Map<String, dynamic>?) ?? const {}).entries)
+          e.key: e.value as String?,
+      },
     );
   }
 }
@@ -4755,7 +5086,13 @@ class _PostOutcome extends StatelessWidget {
       for (final t in sent)
         if (_draftsFor(t, connections) == null) t,
     ];
-    String accounts(int n) => n == 1 ? '1 account' : '$n accounts';
+    // A Business Profile target is a listing, not an account (review
+    // 2026-11-09 A16): "1 account and 39 listings".
+    bool listing(_SentTarget t) => t.provider == 'google_business_profile';
+    String accounts(List<_SentTarget> ts) => _destinations(
+      ts.where((t) => !listing(t)).length,
+      ts.where(listing).length,
+    );
 
     if (targets.isNotEmpty &&
         withStatus('scheduled').length == targets.length) {
@@ -4767,7 +5104,7 @@ class _PostOutcome extends StatelessWidget {
       return (
         Icons.schedule,
         Tone.info,
-        'Scheduled$at on ${accounts(targets.length)}',
+        'Scheduled$at on ${accounts(targets)}',
         'It goes out on its own, and it is on the calendar now.',
       );
     }
@@ -4828,7 +5165,7 @@ class _PostOutcome extends StatelessWidget {
     return (
       Icons.check_circle,
       Tone.ok,
-      'Posted to ${accounts(targets.length)}',
+      'Posted to ${accounts(targets)}',
       drafts.isEmpty
           ? '${_names(live)} ${isAre(live)} live.'
           : '${_names(live)} ${isAre(live)} live. ${_names(drafts)} '
@@ -4847,10 +5184,19 @@ class _PostDetail extends StatelessWidget {
     this.onCancel,
     this.onDismiss,
     this.onDeleteRemote,
+    this.onDecide,
+    this.onRetryAll,
   });
+
+  /// Try every failed account again at once; null without the right to post.
+  final VoidCallback? onRetryAll;
 
   final _SentPost post;
   final List<_SocialConnection> connections;
+
+  /// Approve (true) or disapprove (false) one listing's draft; null without
+  /// the right to post.
+  final void Function(_SentTarget, bool approve)? onDecide;
   final void Function(_SentTarget)? onRetry;
   final VoidCallback? onEdit;
   final VoidCallback? onCancel;
@@ -4897,6 +5243,45 @@ class _PostDetail extends StatelessWidget {
             ],
           ),
         ],
+        if (onRetryAll != null &&
+            post.targets.where((t) => t.status == 'failed').length > 1) ...[
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              key: const Key('social-post-retry-all'),
+              onPressed: onRetryAll,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: Text(
+                'Retry all failed '
+                '(${post.targets.where((t) => t.status == 'failed').length})',
+              ),
+            ),
+          ),
+        ],
+        if (onDecide != null)
+          for (final target in post.targets)
+            if (target.status == 'awaiting_approval') ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(target.account, style: theme.textTheme.bodyMedium),
+                  FilledButton(
+                    key: Key('social-approve-${target.id}'),
+                    onPressed: () => onDecide!(target, true),
+                    child: const Text('Approve'),
+                  ),
+                  TextButton(
+                    key: Key('social-disapprove-${target.id}'),
+                    onPressed: () => onDecide!(target, false),
+                    child: const Text('Disapprove'),
+                  ),
+                ],
+              ),
+            ],
         const SizedBox(height: 12),
         for (final target in post.targets)
           _TargetLine(
@@ -4999,7 +5384,7 @@ class _TargetLine extends StatelessWidget {
       'queued' => ('Posting…', Tone.neutral, Icons.hourglass_top),
       'scheduled' => ('Scheduled', Tone.info, Icons.schedule),
       'awaiting_approval' => (
-        'Waiting for your approval in Customer Experience › Posts to approve',
+        'Waiting for approval',
         Tone.info,
         Icons.hourglass_empty,
       ),
@@ -5129,12 +5514,17 @@ class _DayEntries {
     required this.outlined,
     required this.formats,
     required this.onOpen,
+    this.onDay,
   });
 
   final Map<DateTime, List<_SentPost>> byDay;
   final String? outlined;
   final DisplayFormats formats;
   final void Function(_SentPost)? onOpen;
+
+  /// A tap on a day's empty space: compose for that day (review 2026-11-09
+  /// A23); null without Compose.
+  final void Function(DateTime)? onDay;
 
   /// ponytail: two, which is what a month square holds. A busier day is read
   /// in the Sent list; a day view is the upgrade if that stops being enough.
