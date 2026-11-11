@@ -230,6 +230,28 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    public function test_a_sub_companys_task_lands_on_its_parents_board_with_every_owner(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $second = $this->userWithRole($t, 'Viewer', ['tasks.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $second) {
+            $sub = \App\Models\Company::query()->create(['name' => 'Sub', 'parent_company_id' => $t['company']->id]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => [],
+                'scope_snapshot' => ['type' => 'company', 'id' => $sub->id, 'company_chain' => [$sub->id, $t['company']->id]]]);
+
+            // Was the first owner's personal board, which refused the second (Complaint call, 11-10).
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Complaint',
+                'assignees' => ['user:'.$second->id, 'user:'.$t['admin']->id]], $event, null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $task = Task::query()->sole();
+            $this->assertSame(TaskBoard::query()->where('kind', 'company')->where('company_id', $t['company']->id)->value('id'), $task->board_id);
+            $this->assertSame([$second->id, $t['admin']->id], $task->owners()->pluck('user_id')->all());
+        });
+    }
+
     public function test_one_rule_adds_one_task_per_record_in_ten_minutes(): void
     {
         // Review 2026-11-02: one call read as two transcripts made two

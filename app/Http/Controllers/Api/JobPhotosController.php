@@ -29,7 +29,9 @@ final class JobPhotosController
         $jobs = Job::query()
             ->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
             ->where('status', 'Done')
-            ->when($request->query('job_type'), fn ($q, $t) => $q->where('job_type', 'like', '%'.$t.'%'))
+            // "crown" is a title word on A-1 jobs, not a job type, so the type also matches the title
+            ->when($request->query('job_type'), fn ($q, $t) => $q->where(fn ($w) => $w
+                ->where('job_type', 'like', '%'.$t.'%')->orWhere('title', 'like', '%'.$t.'%')))
             ->when($request->query('search'), fn ($q, $s) => $q->where(fn ($w) => $w
                 ->where('title', 'like', '%'.$s.'%')->orWhere('description', 'like', '%'.$s.'%')))
             ->whereHas('workizJob', fn ($q) => $q->whereRaw("json_length(json_extract(payload, '$.Attachments')) > 1"))
