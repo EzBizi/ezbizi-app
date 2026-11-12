@@ -152,6 +152,10 @@ return [
      */
     'release_status_file' => env('EZBIZI_RELEASE_STATUS_FILE', '/var/www/ezbizi/release-status.jsonl'),
 
+    // Where deploy.sh's server gate writes its log ({sha}-{time}-{pid}.log);
+    // the Releases screen shows its tail (staff only).
+    'gate_runs_dir' => env('EZBIZI_GATE_RUNS_DIR', '/opt/ezbizi-test/.gate-runs'),
+
     'peer' => [
         'status_file' => env('EZBIZI_PEER_STATUS', storage_path('app/peer-status.json')),
         'url' => env('EZBIZI_PEER_URL'),
