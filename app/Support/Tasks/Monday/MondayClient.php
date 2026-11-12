@@ -20,14 +20,10 @@ final class MondayClient
 
     public function __construct(private readonly string $token) {}
 
+    /** A client on the connection's token, refreshed first when it is about to run out (MondayToken). */
     public static function for(SocialConnection $connection): self
     {
-        $token = ((array) ($connection->credentials ?? []))['access_token'] ?? null;
-        if (! is_string($token) || $token === '') {
-            throw new MondayRefused('This Monday connection holds no token. It needs connecting again.');
-        }
-
-        return new self($token);
+        return new self(app(MondayToken::class)->for($connection));
     }
 
     /** @return array<string, mixed> the `data` of the answer */
@@ -41,7 +37,7 @@ final class MondayClient
             ->post(self::API, ['query' => $query, 'variables' => (object) $variables]);
 
         if (in_array($response->status(), [401, 403], true)) {
-            throw new MondayRefused('Monday no longer accepts this connection. It needs connecting again.');
+            throw new MondayRefused(MondayRefused::RECONNECT);
         }
         $errors = $response->json('errors') ?? $response->json('error_message');
         if ($response->failed() || $errors) {
