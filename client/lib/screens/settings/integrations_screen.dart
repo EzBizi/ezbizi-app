@@ -110,6 +110,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// read it. An empty map is "none set up".
   Map<String, dynamic>? _sending;
 
+  /// The server saved at this scope (`connected_here`), with its last check.
+  Map<String, dynamic>? _sendingHere;
+
   /// Why the server would not answer for the sending server here, when it
   /// would not. The card is still drawn, carrying this instead of Connect:
   /// a card that vanishes on a refusal is how Triplex Group (2026-10-22) had
@@ -204,7 +207,13 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                   label: n['label'] as String?,
                   scopeType: n['scope_type'] as String? ?? '',
                   scopeId: n['scope_id'] as String? ?? '',
-                  connected: true,
+                  // NumbersController's own health: does a call reach anybody.
+                  connected: _phoneProblems(n).isEmpty,
+                  statusReason: _phoneProblems(n).isEmpty
+                      ? null
+                      : '${_phoneProblems(n).length} '
+                            '${_phoneProblems(n).length == 1 ? 'problem' : 'problems'}: '
+                            '${_phoneProblems(n).join(' ')}',
                 ),
             ]
           : null;
@@ -214,6 +223,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       _sending = server == null
           ? null
           : (server['in_effect'] as Map<String, dynamic>?) ?? const {};
+      _sendingHere = server?['connected_here'] as Map<String, dynamic>?;
       // A 4xx is the server answering "not here", with its reason; a 5xx or
       // no answer at all says nothing about this scope, so it offers nothing.
       _sendingRefusal =
@@ -325,18 +335,33 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       final key = c.provider == 'workiz_web' ? 'workiz' : c.provider;
       byProvider.putIfAbsent(key, () => []).add(c);
     }
-    final host = _sending?['host'] as String?;
-    if (host != null && host.isNotEmpty) {
+    // The server saved at this scope, as its last check found it: verified
+    // is connected, failed is broken with the reason, never on our say-so.
+    final here = _sendingHere ?? _sending;
+    final host = here?['host'] as String?;
+    if (here != null && host != null && host.isNotEmpty) {
+      final state = here['state'] as String?;
+      final failed = state == 'failed';
       byProvider['sending_server'] = [
         IntegrationConnection(
           id: 'sending_server',
           provider: 'sending_server',
           providerLabel: 'Sending server',
           displayName: host,
-          label: _sending?['from_address'] as String?,
+          label: here['from_address'] as String?,
           scopeType: '',
           scopeId: '',
-          connected: true,
+          connected: !failed,
+          statusReason: failed
+              ? (here['state_reason'] as String? ??
+                    'The mail server refused the last send.')
+              : null,
+          detail: state == 'verified' || failed
+              ? null
+              : 'Not checked yet: send a test from its panel.',
+          lastCheckedAt: DateTime.tryParse(
+            here['last_checked_at'] as String? ?? '',
+          ),
         ),
       ];
     }
@@ -1491,4 +1516,16 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       ),
     );
   }
+}
+
+/// Phone's own health for one line (NumbersController `health`): the plain
+/// sentences of what is wrong; empty when it is ok. A row without `health`
+/// (an older server) is read as ok rather than invented broken.
+List<String> _phoneProblems(Map<String, dynamic> n) {
+  final health = n['health'] as Map<String, dynamic>?;
+  if (health == null || health['ok'] == true) return const [];
+  final problems = ((health['problems'] as List<dynamic>?) ?? const [])
+      .whereType<String>()
+      .toList();
+  return problems.isEmpty ? const ['This line is not working.'] : problems;
 }

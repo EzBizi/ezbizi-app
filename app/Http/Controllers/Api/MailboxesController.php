@@ -335,6 +335,8 @@ class MailboxesController extends Controller
             return response()->json(['message' => $e->getMessage()], $e->status);
         }
 
+        $this->grantConnector($mailbox, $request->user());
+
         return response()->json(['data' => $this->row($mailbox, $request->user())], Response::HTTP_CREATED);
     }
 
@@ -418,12 +420,19 @@ class MailboxesController extends Controller
                 continue;
             }
 
+            // Filed where its siblings are (office@phl -> the PHL branch), when
+            // the person adding it reaches there; else where they are standing.
+            $place = $this->siblingScope($address);
+            [$type, $placeId] = $place !== null && $this->reachesScope($user, $place[0], $place[1])
+                ? $place
+                : [$input['scope_type'], $scope->getKey()];
+
             try {
-                $mailbox = DB::transaction(function () use ($one, $address, $input, $scope, $organizationId, $directory) {
+                $mailbox = DB::transaction(function () use ($one, $address, $input, $type, $placeId, $organizationId, $directory) {
                     $mailbox = Mailbox::create([
                         'organization_id' => $organizationId,
-                        'scope_type'      => $input['scope_type'],
-                        'scope_id'        => $scope->getKey(),
+                        'scope_type'      => $type,
+                        'scope_id'        => $placeId,
                         'address'         => $address,
                         'display_name'    => $one['display_name'],
                         'provider'        => MailboxProvider::GmailWorkspace->value,
@@ -447,6 +456,7 @@ class MailboxesController extends Controller
             }
 
             $existing[] = $address;   // the same address twice in one batch is added once
+            $this->grantConnector($mailbox, $user);
             $added[] = $this->row($mailbox, $user);
         }
 
@@ -750,6 +760,23 @@ class MailboxesController extends Controller
         return response()->json(['data' => $this->peoplePayload($mailbox)]);
     }
 
+    /**
+     * Whoever connects an inbox can read it (Jose 11-12). An Administrator
+     * already opens every inbox; anybody else is given it by name, the same
+     * grant the card's people list gives.
+     */
+    private function grantConnector(Mailbox $mailbox, User $user): void
+    {
+        if ($user->isAdministrator() || ! $this->inboxes->givePerson($mailbox, $user)) {
+            return;
+        }
+
+        $this->audit->log('mailbox.person_granted', $mailbox, [
+            'address' => $mailbox->address,
+            'person'  => $user->name,
+        ]);
+    }
+
     /** DELETE /api/v1/email/mailboxes/{mailbox}/people/{user} */
     public function takeFromPerson(Request $request, Mailbox $mailbox, User $user): JsonResponse
     {
@@ -977,6 +1004,11 @@ class MailboxesController extends Controller
             'status_reason' => $mailbox->status_reason,
             'last_reached_at' => $mailbox->last_reached_at?->toIso8601String(),
 
+            // "Can send", checked without sending (Jose 11-12). Null checked_at:
+            // not checked yet; a problem is the plain reason.
+            'send_checked_at' => $mailbox->send_checked_at?->toIso8601String(),
+            'send_problem'    => $mailbox->send_problem,
+
             /*
              * Whether this can actually be opened, asked of the READER.
              *
@@ -1029,6 +1061,55 @@ class MailboxesController extends Controller
         abort_if($model === null, Response::HTTP_NOT_FOUND, 'That part of the business was not found.');
 
         return $model;
+    }
+
+    /**
+     * Where an inbox at this address belongs: the place another inbox at the
+     * same domain is filed (Jose 11-12: connecting files it itself). The
+     * domain after @ is the branch's own -- office@phl.a-1chimney.com and
+     * sales@phl.a-1chimney.com are one branch. Null when there is no sibling
+     * or every sibling is at the organization, which says nothing.
+     *
+     * ponytail: learnt from the inboxes already filed, because a branch has no
+     * code to match a subdomain against (phl is the NJ branch at A-1).
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    private function siblingScope(string $address): ?array
+    {
+        $domain = strtolower(substr($address, strrpos($address, '@') + 1));
+
+        $row = Mailbox::query()
+            ->where('address', 'like', '%@'.$domain)
+            ->where('scope_type', '!=', Mailbox::SCOPE_ORGANIZATION)
+            ->selectRaw('scope_type, scope_id, count(*) as n')
+            ->groupBy('scope_type', 'scope_id')
+            ->orderByDesc('n')
+            ->first();
+
+        return $row === null ? null : [(string) $row->scope_type, (string) $row->scope_id];
+    }
+
+    private function reachesScope(User $user, string $type, string $id): bool
+    {
+        try {
+            $this->assertReaches($user, $this->resolveScope($type, $id), $type, 'add a shared inbox here');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /** GET email/mailboxes/suggest-scope?address= -- the connect form's default. */
+    public function suggestScope(Request $request): JsonResponse
+    {
+        $address = (string) $request->validate(['address' => ['required', 'email:rfc', 'max:255']])['address'];
+        $place   = $this->siblingScope(strtolower($address));
+
+        return response()->json(['data' => $place === null || ! $this->reachesScope($request->user(), $place[0], $place[1])
+            ? null
+            : ['scope_type' => $place[0], 'scope_id' => $place[1]]]);
     }
 
     private function organizationIdOf(Model $scope): string

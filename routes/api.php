@@ -1005,6 +1005,7 @@ Route::prefix('v1')
         Route::post('jobs/book', [JobBookingController::class, 'store']);
         Route::post('jobs/{job}/book/workiz', [JobBookingController::class, 'retryWorkiz']);
         Route::get('jobs/photos', JobPhotosController::class);
+        Route::get('jobs/{job}/performers', [JobsController::class, 'performers']);
         Route::apiResource('jobs', JobsController::class);
         Route::get('project-board/jobs', [ProjectBoardController::class, 'jobs']);
         Route::patch('project-board/jobs/{job}/repair-team', [ProjectBoardController::class, 'repairTeam']);
@@ -2554,6 +2555,8 @@ Route::prefix('v1')
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
         // Connect's choices: a Pinterest board, a Mailchimp audience (ConnectSetup).
         Route::patch('social/connections/{connection}/choice', [SocialConnectionsController::class, 'choose']);
+        Route::patch('social/connections/{connection}/whatsapp-purpose', [SocialConnectionsController::class, 'whatsappPurpose']);
+        Route::get('social/connections/{connection}/whatsapp-health', [SocialConnectionsController::class, 'whatsappHealth']);
         Route::get('social/connections/{connection}/tiktok-creator', [SocialConnectionsController::class, 'tiktokCreator']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         // Comments on the Instagram account linked to a connected Page
@@ -2980,6 +2983,7 @@ Route::prefix('v1')
         Route::middleware('permission:email.settings.view')->group(function () {
             Route::post('email/mailboxes', [MailboxesController::class, 'store']);
             Route::post('email/mailboxes/workspace-batch', [MailboxesController::class, 'storeWorkspaceBatch']);
+            Route::get('email/mailboxes/suggest-scope', [MailboxesController::class, 'suggestScope']);
 
             // The new-email notification, edited from the inbox's card. The
             // automation rule stays the source of truth: MailboxesController.

@@ -177,7 +177,12 @@ final class PhoneScope
      */
     public static function people(Builder $users, User $viewer): Builder
     {
-        $companyIds = ViewScope::forUser($viewer)->companyIdsInView();
+        return self::peopleIn($users, ViewScope::forUser($viewer)->companyIdsInView());
+    }
+
+    /** The same rule for a set of companies; null is the whole organization. */
+    public static function peopleIn(Builder $users, ?array $companyIds): Builder
+    {
         if ($companyIds === null) {
             return $users;
         }

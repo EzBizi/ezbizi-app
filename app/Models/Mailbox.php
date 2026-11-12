@@ -181,6 +181,7 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
              */
             'watch_marked_at'    => 'datetime',
             'watch_next_poll_at' => 'datetime',
+            'send_checked_at'    => 'datetime',
             'watch_failures'     => 'integer',
         ];
     }
@@ -228,6 +229,15 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
     }
 
     /**
+     * A connection is checked within the minute: the watcher's next poll reads
+     * the inbox and stamps `last_reached_at` or the failure sentence on the card.
+     * A reconnect also drops the backoff a broken inbox built up -- up to six
+     * hours of silence after Jose fixed it (11-12: "doing a connection should
+     * take care of the whole process").
+     */
+    private const WATCH_NOW = ['watch_next_poll_at' => null, 'watch_failures' => 0, 'send_checked_at' => null];
+
+    /**
      * Write the secret. The only path that does.
      *
      * `forceFill` because `credentials` is deliberately not fillable — see
@@ -241,6 +251,7 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
             'credentials'   => $credential,
             'status'        => self::STATUS_CONNECTED,
             'status_reason' => null,
+            ...self::WATCH_NOW,
         ]);
     }
 
@@ -258,6 +269,7 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
         $this->forceFill([
             'status'        => self::STATUS_CONNECTED,
             'status_reason' => null,
+            ...self::WATCH_NOW,
         ]);
     }
 

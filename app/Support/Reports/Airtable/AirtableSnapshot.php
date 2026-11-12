@@ -21,10 +21,17 @@ class AirtableSnapshot
     private const API = 'https://api.airtable.com/v0';
 
     /**
+     * $token: one token for every base, or each base id's own (a base with
+     * no token of its own uses the first).
+     *
+     * @param  string|array<string, string>  $token
      * @return array{tables: int, rows: int, changed: int, gone: int, failed: list<string>}
      */
-    public function sync(string $organizationId, string $token): array
+    public function sync(string $organizationId, string|array $token): array
     {
+        $tokens = is_array($token) ? $token : [];
+        $fallback = is_array($token) ? (string) (reset($token) ?: '') : $token;
+
         $done = ['tables' => 0, 'rows' => 0, 'changed' => 0, 'gone' => 0, 'failed' => []];
         $now = now();
 
@@ -32,6 +39,7 @@ class AirtableSnapshot
             ->map(fn ($rows) => $rows->pluck('table_id')->unique()->values()->all());
 
         foreach ($mapped as $baseId => $tables) {
+            $token = $tokens[$baseId] ?? $fallback;
             $names = $this->tableNames($token, $baseId);
 
             foreach ($tables as $tableId) {

@@ -95,6 +95,8 @@ class BusinessProfileLocations
         } while ($pageToken !== null);
 
         $this->markListing($connection, $seen);
+        // A connect finishes its own setup: new listings are filed under their branch by state (Jose, 2026-11-12).
+        \App\Support\CustomerExperience\ListingBranches::fill();
 
         $connection->forceFill(['last_reached_at' => now()])->save();
 

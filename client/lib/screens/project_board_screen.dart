@@ -20,6 +20,7 @@ import '../widgets/tab_bar_like.dart';
 import '../widgets/tag.dart';
 import 'jobs/job_labels.dart';
 import 'jobs/job_detail_panel.dart';
+import 'jobs/job_lines_tab.dart' show pickJobTechnician;
 
 /// Project Management (Jose, 2026-11-06): six sub-tabs of jobs, from
 /// unscheduled to complete, each with a Franchise filter (All by default),
@@ -492,6 +493,26 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
             child: current == null
                 ? const Text('Assign…')
                 : Tag(current, colour: jobTagColours(row)[current]),
+          ),
+        );
+      case 'technician':
+        final name = value as String?;
+        if (!_canEditJobs) return Text(name ?? '—', softWrap: true);
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: ValueKey('project-board-technician:${row['id']}'),
+            onPressed: () async {
+              if (await pickJobTechnician(
+                context,
+                widget.api,
+                '${row['id']}',
+                row['performed_by_user_id'] as String?,
+              )) {
+                _load(quiet: true);
+              }
+            },
+            child: Text(name ?? 'Assign…', softWrap: true),
           ),
         );
       case 'attachments':

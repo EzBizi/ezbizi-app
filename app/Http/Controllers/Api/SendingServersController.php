@@ -261,6 +261,14 @@ class SendingServersController extends Controller
              * either.
              */
             'never_tried' => $row->neverTried(),
+
+            // What the system last found, for the Integrations card (Jose,
+            // 2026-11-12: a card never says Connected on its own say-so).
+            // ponytail: the stored state; upgrade to Email's live send-check
+            // when it merges.
+            'state' => $row->sendingState()->value,
+            'state_reason' => $row->getAttribute('state_reason'),
+            'last_checked_at' => $row->getAttribute('last_checked_at')?->toIso8601String(),
         ];
     }
 

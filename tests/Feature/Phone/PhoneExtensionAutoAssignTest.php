@@ -58,4 +58,28 @@ class PhoneExtensionAutoAssignTest extends TestCase
         $this->signedInAs($editor)->putJson('/api/v1/phone/extensions', ['connection_id' => $connection->id, 'user_id' => $bea->id, 'extension' => '0200'])->assertOk();
         $this->signedInAs($editor)->putJson('/api/v1/phone/extensions', ['connection_id' => $connection->id, 'user_id' => $carl->id, 'extension' => '0200'])->assertStatus(422);
     }
+
+    /** A company's own account gives extensions to that company's people only (EverDoors, 2026-11-12). */
+    public function test_a_company_account_numbers_its_own_people(): void
+    {
+        $t = $this->provisionTenant();
+        [$sibling, $siblingConnection] = $this->inTenant($t['org'], function () use ($t) {
+            $company = \App\Models\Company::create(['organization_id' => $t['org']->id, 'name' => 'EverDoors']);
+            $franchise = \App\Models\Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $company->id, 'name' => 'ED1']);
+            $connection = PhoneConnection::factory()->create(['scope_type' => 'company', 'scope_id' => $company->id, 'status' => PhoneConnection::STATUS_CONNECTED]);
+
+            return [$franchise, $connection];
+        });
+        $there = $this->userWithRole($t, 'Works There', ['phone.view'], onlyAt: $sibling);
+        $elsewhere = $this->userWithRole($t, 'Works Elsewhere', ['phone.view'], onlyAt: $t['franchise']);
+
+        ExtensionAssigner::assignMissing($t['org']);
+
+        $this->inTenant($t['org'], function () use ($siblingConnection, $there, $elsewhere) {
+            $held = PhoneExtension::query()->where('connection_id', $siblingConnection->id)->pluck('extension', 'user_id');
+            $this->assertMatchesRegularExpression('/^0\d{3}$/', (string) $held[$there->id]);
+            $this->assertFalse($held->has($elsewhere->id));
+        });
+    }
 }
+

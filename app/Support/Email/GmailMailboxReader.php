@@ -732,15 +732,26 @@ final class GmailMailboxReader implements LabelsThreads, MailboxReader, RepliesW
         $summaries = [];
 
         foreach ($ids as $id) {
-            $summaries[] = $this->mapper->summary($this->get($mailbox, self::API."/messages/{$id}", [
-                'format'          => 'metadata',
-                // The last three are what `is_bulk` reads (GmailMessageMapper::isBulk).
-                // Headers only -- still no body.
-                'metadataHeaders' => [
-                    'From', 'To', 'Subject', 'Date', 'Authentication-Results',
-                    'List-Unsubscribe', 'Precedence', 'Auto-Submitted', 'Message-ID',
-                ],
-            ]));
+            $response = $this->sendRaw($mailbox, fn (string $token) => Http::withToken($token)
+                ->timeout(self::TIMEOUT)
+                ->get(self::API."/messages/{$id}", [
+                    'format'          => 'metadata',
+                    // The last three are what `is_bulk` reads (GmailMessageMapper::isBulk).
+                    // Headers only -- still no body.
+                    'metadataHeaders' => [
+                        'From', 'To', 'Subject', 'Date', 'Authentication-Results',
+                        'List-Unsubscribe', 'Precedence', 'Auto-Submitted', 'Message-ID',
+                    ],
+                ]));
+
+            // Deleted since it arrived: nothing to announce. Failing on it failed
+            // the whole poll and replayed the same history for ever -- four A-1
+            // inboxes stopped announcing mail that way (11-12).
+            if ($response->status() === 404) {
+                continue;
+            }
+
+            $summaries[] = $this->mapper->summary($this->body($mailbox, $response));
         }
 
         return $summaries;
@@ -1006,6 +1017,36 @@ final class GmailMailboxReader implements LabelsThreads, MailboxReader, RepliesW
      *   cached value away and mints a fresh one before deciding anything is
      *   wrong. So the worst a stale entry can cost is one extra round trip.
      */
+    /**
+     * Whether this mailbox could send, without sending: a token for it, and
+     * Google's own list of what that token may do. Null when it can; the
+     * reason when it cannot (Jose 11-12: "can send" on the card).
+     */
+    public function sendProblem(Mailbox $mailbox): ?string
+    {
+        try {
+            $token = $this->accessToken($mailbox);
+        } catch (CannotReadMailbox $e) {
+            return $e->getMessage();
+        }
+
+        try {
+            $info = Http::timeout(self::TIMEOUT)->get('https://oauth2.googleapis.com/tokeninfo', ['access_token' => $token]);
+        } catch (ConnectionException) {
+            return 'Google did not answer the sending check. It is tried again later.';
+        }
+
+        if ($info->failed()) {
+            return 'Google refused the sending check ('.$info->status().'). Reconnect the inbox.';
+        }
+
+        $granted = preg_split('/\s+/', (string) $info->json('scope'), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return array_intersect($granted, [GoogleOAuth::SCOPE_SEND, GoogleOAuth::SCOPE_MODIFY, 'https://www.googleapis.com/auth/gmail.compose', 'https://mail.google.com/']) === []
+            ? 'Connected without permission to send. Reconnect it and allow sending.'
+            : null;
+    }
+
     private function accessToken(Mailbox $mailbox, bool $modify = false): string
     {
         if ($mailbox->providerEnum() === MailboxProvider::GmailWorkspace) {

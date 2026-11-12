@@ -4,6 +4,7 @@ namespace App\Support\Social\Liveness;
 
 use App\Models\SocialConnection;
 use App\Support\Social\BlueskySession;
+use App\Support\Social\ConnectionSetup;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\Publishing\BlueskyPublisher;
@@ -61,10 +62,17 @@ final class ConnectionLiveness
         }
 
         try {
-            return $check($c);
+            $result = $check($c);
         } catch (ConnectionException) {
             return Liveness::unknown('The provider did not answer.');
         }
+
+        // A live token whose setup is gone queues that setup again (ConnectionSetup).
+        if ($result->verdict === Liveness::ALIVE) {
+            ConnectionSetup::readBack($c);
+        }
+
+        return $result;
     }
 
     /** @return array<string, Closure(SocialConnection): Liveness> */
