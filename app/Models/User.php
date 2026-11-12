@@ -335,6 +335,16 @@ class User extends Authenticatable implements HoldsPersonalData
         return $this->belongsTo(Role::class);
     }
 
+    /**
+     * Removed (deleted) people: the Anonymiser rewrites their email to
+     * removed-{ref}@invalid (see personalDataHeld). Off HR's lists and counts
+     * (Jose, 2026-11-12: "Removed Accounts should not show up on Records").
+     */
+    public function scopeRemoved(Builder $query, bool $removed = true): void
+    {
+        $query->where('users.email', $removed ? 'like' : 'not like', 'removed-%@invalid');
+    }
+
     public function assignments(): HasMany
     {
         return $this->hasMany(Assignment::class);

@@ -136,6 +136,8 @@ class HrPeopleController extends Controller
                 'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->boolean('active_only'), fn ($q) => $q->where('is_active', true))
+            // Removed people only when asked for (removed=1); never mixed into the rest.
+            ->removed($request->boolean('removed'))
             // The Active / Inactive chips (Jose, 2026-11-10: "it doesn't load the full list").
             ->when(in_array($request->query('status'), ['active', 'inactive'], true),
                 fn ($q) => $q->where('is_active', $request->query('status') === 'active'))
@@ -363,6 +365,7 @@ class HrPeopleController extends Controller
             'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
+            ->removed(false)
             ->orderByDesc('is_active')->orderBy('name')->get();
         $ids = $people->map->getKey()->all();
 
