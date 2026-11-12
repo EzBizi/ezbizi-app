@@ -323,6 +323,8 @@ Schedule::command('ezbizi:renew-meta-login-tokens')->dailyAt('04:20')->timezone(
 // It inserts outbox rows and dispatches nothing itself, for the reason set out
 // above the sweep it feeds.
 Schedule::command('ezbizi:watch-mailboxes')->everyMinute()->withoutOverlapping(5);
+// Receive and Send on the inbox card, pass or fail (Jose 11-12).
+Schedule::command('ezbizi:check-mailboxes')->everyMinute()->withoutOverlapping(5)->runInBackground();
 Schedule::command('ezbizi:wake-snoozed-mail')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:warm-inbox-headers')->everyMinute()->withoutOverlapping(5)->runInBackground();
 

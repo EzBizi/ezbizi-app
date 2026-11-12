@@ -2978,6 +2978,7 @@ Route::prefix('v1')
         Route::middleware('permission:email.settings.view')->group(function () {
             Route::post('email/mailboxes', [MailboxesController::class, 'store']);
             Route::post('email/mailboxes/workspace-batch', [MailboxesController::class, 'storeWorkspaceBatch']);
+            Route::get('email/mailboxes/suggest-scope', [MailboxesController::class, 'suggestScope']);
 
             // The new-email notification, edited from the inbox's card. The
             // automation rule stays the source of truth: MailboxesController.
