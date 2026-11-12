@@ -173,6 +173,21 @@ class BackfillWorkizJobsTest extends TestCase
         $this->assertSame(2 * WorkizJobs::PAGE + 4, $this->mirrored());
     }
 
+    /** Integration audit 11-12: one branch refused is that branch's; the next branch is still read, and the run says it failed. */
+    public function test_a_refused_branch_does_not_stop_the_branches_after_it(): void
+    {
+        $two = $this->connect($this->extraFranchise($this->t, 'Second'));
+        $this->inTenant($this->t['org'], fn () => $two->connect(['api_token' => 'api_two', 'refresh_token' => 'api_two']) || $two->save());
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::fake(fn (Request $r) => str_contains($r->url(), '/api_two/')
+            ? Http::response(['flag' => true, 'has_more' => false, 'data' => $this->jobs('T', 3)])
+            : Http::response(['flag' => false, 'msg' => 'Account reached Api Quotas'], 429));
+
+        $this->artisan('ezbizi:backfill-workiz')->assertFailed();
+
+        $this->assertSame(3, $this->mirrored());
+    }
+
     public function test_a_run_reads_at_most_its_budget_and_a_finished_branch_is_left_alone(): void
     {
         $this->pages = [0 => $this->jobs('A', WorkizJobs::PAGE), 1 => $this->jobs('B', WorkizJobs::PAGE), 2 => $this->jobs('C', 5)];

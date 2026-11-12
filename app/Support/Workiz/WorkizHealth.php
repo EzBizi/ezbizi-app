@@ -26,16 +26,40 @@ final class WorkizHealth
 
         Artisan::call('ezbizi:sync-workiz-team', ['--connection' => $connection->getKey()]);
 
-        $steps = self::check($connection, fix: true);
-        // ponytail: kept from the last Connect; re-run on reconnect. A scheduled re-check when the card must stay live.
-        \Illuminate\Support\Facades\Cache::forever(self::cacheKey($connection), ['checked_at' => now()->toIso8601String(), 'steps' => $steps]);
-
-        return $steps;
+        return self::check($connection, fix: true);
     }
 
-    public static function cacheKey(SocialConnection $connection): string
+    /** When the webhook last nudged this account (WorkizWebhookController). */
+    public const NUDGED = 'workiz.nudged.';
+
+    /**
+     * The web login sits behind a CAPTCHA, so nothing re-checks it unattended:
+     * its status and age are shown, and whether it reaches this branch is asked
+     * of Workiz only at Connect (a live read), then kept.
+     */
+    private static function webLogin(SocialConnection $connection, ?SocialConnection $login, bool $live): array
     {
-        return 'workiz.health.'.$connection->getKey();
+        $step = ['key' => 'web_login', 'label' => 'Web login reaches this branch (files, tag removal, payments report)'];
+
+        if ($login === null) {
+            return $step + ['ok' => false, 'detail' => 'No Workiz web login is connected.'];
+        }
+
+        $key = 'workiz.web_reach.'.$connection->getKey();
+
+        if ($live) {
+            \Illuminate\Support\Facades\Cache::forever($key, WorkizWebSession::accountFor($login, $connection->scope_id) !== null);
+        }
+
+        $reaches = \Illuminate\Support\Facades\Cache::get($key);
+        $age = 'last used '.($login->last_reached_at ?? $login->updated_at)?->diffForHumans();
+
+        return $step + ['ok' => $login->status === 'connected' && $reaches !== false,
+            'detail' => match (true) {
+                $login->status !== 'connected' => 'The web login is '.$login->status.' ('.$age.'): sign in again on its card.',
+                $reaches === false => 'Map this branch on the Workiz web login card ('.$age.').',
+                default => 'Yes, '.$age.'.',
+            }];
     }
 
     /**
@@ -65,12 +89,13 @@ final class WorkizHealth
         $missing = $standard->reject(fn ($t) => isset($held[$key($t['name'] ?? '')]))->pluck('name');
         $login = SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)->where('status', 'connected')->first();
         $jobs = WorkizJob::query()->where('franchise_id', $branch)->count();
+        $nudged = ($at = \Illuminate\Support\Facades\Cache::get(self::NUDGED.$connection->getKey())) ? \Illuminate\Support\Carbon::parse($at) : null;
 
         $steps = [
             ['key' => 'key', 'label' => 'API key works', 'ok' => $connection->status === 'connected',
                 'detail' => $connection->status === 'connected' ? ($v2 ? 'v2 key' : 'v1 key') : (string) $connection->status_reason],
             ['key' => 'writes', 'label' => 'EzBizi can write to Workiz', 'ok' => $v2 || filled($credentials['auth_secret'] ?? null),
-                'detail' => $v2 || filled($credentials['auth_secret'] ?? null) ? 'Yes' : 'Add the v1 Auth Secret, or connect a v2 key.'],
+                'detail' => $v2 || filled($credentials['auth_secret'] ?? null) ? 'Yes' : 'Writes off — add the v1 secret (or connect a v2 key).'],
             ['key' => 'tags', 'label' => 'Tag list read', 'ok' => ! $v2 || $tags->isNotEmpty(),
                 'detail' => ! $v2 ? 'A v1 key has no tag list: connect a v2 key.' : $tags->count().' tags'],
             ['key' => 'standard', 'label' => 'Tags match the standard', 'ok' => $v2 && $standard->isNotEmpty() && $missing->isEmpty(),
@@ -82,10 +107,10 @@ final class WorkizHealth
                 }],
             ['key' => 'team', 'label' => 'Team read', 'ok' => WorkizTeamMember::query()->where('franchise_id', $branch)->exists(),
                 'detail' => WorkizTeamMember::query()->where('franchise_id', $branch)->count().' people'],
-            ['key' => 'web_login', 'label' => 'Web login reaches this branch (files, tag removal, payments report)',
-                'ok' => $login !== null && WorkizWebSession::accountFor($login, $branch) !== null,
-                'detail' => $login === null ? 'No Workiz web login is connected.' : (WorkizWebSession::accountFor($login, $branch) === null
-                    ? 'Map this branch on the Workiz web login card.' : 'Yes')],
+            self::webLogin($connection, $login, $fix),
+            ['key' => 'webhook', 'label' => 'Workiz tells EzBizi of changes (webhook)', 'ok' => $nudged !== null && now()->diffInDays($nudged) < 7,
+                'detail' => $nudged !== null ? 'Last change received '.$nudged->diffForHumans().'.'
+                    : 'Workiz has no API for this: in Workiz › Automation Center add a rule "post webhook" to '.url('/api/v1/social/workiz/webhook/'.$connection->getKey()).'.'],
             ['key' => 'jobs', 'label' => 'Jobs mirrored', 'ok' => $jobs > 0,
                 'detail' => $jobs > 0 ? $jobs.' jobs' : 'The first read is queued; it runs on the schedule.'],
         ];

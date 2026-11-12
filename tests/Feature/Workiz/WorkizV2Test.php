@@ -285,6 +285,8 @@ class WorkizV2Test extends TestCase
         $this->assertTrue($health['standard']['ok'], 'with no standard yet, this account sets it');
         $this->assertFalse($health['web_login']['ok']);
         $this->assertSame('No Workiz web login is connected.', $health['web_login']['detail']);
+        $this->assertFalse($health['webhook']['ok']);
+        $this->assertStringContainsString('/api/v1/social/workiz/webhook/'.$connection->getKey(), $health['webhook']['detail']);
         $this->assertSame(['DEPOSIT RECEIVED'], collect($this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)
             ->get('workiz.tag_baseline', $tenant['org'])))->pluck('name')->all());
         $this->signedInAs($admin)->getJson('/api/v1/social/connections')->assertOk();
