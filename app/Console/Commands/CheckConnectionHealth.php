@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Social\ConnectionChecks;
 use App\Support\Social\Liveness\ConnectionLiveness;
 use App\Support\Social\Liveness\Liveness;
 use App\Support\Social\SocialProvider;
@@ -71,7 +72,7 @@ final class CheckConnectionHealth extends Command
                         $thumbtackSeen[$c->organization_id] = $result;
                     }
 
-                    $this->record($c, $result);
+                    self::record($c, $result);
 
                     return $result;
                 });
@@ -85,7 +86,8 @@ final class CheckConnectionHealth extends Command
         return self::SUCCESS;
     }
 
-    private function record(SocialConnection $c, Liveness $result): void
+    /** Also used by POST integrations/{id}/recheck. */
+    public static function record(SocialConnection $c, Liveness $result): void
     {
         $c->refresh();   // a renewal may have just rotated its credentials
 
@@ -98,5 +100,12 @@ final class CheckConnectionHealth extends Command
             ])->save(),
             default => null,
         };
+
+        // Per check, for GET integrations/overview.
+        ConnectionChecks::record($c, 'sign_in', match ($result->verdict) {
+            Liveness::ALIVE => ConnectionChecks::PASS,
+            Liveness::REFUSED => ConnectionChecks::FAIL,
+            default => ConnectionChecks::UNKNOWN,
+        }, $result->reason);
     }
 }

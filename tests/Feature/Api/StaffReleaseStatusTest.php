@@ -121,6 +121,21 @@ class StaffReleaseStatusTest extends TestCase
         $this->getJson('/api/v1/staff/release-status')->assertUnauthorized();
     }
 
+    /** Everybody signed in sees the release on its way: version and percent, nothing else (Jose 11-12). */
+    public function test_anybody_signed_in_sees_only_the_version_and_percent_of_the_running_release(): void
+    {
+        $this->fixture();
+        $alpha = $this->provisionTenant('Alpha');
+
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/release/upcoming')
+            ->assertOk()
+            ->assertExactJson(['data' => ['version' => '0.0.0559', 'percent' => 58]]);
+
+        config(['ezbizi.release_status_file' => $this->file.'-missing']);
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/release/upcoming')
+            ->assertOk()->assertExactJson(['data' => null]);
+    }
+
     private function staffToken(): string
     {
         $totp = app(Google2FA::class);

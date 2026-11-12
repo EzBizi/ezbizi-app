@@ -58,6 +58,7 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
             'last_checked_at' => 'datetime',
             // Connect's choices and its first check (ConnectSetup).
             'setup'           => 'array',
+            'checks'          => 'array',
             'is_manager'     => 'boolean',
         ];
     }
@@ -124,6 +125,8 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
             'status'          => self::STATUS_CONNECTED,
             'status_reason'   => null,
             'last_reached_at' => now(),
+            // A fresh grant starts with no verdicts (ConnectionChecks).
+            'checks'          => null,
         ]);
     }
 

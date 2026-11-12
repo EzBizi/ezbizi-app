@@ -36,7 +36,10 @@ final class ConnectionSetup
         // A failed job has no tenant, and saving a connection needs one.
         app(TenantContext::class)->run(
             Organization::query()->withoutGlobalScopes()->findOrFail($c->organization_id),
-            fn () => $c->forceFill(['status' => SocialConnection::STATUS_BROKEN, 'status_reason' => $sentence])->save(),
+            function () use ($c, $sentence) {
+                $c->forceFill(['status' => SocialConnection::STATUS_BROKEN, 'status_reason' => $sentence])->save();
+                ConnectionChecks::record($c, 'setup', ConnectionChecks::FAIL, $sentence);
+            },
         );
     }
 
@@ -73,27 +76,59 @@ final class ConnectionSetup
         foreach ((array) $r->json('data') as $app) {
             $ours = $appId === '' || (string) ($app['id'] ?? '') === $appId;
             if ($ours && in_array('messages', (array) ($app['subscribed_fields'] ?? []), true)) {
+                ConnectionChecks::record($c, 'messages', ConnectionChecks::PASS);
+
                 return false;
             }
         }
 
         SubscribeMetaMessages::dispatch((string) $c->getKey());
+        ConnectionChecks::record($c, 'messages', ConnectionChecks::UNKNOWN, 'Was missing; set up again.');
 
         return true;
     }
 
     private static function whatsApp(SocialConnection $c): bool
     {
-        $routed = WhatsAppNumber::query()->withoutGlobalScopes()
+        $number = WhatsAppNumber::query()->withoutGlobalScopes()
             ->where('phone_number_id', (string) $c->remote_id)
-            ->where('organization_id', $c->organization_id)->exists();
+            ->where('organization_id', $c->organization_id)->first();
         $waba = ((array) $c->credentials)['waba_id'] ?? null;
-        if ($routed || ! is_string($waba) || $waba === '') {
+        if ($number !== null) {
+            ConnectionChecks::record($c, 'routing', ConnectionChecks::PASS);
+            self::whatsAppHealth($c, $number);
+
+            return false;
+        }
+        if (! is_string($waba) || $waba === '') {
             return false;
         }
 
         OnboardWhatsAppNumber::dispatch((string) $c->getKey(), $waba);
+        ConnectionChecks::record($c, 'routing', ConnectionChecks::UNKNOWN, 'Was missing; set up again.');
 
         return true;
+    }
+
+    /**
+     * WhatsAppHealth's five lines (it repairs subscribe/register itself) as
+     * persisted checks: ok -> pass, else fail; detail -> reason; action -> fix.
+     * A display name Meta is still reviewing ("Nothing to do") is pending, so
+     * unknown rather than fail.
+     */
+    private static function whatsAppHealth(SocialConnection $c, WhatsAppNumber $number): void
+    {
+        foreach (WhatsAppHealth::check($c, $number) as $line) {
+            $action = $line['action'] ?? null;
+            $pending = ! $line['ok'] && is_string($action) && str_starts_with($action, 'Nothing to do');
+            $fix = $line['ok'] || $pending || ! is_string($action) ? null
+                : (str_contains($action, 'connect it again')
+                    ? ['action' => 'reconnect', 'label' => 'Reconnect']
+                    : ['action' => 'open_url', 'label' => $action, 'url' => 'https://business.facebook.com/wa/manage/phone-numbers/']);
+
+            ConnectionChecks::record($c, $line['key'],
+                $line['ok'] ? ConnectionChecks::PASS : ($pending ? ConnectionChecks::UNKNOWN : ConnectionChecks::FAIL),
+                $line['detail'], $fix, $line['label']);
+        }
     }
 }
