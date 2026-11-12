@@ -261,6 +261,9 @@ class JobBookingController extends Controller
         if ($made['job'] === null && $made['refused'] === null) {
             return ['status' => 'no_workiz'];
         }
+        if ($made['refused'] === WorkizJobWriter::BUSY) {
+            return ['status' => 'queued', 'refused' => \App\Jobs\MirrorToWorkiz::later($job, $job->job_type, $job->job_source)];
+        }
         if ($made['refused'] !== null) {
             return ['status' => 'refused', 'refused' => $made['refused']];
         }

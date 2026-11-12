@@ -40,6 +40,15 @@ final class MirrorToWorkiz implements ShouldQueue
         public readonly int $attempt = 1,
     ) {}
 
+    /** A booking the sync lock turned away: retried on BACKOFF, `workiz.mirror_failed` if it never lands (Desk, 11-12). */
+    public static function later(Job $job, ?string $jobType, ?string $jobSource): string
+    {
+        self::dispatch($job->organization_id, $job->getKey(), 'create', ['job_type' => $jobType, 'job_source' => $jobSource])
+            ->delay(now()->addMinutes(self::BACKOFF[0]));
+
+        return 'The Workiz sync is busy: EzBizi will send job '.$job->number.' to Workiz in a minute, and flags it if Workiz never takes it.';
+    }
+
     public function handle(TenantContext $tenant, WorkizJobWriter $writer, AuditLogger $audit): void
     {
         $organization = Organization::query()->withoutGlobalScopes()->find($this->organizationId);

@@ -1177,6 +1177,7 @@ class LeadsController extends Controller
                 'serial_id' => $made['job']?->serial_id,
                 'service_area' => $placed !== null && $placed['refused'] === null ? $area : null,
                 'refused' => match (true) {
+                    $made['refused'] === WorkizJobWriter::BUSY => \App\Jobs\MirrorToWorkiz::later($result['job'], $input['workiz_job_type'] ?? null, $input['workiz_job_source'] ?? null),
                     $made['refused'] !== null => 'Not in Workiz: '.$made['refused'].' Enter job '.$result['job']->number.' in Workiz by hand.',
                     $placed !== null && $placed['refused'] !== null => 'In Workiz as job '.$made['job']->serial_id.', without its service area: '.$placed['refused'],
                     default => null,

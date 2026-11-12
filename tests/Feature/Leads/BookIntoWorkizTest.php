@@ -121,6 +121,28 @@ class BookIntoWorkizTest extends TestCase
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/job/update/'));
     }
 
+    /** Desk, 11-12: a booking the sync lock turns away is queued for Workiz, not left EzBizi-only; giving up flags the job. */
+    public function test_a_busy_sync_queues_the_booking_for_workiz_and_a_final_refusal_flags_the_job(): void
+    {
+        [$t, $lead] = $this->branch();
+        \Illuminate\Support\Facades\Queue::fake();
+        Http::fake();
+        $lock = \Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, 120);
+        $lock->get();
+
+        $data = $this->book($t, $lead, ['workiz_job_type' => 'Chimney Inspection'])->assertCreated()->json('data');
+        $lock->release();
+
+        $this->assertStringContainsString('will send job '.$data['job']['number'], $data['workiz']['refused']);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\MirrorToWorkiz::class,
+            fn ($m) => $m->op === 'create' && $m->jobId === $data['job']['id'] && $m->args['job_type'] === 'Chimney Inspection');
+
+        // The last retry still refused: the job carries workiz.mirror_failed.
+        $this->inTenant($t['org'], fn () => (new \App\Jobs\MirrorToWorkiz($t['org']->id, $data['job']['id'], 'create', ['job_type' => 'Nope'], 5))
+            ->handle(app(\App\Support\Tenancy\TenantContext::class), app(\App\Support\Workiz\WorkizJobWriter::class), app(\App\Support\Audit\AuditLogger::class)));
+        $this->assertTrue($this->inTenant($t['org'], fn () => \App\Models\AuditEvent::query()->where('action', 'workiz.mirror_failed')->exists()));
+    }
+
     public function test_a_branch_without_workiz_books_in_ezbizi_only(): void
     {
         [$t, $lead] = $this->branch(workiz: false);
