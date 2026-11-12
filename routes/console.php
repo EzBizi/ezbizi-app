@@ -261,6 +261,9 @@ Schedule::command('ezbizi:import-workiz-leads')->everyMinute()->withoutOverlappi
 // NOT runInBackground(), for the same reason: killed with schedule:run, it
 // never finished a pass and its own lock stayed held for an hour each time.
 Schedule::command('ezbizi:project-workiz')->everyMinute()->withoutOverlapping(10);
+// Both directions of the Workiz sync checked, healed and alerted once (Jose, 11-12). Deep pass: 30 days, nightly.
+Schedule::command('ezbizi:workiz-watchdog')->everyFiveMinutes()->withoutOverlapping(10)->runInBackground();
+Schedule::command('ezbizi:workiz-watchdog --deep')->dailyAt('04:10')->withoutOverlapping(30)->runInBackground();
 
 /*
  * New zips from new bookings (Jose, 2026-09-28): a job booked in Workiz for

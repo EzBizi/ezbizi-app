@@ -246,6 +246,18 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Somebody renamed, recoloured, added or deleted a tag in this branch\'s '
                             .'Workiz account. It carries the change, and the tag before and after.',
                     ),
+                    // Jose, 2026-11-12: the Workiz sync watchdog (ezbizi:workiz-watchdog), once per episode.
+                    new TriggerDefinition(
+                        key: 'franchise.workiz_sync_drift',
+                        label: 'Workiz sync behind',
+                        description: 'Something has been out of step between this branch\'s Workiz and EzBizi for '
+                            .'over 15 minutes. Raised once until it clears; the summary names the jobs and how long.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'franchise.workiz_sync_recovered',
+                        label: 'Workiz sync recovered',
+                        description: 'The Workiz sync that was behind for this branch is back in step.',
+                    ),
                     new TriggerDefinition(
                         key: 'franchise.deactivated',
                         label: 'Deactivated',

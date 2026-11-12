@@ -29,6 +29,22 @@ final class WorkizHealth
         return self::check($connection, fix: true);
     }
 
+    /** The watchdog's last verdict: "Workiz sync: OK · last checked 2 min ago". */
+    private static function sync(SocialConnection $connection): array
+    {
+        $state = \Illuminate\Support\Facades\Cache::get(\App\Console\Commands\WorkizWatchdog::STATE.$connection->getKey());
+        $at = isset($state['checked_at']) ? \Illuminate\Support\Carbon::parse($state['checked_at']) : null;
+        $fresh = $at !== null && $at->gt(now()->subMinutes(15));
+
+        return ['key' => 'sync', 'label' => 'Workiz sync', 'ok' => $fresh && ($state['items'] ?? []) === [],
+            'detail' => match (true) {
+                $at === null => 'Not checked yet.',
+                ! $fresh => 'The watchdog has not run since '.$at->diffForHumans().'.',
+                ($state['items'] ?? []) !== [] => implode(' ', $state['items']).' Checked '.$at->diffForHumans().'.',
+                default => 'OK · last checked '.$at->diffForHumans().'.',
+            }];
+    }
+
     /** When the webhook last nudged this account (WorkizWebhookController). */
     public const NUDGED = 'workiz.nudged.';
 
@@ -115,6 +131,7 @@ final class WorkizHealth
                     : 'Workiz has no API for this: in Workiz › Automation Center add a rule "post webhook" to '.url('/api/v1/social/workiz/webhook/'.$connection->getKey()).'.'],
             ['key' => 'jobs', 'label' => 'Jobs mirrored', 'ok' => $jobs > 0,
                 'detail' => $jobs > 0 ? $jobs.' jobs' : 'The first read is queued; it runs on the schedule.'],
+            self::sync($connection),
             ['key' => 'projection', 'label' => 'New Workiz jobs reach EzBizi within minutes',
                 'ok' => $waiting === null || \Illuminate\Support\Carbon::parse($waiting)->gt(now()->subMinutes(10)),
                 'detail' => $waiting === null ? 'Yes' : 'Oldest job waiting since '.\Illuminate\Support\Carbon::parse($waiting)->diffForHumans().'.'],

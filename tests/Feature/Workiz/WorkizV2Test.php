@@ -306,6 +306,47 @@ class WorkizV2Test extends TestCase
         $this->assertTrue(\Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, 1)->get(), 'the dead run no longer holds it');
     }
 
+    /** Jose, 11-12: "a process that constantly checks the workiz - ezbizi ezbizi - workiz sync all the time". */
+    public function test_the_watchdog_heals_a_stuck_lock_resends_an_unsent_job_and_alerts_once_per_episode(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        \Illuminate\Support\Facades\Queue::fake();
+        $job = $this->inTenant($tenant['org'], function () use ($tenant) {
+            app(\App\Support\Settings\SettingsResolver::class)->set('workiz.mirror', $tenant['franchise'], true);
+            WorkizJob::land(SocialConnection::query()->sole(), WorkizV2::job($this->v2Job()));
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $tenant['franchise']->id]);
+
+            return \App\Models\Job::factory()->create(['franchise_id' => $tenant['franchise']->id, 'customer_id' => $customer->id]);
+        });
+        \Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, 300)->get();
+        $this->travel(16)->minutes();
+        $this->inTenant($tenant['org'], fn () => WorkizJob::query()->update(['synced_at' => now()]));
+
+        $this->artisan('ezbizi:workiz-watchdog')->assertSuccessful();
+        $this->artisan('ezbizi:workiz-watchdog')->assertSuccessful();
+
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, 1)->get(), 'the stuck lock is freed');
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\MirrorToWorkiz::class, 1);
+        $raised = fn (string $key) => $this->inTenant($tenant['org'], fn () => \App\Models\AutomationEvent::query()->where('event_key', $key)->count());
+        $this->assertSame(1, $raised('franchise.workiz_sync_drift'), 'one alert, not one per run');
+        $health = collect($this->inTenant($tenant['org'], fn () => \App\Support\Workiz\WorkizHealth::check($connection)))->keyBy('key');
+        $this->assertFalse($health['sync']['ok']);
+        $this->assertStringContainsString($job->number, $health['sync']['detail']);
+
+        // Both sides in step again: one "recovered", and the card says OK.
+        $this->inTenant($tenant['org'], function () use ($job) {
+            $row = WorkizJob::query()->sole();
+            $row->forceFill(['job_id' => $job->getKey(), 'synced_at' => now()])->save();
+            \Illuminate\Support\Facades\DB::table('jobs')->where('id', $job->getKey())->update(['status' => $row->status,
+                'scheduled_for' => $row->getRawOriginal('scheduled_for'), 'amount_minor' => (int) round(((float) ($row->payload['JobTotalPrice'] ?? 0)) * 100)]);
+        });
+        $this->artisan('ezbizi:workiz-watchdog')->assertSuccessful();
+        $this->artisan('ezbizi:workiz-watchdog')->assertSuccessful();
+        $this->assertSame(1, $raised('franchise.workiz_sync_recovered'));
+        $health = collect($this->inTenant($tenant['org'], fn () => \App\Support\Workiz\WorkizHealth::check($connection)))->keyBy('key');
+        $this->assertStringStartsWith('OK · last checked', $health['sync']['detail']);
+    }
+
     public function test_dispatch_writes_go_through_v2(): void
     {
         [$tenant, $connection] = $this->branch();
