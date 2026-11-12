@@ -11,7 +11,7 @@ class PhoneAssignExtensions extends Command
 {
     protected $signature = 'ezbizi:phone-assign-extensions';
 
-    protected $description = 'Give every connected phone account a ring group and voicemail if it has none, and every active person without an extension the next free one';
+    protected $description = 'Give every connected phone account a ring group and voicemail if it has none, every line its 911 address on file, and every active person without an extension the next free one';
 
     public function handle(): int
     {
@@ -23,6 +23,11 @@ class PhoneAssignExtensions extends Command
                     if ($made !== []) {
                         $this->info("{$organization->name}: account {$connection->id} got a ".implode(' and a ', $made));
                     }
+                }
+                // Every line's 911 address, from its branch or company on file.
+                foreach (\App\Models\PhoneNumber::query()->where('emergency_address_set', false)->whereNotNull('twilio_sid')->get() as $number) {
+                    $why = \App\Support\Phone\EmergencyAddress::attach($number, app(\App\Support\Phone\TwilioGateway::class));
+                    $this->info("{$organization->name}: {$number->e164} ".($why ?? 'E911 address attached'));
                 }
             });
             $given = ExtensionAssigner::assignMissing($organization);

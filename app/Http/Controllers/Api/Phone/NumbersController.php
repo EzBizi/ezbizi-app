@@ -157,8 +157,11 @@ class NumbersController extends Controller
             'after_hours' => 'voicemail',
         ]);
 
-        // A new line comes out working: everybody on its account has an extension.
+        // A new line comes out working: everybody on its account has an extension,
+        // and 911 knows where it is.
         \App\Support\Phone\ExtensionAssigner::assignMissing($request->user()->organization);
+        \App\Support\Phone\EmergencyAddress::attach($number, $this->twilio);
+        $number->refresh();
 
         return response()->json(['data' => $this->row($number)], Response::HTTP_CREATED);
     }
@@ -832,6 +835,10 @@ class NumbersController extends Controller
         }
 
         \App\Support\Phone\ExtensionAssigner::assignMissing($request->user()->organization);
+        foreach ($made as $line) {
+            \App\Support\Phone\EmergencyAddress::attach($line, $this->twilio);
+            $line->refresh();
+        }
 
         return response()->json([
             'data' => array_map(fn (PhoneNumber $n) => $this->row($n), $made),
@@ -1202,7 +1209,9 @@ class NumbersController extends Controller
             blank($number->twilio_sid) ? 'Not pointed at EzBizi yet, so calls never arrive here.' : null,
             $number->override_on || $answers ? null : 'Calls reach nobody: choose who answers, or a ring group.',
             $number->sms_outbound_allowed ? null : 'Texting: not registered (A2P), so texts cannot be sent.',
-            $number->emergency_address_set ? null : 'E911: missing, so a 911 call from this line has no address.',
+            $number->emergency_address_set ? null : (\App\Support\Phone\EmergencyAddress::for($number) === null
+                ? \App\Support\Phone\EmergencyAddress::NO_ADDRESS
+                : 'E911: missing — the address on file is attached within the hour.'),
             \App\Models\PhonePresence::query()->where('connection_id', $number->connection_id)->available()->exists()
                 ? null : 'Nobody is signed in to take calls on this phone account right now.',
         ]));
