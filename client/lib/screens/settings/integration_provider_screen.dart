@@ -889,6 +889,8 @@ class IntegrationConnection {
     'google_workspace' || 'sending_server' => 'email',
     'phone_numbers' => 'phone',
     'whatsapp' || 'telegram' => 'messaging',
+    // Read so the boards brought over from Monday stay in step (11-12).
+    'monday' => 'tasks',
     _ => 'social',
   };
 

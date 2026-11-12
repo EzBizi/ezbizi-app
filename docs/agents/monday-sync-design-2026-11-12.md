@@ -126,8 +126,49 @@ File = `{monday_id, name, ext, size, url}`. `--files=<dir>` holds
 
 ## Build order
 
-1. Ship the importer fixes (this branch) and run the 5-board import.
-2. `SocialProvider::Monday` + Connect card + callback + `me` check (read scopes).
-3. Webhook endpoint (JWT verify, challenge) + per-item re-read upsert job.
-4. `ezbizi:monday-sync` poll + conflict rule + Activity lines.
+1. Ship the importer fixes and run the 5-board import. **Done** (`92c3d8bbe`).
+2. `SocialProvider::Monday` + Connect card + callback + `me` check (read scopes). **Built.**
+3. Webhook endpoint (JWT verify, challenge) + per-item re-read upsert job. **Built.**
+4. `ezbizi:monday-sync` poll + conflict rule. **Built.**
 5. Write side (outbox) only after Jose has used 2-4 for a few days.
+
+## As built (read side), 2026-11-12
+
+- **Code**: `App\Support\Tasks\Monday\` — `MondayImport` (the one upsert; the
+  JSON import and the sync share it), `MondayBoardReader` (GraphQL → export
+  shape, same rules as the 11-12 export), `MondayClient` (read only: refuses a
+  `mutation` before sending), `MondaySync`, `MondayWebhookSignature`.
+  `ezbizi:monday-sync [--connection=] [--full] [--people=file.json]`,
+  `SyncMondayItem` job, `MondayWebhookController`, `MondayOAuth`.
+- **Schedule** (`routes/console.php`): every 10 minutes (changed items since
+  the board's cursor), and `--full` nightly at 03:40 ET (a reply does not always
+  move its item's `updated_at`).
+- **Which boards**: every live board with `external_ref = monday:<board id>`.
+  The import now stamps a personal board with its Monday board id; a board
+  imported earlier (the 92c3d8bbe run) is adopted on the first sync by asking
+  Monday which board one of its items is on.
+- **State**: on the task, `external_updated_at` (Monday's `updated_at` when we
+  last took the item) and `external_synced_at` (when we wrote it). Re-running
+  the import on a board imported before these columns existed records them.
+  On the connection, `setup.monday`: `as` (who connected; the actor), `cursors`,
+  `people` (optional monday email => EzBizi email; set with `--people`), `last`.
+- **Conflict rule as built**: Monday changed since we took it → applied, unless
+  the task was also changed here since, and later than Monday's change → kept
+  (counted "kept (changed here later)"). Fields changed by an apply land in the
+  task's Activity through TaskWriter, as any edit does. No automation fires.
+- **People**: people map, then email, then a name that names one person only
+  (exactly, or every word of the Monday name in theirs: "Jose Demasi" = "Jose
+  Luis Demasi"). An assignee the board cannot take (an admin on another
+  person's personal board; Jose declined adding them as members) or with no
+  EzBizi account is kept as "Assigned in Monday: <name>" in the task's
+  Activity, once per name.
+- **Files**: the import carries every file, any size or type (Jose, 11-12:
+  "Get rid of the Limit, we need to import everything"); streamed to disk. A
+  type outside the upload list is stored as `application/octet-stream` (a
+  download, never rendered: an .svg can carry script). Upload limits for people
+  are unchanged.
+- **Not built (needs a write on Monday)**: registering the webhooks
+  (`create_webhook` is a mutation). The endpoint is live and verified; until a
+  webhook is registered, the 10-minute poll is the sync. Registering one per
+  imported board is a one-time, approved step.
+- **Not handled**: an item archived or deleted in Monday stays here as it was.

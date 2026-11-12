@@ -1,0 +1,126 @@
+<?php
+
+namespace Tests\Feature\Tasks;
+
+use App\Models\SocialConnection;
+use App\Models\Task;
+use App\Models\User;
+use App\Support\Tasks\Monday\MondayWebhookSignature;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\FakesMonday;
+use Tests\TestCase;
+
+/**
+ * Monday's webhooks (desk, 2026-11-12: "webhooks verified with the Signing
+ * Secret"). Only a request signed with the app's Signing Secret moves
+ * anything, and then only by re-reading the item from Monday.
+ */
+class MondayWebhookTest extends TestCase
+{
+    use BuildsTenants;
+    use FakesMonday;
+    use RefreshDatabase;
+
+    private const SECRET = 'the-apps-signing-secret';
+
+    private const URL = '/api/v1/integrations/monday/webhook';
+
+    private array $tenant;
+
+    private User $jose;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Carbon::setTestNow('2026-11-12 10:05:00');
+        config(['services.monday.signing_secret' => self::SECRET]);
+        $this->tenant = $this->provisionTenant('Alpha');
+        $this->jose = $this->userWithRole($this->tenant, 'Owner', ['tasks.view', 'tasks.edit', 'tasks.create_boards'], 'jose@a-1chimney.com');
+
+        $file = tempnam(sys_get_temp_dir(), 'monday');
+        file_put_contents($file, json_encode(['users' => [], 'boards' => [[
+            'monday_id' => '100', 'name' => 'Jose Demasi', 'owner_email' => 'jose@a-1chimney.com', 'groups' => [], 'items' => [[
+                'monday_id' => '11', 'name' => 'Call the insurer', 'group' => 'Open Tasks', 'created_at' => '2026-11-01T09:00:00Z',
+                'updated_at' => '2026-11-12T10:00:00Z', 'status' => 'Working on it', 'people' => ['jose@a-1chimney.com'], 'updates' => [],
+            ]],
+        ]]]));
+        $this->artisan('ezbizi:tasks-import-monday', ['file' => $file, '--org' => $this->tenant['org']->id, '--as' => 'jose@a-1chimney.com'])->assertSuccessful();
+        @unlink($file);
+
+        $this->inTenant($this->tenant['org'], function () {
+            $c = new SocialConnection;
+            $c->forceFill([
+                'organization_id' => $this->tenant['org']->id, 'scope_type' => SocialConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $this->tenant['org']->id, 'provider' => 'monday', 'remote_id' => 'acc1', 'display_name' => 'A-1 Group',
+                'setup' => ['monday' => ['as' => $this->jose->id]],
+            ]);
+            $c->connect(['access_token' => 'monday-token', 'scopes' => []]);
+            $c->save();
+        });
+
+        // Monday now says: done.
+        $this->monday['users'] = [['id' => '1', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com']];
+        $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [
+            $this->mondayItem('11', 'Call the insurer', '2026-11-12T10:30:00Z', ['status' => 'Done']),
+        ])];
+        $this->fakeMonday();
+        Carbon::setTestNow('2026-11-12 10:31:00');
+    }
+
+    private function event(): array
+    {
+        return ['event' => ['type' => 'update_column_value', 'boardId' => 100, 'pulseId' => 11, 'columnId' => 'status', 'userId' => 1,
+            // What the body claims is never written: the item is read from Monday.
+            'value' => ['label' => ['text' => 'Hacked']]]];
+    }
+
+    private function done(): bool
+    {
+        return (bool) $this->inTenant($this->tenant['org'], fn () => Task::query()->where('external_ref', 'monday:11')->first()->statusRow->is_done);
+    }
+
+    public function test_a_signed_event_rereads_the_item_from_monday(): void
+    {
+        $jwt = MondayWebhookSignature::sign(['accountId' => 'acc1', 'userId' => 1, 'exp' => time() + 300], self::SECRET);
+
+        $this->postJson(self::URL, $this->event(), ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 1]);
+
+        $this->assertTrue($this->done());
+        $this->assertNotEmpty($this->mondayQueries, 'the item was read from Monday');
+    }
+
+    /** The check this endpoint stands on: without it, any of these would move the task. */
+    public function test_an_event_not_signed_with_the_apps_secret_changes_nothing(): void
+    {
+        $refused = [
+            'no header' => null,
+            'another secret' => MondayWebhookSignature::sign(['accountId' => 'acc1'], 'somebody-elses-secret'),
+            'expired' => MondayWebhookSignature::sign(['accountId' => 'acc1', 'exp' => time() - 10], self::SECRET),
+            'alg none' => rtrim(strtr(base64_encode('{"alg":"none","typ":"JWT"}'), '+/', '-_'), '=').'.'
+                .rtrim(strtr(base64_encode('{"accountId":"acc1"}'), '+/', '-_'), '=').'.',
+            'garbage' => 'Bearer not-a-token',
+        ];
+        foreach ($refused as $why => $header) {
+            $this->postJson(self::URL, $this->event(), $header === null ? [] : ['Authorization' => $header])
+                ->assertUnauthorized();
+            $this->assertFalse($this->done(), $why);
+        }
+        $this->assertSame([], $this->mondayQueries, 'nothing was even read');
+    }
+
+    public function test_no_signing_secret_configured_refuses_everything(): void
+    {
+        config(['services.monday.signing_secret' => null]);
+        $jwt = MondayWebhookSignature::sign(['accountId' => 'acc1'], '');
+
+        $this->postJson(self::URL, $this->event(), ['Authorization' => $jwt])->assertUnauthorized();
+        $this->assertFalse($this->done());
+    }
+
+    public function test_mondays_registration_challenge_is_echoed(): void
+    {
+        $this->postJson(self::URL, ['challenge' => 'abc123'])->assertOk()->assertExactJson(['challenge' => 'abc123']);
+    }
+}
