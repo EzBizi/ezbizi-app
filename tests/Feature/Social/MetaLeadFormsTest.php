@@ -78,6 +78,8 @@ class MetaLeadFormsTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $page = $this->page($t);
+        // Placed, as a connect places it (ConnectBranch), so the card says only the lead-ad line.
+        $this->inTenant($t['org'], fn () => $page->forceFill(['leads_franchise_id' => $t['franchise']->id])->save());
 
         Http::fake(fn ($request) => str_contains((string) $request['subscribed_fields'], 'leadgen')
             ? Http::response(['error' => ['message' => 'leads_retrieval not granted']], 403)
