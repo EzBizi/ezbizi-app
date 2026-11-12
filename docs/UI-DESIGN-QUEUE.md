@@ -5336,6 +5336,10 @@ Jose 11-06: "I'm also thinking if it would not be best to always put the tags at
 
 Client by UI/UX; server HR 17fb4c40e. Jose via the desk: show current access as a clear list with Add place / remove, plus what the role grants. A "Works at" card: one row per place (Company · Branch) with ×, inline red two-step remove, the last place shows HR's 422 sentence instead; Add place opens the SidePanel search picker from GET hr/people/scope-options; under it, the role and that it applies at every place.
 
+### 193 · Project Management › totals strip — **PM totals strip — option 1 APPROVED by Jose 2026-11-12** (`docs/previews/pm-totals-strip.html`)
+
+Jose: "put them in colored blocks… have it do some html examples, not just 1"; he picked "first one". Three equal tinted tiles: Paid (ok), Remaining (caution, not red), Total of jobs (primary container); under 600 px they stack as label-left, figure-right rows. Client by UI/UX (`client/lib/screens/project_board_screen.dart`). Open: Paid + Remaining ($987,778.06) exceeds Total ($973,417.87) by $14,360.19, for the PM owner.
+
 ### 192 · Leads › lead detail header, lined up — **APPROVED (standing rule 2026-11-03), recommended option (desk's grid)** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/lead-detail-header.html`)
 
 Jose 11-11: "stuff doesn't seem lined up properly, like there's wasted space still." Desktop: row 1 name + chips left, Call / Edit / Book / ⋯ right; row 2 the status segmented control left-aligned (picker under 640 px); facts and the AI line with even gaps; the Existing customer bar capped at 720 px. Phone bar (design 171) unchanged. Client by UI/UX (`client/lib/widgets/lead_thread.dart`).
