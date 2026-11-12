@@ -526,6 +526,13 @@ Route::get('v1/whatsapp/media/{phone}/{media}', WhatsAppMediaController::class)
     ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
     ->name('whatsapp.media');
 
+// A Task Board video (or its poster) for a player that cannot send a token:
+// 10-minute signed link naming its user; board visibility re-checked each time.
+Route::get('v1/attachments/{attachment}/stream', [\App\Http\Controllers\Api\AttachmentStreamController::class, 'show'])
+    ->middleware(['signed', 'throttle:600,1'])
+    ->whereUuid('attachment')
+    ->name('attachments.stream');
+
 Route::get('v1/meta/media/{connection}/{mid}/{index}', MetaMediaController::class)
     ->middleware(['signed', 'throttle:120,1'])
     ->where(['connection' => '[0-9a-f-]+', 'mid' => '[A-Za-z0-9_-]+', 'index' => '[0-9]+'])

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../core/api_client.dart';
 import '../core/files.dart';
@@ -270,6 +271,24 @@ class _Tile extends StatelessWidget {
     final Widget face;
     if (item['thumbnail_url'] is String) {
       face = _Thumb(api: api, url: '${item['thumbnail_url']}', id: '${item['id']}');
+    } else if (kind == 'video' && item['poster_url'] is String) {
+      // Signed link: no token needed, so a plain network image.
+      face = Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.network(
+            '${item['poster_url']}',
+            key: ValueKey('gallery-poster-${item['id']}'),
+            fit: BoxFit.cover,
+            cacheWidth: 400,
+            errorBuilder: (_, _, _) =>
+                Container(color: scheme.surfaceContainerHighest),
+          ),
+          Center(
+            child: Icon(Icons.play_circle_fill, size: 44, color: scheme.surface),
+          ),
+        ],
+      );
     } else {
       face = Container(
         color: scheme.surfaceContainerHighest,
@@ -407,6 +426,73 @@ class _FilePanel extends StatefulWidget {
 class _FilePanelState extends State<_FilePanel> {
   bool _busy = false;
 
+  /// Plays from the signed `stream_url` (no token header needed). Null under
+  /// test or for a file that is not a video; then the icon shows instead.
+  VideoPlayerController? _player;
+  bool _videoFailed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final url = widget.item['stream_url'];
+    if (widget.item['kind'] == 'video' && url is String && !Files.underTest) {
+      final player = VideoPlayerController.networkUrl(Uri.parse(url));
+      _player = player;
+      player.initialize().then((_) {
+        if (mounted) setState(() {});
+      }, onError: (_) {
+        if (mounted) setState(() => _videoFailed = true);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _player?.dispose();
+    super.dispose();
+  }
+
+  Widget _video(ColorScheme scheme) {
+    final player = _player;
+    if (player == null || _videoFailed || !player.value.isInitialized) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.movie_outlined, size: 72, color: scheme.onSurfaceVariant),
+          if (_videoFailed)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('This video cannot play here. Download it instead.'),
+            )
+          else if (player != null)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: CircularProgressIndicator(),
+            ),
+        ],
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AspectRatio(
+          aspectRatio: player.value.aspectRatio,
+          child: VideoPlayer(player),
+        ),
+        VideoProgressIndicator(player, allowScrubbing: true),
+        ValueListenableBuilder<VideoPlayerValue>(
+          valueListenable: player,
+          builder: (_, v, _) => IconButton(
+            key: const Key('gallery-video-play'),
+            tooltip: v.isPlaying ? 'Pause' : 'Play',
+            icon: Icon(v.isPlaying ? Icons.pause : Icons.play_arrow),
+            onPressed: () => v.isPlaying ? player.pause() : player.play(),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _download() async {
     setState(() => _busy = true);
     final res = await fetchTaskAttachment(widget.api, '${widget.item['url']}');
@@ -438,13 +524,16 @@ class _FilePanelState extends State<_FilePanel> {
         ),
       ],
       child: Center(
-        child: Icon(
-          a['kind'] == 'video'
-              ? Icons.movie_outlined
-              : fileIcon(a['mime'] as String?),
-          size: 72,
-          color: scheme.onSurfaceVariant,
-        ),
+        child: a['kind'] == 'video'
+            ? KeyedSubtree(
+                key: const Key('gallery-video'),
+                child: _video(scheme),
+              )
+            : Icon(
+                fileIcon(a['mime'] as String?),
+                size: 72,
+                color: scheme.onSurfaceVariant,
+              ),
       ),
     );
   }

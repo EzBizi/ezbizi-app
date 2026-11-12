@@ -65,8 +65,10 @@ class TaskBoardGalleryController extends Controller
                 ->sortBy('name')->values()->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all();
         }
 
+        $viewer = $request->user();
+
         return response()->json([
-            'data' => $page->getCollection()->map(function (Attachment $a) use ($byUpdate) {
+            'data' => $page->getCollection()->map(function (Attachment $a) use ($byUpdate, $viewer) {
                 $u = $byUpdate->get($a->attachable_id);
                 $url = url("/api/v1/attachments/{$a->id}");
                 $mime = (string) $a->mime;
@@ -84,6 +86,11 @@ class TaskBoardGalleryController extends Controller
                     'url' => $url,
                     'inline_url' => $inline ? $url.'?inline=1' : null,
                     'thumbnail_url' => $inline && str_starts_with($mime, 'image/') ? $url.'?inline=1' : null,
+                    // Signed, 10 minutes, for a player that cannot send the token.
+                    'stream_url' => str_starts_with($mime, 'video/') ? AttachmentStreamController::url($a, $viewer) : null,
+                    'poster_url' => str_starts_with($mime, 'video/') && ! $a->encrypted
+                        && \Illuminate\Support\Facades\Storage::disk($a->disk ?? config('filesystems.default'))->exists(\App\Jobs\MakeVideoPoster::posterPath($a))
+                        ? AttachmentStreamController::url($a, $viewer, poster: true) : null,
                 ];
             })->values(),
             'next_cursor' => $page->nextCursor()?->encode(),

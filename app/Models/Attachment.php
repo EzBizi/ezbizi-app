@@ -288,6 +288,13 @@ class Attachment extends Model implements HoldsPersonalData
      */
     protected static function booted(): void
     {
+        // A Task Board video gets a poster frame for the Gallery (Jose 2026-11-12).
+        static::created(function (self $attachment) {
+            if (\App\Jobs\MakeVideoPoster::wants($attachment)) {
+                \App\Jobs\MakeVideoPoster::dispatch($attachment->getKey())->afterCommit();
+            }
+        });
+
         static::deleting(function (self $attachment) {
             $refusal = $attachment->deletionRefusal();
 
