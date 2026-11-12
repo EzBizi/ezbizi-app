@@ -1679,6 +1679,7 @@ class _SettingRow extends StatelessWidget {
         hint: sensitive ? 'Hidden' : null,
         enabled: editable,
         numeric: type == 'int' || type == 'decimal',
+        sms: setting['sms'] == true,
         onCommitted: (v) => onChanged(key, v),
       ),
     );
@@ -1702,9 +1703,13 @@ class _InlineField extends StatefulWidget {
     required this.numeric,
     required this.onCommitted,
     this.hint,
+    this.sms = false,
   });
 
   final String initial;
+
+  /// A text message: warn on characters outside GSM-7.
+  final bool sms;
 
   /// What to show when the box is empty because the value is not ours to see.
   final String? hint;
@@ -1727,6 +1732,7 @@ class _InlineFieldState extends State<_InlineField> {
   @override
   void initState() {
     super.initState();
+    if (widget.sms) _controller.addListener(() => setState(() {}));
     _focus.addListener(() {
       if (!_focus.hasFocus) _commit();
     });
@@ -1780,6 +1786,11 @@ class _InlineFieldState extends State<_InlineField> {
       decoration: InputDecoration(
         isDense: true,
         hintText: widget.hint,
+        errorMaxLines: 3,
+        errorText: widget.sms && nonGsm(_controller.text).isNotEmpty
+            ? 'Not plain text: ${nonGsm(_controller.text).join(' ')}. '
+                  'Each text then costs about 3 times as much.'
+            : null,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 10,
           vertical: 10,
@@ -2322,3 +2333,14 @@ class _DurationControlState extends State<_DurationControl> {
     );
   }
 }
+
+const _gsm =
+    '@£\$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?'
+    '¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà'
+    '^{}\\[~]|€';
+
+/// The characters in [text] a GSM-7 text cannot carry (curly quotes, dashes, emoji).
+List<String> nonGsm(String text) => {
+  for (final c in text.characters)
+    if (!_gsm.contains(c)) c,
+}.toList();

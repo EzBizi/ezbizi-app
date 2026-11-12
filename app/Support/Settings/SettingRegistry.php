@@ -1562,13 +1562,15 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'scheduling.overbooked_offer_message', label: 'Overbooked-day text',
                 type: SettingDefinition::TYPE_STRING,
-                default: 'Hi {name}, {company} is very busy on {booked}. Would {date}, {window} work for you instead? Reply YES and we will move your appointment.',
+                default: 'Hi {name}, this is {company}. Our technicians are fully booked on {booked}. Could we come {date}, {window} instead? Reply YES to move it, or NO to keep your current time.',
+                sms: true,
                 help: 'Sent from Re-Scheduling › Overbooking to customers on a day booked past what it takes. {name}, {company}, {booked} (their day), {date} and {window} (the day offered).',
             ),
             new SettingDefinition(
                 key: 'scheduling.offer_message', label: 'Earlier-opening text',
                 type: SettingDefinition::TYPE_STRING,
-                default: 'Hi {name}, {company} has an earlier opening on {date}, {window}. Reply YES if you would like it and we will move your appointment.',
+                default: "Hi {name}, good news from {company}: a spot opened up sooner, {date}, {window}. Want it? Reply YES and we'll move your appointment. No reply keeps your current date.",
+                sms: true,
                 help: 'Sent to customers booked later when an area has room. {name}, {company}, {date} and {window} are filled in.',
             ),
             $enum('scheduling.underfilled_min_empty', 'Tomorrow under-filled: list areas with at least', 2, [1, 2, 3, 5, 10],
