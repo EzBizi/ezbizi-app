@@ -13,6 +13,14 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0565', date: '12 Nov 2026', items: [
+      'Project Management: narrowing a column wraps its text and the row grows; a scrollbar reaches the columns past the window edge',
+      'Project Management: set the technician from the row or the job panel; Scheduled lists Submitted jobs with a deposit and a date',
+      'Phone: connecting an account sets up an Everyone ring group and a voicemail box; every line shows what it is missing (route, texting, 911 address)',
+      'Phone: each line gets its 911 address from its branch or company',
+      'Customer Experience: Google listings are filed under their branch automatically; a failed listings sync shows on the screen',
+      'Email: a reconnected inbox is checked within a minute',
+    ]),
     VersionRelease(version: '0.0.0564', date: '12 Nov 2026', items: [
       'Suggestions: a pasted screenshot attaches and sends on Windows',
       'Human Resources › Records: removed accounts no longer show in the lists, counts or export',
