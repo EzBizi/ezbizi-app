@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/phone_numbers.dart';
@@ -22,6 +23,7 @@ import '../../widgets/open_destination.dart';
 import 'choose_products_panel.dart';
 import 'integration_family_card.dart';
 import 'integration_provider_screen.dart';
+import 'integrations_health.dart';
 
 /// Settings › Integrations — every outside account this view is connected to,
 /// in one place.
@@ -157,7 +159,37 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     _load();
   }
 
+  /// GET /integrations/overview, or null when it failed: then there is no
+  /// note and no status lines, and the grid is exactly as before.
+  Map<String, dynamic>? _overview;
+
+  Future<void> _loadOverview() async {
+    final r = await widget.api.get('/integrations/overview');
+    if (!mounted) return;
+    final data = r.ok ? r.body['data'] : null;
+    setState(() => _overview = data is Map<String, dynamic> ? data : null);
+  }
+
+  /// A cause's fix: reconnect opens the app's pane, retry re-checks every
+  /// account in the cause, a link opens outside.
+  Future<void> _fix(HealthCause cause) async {
+    final action = cause.fix?['action'];
+    if (action == 'reconnect') {
+      setState(() => _open = cardProviderOf(cause.provider));
+    } else if (action == 'open_url' && cause.fix?['url'] is String) {
+      await launchUrl(Uri.parse(cause.fix!['url'] as String));
+    } else if (action == 'retry') {
+      for (final id in cause.ids) {
+        await widget.api.post('/integrations/$id/recheck', const {});
+      }
+      await _loadOverview();
+    } else {
+      setState(() => _open = cardProviderOf(cause.provider));
+    }
+  }
+
   Future<void> _load() async {
+    _loadOverview();
     // Data sources are filtered out of this endpoint by default, because
     // listing them once put twenty-two Google Ads accounts in the Social Media
     // composer as if a post could go to one. Integrations is the screen that
@@ -661,6 +693,13 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             ],
           ),
         ),
+        IntegrationsHealthNote(
+          api: widget.api,
+          me: widget.session.me,
+          overview: _overview,
+          onFix: _fix,
+          onChanged: _loadOverview,
+        ),
         for (final line in _problems)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -1027,7 +1066,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     return IntegrationFamilyCard(
       head: head,
       label: _label(head),
-      subtitle: rows.isEmpty ? (_purpose[head] ?? '') : _lastChecked(rows),
+      subtitle: rows.isEmpty
+          ? (_purpose[head] ?? '')
+          : (cardStatus(_overview, all)?.$1 ?? _lastChecked(rows)),
       phone: _phone,
       mayAddAccess: usable,
       onOpen: () => setState(() => _open = head),
@@ -1344,15 +1385,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               ),
               if (!none) ...[
                 const SizedBox(height: 2),
-                Text(
-                  _lastChecked(rows),
-                  key: ValueKey('last-checked:$provider'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                _statusOrChecked(theme, provider, [provider], rows),
               ],
               if (none) ...[const Spacer(), _offer(context, provider)],
             ],
@@ -1407,15 +1440,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                     ),
                   ),
                   if (!none)
-                    Text(
-                      _lastChecked(rows),
-                      key: ValueKey('last-checked:$provider'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+                    _statusOrChecked(theme, provider, [provider], rows),
                 ],
               ),
             ),
@@ -1448,6 +1473,32 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     }
 
     return _beneath(rows);
+  }
+
+  /// The card's status sentence from the overview; the "Last checked" line
+  /// when the overview has nothing for it (or failed).
+  Widget _statusOrChecked(
+    ThemeData theme,
+    String provider,
+    List<String> providers,
+    List<IntegrationConnection> rows,
+  ) {
+    final status = cardStatus(_overview, providers);
+    if (status != null) {
+      return IntegrationStatusLine(
+        status,
+        key: ValueKey('status-line:$provider'),
+      );
+    }
+    return Text(
+      _lastChecked(rows),
+      key: ValueKey('last-checked:$provider'),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
   }
 
   /// "Last checked …" from the daily token check: the latest verdict among
