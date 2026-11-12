@@ -3540,3 +3540,28 @@ names); LSA `is_test=0` 52,155 (already published); `payment_accounts` 0, no Str
 no Stripe. Scheduled Jobs: the desk looked for `jobs.scheduled_at`; the row's test is `jobs.scheduled_for` without a
 `workiz_jobs` row — ask that next time. Publishers: the desk counted 7 connected posting providers; in code
 `Publishers::for()` has had 10 since `947e6cc23` (GBP posts, 10-15), and none is new since 0551. No sentence moves.
+
+## 2026-11-11: 0.0.0559-0.0.0562 live, and `/privacy/` said a website visitor's IP is never stored
+
+Production `/download/windows.json` 0.0.0562 at `ec1229d74`. Before the edit all 10 live pages matched their WP
+post_content (block markers, `decoding="async"` and logo `src` aside). www `/ezbizi-api.json` byte-identical to the
+app's `/api/v1/openapi.json`.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261111/page8.html` on the websites box). `540403226` (in 0562): the
+  booking widget's optional SMS consent box, when ticked, keeps `sms_consent_at/_text/_site/_ip` on the lead.
+  "Enquiries from your websites" said the visitor's IP "is not stored as part of the enquiry" — false from 0562 for
+  anyone who ticks it. Now: "…with one exception: where a form offers a box agreeing to receive text messages and
+  the visitor ticks it, we keep their IP address with the time, the website and the exact words they agreed to, as
+  the record of that consent." True whether or not plugin 1.26.29 has rolled out (no rows needed for it to hold).
+  Generic "a form" on purpose: the booking widget itself stays unpublished as a capability. Live, with and without
+  a cache-buster, after `wp cache flush`.
+- Per-number call-flow override and ring-group member registration (`eb23f74c4`, `a1f13eeb1`, `13b602e73`): ring
+  groups stay on the do-not list; no page names them.
+- Automation WhatsApp to a person goes from the Reports number as a PDF report (`17c29b9ee`): the 11-10 Meta line
+  already names automation-rule reports sent as a message and a PDF. Unchanged.
+- Branded booking confirmation email (`a5dcd181e`), DTMF keypad, Email inbox changes, Reports audit, Project
+  Management rounds 3-4 (scheduling texts from the company's own line), Workiz tags, leads digest: no page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages, and over `/privacy/` after the edit: ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
+1, 0.0.0502.
