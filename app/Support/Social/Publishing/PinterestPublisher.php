@@ -3,6 +3,7 @@
 namespace App\Support\Social\Publishing;
 
 use App\Models\SocialConnection;
+use App\Support\Social\ConnectSetup;
 use App\Support\Social\PinterestOAuth;
 use App\Support\Social\SocialMediaKind;
 use App\Support\Social\SocialOAuthRefused;
@@ -18,10 +19,10 @@ use Symfony\Component\HttpFoundation\Response;
  * ── Why it goes looking for a board ─────────────────────────────
  *
  * Pinterest has no "post to my profile": every Pin lives on a board, and the
- * board id is required. EzBizi does not ask the person to pick one yet — the
- * composer has no board picker — so this takes the account's first board and
- * says which one it used. When the composer grows a picker, this method takes
- * the id instead of finding it, and nothing else changes.
+ * board id is required. Connect chooses one (the first board, by default) and
+ * the account's card offers the others (ConnectSetup, 2026-11-12); this posts
+ * to that board, and only falls back to the first one for a row connected
+ * before the choice existed.
  *
  * An account with no boards at all is refused with the reason, because the fix
  * is on Pinterest's side and nothing EzBizi does will help.
@@ -50,7 +51,7 @@ final class PinterestPublisher implements DeletesPosts, LinksToPosts, SocialPubl
         // it names one rather than searching.
         $board = $this->sandbox() !== null && (string) config('services.pinterest.sandbox_board') !== ''
             ? (string) config('services.pinterest.sandbox_board')
-            : $this->firstBoard($token);
+            : (ConnectSetup::chosen($connection, 'board') ?? $this->firstBoard($token));
 
         // Base64 in the body, not a URL. pull_by_url would mean publishing the
         // tenant's media to an unauthenticated public address first, which is a
@@ -82,6 +83,38 @@ final class PinterestPublisher implements DeletesPosts, LinksToPosts, SocialPubl
         return $kind === SocialMediaKind::Image
             ? null
             : SocialPublishFailed::notImplemented('Pinterest', $kind->label())->getMessage();
+    }
+
+    /**
+     * The account's boards, for Connect's board choice.
+     *
+     * @return list<array{id: string, name: string}>
+     */
+    public function boards(SocialConnection $connection): array
+    {
+        $boards = $this->call('get', '/boards', $this->token($connection), ['page_size' => 100]);
+
+        return array_values(array_map(
+            fn (array $b) => ['id' => (string) $b['id'], 'name' => (string) ($b['name'] ?? $b['id'])],
+            array_filter((array) ($boards['items'] ?? []), fn ($b) => is_array($b) && is_string($b['id'] ?? null) && $b['id'] !== ''),
+        ));
+    }
+
+    /**
+     * A board for an account that has none, so Connect leaves one chosen.
+     *
+     * @return array{id: string, name: string}
+     */
+    public function createBoard(SocialConnection $connection, string $name): array
+    {
+        $board = $this->call('post', '/boards', $this->token($connection), ['name' => $name, 'privacy' => 'PUBLIC']);
+        $id = $board['id'] ?? null;
+
+        if (! is_string($id) || $id === '') {
+            throw SocialPublishFailed::network('Pinterest', 'it did not create the board.');
+        }
+
+        return ['id' => $id, 'name' => (string) ($board['name'] ?? $name)];
     }
 
     private function firstBoard(string $token): string

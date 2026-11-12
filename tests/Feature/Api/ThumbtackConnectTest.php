@@ -38,6 +38,9 @@ class ThumbtackConnectTest extends TestCase
     {
         parent::setUp();
 
+        // Connect now calls the provider to check it (ConnectSetup): nothing unfaked may leave.
+        Http::preventStrayRequests();
+
         config([
             'services.thumbtack.client_id'     => 'a-client',
             'services.thumbtack.client_secret' => 'a-secret',

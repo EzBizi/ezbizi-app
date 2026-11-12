@@ -20,6 +20,14 @@ class GoogleOneSignInTest extends TestCase
     use GivesAuthenticatorCodes;
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Connect now calls the provider to check it (ConnectSetup): nothing unfaked may leave.
+        Http::preventStrayRequests();
+    }
+
     private function configure(): void
     {
         Bus::fake();

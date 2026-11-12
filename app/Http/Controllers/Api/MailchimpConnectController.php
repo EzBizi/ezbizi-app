@@ -8,6 +8,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Newsletter\MailchimpClient;
 use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Scoping\ViewScope;
+use App\Support\Social\ConnectSetup;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,7 @@ class MailchimpConnectController extends Controller
         private readonly MailchimpClient $mailchimp,
         private readonly SocialConnectionAccess $access,
         private readonly AuditLogger $audit,
+        private readonly ConnectSetup $setup,
     ) {}
 
     public function store(Request $request): JsonResponse
@@ -103,7 +105,14 @@ class MailchimpConnectController extends Controller
             'scope_type'   => $connection->scope_type,
         ], actor: $user);
 
+        // Which audience it sends to, chosen now (the first list, changeable
+        // on the card), and the check the card shows (Jose, 2026-11-12).
+        $this->setup->afterConnect([$connection]);
+        $connection->refresh();
+
         return response()->json(['data' => [
+            'connect_check'  => ConnectSetup::check($connection),
+            'choices'        => ConnectSetup::choices($connection),
             'id'             => $connection->getKey(),
             'provider'       => SocialProvider::Mailchimp->value,
             'provider_label' => SocialProvider::Mailchimp->label(),

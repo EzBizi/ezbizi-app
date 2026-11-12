@@ -18,6 +18,14 @@ class GoogleConnectionEmailTest extends TestCase
     use GivesAuthenticatorCodes;
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Connect now calls the provider to check it (ConnectSetup): nothing unfaked may leave.
+        Http::preventStrayRequests();
+    }
+
     private function idToken(string $email): string
     {
         return 'h.'.rtrim(strtr(base64_encode(json_encode(['email' => $email])), '+/', '-_'), '=').'.s';

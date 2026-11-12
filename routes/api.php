@@ -2552,6 +2552,8 @@ Route::prefix('v1')
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/business-location', [SocialConnectionsController::class, 'linkBusinessLocation']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
+        // Connect's choices: a Pinterest board, a Mailchimp audience (ConnectSetup).
+        Route::patch('social/connections/{connection}/choice', [SocialConnectionsController::class, 'choose']);
         Route::get('social/connections/{connection}/tiktok-creator', [SocialConnectionsController::class, 'tiktokCreator']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         // Comments on the Instagram account linked to a connected Page

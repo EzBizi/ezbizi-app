@@ -68,6 +68,48 @@ class MailchimpClient
     }
 
     /**
+     * An audience for an account that has none, so Connect leaves one chosen
+     * and a newsletter has somewhere to go. Mailchimp requires a postal
+     * contact and sender defaults; both come from the account's own profile.
+     *
+     * @return array{id: string, name: string, members: int}
+     */
+    public function createList(string $apiKey, string $name): array
+    {
+        $account = $this->call($apiKey, 'get', '/');
+        $contact = (array) ($account['contact'] ?? []);
+        $email = (string) ($account['email'] ?? '');
+
+        $list = $this->call($apiKey, 'post', '/lists', [
+            'name' => $name,
+            'contact' => [
+                'company' => (string) ($contact['company'] ?? $account['account_name'] ?? $name),
+                'address1' => (string) ($contact['addr1'] ?? ''),
+                'city' => (string) ($contact['city'] ?? ''),
+                'state' => (string) ($contact['state'] ?? ''),
+                'zip' => (string) ($contact['zip'] ?? ''),
+                'country' => (string) ($contact['country'] ?? 'US'),
+            ],
+            'permission_reminder' => 'You are receiving this because you are a customer of '
+                .(string) ($contact['company'] ?? $account['account_name'] ?? $name).'.',
+            'campaign_defaults' => [
+                'from_name' => (string) ($contact['company'] ?? $account['account_name'] ?? $name),
+                'from_email' => $email,
+                'subject' => '',
+                'language' => 'en',
+            ],
+            'email_type_option' => false,
+        ]);
+
+        $id = (string) ($list['id'] ?? '');
+        if ($id === '') {
+            throw new NewsletterSendFailed('Mailchimp did not create the audience.');
+        }
+
+        return ['id' => $id, 'name' => (string) ($list['name'] ?? $name), 'members' => 0];
+    }
+
+    /**
      * Put addresses into one of the account's audiences.
      *
      * Only new members receive a subscription status. Existing provider opt-outs

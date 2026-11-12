@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import 'clock_label.dart';
+import 'connection_setup.dart';
 import 'instagram_comments_panel.dart';
 import 'qr_codes_tab.dart';
 import 'tiktok_post_choices.dart';
@@ -781,6 +782,8 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   onConnect: () => _openConnect(context),
                 )
               : _AccountsPane(
+                  api: widget.api,
+                  canChange: widget.session.me?.can('marketing.edit') ?? false,
                   viewName: _viewName,
                   providers: _providers,
                   connections: _connections,
@@ -4155,6 +4158,8 @@ class _DayCell extends StatelessWidget {
 
 class _AccountsPane extends StatelessWidget {
   const _AccountsPane({
+    required this.api,
+    required this.canChange,
     required this.viewName,
     required this.providers,
     required this.connections,
@@ -4164,6 +4169,10 @@ class _AccountsPane extends StatelessWidget {
     this.error,
   });
 
+  final ApiClient api;
+
+  /// May change Connect's choices (a Pinterest board): marketing.edit.
+  final bool canChange;
   final String viewName;
   final List<_SocialNetwork> providers;
   final List<_SocialConnection> connections;
@@ -4179,14 +4188,27 @@ class _AccountsPane extends StatelessWidget {
     String subtitleOf(_SocialConnection page) => page.handle != null
         ? '${page.providerLabel} · @${page.handle}'
         : page.providerLabel;
-    Widget healthOf(_SocialConnection page) => Text(
-      _healthLine(page),
-      key: ValueKey('social-health-${page.id}'),
-      style: TextStyle(
-        color: page.broken
-            ? Theme.of(context).colorScheme.error
-            : Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
+    Widget healthOf(_SocialConnection page) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _healthLine(page),
+          key: ValueKey('social-health-${page.id}'),
+          style: TextStyle(
+            color: page.broken
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        // Connect's check and choices (ConnectSetup).
+        ConnectionSetup(
+          api: api,
+          connectionId: page.id,
+          check: page.connectCheck,
+          choices: page.choices,
+          canChange: canChange,
+        ),
+      ],
     );
     List<Widget> actionsOf(BuildContext context, _SocialConnection page) => [
       if (page.broken)
@@ -4387,6 +4409,8 @@ class _SocialConnection {
     this.status = 'connected',
     this.statusReason,
     this.lastCheckedAt,
+    this.connectCheck,
+    this.choices = const [],
     int? bodyLimit,
     this.refuses = const {},
   }) : _bodyLimit = bodyLimit;
@@ -4419,6 +4443,10 @@ class _SocialConnection {
   final String? statusReason;
   final DateTime? lastCheckedAt;
 
+  /// Connect's pass/fail check and its choices (ConnectionSetup).
+  final Map<String, dynamic>? connectCheck;
+  final List<dynamic> choices;
+
   bool get broken => status != 'connected';
 
   /// The network's character limit, as the server refuses at it; the local
@@ -4444,6 +4472,8 @@ class _SocialConnection {
       status: json['status'] as String? ?? 'connected',
       statusReason: json['status_reason'] as String?,
       lastCheckedAt: DateTime.tryParse('${json['last_checked_at'] ?? ''}'),
+      connectCheck: json['connect_check'] as Map<String, dynamic>?,
+      choices: json['choices'] as List<dynamic>? ?? const [],
       bodyLimit: (json['body_limit'] as num?)?.toInt(),
       refuses: {
         for (final e

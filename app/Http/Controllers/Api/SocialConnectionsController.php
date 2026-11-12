@@ -15,6 +15,7 @@ use App\Support\Integrations\DisconnectCode;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Social\Publishing\TikTokPublisher;
+use App\Support\Social\ConnectSetup;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialMediaKind;
@@ -27,6 +28,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response as Status;
 
 class SocialConnectionsController extends Controller
@@ -128,6 +130,12 @@ class SocialConnectionsController extends Controller
                 'last_reached_at' => $c->last_reached_at?->toIso8601String(),
                 // When ezbizi:check-connection-health last had a verdict (Jose, 2026-11-03).
                 'last_checked_at' => $c->last_checked_at?->toIso8601String(),
+                // Connect's pass/fail check for the card: can it post (the
+                // scopes were granted) and how long the token lasts; and the
+                // choices Connect made, with the options to change them
+                // (ConnectSetup, Jose 2026-11-12).
+                'connect_check' => ConnectSetup::check($c),
+                'choices' => ConnectSetup::choices($c),
 
                 /*
                  * Connected is not the same as postable: four of the nine
@@ -219,6 +227,42 @@ class SocialConnectionsController extends Controller
             'stitch_disabled' => (bool) ($info['stitch_disabled'] ?? false),
             'max_video_post_duration_sec' => isset($info['max_video_post_duration_sec']) ? (int) $info['max_video_post_duration_sec'] : null,
         ]]);
+    }
+
+    /**
+     * PATCH /api/v1/social/connections/{connection}/choice
+     *
+     * Change one of the choices Connect made (a Pinterest board, a Mailchimp
+     * audience) to another of its listed options. Same gate as renaming.
+     */
+    public function choose(Request $request, string $connection, ConnectSetup $setup): JsonResponse
+    {
+        $user = $request->user();
+        $row = SocialConnection::query()->find($connection);
+
+        abort_if($row === null || ! $this->access->inView($user, $row), Status::HTTP_NOT_FOUND);
+        abort_unless(
+            $user->hasPermission($row->providerEnum()?->connectPermission() ?? 'marketing.edit'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('change a connected account')->message(),
+        );
+
+        $input = $request->validate([
+            'key' => ['required', 'string', 'max:40'],
+            'value' => ['required', 'string', 'max:120'],
+        ]);
+
+        if (! $setup->choose($row, $input['key'], $input['value'])) {
+            throw ValidationException::withMessages(['value' => 'Choose one of the listed options.']);
+        }
+
+        $this->audit->log('social.choice_changed', $row, [
+            'provider' => $row->provider,
+            'key' => $input['key'],
+            'value' => $input['value'],
+        ]);
+
+        return response()->json(['data' => ['choices' => ConnectSetup::choices($row->fresh())]]);
     }
 
     public function rename(Request $request, string $connection): JsonResponse
