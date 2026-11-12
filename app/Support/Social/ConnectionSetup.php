@@ -128,7 +128,12 @@ final class ConnectionSetup
             ConnectionChecks::record($c, 'workiz_'.$line['key'],
                 $line['ok'] ? ConnectionChecks::PASS : ConnectionChecks::FAIL,
                 (string) $line['detail'],
-                ! $line['ok'] && $line['key'] === 'key' ? ['action' => 'reconnect', 'label' => 'Reconnect'] : null,
+                $line['ok'] ? null : match ($line['key']) {
+                    'key' => ['action' => 'reconnect', 'label' => 'Reconnect'],
+                    // A stale sync is re-read by the recheck (POST integrations/{id}/recheck).
+                    'sync' => ['action' => 'retry', 'label' => 'Check again'],
+                    default => null,
+                },
                 $line['label']);
         }
 

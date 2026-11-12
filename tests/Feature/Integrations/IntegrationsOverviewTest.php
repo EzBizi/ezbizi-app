@@ -208,6 +208,12 @@ class IntegrationsOverviewTest extends TestCase
         $row = $this->find($this->overview($t), $c->id);
         $this->assertSame('broken', $row['status']);
         $this->assertSame('EzBizi can write to Workiz', collect($row['checks'])->firstWhere('key', 'workiz_writes')['label']);
+
+        // Never watched yet: the sync step fails and offers the recheck.
+        $sync = collect($row['checks'])->firstWhere('key', 'workiz_sync');
+        $this->assertSame('Workiz sync', $sync['label']);
+        $this->assertSame('fail', $sync['state']);
+        $this->assertEquals(['action' => 'retry', 'label' => 'Check again'], $sync['fix']);
     }
 
     public function test_recheck_returns_the_updated_connection_and_is_throttled(): void
