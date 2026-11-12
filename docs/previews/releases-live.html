@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Releases live view</title>
+<style>
+:root{--bg:#0c1014;--paper:#151b20;--ink:#e8eef1;--muted:#93a1a8;--line:#26313a;--ok:#6fd49a;--okc:#173626;--cau:#f2c063;--cauc:#3a2d10;--bad:#ff8a80;--badc:#3d1614;--pri:#5fc8ea;--pric:#0f3443;--off:#93a1a8;--offc:#222b32;--term:#080b0e}
+.light{--bg:#f6f8f9;--paper:#fff;--ink:#14191c;--muted:#5d6970;--line:#dde3e6;--ok:#1e7a46;--okc:#e3f4ea;--cau:#9a6400;--cauc:#fdf1d8;--bad:#b3261e;--badc:#fbe4e2;--pri:#00739a;--pric:#dff1f8;--off:#6b767c;--offc:#eceff1;--term:#14191c}
+body{margin:0;font:14px/1.4 Inter,Segoe UI,Roboto,sans-serif;background:#e9edef;color:#14191c}
+.wrap{max-width:1240px;margin:0 auto;padding:24px 16px}h1{margin:0 0 4px}h2{margin:36px 0 6px;font-size:18px}.cap{color:#4c575d;margin:0 0 12px;max-width:860px}
+.rec{background:#00739a;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle}
+.trio{display:grid;grid-template-columns:2fr 1fr;gap:12px}@media(max-width:900px){.trio{grid-template-columns:1fr}}
+.frame{background:var(--bg);color:var(--ink);border-radius:10px;padding:16px;border:1px solid #cfd6da;overflow:hidden}.frame.phone{max-width:390px}
+.lbl{font-size:11px;color:#4c575d;margin:0 0 4px;font-weight:600}
+.muted{color:var(--muted)}.sm{font-size:12px}.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.chip{border-radius:99px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap}
+.ok{background:var(--okc);color:var(--ok)}.cau{background:var(--cauc);color:var(--cau)}.bad{background:var(--badc);color:var(--bad)}.pri{background:var(--pric);color:var(--pri)}.off{background:var(--offc);color:var(--off)}
+.big{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums}
+.term{background:var(--term);color:#b9c7ce;border-radius:8px;padding:10px 12px;font:12px/1.55 ui-monospace,Consolas,monospace;height:150px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+.term .g{color:#6fd49a}.term .y{color:#f2c063}.term .c{color:#5fc8ea}
+.bar{height:8px;border-radius:99px;background:var(--offc);overflow:hidden}.bar i{display:block;height:100%;background:var(--pri)}
+.cols{display:grid;grid-template-columns:1.4fr 1fr;gap:12px}.phone .cols{grid-template-columns:1fr}
+/* stage timeline */
+.st{display:grid;grid-template-columns:20px 1fr 70px;gap:8px;align-items:center;padding:5px 0}
+.st .b{height:6px;border-radius:99px;background:var(--offc);position:relative;overflow:hidden}.st .b i{position:absolute;inset:0 auto 0 0;background:var(--ok)}.st.run .b i{background:var(--pri)}
+.d{width:14px;height:14px;border-radius:50%;border:2px solid var(--muted)}.d.ok{border:0;background:var(--ok)}.d.run{border-color:var(--pri);border-top-color:transparent;animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.ships li{margin:4px 0}.ships{margin:6px 0 0;padding-left:18px}
+/* pipeline */
+.pipe{display:flex;gap:6px;overflow:auto;padding-bottom:4px}.pipe>div{flex:1 0 96px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}
+.pipe>div.done{border-top:3px solid var(--ok)}.pipe>div.run{border-top:3px solid var(--pri)}.pipe>div.todo{border-top:3px solid var(--line);color:var(--muted)}
+.tabs{display:flex;gap:4px;margin:12px 0 8px}.tabs span{padding:4px 12px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid var(--line)}.tabs .on{background:var(--ink);color:var(--paper)}
+.rec2 div{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+.phone .hidep{display:none}
+</style></head><body><div class="wrap">
+<h1>Development › Releases · live view</h1>
+<p class="cap">Three ways to show a running release: time left (remaining stages at their median past duration), the live gate log, and what ships in it (notes plus merged commits). All three add a <b>Superseded</b> state for runs a later release overtook, which fixes the stuck "No word for 3 hours" row. Figures are from v0.0.0564. Releases also becomes the default tab when Development opens (Jose).</p>
+
+<template id="a">
+<div class="card"><div class="row"><b style="font-size:18px">v0.0.0564</b><span class="muted sm">3b4c413</span><span class="chip pri">In progress</span><span style="margin-left:auto" class="muted sm hidep">started 13:58 · 25m 29s elapsed</span></div>
+<div class="row" style="margin:12px 0 4px;align-items:baseline"><span class="big">~41 min left</span><span class="muted">done around 3:05 PM</span></div>
+<div class="bar"><i style="width:56%"></i></div>
+<div class="cols" style="margin-top:14px"><div>
+ <div class="st"><span class="d ok"></span><span>Precheck</span><span class="muted sm">2m · ok</span></div>
+ <div class="st"><span class="d ok"></span><span>Client tests</span><span class="muted sm">9m · ok</span></div>
+ <div class="st run"><span class="d run"></span><span>Server tests <span class="muted sm">4636 / 6833</span><div class="b"><i style="width:67%"></i></div></span><span class="muted sm">~7m left</span></div>
+ <div class="st"><span class="d"></span><span class="muted">Deploy web</span><span class="muted sm">~4m</span></div>
+ <div class="st"><span class="d"></span><span class="muted">Windows · macOS · Android · iOS</span><span class="muted sm">~30m</span></div>
+ <div class="term" style="margin-top:10px" data-log></div>
+</div><div>
+ <b>What ships</b> <span class="muted sm">· 6 changes</span>
+ <ul class="ships sm"><li>Leads: reply-window tag on Facebook leads</li><li>Project Management: coloured totals with Overpaid</li><li>Email: reconnected inbox checked on next sweep</li><li>Suggestions: pasted pictures send on Windows</li></ul>
+ <div class="muted sm" style="margin-top:8px">8 merged commits since v0.0.0562 ▸</div>
+</div></div></div>
+<div class="rec2" style="margin-top:14px"><b>Recent</b>
+<div><span class="chip bad">Failed</span>v0.0.0563 · 653bac5 <span class="muted sm hidep">86% · 58m · server tests</span></div>
+<div><span class="chip ok">Finished</span>v0.0.0562 · ec1229d <span class="muted sm hidep">1h 32m</span></div>
+<div><span class="chip off">Superseded</span>v0.0.0560 · cb69d7d <span class="muted sm hidep">stopped at 60%, overtaken by 3edfd3a</span></div></div>
+</template>
+
+<template id="b">
+<div class="row"><b style="font-size:18px">v0.0.0564</b><span class="chip pri">In progress</span><span style="margin-left:auto"><b>~41 min left</b> <span class="muted sm">· ETA 3:05 PM</span></span></div>
+<div class="pipe" style="margin-top:12px">
+ <div class="done"><b>Precheck</b><br><span class="muted">2m</span></div><div class="done"><b>Client tests</b><br><span class="muted">9m</span></div>
+ <div class="run"><b>Server tests</b><br>67% · ~7m<div class="bar" style="margin-top:4px;height:4px"><i style="width:67%"></i></div></div>
+ <div class="todo"><b>Deploy web</b><br>~4m</div><div class="todo"><b>Windows</b><br>~12m</div><div class="todo"><b>macOS</b><br>~10m</div><div class="todo"><b>Android</b><br>~6m</div><div class="todo"><b>iOS</b><br>~9m</div></div>
+<div class="tabs"><span class="on">Live log</span><span>What ships · 6</span><span>Commits · 8</span></div>
+<div class="term" data-log></div>
+</template>
+
+<template id="c">
+<div class="card"><div class="row"><b>v0.0.0564</b><span class="chip pri">Server tests · 67%</span><span style="margin-left:auto"><b>~41 min</b> <span class="muted sm">left</span></span></div>
+<div class="bar" style="margin:10px 0 6px"><i style="width:56%"></i></div>
+<div class="muted sm" style="font-family:ui-monospace,Consolas,monospace" data-one></div>
+<details style="margin-top:10px"><summary class="sm"><b>What ships</b> · 6 changes</summary><ul class="ships sm"><li>Leads: reply-window tag on Facebook leads</li><li>Project Management: coloured totals with Overpaid</li><li>Email: reconnected inbox checked on next sweep</li></ul></details>
+<details><summary class="sm"><b>Full log</b></summary><div class="term" data-log></div></details></div>
+</template>
+
+<h2>A · Countdown, stages and what ships <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Large "time left" figure with a finish time. Every stage shows how long it took (or its median when still to come), with the live log under it and the release notes beside it. On phone it stacks.</p><div data-o="a"></div>
+<h2>B · CI pipeline with tabs</h2>
+<p class="cap">GitHub Actions / Vercel style: one box per stage in a row, then tabs for the log, notes and commits. Shows every native build separately.</p><div data-o="b"></div>
+<h2>C · Compact with one live line</h2>
+<p class="cap">Today's card plus time left and the latest log line ticking under the bar. Notes and full log fold away.</p><div data-o="c"></div>
+</div>
+<script>
+document.querySelectorAll('[data-o]').forEach(h=>{const t=document.getElementById(h.dataset.o).innerHTML;
+h.innerHTML=`<div class="trio"><div><p class="lbl">Desktop · dark</p><div class="frame">${t}</div><p class="lbl" style="margin-top:10px">Desktop · light</p><div class="frame light">${t}</div></div><div><p class="lbl">Phone · dark</p><div class="frame phone">${t}</div></div></div>`});
+let n=4636;const lines=['<span class="c">▸ deploy</span> precheck ok','<span class="g">✓</span> flutter test: 4652 passed','<span class="g">✓</span> flutter build web','<span class="c">▸ phpunit</span> on the box'];
+function tick(){n=Math.min(6833,n+Math.floor(Math.random()*40+10));const p=Math.round(n/6833*100);
+const l=`${'.'.repeat(40)} <span class="y">${n} / 6833 (${p}%)</span>`;lines.push(l);if(lines.length>9)lines.shift();
+document.querySelectorAll('[data-log]').forEach(e=>e.innerHTML=lines.map(x=>'<div>'+x+'</div>').join(''));
+document.querySelectorAll('[data-one]').forEach(e=>e.innerHTML='phpunit '+n+' / 6833 ('+p+'%)');}
+tick();setInterval(tick,900);
+</script></body></html>

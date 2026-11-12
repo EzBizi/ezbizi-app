@@ -19,6 +19,14 @@ class BusinessProfileConnectSyncTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Connect now calls the provider to check it (ConnectSetup): nothing unfaked may leave.
+        Http::preventStrayRequests();
+    }
+
     public function test_connecting_a_profile_queues_its_sync_and_the_screen_says_syncing(): void
     {
         Bus::fake();

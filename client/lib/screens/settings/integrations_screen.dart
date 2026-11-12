@@ -22,6 +22,7 @@ import '../../widgets/open_destination.dart';
 import 'choose_products_panel.dart';
 import 'integration_family_card.dart';
 import 'integration_provider_screen.dart';
+import 'integrations_overview.dart';
 
 /// Settings › Integrations — every outside account this view is connected to,
 /// in one place.
@@ -92,6 +93,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   bool _loading = true;
   String? _error;
 
+  /// `GET /integrations/overview` (options A and C, Jose 2026-11-12), or
+  /// null when it did not answer: then the older sections draw as before.
+  Map<String, dynamic>? _overview;
+
   /// Google Workspace domains in this view (Jose, 2026-10-15: "On
   /// Integrations we are also missing Google Workspace connections").
   ///
@@ -109,6 +114,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// The sending server in effect here, or null when this person cannot
   /// read it. An empty map is "none set up".
   Map<String, dynamic>? _sending;
+
+  /// The server saved at this scope (`connected_here`), with its last check.
+  Map<String, dynamic>? _sendingHere;
 
   /// Why the server would not answer for the sending server here, when it
   /// would not. The card is still drawn, carrying this instead of Connect:
@@ -186,10 +194,15 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       'scope_id': me?.scope.id ?? me?.organization.id ?? '',
     });
 
+    final overview = await widget.api.get('/integrations/overview');
+
     if (!mounted) return;
 
     setState(() {
       _loading = false;
+      _overview = overview.ok && overview.body['data'] is Map<String, dynamic>
+          ? overview.body['data'] as Map<String, dynamic>
+          : null;
 
       _numbers = numbers != null && numbers.ok
           ? [
@@ -204,7 +217,13 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                   label: n['label'] as String?,
                   scopeType: n['scope_type'] as String? ?? '',
                   scopeId: n['scope_id'] as String? ?? '',
-                  connected: true,
+                  // NumbersController's own health: does a call reach anybody.
+                  connected: _phoneProblems(n).isEmpty,
+                  statusReason: _phoneProblems(n).isEmpty
+                      ? null
+                      : '${_phoneProblems(n).length} '
+                            '${_phoneProblems(n).length == 1 ? 'problem' : 'problems'}: '
+                            '${_phoneProblems(n).join(' ')}',
                 ),
             ]
           : null;
@@ -214,6 +233,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       _sending = server == null
           ? null
           : (server['in_effect'] as Map<String, dynamic>?) ?? const {};
+      _sendingHere = server?['connected_here'] as Map<String, dynamic>?;
       // A 4xx is the server answering "not here", with its reason; a 5xx or
       // no answer at all says nothing about this scope, so it offers nothing.
       _sendingRefusal =
@@ -325,18 +345,33 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       final key = c.provider == 'workiz_web' ? 'workiz' : c.provider;
       byProvider.putIfAbsent(key, () => []).add(c);
     }
-    final host = _sending?['host'] as String?;
-    if (host != null && host.isNotEmpty) {
+    // The server saved at this scope, as its last check found it: verified
+    // is connected, failed is broken with the reason, never on our say-so.
+    final here = _sendingHere ?? _sending;
+    final host = here?['host'] as String?;
+    if (here != null && host != null && host.isNotEmpty) {
+      final state = here['state'] as String?;
+      final failed = state == 'failed';
       byProvider['sending_server'] = [
         IntegrationConnection(
           id: 'sending_server',
           provider: 'sending_server',
           providerLabel: 'Sending server',
           displayName: host,
-          label: _sending?['from_address'] as String?,
+          label: here['from_address'] as String?,
           scopeType: '',
           scopeId: '',
-          connected: true,
+          connected: !failed,
+          statusReason: failed
+              ? (here['state_reason'] as String? ??
+                    'The mail server refused the last send.')
+              : null,
+          detail: state == 'verified' || failed
+              ? null
+              : 'Not checked yet: send a test from its panel.',
+          lastCheckedAt: DateTime.tryParse(
+            here['last_checked_at'] as String? ?? '',
+          ),
         ),
       ];
     }
@@ -506,6 +541,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     ('social', 'Social'),
     ('leads', 'Advertising and listings'),
     ('reporting', 'Reporting'),
+    ('tasks', 'Tasks'),
   ];
 
   String? _category;
@@ -635,7 +671,18 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             ],
           ),
         ),
-        for (final line in _problems)
+        if (_overview != null)
+          IntegrationsOverview(
+            key: ValueKey(_overview.hashCode),
+            api: widget.api,
+            data: _overview!,
+            phone: _phone,
+            onChanged: _load,
+            onOpenApp: (p) =>
+                setState(() => _open = p == 'phone' ? 'phone_numbers' : p),
+          ),
+        if (_overview != null) const SizedBox(height: 16),
+        for (final line in _overview == null ? _problems : const <String>[])
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
@@ -646,13 +693,21 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               ),
             ),
           ),
+        // The overview draws what is connected; the sections stay for what is
+        // not, and for when the overview did not answer.
+        if (_overview == null) ...[
+          section(
+            'attention',
+            'Needs attention',
+            StateColour.of(context).caution,
+          ),
+          section('connected', 'Connected', null),
+        ],
         section(
-          'attention',
-          'Needs attention',
-          StateColour.of(context).caution,
+          'available',
+          _overview == null ? 'Available' : 'Add a service',
+          null,
         ),
-        section('connected', 'Connected', null),
-        section('available', 'Available', null),
         if (shown.isEmpty) DashboardNote('No service matches in $_viewName.'),
       ],
     );
@@ -1170,6 +1225,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'ringcentral': 'Calls from RingCentral, for reports.',
     'whatsapp': 'Your own WhatsApp number, to message customers.',
     'telegram': 'Your staff Tech Assistant bot on Telegram.',
+    'monday': 'Keeps the boards brought over from Monday in step.',
     'google_workspace': 'Shared inboxes from your Google Workspace domain.',
     'phone_numbers': 'Calls and texts on your EzBizi numbers.',
     'sending_server':
@@ -1491,4 +1547,16 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       ),
     );
   }
+}
+
+/// Phone's own health for one line (NumbersController `health`): the plain
+/// sentences of what is wrong; empty when it is ok. A row without `health`
+/// (an older server) is read as ok rather than invented broken.
+List<String> _phoneProblems(Map<String, dynamic> n) {
+  final health = n['health'] as Map<String, dynamic>?;
+  if (health == null || health['ok'] == true) return const [];
+  final problems = ((health['problems'] as List<dynamic>?) ?? const [])
+      .whereType<String>()
+      .toList();
+  return problems.isEmpty ? const ['This line is not working.'] : problems;
 }

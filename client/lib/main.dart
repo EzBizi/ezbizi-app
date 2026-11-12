@@ -1951,6 +1951,7 @@ class _HomeShellState extends State<HomeShell> {
                         // theme and the page is the other.
                         EzBiziTheme.navigationOverride(me.theme),
                         builder: (context) => NavigationSidebar(
+                          api: widget.api,
                           expanded: expanded,
                           width: me.navigationWidth,
                           destinations: destinations,
@@ -2285,7 +2286,7 @@ class _HomeShellState extends State<HomeShell> {
                           textStyle: Theme.of(context).textTheme.labelMedium,
                         ),
                       ),
-                      const BuildStamp(),
+                      BuildStamp(api: widget.api),
                     ],
                   ),
                 ),
@@ -2624,6 +2625,7 @@ Widget _maybeThemed(ThemeData? theme, {required WidgetBuilder builder}) =>
 /// reading the code reliably catches.
 class NavigationSidebar extends StatefulWidget {
   const NavigationSidebar({
+    this.api,
     super.key,
     required this.expanded,
     required this.width,
@@ -2640,6 +2642,9 @@ class NavigationSidebar extends StatefulWidget {
     this.onArranged,
     this.divideAfter = const {},
   });
+
+  /// For the version stamp's release bar; null where no client is built.
+  final ApiClient? api;
 
   final bool expanded;
 
@@ -3096,10 +3101,10 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                               ).textTheme.labelMedium,
                             ),
                           ),
-                        const BuildStamp(),
+                        BuildStamp(api: widget.api),
                       ],
                     )
-                  : const Center(child: BuildStamp(compact: true)),
+                  : Center(child: BuildStamp(compact: true, api: widget.api)),
             ),
             const SizedBox(height: 12),
           ],

@@ -36,6 +36,14 @@ class NewsletterApiTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Connect now calls the provider to check it (ConnectSetup): nothing unfaked may leave.
+        Http::preventStrayRequests();
+    }
+
     private const ENDPOINT = '/api/v1/newsletters';
 
     // ── §4: five permissions, and `send` is not `edit` ──────────

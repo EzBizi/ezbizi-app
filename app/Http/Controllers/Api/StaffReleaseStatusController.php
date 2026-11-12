@@ -37,11 +37,31 @@ class StaffReleaseStatusController extends Controller
     public function index(): array
     {
         $releases = $this->releases($this->lines());
+        $current = $releases[0] ?? null;
+        if ($current !== null) {
+            $current['eta_seconds'] = $this->eta($current, $this->medians($releases));
+            $current['log'] = $this->log($current['sha']);
+        }
 
         return [
-            'current' => $releases[0] ?? null,
+            'current' => $current,
             'recent' => array_slice($releases, 1, 5),
         ];
+    }
+
+    /**
+     * The release on its way, for everybody signed in: the bar in What's been
+     * built (Jose 11-12, "so people know when an update is coming"). Only the
+     * version and how far along -- no stages, messages or SHAs, which are the
+     * staff screen's. Null when nothing is running.
+     */
+    public function upcoming(): array
+    {
+        $current = $this->releases($this->lines())[0] ?? null;
+
+        return ['data' => ($current['state'] ?? null) === 'running'
+            ? ['version' => $current['version'], 'percent' => $current['percent']]
+            : null];
     }
 
     /** @return list<array<string, mixed>> the file's last 2000 parsable lines, oldest first */
@@ -75,7 +95,115 @@ class StaffReleaseStatusController extends Controller
         $releases = array_map(fn (array $lines) => $this->release($lines), array_values($groups));
         usort($releases, fn ($a, $b) => strcmp($b['updated_at'], $a['updated_at']));
 
+        // A run that never reported its end, overtaken by a later release that
+        // finished, is not still pending: it was superseded (v0.0.0560 cb69d7d
+        // sat on "No word for 3 hours" for a day).
+        foreach ($releases as $i => $release) {
+            if (! in_array($release['state'], ['running', 'stalled'], true)) {
+                continue;
+            }
+            foreach (array_slice($releases, 0, $i) as $later) {
+                if ($later['state'] === 'done') {
+                    $releases[$i]['state'] = 'superseded';
+                    break;
+                }
+            }
+        }
+
         return $releases;
+    }
+
+    /** @return array<string, int> each stage's median duration, in seconds, over every release that finished it */
+    private function medians(array $releases): array
+    {
+        $seen = [];
+        foreach ($releases as $release) {
+            foreach ($release['stages'] as $stage) {
+                if ($stage['state'] === 'done' && $stage['seconds'] !== null) {
+                    $seen[$stage['key']][] = $stage['seconds'];
+                }
+            }
+        }
+
+        $medians = [];
+        foreach ($seen as $key => $values) {
+            sort($values);
+            $n = count($values);
+            $medians[$key] = (int) ($n % 2 ? $values[intdiv($n, 2)] : ($values[$n / 2 - 1] + $values[$n / 2]) / 2);
+        }
+
+        return $medians;
+    }
+
+    /**
+     * Seconds left: what the running stage has left (by its percent, else by
+     * its time so far against its median) plus every stage still to come at
+     * its median. Null when the release is not running or nothing is known.
+     * Also stamps each stage's median_seconds.
+     */
+    private function eta(array &$release, array $medians): ?int
+    {
+        foreach ($release['stages'] as $i => $stage) {
+            $release['stages'][$i]['median_seconds'] = $medians[$stage['key']] ?? null;
+        }
+        if ($release['state'] !== 'running') {
+            return null;
+        }
+
+        $left = 0;
+        $known = false;
+        foreach ($release['stages'] as $stage) {
+            $median = $medians[$stage['key']] ?? null;
+            if ($median === null || $stage['state'] === 'done') {
+                continue;
+            }
+            $known = true;
+            if ($stage['state'] === 'running') {
+                $left += $stage['percent'] > 0
+                    ? (int) round($median * (100 - $stage['percent']) / 100)
+                    : max(0, $median - ($stage['seconds'] ?? 0));
+            } else {
+                $left += $median;
+            }
+        }
+
+        return $known ? $left : null;
+    }
+
+    /**
+     * The last 40 lines of this commit's server gate log on the box (deploy.sh
+     * writes {sha}-{time}-{pid}.log there). Anything that looks like a
+     * credential is masked before it leaves.
+     *
+     * @return list<string>
+     */
+    private function log(string $sha): array
+    {
+        $dir = (string) config('ezbizi.gate_runs_dir');
+        if ($dir === '' || ! preg_match('/^[0-9a-f]{7,40}$/', $sha)) {
+            return [];
+        }
+        $files = glob(rtrim($dir, '/').'/'.$sha.'-*.log') ?: [];
+        usort($files, fn ($a, $b) => filemtime($b) <=> filemtime($a));
+        if ($files === [] || ! is_readable($files[0])) {
+            return [];
+        }
+
+        $handle = @fopen($files[0], 'r');
+        if ($handle === false) {
+            return [];
+        }
+        fseek($handle, max(0, filesize($files[0]) - 8000));
+        $tail = (string) stream_get_contents($handle);
+        fclose($handle);
+
+        $lines = array_slice(preg_split('/\r?\n/', rtrim($tail)) ?: [], -40);
+
+        return array_values(array_map(fn (string $line) => (string) preg_replace(
+            '/((?:token|secret|password|passwd|api[_-]?key|authorization)\w*["\']?\s*[:=]\s*["\']?)[^\s"\',]+/i',
+            '$1[hidden]',
+            mb_substr($line, 0, 300),
+        ), $lines));
     }
 
     private function release(array $lines): array
@@ -122,11 +250,30 @@ class StaffReleaseStatusController extends Controller
         $stalled = ! $finished
             && CarbonImmutable::parse($last['at'])->lt(now()->subMinutes(self::STALLED_AFTER_MINUTES));
 
+        // When each stage started (the line before its first one: the stage
+        // before it ending, or the run starting) and when it finished.
+        $startAt = [];
+        $doneAt = [];
+        $prevAt = null;
+        foreach ($lines as $line) {
+            if ($line['stage'] !== 'release') {
+                $startAt[$line['stage']] ??= $prevAt ?? $line['at'];
+                if (($line['state'] ?? null) === 'done') {
+                    $doneAt[$line['stage']] = $line['at'];
+                }
+            }
+            $prevAt = $line['at'];
+        }
+
         $stages = [];
         $marked = false;
         foreach ($keys as $key) {
             $line = $latest[$key] ?? null;
             $state = $line['state'] ?? 'pending';
+            $seconds = isset($startAt[$key]) && ($state === 'done' || $state === 'running')
+                ? max(0, (int) CarbonImmutable::parse($startAt[$key])->diffInSeconds(
+                    $state === 'done' ? CarbonImmutable::parse($doneAt[$key] ?? $line['at']) : now(), true))
+                : null;
             $stages[] = [
                 'key' => $key,
                 'label' => self::STAGES[$key][0],
@@ -134,6 +281,7 @@ class StaffReleaseStatusController extends Controller
                 'percent' => $state === 'done' ? 100 : max(0, min(100, (int) ($line['percent'] ?? 0))),
                 'message' => $line['message'] ?? null,
                 'at' => $line['at'] ?? null,
+                'seconds' => $seconds,
             ];
             $marked = $marked || $state === 'failed';
         }

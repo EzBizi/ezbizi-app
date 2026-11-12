@@ -119,6 +119,11 @@ enum SocialProvider: string
     // Review requests and published reviews, read with a shop id and password (A1 Leads takeover #43).
     case Ekomi = 'ekomi';
 
+    // The organization's monday.com account, read so the boards imported from
+    // Monday stay in step with the Task Board until Monday is retired (Jose,
+    // 2026-11-12). Read only. Connected through the "EzBizi" Monday app.
+    case Monday = 'monday';
+
     public function label(): string
     {
         return match ($this) {
@@ -143,6 +148,7 @@ enum SocialProvider: string
             self::WhatsApp => 'WhatsApp',
             self::Telegram => 'Telegram',
             self::Ekomi => 'eKomi',
+            self::Monday => 'Monday',
         };
     }
 
@@ -199,6 +205,7 @@ enum SocialProvider: string
             self::WhatsApp => 'whatsapp',
             self::Telegram => 'telegram',
             self::Ekomi => 'ekomi',
+            self::Monday => 'monday',
         };
     }
 
@@ -272,7 +279,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral, self::Ekomi];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral, self::Ekomi, self::Monday];
     }
 
     /**
@@ -440,6 +447,9 @@ enum SocialProvider: string
 
             self::Ekomi => 'reviews.edit',
 
+            // The Task Board is what it feeds; whoever may make boards may bring Monday's.
+            self::Monday => 'tasks.create_boards',
+
             default => 'marketing.edit',
         };
     }
@@ -487,6 +497,7 @@ enum SocialProvider: string
             self::WhatsApp => 'connect a WhatsApp number',
             self::Telegram => 'connect a Telegram bot',
             self::Ekomi => 'connect an eKomi account',
+            self::Monday => 'connect Monday',
             default => 'connect a social account',
         };
     }
@@ -631,6 +642,12 @@ enum SocialProvider: string
             // The nine publishing networks. "Page" is their word and Social
             // Media Management is genuinely where they are used.
             self::Ekomi => sprintf('%s is connected to EzBizi. Its reviews arrive in Reviews.', $name),
+
+            self::Monday => sprintf(
+                '%s is connected to EzBizi. You can close this window — the boards brought over from '
+                .'Monday now take its changes on the Task Board.',
+                $name,
+            ),
 
             default => $many
                 ? sprintf(

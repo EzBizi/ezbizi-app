@@ -66,6 +66,7 @@ use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InstagramCommentsController;
 use App\Http\Controllers\Api\IntegrationDependentsController;
+use App\Http\Controllers\Api\IntegrationsOverviewController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
 use App\Http\Controllers\Api\InventoryIssuesController;
 use App\Http\Controllers\Api\InventoryItemsController;
@@ -107,6 +108,7 @@ use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MetaMediaController;
 use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\MondayWebhookController;
 use App\Http\Controllers\Api\Monitoring\CameraBridgeController;
 use App\Http\Controllers\Api\Monitoring\CameraRelayController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
@@ -219,6 +221,7 @@ use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
 use App\Http\Controllers\Api\TaskBoardsController;
+use App\Http\Controllers\Api\TaskBoardGalleryController;
 use App\Http\Controllers\Api\TaskBoardSettingsController;
 use App\Http\Controllers\Api\TaskBoardViewsController;
 use App\Http\Controllers\Api\TasksController;
@@ -524,6 +527,13 @@ Route::get('v1/whatsapp/media/{phone}/{media}', WhatsAppMediaController::class)
     ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
     ->name('whatsapp.media');
 
+// A Task Board video (or its poster) for a player that cannot send a token:
+// 10-minute signed link naming its user; board visibility re-checked each time.
+Route::get('v1/attachments/{attachment}/stream', [\App\Http\Controllers\Api\AttachmentStreamController::class, 'show'])
+    ->middleware(['signed', 'throttle:600,1'])
+    ->whereUuid('attachment')
+    ->name('attachments.stream');
+
 Route::get('v1/meta/media/{connection}/{mid}/{index}', MetaMediaController::class)
     ->middleware(['signed', 'throttle:120,1'])
     ->where(['connection' => '[0-9a-f-]+', 'mid' => '[A-Za-z0-9_-]+', 'index' => '[0-9]+'])
@@ -640,6 +650,12 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
     ->middleware('throttle:30,1')
     ->where('network', SocialProvider::oauthRoutePattern())
     ->name('social.callback');
+
+// Monday says an item changed. Unauthenticated by necessity: the JWT Monday
+// signs with the app's Signing Secret is what is checked (MondayWebhookController).
+Route::post('v1/integrations/monday/webhook', MondayWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('integrations.monday.webhook');
 
 /*
 |--------------------------------------------------------------------------
@@ -1027,6 +1043,7 @@ Route::prefix('v1')
         Route::post('task-boards/{taskBoard}/unarchive', [TaskBoardsController::class, 'unarchive']);
         Route::post('task-boards/{id}/restore', [TaskBoardsController::class, 'restore']);
         Route::get('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'members']);
+        Route::get('task-boards/{taskBoard}/attachments', [TaskBoardGalleryController::class, 'index']);
         Route::post('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'storeMember']);
         Route::patch('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'updateMember']);
         Route::delete('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'destroyMember']);
@@ -2553,6 +2570,10 @@ Route::prefix('v1')
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/business-location', [SocialConnectionsController::class, 'linkBusinessLocation']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
+        // Connect's choices: a Pinterest board, a Mailchimp audience (ConnectSetup).
+        Route::patch('social/connections/{connection}/choice', [SocialConnectionsController::class, 'choose']);
+        Route::patch('social/connections/{connection}/whatsapp-purpose', [SocialConnectionsController::class, 'whatsappPurpose']);
+        Route::get('social/connections/{connection}/whatsapp-health', [SocialConnectionsController::class, 'whatsappHealth']);
         Route::get('social/connections/{connection}/tiktok-creator', [SocialConnectionsController::class, 'tiktokCreator']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         // Comments on the Instagram account linked to a connected Page
@@ -2564,6 +2585,9 @@ Route::prefix('v1')
         // What stops working if a connection is disconnected (the disconnect panel).
         Route::get('integrations/{kind}/{id}/dependents', [IntegrationDependentsController::class, 'show'])
             ->where('kind', 'social|phone|workspace');
+        // Settings > Integrations in one payload: summary, apps, per-check results (no live provider calls).
+        Route::get('integrations/overview', [IntegrationsOverviewController::class, 'show']);
+        Route::post('integrations/{id}/recheck', [IntegrationsOverviewController::class, 'recheck']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
             ->where('network', SocialProvider::oauthRoutePattern());
@@ -2979,6 +3003,7 @@ Route::prefix('v1')
         Route::middleware('permission:email.settings.view')->group(function () {
             Route::post('email/mailboxes', [MailboxesController::class, 'store']);
             Route::post('email/mailboxes/workspace-batch', [MailboxesController::class, 'storeWorkspaceBatch']);
+            Route::get('email/mailboxes/suggest-scope', [MailboxesController::class, 'suggestScope']);
 
             // The new-email notification, edited from the inbox's card. The
             // automation rule stays the source of truth: MailboxesController.
@@ -3541,6 +3566,9 @@ Route::prefix('v1')
 
         // "Did you mean" for a composer with no lead behind it (Phone's texts).
         Route::post('proofread', ProofreadController::class)->middleware('throttle:60,1');
+
+        // The release on its way, for the bar in What's been built (Jose 11-12).
+        Route::get('release/upcoming', [\App\Http\Controllers\Api\StaffReleaseStatusController::class, 'upcoming']);
 
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)

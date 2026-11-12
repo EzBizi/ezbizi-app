@@ -685,7 +685,8 @@ final class RingCentralCallLog
     private function token(): string
     {
         $config = $this->credentialsOrFail();
-        $key = 'ringcentral-token:'.sha1((string) $config['client_id']);
+        // Per sign-in, not per app: two accounts on one app each have their own JWT.
+        $key = 'ringcentral-token:'.sha1($config['client_id'].'|'.$config['jwt']);
 
         if (is_string($cached = Cache::get($key))) {
             return $cached;

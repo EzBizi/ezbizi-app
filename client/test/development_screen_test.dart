@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/development_screen.dart';
+import 'package:ezbizi_client/screens/staff/releases_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -35,6 +36,8 @@ void main() {
     expect(find.text('Enter your authenticator code'), findsNothing);
     expect(find.text('Health'), findsOneWidget);
     expect(find.text('Continue'), findsNothing);
+    // Development opens on Releases (Jose 11-12: "have it be the default tab").
+    expect(find.byType(ReleasesScreen), findsOneWidget);
   });
 }
 

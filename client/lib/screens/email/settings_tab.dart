@@ -1492,6 +1492,7 @@ class _MailboxCard extends StatelessWidget {
     final theme = Theme.of(context);
     final state = stateOf(mailbox);
     final reached = lastReachedSentence(mailbox, formats: me.display);
+    final health = healthOf(mailbox);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1517,6 +1518,22 @@ class _MailboxCard extends StatelessWidget {
             if (mailbox.named) ...[
               const SizedBox(height: 2),
               Text(mailbox.displayName, style: theme.textTheme.bodySmall),
+            ],
+            if (health != null) ...[
+              const SizedBox(height: 8),
+              for (final (key, line) in [
+                ('receive', health.receive),
+                ('send', health.send),
+              ])
+                Text(
+                  line,
+                  key: ValueKey('email-health-$key'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: line.contains('✗')
+                        ? theme.colorScheme.error
+                        : null,
+                  ),
+                ),
             ],
             const SizedBox(height: 12),
             Wrap(

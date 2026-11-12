@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\SubscriptionLapsedException;
+use App\Jobs\CheckNewConnections;
 use App\Jobs\OnboardWhatsAppNumber;
 use App\Jobs\RegisterThumbtackWebhook;
 use App\Jobs\SyncBusinessProfileConnection;
@@ -14,8 +15,10 @@ use App\Models\WhatsAppNumber;
 use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Leads\ConnectBranch;
 use App\Support\Scoping\ViewScope;
 use App\Support\Social\BusinessProfileOAuth;
+use App\Support\Social\ConnectSetup;
 use App\Support\Social\FacebookAdsOAuth;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\GoogleAdsOAuth;
@@ -29,9 +32,11 @@ use App\Support\Social\SocialOAuthSignIns;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\YouTubeOAuth;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Foundation\Console\QueuedCommand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
 
@@ -47,6 +52,7 @@ class SocialAuthController extends Controller
         private readonly SocialConnectionAccess $access,
         private readonly TenantContext $tenant,
         private readonly AuditLogger $audit,
+        private readonly ConnectSetup $setup,
     ) {}
 
     public function start(Request $request, string $network): JsonResponse
@@ -318,7 +324,7 @@ class SocialAuthController extends Controller
         }
 
         try {
-            return DB::transaction(function () use ($user, $signIn, $provider, $grant, $accounts) {
+            $saved = DB::transaction(function () use ($user, $signIn, $provider, $grant, $accounts) {
                 $saved = [];
 
                 foreach ($accounts as $account) {
@@ -395,6 +401,9 @@ class SocialAuthController extends Controller
                     $connection->connect($tokens);
                     $connection->save();
 
+                    // A lead account's branch, when the answer is plain (ConnectBranch).
+                    ConnectBranch::apply($connection);
+
                     /*
                      * Thumbtack has to be told where to send enquiries, and
                      * connecting does not tell it.
@@ -422,6 +431,21 @@ class SocialAuthController extends Controller
                         SyncBusinessProfileConnection::start($connection);
                     }
 
+                    // Facebook Ads reads its campaigns now, not at the 05:30 run (Jose, 2026-11-12).
+                    if ($provider === SocialProvider::FacebookAds) {
+                        Artisan::queue('ezbizi:meta-ads-sync', ['--connection' => (string) $connection->getKey()]);
+                    }
+
+                    // Monday: who connected is who the sync acts as, and the
+                    // boards imported from Monday are read now (MondaySync).
+                    if ($provider === SocialProvider::Monday) {
+                        $setup = (array) ($connection->setup ?? []);
+                        $setup['monday']['as'] = (string) $user->getKey();
+                        $connection->forceFill(['setup' => $setup])->save();
+                        QueuedCommand::dispatch(['ezbizi:monday-sync', ['--connection' => (string) $connection->getKey(), '--full' => true]])
+                            ->afterCommit();
+                    }
+
                     // Meta the same way: a Page or Instagram account sends its
                     // messages only once it has subscribed the app.
                     if (in_array($provider, [SocialProvider::FacebookPage, SocialProvider::InstagramProfessional], true)) {
@@ -445,6 +469,10 @@ class SocialAuthController extends Controller
                     $saved[] = $connection;
                 }
 
+                // The card's verdict now, not at tomorrow's health run (Jose, 2026-11-12).
+                CheckNewConnections::dispatch(array_map(fn (SocialConnection $c) => (string) $c->getKey(), $saved))
+                    ->afterCommit()->delay(now()->addMinutes(2));
+
                 return $saved;
             });
         } catch (SubscriptionLapsedException) {
@@ -453,6 +481,15 @@ class SocialAuthController extends Controller
                 .'renewed.',
             );
         }
+
+        // The whole process, not just the token (Jose, 2026-11-12): default
+        // choices, then the pass/fail check the card shows. After the commit,
+        // so a slow provider holds no transaction open. Every row here came
+        // from one grant, so one provider call answers for all of them: a
+        // Google consent can bring forty-six.
+        $this->setup->afterConnect($saved);
+
+        return $saved;
     }
 
     private function driverOrAbort(string $network): SocialOAuth

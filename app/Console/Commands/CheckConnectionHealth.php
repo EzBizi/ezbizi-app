@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Social\ConnectionChecks;
 use App\Support\Social\Liveness\ConnectionLiveness;
 use App\Support\Social\Liveness\Liveness;
 use App\Support\Social\SocialProvider;
@@ -63,15 +64,16 @@ final class CheckConnectionHealth extends Command
                 $result = $tenant->run($organization, function () use ($c, $liveness, $provider, &$thumbtackSeen) {
                     if ($provider === SocialProvider::Thumbtack->value && isset($thumbtackSeen[$c->organization_id])) {
                         $c->refresh();
+                        // The shared renewal answers for it; its own webhook is read back here.
                         $result = $c->status === SocialConnection::STATUS_BROKEN
                             ? Liveness::refused((string) $c->status_reason)
-                            : $thumbtackSeen[$c->organization_id];
+                            : ConnectionLiveness::thumbtackHeard($c, $thumbtackSeen[$c->organization_id]);
                     } else {
                         $result = $liveness->check($c);
                         $thumbtackSeen[$c->organization_id] = $result;
                     }
 
-                    $this->record($c, $result);
+                    self::record($c, $result);
 
                     return $result;
                 });
@@ -85,7 +87,8 @@ final class CheckConnectionHealth extends Command
         return self::SUCCESS;
     }
 
-    private function record(SocialConnection $c, Liveness $result): void
+    /** Also used by POST integrations/{id}/recheck and CheckNewConnections. */
+    public static function record(SocialConnection $c, Liveness $result): void
     {
         $c->refresh();   // a renewal may have just rotated its credentials
 
@@ -98,5 +101,12 @@ final class CheckConnectionHealth extends Command
             ])->save(),
             default => null,
         };
+
+        // Per check, for GET integrations/overview.
+        ConnectionChecks::record($c, 'sign_in', match ($result->verdict) {
+            Liveness::ALIVE => ConnectionChecks::PASS,
+            Liveness::REFUSED => ConnectionChecks::FAIL,
+            default => ConnectionChecks::UNKNOWN,
+        }, $result->reason);
     }
 }

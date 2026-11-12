@@ -33,7 +33,8 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
   final _code = TextEditingController();
   final _codeFormKey = GlobalKey<FormState>();
 
-  int _index = 0;
+  /// Null until a tab is picked: Development opens on Releases (Jose 11-12).
+  int? _index;
 
   /// The tabs opened at least once, kept alive behind the one on screen.
   final Set<int> _opened = {0};
@@ -203,7 +204,8 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
         ('Staff', Icons.badge_outlined, StaffAccountsScreen(staff: _staff)),
     ];
 
-    final index = _index.clamp(0, tabs.length - 1);
+    final index = (_index ?? tabs.indexWhere((t) => t.$1 == 'Releases'))
+        .clamp(0, tabs.length - 1);
     _opened.add(index);
 
     return Column(

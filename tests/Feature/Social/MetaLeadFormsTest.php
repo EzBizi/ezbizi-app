@@ -74,6 +74,24 @@ class MetaLeadFormsTest extends TestCase
         Http::assertSent(fn ($request) => $request['subscribed_fields'] === 'messages,messaging_postbacks');
     }
 
+    public function test_a_refused_lead_ad_subscription_is_said_on_the_card(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->page($t);
+        // Placed, as a connect places it (ConnectBranch), so the card says only the lead-ad line.
+        $this->inTenant($t['org'], fn () => $page->forceFill(['leads_franchise_id' => $t['franchise']->id])->save());
+
+        Http::fake(fn ($request) => str_contains((string) $request['subscribed_fields'], 'leadgen')
+            ? Http::response(['error' => ['message' => 'leads_retrieval not granted']], 403)
+            : Http::response(['success' => true]));
+
+        (new SubscribeMetaMessages($page->getKey()))->handle();
+
+        $card = collect($this->signedInAs($t['admin'])->getJson('/api/v1/social/connections')->assertOk()->json('data'))
+            ->firstWhere('id', $page->getKey());
+        $this->assertSame('Lead ads: off — leads_retrieval not granted', $card['detail']);
+    }
+
     /** A-1, 2026-10-29: a lead ad that opens Messenger made two leads per person. */
     public function test_a_form_then_the_chat_it_opens_are_one_lead(): void
     {

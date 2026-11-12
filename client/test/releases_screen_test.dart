@@ -97,6 +97,66 @@ void main() {
     expect(calls, 2);
   });
 
+  testWidgets('time left, stage times, the gate log, what ships, Superseded', (
+    tester,
+  ) async {
+    await _pump(tester, (request) async {
+      if (request.url.path.endsWith('/staff/me')) return _json({'data': _me});
+      return _json({
+        'current': {
+          ..._release(
+            '0.0.0564',
+            state: 'running',
+            percent: 56,
+            stages: [
+              {
+                ..._stage('precheck', 'Precheck', 'done', 100, '✓ precheck'),
+                'seconds': 120,
+                'median_seconds': 100,
+              },
+              {
+                ..._stage('server_tests', 'Server tests', 'running', 67, 'x'),
+                'seconds': 1500,
+                'median_seconds': 3000,
+              },
+              {
+                ..._stage('web', 'Deploy web', 'pending', 0, null),
+                'seconds': null,
+                'median_seconds': 240,
+              },
+            ],
+          ),
+          'eta_seconds': 41 * 60,
+          'log': ['...... 4636 / 6833 ( 67%)'],
+        },
+        'recent': [
+          _release('0.0.0560', state: 'superseded', percent: 60, stages: []),
+        ],
+      });
+    });
+
+    expect(
+      find.byKey(const ValueKey('release-eta')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('~41 min left · done around'), findsOneWidget);
+    expect(find.text('2m 0s'), findsOneWidget); // precheck took
+    expect(find.text('25m 0s of ~50m 0s'), findsOneWidget); // running
+    expect(find.text('~4m 0s'), findsOneWidget); // web, to come
+    expect(find.textContaining('4636 / 6833'), findsOneWidget);
+    // v0.0.0564's notes come from VersionHistory.
+    expect(find.byKey(const ValueKey('release-ships')), findsOneWidget);
+    expect(find.textContaining('Superseded'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  test('etaLine reads minutes, hours and the finish time', () {
+    final now = DateTime(2026, 11, 12, 14, 24);
+    expect(etaLine(41 * 60, now), '~41 min left · done around 3:05 PM');
+    expect(etaLine(72 * 60, now), '~1 h 12 min left · done around 3:36 PM');
+    expect(etaLine(30, now), 'Under a minute left · done around 2:24 PM');
+  });
+
   testWidgets('says so when no release has reported', (tester) async {
     await _pump(tester, (request) async {
       if (request.url.path.endsWith('/staff/me')) return _json({'data': _me});

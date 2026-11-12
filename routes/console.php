@@ -194,6 +194,10 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  * what changed, about eight calls a branch, well under the key's burst limit.
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
+// Monday → Task Board for the boards imported from Monday (desk, 11-12): the changed items every ten
+// minutes, every item nightly (a reply does not always move its item's updated_at). Read only.
+Schedule::command('ezbizi:monday-sync')->everyTenMinutes()->withoutOverlapping(20);
+Schedule::command('ezbizi:monday-sync --full')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
 Schedule::command('ezbizi:sync-workiz-records --type=payment --days=35 --pages=200')->dailyAt('03:20')->withoutOverlapping(60);
@@ -326,6 +330,8 @@ Schedule::command('ezbizi:renew-meta-login-tokens')->dailyAt('04:20')->timezone(
 // It inserts outbox rows and dispatches nothing itself, for the reason set out
 // above the sweep it feeds.
 Schedule::command('ezbizi:watch-mailboxes')->everyMinute()->withoutOverlapping(5);
+// Receive and Send on the inbox card, pass or fail (Jose 11-12).
+Schedule::command('ezbizi:check-mailboxes')->everyMinute()->withoutOverlapping(5)->runInBackground();
 Schedule::command('ezbizi:wake-snoozed-mail')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:warm-inbox-headers')->everyMinute()->withoutOverlapping(5)->runInBackground();
 
@@ -496,3 +502,29 @@ Schedule::command('ezbizi:leads-follow-up-due')->everyFiveMinutes()->withoutOver
 
 // Yesterday's leads in numbers, for a morning WhatsApp or email rule.
 Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlapping(10);
+
+/*
+ * TWO LANES (2026-11-12). The three slots run a minute's commands in
+ * sequence under TimeoutStartSec=300. At 17:20 and 17:25 UTC the slow
+ * Workiz and lead pulls (sync-leads ~90 s, workiz-web-sales ~120 s,
+ * workiz-web-estimate-links hung > 3 min, project-workiz ~100 s) lined up in
+ * slot 0 and systemd killed it mid-project-workiz, stranding its lock: no
+ * Workiz job became an EzBizi job for an hour.
+ *
+ * With ezbizi.scheduler.slow_lane on (EZBIZI_SLOW_LANE=on), the SLOW commands run only in deploy/ezbizi-scheduler-slow.service
+ * (EZBIZI_SCHEDULE_LANE=slow, its own every-minute timer, a 30-minute
+ * timeout); the three fast slots run everything else and are never held
+ * behind them. withoutOverlapping still guards each command.
+ */
+foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event) {
+    $slow = (bool) preg_match(
+        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz)(\s|\'|$)/',
+        (string) $event->command,
+    );
+    $event->when(function () use ($slow) {
+        $inSlowLane = getenv('EZBIZI_SCHEDULE_LANE') === 'slow';
+
+        // Flag off: the fast slots run everything and the slow lane nothing.
+        return config('ezbizi.scheduler.slow_lane') ? $slow === $inSlowLane : ! $inSlowLane;
+    });
+}

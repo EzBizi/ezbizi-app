@@ -114,6 +114,8 @@ final class TikTokOAuth implements SocialOAuth
         return new SocialOAuthGrant(
             accessToken: $access,
             refreshToken: $refresh,
+            // What the person left granted; the connect-time check reads it.
+            scopes: SocialOAuthGrant::parseScopes($response->json('scope') ?? $response->json('data.scope')),
             expiresIn: is_numeric($response->json('expires_in') ?? $response->json('data.expires_in'))
                 ? (int) ($response->json('expires_in') ?? $response->json('data.expires_in'))
                 : null,

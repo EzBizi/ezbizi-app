@@ -29,6 +29,12 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
     public const SCOPE_COMPANY      = 'company';
     public const SCOPE_FRANCHISE    = 'franchise';
 
+    /**
+     * SQL for an account's branch: the one a person or ConnectBranch set, else
+     * the branch it was connected from (Desk audit, 2026-11-12).
+     */
+    public const BRANCH_SQL = "COALESCE(social_connections.leads_franchise_id, CASE WHEN social_connections.scope_type = 'franchise' THEN social_connections.scope_id END)";
+
     public const STATUS_CONNECTED = 'connected';
     public const STATUS_BROKEN    = 'broken';
     public const STATUS_REVOKED   = 'revoked';
@@ -56,6 +62,9 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
             'credentials'     => 'encrypted:array',
             'last_reached_at' => 'datetime',
             'last_checked_at' => 'datetime',
+            // Connect's choices and its first check (ConnectSetup).
+            'setup'           => 'array',
+            'checks'          => 'array',
             'is_manager'     => 'boolean',
         ];
     }
@@ -122,6 +131,8 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
             'status'          => self::STATUS_CONNECTED,
             'status_reason'   => null,
             'last_reached_at' => now(),
+            // A fresh grant starts with no verdicts (ConnectionChecks).
+            'checks'          => null,
         ]);
     }
 
