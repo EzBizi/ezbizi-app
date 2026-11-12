@@ -208,6 +208,7 @@ class _JobsReportState extends State<JobsReport> {
               GridColumn('Service area'),
               GridColumn('Source', main: true),
               GridColumn('Number dialed', main: true),
+              GridColumn('Called at'),
               GridColumn('Job type'),
               GridColumn('Status'),
               GridColumn('Total', numeric: true, main: true),
@@ -216,7 +217,15 @@ class _JobsReportState extends State<JobsReport> {
             rows: [
               for (final r in _rows)
                 [
-                  _text(r['ezbizi_number']),
+                  r['ezbizi_number'] == null && r['ezbizi_syncing'] == true
+                      ? const GridCell(
+                          'Syncing',
+                          muted: true,
+                          tooltip:
+                              'Just in from Workiz; EzBizi makes its copy '
+                              'within a minute or two.',
+                        )
+                      : _text(r['ezbizi_number']),
                   GridCell(
                     '${r['workiz_number'] ?? r['workiz_id']}',
                     tooltip: 'Workiz job ${r['workiz_id']}',
@@ -232,6 +241,9 @@ class _JobsReportState extends State<JobsReport> {
                   r['dialed'] == null
                       ? const GridCell.none()
                       : GridCell(_line(r['dialed'], r['dialed_name'])),
+                  r['called_at'] == null
+                      ? const GridCell.none()
+                      : GridCell(_when(r['called_at'])),
                   _text(r['job_type']),
                   _text(r['status']),
                   GridCell(
@@ -261,7 +273,8 @@ class _JobsReportState extends State<JobsReport> {
                       'shows only the calls Workiz tied to a job.'
                 : 'Number dialed is the line the client called: the call '
                       'Workiz tied to the job, else the client\'s last call '
-                      'in the week before it was booked.',
+                      'in the week before it was booked. Called at is when '
+                      'that call started.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

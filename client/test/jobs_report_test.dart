@@ -13,6 +13,7 @@ import 'package:http/testing.dart';
 void main() {
   Map<String, dynamic> row(String workiz, {String? ezbizi, String? dialed}) => {
     'ezbizi_number': ezbizi,
+    'ezbizi_syncing': ezbizi == null,
     'workiz_id': workiz,
     'workiz_number': '6000$workiz',
     'created_at': '2026-11-10 09:05:00',
@@ -23,6 +24,7 @@ void main() {
     'source': 'LS Ads',
     'dialed': dialed,
     'dialed_name': dialed == null ? null : 'Ace Fireplace · Akron',
+    'called_at': dialed == null ? null : '2026-11-10 08:55:00',
     'job_type': 'Chimney Sweep',
     'status': 'Submitted',
     'total': 300.5,
@@ -97,6 +99,10 @@ void main() {
     expect(asked.last['offset'], '1');
     expect(find.text('6000J2'), findsOneWidget);
     expect(find.text('6000J1'), findsOneWidget);
+    // Called at beside Number dialed (Jose 11-12); a job just in from Workiz says Syncing.
+    expect(find.text('Called at'), findsOneWidget);
+    expect(find.text('2026-11-10 08:55'), findsOneWidget);
+    expect(find.text('Syncing'), findsOneWidget);
     expect(find.byKey(const ValueKey('jobs-more')), findsNothing);
   });
 }

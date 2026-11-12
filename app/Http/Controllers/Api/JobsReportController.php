@@ -21,13 +21,17 @@ use Throwable;
  * workiz id and ezbizi id"): Workiz's jobs as every report reads them, with
  * the EzBizi job each one is. The number dialed is the line the client called:
  * the Workiz call tied to the job, else the client's last call in before the
- * job was created. Filters, count and total cover the whole range; the rows
- * come a page at a time.
+ * job was created; Called at is when that call started (Jose, 11-12: "a column
+ * of when the number was dialed"), on the same wall clock as Created. Filters,
+ * count and total cover the whole range; the rows come a page at a time.
  */
 class JobsReportController extends Controller
 {
     /** How far before a job its client's call can be (a call Friday, booked Monday). */
     private const CALL_DAYS = 7;
+
+    /** A Workiz job with no EzBizi copy this soon after it came in is being copied: the sweep runs every minute. */
+    private const SYNC_MINUTES = 60;
 
     public function show(Request $request, RingCentralCallLog $calls): JsonResponse
     {
@@ -56,7 +60,7 @@ class JobsReportController extends Controller
             ->orderByDesc('j.booked_at')
             ->get([
                 'e.id as ezbizi_id', 'e.number as ezbizi_number', 'j.remote_id as workiz_id', 'j.serial_id as workiz_number', 'j.v2_id',
-                'j.booked_at as created_at', 'f.name as branch', 'f.timezone', 'j.service_area', 'j.job_type', 'j.status', 'j.created_by',
+                'j.booked_at as created_at', 'j.created_at as mirrored_at', 'f.name as branch', 'f.timezone', 'j.service_area', 'j.job_type', 'j.status', 'j.created_by',
                 DB::raw("coalesce(nullif(trim(json_unquote(json_extract(ec.payload, '$.company_name'))), ''), j.job_source) as source"),
                 DB::raw("trim(concat_ws(' ', json_unquote(json_extract(j.payload, '$.FirstName')), json_unquote(json_extract(j.payload, '$.LastName')))) as client"),
                 DB::raw("json_unquote(json_extract(j.payload, '$.Phone')) as phone"),
@@ -65,9 +69,12 @@ class JobsReportController extends Controller
 
         [$dialed, $read] = $this->dialed($jobs, $q['from'], $calls);
         $names = $read ? $calls->numberNames() : [];
+        $syncing = now()->subMinutes(self::SYNC_MINUTES)->toDateTimeString();
         $rows = $jobs->map(fn (object $j) => [
             'ezbizi_id' => $j->ezbizi_id,
             'ezbizi_number' => $j->ezbizi_number,
+            // Just in from Workiz, its EzBizi job not made yet: "Syncing", not a dash that reads as never.
+            'ezbizi_syncing' => $j->ezbizi_id === null && (string) $j->mirrored_at >= $syncing,
             'workiz_id' => $j->workiz_id,
             'workiz_number' => $j->workiz_number === null ? null : (string) $j->workiz_number,
             'created_at' => $j->created_at,
@@ -76,7 +83,8 @@ class JobsReportController extends Controller
             'branch' => $j->branch,
             'service_area' => trim((string) $j->service_area) ?: null,
             'source' => trim((string) $j->source) ?: null,
-            'dialed' => $number = $dialed[$j->workiz_id] ?? null,
+            'dialed' => $number = $dialed[$j->workiz_id][0] ?? null,
+            'called_at' => $dialed[$j->workiz_id][1] ?? null,
             'dialed_name' => $number === null ? null : ($names[$number] ?? null),
             'job_type' => $j->job_type,
             'status' => $j->status,
@@ -110,17 +118,19 @@ class JobsReportController extends Controller
     }
 
     /**
-     * Workiz job id => the number the client dialed, and whether the call log could be read.
+     * Workiz job id => [the number the client dialed, when (the job's wall clock)], and whether the call log could be read.
      *
      * @param  Collection<int, object>  $jobs
-     * @return array{0: array<string, string>, 1: bool}
+     * @return array{0: array<string, array{0: string, 1: ?string}>, 1: bool}
      */
     private function dialed(Collection $jobs, string $from, RingCentralCallLog $calls): array
     {
         // A Workiz call tied to the job says it outright.
+        // called_at is the Workiz account's wall clock, as the job's own is. Oldest call wins, as it always has.
         $dialed = DB::table('workiz_calls')->where('direction', 'inbound')->whereNotNull('to_number')
             ->whereIn('job_remote_id', $jobs->pluck('v2_id')->filter()->all())->orderByDesc('called_at')
-            ->pluck('to_number', 'job_remote_id')->all();
+            ->get(['job_remote_id', 'to_number', 'called_at'])
+            ->mapWithKeys(fn (object $c) => [$c->job_remote_id => [$c->to_number, $c->called_at]])->all();
         $byJob = [];
         foreach ($jobs as $j) {
             if ($j->v2_id !== null && isset($dialed[$j->v2_id])) {
@@ -145,12 +155,13 @@ class JobsReportController extends Controller
     }
 
     /**
-     * Workiz job id => the line its client last called before the job was booked (Workiz's
-     * wall clock, in the branch's zone), within CALL_DAYS. $log newest first, as forPeriod gives it.
+     * Workiz job id => [the line its client last called before the job was booked (Workiz's
+     * wall clock, in the branch's zone), within CALL_DAYS, and when, on that same clock].
+     * $log newest first, as forPeriod gives it.
      *
      * @param  list<array<string, mixed>>  $log
      * @param  Collection<int, object>  $jobs
-     * @return array<string, string>
+     * @return array<string, array{0: string, 1: string}>
      */
     public static function lastCallIn(array $log, Collection $jobs, string $zone): array
     {
@@ -166,10 +177,10 @@ class JobsReportController extends Controller
             if ($phone === null || ! isset($byPhone[$phone])) {
                 continue;
             }
-            $booked = CarbonImmutable::parse((string) $j->created_at, $j->timezone ?: $zone)->getTimestamp();
+            $booked = CarbonImmutable::parse((string) $j->created_at, $tz = $j->timezone ?: $zone)->getTimestamp();
             foreach ($byPhone[$phone] as [$at, $number]) {
                 if ($at <= $booked + 300 && $at >= $booked - self::CALL_DAYS * 86400) {
-                    $byJob[$j->workiz_id] = $number;
+                    $byJob[$j->workiz_id] = [$number, CarbonImmutable::createFromTimestamp($at, $tz)->format('Y-m-d H:i:s')];
                     break;
                 }
             }

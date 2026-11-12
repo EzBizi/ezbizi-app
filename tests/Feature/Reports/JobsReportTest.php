@@ -32,7 +32,7 @@ class JobsReportTest extends TestCase
             ] + ($ref === 'J01' ? ['job_id' => $ezbizi->id] : []));
             $job('J01', 'LS Ads', 'Cleveland', '2026-11-10 09:00:00', 300);
             $job('J02', 'GMB', 'Cleveland', '2026-11-10 10:00:00', 200);
-            $job('J03', 'LS Ads', 'DFW', '2026-11-09 10:00:00', 100);
+            $job('J03', 'LS Ads', 'DFW', '2026-11-09 10:00:00', 100)->forceFill(['created_at' => now()->subHours(2)])->save();
             $job('J04', 'LS Ads', 'DFW', '2026-11-01 10:00:00', 999);
             DB::table('workiz_calls')->insert(['id' => (string) Str::uuid(), 'organization_id' => $f->organization_id, 'franchise_id' => $f->id,
                 'remote_id' => 'CAL-1', 'direction' => 'inbound', 'from_number' => '+12125550101', 'to_number' => '+12165550000',
@@ -46,7 +46,13 @@ class JobsReportTest extends TestCase
         $this->assertSame(['6000'.'01', 'LS Ads', 'Cleveland', '+12165550000', 'Ann Lee', 'Dov'],
             [$first['workiz_number'], $first['source'], $first['service_area'], $first['dialed'], $first['client'], $first['created_by']]);
         $this->assertNotNull($first['ezbizi_number']);
+        // Called at: the tied call's start, on Workiz's wall clock like Created (Jose 11-12).
+        $this->assertSame('2026-11-10 08:55:00', $first['called_at']);
+        $this->assertNull(collect($all->json('data.rows'))->firstWhere('workiz_id', 'J02')['called_at']);
         $this->assertNull(collect($all->json('data.rows'))->firstWhere('workiz_id', 'J02')['ezbizi_number']);
+        // No EzBizi job yet: syncing while just in from Workiz; an old one is not, so a stuck copy shows as a dash.
+        $this->assertSame([false, true, false], collect(['J01', 'J02', 'J03'])
+            ->map(fn (string $id) => collect($all->json('data.rows'))->firstWhere('workiz_id', $id)['ezbizi_syncing'])->all());
         $this->assertSame(['LS Ads' => 2, 'GMB' => 1], collect($all->json('data.sources'))->pluck('count', 'value')->all());
 
         $get('&source=LS%20Ads')->assertJsonPath('data.count', 2)->assertJsonPath('data.total', 400);
@@ -74,7 +80,8 @@ class JobsReportTest extends TestCase
             ['from' => '+13125550100', 'to_number' => '+16145550000', 'started_at' => '2026-10-20T13:50:00Z'],
         ];
 
-        $this->assertSame(['J1' => '+13305550000'],
+        // When: 13:50 UTC is 8:50 AM in New York, the job's own clock.
+        $this->assertSame(['J1' => ['+13305550000', '2026-11-10 08:50:00']],
             JobsReportController::lastCallIn($log, collect([$job('J1', '(212) 555-0199'), $job('J2', '(312) 555-0100'), $job('J3', '')]), 'UTC'));
     }
 }
