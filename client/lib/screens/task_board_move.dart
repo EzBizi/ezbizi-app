@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import 'task_board_sensitive.dart';
 
 typedef _Json = Map<String, dynamic>;
 
@@ -260,7 +261,7 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
     final theme = Theme.of(context);
     return SidePanel(
       title: 'Linked tasks',
-      subtitle: '${widget.task['title']}',
+      subtitle: taskTitle(widget.task),
       actions: [
         FilledButton(
           key: const Key('task-link-go'),
@@ -283,7 +284,7 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
             Row(
               key: ValueKey('task-link-${l['id']}'),
               children: [
-                Expanded(child: Text('${l['title']}  ·  ${l['board_name']}')),
+                Expanded(child: Text('${taskTitle(l)}  ·  ${l['board_name']}')),
                 IconButton(
                   key: ValueKey('task-unlink-${l['id']}'),
                   tooltip: 'Unlink',
@@ -310,7 +311,7 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
             value: _pick,
             options: [
               for (final t in _tasks)
-                SearchOption(value: t['id'] as String, label: '${t['title']}'),
+                SearchOption(value: t['id'] as String, label: taskTitle(t)),
             ],
             onChanged: _tasks.isEmpty ? null : (v) => setState(() => _pick = v),
           ),

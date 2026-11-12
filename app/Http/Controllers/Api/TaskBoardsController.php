@@ -171,7 +171,10 @@ class TaskBoardsController extends Controller
         $this->authorize('view', $taskBoard);
         $user = $request->user();
 
+        // An API key (MCP) or the AI is never shown a sensitive task, not even its title.
+        $hidden = \App\Support\Tasks\SensitiveTasks::machineReader($user);
         $tasks = $taskBoard->tasks()
+            ->when($hidden, fn ($q) => $q->where('sensitive', false))
             ->with(TasksController::WITH)
             ->withCount(TasksController::counts())
             ->orderBy('position')
@@ -183,6 +186,7 @@ class TaskBoardsController extends Controller
         $sources = $this->boards->rolledUpBoards($user, $taskBoard)->keyBy('id');
         $rolled = $sources->isEmpty() ? collect() : Task::query()
             ->whereIn('board_id', $sources->keys())
+            ->when($hidden, fn ($q) => $q->where('sensitive', false))
             // Linked to a task this board already holds: that row is the one shown.
             ->whereNotIn('id', TaskLink::query()->whereIn('linked_task_id', $taskBoard->tasks()->select('id'))->select('task_id'))
             ->whereNotIn('id', TaskLink::query()->whereIn('task_id', $taskBoard->tasks()->select('id'))->select('linked_task_id'))

@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Attachment;
 use App\Models\InventoryPurchaseOrder;
+use App\Models\TaskUpdate;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\Attachables;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Files\FileStore;
 use App\Support\Files\UploadLimits;
+use App\Support\Tasks\SensitiveTasks;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -72,6 +74,12 @@ class AttachmentsController extends Controller
         $subject = $this->subject($request);
 
         $this->authorizeAttachment('view', $subject);
+
+        // A sensitive task's file list is its file names: unlocked only.
+        if ($subject instanceof TaskUpdate && $subject->task?->sensitive
+            && ! app(SensitiveTasks::class)->reveal($request, $subject->task, 'attachments')) {
+            throw SensitiveTasks::lockedResponse();
+        }
 
         $files = $subject->attachments()->with('uploadedBy:id,name')->get();
 
@@ -177,6 +185,12 @@ class AttachmentsController extends Controller
             ? $subject->attachmentDisclosesSensitive($attachment)
             : null;
 
+        // A sensitive task's file: only after an authenticator code, audited (SensitiveTasks).
+        if ($subject instanceof TaskUpdate && $subject->task?->sensitive
+            && ! app(SensitiveTasks::class)->reveal($request, $subject->task, 'attachment')) {
+            throw SensitiveTasks::lockedResponse();
+        }
+
         if ($discloses !== null) {
             $this->authorize('reveal', $subject);
 
@@ -193,7 +207,7 @@ class AttachmentsController extends Controller
             $inline = $request->boolean('inline') && in_array($attachment->mime, self::INLINE_MIMES, true);
 
             return response()->streamDownload(fn () => print ($bytes),
-                str_replace(["\r", "\n", '"', '\\'], '', basename($attachment->original_name)) ?: 'download', [
+                str_replace(["\r", "\n", '"', '\\'], '', basename($attachment->realName())) ?: 'download', [
                     'Content-Type' => $attachment->mime,
                     'X-Content-Type-Options' => 'nosniff',
                     'Cache-Control' => 'private, no-store',
@@ -204,7 +218,7 @@ class AttachmentsController extends Controller
             $attachment->path,
             $attachment->disk,
             $attachment->mime,
-            $attachment->original_name,
+            $attachment->realName(),
             // `attachment` unless `?inline=1` asks to open it in the app AND the
             // detected mime is a raster image or a PDF. The mime is detected
             // rather than claimed, which makes it honest, not safe — an honest

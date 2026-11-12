@@ -14,6 +14,7 @@ use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Files\AttachmentUploader;
+use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use App\Support\Tenancy\TenantContext;
@@ -80,6 +81,9 @@ final class MondayImport
     /** @var list<string> the current item's Monday assignees this board cannot take, by name */
     private array $asText = [];
 
+    /** @var list<string> monday item ids an operator named to mark Sensitive (--sensitive-items) */
+    private array $sensitiveItems = [];
+
     private bool $dry = false;
 
     private bool $refresh = false;
@@ -97,9 +101,10 @@ final class MondayImport
      * @param  string|User  $as  the person the import acts as: a user, or an email the people map resolves
      * @return array{counts: array<string, int|float>, unmatched: list<string>, owners_dropped: array<string, int>, not_carried: list<string>}
      */
-    public function run(Organization $org, array $data, string|User $as, bool $dry = false, ?string $filesDir = null, bool $refresh = false): array
+    public function run(Organization $org, array $data, string|User $as, bool $dry = false, ?string $filesDir = null, bool $refresh = false, array $sensitiveItems = []): array
     {
         $this->reset($data, $dry, $filesDir, $refresh);
+        $this->sensitiveItems = array_map('strval', $sensitiveItems);
 
         // Imports are history, not events: no rule texts anyone about them.
         // Put back afterwards, so a queue worker's next job has its events.
@@ -223,6 +228,7 @@ final class MondayImport
             $this->owners($board, $item['people'] ?? []);
             $this->assignedInMonday($existing, $as);
             $this->updates($existing, $item, $as);
+            $this->markSensitive($existing, $item, $parent, $as);
 
             return $existing;
         }
@@ -243,8 +249,34 @@ final class MondayImport
         $this->assignedInMonday($task, $as);
 
         $this->updates($task, $item, $as);
+        $this->markSensitive($task, $item, $parent, $as);
 
         return $task;
+    }
+
+    /**
+     * Sensitive tasks (D13, Jose 2026-11-12), on the import and on every
+     * sync: a name or group that reads like credentials, an id the operator
+     * named, or a sensitive parent. After the updates and files, so mark()
+     * seals what this run brought in. A task somebody here already decided
+     * (an Activity row for Sensitive, e.g. unmarked with the authenticator)
+     * is left as they left it, unless the operator named it.
+     */
+    private function markSensitive(Task $task, array $item, ?Task $parent, User $as): void
+    {
+        $sensitive = app(SensitiveTasks::class);
+        if ($task->sensitive) {
+            $sensitive->mark($task, true, $as); // seals whatever this run added
+
+            return;
+        }
+        $named = in_array((string) ($item['monday_id'] ?? ''), $this->sensitiveItems, true);
+        $decided = TaskActivity::query()->where('task_id', $task->id)->where('field', 'sensitive')->exists();
+        if ($named || (! $decided && ($parent?->sensitive
+            || SensitiveTasks::looksSensitive((string) ($item['name'] ?? ''), (string) ($item['group'] ?? ''))))) {
+            $sensitive->mark($task, true, $as);
+            $this->counts['marked sensitive'] = ($this->counts['marked sensitive'] ?? 0) + 1;
+        }
     }
 
     /**

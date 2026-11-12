@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../widgets/list_search.dart';
 import 'dart:math' as math;
 
@@ -27,6 +28,7 @@ import 'task_board_move.dart';
 import 'task_board_people.dart';
 import 'task_board_plan_views.dart';
 import 'task_board_sidebar.dart';
+import 'task_board_sensitive.dart';
 
 typedef _Json = Map<String, dynamic>;
 
@@ -643,7 +645,29 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         if (mounted) await _load();
       case 'delete':
         await _delete([id]);
+      case 'sensitive':
+        await _toggleSensitive(t);
     }
+  }
+
+  /// Mark: anyone who can edit it. Unmark opens everything, so the server
+  /// wants a fresh authenticator code first (Jose, 2026-11-12).
+  Future<void> _toggleSensitive(_Json t) async {
+    final id = t['id'] as String;
+    final on = !taskIsSensitive(t);
+    if (!on) {
+      final open = await unlockSensitiveTask(
+        context,
+        api: widget.api,
+        taskId: id,
+      );
+      if (open == null || !mounted) return;
+    }
+    final res = await widget.api.patch('/tasks/$id', {'sensitive': on});
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    _say(on ? 'Marked sensitive' : 'No longer sensitive');
+    await _load();
   }
 
   Widget _rowMenu(_Json t) => PopupMenuButton<String>(
@@ -661,6 +685,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         const PopupMenuItem(value: 'duplicate', child: Text('Duplicate')),
       ],
       const PopupMenuItem(value: 'link', child: Text('Link…')),
+      if (_canEdit)
+        PopupMenuItem(
+          value: 'sensitive',
+          child: Text(
+            taskIsSensitive(t) ? 'Unmark sensitive' : 'Mark sensitive',
+          ),
+        ),
       if (_canEdit) const PopupMenuItem(value: 'delete', child: Text('Delete')),
     ],
   );
@@ -2488,7 +2519,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                       if (!sub) _subtaskToggle(t),
                       Flexible(
                         child: Text(
-                          '${t['title']}',
+                          taskTitle(t),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodyMedium?.copyWith(
@@ -2654,7 +2685,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         color: theme.colorScheme.surface,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Text('${t['title']}'),
+          child: Text(taskTitle(t)),
         ),
       ),
       child: MouseRegion(
@@ -2880,7 +2911,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           children: [
                             Expanded(
                               child: Text(
-                                '${t['title']}',
+                                taskTitle(t),
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -3238,6 +3269,9 @@ class _TaskPanelState extends State<_TaskPanel> {
   final _update = TextEditingController();
   final _mentions = MentionController();
 
+  /// Locks an unlocked sensitive task again when its 5 minutes are up.
+  Timer? _relock;
+
   bool get _canEdit => widget.board['can_edit'] == true;
 
   @override
@@ -3248,10 +3282,47 @@ class _TaskPanelState extends State<_TaskPanel> {
 
   @override
   void dispose() {
+    _relock?.cancel();
     _title.dispose();
     _due.dispose();
     _update.dispose();
     super.dispose();
+  }
+
+  /// An open sensitive task locks itself again at `unlocked_until`.
+  void _armRelock(_Json task) {
+    _relock?.cancel();
+    if (!taskIsSensitive(task) || taskIsLocked(task)) return;
+    final until = DateTime.tryParse('${task['unlocked_until'] ?? ''}');
+    final left = until == null
+        ? sensitiveUnlockFor
+        : until.difference(DateTime.now());
+    _relock = Timer(left.isNegative ? Duration.zero : left, () {
+      if (!mounted || _task == null) return;
+      setState(() {
+        _task = {
+          ..._task!,
+          'locked': true,
+          'values': <String, dynamic>{},
+          'updates': const <dynamic>[],
+        };
+        _activity = null;
+      });
+    });
+  }
+
+  Future<void> _unlock() async {
+    final open = await unlockSensitiveTask(
+      context,
+      api: widget.api,
+      taskId: widget.taskId,
+    );
+    if (open == null || !mounted) return;
+    setState(() {
+      _task = open;
+      _activity = null;
+    });
+    _armRelock(open);
   }
 
   Future<void> _load() async {
@@ -3268,6 +3339,7 @@ class _TaskPanelState extends State<_TaskPanel> {
         return;
       }
       _task = res.body['data'] as _Json;
+      _armRelock(_task!);
       _title.text = '${_task!['title']}';
       // Its updates are read now (unread notes, monday port 2026-11-09).
       if (widget.unreadNotes > 0) {
@@ -3299,8 +3371,14 @@ class _TaskPanelState extends State<_TaskPanel> {
         return;
       }
       _saveError = null;
-      // The answer has no updates in it; keep the ones on screen.
-      _task = {...res.body['data'] as _Json, 'updates': _task!['updates']};
+      // The answer has no updates in it; keep the ones on screen (and when
+      // the lock lapses it says so, with none).
+      final next = res.body['data'] as _Json;
+      _task = {
+        ...next,
+        'unlocked_until': _task!['unlocked_until'],
+        'updates': taskIsLocked(next) ? const <dynamic>[] : _task!['updates'],
+      };
     });
     // An open Activity log shows the change just made.
     if (res.ok && _activity != null) await _loadActivity();
@@ -3517,9 +3595,16 @@ class _TaskPanelState extends State<_TaskPanel> {
           enabled: _canEdit,
           maxLines: null,
           style: theme.textTheme.titleMedium,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             border: InputBorder.none,
             hintText: 'Name the task',
+            prefixIcon: taskIsSensitive(task)
+                ? Icon(
+                    taskIsLocked(task) ? Icons.lock_outline : Icons.lock_open,
+                    key: const Key('task-panel-lock'),
+                    size: 20,
+                  )
+                : null,
           ),
           onSubmitted: (v) {
             if (v.trim().isNotEmpty && v.trim() != task['title']) {
@@ -3632,202 +3717,217 @@ class _TaskPanelState extends State<_TaskPanel> {
               style: muted,
             ),
           ),
-        // The board's own columns, each in its type's editor (UI queue 84).
-        for (final c in boardColumns(widget.board))
-          fact(
-            c.name,
-            ColumnEditor(
-              key: ValueKey('${c.id}:${columnValue(task, c)}'),
-              column: c,
-              value: columnValue(task, c),
-              people: people,
-              formats: widget.formats,
-              api: widget.api,
-              onChanged: _canEdit
-                  ? (v) => _patch({
-                      'values': {c.id: v},
-                    })
-                  : null,
+        if (taskIsLocked(task)) ...[
+          const SizedBox(height: 8),
+          SensitiveLockedNotice(onUnlock: _unlock),
+        ] else ...[
+          if (taskIsSensitive(task))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                'Unlocked for 5 minutes. It locks again by itself.',
+                key: const Key('task-unlocked-note'),
+                style: muted,
+              ),
             ),
+          // The board's own columns, each in its type's editor (UI queue 84).
+          for (final c in boardColumns(widget.board))
+            fact(
+              c.name,
+              ColumnEditor(
+                key: ValueKey('${c.id}:${columnValue(task, c)}'),
+                column: c,
+                value: columnValue(task, c),
+                people: people,
+                formats: widget.formats,
+                api: widget.api,
+                onChanged: _canEdit
+                    ? (v) => _patch({
+                        'values': {c.id: v},
+                      })
+                    : null,
+              ),
+            ),
+          // Activity log (Jose, 2026-11-09, monday's): loaded when opened.
+          ExpansionTile(
+            key: const Key('task-activity'),
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: EdgeInsets.zero,
+            title: Text(
+              'Activity',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            onExpansionChanged: (open) {
+              if (open && _activity == null) _loadActivity();
+            },
+            children: [
+              if (_activity == null)
+                const LinearProgressIndicator()
+              else if (_activity!.isEmpty)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('No changes yet.', style: muted),
+                )
+              else
+                for (final a in _activity!)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '${a['who'] ?? 'An automation'}  ',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          TextSpan(
+                            text:
+                                '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
+                          ),
+                          TextSpan(
+                            text: formatStamp(
+                              a['at'],
+                              '',
+                              formats: widget.formats,
+                            ),
+                            style: muted,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+            ],
           ),
-        // Activity log (Jose, 2026-11-09, monday's): loaded when opened.
-        ExpansionTile(
-          key: const Key('task-activity'),
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: EdgeInsets.zero,
-          title: Text(
-            'Activity',
+          const Divider(height: 24),
+          Text(
+            updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
-          onExpansionChanged: (open) {
-            if (open && _activity == null) _loadActivity();
-          },
-          children: [
-            if (_activity == null)
-              const LinearProgressIndicator()
-            else if (_activity!.isEmpty)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text('No changes yet.', style: muted),
-              )
-            else
-              for (final a in _activity!)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text.rich(
-                    TextSpan(
+          const SizedBox(height: 8),
+          if (updates.isEmpty) Text('Nothing written here yet.', style: muted),
+          for (final u in updates)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _avatar(context, '${(u['author'] as Map?)?['name'] ?? '?'}'),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextSpan(
-                          text: '${a['who'] ?? 'An automation'}  ',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        TextSpan(
-                          text:
-                              '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
-                        ),
-                        TextSpan(
-                          text: formatStamp(
-                            a['at'],
-                            '',
-                            formats: widget.formats,
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text:
+                                    '${(u['author'] as Map?)?['name'] ?? 'Somebody'}  ',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              TextSpan(
+                                text: formatStamp(
+                                  u['created_at'],
+                                  '',
+                                  formats: widget.formats,
+                                ),
+                                style: muted,
+                              ),
+                            ],
                           ),
-                          style: muted,
+                        ),
+                        const SizedBox(height: 2),
+                        if ('${u['body'] ?? ''}'.isNotEmpty)
+                          Text('${u['body']}'),
+                        TaskAttachments(
+                          api: widget.api,
+                          attachments: [
+                            for (final a
+                                in (u['attachments'] as List? ?? const []))
+                              if (a is Map) Map<String, dynamic>.from(a),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                ),
-          ],
-        ),
-        const Divider(height: 24),
-        Text(
-          updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        if (updates.isEmpty) Text('Nothing written here yet.', style: muted),
-        for (final u in updates)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _avatar(context, '${(u['author'] as Map?)?['name'] ?? '?'}'),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text:
-                                  '${(u['author'] as Map?)?['name'] ?? 'Somebody'}  ',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            TextSpan(
-                              text: formatStamp(
-                                u['created_at'],
-                                '',
-                                formats: widget.formats,
-                              ),
-                              style: muted,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      if ('${u['body'] ?? ''}'.isNotEmpty) Text('${u['body']}'),
-                      TaskAttachments(
-                        api: widget.api,
-                        attachments: [
-                          for (final a
-                              in (u['attachments'] as List? ?? const []))
-                            if (a is Map) Map<String, dynamic>.from(a),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        if (_canEdit) ...[
-          const SizedBox(height: 4),
-          MentionField(
-            api: widget.api,
-            type: 'task',
-            id: widget.taskId,
-            controller: _update,
-            mentions: _mentions,
-            child: TextField(
-              key: const Key('task-update-body'),
+          if (_canEdit) ...[
+            const SizedBox(height: 4),
+            MentionField(
+              api: widget.api,
+              type: 'task',
+              id: widget.taskId,
               controller: _update,
-              minLines: 2,
-              maxLines: 6,
-              decoration: const InputDecoration(
-                hintText: 'Write an update… (@ to mention)',
-                border: OutlineInputBorder(),
+              mentions: _mentions,
+              child: TextField(
+                key: const Key('task-update-body'),
+                controller: _update,
+                minLines: 2,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  hintText: 'Write an update… (@ to mention)',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
-          ),
-          if (_files.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final (i, f) in _files.indexed)
-                  TaskFileChip(
-                    key: ValueKey('task-update-file-$i'),
-                    name: f.name,
-                    size: f.bytes.length,
-                    onDeleted: _posting
-                        ? null
-                        : () => setState(() => _files.removeAt(i)),
-                  ),
-              ],
-            ),
-          ],
-          if (_postError != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              _postError!,
-              key: const Key('task-update-error'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              TextButton.icon(
-                key: const Key('task-update-attach'),
-                onPressed: _posting || _files.length >= taskUpdateMaxFiles
-                    ? null
-                    : _attach,
-                icon: const Icon(Icons.attach_file, size: 18),
-                label: const Text('Attach'),
-              ),
-              FilledButton(
-                key: const Key('task-update-post'),
-                onPressed: _posting ? null : _post,
-                child: Text(_posting ? 'Posting…' : 'Post update'),
+            if (_files.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final (i, f) in _files.indexed)
+                    TaskFileChip(
+                      key: ValueKey('task-update-file-$i'),
+                      name: f.name,
+                      size: f.bytes.length,
+                      onDeleted: _posting
+                          ? null
+                          : () => setState(() => _files.removeAt(i)),
+                    ),
+                ],
               ),
             ],
-          ),
+            if (_postError != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                _postError!,
+                key: const Key('task-update-error'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                TextButton.icon(
+                  key: const Key('task-update-attach'),
+                  onPressed: _posting || _files.length >= taskUpdateMaxFiles
+                      ? null
+                      : _attach,
+                  icon: const Icon(Icons.attach_file, size: 18),
+                  label: const Text('Attach'),
+                ),
+                FilledButton(
+                  key: const Key('task-update-post'),
+                  onPressed: _posting ? null : _post,
+                  child: Text(_posting ? 'Posting…' : 'Post update'),
+                ),
+              ],
+            ),
+          ],
         ],
       ],
     );
