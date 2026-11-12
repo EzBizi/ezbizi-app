@@ -13,6 +13,14 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0566', date: '12 Nov 2026', items: [
+      'Settings › Integrations is redesigned: what needs your attention first, one row per app that opens to its accounts, and each account shows its checks (pass or fail, why, when) with a fix',
+      'Connecting an account now finishes its own setup and checks itself: WhatsApp picks its use, Mailchimp an audience, Pinterest a board, LinkedIn offers your company Pages, Google Ads, Thumbtack and Facebook get their branch, and a setup that fails shows on the card',
+      'Email: received mail shows exactly as sent (layouts, buttons, image grids) on Windows, Mac and phones; adding an inbox asks who gets access, and each inbox shows Receive and Send checks',
+      'Scheduling › Re-Scheduling: Overbooking and Underbooking share one layout, with each area’s customers and the text they would get',
+      'Task Board: a Gallery view shows every photo, video and file on the board',
+      'Development › Releases opens first and shows the time left, each stage, the live log and what ships; What’s new shows a bar when an update is on its way',
+    ]),
     VersionRelease(version: '0.0.0565', date: '12 Nov 2026', items: [
       'Project Management: narrowing a column wraps its text and the row grows; a scrollbar reaches the columns past the window edge',
       'Project Management: set the technician from the row or the job panel; Scheduled lists Submitted jobs with a deposit and a date',
