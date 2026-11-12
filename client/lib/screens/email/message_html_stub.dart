@@ -45,11 +45,20 @@ class _WindowsHtmlState extends State<_WindowsHtml> {
   bool _ready = false;
   String? _error;
 
-  @override
-  void initState() {
-    super.initState();
+  /// Not started in initState. webview_windows makes its surface visible at
+  /// once and only gives it bounds when both sides are above zero, so a view
+  /// created at 0x0 -- offstage, collapsed, before layout -- is an invisible
+  /// top-level rectangle that eats clicks on the desktop until the app is
+  /// killed (Bar, 09-10). It starts on the first layout of at least 1x1.
+  bool _started = false;
+
+  void _startOnceSized(BoxConstraints c) {
+    if (_started || c.maxWidth < 1 || c.maxHeight < 1) return;
+    _started = true;
     _exitHook = ExitHooks.add(_controller.dispose);
-    unawaited(_start());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_start());
+    });
   }
 
   StreamSubscription<String>? _urls;
@@ -100,20 +109,23 @@ class _WindowsHtmlState extends State<_WindowsHtml> {
   void dispose() {
     unawaited(_urls?.cancel());
     ExitHooks.remove(_exitHook);
-    unawaited(_controller.dispose());
+    if (_started) unawaited(_controller.dispose());
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_error != null) {
-      return Center(child: Text(_error!, textAlign: TextAlign.center));
-    }
-
-    return _ready
-        ? wvw.Webview(_controller)
-        : const Center(child: CircularProgressIndicator());
-  }
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      _startOnceSized(constraints);
+      if (_error != null) {
+        return Center(child: Text(_error!, textAlign: TextAlign.center));
+      }
+      // Never drawn below 1x1 either, for the same reason.
+      return _ready && constraints.maxWidth >= 1 && constraints.maxHeight >= 1
+          ? wvw.Webview(_controller)
+          : const Center(child: CircularProgressIndicator());
+    },
+  );
 }
 
 class _MobileHtml extends StatefulWidget {
