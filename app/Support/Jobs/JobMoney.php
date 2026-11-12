@@ -55,6 +55,8 @@ final class JobMoney
             'total' => 'COALESCE('.self::total().', 0)',
             'due' => self::dueSql(),
             'paid' => 'COALESCE('.self::paid().', 0)',
+            // Paid beyond the total: what due's clamp at 0 leaves out, so paid - over + due = total.
+            'over' => 'GREATEST('.self::paid().' - COALESCE('.self::total().', 0), 0)',
         ][$what]));
     }
 

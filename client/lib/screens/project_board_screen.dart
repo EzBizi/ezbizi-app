@@ -282,6 +282,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           figure('paid', 'Total Paid'),
           figure('due', 'Total Remaining Balance'),
           figure('total', 'Total Amount of Jobs'),
+          // Paid beyond a job's total, so Paid - Overpaid + Remaining = Total (desk, 2026-11-12).
+          if (((t['over'] as num?) ?? 0) > 0) figure('over', 'Overpaid'),
         ],
       ),
     );
