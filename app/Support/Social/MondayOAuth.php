@@ -4,6 +4,7 @@ namespace App\Support\Social;
 
 use App\Support\Pkce;
 use App\Support\Tasks\Monday\MondayClient;
+use App\Support\Tasks\Monday\MondayRefused;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
@@ -120,6 +121,48 @@ final class MondayOAuth implements SocialOAuth
 
         return new SocialOAuthGrant(
             accessToken: $access,
+            refreshToken: is_string($refresh) && $refresh !== '' ? $refresh : null,
+            scopes: SocialOAuthGrant::parseScopes($response->json('scope')),
+            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
+        );
+    }
+
+    /**
+     * A new token pair for a refresh token (New OAuth Flow: access tokens
+     * expire, refresh tokens are single-use and rotate on every refresh —
+     * reusing one is invalid_grant and can revoke the whole family). Called
+     * only by MondayToken, under its lock.
+     *
+     * invalid_grant (or 401) is definitive: MondayRefused, never retried.
+     * Anything else (Monday down, a 5xx) is a RuntimeException: the refresh
+     * token was not spent, so the next run tries again.
+     */
+    public function refresh(string $refreshToken): SocialOAuthGrant
+    {
+        try {
+            $response = Http::asJson()->acceptJson()->timeout(self::TIMEOUT)->post(self::TOKEN_ENDPOINT, [
+                'grant_type' => 'refresh_token',
+                'client_id' => (string) config('services.monday.client_id'),
+                'client_secret' => (string) config('services.monday.client_secret'),
+                'refresh_token' => $refreshToken,
+            ]);
+        } catch (ConnectionException) {
+            throw new \RuntimeException('Monday did not answer the token refresh.');
+        }
+
+        if ($response->json('error') === 'invalid_grant' || in_array($response->status(), [401, 403], true)) {
+            throw new MondayRefused(MondayRefused::RECONNECT);
+        }
+        $access = $response->json('access_token');
+        $refresh = $response->json('refresh_token');
+        if ($response->failed() || ! is_string($access) || $access === '') {
+            throw new \RuntimeException('Monday refused the token refresh: '.$response->status().' '.$response->json('error'));
+        }
+
+        return new SocialOAuthGrant(
+            accessToken: $access,
+            // Rotated: the new one replaces the spent one. Monday always sends one; keeping the
+            // old would be keeping a spent token, so a missing one is stored as missing.
             refreshToken: is_string($refresh) && $refresh !== '' ? $refresh : null,
             scopes: SocialOAuthGrant::parseScopes($response->json('scope')),
             expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,

@@ -15,6 +15,8 @@ use App\Support\Social\Publishing\XPublisher;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackClient;
 use App\Support\Social\ThumbtackWebhooks;
+use App\Support\Tasks\Monday\MondayRefused;
+use App\Support\Tasks\Monday\MondayToken;
 use App\Support\Workiz\WorkizV2;
 use Closure;
 use Illuminate\Http\Client\ConnectionException;
@@ -136,9 +138,13 @@ final class ConnectionLiveness
      */
     private static function monday(SocialConnection $c): Liveness
     {
-        $token = self::stored($c, 'access_token');
-        if ($token === null) {
-            return Liveness::refused(self::sentence('Monday'));
+        try {
+            // Renewed first when it is about to run out (New OAuth Flow tokens expire).
+            $token = app(MondayToken::class)->for($c);
+        } catch (MondayRefused $e) {
+            return Liveness::refused($e->getMessage());
+        } catch (Throwable) {
+            return Liveness::unknown('The Monday token could not be renewed just now.');
         }
         $r = Http::withHeaders(['Authorization' => $token])->acceptJson()->timeout(self::TIMEOUT)
             ->post('https://api.monday.com/v2', ['query' => '{ me { id } }']);
