@@ -56,6 +56,8 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
             'credentials'     => 'encrypted:array',
             'last_reached_at' => 'datetime',
             'last_checked_at' => 'datetime',
+            // Connect's choices and its first check (ConnectSetup).
+            'setup'           => 'array',
             'checks'          => 'array',
             'is_manager'     => 'boolean',
         ];

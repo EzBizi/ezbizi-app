@@ -404,6 +404,8 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
           if (row.lastSyncedAt != null) 'synced ${_ago(row.lastSyncedAt!)}',
           // The daily token check (Jose, 2026-11-03).
           if (row.lastCheckedAt != null) 'checked ${_ago(row.lastCheckedAt!)}',
+          // Connect's pass/fail check: can it post, how long the token lasts.
+          if (row.connected && row.connectCheck != null) row.connectCheck!,
           if (!row.connected) row.statusReason ?? 'Not working',
         ].join(' · '),
         key: ValueKey('connection-detail:${row.id}'),
@@ -832,7 +834,11 @@ class IntegrationConnection {
     this.accountEmail,
     this.lastCheckedAt,
     this.lastReachedAt,
+    this.connectCheck,
   });
+
+  /// Connect's pass/fail line (ConnectSetup): "Passed: can post · token …".
+  final String? connectCheck;
 
   /// When the daily health check last had a verdict on this token, and when
   /// the provider last answered for it (Jose, 2026-11-03).
@@ -943,6 +949,9 @@ class IntegrationConnection {
         accountEmail: json['account_email'] as String?,
         lastCheckedAt: DateTime.tryParse('${json['last_checked_at'] ?? ''}'),
         lastReachedAt: DateTime.tryParse('${json['last_reached_at'] ?? ''}'),
+        connectCheck:
+            (json['connect_check'] as Map<String, dynamic>?)?['summary']
+                as String?,
       );
 }
 

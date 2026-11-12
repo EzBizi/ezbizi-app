@@ -121,7 +121,7 @@ final class PinterestOAuth implements SocialOAuth
             throw SocialOAuthRefused::noLastingPermission('Pinterest');
         }
 
-        $scopes = preg_split('/\s+/', trim((string) $response->json('scope')), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $scopes = SocialOAuthGrant::parseScopes($response->json('scope'));
 
         return new SocialOAuthGrant(
             accessToken: $access,

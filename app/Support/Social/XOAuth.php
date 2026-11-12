@@ -132,6 +132,7 @@ final class XOAuth implements SocialOAuth
         return new SocialOAuthGrant(
             accessToken: $access,
             refreshToken: $refresh,
+            scopes: SocialOAuthGrant::parseScopes($response->json('scope')),
             expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
         );
     }

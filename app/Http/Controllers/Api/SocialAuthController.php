@@ -16,6 +16,7 @@ use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Scoping\ViewScope;
 use App\Support\Social\BusinessProfileOAuth;
+use App\Support\Social\ConnectSetup;
 use App\Support\Social\FacebookAdsOAuth;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\GoogleAdsOAuth;
@@ -48,6 +49,7 @@ class SocialAuthController extends Controller
         private readonly SocialConnectionAccess $access,
         private readonly TenantContext $tenant,
         private readonly AuditLogger $audit,
+        private readonly ConnectSetup $setup,
     ) {}
 
     public function start(Request $request, string $network): JsonResponse
@@ -319,7 +321,7 @@ class SocialAuthController extends Controller
         }
 
         try {
-            return DB::transaction(function () use ($user, $signIn, $provider, $grant, $accounts) {
+            $saved = DB::transaction(function () use ($user, $signIn, $provider, $grant, $accounts) {
                 $saved = [];
 
                 foreach ($accounts as $account) {
@@ -459,6 +461,15 @@ class SocialAuthController extends Controller
                 .'renewed.',
             );
         }
+
+        // The whole process, not just the token (Jose, 2026-11-12): default
+        // choices, then the pass/fail check the card shows. After the commit,
+        // so a slow provider holds no transaction open. Every row here came
+        // from one grant, so one provider call answers for all of them: a
+        // Google consent can bring forty-six.
+        $this->setup->afterConnect($saved);
+
+        return $saved;
     }
 
     private function driverOrAbort(string $network): SocialOAuth

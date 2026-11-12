@@ -118,6 +118,7 @@ final class LinkedInOAuth implements SocialOAuth
         return new SocialOAuthGrant(
             accessToken: $access,
             refreshToken: is_string($refresh) && $refresh !== '' ? $refresh : null,
+            scopes: SocialOAuthGrant::parseScopes($response->json('scope')),
             expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
         );
     }
@@ -193,6 +194,49 @@ final class LinkedInOAuth implements SocialOAuth
             throw SocialOAuthRefused::unidentified('LinkedIn');
         }
 
-        return [new SocialAccount($id, $name !== '' ? $name : $id)];
+        return [new SocialAccount($id, $name !== '' ? $name : $id), ...$this->pages($grant)];
+    }
+
+    /**
+     * The company Pages this person administers, each its own connection
+     * beside the person (LinkedInPublisher posts as a `urn:li:organization`
+     * remote_id as it stands). Only when Page posting was granted; none, or
+     * LinkedIn refusing the list, costs the person's connect nothing.
+     *
+     * @return SocialAccount[]
+     */
+    private function pages(SocialOAuthGrant $grant): array
+    {
+        if ($grant->scopes !== [] && ! in_array('w_organization_social', $grant->scopes, true)) {
+            return [];
+        }
+
+        try {
+            $response = Http::withToken($grant->accessToken)->timeout(self::TIMEOUT)
+                ->get('https://api.linkedin.com/v2/organizationAcls', [
+                    'q' => 'roleAssignee',
+                    'role' => 'ADMINISTRATOR',
+                    'state' => 'APPROVED',
+                    'projection' => '(elements*(organization~(id,localizedName)))',
+                ]);
+        } catch (ConnectionException) {
+            return [];
+        }
+
+        if ($response->failed()) {
+            return [];
+        }
+
+        $pages = [];
+        foreach ((array) $response->json('elements', []) as $e) {
+            $urn = is_array($e) ? (string) ($e['organization'] ?? '') : '';
+            if (! str_starts_with($urn, 'urn:li:organization:')) {
+                continue;
+            }
+            $name = trim((string) ($e['organization~']['localizedName'] ?? ''));
+            $pages[] = new SocialAccount($urn, $name !== '' ? $name : $urn);
+        }
+
+        return $pages;
     }
 }

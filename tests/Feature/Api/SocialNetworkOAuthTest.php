@@ -33,6 +33,9 @@ class SocialNetworkOAuthTest extends TestCase
     {
         parent::setUp();
 
+        // Connect now calls the provider to check it (ConnectSetup): nothing unfaked may leave.
+        Http::preventStrayRequests();
+
         config([
             'services.meta.client_id' => 'a-meta-app-id',
             'services.meta.client_secret' => 'a-meta-app-secret',
