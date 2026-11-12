@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Console\Commands\CheckConnectionHealth;
-use App\Http\Controllers\Api\Phone\NumbersController;
 use App\Models\Automation;
 use App\Models\Franchise;
 use App\Models\GoogleWorkspaceConnection;
@@ -16,8 +15,9 @@ use App\Models\WhatsAppNumber;
 use App\Support\Access\Refusal;
 use App\Support\Mail\SendingState;
 use App\Support\Phone\PhoneNumberAccess;
-use App\Support\Phone\TwimlRenderer;
+use App\Support\Phone\LineHealth;
 use App\Support\Scoping\ViewScope;
+use App\Support\Tenancy\TenantContext;
 use App\Support\Social\ConnectionChecks;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\Liveness\ConnectionLiveness;
@@ -61,9 +61,8 @@ final class IntegrationsOverviewController extends Controller
         'setup' => 'Setup',
         'branch' => 'Branch',
         'auto_reply' => 'Auto-reply',
-        'line' => 'Line works',
-        'routed' => 'Pointed at EzBizi',
-        'answers' => 'Someone answers',
+        'pointed' => 'Pointed at EzBizi',
+        'route' => 'Someone answers',
         'texting' => 'Texting (A2P)',
         'e911' => 'E911 address',
         'signed_in' => 'Someone signed in',
@@ -239,27 +238,22 @@ final class IntegrationsOverviewController extends Controller
         ], $checks, $off, $c->last_checked_at?->toIso8601String());
     }
 
-    /** One row per phone line the person can see, checks from NumbersController::health. */
+    /** One row per phone line the person can see, checks from Phone's LineHealth. */
     private function phoneLines(User $user): Collection
     {
         if (! $user->can('viewAny', PhoneNumber::class)) {
             return collect();
         }
 
-        $numbers = app(NumbersController::class);
-
-        return $this->phones->visibleTo($user)->map(function (PhoneNumber $n) use ($numbers) {
-            // Phone's own health rule, read from their controller rather than
-            // copied (it is private there; Phone owns it). ponytail: ask Phone
-            // to expose it publicly with keys, then drop this bind and keyFor().
-            $answers = (bool) (collect((new TwimlRenderer)->describe($n))->firstWhere('step', 'answer')['usable'] ?? false);
-            $health = (fn () => $this->health($n, $answers))->call($numbers);
-            $checks = $health['ok']
-                ? [self::check('line', ConnectionChecks::PASS, null, null, now()->toIso8601String())]
-                : array_map(fn (string $problem) => self::check(self::keyFor($problem),
+        return $this->phones->visibleTo($user)->map(function (PhoneNumber $n) use ($user) {
+            // Phone's own rule (LineHealth), one check per key.
+            $health = app(TenantContext::class)->run($user->organization, fn () => LineHealth::for($n));
+            $problems = collect($health['problems'])->pluck('sentence', 'key');
+            $checks = array_map(fn (string $key) => self::check($key,
+                ! $problems->has($key) ? ConnectionChecks::PASS
                     // Nobody signed in right now is a moment, not a fault.
-                    self::keyFor($problem) === 'signed_in' ? ConnectionChecks::UNKNOWN : ConnectionChecks::FAIL,
-                    $problem, null, now()->toIso8601String()), $health['problems']);
+                    : ($key === 'signed_in' ? ConnectionChecks::UNKNOWN : ConnectionChecks::FAIL),
+                $problems->get($key), null, now()->toIso8601String()), LineHealth::KEYS);
 
             return self::connection([
                 'id' => (string) $n->id,
@@ -402,18 +396,6 @@ final class IntegrationsOverviewController extends Controller
         return new SocialConnection(['scope_type' => $type, 'scope_id' => $id]);
     }
 
-    /** Which check a phone health sentence is about (Phone's sentences carry no keys). */
-    private static function keyFor(string $problem): string
-    {
-        return match (true) {
-            str_starts_with($problem, 'E911') => 'e911',
-            str_starts_with($problem, 'Texting') => 'texting',
-            str_starts_with($problem, 'Not pointed') => 'routed',
-            str_starts_with($problem, 'Calls reach nobody') => 'answers',
-            str_starts_with($problem, 'Nobody is signed in') => 'signed_in',
-            default => 'line',
-        };
-    }
 
     private static function appLabel(string $provider): string
     {

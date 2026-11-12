@@ -50,6 +50,7 @@ final class ConnectionSetup
             return match ($c->provider) {
                 SocialProvider::FacebookPage->value => self::facebookPage($c),
                 SocialProvider::WhatsApp->value => self::whatsApp($c),
+                SocialProvider::Workiz->value => self::workiz($c),
                 default => false,
             };
         } catch (Throwable $e) {
@@ -116,6 +117,24 @@ final class ConnectionSetup
      * A display name Meta is still reviewing ("Nothing to do") is pending, so
      * unknown rather than fail.
      */
+    /**
+     * WorkizHealth's list (key, writes, tags, standard, team, web login,
+     * webhook, jobs) as persisted checks: ok -> pass/fail, detail -> reason.
+     * Read-only (no fix: true); only a dead key offers a fix, reconnect.
+     */
+    private static function workiz(SocialConnection $c): bool
+    {
+        foreach (\App\Support\Workiz\WorkizHealth::check($c) as $line) {
+            ConnectionChecks::record($c, 'workiz_'.$line['key'],
+                $line['ok'] ? ConnectionChecks::PASS : ConnectionChecks::FAIL,
+                (string) $line['detail'],
+                ! $line['ok'] && $line['key'] === 'key' ? ['action' => 'reconnect', 'label' => 'Reconnect'] : null,
+                $line['label']);
+        }
+
+        return false;
+    }
+
     private static function whatsAppHealth(SocialConnection $c, WhatsAppNumber $number): void
     {
         foreach (WhatsAppHealth::check($c, $number) as $line) {
