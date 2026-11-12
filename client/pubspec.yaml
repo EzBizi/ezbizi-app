@@ -105,6 +105,9 @@ dependencies:
   # calls it (Files.canTakePhoto is false there); web keeps <input capture>.
   image_picker: ^1.2.4
   pasteboard: ^0.5.0
+  # A pasted picture is re-encoded as PNG: on Windows pasteboard hands back
+  # BMP, which the server refuses under the .png name (0.0.0562).
+  image: ^4.8.0
 
 dev_dependencies:
   flutter_test:
