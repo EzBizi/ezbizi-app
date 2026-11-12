@@ -1060,6 +1060,16 @@ class _JobsScreenState extends State<JobsScreen> {
         flex: 3,
         cell: (_, job) => WhereLabel(job, placeable: _placeable(job)),
       ),
+      // Who booked it (Trey Brannan, 2026-11-12), when a loaded job says.
+      if (_jobs.any((job) => job['booked_by'] != null))
+        TableColumn(
+          'Booked by',
+          flex: 2,
+          cell: (_, job) => Text(
+            '${job['booked_by'] ?? '—'}',
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       // The time alone: the heading above already says which day.
       TableColumn('Time', width: 88, cell: (_, job) => Text(_time(job) ?? '—')),
       TableColumn(

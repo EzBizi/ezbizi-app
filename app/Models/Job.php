@@ -248,6 +248,26 @@ class Job extends Model implements StatesRetention
         return $this->hasMany(JobNote::class);
     }
 
+    /**
+     * "Booked by" (Trey Brannan, 2026-11-12): the person who created it, here
+     * or in Workiz (CreatedBy, read live: the first sync often arrives without
+     * it), else "Online booking" when nobody did. Null when nothing says.
+     */
+    public function bookedBy(): ?string
+    {
+        $w = $this->workizJob;
+        $workiz = trim((string) ($w?->created_by_name ?? $w?->payload['CreatedBy'] ?? ''));
+        if ($this->created_by_label !== null || $workiz !== '') {
+            return $this->created_by_label ?? $workiz;
+        }
+        // ponytail: online is the only person-less booking path today; name the AI one when it exists.
+        if ($w === null || preg_match('/reserve with google|online|website|booking/i', (string) $this->job_source)) {
+            return 'Online booking';
+        }
+
+        return null;
+    }
+
     public function workizJob(): HasOne
     {
         return $this->hasOne(WorkizJob::class);

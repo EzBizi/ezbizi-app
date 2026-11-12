@@ -481,6 +481,26 @@ class ProjectBoardTest extends TestCase
         $this->assertSame(['14:30', '17:00'], ScheduleTexts::window('2:30-5pm'));
     }
 
+    /** "Booked by" on the Jobs list (Trey Brannan, 2026-11-12). */
+    public function test_jobs_say_who_booked_them(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $ids = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $workiz = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, [], ['CreatedBy' => 'Crizzel Ann']);
+            $online = $this->job($alpha['franchise'], 'J-2', 'Submitted');
+            Job::query()->whereKey($online)->update(['job_source' => 'Reserve with Google']);
+            $phone = $this->job($alpha['franchise'], 'J-3', 'Submitted');
+            Job::query()->whereKey($phone)->update(['job_source' => 'LS Ads']);
+
+            return compact('workiz', 'online', 'phone');
+        });
+
+        $rows = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs?per_page=50')->assertOk()->json('data'))->keyBy('id');
+        $this->assertSame('Crizzel Ann', $rows[$ids['workiz']]['booked_by']);
+        $this->assertSame('Online booking', $rows[$ids['online']]['booked_by']);
+        $this->assertNull($rows[$ids['phone']]['booked_by']);
+    }
+
     private function job(Franchise $franchise, string $number, string $status, ?string $at = null, array $tags = [], array $payload = []): string
     {
         $customer = Customer::create(['owning_franchise_id' => $franchise->id, 'number' => "C-{$number}", 'name' => 'Ann Smith']);
