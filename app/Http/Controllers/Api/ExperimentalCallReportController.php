@@ -387,12 +387,13 @@ class ExperimentalCallReportController extends Controller
     /**
      * PUT /api/v1/reports/experimental/calls/{call}/override {field, value}:
      * sets a call's client (new | existing) or booking (booked | not_booked)
-     * by hand (Jose, 2026-11-03, for Trey). reports.handles, on the route.
+     * by hand (Jose, 2026-11-03, for Trey), or marks it (spam | not_a_customer:
+     * Trey, 2026-11-04). reports.handles, on the route.
      */
     public function override(Request $request, string $call): JsonResponse
     {
         $data = $request->validate([
-            'field' => ['required', 'in:client,booking'],
+            'field' => ['required', 'in:'.implode(',', array_keys(CallReportOverride::VALUES))],
             'value' => ['required', 'string'],
         ]);
         if (! in_array($data['value'], CallReportOverride::VALUES[$data['field']], true)) {
@@ -411,7 +412,7 @@ class ExperimentalCallReportController extends Controller
     /** DELETE .../calls/{call}/override?field=: back to what the phones and Workiz say. */
     public function revert(Request $request, string $call): JsonResponse
     {
-        $field = $request->validate(['field' => ['required', 'in:client,booking']])['field'];
+        $field = $request->validate(['field' => ['required', 'in:'.implode(',', array_keys(CallReportOverride::VALUES))]])['field'];
         $row = CallReportOverride::query()->where('call_id', $call)->where('field', $field)->first();
         if ($row !== null) {
             $this->audit->log('call_report.override_reverted', $row, metadata: ['call_id' => $call, 'field' => $field, 'was' => $row->value]);

@@ -199,7 +199,9 @@ final class CallReconciliation
                 $rang[$person] = ($rang[$person] ?? 0) + 1;
             }
 
-            $client = RingCentralCallLog::clientOf($call['queue'] ?? null);
+            // Marked Spam or Not a customer by hand (Trey, 2026-11-04): still a call, listed with its
+            // mark, but nobody's client, so out of the client counts, the booking rate and Not booked.
+            $client = $this->markOf($call) !== null ? null : RingCentralCallLog::clientOf($call['queue'] ?? null);
 
             if ($client === 'new') {
                 $newTotal++;
@@ -393,7 +395,8 @@ final class CallReconciliation
                 'booked' => $this->isBooked($call, $bookedPhones, $converted),
                 'existing_job' => $this->isBooked($call, $bookedPhones, $converted) ? null : $existingJob($call),
                 'converted' => isset($converted[(string) ($call['id'] ?? '')]),
-                // Who set the client or the booking by hand, per field.
+                'mark' => $this->markOf($call),
+                // Who set the client, the booking or the mark by hand, per field.
                 'set_by' => array_map(fn ($o) => $o['by'], $this->overrides[(string) ($call['id'] ?? '')] ?? []) ?: null,
                 'talk_seconds' => $call['talk_seconds'] ?? null,
                 'recording_id' => $call['recording_id'] ?? null,
@@ -499,6 +502,12 @@ final class CallReconciliation
 
             return $day !== '' && $day >= $from && $day <= $to;
         }));
+    }
+
+    /** spam | not_a_customer, set by hand; null when unmarked. */
+    private function markOf(array $call): ?string
+    {
+        return $this->overrides[(string) ($call['id'] ?? '')]['mark']['value'] ?? null;
     }
 
     /**
