@@ -130,12 +130,25 @@ class BookIntoWorkizTest extends TestCase
         $lock = \Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, 120);
         $lock->get();
 
-        $data = $this->book($t, $lead, ['workiz_job_type' => 'Chimney Inspection'])->assertCreated()->json('data');
+        $data = $this->book($t, $lead, ['workiz_job_type' => 'Chimney Inspection', 'workiz_service_area' => 'Miami '])->assertCreated()->json('data');
         $lock->release();
 
         $this->assertStringContainsString('will send job '.$data['job']['number'], $data['workiz']['refused']);
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\MirrorToWorkiz::class,
-            fn ($m) => $m->op === 'create' && $m->jobId === $data['job']['id'] && $m->args['job_type'] === 'Chimney Inspection');
+            fn ($m) => $m->op === 'create' && $m->jobId === $data['job']['id'] && $m->args['job_type'] === 'Chimney Inspection' && $m->args['service_area'] === 'Miami');
+
+        // The retry sends the whole booking: the job, then its service area.
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::fake([
+            'api.workiz.com/crm/api/v2/jobtypes*' => Http::response($this->page([['id' => 'JT-x1', 'name' => 'Chimney Inspection']])),
+            'api.workiz.com/crm/api/v2/jobs' => Http::response($this->v2Job(['id' => 'JOB-new', 'uuid' => 'NEW001', 'serialId' => 11009]), 201),
+            'api.workiz.com/api/v1/api_NW/job/update/' => Http::response(['flag' => true], 200),
+            'api.workiz.com/crm/api/v2/jobs/JOB-new' => Http::response($this->v2Job(['id' => 'JOB-new', 'uuid' => 'NEW001', 'serialId' => 11009])),
+        ]);
+        $retry = new \App\Jobs\MirrorToWorkiz($t['org']->id, $data['job']['id'], 'create', ['job_type' => 'Chimney Inspection', 'service_area' => 'Miami ']);
+        $this->inTenant($t['org'], fn () => $retry->handle(app(\App\Support\Tenancy\TenantContext::class), app(\App\Support\Workiz\WorkizJobWriter::class), app(\App\Support\Audit\AuditLogger::class)));
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/api_NW/job/update/') && $r['UUID'] === 'NEW001' && $r['ServiceArea'] === 'Miami ');
+        $this->inTenant($t['org'], fn () => WorkizJob::query()->where('remote_id', 'NEW001')->update(['job_id' => null]));
 
         // The last retry still refused: the job carries workiz.mirror_failed.
         $this->inTenant($t['org'], fn () => (new \App\Jobs\MirrorToWorkiz($t['org']->id, $data['job']['id'], 'create', ['job_type' => 'Nope'], 5))
