@@ -21,6 +21,7 @@ class VersionHistory {
       'Task Board: a Gallery view shows every photo, video and file on the board',
       'Development › Releases opens first and shows the time left, each stage, the live log and what ships; What’s new shows a bar when an update is on its way',
       'Task Board: videos play in the Gallery; Monday boards import with every file, done items and their dates',
+      'Integrations › Tasks: Connect Monday keeps imported Monday boards up to date in EzBizi every 10 minutes',
       'Workiz: a job made in Workiz reaches EzBizi within minutes even when a background run stalls; the Workiz card turns red if one waits too long',
       'Project Management: the table scrolls sideways whenever it is wider than the window, so the Ready to Schedule button is always reachable; prices are centred',
     ]),
