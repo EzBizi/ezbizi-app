@@ -220,6 +220,7 @@ use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
 use App\Http\Controllers\Api\TaskBoardsController;
+use App\Http\Controllers\Api\TaskBoardGalleryController;
 use App\Http\Controllers\Api\TaskBoardSettingsController;
 use App\Http\Controllers\Api\TaskBoardViewsController;
 use App\Http\Controllers\Api\TasksController;
@@ -1028,6 +1029,7 @@ Route::prefix('v1')
         Route::post('task-boards/{taskBoard}/unarchive', [TaskBoardsController::class, 'unarchive']);
         Route::post('task-boards/{id}/restore', [TaskBoardsController::class, 'restore']);
         Route::get('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'members']);
+        Route::get('task-boards/{taskBoard}/attachments', [TaskBoardGalleryController::class, 'index']);
         Route::post('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'storeMember']);
         Route::patch('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'updateMember']);
         Route::delete('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'destroyMember']);
