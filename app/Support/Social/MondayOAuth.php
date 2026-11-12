@@ -30,7 +30,9 @@ final class MondayOAuth implements SocialOAuth
 
     private const AUTHORIZE_ENDPOINT = 'https://auth.monday.com/oauth2/authorize';
 
-    private const TOKEN_ENDPOINT = 'https://auth.monday.com/oauth2/token';
+    // The New OAuth Flow (on for the EzBizi app) exchanges codes here, as JSON;
+    // the legacy /oauth2/token rejects its codes with invalid_grant (2026-11-12).
+    private const TOKEN_ENDPOINT = 'https://auth.monday.com/oauth_ms/oauth/token';
 
     private const TIMEOUT = 15;
 
@@ -96,7 +98,7 @@ final class MondayOAuth implements SocialOAuth
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
     {
         try {
-            $response = Http::asForm()->timeout(self::TIMEOUT)->post(self::TOKEN_ENDPOINT, [
+            $response = Http::asJson()->acceptJson()->timeout(self::TIMEOUT)->post(self::TOKEN_ENDPOINT, [
                 'client_id' => (string) config('services.monday.client_id'),
                 'client_secret' => (string) config('services.monday.client_secret'),
                 'code' => $code,
@@ -110,13 +112,17 @@ final class MondayOAuth implements SocialOAuth
 
         $access = $response->json('access_token');
         if ($response->failed() || ! is_string($access) || $access === '') {
+            report(new \RuntimeException('Monday refused the code exchange: '.$response->status().' '.$response->json('error').' '.$response->json('error_description')));
             throw SocialOAuthRefused::exchangeFailed('Monday');
         }
 
+        $refresh = $response->json('refresh_token');
+
         return new SocialOAuthGrant(
             accessToken: $access,
-            refreshToken: null,
+            refreshToken: is_string($refresh) && $refresh !== '' ? $refresh : null,
             scopes: SocialOAuthGrant::parseScopes($response->json('scope')),
+            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
         );
     }
 

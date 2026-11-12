@@ -43,7 +43,7 @@ class MondayConnectTest extends TestCase
         $this->assertSame('monday-client-id', $query['client_id']);
         $this->assertSame('https://app.ezbizi.test/api/v1/social/monday/callback', $query['redirect_uri']);
 
-        $this->fakeMonday(['auth.monday.com/oauth2/token' => Http::response(['access_token' => 'a-monday-token', 'token_type' => 'Bearer', 'scope' => 'me:read boards:read'])]);
+        $this->fakeMonday(['auth.monday.com/oauth_ms/oauth/token' => Http::response(['access_token' => 'a-monday-token', 'token_type' => 'Bearer', 'scope' => 'me:read boards:read'])]);
         $this->get(MondayOAuth::CALLBACK_PATH.'?code=a-code&state='.$query['state'])
             ->assertOk()->assertSee('Connected', false)->assertDontSee('a-monday-token');
 
@@ -56,7 +56,7 @@ class MondayConnectTest extends TestCase
         $this->assertSame('alive', $row->setup['liveness']['verdict'], 'the card\'s check ran and passed');
         // The app has Monday's "New OAuth flow" on: PKCE, S256, the verifier kept server-side with the state.
         $this->assertSame('S256', $query['code_challenge_method']);
-        Http::assertSent(fn ($r) => $r->url() === 'https://auth.monday.com/oauth2/token'
+        Http::assertSent(fn ($r) => $r->url() === 'https://auth.monday.com/oauth_ms/oauth/token'
             && $r['client_secret'] === 'monday-client-secret'
             && is_string($r['code_verifier'] ?? null)
             && Pkce::challenge($r['code_verifier']) === $query['code_challenge']);
@@ -68,7 +68,7 @@ class MondayConnectTest extends TestCase
         $url = $this->signedInAs($t['admin'])->postJson('/api/v1/social/monday/start')->assertOk()->json('data.authorization_url');
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
 
-        $this->fakeMonday(['auth.monday.com/oauth2/token' => Http::response(['access_token' => 'a-monday-token'])]);
+        $this->fakeMonday(['auth.monday.com/oauth_ms/oauth/token' => Http::response(['access_token' => 'a-monday-token'])]);
         $this->get(MondayOAuth::CALLBACK_PATH.'?code=a-code&state='.$query['state'])->assertOk();
         $this->monday['refuse'] = true;
 
