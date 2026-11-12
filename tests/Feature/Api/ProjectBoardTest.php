@@ -144,6 +144,8 @@ class ProjectBoardTest extends TestCase
             // Any case and spacing (Jose, 2026-11-10); a misspelling is a different tag.
             'cased' => $this->job($alpha['franchise'], 'J-5', 'submitted', null, ['Deposit  received']),
             'misspelt' => $this->job($alpha['franchise'], 'J-6', 'Submitted', null, ['DEPOSIT RECIEVED']),
+            // Submitted AND scheduled, not OR (Jose, 2026-11-12): status Scheduled is not on it.
+            'status_scheduled' => $this->job($alpha['franchise'], 'J-7', 'Scheduled', '2026-11-10 09:00:00', ['DEPOSIT RECEIVED']),
         ]);
 
         $page = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk();

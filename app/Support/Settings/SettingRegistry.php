@@ -1000,8 +1000,8 @@ class SettingRegistry
                         'tags_none' => ['READY TO SCHEDULE'], 'scheduled' => false],
                     'ready_to_schedule' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED', 'READY TO SCHEDULE'],
                         'tags_mode' => 'all', 'scheduled' => false],
-                    // Jose, 2026-11-10: Scheduled is DEPOSIT RECEIVED with a date.
-                    'scheduled' => ['statuses' => ['Submitted', 'Scheduled'], 'tags' => ['DEPOSIT RECEIVED'], 'tags_mode' => 'all', 'scheduled' => true],
+                    // Jose, 2026-11-10: Scheduled is Submitted AND scheduled (Jose 11-12: AND, not OR): Submitted + DEPOSIT RECEIVED + a date.
+                    'scheduled' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED'], 'tags_mode' => 'all', 'scheduled' => true],
                     'in_progress' => ['statuses' => []],
                     'done_waiting_payment' => ['statuses' => []],
                     'complete' => ['statuses' => []],
