@@ -3161,6 +3161,29 @@ class ActionRunner
         return trim($this->interpolate((string) $message, $event, $review));
     }
 
+    /** One more try at a reply Google was not ready for, an hour on; a second refusal is a failure. */
+    public static function retryLater(string $replyId, string $organizationId, string $authorId): void
+    {
+        dispatch(function () use ($replyId, $organizationId, $authorId) {
+            $org = \App\Models\Organization::query()->withoutGlobalScopes()->find($organizationId);
+            $org && app(\App\Support\Tenancy\TenantContext::class)->run($org, function () use ($replyId, $authorId) {
+                $reply = ReviewReply::query()->find($replyId);
+                if ($reply === null || $reply->isPublished()) {
+                    return;
+                }
+                try {
+                    app(BusinessProfileReviews::class)->publish($reply);
+                    $reply->forceFill(['status' => ReviewReply::STATUS_PUBLISHED, 'published_by_user_id' => $authorId,
+                        'published_at' => now(), 'failure_reason' => null])->save();
+                    app(AuditLogger::class)->log('review.reply_published', $reply->review, metadata: ['by' => 'automation', 'retry' => true]);
+                } catch (RuntimeException $e) {
+                    $reply->forceFill(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => $e->getMessage()])->save();
+                    app(AuditLogger::class)->log('review.reply_failed', $reply->review, metadata: ['reason' => $e->getMessage(), 'by' => 'automation', 'retry' => true]);
+                }
+            });
+        })->delay(now()->addHour());
+    }
+
     /**
      * Publish a reply on Google by itself (A1 Leads takeover, 2026-10-20).
      *
@@ -3243,6 +3266,14 @@ class ActionRunner
         try {
             app(BusinessProfileReviews::class)->publish($reply);
         } catch (RuntimeException $e) {
+            // Google answers 404 for a review it has not finished indexing, and 503 when busy
+            // (11-09, 11-12): keep the draft and try once more an hour later, not a failure.
+            if (preg_match('/HTTP (404|503)/', $e->getMessage()) && ! ($action['retried'] ?? false)) {
+                $reply->forceFill(['failure_reason' => 'Google was not ready ('.$e->getMessage().'); trying again in an hour.'])->save();
+                self::retryLater($reply->getKey(), (string) $subject->organization_id, $author->getKey());
+
+                return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Google was not ready; the reply will be sent again in an hour.'];
+            }
             DB::transaction(function () use ($reply, $subject, $e) {
                 $reply->forceFill(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => $e->getMessage()])->save();
                 app(AuditLogger::class)->log('review.reply_failed', $subject, metadata: ['reason' => $e->getMessage(), 'by' => 'automation']);
