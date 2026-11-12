@@ -41,6 +41,8 @@ void main() {
       'url': '$root/v1',
       'inline_url': null,
       'thumbnail_url': null,
+      'stream_url': '$root/v1/stream?signature=x',
+      'poster_url': '$root/v1/stream?poster=1&signature=x',
     },
   ];
 
@@ -110,7 +112,7 @@ void main() {
     expect(find.byKey(const ValueKey('gallery-tile-v1')), findsOneWidget);
     expect(find.text('Roof job'), findsOneWidget);
     expect(find.text('Flashing'), findsOneWidget);
-    expect(find.byIcon(Icons.play_circle_outline), findsOneWidget);
+    expect(find.byIcon(Icons.play_circle_fill), findsOneWidget);
     expect(find.byKey(const Key('gallery-person-u2')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('gallery-type-video')));
@@ -124,9 +126,11 @@ void main() {
     tester,
   ) async {
     await pump(tester, server());
+    expect(find.byKey(const ValueKey('gallery-poster-v1')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('gallery-tile-v1')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('gallery-file-panel')), findsOneWidget);
+    expect(find.byKey(const Key('gallery-video')), findsOneWidget);
     expect(find.byKey(const Key('gallery-download')), findsOneWidget);
     await tester.tap(find.byKey(const Key('gallery-go-to-task')));
     await tester.pumpAndSettle();
