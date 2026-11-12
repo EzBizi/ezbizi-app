@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\SubscriptionLapsedException;
+use App\Jobs\CheckNewConnections;
 use App\Jobs\OnboardWhatsAppNumber;
 use App\Jobs\RegisterThumbtackWebhook;
 use App\Jobs\SyncBusinessProfileConnection;
@@ -14,6 +15,7 @@ use App\Models\WhatsAppNumber;
 use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Leads\ConnectBranch;
 use App\Support\Scoping\ViewScope;
 use App\Support\Social\BusinessProfileOAuth;
 use App\Support\Social\FacebookAdsOAuth;
@@ -395,6 +397,9 @@ class SocialAuthController extends Controller
                     $connection->connect($tokens);
                     $connection->save();
 
+                    // A lead account's branch, when the answer is plain (ConnectBranch).
+                    ConnectBranch::apply($connection);
+
                     /*
                      * Thumbtack has to be told where to send enquiries, and
                      * connecting does not tell it.
@@ -444,6 +449,10 @@ class SocialAuthController extends Controller
 
                     $saved[] = $connection;
                 }
+
+                // The card's verdict now, not at tomorrow's health run (Jose, 2026-11-12).
+                CheckNewConnections::dispatch(array_map(fn (SocialConnection $c) => (string) $c->getKey(), $saved))
+                    ->afterCommit()->delay(now()->addMinutes(2));
 
                 return $saved;
             });

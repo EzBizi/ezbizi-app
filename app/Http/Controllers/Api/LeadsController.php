@@ -2034,7 +2034,7 @@ class LeadsController extends Controller
      * every tick refused it). Thumbtack is pushed to us, not read, so its
      * stamp says nothing and it never counts.
      */
-    private static function syncFailing(SocialConnection $c): bool
+    public static function syncFailing(SocialConnection $c): bool
     {
         if ($c->provider !== SocialProvider::GoogleAds->value || $c->status !== SocialConnection::STATUS_CONNECTED) {
             return false;

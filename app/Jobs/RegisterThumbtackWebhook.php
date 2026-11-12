@@ -9,6 +9,7 @@ use App\Support\Social\ThumbtackWebhooks;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Artisan;
 
 /**
  * Tell Thumbtack where to send this business's enquiries.
@@ -80,5 +81,9 @@ final class RegisterThumbtackWebhook implements ShouldQueue
             // events go somewhere else forever.
             ThumbtackWebhooks::for($connection)->ensure(route('social.thumbtack.webhook'));
         });
+
+        // Its associate phone numbers now, not at 04:40 tomorrow (desk audit,
+        // 2026-11-12). After the webhook, so the two never renew the grant at once.
+        Artisan::call('ezbizi:sync-thumbtack-phone-numbers', ['--connection' => $this->connectionId]);
     }
 }

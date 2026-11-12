@@ -404,6 +404,39 @@ class RingCentralLeadCallsTest extends TestCase
         $this->inTenant($t['org'], fn () => $this->assertSame('Sasha', LeadConversation::query()->value('answered_by')));
     }
 
+    /** Desk audit, 2026-11-12: Triplex holds two RingCentral accounts; the second's calls were never read. */
+    public function test_every_connected_account_is_read_not_just_the_first(): void
+    {
+        $t = $this->setUpTenant();
+        foreach (['one', 'two'] as $i => $server) {
+            $this->inTenant($t['org'], function () use ($t, $server, $i) {
+                $rc = new \App\Models\SocialConnection;
+                $rc->forceFill(['organization_id' => $t['org']->id, 'scope_type' => 'company', 'scope_id' => $t['company']->id,
+                    'provider' => 'ringcentral', 'remote_id' => "acct-$server", 'display_name' => "RingCentral $server",
+                    'created_at' => now()->subMinutes(10 - $i)]);
+                $rc->connect(['refresh_token' => '-', 'server' => "https://$server.test", 'client_id' => 'one-app', 'client_secret' => 's', 'jwt' => "jwt-$server"]);
+                $rc->save();
+            });
+        }
+        $fake = [];
+        foreach (['one', 'two'] as $server) {
+            $fake["$server.test/restapi/oauth/token"] = \Illuminate\Support\Facades\Http::response(['access_token' => "t-$server", 'expires_in' => 3600]);
+            $fake["$server.test/restapi/v1.0/account/~/active-calls*"] = \Illuminate\Support\Facades\Http::response(['records' => []]);
+            $fake["$server.test/restapi/v1.0/account/~/phone-number*"] = \Illuminate\Support\Facades\Http::response(['records' => []]);
+            $fake["$server.test/restapi/v1.0/account/~/call-log*"] = \Illuminate\Support\Facades\Http::response(['records' => [
+                ['id' => "call-$server", 'direction' => 'Inbound', 'startTime' => now()->subHours(5)->toIso8601String(),
+                    'from' => ['phoneNumber' => $server === 'one' ? '+15550000001' : '+15550000002'], 'to' => ['phoneNumber' => '+17320000001'], 'result' => 'Accepted',
+                    'legs' => [['legType' => 'PstnToSip', 'from' => ['name' => 'Sasha'], 'result' => 'Call connected', 'duration' => 60]]],
+            ]]);
+        }
+        \Illuminate\Support\Facades\Http::fake($fake);
+
+        $this->artisan('ezbizi:leads-ringcentral')->assertSuccessful();
+
+        $this->inTenant($t['org'], fn () => $this->assertEqualsCanonicalizing(['rc_call-one', 'rc_call-two'],
+            LeadConversation::query()->pluck('remote_id')->all()));
+    }
+
     /** Jose, 2026-10-19: "think we can also get the lenght of the call" (B Imperato, 0:00:01). */
     public function test_an_unanswered_call_says_how_long_it_lasted(): void
     {
