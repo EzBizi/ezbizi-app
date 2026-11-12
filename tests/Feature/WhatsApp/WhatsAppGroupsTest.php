@@ -8,6 +8,7 @@ use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppPendingReport;
 use App\Support\Social\WhatsAppGroups;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -35,6 +36,9 @@ class WhatsAppGroupsTest extends TestCase
     /** @var list<array<string, mixed>> the templates Meta lists on the account */
     private array $templates = [];
 
+    /** Meta does not answer the template list */
+    private bool $metaDown = false;
+
     private array $t;
 
     protected function setUp(): void
@@ -56,7 +60,7 @@ class WhatsAppGroupsTest extends TestCase
                 str_ends_with($request->url(), '/groups') => Http::response(['id' => 'GROUP-1']),
                 str_ends_with($request->url(), '/invite_link') => Http::response(['invite_link' => 'https://chat.whatsapp.com/ABC']),
                 str_ends_with($request->url(), '/media') => Http::response(['id' => 'MEDIA-1']),
-                str_contains($request->url(), '/message_templates') => Http::response(['data' => $this->templates]),
+                str_contains($request->url(), '/message_templates') => $this->metaDown ? throw new ConnectionException('timed out') : Http::response(['data' => $this->templates]),
                 default => Http::response(['messages' => [['id' => 'wamid.OUT'.$n]]]),
             };
         });
@@ -214,6 +218,30 @@ class WhatsAppGroupsTest extends TestCase
         $this->assertCount(18, $lines);
         $this->assertSame(['*TOTAL: $532,323.30*', "\u{2800}", '_+ '.(30 - count(preg_grep('/^• /u', $lines))).' more in the PDF_'], array_slice($lines, -3));
         $this->assertLessThanOrEqual(740, mb_strlen(implode("\n", $lines)));
+    }
+
+    /** 2026-11-11, 9 PM: Meta did not answer the template list, the empty answer was kept an hour, and Technician sales went as the old PDF template. */
+    public function test_meta_not_answering_the_template_list_keeps_the_line_templates(): void
+    {
+        $this->templates = [['name' => 'report_lines_10', 'status' => 'APPROVED', 'components' => []]];
+        $quiet = $this->member($this->group(), '(305) 555-0102');
+        $send = fn () => $this->inTenant($this->t['org'], fn () => app(WhatsAppGroups::class)
+            ->deliverTextToUser(WhatsAppNumber::query()->firstOrFail(), $quiet, 'Daily · Mon, Nov 9', "• *A*: 1\n\n*TOTAL: 1*"));
+        $template = fn () => collect($this->sent)->filter(fn ($m) => isset($m['to']))->last()['template']['name'];
+
+        // Never read yet: nothing to go on, so the old template, and the failure is not kept.
+        $this->metaDown = true;
+        $send();
+        $this->assertSame('account_report_pdf', $template());
+        $this->metaDown = false;
+        $send();
+        $this->assertSame('report_lines_10', $template());
+
+        // Read once, then Meta is down when the hour runs out: the last list it had.
+        $this->travel(61)->minutes();
+        $this->metaDown = true;
+        $send();
+        $this->assertSame('report_lines_10', $template());
     }
 
     /** Desk, 2026-11-11: a report cut short never leaves a total under the wrong heading, nor a heading with nothing under it. */
