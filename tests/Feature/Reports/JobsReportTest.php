@@ -59,9 +59,21 @@ class JobsReportTest extends TestCase
         $get('&area=DFW')->assertJsonPath('data.count', 1)->assertJsonPath('data.rows.0.workiz_id', 'J03');
         $get('&dialed=%2B12165550000')->assertJsonPath('data.count', 1)->assertJsonPath('data.rows.0.workiz_id', 'J01');
         $get('&dialed=none')->assertJsonPath('data.count', 2);
-        // The search runs on the server too: a Workiz job number, or three digits of the phone.
+        // Several at once (Jose 11-12: "Multiselect for both numbers dialed and sources"), 'none' among them.
+        $get('&source[]=GMB&source[]=none')->assertJsonPath('data.count', 1)->assertJsonPath('data.rows.0.workiz_id', 'J02');
+        $get('&source[]=GMB&source[]=LS%20Ads')->assertJsonPath('data.count', 3)->assertJsonPath('data.total', 600);
+        $get('&dialed[]=none&dialed[]=%2B12165550000&area=DFW')->assertJsonPath('data.count', 1);
+        // The search reads every column, any case (Jose 11-12: "so it gets all columns").
         $get('&q=600003')->assertJsonPath('data.count', 1)->assertJsonPath('data.rows.0.workiz_id', 'J03');
         $get('&q=555-0101')->assertJsonPath('data.count', 3);
+        $search = fn (string $q) => collect($get('&q='.urlencode($q))->json('data.rows'))->pluck('workiz_id')->sort()->values()->all();
+        $this->assertSame(['J01', 'J02'], $search('CLEVELAND'));
+        $this->assertSame(['J02'], $search('gmb'));
+        $this->assertSame(['J01'], $search('(216) 555-0000'));
+        $this->assertSame(['J03'], $search('11/9/2026'));
+        $this->assertSame(['J01'], $search('300.00'));
+        $this->assertSame(['J01', 'J02', 'J03'], $search('chimney sweep'));
+        $this->assertSame([], $search('nothing like it'));
         // The count and total are the range's; the rows a page of them.
         $get('&limit=1&offset=1')->assertJsonPath('data.count', 3)->assertJsonCount(1, 'data.rows')->assertJsonPath('data.rows.0.workiz_id', 'J01');
 
@@ -83,5 +95,31 @@ class JobsReportTest extends TestCase
         // When: 13:50 UTC is 8:50 AM in New York, the job's own clock.
         $this->assertSame(['J1' => ['+13305550000', '2026-11-10 08:50:00']],
             JobsReportController::lastCallIn($log, collect([$job('J1', '(212) 555-0199'), $job('J2', '(312) 555-0100'), $job('J3', '')]), 'UTC'));
+
+        // The job's second phone counts, and its Workiz clock wins over the branch's: 9 AM Central is 15:00 UTC.
+        $second = $job('J4', '(999) 555-0000');
+        $second->phone2 = '212-555-0199';
+        $second->clock = 'America/Chicago';
+        $this->assertSame(['J4' => ['+14405550000', '2026-11-10 09:00:00']], JobsReportController::lastCallIn($log, collect([$second]), 'UTC'));
+    }
+
+    /**
+     * A branch's Workiz clock is the zone its jobs land in just before EzBizi copied them:
+     * measured 11-12, Illinois writes Central under a branch set to Eastern, so every
+     * booking call read an hour after its job.
+     */
+    public function test_a_branchs_workiz_clock_is_read_from_when_its_jobs_were_copied_in(): void
+    {
+        $job = fn (string $branch, string $booked, string $copied) => (object) ['franchise_id' => $branch, 'timezone' => 'America/New_York', 'created_at' => $booked, 'mirrored_at' => $copied];
+
+        $this->assertSame(['IL' => 'America/Chicago', 'NJ' => 'America/New_York'], JobsReportController::workizClocks(collect([
+            // 07:18 Central is 13:18 UTC; copied 15 seconds later.
+            $job('IL', '2026-11-12 07:18:33', '2026-11-12 13:18:48'),
+            $job('IL', '2026-11-12 08:19:31', '2026-11-12 14:19:49'),
+            // A backfilled job, copied months on, says nothing.
+            $job('IL', '2026-08-01 10:00:00', '2026-10-01 12:00:00'),
+            $job('NJ', '2026-11-12 08:18:33', '2026-11-12 13:18:48'),
+            $job('OH', '2026-08-01 10:00:00', '2026-10-01 12:00:00'),
+        ]), 'America/New_York'));
     }
 }

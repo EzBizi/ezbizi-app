@@ -105,4 +105,77 @@ void main() {
     expect(find.text('Syncing'), findsOneWidget);
     expect(find.byKey(const ValueKey('jobs-more')), findsNothing);
   });
+
+  testWidgets(
+    'Number dialed takes several, found by typing, with No call found '
+    '(Jose 11-12: "Multiselect", "search for the sources and lines too")',
+    (tester) async {
+      final asked = <Map<String, List<String>>>[];
+      final api = ApiClient(
+        client: MockClient((request) async {
+          asked.add(request.url.queryParametersAll);
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'rows': [row('J1', ezbizi: '1042', dialed: '+12163077555')],
+                'count': 1,
+                'total': 300.5,
+                'sources': [
+                  {'value': 'LS Ads', 'count': 1},
+                ],
+                'areas': const [],
+                'dialed': [
+                  {
+                    'value': '+12163077555',
+                    'count': 11,
+                    'name': 'CLE - LS Ads',
+                  },
+                  {'value': '+12162290000', 'count': 2, 'name': 'CLE - PPC'},
+                  {'value': '+18562908555', 'count': 3, 'name': 'NJ - PPC'},
+                  {'value': 'none', 'count': 62, 'name': null},
+                ],
+                'calls_read': true,
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+      tester.view.physicalSize = const Size(2400, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: JobsReport(
+              api: api,
+              span: DateSpan(DateTime(2026, 11, 12), DateTime(2026, 11, 12)),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(asked.single['dialed[]'], isNull);
+
+      await tester.tap(find.byKey(const ValueKey('jobs-dialed')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, 'cle');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('NJ - PPC'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('search-multi-select-shown')));
+      await tester.enterText(find.byType(TextField).last, '');
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('No call found'));
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      expect(
+        asked.last['dialed[]'],
+        unorderedEquals(['+12163077555', '+12162290000', 'none']),
+      );
+      expect(asked.last['source[]'], isNull);
+    },
+  );
 }
