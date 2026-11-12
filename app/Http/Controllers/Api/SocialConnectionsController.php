@@ -124,6 +124,7 @@ class SocialConnectionsController extends Controller
                     'method' => WorkizV2::uses($c) ? 'v2' : 'v1',
                     'last_synced_at' => \App\Models\WorkizJob::query()->where('franchise_id', $c->scope_id)->max('synced_at'),
                     'history' => BackfillWorkizJobs::state($c),
+                    'health' => \Illuminate\Support\Facades\Cache::get(\App\Support\Workiz\WorkizHealth::cacheKey($c)),
                 ] : null,
                 'last_reached_at' => $c->last_reached_at?->toIso8601String(),
                 // When ezbizi:check-connection-health last had a verdict (Jose, 2026-11-03).
