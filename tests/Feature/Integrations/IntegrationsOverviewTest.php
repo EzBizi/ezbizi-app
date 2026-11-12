@@ -158,6 +158,40 @@ class IntegrationsOverviewTest extends TestCase
         $this->assertSame('fail', collect($row['checks'])->firstWhere('key', 'sign_in')['state']);
     }
 
+    public function test_a_phone_line_shows_phones_keyed_health_checks(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $line = $this->inTenant($t['org'], function () use ($t) {
+            $connection = \App\Models\PhoneConnection::factory()->create([
+                'scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+            ]);
+
+            // No E911 address on file: the `e911` check fails.
+            return \App\Models\PhoneNumber::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $t['org']->id,
+                'twilio_sid' => 'PN'.str_repeat('c', 32),
+                'e164' => '+15615550009',
+                'label' => 'Main',
+                'after_hours' => 'voicemail',
+            ]);
+        });
+
+        $row = $this->find($this->overview($t), $line->id);
+
+        $this->assertSame('phone', $row['provider']);
+        $this->assertSame('broken', $row['status']);
+        $this->assertSame(\App\Support\Phone\LineHealth::KEYS, array_column($row['checks'], 'key'));
+        $pointed = collect($row['checks'])->firstWhere('key', 'e911');
+        $this->assertSame('fail', $pointed['state']);
+        $this->assertSame('E911 address', $pointed['label']);
+        $this->assertSame('pass', collect($row['checks'])->firstWhere('key', 'pointed')['state']);
+        $this->assertNotEmpty($pointed['reason']);
+    }
+
     public function test_recheck_returns_the_updated_connection_and_is_throttled(): void
     {
         $t = $this->provisionTenant('A1-Group');
