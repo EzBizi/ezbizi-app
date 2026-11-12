@@ -73,9 +73,9 @@ final class HrOverview
             'to' => $to,
 
             'on_the_books' => [
-                'total' => $people()->count(),
+                'total' => $people()->removed(false)->count(),
                 'active' => $people()->where('users.is_active', true)->count(),
-                'inactive' => $people()->where('users.is_active', false)->count(),
+                'inactive' => $people()->where('users.is_active', false)->removed(false)->count(),
             ],
 
             'joined' => [
