@@ -97,11 +97,13 @@ class ProjectWorkizRecords extends Command
     public const LOCK = 'ezbizi:project-workiz';
 
     /**
-     * Long enough that no real run outlives it — projecting the whole history
-     * import took about two minutes — and short enough that a run killed
-     * mid-way does not hold the projection off for more than an hour.
+     * The scheduler slot's own ceiling (ezbizi-scheduler@.service,
+     * TimeoutStartSec=300): no run can outlive it, so neither does the lock.
+     * It was an hour, and on 11-12 a slot killed at 17:25 by that timeout left
+     * it held: no Workiz job became an EzBizi job until 18:25. A normal run
+     * takes about 100 seconds.
      */
-    private const LOCK_SECONDS = 3600;
+    public const LOCK_SECONDS = 300;
 
     /**
      * When the last completed pass BEGAN. The next pass derives clients only
