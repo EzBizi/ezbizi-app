@@ -41,4 +41,47 @@ void main() {
     expect(find.byType(Scrollbar), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('undragged columns wider than the window scroll to the last', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 1366,
+            child: SingleChildScrollView(
+              child: ListTable(
+                columns: [
+                  for (var i = 0; i < 16; i++) ListColumn('C$i', flex: 2),
+                  const ListColumn('', flex: 4),
+                ],
+                rows: [
+                  [
+                    for (var i = 0; i < 16; i++) Text('v$i'),
+                    FilledButton(
+                      key: const Key('last'),
+                      onPressed: () {},
+                      child: const Text('Ready to schedule'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(Scrollbar), findsOneWidget);
+    await tester.drag(
+      find.byType(SingleChildScrollView).last,
+      const Offset(-3000, 0),
+    );
+    await tester.pumpAndSettle();
+    final last = tester.getRect(find.byKey(const Key('last')));
+    expect(last.right, lessThanOrEqualTo(1366));
+    expect(last.width, greaterThan(150));
+    expect(tester.takeException(), isNull);
+  });
 }

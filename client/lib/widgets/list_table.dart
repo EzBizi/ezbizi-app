@@ -205,6 +205,7 @@ class ListColumn {
     this.label, {
     this.flex = 2,
     this.end = false,
+    this.center = false,
     this.namedWhenStacked = true,
     this.onSort,
     this.sorted,
@@ -228,6 +229,9 @@ class ListColumn {
 
   /// Right-aligned, for numbers and the actions column.
   final bool end;
+
+  /// Centred under its heading (Jose, 2026-11-12: PM's money columns).
+  final bool center;
 }
 
 /// Rows under headings, columns lined up. Narrower than [stackBelow], each row
@@ -316,9 +320,10 @@ class ListTable extends StatelessWidget {
           for (var i = 0; i < columns.length; i++)
             widths[i] ?? columns[i].flex * flexUnit,
         ];
+        // Also undragged: squeezed flex cells clipped the last column with
+        // no way to reach it (Jose, 2026-11-12, 0.0.0565).
         final scrolls =
             wide &&
-            widths.isNotEmpty &&
             natural.fold<double>(0, (a, b) => a + b) + 28 > box.maxWidth;
 
         Widget sized(int i, Widget child) => scrolls || widths[i] != null
@@ -332,7 +337,9 @@ class ListTable extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Align(
-              alignment: columns[i].end
+              alignment: columns[i].center
+                  ? Alignment.center
+                  : columns[i].end
                   ? Alignment.centerRight
                   : Alignment.centerLeft,
               child: child,
@@ -464,7 +471,9 @@ class ListTable extends StatelessWidget {
                             : Key('list-sort-$i'),
                         onTap: columns[i].onSort,
                         child: Row(
-                          mainAxisAlignment: columns[i].end
+                          mainAxisAlignment: columns[i].center
+                              ? MainAxisAlignment.center
+                              : columns[i].end
                               ? MainAxisAlignment.end
                               : MainAxisAlignment.start,
                           children: [
@@ -473,7 +482,9 @@ class ListTable extends StatelessWidget {
                                 columns[i].label.toUpperCase(),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                textAlign: columns[i].end
+                                textAlign: columns[i].center
+                                    ? TextAlign.center
+                                    : columns[i].end
                                     ? TextAlign.end
                                     : null,
                                 style: theme.textTheme.labelSmall?.copyWith(

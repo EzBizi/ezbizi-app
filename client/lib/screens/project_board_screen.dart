@@ -751,6 +751,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         value is int
             ? formatMoney(value, currency: '${row['currency'] ?? 'USD'}')
             : '—',
+        // Digits line up while centred (Jose, 2026-11-12).
+        style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
       );
     }
     if (value is List) {
@@ -991,14 +993,14 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                             flex: c['key'] == 'required' || c['key'] == 'tags'
                                 ? 4
                                 : 2,
-                            end: _moneyKeys.contains(c['key']),
+                            center: _moneyKeys.contains(c['key']),
                             onSort: _sortable.contains(c['key'])
                                 ? () => _sortBy('${c['key']}')
                                 : null,
                             sorted: _sortKey == c['key'] ? _sortDesc : null,
                           ),
                         if (_tab == 'unscheduled')
-                          const ListColumn('', flex: 3),
+                          const ListColumn('', flex: 4),
                         if (_tab == 'ready_to_schedule')
                           const ListColumn('Schedule', flex: 3),
                       ],
