@@ -190,6 +190,11 @@ class IntegrationsOverviewTest extends TestCase
         $this->assertSame('E911 address', $pointed['label']);
         $this->assertSame('pass', collect($row['checks'])->firstWhere('key', 'pointed')['state']);
         $this->assertNotEmpty($pointed['reason']);
+        // Not registered for A2P: waiting on Twilio's review, not on anybody here.
+        $texting = collect($row['checks'])->firstWhere('key', 'texting');
+        $this->assertSame('fail', $texting['state']);
+        $this->assertSame('Twilio', $texting['waiting_on'] ?? null);
+        $this->assertArrayNotHasKey('waiting_on', $pointed);
     }
 
     public function test_the_health_run_persists_workiz_health_as_checks(): void

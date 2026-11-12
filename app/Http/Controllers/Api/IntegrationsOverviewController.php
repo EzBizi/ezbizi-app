@@ -249,11 +249,20 @@ final class IntegrationsOverviewController extends Controller
             // Phone's own rule (LineHealth), one check per key.
             $health = app(TenantContext::class)->run($user->organization, fn () => LineHealth::for($n));
             $problems = collect($health['problems'])->pluck('sentence', 'key');
-            $checks = array_map(fn (string $key) => self::check($key,
-                ! $problems->has($key) ? ConnectionChecks::PASS
-                    // Nobody signed in right now is a moment, not a fault.
-                    : ($key === 'signed_in' ? ConnectionChecks::UNKNOWN : ConnectionChecks::FAIL),
-                $problems->get($key), null, now()->toIso8601String()), LineHealth::KEYS);
+            $checks = array_map(function (string $key) use ($problems) {
+                $check = self::check($key,
+                    ! $problems->has($key) ? ConnectionChecks::PASS
+                        // Nobody signed in right now is a moment, not a fault.
+                        : ($key === 'signed_in' ? ConnectionChecks::UNKNOWN : ConnectionChecks::FAIL),
+                    $problems->get($key), null, now()->toIso8601String());
+                // A2P registration is decided by Twilio's review: nobody here can
+                // act on it, so the screen shows it as waiting, not as a fault.
+                if ($key === 'texting' && $problems->has($key)) {
+                    $check['waiting_on'] = 'Twilio';
+                }
+
+                return $check;
+            }, LineHealth::KEYS);
 
             return self::connection([
                 'id' => (string) $n->id,
