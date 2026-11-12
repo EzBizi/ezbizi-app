@@ -2,6 +2,7 @@
 
 namespace App\Support\Tasks;
 
+use App\Jobs\MakeVideoPoster;
 use App\Models\Attachment;
 use App\Models\Task;
 use App\Models\TaskActivity;
@@ -257,6 +258,8 @@ final class SensitiveTasks
         $files = Attachment::query()->where('attachable_type', 'task_updates')->whereIn('attachable_id', $updates->pluck('id'))->get();
         foreach ($files as $a) {
             if ($on) {
+                // A Gallery poster frame is the video in the clear: it goes too.
+                $old[] = [MakeVideoPoster::posterPath($a), $a->disk];
                 if ($a->sealed_name === null) {
                     $a->forceFill(['sealed_name' => self::seal($a->original_name), 'original_name' => self::LOCKED_FILE]);
                 }
@@ -280,12 +283,40 @@ final class SensitiveTasks
     /** Per person and per session: a token's id, else the web session's. */
     private function key(Request $request): string
     {
-        $user = $request->user();
-        $token = $user?->currentAccessToken();
-        $id = $token instanceof PersonalAccessToken ? $token->getKey() : null;
-        $session = $id ? 'token:'.$id : ($request->hasSession() ? 'session:'.$request->session()->getId() : 'none');
+        return self::unlockKey((string) $request->user()?->getKey(), self::sessionOf($request));
+    }
 
-        return 'task-sensitive-unlock:'.$user?->getKey().':'.$session;
+    /** Which session a request is: its token, else its web session. */
+    public static function sessionOf(Request $request): string
+    {
+        $token = $request->user()?->currentAccessToken();
+        $id = $token instanceof PersonalAccessToken ? $token->getKey() : null;
+
+        return $id ? 'token:'.$id : ($request->hasSession() ? 'session:'.$request->session()->getId() : 'none');
+    }
+
+    private static function unlockKey(string $userId, string $session): string
+    {
+        return 'task-sensitive-unlock:'.$userId.':'.$session;
+    }
+
+    /**
+     * For a request with no bearer token (the signed video stream): is
+     * [session], named in the signed link, unlocked for [user] right now?
+     * A link names its session only when it was issued from one.
+     */
+    public function unlockedFor(User $user, ?string $session, Task $task, string $via): bool
+    {
+        if ($session === null || $session === 'none') {
+            return false;
+        }
+        $until = Cache::get(self::unlockKey((string) $user->getKey(), $session));
+        if (! is_int($until) || $until <= now()->getTimestamp()) {
+            return false;
+        }
+        $this->audit->log('task.revealed', $task, metadata: ['via' => $via], actor: $user);
+
+        return true;
     }
 
     private function refuse(string $message, string $code, int $status = 422): never

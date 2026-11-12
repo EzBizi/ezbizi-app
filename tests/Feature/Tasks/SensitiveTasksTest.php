@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Http\Controllers\Api\AttachmentStreamController;
+use App\Jobs\MakeVideoPoster;
 use App\Models\Attachment;
 use App\Models\AuditEvent;
 use App\Models\Notification;
@@ -20,6 +22,7 @@ use App\Support\Tasks\SensitiveTasks;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsTenants;
 use Tests\Concerns\GivesAuthenticatorCodes;
@@ -314,6 +317,51 @@ class SensitiveTasksTest extends TestCase
         $sub = $this->api()->postJson('/api/v1/tasks', ['board_id' => $this->board->id, 'title' => 'Amex', 'parent_task_id' => $this->task])
             ->assertCreated()->json('data.id');
         $this->assertTrue((bool) DB::table('tasks')->where('id', $sub)->value('sensitive'));
+    }
+
+    public function test_the_video_stream_link_refuses_a_sensitive_video_without_a_step_up(): void
+    {
+        Queue::fake();
+        $task = $this->api()->postJson('/api/v1/tasks', ['board_id' => $this->board->id, 'title' => 'Walk'])->assertCreated()->json('data.id');
+        $this->api()->post("/api/v1/tasks/{$task}/updates", ['files' => [UploadedFile::fake()->create('walk.mp4', 10, 'video/mp4')]],
+            ['Accept' => 'application/json'])->assertCreated();
+        $video = Attachment::withoutGlobalScopes()->where('mime', 'like', 'video/%')->firstOrFail();
+        $disk = Storage::disk($video->disk);
+        $disk->put($video->path, 'PLAIN-VIDEO-BYTES');
+        $disk->put(MakeVideoPoster::posterPath($video), 'PLAIN-POSTER');
+        $item = collect($this->api()->getJson("/api/v1/task-boards/{$this->board->id}/attachments")->json('data'))->firstWhere('id', $video->id);
+        $this->assertNotNull($item['stream_url']);
+        $this->assertNotNull($item['poster_url']);
+        $this->app['auth']->forgetGuards();
+        $this->get($item['stream_url'])->assertOk();
+
+        // Marked: links already handed out stop working, the poster is gone, no new poster is wanted.
+        $this->api()->patchJson("/api/v1/tasks/{$task}", ['sensitive' => true])->assertOk();
+        $this->app['auth']->forgetGuards();
+        $this->get($item['stream_url'])->assertForbidden();
+        $this->get($item['poster_url'])->assertNotFound();
+        $this->assertFalse($disk->exists(MakeVideoPoster::posterPath($video)));
+        $video = $video->fresh();
+        $this->assertFalse(MakeVideoPoster::wants($video));
+        $tile = collect($this->api()->getJson("/api/v1/task-boards/{$this->board->id}/attachments")->json('data'))->firstWhere('id', $video->id);
+        $this->assertTrue($tile['locked']);
+        $this->assertNull($tile['stream_url']);
+        $this->assertNull($tile['poster_url']);
+
+        // A fresh link naming a session: refused until that session is unlocked, then plays (decrypted) and is audited.
+        $token = $this->inTenant($this->t['org'], fn () => $this->admin->fresh()->createToken('desk'));
+        $session = 'token:'.$token->accessToken->getKey();
+        $link = AttachmentStreamController::url($video, $this->admin, session: $session);
+        $this->get(AttachmentStreamController::url($video, $this->admin))->assertForbidden();
+        $this->get($link)->assertForbidden();
+        $code = $this->authenticatorCode($this->admin);
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token->plainTextToken)->postJson("/api/v1/tasks/{$task}/unlock", $code)->assertOk();
+        $this->app['auth']->forgetGuards();
+        $before = $this->inTenant($this->t['org'], fn () => AuditEvent::query()->where('action', 'task.revealed')->where('target_id', $task)->count());
+        $this->assertSame('PLAIN-VIDEO-BYTES', $this->withoutToken()->get($link)->assertOk()->getContent());
+        $this->assertSame($before + 1, $this->inTenant($this->t['org'], fn () => AuditEvent::query()->where('action', 'task.revealed')->where('target_id', $task)->count()));
+        $this->get(AttachmentStreamController::url($video, $this->admin, poster: true, session: $session))->assertNotFound();
     }
 
     public function test_the_monday_import_marks_credential_items(): void

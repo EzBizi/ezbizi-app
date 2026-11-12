@@ -14,7 +14,7 @@ use Symfony\Component\Process\ExecutableFinder;
 /**
  * One poster frame (jpg, 1s in) beside a Task Board video, for the Gallery
  * tile (Jose 2026-11-12). Skips quietly when ffmpeg is not installed, the file
- * is encrypted, or a poster already exists. Queued on create; backfill with
+ * is encrypted or on a sensitive task, or a poster already exists. Queued on create; backfill with
  * `attachments:video-posters`.
  */
 class MakeVideoPoster implements ShouldQueue
@@ -34,7 +34,9 @@ class MakeVideoPoster implements ShouldQueue
 
     public static function wants(Attachment $a): bool
     {
-        return $a->attachable_type === 'task_updates' && str_starts_with((string) $a->mime, 'video/') && ! $a->encrypted;
+        // Never for a sensitive task's video (encrypted, name sealed): a poster is a frame in the clear.
+        return $a->attachable_type === 'task_updates' && str_starts_with((string) $a->mime, 'video/')
+            && ! $a->encrypted && $a->sealed_name === null;
     }
 
     public function handle(): void

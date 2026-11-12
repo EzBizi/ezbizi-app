@@ -94,6 +94,8 @@ class TaskBoardGalleryController extends Controller
                         'url' => null,
                         'inline_url' => null,
                         'thumbnail_url' => null,
+                        'stream_url' => null,
+                        'poster_url' => null,
                     ];
                 }
 

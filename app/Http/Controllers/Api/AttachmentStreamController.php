@@ -6,6 +6,7 @@ use App\Jobs\MakeVideoPoster;
 use App\Models\Attachment;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -27,10 +28,16 @@ class AttachmentStreamController extends Controller
 {
     public const MINUTES = 10;
 
-    public static function url(Attachment $a, User $user, bool $poster = false): string
+    /**
+     * [session] (SensitiveTasks::sessionOf) is named only by a caller that has
+     * passed SensitiveTasks::reveal: a sensitive task's video plays only while
+     * that session's authenticator unlock lasts.
+     */
+    public static function url(Attachment $a, User $user, bool $poster = false, ?string $session = null): string
     {
         return URL::temporarySignedRoute('attachments.stream', now()->addMinutes(self::MINUTES),
-            ['attachment' => $a->getKey(), 'user' => $user->getKey()] + ($poster ? ['poster' => 1] : []));
+            ['attachment' => $a->getKey(), 'user' => $user->getKey()] + ($poster ? ['poster' => 1] : [])
+            + ($session !== null ? ['session' => $session] : []));
     }
 
     public function show(Request $request, string $attachment, TenantContext $tenant): Response
@@ -40,8 +47,19 @@ class AttachmentStreamController extends Controller
 
         $tenant->run($a->organization, function () use ($a, $request) {
             $user = User::query()->findOrFail((string) $request->query('user'));
-            $board = TaskUpdate::query()->with('task.board')->find($a->attachable_id)?->task?->board;
+            $task = TaskUpdate::query()->with('task.board')->find($a->attachable_id)?->task;
+            $board = $task?->board;
             abort_unless($board && Gate::forUser($user)->allows('view', $board), 404);
+
+            // A sensitive task's video (Jose, 2026-11-12): never a poster, and
+            // the bytes only while the session the link names is unlocked. A
+            // link signed before the task was marked carries no session.
+            if ($task->sensitive) {
+                abort_if($request->boolean('poster'), 404);
+                abort_unless(app(SensitiveTasks::class)->unlockedFor($user,
+                    is_string($request->query('session')) ? $request->query('session') : null, $task, 'stream'), 403,
+                    'This task is sensitive. Unlock it with your authenticator first.');
+            }
         });
 
         $disk = Storage::disk($a->disk ?? config('filesystems.default'));
