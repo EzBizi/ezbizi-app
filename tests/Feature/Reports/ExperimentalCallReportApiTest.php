@@ -5,6 +5,7 @@ namespace Tests\Feature\Reports;
 use App\Models\AuditEvent;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
+use App\Models\CallReportLabel;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
 use App\Models\Company;
@@ -600,6 +601,35 @@ class ExperimentalCallReportApiTest extends TestCase
         $back = $day();
         $this->assertSame(1, $back['totals']['not_booked']);
         $this->assertNull($back['calls'][0]['mark']);
+    }
+
+    /**
+     * Jose, 2026-11-12 ("make a new filter for the AI heard a booking, no job
+     * yet, call it Needs Attention"): neither booked nor not booked until a
+     * job matches, and then it leaves on its own.
+     */
+    public function test_a_call_the_ai_heard_book_with_no_job_needs_attention_until_one_matches(): void
+    {
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->connected($tenant);
+        $day = fn () => $this->signedInAs($tenant['admin'])->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->assertOk()->json();
+        $this->inTenant($tenant['org'], fn () => CallReportLabel::query()->create(['call_id' => '1', 'provider' => 'grok', 'label' => 'booked']));
+
+        $open = $day();
+        $person = fn (array $report) => collect($report['people'])->firstWhere('person', $open['calls'][0]['answered_by']);
+        $this->assertTrue($open['calls'][0]['needs_attention']);
+        $this->assertSame(0, $open['totals']['not_booked']);
+        $this->assertSame(1, $open['totals']['needs_attention']);
+        $this->assertSame(1, $person($open)['needs_attention']);
+
+        // The job is booked in Workiz for the caller's number.
+        $nationwide = $this->inTenant($tenant['org'], fn () => (string) SocialConnection::query()->where('display_name', 'Nationwide')->value('id'));
+        $this->syncedJob($tenant, $nationwide, '7579553189', 'Trey Brannan', '2026-09-14 10:00:00');
+        $done = $day();
+        $this->assertFalse($done['calls'][0]['needs_attention']);
+        $this->assertTrue($done['calls'][0]['booked']);
+        $this->assertSame(0, $done['totals']['needs_attention']);
+        $this->assertSame(1, $person($done)['booked_new']);
     }
 
     /** Both writes sit behind the pane's own gate. */

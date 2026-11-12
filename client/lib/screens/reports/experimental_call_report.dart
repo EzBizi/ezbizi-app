@@ -949,6 +949,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             (c) =>
                 c['queue'] == _newQueue &&
                 c['mark'] == null &&
+                c['needs_attention'] != true &&
                 c['answered_by'] != null &&
                 c['booked'] != true &&
                 c['existing_job'] == null,
@@ -1353,17 +1354,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       'booked' => from.where((c) => c['booked'] == true).toList(),
       'not_booked' => _unbooked(from),
       // Grok read the call as booked, but no Workiz job matches it (Jose,
-      // 2026-10-13: a list for a manager to follow up).
+      // 2026-10-13: a list for a manager to follow up; 2026-11-12: "call it
+      // Needs Attention"). The server decides, and a matching job clears it.
       'ai_booked_no_job' =>
-        from
-            .where(
-              (c) =>
-                  (c['labels'] as Map?)?['grok'] == 'booked' &&
-                  c['mark'] == null &&
-                  c['booked'] != true &&
-                  c['existing_job'] == null,
-            )
-            .toList(),
+        from.where((c) => c['needs_attention'] == true).toList(),
       _ => from,
     };
     // What became of the call (Jose, 2026-11-11: a Call column apart from Result).
@@ -1451,7 +1445,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ('all', 'All'),
           ('booked', 'Booked'),
           ('not_booked', 'Not booked'),
-          ('ai_booked_no_job', 'AI heard a booking, no job yet'),
+          ('ai_booked_no_job', 'Needs Attention'),
         ])
           // The follow-up list only while it has calls, or is chosen.
           if (key != 'ai_booked_no_job' ||
@@ -1952,7 +1946,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// Booked out of the new-client calls they answered (Trey, 2026-11-04:
   /// existing clients are not bookings); null when they answered none.
   double? _bookingRate(Map<String, dynamic> person) {
-    final answered = _answeredNew(person).length;
+    // Needs Attention is neither booked nor not booked yet (Jose, 2026-11-12).
+    final answered = _answeredNew(
+      person,
+    ).where((c) => c['needs_attention'] != true).length;
     if (answered == 0) return null;
 
     return _booked(person) / answered * 100;
@@ -2501,6 +2498,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? 'booked'
         : c['existing_job'] is Map
         ? 'existing_job'
+        : c['needs_attention'] == true
+        ? 'needs_attention'
         : 'not_booked';
     final mine = all
         .where((c) => _answerFilter == null || answerOf(c) == _answerFilter)
@@ -2579,6 +2578,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ('booked', 'Booked'),
                   ('not_booked', 'Not booked'),
                   ('existing_job', 'Existing job'),
+                  ('needs_attention', 'Needs Attention'),
                 ],
                 bookingOf,
                 _bookingFilter,
@@ -2706,6 +2706,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ? 'Rescheduled'
                   : 'Existing job',
             ),
+          )
+        : call['needs_attention'] == true
+        ? const Tooltip(
+            message: 'AI heard a booking, no job yet',
+            child: StatusPill('Needs Attention', tone: Tone.review),
           )
         : _setMark(
             setBy['booking'],
