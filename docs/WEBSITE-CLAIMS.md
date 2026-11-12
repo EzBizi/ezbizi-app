@@ -3540,3 +3540,45 @@ names); LSA `is_test=0` 52,155 (already published); `payment_accounts` 0, no Str
 no Stripe. Scheduled Jobs: the desk looked for `jobs.scheduled_at`; the row's test is `jobs.scheduled_for` without a
 `workiz_jobs` row — ask that next time. Publishers: the desk counted 7 connected posting providers; in code
 `Publishers::for()` has had 10 since `947e6cc23` (GBP posts, 10-15), and none is new since 0551. No sentence moves.
+
+## 2026-11-11: 0.0.0559-0.0.0562 live, and `/privacy/` said a website visitor's IP is never stored
+
+Production `/download/windows.json` 0.0.0562 at `ec1229d74`. Before the edit all 10 live pages matched their WP
+post_content (block markers, `decoding="async"` and logo `src` aside). www `/ezbizi-api.json` byte-identical to the
+app's `/api/v1/openapi.json`.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261111/page8.html` on the websites box). `540403226` (in 0562): the
+  booking widget's optional SMS consent box, when ticked, keeps `sms_consent_at/_text/_site/_ip` on the lead.
+  "Enquiries from your websites" said the visitor's IP "is not stored as part of the enquiry" — false from 0562 for
+  anyone who ticks it. Now: "…with one exception: where a form offers a box agreeing to receive text messages and
+  the visitor ticks it, we keep their IP address with the time, the website and the exact words they agreed to, as
+  the record of that consent." True whether or not plugin 1.26.29 has rolled out (no rows needed for it to hold).
+  Generic "a form" on purpose: the booking widget itself stays unpublished as a capability. Live, with and without
+  a cache-buster, after `wp cache flush`.
+- Per-number call-flow override and ring-group member registration (`eb23f74c4`, `a1f13eeb1`, `13b602e73`): ring
+  groups stay on the do-not list; no page names them.
+- Automation WhatsApp to a person goes from the Reports number as a PDF report (`17c29b9ee`): the 11-10 Meta line
+  already names automation-rule reports sent as a message and a PDF. Unchanged.
+- Branded booking confirmation email (`a5dcd181e`), DTMF keypad, Email inbox changes, Reports audit, Project
+  Management rounds 3-4 (scheduling texts from the company's own line), Workiz tags, leads digest: no page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages, and over `/privacy/` after the edit: ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
+1, 0.0.0502.
+
+**Desk (11-11, ~23:45 UTC), recorded as given:** 0559 `dfb0bf8be`, 0560 `3edfd3a51`, 0561 `8d069094e`, 0562 `ec1229d74`
+all live (web + natives). iOS 0558 rejected for the "Advertising" age-rating descriptor, reply sent, awaiting Apple; the
+iOS card stays unlinked (lookup still 0.0.0502). SMS consent: `leads.sms_consent_ip` set on **1** row (first real
+booking, 23:27 UTC), so the edit above is now true by data, not only by code. Booking confirmation email goes through
+SES, EzBizi's From with the business name, business's site email as Reply-To: covered by "Amazon SES — email we send
+on the service's behalf"; nothing added.
+
+- **Training: `training_attempts` 58, `training_progress` 78 — the zeros this row's tense rule rested on are gone.**
+  The card's four imperatives stay true; nothing was added. A usage sentence ("teams train on it") is now allowed by
+  the count, but none was written: no one asked for it and a count is not a claim's wording.
+- **Scheduling: jobs with `scheduled_for`, not deleted, and no `workiz_jobs` row = 38. The row's own test (nonzero
+  inverts) has tripped.** Not published today, for one checkable reason: whose 38 they are. Next run, ask the desk
+  for those 38 grouped by organization and by how they were created (Jobs screen vs. website booking). If any is a
+  real tenant setting a date inside EzBizi, the row inverts and a scheduling sentence can go on the homepage.
+- Ring groups 3; numbers with `override_on` 0. Still a group count, not the row's resolved fraction; held.
+- Publishers: still the same 7 connected providers; no 7th written. LSA external_id/timestamp: not measured.

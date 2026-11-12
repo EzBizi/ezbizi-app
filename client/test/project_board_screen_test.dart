@@ -19,6 +19,7 @@ void main() {
     tester,
   ) async {
     final requests = <http.Request>[];
+    var over = 500;
     final api = ApiClient(
       client: MockClient((request) async {
         requests.add(request);
@@ -130,6 +131,13 @@ void main() {
               'part_status': {'WAITING PARTS': 'caution'},
             },
             'settings_scope': {'scope_type': 'company', 'scope_id': 'c-1'},
+            'totals': {
+              'paid': 1500,
+              'due': 1000,
+              'total': 2000,
+              'over': over,
+              'currency': 'USD',
+            },
             'can_edit': true,
             'sortable': ['status_days', 'customer'],
           },
@@ -155,9 +163,18 @@ void main() {
     // Live: "Updated hh:mm", a manual refresh, and a quiet reload every
     // minute while on screen (Jose, 2026-11-10).
     expect(find.byKey(const Key('project-board-updated')), findsOneWidget);
+    // Totals as tiles (design 193); Overpaid only when there is any.
+    expect(find.text('Total Paid'), findsOneWidget);
+    expect(find.text('Total Remaining Balance'), findsOneWidget);
+    expect(find.text('Total Amount of Jobs'), findsOneWidget);
+    expect(find.byKey(const Key('project-board-total-over')), findsOneWidget);
+    expect(find.byTooltip('Paid beyond the job totals'), findsOneWidget);
+    over = 0;
     final before = requests.length;
     await tester.tap(find.byKey(const Key('project-board-refresh')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('project-board-total-over')), findsNothing);
+    expect(find.text('Total Paid'), findsOneWidget);
     expect(requests.length, before + 1);
     expect(requests.last.url.queryParameters['per_page'], '50');
     await tester.pump(const Duration(seconds: 61));

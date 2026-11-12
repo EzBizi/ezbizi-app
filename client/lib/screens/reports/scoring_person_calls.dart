@@ -256,6 +256,7 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                   for (final (field, label, values) in [
                     ('client', 'Client', CallCorrection.client),
                     ('booking', 'Booking', CallCorrection.booking),
+                    ('mark', 'Mark', CallCorrection.mark),
                   ]) ...[
                     const SizedBox(height: 6),
                     CallCorrection(

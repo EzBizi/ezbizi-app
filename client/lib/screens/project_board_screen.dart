@@ -256,33 +256,98 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     _load(quiet: true);
   }
 
+  /// Three tinted tiles, a fourth for Overpaid when there is any (design: docs/previews/pm-totals-strip.html, option 1,
+  /// Jose 2026-11-12). Remaining is caution, not red: an open balance is
+  /// normal. Under 600 px they stack as label-left, figure-right rows.
   Widget _totalsStrip(Map<String, dynamic> t) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final currency = '${t['currency'] ?? 'USD'}';
-    Widget figure(String key, String label) => Padding(
-      padding: const EdgeInsets.only(right: 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: theme.textTheme.bodySmall),
-          Text(
-            formatMoney((t[key] as num?)?.toInt() ?? 0, currency: currency),
-            key: Key('project-board-total-$key'),
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Wrap(
-        children: [
-          figure('paid', 'Total Paid'),
-          figure('due', 'Total Remaining Balance'),
-          figure('total', 'Total Amount of Jobs'),
-        ],
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final narrow = box.maxWidth < 600;
+          Widget tile(String key, String label, Color fill, Color ink) {
+            final value = Text(
+              formatMoney((t[key] as num?)?.toInt() ?? 0, currency: currency),
+              key: Key('project-board-total-$key'),
+              style: (narrow
+                      ? theme.textTheme.titleMedium
+                      : theme.textTheme.headlineSmall)
+                  ?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: ink,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+            );
+            final caption = Text(
+              label,
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: ink,
+              ),
+            );
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: fill,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: narrow
+                  ? Row(
+                      children: [
+                        Expanded(child: caption),
+                        value,
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [caption, value],
+                    ),
+            );
+          }
+
+          final ok = ToneColours.of(context, Tone.ok);
+          final due = ToneColours.of(context, Tone.caution);
+          final neutral = ToneColours.of(context, Tone.neutral);
+          final tiles = [
+            tile('paid', 'Total Paid', ok.fill, ok.ink),
+            tile('due', 'Total Remaining Balance', due.fill, due.ink),
+            tile(
+              'total',
+              'Total Amount of Jobs',
+              scheme.primaryContainer,
+              scheme.onPrimaryContainer,
+            ),
+                      // Paid - Overpaid + Remaining = Total (Jobs 208341af3). Not a
+            // problem, so neutral, never red.
+            if (((t['over'] as num?) ?? 0) > 0)
+              Tooltip(
+                message: 'Paid beyond the job totals',
+                child: tile('over', 'Overpaid', neutral.fill, neutral.ink),
+              ),
+          ];
+          if (narrow) {
+            return Column(
+              children: [
+                for (final (i, w) in tiles.indexed)
+                  Padding(
+                    padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+                    child: w,
+                  ),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              for (final (i, w) in tiles.indexed) ...[
+                if (i > 0) const SizedBox(width: 10),
+                Expanded(child: w),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

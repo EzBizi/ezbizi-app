@@ -92,6 +92,77 @@ class SuggestionFilesTest extends TestCase
         $this->assertSame("# Idea\n\nMore detail.", $response->streamedContent());
     }
 
+    /**
+     * Ctrl+V on the Suggestions screen sends `pasted-N.png`. Real PNG bytes
+     * under that name pass the content check.
+     */
+    public function test_a_pasted_png_screenshot_is_attached(): void
+    {
+        $t = $this->provisionTenant();
+
+        $data = $this->signedInAs($t['admin'])
+            ->post('/api/v1/suggestions', [
+                'body' => 'Pasted two pictures.',
+                'files' => [
+                    $this->realUpload('pasted-1.png', $this->pngBytes()),
+                    $this->realUpload('pasted-2.png', $this->pngBytes()),
+                ],
+            ], ['Accept' => 'application/json'])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertSame(['pasted-1.png', 'pasted-2.png'], array_column($data['files'], 'name'));
+        $this->assertSame('image/png', $data['files'][0]['mime']);
+    }
+
+    /**
+     * 0.0.0562 on Windows: the clipboard is CF_DIB, pasteboard writes it out
+     * as a .bmp, and the app sent those bytes named pasted-1.png. That was
+     * refused as "Attach a picture, a PDF, or a .md or .txt file."
+     */
+    public function test_a_bitmap_pasted_by_the_windows_app_is_attached(): void
+    {
+        $t = $this->provisionTenant();
+
+        $data = $this->signedInAs($t['admin'])
+            ->post('/api/v1/suggestions', [
+                'body' => 'Pasted on Windows.',
+                'files' => [
+                    $this->realUpload('pasted-1.png', $this->bmpBytes()),
+                    $this->realUpload('pasted-2.png', $this->bmpBytes()),
+                ],
+            ], ['Accept' => 'application/json'])
+            ->assertCreated()
+            ->json('data');
+
+        $this->assertSame(['pasted-1.png', 'pasted-2.png'], array_column($data['files'], 'name'));
+        $this->assertContains($data['files'][0]['mime'], ['image/bmp', 'image/x-ms-bmp']);
+    }
+
+    /** A 3x2 PNG drawn by GD, so the bytes are a real PNG. */
+    private function pngBytes(): string
+    {
+        $image = imagecreatetruecolor(3, 2);
+        imagefill($image, 0, 0, imagecolorallocate($image, 200, 30, 30));
+        ob_start();
+        imagepng($image);
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * A 2x2 32-bit BI_RGB bitmap with a 40-byte BITMAPINFOHEADER: the shape
+     * pasteboard's Windows CreateBMPFile writes from the clipboard.
+     */
+    private function bmpBytes(): string
+    {
+        $pixels = str_repeat("\x1e\x1e\xc8\x00", 4);
+        $info = pack('VVVvvVVVVVV', 40, 2, 2, 1, 32, 0, strlen($pixels), 2835, 2835, 0, 0);
+        $file = 'BM'.pack('VvvV', 14 + strlen($info) + strlen($pixels), 0, 0, 14 + strlen($info));
+
+        return $file.$info.$pixels;
+    }
+
     public function test_a_colleague_cannot_download_the_file(): void
     {
         $t = $this->provisionTenant();

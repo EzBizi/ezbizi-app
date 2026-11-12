@@ -2,6 +2,7 @@
 
 namespace App\Support\Reports\Experimental;
 
+use App\Models\CallReportLabel;
 use App\Models\CallReportOverride;
 use App\Support\Leads\CallTypeCorrections;
 use App\Support\Phone\NumberNames;
@@ -171,6 +172,19 @@ final class CallReconciliation
         }
 
         $converted = array_flip($converted);
+
+        /*
+         * NEEDS ATTENTION (Jose, 2026-11-12: "make a new filter for the AI heard
+         * a booking, no job yet"). The AI heard a new client book, and no job
+         * matches yet: neither booked nor not booked until it is chased, so it
+         * stays out of Not booked and out of the booking rate. A matching job
+         * makes it Booked, and it leaves on its own. A tenant's labels: none outside one.
+         */
+        $aiBooked = ! app(TenantContext::class)->has() ? [] : CallReportLabel::query()->where('provider', 'grok')->where('label', 'booked')
+            ->whereIn('call_id', array_filter(array_column($calls, 'id')))->pluck('call_id')->flip()->all();
+        $needsAttention = fn (array $call) => isset($aiBooked[(string) ($call['id'] ?? '')]) && ($call['answered_by'] ?? null) !== null
+            && $this->markOf($call) === null && RingCentralCallLog::clientOf($call['queue'] ?? null) === 'new'
+            && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null;
         $notBooked = 0;
 
         $rang = [];
@@ -180,6 +194,7 @@ final class CallReconciliation
         $new = [];
         $bookedNew = [];
         $existing = [];
+        $attention = [];
 
         $reachedNobody = 0;
         $newTotal = 0;
@@ -199,7 +214,9 @@ final class CallReconciliation
                 $rang[$person] = ($rang[$person] ?? 0) + 1;
             }
 
-            $client = RingCentralCallLog::clientOf($call['queue'] ?? null);
+            // Marked Spam or Not a customer by hand (Trey, 2026-11-04): still a call, listed with its
+            // mark, but nobody's client, so out of the client counts, the booking rate and Not booked.
+            $client = $this->markOf($call) !== null ? null : RingCentralCallLog::clientOf($call['queue'] ?? null);
 
             if ($client === 'new') {
                 $newTotal++;
@@ -225,7 +242,9 @@ final class CallReconciliation
                 $talkCalls[$who] = ($talkCalls[$who] ?? 0) + 1;
             }
 
-            if ($client === 'new' && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
+            if ($needsAttention($call)) {
+                $attention[$who] = ($attention[$who] ?? 0) + 1;
+            } elseif ($client === 'new' && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
                 $notBooked++;
             }
 
@@ -301,6 +320,8 @@ final class CallReconciliation
                 // Of those new-client calls they answered, the ones booked:
                 // the booking rate's top (Trey, 2026-11-04).
                 'booked_new' => $bookedNew[$name] ?? 0,
+                // Out of the booking rate until chased: new_client less these is its base.
+                'needs_attention' => $attention[$name] ?? 0,
                 'existing_client' => $existing[$name] ?? 0,
                 'jobs' => $made[$name] ?? 0,
 
@@ -345,6 +366,7 @@ final class CallReconciliation
                 'existing_client' => $existingTotal,
                 'jobs' => count($booked),
                 'not_booked' => $notBooked,
+                'needs_attention' => array_sum($attention),
                 'outbound_unanswered' => count($unansweredOut),
 
                 'avg_talk_seconds' => array_sum($talkCalls) > 0
@@ -393,7 +415,9 @@ final class CallReconciliation
                 'booked' => $this->isBooked($call, $bookedPhones, $converted),
                 'existing_job' => $this->isBooked($call, $bookedPhones, $converted) ? null : $existingJob($call),
                 'converted' => isset($converted[(string) ($call['id'] ?? '')]),
-                // Who set the client or the booking by hand, per field.
+                'mark' => $this->markOf($call),
+                'needs_attention' => $needsAttention($call),
+                // Who set the client, the booking or the mark by hand, per field.
                 'set_by' => array_map(fn ($o) => $o['by'], $this->overrides[(string) ($call['id'] ?? '')] ?? []) ?: null,
                 'talk_seconds' => $call['talk_seconds'] ?? null,
                 'recording_id' => $call['recording_id'] ?? null,
@@ -499,6 +523,12 @@ final class CallReconciliation
 
             return $day !== '' && $day >= $from && $day <= $to;
         }));
+    }
+
+    /** spam | not_a_customer, set by hand; null when unmarked. */
+    private function markOf(array $call): ?string
+    {
+        return $this->overrides[(string) ($call['id'] ?? '')]['mark']['value'] ?? null;
     }
 
     /**

@@ -1,11 +1,13 @@
 import '../widgets/list_search.dart';
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pasteboard/pasteboard.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/files.dart';
+import '../core/pasted_image.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
@@ -294,8 +296,13 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
   /// the text field pastes on its own.
   Future<void> _pasteImage() async {
     if (_sending || _composeFiles.length >= _maxFiles) return;
-    final bytes = await widget.clipboardImage();
-    if (bytes == null || bytes.isEmpty || !mounted) return;
+    final raw = await widget.clipboardImage();
+    if (raw == null || raw.isEmpty || !mounted) return;
+    // Windows hands back BMP, which the server refuses under a .png name;
+    // re-encoding a large screenshot is slow, so it runs off the UI thread.
+    final bytes = isPng(raw) ? raw : await compute(pastedImageAsPng, raw);
+    if (bytes == null || !mounted) return;
+    if (_sending || _composeFiles.length >= _maxFiles) return;
     setState(
       () => _composeFiles.add(
         PickedBytes('pasted-${_composeFiles.length + 1}.png', bytes),

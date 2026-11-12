@@ -11,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'pasted_image_test.dart' show windowsClipboardBmp;
+
 /// "Which tab is it about?" and the screenshots/notes that go with it.
 void main() {
   testWidgets('the chosen tab and an attached screenshot go in one request', (
@@ -57,7 +59,63 @@ void main() {
   });
 
   // Jose, 2026-11-02: "paste images that may be in their clipboard".
-  testWidgets('Ctrl+V with a picture on the clipboard attaches it', (
+  // 0.0.0562: on Windows the clipboard hands back BMP, which went up as
+  // pasted-1.png and the server's content check refused it. The part sent
+  // must be a real PNG.
+  testWidgets('Ctrl+V with a picture on the clipboard attaches it as PNG', (
+    tester,
+  ) async {
+    http.Request? sent;
+
+    await _pump(tester, (request) async {
+      if (request.method == 'POST') {
+        sent = request;
+        return _json({'data': _row()}, 201);
+      }
+      return _json({
+        'data': sent == null ? [] : [_row()],
+      });
+    }, clipboard: () async => windowsClipboardBmp());
+
+    await tester.tap(find.byType(TextField).last);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    // The re-encode runs in an isolate (compute), which needs real time.
+    final chip = find.widgetWithText(InputChip, 'pasted-1.png');
+    for (var i = 0; i < 100 && chip.evaluate().isEmpty; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(chip, findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).last, 'Pasted.');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Send it'));
+    await tester.pumpAndSettle();
+
+    final body = sent!.bodyBytes;
+    final header = latin1.encode('name="files[]"; filename="pasted-1.png"');
+    final at = _indexOf(body, header);
+    expect(at, isNonNegative);
+    final blank = _indexOf(body, latin1.encode('\r\n\r\n'), at);
+    final part = body.sublist(blank + 4);
+    expect(part.sublist(0, 8), [
+      0x89,
+      0x50,
+      0x4E,
+      0x47,
+      0x0D,
+      0x0A,
+      0x1A,
+      0x0A,
+    ]);
+  });
+
+  testWidgets('Ctrl+V with bytes that are no picture attaches nothing', (
     tester,
   ) async {
     await _pump(
@@ -70,9 +128,15 @@ void main() {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
     await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(InputChip, 'pasted-1.png'), findsOneWidget);
+    expect(find.byType(InputChip), findsNothing);
   });
 
   testWidgets('Ctrl+V with only text on the clipboard attaches nothing', (
@@ -149,6 +213,17 @@ Map<String, dynamic> _row() => {
   'decided_at': null,
   'created_at': '2026-09-30T10:00:00+00:00',
 };
+
+int _indexOf(List<int> haystack, List<int> needle, [int from = 0]) {
+  outer:
+  for (var i = from; i <= haystack.length - needle.length; i++) {
+    for (var j = 0; j < needle.length; j++) {
+      if (haystack[i + j] != needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
 
 http.Response _json(Map<String, dynamic> body, [int status = 200]) =>
     http.Response(
