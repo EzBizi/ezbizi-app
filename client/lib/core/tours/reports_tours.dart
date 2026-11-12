@@ -104,8 +104,9 @@ const Map<String, Tour> reportsTours = {
         title: 'Correct a call',
         body:
             "In a call's details: set its client (New or Existing) or its "
-            'booking (Booked or Not booked) by hand. It shows who set it, and '
-            'Automatic puts it back.',
+            'booking (Booked or Not booked) by hand, or mark it Spam or Not a '
+            'customer to leave it out of the booking rate. It shows who set '
+            'it, and Automatic puts it back.',
       ),
       TourStep(
         anchor: 'calls-search',
@@ -180,8 +181,9 @@ const Map<String, Tour> reportsTours = {
         title: 'Correct a call',
         body:
             "In a call's details: set its client (New or Existing) or its "
-            'booking (Booked or Not booked) by hand. It shows who set it, and '
-            'Automatic puts it back.',
+            'booking (Booked or Not booked) by hand, or mark it Spam or Not a '
+            'customer to leave it out of the booking rate. It shows who set '
+            'it, and Automatic puts it back.',
       ),
       TourStep(
         anchor: 'scoring-ranking',

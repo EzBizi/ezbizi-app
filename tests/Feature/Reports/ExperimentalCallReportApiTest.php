@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\AuditEvent;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\CallReportScore;
@@ -567,6 +568,38 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->assertSame($queue, $back['calls'][0]['queue']);
         $this->assertFalse($back['calls'][0]['booked']);
         $this->assertNull($back['calls'][0]['set_by']);
+    }
+
+    /**
+     * Trey, 2026-11-04 ("sometimes we get spam calls", "not a cx since we dont
+     * do home inspections"): a marked call leaves the booking rate and Not
+     * booked, stays listed with its mark, and says who marked it.
+     */
+    public function test_a_call_marked_not_a_customer_leaves_the_booking_rate_and_stays_listed(): void
+    {
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->connected($tenant);
+        $day = fn () => $this->signedInAs($tenant['admin'])->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->json();
+        $before = $day();
+        $person = fn (array $report) => collect($report['people'])->firstWhere('person', $before['calls'][0]['answered_by']);
+        $this->assertSame(1, $before['totals']['not_booked']);
+        $this->assertSame(1, $person($before)['new_client']);
+
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'mark', 'value' => 'not_a_customer'])
+            ->assertOk()->assertJsonPath('data.set_by', $tenant['admin']->name);
+        $after = $day();
+        $this->assertSame(0, $after['totals']['not_booked']);
+        $this->assertSame(0, $person($after)['new_client']);
+        $this->assertSame('not_a_customer', $after['calls'][0]['mark']);
+        $this->assertSame($tenant['admin']->name, $after['calls'][0]['set_by']['mark']);
+        $this->assertSame(1, AuditEvent::query()->withoutGlobalScopes()->where('action', 'call_report.overridden')
+            ->where('actor_id', $tenant['admin']->id)->where('metadata->value', 'not_a_customer')->count());
+
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'mark', 'value' => 'rude'])->assertStatus(422);
+        $this->signedInAs($tenant['admin'])->deleteJson('/api/v1/reports/experimental/calls/1/override?field=mark')->assertOk();
+        $back = $day();
+        $this->assertSame(1, $back['totals']['not_booked']);
+        $this->assertNull($back['calls'][0]['mark']);
     }
 
     /** Both writes sit behind the pane's own gate. */

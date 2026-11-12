@@ -35,7 +35,7 @@ final class NewClientConversion
                 CallReportDispatcherTag::query()->pluck('tag', 'person')->all(),
             );
 
-            return array_values(array_filter($report['calls'] ?? [], fn ($c) => RingCentralCallLog::clientOf($c['queue'] ?? null) === 'new'
+            return array_values(array_filter($report['calls'] ?? [], fn ($c) => RingCentralCallLog::clientOf($c['queue'] ?? null) === 'new' && ($c['mark'] ?? null) === null
                 && ($c['direction'] ?? 'Inbound') === 'Inbound'));
         });
 

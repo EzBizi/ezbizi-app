@@ -948,6 +948,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           .where(
             (c) =>
                 c['queue'] == _newQueue &&
+                c['mark'] == null &&
                 c['answered_by'] != null &&
                 c['booked'] != true &&
                 c['existing_job'] == null,
@@ -1358,6 +1359,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             .where(
               (c) =>
                   (c['labels'] as Map?)?['grok'] == 'booked' &&
+                  c['mark'] == null &&
                   c['booked'] != true &&
                   c['existing_job'] == null,
             )
@@ -1939,7 +1941,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     for (final call in (_report?['calls'] as List? ?? const []))
       if (call is Map &&
           call['answered_by'] == person['person'] &&
-          call['queue'] == _newQueue)
+          call['queue'] == _newQueue &&
+          call['mark'] == null)
         call,
   ];
 
@@ -2492,7 +2495,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? 'missed'
         : 'not_answered';
     String? bookingOf(Map<String, dynamic> c) =>
-        c['answered_by'] != name || c['queue'] != _newQueue
+        c['answered_by'] != name || c['queue'] != _newQueue || c['mark'] != null
         ? null
         : c['booked'] == true
         ? 'booked'
@@ -2670,7 +2673,19 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           );
     // Jose, 2026-11-11: Result is the sale alone - Booked, Not booked, or
     // nothing where no sale was asked of the call; Call is what became of it.
-    final Widget? result = call['booked'] == true
+    final Widget? result = call['mark'] != null
+        ? _setMark(
+            setBy['mark'],
+            StatusPill(
+              CallCorrection.mark
+                  .firstWhere(
+                    (m) => m.$1 == call['mark'],
+                    orElse: () => ('', '${call['mark']}'),
+                  )
+                  .$2,
+            ),
+          )
+        : call['booked'] == true
         ? _setMark(
             setBy['booking'],
             StatusPill(
@@ -3084,6 +3099,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     CallCorrection.booking,
                     call['booked'] == true ? 'booked' : 'not_booked',
                   ),
+                  (
+                    'mark',
+                    'Mark',
+                    CallCorrection.mark,
+                    call['mark'] as String?,
+                  ),
                 ]) ...[
                   CallCorrection(
                     key: field == 'client'
@@ -3099,6 +3120,20 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     onSaved: _load,
                     onError: (m) => setState(() => _error = m),
                   ),
+                  // The AI may suggest it; a person confirms (Trey, 2026-11-04).
+                  if (field == 'mark' &&
+                      call['mark'] == null &&
+                      _labelOf(call, _labeller) == 'not_a_customer')
+                    Padding(
+                      padding: const EdgeInsets.only(left: 72, top: 2),
+                      child: Text(
+                        'AI suggests Not a customer. Pick it to confirm.',
+                        key: ValueKey('mark-suggested-${call['id']}'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 6),
                 ],
               ],
