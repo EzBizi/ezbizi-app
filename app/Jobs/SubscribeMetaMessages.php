@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Social\ConnectionSetup;
 use App\Support\Social\MetaLeadForms;
 use App\Support\Social\MetaMessages;
 use App\Support\Social\SocialProvider;
@@ -113,5 +114,11 @@ final class SubscribeMetaMessages implements ShouldQueue
                 }
             },
         );
+    }
+
+    /** The card goes broken with what did not finish, not green over failed_jobs (Jose, 2026-11-12). */
+    public function failed(Throwable $e): void
+    {
+        ConnectionSetup::failed($this->connectionId, 'Meta did not accept the message subscription, so messages and lead forms are not arriving. Reconnect.', $e);
     }
 }

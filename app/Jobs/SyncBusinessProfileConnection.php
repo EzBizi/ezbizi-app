@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Social\ConnectionSetup;
 use App\Services\Leads\BusinessProfileLocations;
 use App\Services\Reviews\BusinessProfileReviews;
 use App\Support\Social\SocialProvider;
@@ -93,5 +94,15 @@ final class SyncBusinessProfileConnection implements ShouldQueue
         } finally {
             Cache::forget(self::SYNCING_KEY.$this->connectionId);
         }
+    }
+
+    /** The card goes broken with what did not finish, not green over failed_jobs (Jose, 2026-11-12). */
+    public function failed(Throwable $e): void
+    {
+        if ($this->reviews) {
+            return; // The reviews half is retried by the 6-hourly read.
+        }
+
+        ConnectionSetup::failed($this->connectionId, 'Business Profile setup did not finish: its listings could not be read. Reconnect Google Business Profile.', $e);
     }
 }
