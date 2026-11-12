@@ -413,7 +413,10 @@ class ListTable extends StatelessWidget {
             child: InkWell(
               onTap: onTap == null ? null : () => onTap!(r),
               child: Container(
-                constraints: scrolls
+                // Only a sticky split needs equal heights; otherwise a row
+                // grows with its content at any column width (Jose,
+                // 2026-11-12: "if a column is too compressed row should grow").
+                constraints: scrolls && stickyFirstColumn
                     ? const BoxConstraints.tightFor(height: rowHeight)
                     : const BoxConstraints(minHeight: rowHeight),
                 padding: const EdgeInsets.symmetric(
@@ -593,11 +596,20 @@ class ListTable extends StatelessWidget {
           // One vertical scroll drives both halves when lazy is off; with a
           // height, each half is one scroll view kept in step.
           final first = stickyFirstColumn ? 1 : 0;
-          final rest = SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: natural.skip(first).fold<double>(0, (a, b) => a + b) + 28,
-              child: half(first, columns.length, lazy: false),
+          // A visible bar: a mouse wheel cannot reach the right-hand columns
+          // (Jose, 2026-11-12: "stuff being hidden towards the right side").
+          final rest = Scrollbar(
+            controller: s.sideways,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: s.sideways,
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(bottom: 12),
+              child: SizedBox(
+                width:
+                    natural.skip(first).fold<double>(0, (a, b) => a + b) + 28,
+                child: half(first, columns.length, lazy: false),
+              ),
             ),
           );
           content = Row(
@@ -865,7 +877,14 @@ class _ListTableBody extends StatefulWidget {
 
 class _ListTableBodyState extends State<_ListTableBody> {
   final selected = <int>{};
+  final sideways = ScrollController();
   late Set<String> collapsed = _memory();
+
+  @override
+  void dispose() {
+    sideways.dispose();
+    super.dispose();
+  }
 
   Set<String> _memory() {
     final id = widget.table.groupMemory;

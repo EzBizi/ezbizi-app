@@ -483,6 +483,22 @@ class JobsController extends Controller
     }
 
     /** PATCH /api/v1/jobs/{job} */
+    /**
+     * GET /api/v1/jobs/{job}/performers: who can be set as the job's
+     * technician -- the organization's users who reach its franchise, the
+     * same rule assertPerformerReach() enforces on the save (Jose, 2026-11-12:
+     * "there is currently no way to set a technician").
+     */
+    public function performers(Request $request, Job $job): JsonResponse
+    {
+        $this->authorize('update', $job);
+        $franchise = $job->franchise;
+
+        return response()->json(['data' => User::query()->orderBy('name')->get()
+            ->filter(fn (User $u) => $franchise === null || $u->canActOnFranchise($franchise))
+            ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name])->values()]);
+    }
+
     public function update(Request $request, Job $job): JsonResponse
     {
         $this->authorize('update', $job);

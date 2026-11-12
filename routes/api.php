@@ -1005,6 +1005,7 @@ Route::prefix('v1')
         Route::post('jobs/book', [JobBookingController::class, 'store']);
         Route::post('jobs/{job}/book/workiz', [JobBookingController::class, 'retryWorkiz']);
         Route::get('jobs/photos', JobPhotosController::class);
+        Route::get('jobs/{job}/performers', [JobsController::class, 'performers']);
         Route::apiResource('jobs', JobsController::class);
         Route::get('project-board/jobs', [ProjectBoardController::class, 'jobs']);
         Route::patch('project-board/jobs/{job}/repair-team', [ProjectBoardController::class, 'repairTeam']);

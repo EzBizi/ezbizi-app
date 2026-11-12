@@ -65,6 +65,13 @@ void main() {
           });
         }
         if (request.method == 'PATCH') return _json({'data': {}});
+        if (path.endsWith('/jobs/j-1/performers')) {
+          return _json({
+            'data': [
+              {'id': 'u-7', 'name': 'Guy Shimonov'},
+            ],
+          });
+        }
         if (path.endsWith('/project-board/repair-teams')) {
           return _json({
             'data': {
@@ -118,6 +125,7 @@ void main() {
                 'as_label': true,
               },
               {'key': 'required', 'label': 'Required', 'visible': true},
+              {'key': 'technician', 'label': 'Technician', 'visible': true},
               {'key': 'status_days', 'label': 'Status Time', 'visible': true},
               {
                 'key': 'tags',
@@ -171,6 +179,22 @@ void main() {
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpAndSettle();
     expect(requests.length, before + 2);
+
+    // A technician is settable from the row (Jose, 2026-11-12).
+    await tester.tap(
+      find.byKey(const ValueKey('project-board-technician:j-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Guy Shimonov'));
+    await tester.pumpAndSettle();
+    final tech = requests.lastWhere(
+      (r) => r.method == 'PATCH' && r.url.path.endsWith('/jobs/j-1'),
+    );
+    expect(jsonDecode(tech.body), {'performed_by_user_id': 'u-7'});
+    ScaffoldMessenger.of(
+      tester.element(find.byType(ProjectBoardScreen)),
+    ).hideCurrentSnackBar();
+    await tester.pumpAndSettle();
 
     // Status Time: 7 days and up is red (Jose, 2026-11-10), and Ready to
     // schedule posts once nothing is missing.
