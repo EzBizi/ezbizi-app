@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Franchise;
 use App\Support\Phone\NumberNames;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Workiz\WorkizClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,9 +36,6 @@ class JobsReportController extends Controller
 
     /** A Workiz job with no EzBizi copy this soon after it came in is being copied (1-3 minutes); later it is a stall. */
     private const SYNC_MINUTES = 15;
-
-    /** The clocks a Workiz account can keep: it sends wall time with no zone. */
-    private const CLOCKS = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles'];
 
     public function show(Request $request, RingCentralCallLog $calls): JsonResponse
     {
@@ -77,7 +76,9 @@ class JobsReportController extends Controller
             ]);
 
         $zone = ReportView::zone();
-        $clocks = self::workizClocks($jobs, $zone);
+        // Each Workiz account's own clock, which need not be its branch's (IL, TX, MA write Central): one source, WorkizClock.
+        $clocks = Franchise::query()->whereIn('id', $jobs->pluck('franchise_id')->unique()->all())->get()
+            ->mapWithKeys(fn (Franchise $f) => [$f->getKey() => WorkizClock::zone($f)])->all();
         foreach ($jobs as $j) {
             $j->clock = $clocks[$j->franchise_id] ?? ($j->timezone ?: $zone);
         }
@@ -209,34 +210,5 @@ class JobsReportController extends Controller
         }
 
         return $byJob;
-    }
-
-    /**
-     * Branch id => the zone its Workiz account's clock keeps. Workiz sends wall time with
-     * no zone, and an account's clock need not be its branch's: measured 2026-11-12,
-     * Illinois, Texas and Massachusetts write Central time under branches set to Eastern,
-     * which put every booking call about an hour after its job ("No call found"). The
-     * clock is the zone in which the branch's jobs land in the 15 minutes before EzBizi
-     * copied them in (a backfilled job, copied long after, says nothing); none, the
-     * branch's own.
-     *
-     * @param  Collection<int, object>  $jobs
-     * @return array<string, string>
-     */
-    public static function workizClocks(Collection $jobs, string $zone): array
-    {
-        $votes = [];
-        foreach ($jobs as $j) {
-            $copied = CarbonImmutable::parse((string) $j->mirrored_at, 'UTC')->getTimestamp();
-            foreach (array_unique([$j->timezone ?: $zone, ...self::CLOCKS]) as $clock) {
-                $lag = $copied - CarbonImmutable::parse((string) $j->created_at, $clock)->getTimestamp();
-                if ($lag >= 0 && $lag <= 900) {
-                    $votes[$j->franchise_id][$clock] = ($votes[$j->franchise_id][$clock] ?? 0) + 1;
-                    break;
-                }
-            }
-        }
-
-        return array_map(fn (array $v) => (string) array_search(max($v), $v, true), $votes);
     }
 }
