@@ -179,9 +179,13 @@ class SocialConnectionsApiTest extends TestCase
         // connection, which nothing listed before, so naming one had no
         // visible effect anywhere.
         // `whatsapp` (2026-11-12) is only the number's purpose, never its token.
+        // `connect_check` and `choices` (Marketing 3bdbd58e9) are ConnectSetup's
+        // pass/fail summary (scope names, "renews automatically") and the
+        // audience/board options, never a credential value.
         $this->assertSame([
             'id', 'provider', 'provider_label', 'display_name', 'label', 'handle', 'account_email',
             'scope_type', 'scope_id', 'status', 'status_reason', 'detail', 'workiz', 'whatsapp', 'last_reached_at', 'last_checked_at',
+            'connect_check', 'choices',
             'can_publish', 'cannot_publish_because', 'posting_note', 'asks_tiktok_choices', 'body_limit', 'refuses',
         ], array_keys($row));
 
