@@ -265,11 +265,13 @@ class EmailGmailMappingTest extends TestCase
             [
                 'mimeType' => 'multipart/mixed',
                 'parts'    => [
-                    ['mimeType' => 'text/html', 'body' => ['data' => $this->base64Url('<p>Hi</p><img src="cid:image001.png@01DC">')]],
+                    ['mimeType' => 'text/html', 'body' => ['data' => $this->base64Url('<p>Hi</p><img src="cid:image001.png@01DC"><img src="cid:ii_1a1b">')]],
                     $png('image001.png', [['name' => 'Content-ID', 'value' => '<image001.png@01DC>'], ['name' => 'Content-Disposition', 'value' => 'inline; filename="image001.png"']]),
                     $png('image002.png', [['name' => 'Content-ID', 'value' => '<image002.png@01DC>']]),
                     $png('photo.png', [['name' => 'Content-ID', 'value' => '<p@x>'], ['name' => 'Content-Disposition', 'value' => 'attachment; filename="photo.png"']]),
                     $png('scan.png', [['name' => 'Content-Disposition', 'value' => 'attachment; filename="scan.png"']]),
+                    // Gmail's own replies: marked attachment, drawn by cid (State Farm thread, 11-12).
+                    $png('image003.png', [['name' => 'Content-ID', 'value' => '<ii_1a1b>'], ['name' => 'Content-Disposition', 'value' => 'attachment; filename="image003.png"']]),
                 ],
             ],
         ));
