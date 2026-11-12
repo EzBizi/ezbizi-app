@@ -19,8 +19,19 @@ use App\Support\Social\SocialProvider;
  */
 final class ConnectBranch
 {
-    /** Providers whose leads carry the account's branch (LocalServicesLeads, ThumbtackLeads). */
-    public const PROVIDERS = [SocialProvider::GoogleAds->value, SocialProvider::Thumbtack->value];
+    /**
+     * Providers whose leads carry the account's branch: LocalServicesLeads,
+     * ThumbtackLeads, MetaMessages and MetaLeadForms (Page and Instagram),
+     * WhatsAppIntake. Not Business Profile: its listings are filed under a
+     * branch by their own sync, and none of its leads read this field.
+     */
+    public const PROVIDERS = [
+        SocialProvider::GoogleAds->value,
+        SocialProvider::Thumbtack->value,
+        SocialProvider::FacebookPage->value,
+        SocialProvider::InstagramProfessional->value,
+        SocialProvider::WhatsApp->value,
+    ];
 
     public static function choose(SocialConnection $c): ?string
     {
