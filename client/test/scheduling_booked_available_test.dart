@@ -11,7 +11,7 @@ import 'package:http/testing.dart';
 
 /// Scheduling › Re-Scheduling › Rescheduling Availability (UI queue 147, 1 and 4).
 void main() {
-  testWidgets('rows sort over → open → full, with Company · Branch and chips', (
+  testWidgets('Open: open then full, with Company · Branch and chips', (
     tester,
   ) async {
     final log = _Log();
@@ -26,14 +26,14 @@ void main() {
     );
 
     final order = [
-      for (final id in ['a-full', 'a-open', 'a-over'])
+      for (final id in ['a-full', 'a-open'])
         (id, tester.getTopLeft(find.byKey(ValueKey('booked-row-$id'))).dy),
     ]..sort((a, b) => a.$2.compareTo(b.$2));
-    expect(order.map((e) => e.$1), ['a-over', 'a-open', 'a-full']);
+    expect(order.map((e) => e.$1), ['a-open', 'a-full']);
+    // The over row is Overbooking's (2026-11-12: one layout, two filters).
+    expect(find.byKey(const ValueKey('booked-row-a-over')), findsNothing);
 
-    expect(find.text('Brightside · Springfield'), findsOneWidget);
-    expect(find.text('12 / 10'), findsOneWidget);
-    expect(find.text('2 over'), findsOneWidget);
+    expect(find.text('Brightside · Riverton'), findsOneWidget);
     expect(find.text('4 open'), findsOneWidget);
     expect(find.text('Full'), findsOneWidget);
     // Summary: 1 area over, 4 open spots, 1 full.
@@ -50,10 +50,6 @@ void main() {
     expect(find.byKey(const ValueKey('booked-offer-a-full')), findsNothing);
     // Window blocks by taken vs capacity.
     expect(
-      find.byKey(const ValueKey('booked-window-a-over-08:00:00-bad')),
-      findsOneWidget,
-    );
-    expect(
       find.byKey(const ValueKey('booked-window-a-open-08:00:00-ok')),
       findsOneWidget,
     );
@@ -68,6 +64,35 @@ void main() {
     await tester.tap(find.byKey(const Key('booked-day-next')));
     await tester.pumpAndSettle();
     expect(log.gets.last.queryParameters['date'], '2026-10-27');
+  });
+
+  // Jose / UI-UX, 2026-11-12: Overbooking is the same list, filtered to over,
+  // with the days that are over a tap away.
+  testWidgets('Over: only over rows, a move offer, and the over days strip', (
+    tester,
+  ) async {
+    final log = _Log();
+    await _pump(tester, log, mode: BookedMode.over);
+
+    expect(find.byKey(const ValueKey('booked-row-a-over')), findsOneWidget);
+    expect(find.byKey(const ValueKey('booked-row-a-open')), findsNothing);
+    expect(find.text('2 over'), findsOneWidget);
+    expect(find.text('Offer a move by text'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('booked-window-a-over-08:00:00-bad')),
+      findsOneWidget,
+    );
+
+    final chip = find.byKey(const ValueKey('booked-over-day-2026-11-05'));
+    expect(chip, findsOneWidget);
+    expect(find.text('Thu Nov 5 · 2 over'), findsOneWidget);
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+    expect(log.day, '2026-11-05');
+
+    await tester.tap(find.text('Offer a move by text'));
+    await tester.pumpAndSettle();
+    expect(log.posts.last.$2['kind'], 'overbooked');
   });
 
   testWidgets('no Offer button without scheduling.edit', (tester) async {
@@ -90,7 +115,7 @@ void main() {
   testWidgets('the overflow segment is painted, in the error tone', (
     tester,
   ) async {
-    await _pump(tester, _Log());
+    await _pump(tester, _Log(), mode: BookedMode.over);
     final track = tester.getSize(
       find.byKey(const ValueKey('booked-bar-a-over')),
     );
@@ -106,15 +131,13 @@ void main() {
       tester.widget<ColoredBox>(over).color,
       ToneColours.of(ctx, Tone.bad).ink,
     );
-    // A row with room draws no overflow.
-    expect(find.byKey(const ValueKey('booked-bar-a-open-over')), findsNothing);
   });
 
   testWidgets('a row click lists that area\'s jobs for the day', (
     tester,
   ) async {
     final log = _Log();
-    await _pump(tester, log);
+    await _pump(tester, log, mode: BookedMode.over);
     await tester.tap(find.text('North Springfield'));
     await tester.pumpAndSettle();
     final ask = log.gets.last;
@@ -248,10 +271,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('booked-offer-a-open')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('booked-offer-full')), findsOneWidget);
-      expect(find.byKey(const ValueKey('booked-row-a-over')), findsNothing);
+      expect(find.byKey(const ValueKey('booked-row-a-full')), findsNothing);
       await tester.tap(find.byKey(const Key('booked-offer-back')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('booked-row-a-over')), findsOneWidget);
+      expect(find.byKey(const ValueKey('booked-row-a-full')), findsOneWidget);
       expect(
         errors,
         isEmpty,
@@ -279,6 +302,17 @@ class _Log {
       final path = request.url.path;
       if (request.method == 'GET') {
         gets.add(request.url);
+        if (path.endsWith('/scheduling/overbooking')) {
+          return json({
+            'data': {
+              'overbooked': [
+                for (final a in ['a-1', 'a-2'])
+                  {'level': 'area', 'date': '2026-11-05', 'area_id': a},
+                {'level': 'franchise', 'date': '2026-11-05', 'area_id': null},
+              ],
+            },
+          });
+        }
         if (path.endsWith('/overbooking/jobs')) {
           return json({
             'data': [
@@ -378,6 +412,7 @@ Future<void> _pump(
   _Log log, {
   Size size = const Size(1200, 1400),
   bool canEdit = true,
+  BookedMode mode = BookedMode.open,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -390,6 +425,7 @@ Future<void> _pump(
           api: log.api(),
           visible: true,
           canEdit: canEdit,
+          mode: mode,
         ),
       ),
     ),

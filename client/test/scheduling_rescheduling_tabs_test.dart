@@ -44,11 +44,11 @@ void main() {
         );
       }
       expect(
-        gets.any((u) => u.path.endsWith('/scheduling/overbooking')),
+        gets.any((u) => u.path.endsWith('/overbooking/fill')),
         isTrue,
-        reason: 'Overbooking first',
+        reason:
+            'Overbooking is the same per-day list, in Over mode (2026-11-12)',
       );
-      expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isFalse);
 
       await tester.tap(find.text('Underbooking'));
       await tester.pumpAndSettle();
@@ -77,9 +77,8 @@ void main() {
       expect(
         gets
             .where((u) => u.path.endsWith('/overbooking/fill'))
-            .single
-            .queryParameters,
-        {'date': '2026-11-02'},
+            .map((u) => u.queryParameters['date']),
+        contains('2026-11-02'),
       );
       expect(find.text('Mon Nov 2'), findsOneWidget);
     },
