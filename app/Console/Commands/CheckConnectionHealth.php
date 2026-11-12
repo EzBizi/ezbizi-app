@@ -64,9 +64,10 @@ final class CheckConnectionHealth extends Command
                 $result = $tenant->run($organization, function () use ($c, $liveness, $provider, &$thumbtackSeen) {
                     if ($provider === SocialProvider::Thumbtack->value && isset($thumbtackSeen[$c->organization_id])) {
                         $c->refresh();
+                        // The shared renewal answers for it; its own webhook is read back here.
                         $result = $c->status === SocialConnection::STATUS_BROKEN
                             ? Liveness::refused((string) $c->status_reason)
-                            : $thumbtackSeen[$c->organization_id];
+                            : ConnectionLiveness::thumbtackHeard($c, $thumbtackSeen[$c->organization_id]);
                     } else {
                         $result = $liveness->check($c);
                         $thumbtackSeen[$c->organization_id] = $result;
@@ -86,7 +87,7 @@ final class CheckConnectionHealth extends Command
         return self::SUCCESS;
     }
 
-    /** Also used by POST integrations/{id}/recheck. */
+    /** Also used by POST integrations/{id}/recheck and CheckNewConnections. */
     public static function record(SocialConnection $c, Liveness $result): void
     {
         $c->refresh();   // a renewal may have just rotated its credentials
