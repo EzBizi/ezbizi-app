@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0564', date: '12 Nov 2026', items: [
+      'Project Management: the totals are coloured tiles, with an Overpaid tile when jobs are paid beyond their total so the figures add up',
+      'Reports › Calls: mark a call Spam or Not a customer so it leaves the booking rate; a Needs Attention filter lists calls the AI heard as booked with no job yet',
+      'Jobs: a booking made while Workiz is busy is sent once it is free, complete with its area and technicians',
+      'Customer Experience: an automatic review reply retries once when Google is not ready',
+    ]),
     VersionRelease(version: '0.0.0563', date: '12 Nov 2026', items: [
       'Jobs: a job booked in EzBizi without a date reaches Workiz as unscheduled; a missing required Workiz field is named',
       'Email: signature images in Gmail replies no longer show as attachments',
