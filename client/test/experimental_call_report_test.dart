@@ -299,6 +299,23 @@ void main() {
     expect(find.text('Not booked 0'), findsOneWidget);
   });
 
+  // Jose, 2026-11-12: Needs Attention has its place in a person's Booking
+  // filter too.
+  testWidgets(
+    "a person's Booking filter has Needs Attention beside Existing job",
+    (tester) async {
+      final heard = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+      (heard['calls'] as List).first['needs_attention'] = true;
+      await _pump(tester, width: 1400, view: 'People', report: () => heard);
+
+      await tester.tap(find.text('Ada'));
+      await tester.pumpAndSettle();
+      expect(find.text('Existing job 0'), findsOneWidget);
+      expect(find.text('Needs Attention 1'), findsOneWidget);
+      expect(find.text('Not booked 0'), findsOneWidget);
+    },
+  );
+
   testWidgets('an existing job AI read as a reschedule says Rescheduled', (
     tester,
   ) async {
@@ -352,19 +369,23 @@ void main() {
     );
   });
 
+  // Jose, 2026-11-12: "make a new filter for the AI heard a booking, no job
+  // yet, call it Needs Attention": the server's call, and not Not booked.
   testWidgets('Booked per AI with no job is its own list, only when it has '
       'calls', (tester) async {
     final aiBooked = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
-    (aiBooked['calls'] as List).first['labels'] = {'grok': 'booked'};
+    (aiBooked['calls'] as List).first['needs_attention'] = true;
     await _pump(tester, width: 1400, view: 'Calls', report: () => aiBooked);
 
     await tester.tap(
       find.byKey(const ValueKey('calls-filter-ai_booked_no_job')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('AI heard a booking, no job yet 1'), findsOneWidget);
+    expect(find.text('Needs Attention 1'), findsOneWidget);
+    expect(find.text('Not booked 0'), findsOneWidget);
     expect(find.textContaining('Kitchen tap'), findsOneWidget);
     expect(find.textContaining('Blocked drain'), findsNothing);
+    expect(find.byTooltip('AI heard a booking, no job yet'), findsOneWidget);
   });
 
   testWidgets('Calls has headings, and the search narrows the calls', (

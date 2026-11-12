@@ -207,14 +207,16 @@ class ScoringReportController extends Controller
             }
             $notes = fn (string $field) => $calls->pluck($field)->filter()->unique()->take(3)->values()->all();
             $newClient = (int) ($perf[$person]['new_client'] ?? 0);
+            // Needs Attention is neither booked nor not booked yet (Jose, 2026-11-12).
+            $decided = $newClient - (int) ($perf[$person]['needs_attention'] ?? 0);
             $jobs = (int) ($perf[$person]['jobs'] ?? 0);
             // Booked out of the new-client calls they answered, as Performance's
             // booking rate (Jose, 2026-11-04). Every job they created over those
             // calls ranked Existing-client staff first: 6 jobs on 1 call, 600%.
             // Not judged on it when they handle Existing, or answered too few new
             // calls for a rate: their weight goes to the other measures.
-            $judged = ($perf[$person]['tag'] ?? null) !== 'existing' && $newClient >= $min;
-            $conversion = $judged ? (int) round(($perf[$person]['booked_new'] ?? 0) / $newClient * 100) : null;
+            $judged = ($perf[$person]['tag'] ?? null) !== 'existing' && $decided >= $min;
+            $conversion = $judged ? (int) round(($perf[$person]['booked_new'] ?? 0) / $decided * 100) : null;
 
             return [
                 'person' => $person,
