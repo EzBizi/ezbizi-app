@@ -252,7 +252,9 @@ class JobsController extends Controller
                 'serviceArea',
                 // The row's money with the toggle; its Workiz job number always.
                 // Only the number without the toggle: the payload is the money.
-                ...($money ? ['workizJob'] : ['workizJob:id,job_id,serial_id']),
+                // And Workiz's CreatedBy, for "Booked by" (Trey, 2026-11-12).
+                'workizJob' => fn ($q) => $money ? $q : $q->select('id', 'job_id', 'serial_id')
+                    ->selectRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.CreatedBy')) AS created_by_name"),
             ]);
 
         match ($when) {
@@ -852,6 +854,7 @@ class JobsController extends Controller
             'tag_colours' => (object) app(WorkizTagColours::class)->for($job->franchise_id, (array) ($job->tags ?? [])),
             // Who opened it and when (Jose, 2026-10-27): native, Workiz's for a mirrored job (backfilled).
             'created_at' => $job->created_at?->toIso8601String(),
+            'booked_by' => $job->bookedBy(),
             'created_by' => $job->created_by_label === null ? null : ['user_id' => $job->created_by_user_id, 'name' => $job->created_by_label],
             'external_company' => $job->external_company,
         ];

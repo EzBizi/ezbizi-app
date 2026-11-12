@@ -641,6 +641,8 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                 'Workiz #${row['workiz_job_number']}',
               customer?['name'],
               franchise?['name'],
+              // Trey Brannan, 2026-11-12: "so we know who booked the appt".
+              if (row['booked_by'] != null) 'Booked by ${row['booked_by']}',
             ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
       width: 520,
       headerActions: [if (row != null) JobRecordPill(jobId: '${row['id']}')],
