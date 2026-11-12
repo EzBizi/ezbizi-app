@@ -4,11 +4,13 @@ namespace App\Jobs;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Social\ConnectionSetup;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackWebhooks;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
 
 /**
  * Tell Thumbtack where to send this business's enquiries.
@@ -80,5 +82,11 @@ final class RegisterThumbtackWebhook implements ShouldQueue
             // events go somewhere else forever.
             ThumbtackWebhooks::for($connection)->ensure(route('social.thumbtack.webhook'));
         });
+    }
+
+    /** The card goes broken with what did not finish, not green over failed_jobs (Jose, 2026-11-12). */
+    public function failed(Throwable $e): void
+    {
+        ConnectionSetup::failed($this->connectionId, 'Thumbtack setup did not finish: its webhook could not be registered, so leads are not arriving. Reconnect Thumbtack.', $e);
     }
 }
