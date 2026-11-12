@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Console\Commands\CheckConnectionHealth;
 use App\Http\Controllers\Api\Phone\NumbersController;
 use App\Models\Automation;
 use App\Models\Franchise;
@@ -24,6 +25,7 @@ use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response as Status;
 
 /**
@@ -42,7 +44,14 @@ use Symfony\Component\HttpFoundation\Response as Status;
 final class IntegrationsOverviewController extends Controller
 {
     /** Providers whose leads are filed on a branch (leads_franchise_id). */
-    private const LEAD_PRODUCERS = ['google_ads', 'thumbtack', 'google_business_profile', 'facebook_ads'];
+    private const LEAD_PRODUCERS = [
+        'google_ads', 'thumbtack', 'google_business_profile', 'facebook_ads',
+        // Messages and lead forms from Meta land on a branch too.
+        'facebook_page', 'instagram_professional', 'whatsapp',
+    ];
+
+    /** One recheck per connection per this many seconds. */
+    private const RECHECK_EVERY = 30;
 
     private const CHECK_LABELS = [
         'sign_in' => 'Sign-in',
@@ -74,17 +83,10 @@ final class IntegrationsOverviewController extends Controller
         abort_unless($user->hasPermission('marketing.view'), Status::HTTP_FORBIDDEN,
             Refusal::permission('open Integrations')->message());
 
-        $branchNames = Franchise::query()->pluck('name', 'id');
-
         $rows = SocialConnection::query()->with('businessLocation')->orderBy('display_name')->get()
             ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))->values();
 
-        $usedBy = $this->usedBy($rows->map(fn (SocialConnection $c) => (string) $c->getKey()));
-        $whatsApp = WhatsAppNumber::query()->get();
-        $audiences = NewsletterAudience::query()->whereNotNull('mailchimp_list_id')->orderBy('name')->pluck('name');
-
-        $connections = $rows->map(fn (SocialConnection $c) => $this->social($c, $branchNames, $usedBy, $whatsApp, $audiences));
-        $connections = $connections
+        $connections = $this->socialRows($rows)
             ->concat($this->phoneLines($user))
             ->concat($this->sendingServers($user))
             ->concat($this->workspaces($user));
@@ -119,6 +121,44 @@ final class IntegrationsOverviewController extends Controller
         ]]);
     }
 
+    /**
+     * POST /api/v1/integrations/{id}/recheck — "Verify all" on one account.
+     * Runs the health check and setup read-back now (WhatsAppHealth included),
+     * persists the checks and answers the connection in the overview's shape.
+     */
+    public function recheck(Request $request, string $id): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $row = SocialConnection::query()->find($id);
+        abort_if($row === null || ! $this->access->inView($user, $row), Status::HTTP_NOT_FOUND);
+
+        abort_unless($user->hasPermission($row->providerEnum()?->connectPermission() ?? 'marketing.edit'),
+            Status::HTTP_FORBIDDEN, Refusal::permission('check this connection')->message());
+
+        abort_unless(Cache::add('integrations-recheck:'.$row->getKey(), 1, self::RECHECK_EVERY),
+            Status::HTTP_TOO_MANY_REQUESTS, 'This connection was just checked. Try again in half a minute.');
+
+        if ($row->status === SocialConnection::STATUS_CONNECTED && ConnectionLiveness::checks((string) $row->provider)) {
+            CheckConnectionHealth::record($row, app(ConnectionLiveness::class)->check($row));
+        }
+
+        $row = SocialConnection::query()->with('businessLocation')->findOrFail($row->getKey());
+
+        return response()->json(['data' => $this->socialRows(collect([$row]))->first()]);
+    }
+
+    /** The overview's connection shape for social rows, with the lookups done once. */
+    private function socialRows(Collection $rows): Collection
+    {
+        $branchNames = Franchise::query()->pluck('name', 'id');
+        $usedBy = $this->usedBy($rows->map(fn (SocialConnection $c) => (string) $c->getKey()));
+        $whatsApp = WhatsAppNumber::query()->get();
+        $audiences = NewsletterAudience::query()->whereNotNull('mailchimp_list_id')->orderBy('name')->pluck('name');
+
+        return $rows->map(fn (SocialConnection $c) => $this->social($c, $branchNames, $usedBy, $whatsApp, $audiences))->values();
+    }
+
     private function social(SocialConnection $c, Collection $branchNames, array $usedBy, Collection $whatsApp, Collection $audiences): array
     {
         $stored = ConnectionChecks::of($c);
@@ -145,9 +185,10 @@ final class IntegrationsOverviewController extends Controller
                 ConnectionChecks::nextRun()->toIso8601String());
         }
 
-        foreach (['messages', 'routing', 'setup'] as $key) {
-            if (isset($stored[$key])) {
-                $checks[] = self::stored($key, $stored[$key]);
+        // Everything else the read-back recorded (messages, routing, setup, WhatsAppHealth's lines).
+        foreach ($stored as $key => $s) {
+            if ($key !== 'sign_in' && is_array($s)) {
+                $checks[] = self::stored((string) $key, $s);
             }
         }
 
@@ -320,12 +361,17 @@ final class IntegrationsOverviewController extends Controller
     /** A check as ConnectionChecks recorded it, with the fix its state calls for. */
     private static function stored(string $key, array $s): array
     {
-        $fix = ($s['state'] ?? null) === ConnectionChecks::FAIL
+        $fix = $s['fix'] ?? (($s['state'] ?? null) === ConnectionChecks::FAIL
             ? ($key === 'sign_in' ? self::fix('reconnect') : self::fix('retry'))
-            : null;
+            : null);
 
-        return self::check($key, (string) ($s['state'] ?? ConnectionChecks::UNKNOWN), $s['reason'] ?? null, $fix,
+        $check = self::check($key, (string) ($s['state'] ?? ConnectionChecks::UNKNOWN), $s['reason'] ?? null, $fix,
             $s['checked_at'] ?? null, $s['next_retry_at'] ?? null);
+        if (! empty($s['label'])) {
+            $check['label'] = (string) $s['label'];
+        }
+
+        return $check;
     }
 
     private static function fix(string $action, ?string $label = null, ?string $url = null): array

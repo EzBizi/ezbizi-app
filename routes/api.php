@@ -2569,6 +2569,7 @@ Route::prefix('v1')
             ->where('kind', 'social|phone|workspace');
         // Settings > Integrations in one payload: summary, apps, per-check results (no live provider calls).
         Route::get('integrations/overview', [IntegrationsOverviewController::class, 'show']);
+        Route::post('integrations/{id}/recheck', [IntegrationsOverviewController::class, 'recheck']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
             ->where('network', SocialProvider::oauthRoutePattern());

@@ -72,7 +72,7 @@ final class CheckConnectionHealth extends Command
                         $thumbtackSeen[$c->organization_id] = $result;
                     }
 
-                    $this->record($c, $result);
+                    self::record($c, $result);
 
                     return $result;
                 });
@@ -86,7 +86,8 @@ final class CheckConnectionHealth extends Command
         return self::SUCCESS;
     }
 
-    private function record(SocialConnection $c, Liveness $result): void
+    /** Also used by POST integrations/{id}/recheck. */
+    public static function record(SocialConnection $c, Liveness $result): void
     {
         $c->refresh();   // a renewal may have just rotated its credentials
 

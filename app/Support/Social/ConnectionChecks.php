@@ -30,12 +30,14 @@ final class ConnectionChecks
     }
 
     /** Merge one check's result into the row and save it. */
-    public static function record(SocialConnection $c, string $key, string $state, ?string $reason = null): void
+    public static function record(SocialConnection $c, string $key, string $state, ?string $reason = null, ?array $fix = null, ?string $label = null): void
     {
         $checks = self::of($c);
         $checks[$key] = [
             'state' => $state,
             'reason' => $reason,
+            'fix' => $fix,
+            'label' => $label,
             'checked_at' => now()->toIso8601String(),
             'next_retry_at' => self::nextRun()->toIso8601String(),
         ];
