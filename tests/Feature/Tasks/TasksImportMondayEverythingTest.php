@@ -47,6 +47,8 @@ class TasksImportMondayEverythingTest extends TestCase
         mkdir($this->dir);
         file_put_contents($this->dir.DIRECTORY_SEPARATOR.'a1.pdf', '%PDF-1.4 resume');
         file_put_contents($this->dir.DIRECTORY_SEPARATOR.'a2.mp4', str_repeat('v', 4096));
+        file_put_contents($this->dir.DIRECTORY_SEPARATOR.'a5.mov', str_repeat('q', 2048));
+        file_put_contents($this->dir.DIRECTORY_SEPARATOR.'a6.cr2', str_repeat('r', 1024));
         file_put_contents($this->dir.DIRECTORY_SEPARATOR.'a4.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
     }
 
@@ -126,6 +128,8 @@ class TasksImportMondayEverythingTest extends TestCase
                 // Over the 20 MB upload limit and off the upload type list: an import carries it anyway (Jose, 11-12).
                 ['monday_id' => 'a2', 'name' => 'walkthrough.mp4', 'ext' => '.mp4', 'size' => 90 * 1048576, 'url' => null],
                 ['monday_id' => 'a4', 'name' => 'logo.svg', 'ext' => '.svg', 'size' => 70, 'url' => null],
+                ['monday_id' => 'a5', 'name' => 'roof.mov', 'ext' => '.mov', 'size' => 2048, 'url' => null],
+                ['monday_id' => 'a6', 'name' => 'IMG_1.CR2', 'ext' => '.cr2', 'size' => 1024, 'url' => null],
                 // Nowhere to fetch it from: the one kind of file named instead.
                 ['monday_id' => 'a3', 'name' => 'lost.pdf', 'ext' => '.pdf', 'size' => 10, 'url' => null],
             ],
@@ -148,16 +152,19 @@ class TasksImportMondayEverythingTest extends TestCase
             $this->assertSame($this->jose->id, $updates[1]->user_id);
 
             $files = Attachment::query()->orderBy('original_name')->get()->keyBy('original_name');
-            $this->assertSame(['logo.svg', 'resume.pdf', 'walkthrough.mp4'], $files->keys()->all());
+            $this->assertSame(['IMG_1.CR2', 'logo.svg', 'resume.pdf', 'roof.mov', 'walkthrough.mp4'], $files->keys()->all());
             foreach ($files as $file) {
                 $this->assertSame('task_updates', $file->attachable_type);
                 $this->assertSame($updates[0]->id, $file->attachable_id);
                 Storage::disk($file->disk)->assertExists($file->path);
             }
             $this->assertSame(4096, $files['walkthrough.mp4']->size_bytes);
-            // Off the upload list: served as a download, never rendered (an svg can carry script).
+            // Off the upload list: a video keeps a playable type (the Gallery plays it, desk 11-12);
+            // anything else is a download, never rendered (an svg can carry script).
+            $this->assertSame('video/mp4', $files['walkthrough.mp4']->mime);
+            $this->assertSame('video/quicktime', $files['roof.mov']->mime);
             $this->assertSame('application/octet-stream', $files['logo.svg']->mime);
-            $this->assertSame('application/octet-stream', $files['walkthrough.mp4']->mime);
+            $this->assertSame('application/octet-stream', $files['IMG_1.CR2']->mime);
             $this->assertSame('application/pdf', $files['resume.pdf']->mime);
         });
     }

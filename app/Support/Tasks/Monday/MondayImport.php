@@ -2,6 +2,7 @@
 
 namespace App\Support\Tasks\Monday;
 
+use App\Jobs\MakeVideoPoster;
 use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskActivity;
@@ -54,6 +55,18 @@ final class MondayImport
 {
     /** Group names whose items are done even with a blank status. */
     public const DONE_GROUPS = ['done', 'completed', 'completed tasks', 'completed hirings', 'ezbizi - done'];
+
+    /**
+     * Off the upload list but safe to stream and play, so they keep a playable
+     * type and the Gallery plays them (desk, 2026-11-12: Rodrigo's videos had
+     * landed as octet-stream). Everything else off the list stays a download.
+     */
+    public const STREAMABLE = [
+        'mp4' => 'video/mp4',
+        'm4v' => 'video/x-m4v',
+        'mov' => 'video/quicktime',
+        'webm' => 'video/webm',
+    ];
 
     /** @var array<string, User> lower-cased email => user */
     private array $people = [];
@@ -505,10 +518,11 @@ final class MondayImport
      * type (Jose, 2026-11-12: "Get rid of the Limit, we need to import
      * everything"). The upload limits (config ezbizi.attachments) stay for
      * people uploading; an import carries what Monday held. Streamed to disk,
-     * never held in memory: Rodrigo's videos run to hundreds of MB. A type
-     * the upload list would refuse is stored as application/octet-stream, so
-     * it downloads and is never rendered in the browser (an .svg can carry
-     * script). Only a file that cannot be fetched is named in the update. An
+     * never held in memory: Rodrigo's videos run to hundreds of MB. A video
+     * (STREAMABLE) keeps its video type, so it plays and gets a poster; any
+     * other type the upload list would refuse is stored as
+     * application/octet-stream, so it downloads and is never rendered in the
+     * browser (an .svg can carry script). Only a file that cannot be fetched is named in the update. An
      * update that already has a file of that name keeps it.
      */
     private function files(TaskUpdate $update, array $files, User $by, bool $existing): void
@@ -554,7 +568,12 @@ final class MondayImport
             [$path, $temporary] = $file;
             try {
                 $attachment = app(AttachmentUploader::class)->upload($by, $update, new UploadedFile($path, $name, null, null, true), 'task_updates');
-                if (! in_array($ext, $extensions, true)) {
+                if (isset(self::STREAMABLE[$ext])) {
+                    $attachment->forceFill(['mime' => self::STREAMABLE[$ext]])->save();
+                    if (MakeVideoPoster::wants($attachment)) {
+                        MakeVideoPoster::dispatch($attachment->getKey())->afterCommit();
+                    }
+                } elseif (! in_array($ext, $extensions, true)) {
                     $attachment->forceFill(['mime' => 'application/octet-stream'])->save();
                 }
             } finally {
