@@ -289,7 +289,9 @@ class WorkizV2Test extends TestCase
         $this->assertStringContainsString('/api/v1/social/workiz/webhook/'.$connection->getKey(), $health['webhook']['detail']);
         $this->assertSame(['DEPOSIT RECEIVED'], collect($this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)
             ->get('workiz.tag_baseline', $tenant['org'])))->pluck('name')->all());
-        $this->signedInAs($admin)->getJson('/api/v1/social/connections')->assertOk();
+        // 11-12: with a standard saved, filter('is_array') got (value, key) and 500'd this list.
+        $cards = collect($this->signedInAs($admin)->getJson('/api/v1/social/connections?include=data_sources')->assertOk()->json('data'));
+        $this->assertNotNull($cards->firstWhere('id', $connection->getKey())['workiz']['health'] ?? null, 'the list draws this account health');
     }
 
     /** 11-12: a slot killed by its 300s timeout left the projection lock held an hour; no Workiz job reached EzBizi. */
