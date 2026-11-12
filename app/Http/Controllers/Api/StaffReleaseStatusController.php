@@ -44,6 +44,21 @@ class StaffReleaseStatusController extends Controller
         ];
     }
 
+    /**
+     * The release on its way, for everybody signed in: the bar in What's been
+     * built (Jose 11-12, "so people know when an update is coming"). Only the
+     * version and how far along -- no stages, messages or SHAs, which are the
+     * staff screen's. Null when nothing is running.
+     */
+    public function upcoming(): array
+    {
+        $current = $this->releases($this->lines())[0] ?? null;
+
+        return ['data' => ($current['state'] ?? null) === 'running'
+            ? ['version' => $current['version'], 'percent' => $current['percent']]
+            : null];
+    }
+
     /** @return list<array<string, mixed>> the file's last 2000 parsable lines, oldest first */
     private function lines(): array
     {

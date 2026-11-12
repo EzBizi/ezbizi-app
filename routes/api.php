@@ -3545,6 +3545,9 @@ Route::prefix('v1')
         // "Did you mean" for a composer with no lead behind it (Phone's texts).
         Route::post('proofread', ProofreadController::class)->middleware('throttle:60,1');
 
+        // The release on its way, for the bar in What's been built (Jose 11-12).
+        Route::get('release/upcoming', [\App\Http\Controllers\Api\StaffReleaseStatusController::class, 'upcoming']);
+
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)
         Route::get('me', function (Request $request) {
