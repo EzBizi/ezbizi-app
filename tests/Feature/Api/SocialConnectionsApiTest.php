@@ -178,9 +178,10 @@ class SocialConnectionsApiTest extends TestCase
         // added 2026-09-16 by the Reports module - the tenant's own name for a
         // connection, which nothing listed before, so naming one had no
         // visible effect anywhere.
+        // `whatsapp` (2026-11-12) is only the number's purpose, never its token.
         $this->assertSame([
             'id', 'provider', 'provider_label', 'display_name', 'label', 'handle', 'account_email',
-            'scope_type', 'scope_id', 'status', 'status_reason', 'detail', 'workiz', 'last_reached_at', 'last_checked_at',
+            'scope_type', 'scope_id', 'status', 'status_reason', 'detail', 'workiz', 'whatsapp', 'last_reached_at', 'last_checked_at',
             'can_publish', 'cannot_publish_because', 'posting_note', 'asks_tiktok_choices', 'body_limit', 'refuses',
         ], array_keys($row));
 

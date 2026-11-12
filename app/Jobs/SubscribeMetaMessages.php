@@ -79,6 +79,10 @@ final class SubscribeMetaMessages implements ShouldQueue
         $response = $connection->provider === SocialProvider::FacebookPage->value
             ? $post($fields.',leadgen')
             : null;
+        // Said on the card, not dropped quietly (Jose, 2026-11-12: a connect finishes its own setup).
+        $leadgenRefused = $response !== null && ($response->failed() || $response->json('success') !== true)
+            ? (string) ($response->json('error.message') ?? 'HTTP '.$response->status())
+            : null;
 
         if ($response === null || $response->failed() || $response->json('success') !== true) {
             $response = $post($fields);
@@ -99,7 +103,11 @@ final class SubscribeMetaMessages implements ShouldQueue
         // it is read back from Meta (37 Messenger enquiries on 2026-11-05).
         app(TenantContext::class)->run(
             Organization::findOrFail($connection->organization_id),
-            function () use ($connection) {
+            function () use ($connection, $leadgenRefused) {
+                if ($connection->provider === SocialProvider::FacebookPage->value) {
+                    $connection->forceFill(['credentials' => [...(array) $connection->credentials, 'leadgen_refused' => $leadgenRefused]])->save();
+                }
+
                 app(MetaMessages::class)->reclaim($connection);
 
                 // Never a reason to subscribe again: the hourly run asks the same.

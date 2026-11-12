@@ -2553,6 +2553,8 @@ Route::prefix('v1')
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/business-location', [SocialConnectionsController::class, 'linkBusinessLocation']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
+        Route::patch('social/connections/{connection}/whatsapp-purpose', [SocialConnectionsController::class, 'whatsappPurpose']);
+        Route::get('social/connections/{connection}/whatsapp-health', [SocialConnectionsController::class, 'whatsappHealth']);
         Route::get('social/connections/{connection}/tiktok-creator', [SocialConnectionsController::class, 'tiktokCreator']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         // Comments on the Instagram account linked to a connected Page
