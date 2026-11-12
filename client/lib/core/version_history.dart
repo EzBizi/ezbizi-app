@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0568', date: '12 Nov 2026', items: [
+      'Settings › Integrations: each card says in one line whether it works; a short note above lists only what needs you, grouped (14 phone lines waiting on Twilio are one line), and branches to pick wait under Choose later',
+      'Monday: the connection renews itself, so the boards keep syncing; imported videos play in the Gallery',
+      'Phone: a refused 911 address shows Twilio's own reason',
+    ]),
     VersionRelease(version: '0.0.0567', date: '12 Nov 2026', items: [
       'Reports › Jobs: a Called at column, Source and Number dialed pick several at once with their own search, the search box reads every column, and calls in Central-time branches now match their jobs',
       'Task Board: mark a task Sensitive and its contents stay locked until you enter your authenticator code (5 minutes, every unlock logged); it stays out of search, AI, exports and notifications',
