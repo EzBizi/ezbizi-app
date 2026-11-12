@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0567', date: '12 Nov 2026', items: [
+      'Reports › Jobs: a Called at column, Source and Number dialed pick several at once with their own search, the search box reads every column, and calls in Central-time branches now match their jobs',
+      'Task Board: mark a task Sensitive and its contents stay locked until you enter your authenticator code (5 minutes, every unlock logged); it stays out of search, AI, exports and notifications',
+      'Workiz: a watchdog checks the sync both ways every 5 minutes, fixes what it can and alerts when a job is stuck; Central and Pacific branches show the right job times',
+      'Scheduling: offer texts read "8-11 AM" and "Fri Nov 13", Settings warns when a text would cost more, and a NO reply keeps the customer’s time',
+    ]),
     VersionRelease(version: '0.0.0566', date: '12 Nov 2026', items: [
       'Settings › Integrations is redesigned: what needs your attention first, one row per app that opens to its accounts, and each account shows its checks (pass or fail, why, when) with a fix',
       'Connecting an account now finishes its own setup and checks itself: WhatsApp picks its use, Mailchimp an audience, Pinterest a board, LinkedIn offers your company Pages, Google Ads, Thumbtack and Facebook get their branch, and a setup that fails shows on the card',
