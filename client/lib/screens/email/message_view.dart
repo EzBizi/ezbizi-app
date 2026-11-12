@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -357,10 +358,10 @@ class MailMessageView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            // The web draws HTML in an iframe, which needs a height. Blocks
-            // lay out at full length so the thread scrolls as one page; a
-            // box of its own trapped the scroll on Eve's iPhone (11-11).
-            if (kIsWeb && (part.html ?? '').isNotEmpty)
+            // A web page or desktop WebView needs a height. On phones the
+            // blocks lay out at full length so the thread scrolls as one page;
+            // a box of its own trapped the scroll on Eve's iPhone (11-11).
+            if (_htmlInThread && (part.html ?? '').isNotEmpty)
               SizedBox(height: 420, child: _body(mailbox, part))
             else
               _blocks(mailbox, part, EdgeInsets.zero),
@@ -370,9 +371,23 @@ class MailMessageView extends StatelessWidget {
     );
   }
 
+  /// HTML mail is drawn by a real engine wherever there is one (Jose 11-12:
+  /// the block body drops table layouts, so Google's call notices showed only
+  /// their logos on Windows). A sandboxed iframe on the web, WebView2 on
+  /// Windows, the system WebView elsewhere; Linux keeps the blocks.
+  static bool get _htmlEngine =>
+      kIsWeb || defaultTargetPlatform != TargetPlatform.linux;
+
+  /// In a thread each part is a fixed-height box, which on a phone traps the
+  /// scroll -- so phones keep blocks there.
+  static bool get _htmlInThread =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS;
+
   Widget _body(Mailbox mailbox, MessageDetail message) {
     final html = message.html;
-    if (kIsWeb && html != null && html.isNotEmpty) {
+    if (_htmlEngine && html != null && html.isNotEmpty) {
       return MessageHtmlView(html: html);
     }
 
