@@ -15,14 +15,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * A call's client or booking set by hand on the call report (Jose,
  * 2026-11-03, for Trey). Wins over what the phones, Leads and Workiz say;
- * deleting it reverts.
+ * deleting it reverts. A mark (Spam, Not a customer: Trey, 2026-11-04) keeps
+ * the call listed but out of every client count and booking rate.
  */
 class CallReportOverride extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
     use HasUuids;
 
-    public const VALUES = ['client' => ['new', 'existing'], 'booking' => ['booked', 'not_booked']];
+    public const VALUES = ['client' => ['new', 'existing'], 'booking' => ['booked', 'not_booked'], 'mark' => ['spam', 'not_a_customer']];
 
     protected $fillable = ['organization_id', 'call_id', 'field', 'value', 'set_by'];
 
@@ -49,7 +50,7 @@ class CallReportOverride extends Model implements HoldsPersonalData
 
     public static function personalDataPurpose(): string
     {
-        return 'Which member of staff set a phone call\'s client type or booking by hand on the call report, and when.';
+        return 'Which member of staff set a phone call\'s client type, booking or Spam / Not a customer mark by hand on the call report, and when.';
     }
 
     public static function retention(): RetentionPolicy
@@ -64,7 +65,7 @@ class CallReportOverride extends Model implements HoldsPersonalData
     {
         return [
             new PersonalDataEntry('set_by', PersonalDataEntry::ACTIVITY,
-                'Which member of staff set the call\'s client or booking.',
+                'Which member of staff set the call\'s client, booking or mark.',
                 Erasure::erase()),
         ];
     }

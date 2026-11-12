@@ -575,4 +575,19 @@ class HrPersonRecordTest extends TestCase
         $this->assertNotContains($gone->id, array_column($this->signedInAs($t['admin'])
             ->getJson('/api/v1/hr/people?status=active')->json('data'), 'id'));
     }
+
+    /** Removed (deleted) people are off Records unless asked for (Jose, 2026-11-12). */
+    public function test_removed_people_are_off_records(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $gone = $this->userWithRole($t, 'Gone', ['customers.view']);
+        $this->signedInAs($t['admin'])->deleteJson("/api/v1/hr/people/{$gone->id}", ['confirm' => $gone->name])->assertOk();
+
+        foreach (['', '?status=inactive', '?status=active'] as $q) {
+            $this->assertNotContains($gone->id, array_column($this->signedInAs($t['admin'])
+                ->getJson("/api/v1/hr/people{$q}")->assertOk()->json('data'), 'id'));
+        }
+        $this->assertSame([$gone->id], array_column($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/hr/people?removed=1')->json('data'), 'id'));
+    }
 }

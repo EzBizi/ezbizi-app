@@ -215,6 +215,22 @@ class JobAssignmentTest extends TestCase
             ->assertJsonPath('data.performed_by.name', 'Technician');
     }
 
+    /** The technician picker lists exactly who the save above would accept (Jose, 2026-11-12). */
+    public function test_the_technician_picker_lists_only_people_who_reach_the_job(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $elsewhere = $this->aFranchise($alpha, 'Alpha F2');
+        $inReach = $this->userWithRole($alpha, 'Here Tech', [], onlyAt: $alpha['franchise']);
+        $outOfReach = $this->userWithRole($alpha, 'There Tech', [], onlyAt: $elsewhere);
+        $jobId = $this->aJob($alpha);
+
+        $ids = array_column($this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobId}/performers")->assertOk()->json('data'), 'id');
+
+        $this->assertContains($inReach->id, $ids);
+        $this->assertNotContains($outOfReach->id, $ids);
+    }
+
     // ── helpers ──────────────────────────────────────────────────
 
     private function aFranchise(array $tenant, string $name): Franchise

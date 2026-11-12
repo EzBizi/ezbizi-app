@@ -20,9 +20,11 @@ class CallCorrection extends StatefulWidget {
     this.onError,
   });
 
-  /// The two pairs a call can be corrected on, as the server names them.
+  /// What a call can be corrected on, as the server names it. A mark (Trey,
+  /// 2026-11-04) leaves the call out of the booking rate.
   static const client = [('new', 'New'), ('existing', 'Existing')];
   static const booking = [('booked', 'Booked'), ('not_booked', 'Not booked')];
+  static const mark = [('spam', 'Spam'), ('not_a_customer', 'Not a customer')];
 
   final ApiClient api;
   final String callId;

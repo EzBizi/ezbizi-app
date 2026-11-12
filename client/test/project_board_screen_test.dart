@@ -19,6 +19,7 @@ void main() {
     tester,
   ) async {
     final requests = <http.Request>[];
+    var over = 500;
     final api = ApiClient(
       client: MockClient((request) async {
         requests.add(request);
@@ -65,6 +66,13 @@ void main() {
           });
         }
         if (request.method == 'PATCH') return _json({'data': {}});
+        if (path.endsWith('/jobs/j-1/performers')) {
+          return _json({
+            'data': [
+              {'id': 'u-7', 'name': 'Guy Shimonov'},
+            ],
+          });
+        }
         if (path.endsWith('/project-board/repair-teams')) {
           return _json({
             'data': {
@@ -118,6 +126,7 @@ void main() {
                 'as_label': true,
               },
               {'key': 'required', 'label': 'Required', 'visible': true},
+              {'key': 'technician', 'label': 'Technician', 'visible': true},
               {'key': 'status_days', 'label': 'Status Time', 'visible': true},
               {
                 'key': 'tags',
@@ -130,6 +139,13 @@ void main() {
               'part_status': {'WAITING PARTS': 'caution'},
             },
             'settings_scope': {'scope_type': 'company', 'scope_id': 'c-1'},
+            'totals': {
+              'paid': 1500,
+              'due': 1000,
+              'total': 2000,
+              'over': over,
+              'currency': 'USD',
+            },
             'can_edit': true,
             'sortable': ['status_days', 'customer'],
           },
@@ -155,14 +171,39 @@ void main() {
     // Live: "Updated hh:mm", a manual refresh, and a quiet reload every
     // minute while on screen (Jose, 2026-11-10).
     expect(find.byKey(const Key('project-board-updated')), findsOneWidget);
+    // Totals as tiles (design 193); Overpaid only when there is any.
+    expect(find.text('Total Paid'), findsOneWidget);
+    expect(find.text('Total Remaining Balance'), findsOneWidget);
+    expect(find.text('Total Amount of Jobs'), findsOneWidget);
+    expect(find.byKey(const Key('project-board-total-over')), findsOneWidget);
+    expect(find.byTooltip('Paid beyond the job totals'), findsOneWidget);
+    over = 0;
     final before = requests.length;
     await tester.tap(find.byKey(const Key('project-board-refresh')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('project-board-total-over')), findsNothing);
+    expect(find.text('Total Paid'), findsOneWidget);
     expect(requests.length, before + 1);
     expect(requests.last.url.queryParameters['per_page'], '50');
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpAndSettle();
     expect(requests.length, before + 2);
+
+    // A technician is settable from the row (Jose, 2026-11-12).
+    await tester.tap(
+      find.byKey(const ValueKey('project-board-technician:j-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Guy Shimonov'));
+    await tester.pumpAndSettle();
+    final tech = requests.lastWhere(
+      (r) => r.method == 'PATCH' && r.url.path.endsWith('/jobs/j-1'),
+    );
+    expect(jsonDecode(tech.body), {'performed_by_user_id': 'u-7'});
+    ScaffoldMessenger.of(
+      tester.element(find.byType(ProjectBoardScreen)),
+    ).hideCurrentSnackBar();
+    await tester.pumpAndSettle();
 
     // Status Time: 7 days and up is red (Jose, 2026-11-10), and Ready to
     // schedule posts once nothing is missing.

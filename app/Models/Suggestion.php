@@ -77,8 +77,15 @@ class Suggestion extends Model implements HoldsPersonalData
     /** The one extra choice beside the module keys: Settings is pinned, not a module. */
     public const MODULE_SETTINGS = 'settings';
 
-    /** Screenshots, photos, a PDF, or a written-up .md/.txt note. */
-    public const FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif', 'pdf', 'md', 'txt'];
+    /**
+     * Screenshots, photos, a PDF, or a written-up .md/.txt note.
+     *
+     * `bmp` because the 0.0.0562 Windows app pastes the clipboard's CF_DIB as
+     * BMP bytes named pasted-N.png, and `mimes` (the content check) refused
+     * them. Newer clients re-encode a paste as PNG; this keeps that release
+     * working. A bitmap is a plain raster, not a carrier for script.
+     */
+    public const FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif', 'bmp', 'pdf', 'md', 'txt'];
 
     public const MAX_FILES = 5;
 

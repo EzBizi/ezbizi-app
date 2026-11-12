@@ -330,6 +330,21 @@ class PhoneAnswerWithTest extends TestCase
         $this->assertNotContains('menu', array_column($graph['nodes'], 'kind'));
     }
 
+    /** Jose, 2026-11-12: the card says pass or fail, and what to fix. */
+    public function test_a_new_line_reports_what_is_missing(): void
+    {
+        [$number, $editor] = $this->lineToEdit();
+
+        $health = $this->signedInAs($editor)
+            ->patchJson('/api/v1/phone/numbers/'.$number->id, ['label' => 'New line'])
+            ->assertOk()
+            ->json('data.health');
+
+        $this->assertFalse($health['ok']);
+        $this->assertContains('Calls reach nobody: choose who answers, or a ring group.', $health['problems']);
+        $this->assertContains('Nobody is signed in to take calls on this phone account right now.', $health['problems']);
+    }
+
     /** Switched off, the regular flow runs: the override is kept but ignored. */
     public function test_an_override_switched_off_leaves_the_flow_alone(): void
     {

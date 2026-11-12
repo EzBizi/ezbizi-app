@@ -615,7 +615,12 @@ class _HomeShellState extends State<HomeShell> {
     // an icon: what it prevents is somebody reading a stale dot for the rest
     // of the afternoon. Anything that must be immediate — a call starting or
     // ending — already notifies in the same frame.
-    _heartbeat.onBeat = PhoneCallService.current.presenceMayHaveChanged;
+    _heartbeat.onBeat = () {
+      PhoneCallService.current.presenceMayHaveChanged();
+      // A phone account that just got its first line is picked up within a
+      // minute, without a reload (Jose, 2026-11-12).
+      unawaited(PhoneCallService.current.syncAccounts());
+    };
     _fieldTracker = FieldTracker.startIfPhone(widget.api, widget.session);
     // So no computer asks somebody who has the phone app to install it.
     markPhoneAppUsed(widget.session);

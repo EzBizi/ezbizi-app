@@ -13,6 +13,28 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0565', date: '12 Nov 2026', items: [
+      'Project Management: narrowing a column wraps its text and the row grows; a scrollbar reaches the columns past the window edge',
+      'Project Management: set the technician from the row or the job panel; Scheduled lists Submitted jobs with a deposit and a date',
+      'Phone: connecting an account sets up an Everyone ring group and a voicemail box; every line shows what it is missing (route, texting, 911 address)',
+      'Phone: each line gets its 911 address from its branch or company',
+      'Customer Experience: Google listings are filed under their branch automatically; a failed listings sync shows on the screen',
+      'Email: a reconnected inbox is checked within a minute',
+    ]),
+    VersionRelease(version: '0.0.0564', date: '12 Nov 2026', items: [
+      'Suggestions: a pasted screenshot attaches and sends on Windows',
+      'Human Resources › Records: removed accounts no longer show in the lists, counts or export',
+      'Project Management: the totals are coloured tiles, with an Overpaid tile when jobs are paid beyond their total so the figures add up',
+      'Reports › Calls: mark a call Spam or Not a customer so it leaves the booking rate; a Needs Attention filter lists calls the AI heard as booked with no job yet',
+      'Jobs: a booking made while Workiz is busy is sent once it is free, complete with its area and technicians',
+      'Customer Experience: an automatic review reply retries once when Google is not ready',
+    ]),
+    VersionRelease(version: '0.0.0563', date: '12 Nov 2026', items: [
+      'Jobs: a job booked in EzBizi without a date reaches Workiz as unscheduled; a missing required Workiz field is named',
+      'Email: signature images in Gmail replies no longer show as attachments',
+      'Reports on WhatsApp: a moment when Meta does not answer no longer switches reports to the old layout for an hour',
+      'AI Assistance: the technician bot finds job photos from the job description too',
+    ]),
     VersionRelease(version: '0.0.0562', date: '11 Nov 2026', items: [
       'Phone: a Keypad on the call bar sends digits during a call (press 1 for…), on web, Windows and phones',
       'Email: signature logos are no longer listed as attachments; real attachments show as compact chips; on phones a thread scrolls as one page',

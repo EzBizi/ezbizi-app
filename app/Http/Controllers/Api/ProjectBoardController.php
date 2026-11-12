@@ -193,6 +193,8 @@ class ProjectBoardController extends Controller
                     'paid' => JobMoney::sum($filtered, 'paid'),
                     'due' => JobMoney::sum($filtered, 'due'),
                     'total' => JobMoney::sum($filtered, 'total'),
+                    // Desk, 2026-11-12: paid + remaining overshot the total by the overpaid jobs.
+                    'over' => JobMoney::sum($filtered, 'over'),
                     'currency' => 'USD',
                 ]] : []),
                 'status_days' => (object) $settings->get('project_board.status_days', $place),
@@ -445,7 +447,8 @@ class ProjectBoardController extends Controller
         $paidAt = $extras['paid'][$job->id] ?? null;
         $paid = $paidAt === null ? null : Carbon::parse($paidAt);
         $since = $paid ?? $job->created_at;
-        $technician = collect($payload['Team'] ?? [])->pluck('Name')->filter()->implode(', ') ?: $job->performedBy?->name;
+        // The one set here first (Jose, 2026-11-12), else Workiz's team.
+        $technician = $job->performedBy?->name ?: collect($payload['Team'] ?? [])->pluck('Name')->filter()->implode(', ');
         $workizNote = trim((string) ($payload['JobNotes'] ?? ''));
         $note = $extras['notes'][$job->id] ?? null;
         $files = (int) ($extras['files'][$job->id] ?? 0) + count(WorkizExtras::files(is_array($payload) ? $payload : []));
@@ -455,6 +458,7 @@ class ProjectBoardController extends Controller
         $row = [
             'service_area' => $job->serviceArea?->name,
             'technician' => $technician ?: null,
+            'performed_by_user_id' => $job->performed_by_user_id,
             'repair_team' => collect($job->tags ?? [])->first(fn ($t) => $this->isRepair((string) $t)),
             'repair_options' => $this->repairOptions($job),
             'payment_date' => $paid?->format('Y-m-d H:i'),

@@ -299,6 +299,23 @@ void main() {
     expect(find.text('Not booked 0'), findsOneWidget);
   });
 
+  // Jose, 2026-11-12: Needs Attention has its place in a person's Booking
+  // filter too.
+  testWidgets(
+    "a person's Booking filter has Needs Attention beside Existing job",
+    (tester) async {
+      final heard = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+      (heard['calls'] as List).first['needs_attention'] = true;
+      await _pump(tester, width: 1400, view: 'People', report: () => heard);
+
+      await tester.tap(find.text('Ada'));
+      await tester.pumpAndSettle();
+      expect(find.text('Existing job 0'), findsOneWidget);
+      expect(find.text('Needs Attention 1'), findsOneWidget);
+      expect(find.text('Not booked 0'), findsOneWidget);
+    },
+  );
+
   testWidgets('an existing job AI read as a reschedule says Rescheduled', (
     tester,
   ) async {
@@ -352,19 +369,23 @@ void main() {
     );
   });
 
+  // Jose, 2026-11-12: "make a new filter for the AI heard a booking, no job
+  // yet, call it Needs Attention": the server's call, and not Not booked.
   testWidgets('Booked per AI with no job is its own list, only when it has '
       'calls', (tester) async {
     final aiBooked = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
-    (aiBooked['calls'] as List).first['labels'] = {'grok': 'booked'};
+    (aiBooked['calls'] as List).first['needs_attention'] = true;
     await _pump(tester, width: 1400, view: 'Calls', report: () => aiBooked);
 
     await tester.tap(
       find.byKey(const ValueKey('calls-filter-ai_booked_no_job')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('AI heard a booking, no job yet 1'), findsOneWidget);
+    expect(find.text('Needs Attention 1'), findsOneWidget);
+    expect(find.text('Not booked 0'), findsOneWidget);
     expect(find.textContaining('Kitchen tap'), findsOneWidget);
     expect(find.textContaining('Blocked drain'), findsNothing);
+    expect(find.byTooltip('AI heard a booking, no job yet'), findsOneWidget);
   });
 
   testWidgets('Calls has headings, and the search narrows the calls', (
@@ -836,6 +857,62 @@ void main() {
     expect(posted, [
       'DELETE /api/v1/reports/experimental/calls/c1/override field=booking',
     ]);
+  });
+
+  // Trey, 2026-11-04 ("not a cx since we dont do home inspections"): the AI's
+  // Not a customer is a suggestion a person confirms; a marked call keeps its
+  // mark in the list and is nobody's lost booking.
+  testWidgets('a call marked Not a customer leaves Not booked, with its mark', (
+    tester,
+  ) async {
+    final set = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    final call = (set['calls'] as List).firstWhere((c) => c['id'] == 'c1');
+    call['labels'] = {'grok': 'not_a_customer'};
+    final posted = <String>[];
+    await _pump(tester, width: 1400, posted: posted, report: () => set);
+
+    await tester.tap(find.byKey(const ValueKey('stat-not-booked')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('call-details-c1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('mark-suggested-c1')), findsOneWidget);
+    // Marked as the server answers it: by whom, and out of Not booked.
+    call['mark'] = 'not_a_customer';
+    call['set_by'] = {'mark': 'Trey Brannan'};
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('set-mark-c1')),
+        matching: find.text('Not a customer'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(posted, [
+      'PUT /api/v1/reports/experimental/calls/c1/override '
+          '{"field":"mark","value":"not_a_customer"}',
+    ]);
+    expect(find.textContaining('Kitchen tap'), findsNothing);
+  });
+
+  testWidgets('a marked call is still in Calls, saying who marked it', (
+    tester,
+  ) async {
+    final set = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    final call = (set['calls'] as List).firstWhere((c) => c['id'] == 'c1');
+    call['mark'] = 'not_a_customer';
+    call['set_by'] = {'mark': 'Trey Brannan'};
+    await _pump(tester, width: 1400, report: () => set);
+
+    await tester.tap(find.textContaining('Calls').first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('call-details-c1')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byTooltip('Set by Trey Brannan'),
+        matching: find.text('Not a customer'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Not booked counts reasons per AI, and shows both on a call', (

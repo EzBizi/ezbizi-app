@@ -243,7 +243,7 @@ final class GmailMessageMapper
         return new MessageDetail(
             summary: $summary,
             blocks: $blocks,
-            attachments: $this->attachments($body),
+            attachments: $this->attachments($body, $html),
             imagesBlocked: $this->mentionsBlockedImage($blocks),
             sourceHtml: $html,
         );
@@ -457,19 +457,21 @@ final class GmailMessageMapper
      * A part is an attachment when it has a filename and is not part of the
      * body: an inline part, or one with a Content-ID that is not marked as an
      * attachment, is a signature logo or icon the HTML draws by cid (Eve 11-11:
-     * ten image0NN.png buried a State Farm thread). `id` is Gmail's
+     * ten image0NN.png buried a State Farm thread). So is a part the HTML
+     * names as cid: even when marked attachment -- Gmail sends a pasted
+     * signature that way. `id` is Gmail's
      * handle and is sealed before it is published — {@see MessageDetail::toArray}.
      *
      * @param  array<string, mixed>  $part
      * @return array<int, array{name: string, mime: string, bytes: int, id: string}>
      */
-    private function attachments(array $part): array
+    private function attachments(array $part, ?string $html = null): array
     {
         $out = [];
 
         $filename = (string) ($part['filename'] ?? '');
 
-        if ($filename !== '' && ! $this->isInline($part)) {
+        if ($filename !== '' && ! $this->isInline($part, $html)) {
             $out[] = [
                 'name'  => $this->line($filename),
                 'mime'  => $this->line((string) ($part['mimeType'] ?? 'application/octet-stream')),
@@ -480,7 +482,7 @@ final class GmailMessageMapper
 
         foreach ((array) ($part['parts'] ?? []) as $child) {
             if (is_array($child)) {
-                $out = [...$out, ...$this->attachments($child)];
+                $out = [...$out, ...$this->attachments($child, $html)];
             }
         }
 
@@ -488,7 +490,7 @@ final class GmailMessageMapper
     }
 
     /** @param  array<string, mixed>  $part */
-    private function isInline(array $part): bool
+    private function isInline(array $part, ?string $html): bool
     {
         $headers = [];
 
@@ -499,6 +501,11 @@ final class GmailMessageMapper
         }
 
         $disposition = $headers['content-disposition'] ?? '';
+        $contentId   = trim($headers['content-id'] ?? '', '<> ');
+
+        if ($contentId !== '' && $html !== null && stripos($html, 'cid:'.$contentId) !== false) {
+            return true;
+        }
 
         return str_starts_with($disposition, 'inline')
             || (($headers['content-id'] ?? '') !== '' && ! str_starts_with($disposition, 'attachment'));

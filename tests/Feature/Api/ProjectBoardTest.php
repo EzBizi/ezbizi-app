@@ -116,8 +116,18 @@ class ProjectBoardTest extends TestCase
         // The totals strip needs Financials too (Jose, 2026-11-10).
         $this->assertNull($this->signedInAs($this->userWithRole($alpha, 'Viewer 2', ['jobs.view', 'project_board.view']))
             ->getJson('/api/v1/project-board/jobs?tab=in_progress')->json('meta.totals'));
-        $this->assertSame(['paid', 'due', 'total', 'currency'], array_keys($this->signedInAs($alpha['admin'])
-            ->getJson('/api/v1/project-board/jobs?tab=in_progress&per_page=1')->json('meta.totals')));
+        // Desk, 2026-11-12: paid beyond a job's total is shown, so paid - over + due = total.
+        $this->inTenant($alpha['org'], function () use ($alpha, $id) {
+            Job::query()->whereKey($id)->update(['amount_minor' => 10000]);
+            $other = $this->job($alpha['franchise'], 'J-2', 'on site');
+            Job::query()->whereKey($other)->update(['amount_minor' => 5000]);
+            foreach ([[$id, 30.00], [$other, 80.00]] as $i => [$job, $amount]) {
+                WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'payment', 'remote_id' => "PAY-{$i}",
+                    'job_id' => $job, 'amount' => $amount, 'status' => 'succeeded', 'starts_at' => now(), 'payload' => [], 'synced_at' => now()]);
+            }
+        });
+        $this->assertSame(['paid' => 11000, 'due' => 7000, 'total' => 15000, 'over' => 3000, 'currency' => 'USD'], $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/project-board/jobs?tab=in_progress&per_page=1')->json('meta.totals'));
 
         $this->signedInAs($this->userWithRole($alpha, 'Jobs only', ['jobs.view']))
             ->getJson('/api/v1/project-board/jobs')->assertForbidden();
@@ -134,6 +144,8 @@ class ProjectBoardTest extends TestCase
             // Any case and spacing (Jose, 2026-11-10); a misspelling is a different tag.
             'cased' => $this->job($alpha['franchise'], 'J-5', 'submitted', null, ['Deposit  received']),
             'misspelt' => $this->job($alpha['franchise'], 'J-6', 'Submitted', null, ['DEPOSIT RECIEVED']),
+            // Submitted AND scheduled, not OR (Jose, 2026-11-12): status Scheduled is not on it.
+            'status_scheduled' => $this->job($alpha['franchise'], 'J-7', 'Scheduled', '2026-11-10 09:00:00', ['DEPOSIT RECEIVED']),
         ]);
 
         $page = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/jobs?tab=unscheduled')->assertOk();
