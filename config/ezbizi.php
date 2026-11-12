@@ -118,6 +118,14 @@ return [
      * inside the product. The lesson that produced this: for seven hours every
      * check I ran was a status code, and not one of them touched a row.
      */
+    // The scheduler's slow lane (routes/console.php, TWO LANES). Off: the fast
+    // slots run everything, as before. On: the five slow commands run only in
+    // deploy/ezbizi-scheduler-slow.service. Flipped on the box AFTER its units
+    // are installed, so a deploy in either order never strands a command.
+    'scheduler' => [
+        'slow_lane' => env('EZBIZI_SLOW_LANE') === 'on',
+    ],
+
     'backups' => [
         'status_file' => env('EZBIZI_BACKUP_STATUS', storage_path('app/backup-status.json')),
 

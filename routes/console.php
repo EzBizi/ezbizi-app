@@ -502,7 +502,7 @@ Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlap
  * slot 0 and systemd killed it mid-project-workiz, stranding its lock: no
  * Workiz job became an EzBizi job for an hour.
  *
- * The SLOW commands now run only in deploy/ezbizi-scheduler-slow.service
+ * With ezbizi.scheduler.slow_lane on (EZBIZI_SLOW_LANE=on), the SLOW commands run only in deploy/ezbizi-scheduler-slow.service
  * (EZBIZI_SCHEDULE_LANE=slow, its own every-minute timer, a 30-minute
  * timeout); the three fast slots run everything else and are never held
  * behind them. withoutOverlapping still guards each command.
@@ -512,5 +512,10 @@ foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event)
         '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz)(\s|\'|$)/',
         (string) $event->command,
     );
-    $event->when(fn () => $slow === (getenv('EZBIZI_SCHEDULE_LANE') === 'slow'));
+    $event->when(function () use ($slow) {
+        $inSlowLane = getenv('EZBIZI_SCHEDULE_LANE') === 'slow';
+
+        // Flag off: the fast slots run everything and the slow lane nothing.
+        return config('ezbizi.scheduler.slow_lane') ? $slow === $inSlowLane : ! $inSlowLane;
+    });
 }

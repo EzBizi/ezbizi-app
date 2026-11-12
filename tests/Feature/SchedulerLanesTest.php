@@ -29,8 +29,22 @@ class SchedulerLanesTest extends TestCase
         return $out;
     }
 
-    public function test_slow_commands_run_only_in_the_slow_lane_and_everything_else_only_in_the_fast_slots(): void
+    public function test_flag_off_the_fast_slots_run_everything_and_the_slow_lane_nothing(): void
     {
+        config(['ezbizi.scheduler.slow_lane' => false]);
+        $fast = $this->lane(null);
+        $slow = $this->lane('slow');
+
+        foreach (self::SLOW as $cmd) {
+            $this->assertTrue($fast[$cmd], "{$cmd} still runs in the fast slots before the flip");
+        }
+        $this->assertTrue($fast['ezbizi:leads-reply-overdue']);
+        $this->assertSame([], array_keys(array_filter($slow)), 'the slow lane runs nothing before the flip');
+    }
+
+    public function test_flag_on_slow_commands_run_only_in_the_slow_lane_and_everything_else_only_in_the_fast_slots(): void
+    {
+        config(['ezbizi.scheduler.slow_lane' => true]);
         $fast = $this->lane(null);
         $slow = $this->lane('slow');
 
