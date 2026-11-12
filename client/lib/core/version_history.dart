@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0563', date: '12 Nov 2026', items: [
+      'Email: signature images in Gmail replies no longer show as attachments',
+      'Reports on WhatsApp: a moment when Meta does not answer no longer switches reports to the old layout for an hour',
+      'AI Assistance: the technician bot finds job photos from the job description too',
+    ]),
     VersionRelease(version: '0.0.0562', date: '11 Nov 2026', items: [
       'Phone: a Keypad on the call bar sends digits during a call (press 1 for…), on web, Windows and phones',
       'Email: signature logos are no longer listed as attachments; real attachments show as compact chips; on phones a thread scrolls as one page',
