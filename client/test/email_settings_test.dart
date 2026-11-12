@@ -1096,6 +1096,86 @@ void main() {
     expect(find.text('Not available here'), findsNothing);
   });
 
+  testWidgets('adding an inbox asks who gets access, filled in from its '
+      'domain siblings (Jose 11-12)', (tester) async {
+    Map<String, dynamic>? posted;
+    await _pump(
+      tester,
+      _handler(
+        imapUsable: true,
+        onRequest: (method, path, body) {
+          if (method == 'POST' && path.endsWith('/email/mailboxes')) {
+            posted = body;
+          }
+        },
+      ),
+    );
+
+    await _openSettings(tester);
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add an inbox'));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Mail service'),
+    );
+    await _tap(tester, find.text('IMAP').last);
+
+    final access = find.byKey(const ValueKey('email-add-access'));
+    expect(access, findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Address'),
+      'office@ct.a-1chimney.com',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: access, matching: find.textContaining('Connecticut')),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'What to call it'),
+      'CT Office',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'imap.example.com').first,
+      'imap.example.com',
+    );
+    await _tap(tester, find.widgetWithText(FilledButton, 'Add the address'));
+
+    expect(posted?['scope_type'], 'franchise');
+    expect(posted?['scope_id'], 'fr-1');
+  });
+
+  testWidgets('the card says Receive and Send, pass or fail, with the reason '
+      '(Jose 11-12)', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: [
+          _row(
+            id: 'mb-1',
+            address: 'info@a-1chimney.com',
+            lastReachedAt: _agoIso(const Duration(minutes: 3)),
+            extra: {
+              'send_checked_at': _agoIso(const Duration(hours: 1)),
+              'send_problem': 'Connected without permission to send.',
+            },
+          ),
+        ],
+      ),
+    );
+
+    await _openSettings(tester);
+
+    expect(find.text('Receive ✓'), findsOneWidget);
+    expect(
+      find.text('Send ✗ Connected without permission to send.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a @gmail.com address fills the Gmail servers, so it is the '
       'address and an app password (Jose, 11-05: like A1 Tools)', (tester) async {
     await _pump(tester, _handler(imapUsable: true));
@@ -3333,6 +3413,15 @@ MockClientHandler _handler({
 
     if (path.endsWith('/connect')) {
       return _json({'data': rows.first});
+    }
+
+    if (path.endsWith('/email/mailboxes/suggest-scope')) {
+      // office@ct.* has a sibling filed under the Connecticut branch.
+      return _json({
+        'data': request.url.query.contains('%40ct.')
+            ? {'scope_type': 'franchise', 'scope_id': 'fr-1'}
+            : null,
+      });
     }
 
     if (path.endsWith('/email/mailboxes')) {

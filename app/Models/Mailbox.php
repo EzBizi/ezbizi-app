@@ -181,6 +181,7 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
              */
             'watch_marked_at'    => 'datetime',
             'watch_next_poll_at' => 'datetime',
+            'send_checked_at'    => 'datetime',
             'watch_failures'     => 'integer',
         ];
     }
@@ -234,7 +235,7 @@ class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveVal
      * hours of silence after Jose fixed it (11-12: "doing a connection should
      * take care of the whole process").
      */
-    private const WATCH_NOW = ['watch_next_poll_at' => null, 'watch_failures' => 0];
+    private const WATCH_NOW = ['watch_next_poll_at' => null, 'watch_failures' => 0, 'send_checked_at' => null];
 
     /**
      * Write the secret. The only path that does.

@@ -475,6 +475,28 @@ final class MicrosoftMailboxReader implements MailboxReader
             ->post($url, $payload));
     }
 
+    /**
+     * Whether this mailbox could send, without sending: a token, and the
+     * permissions written into it (`scp`). Null when it can.
+     */
+    public function sendProblem(Mailbox $mailbox): ?string
+    {
+        try {
+            $token = $this->accessToken($mailbox);
+        } catch (CannotReadMailbox $e) {
+            return $e->getMessage();
+        }
+
+        // Only read, never trusted for anything else: Microsoft signed it and
+        // Graph checks it on every call.
+        $claims = json_decode((string) base64_decode(strtr(explode('.', $token)[1] ?? '', '-_', '+/')), true);
+        $granted = preg_split('/\s+/', (string) ($claims['scp'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return in_array(MicrosoftOAuth::SCOPE_SEND, $granted, true)
+            ? null
+            : 'Connected without permission to send. Reconnect it and allow sending.';
+    }
+
     private function accessToken(Mailbox $mailbox): string
     {
         $this->assertUsable($mailbox);
