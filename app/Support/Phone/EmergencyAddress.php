@@ -6,6 +6,7 @@ use App\Models\BusinessLocation;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\PhoneNumber;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -61,11 +62,28 @@ class EmergencyAddress
             $sid ??= $twilio->createAddress($number->connection, $address)['sid'];
             $twilio->updateIncoming($number->connection, (string) $number->twilio_sid, ['emergencyAddressSid' => $sid]);
         } catch (Throwable $e) {
-            return 'E911: Twilio refused the address on file ('.$e->getMessage().').';
+            $why = 'E911: Twilio refused the address on file ('.$e->getMessage().').';
+            // ponytail: cached, not a column; the hourly retry rewrites it, so it never outlives the refusal.
+            Cache::put(self::refusalKey($number), $why, now()->addHours(2));
+
+            return $why;
         }
+
+        Cache::forget(self::refusalKey($number));
 
         $number->forceFill(['emergency_address_sid' => $sid, 'emergency_address_set' => true])->save();
 
         return null;
+    }
+
+    /** Twilio's last refusal for this line, so health says why instead of promising a retry. */
+    public static function refusal(PhoneNumber $number): ?string
+    {
+        return Cache::get(self::refusalKey($number));
+    }
+
+    private static function refusalKey(PhoneNumber $number): string
+    {
+        return 'phone-e911-refused:'.$number->id;
     }
 }
