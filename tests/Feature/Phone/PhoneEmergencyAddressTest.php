@@ -5,6 +5,7 @@ namespace Tests\Feature\Phone;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
 use App\Support\Phone\EmergencyAddress;
+use App\Support\Phone\LineHealth;
 use App\Support\Phone\FakeTwilioGateway;
 use App\Support\Phone\TwilioGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -42,6 +43,33 @@ class PhoneEmergencyAddressTest extends TestCase
             $this->assertNull(EmergencyAddress::attach($line('+13055550202'), $twilio));
             $this->assertCount(1, collect($twilio->calls)->where('method', 'createAddress'));
             $this->assertSame('1 Main St', collect($twilio->calls)->firstWhere('method', 'createAddress')['args'][1]['street']);
+        });
+    }
+
+    public function test_a_refused_attach_says_why_and_promises_nothing(): void
+    {
+        $t = $this->provisionTenant();
+        /** @var FakeTwilioGateway $twilio */
+        $twilio = $this->app->make(TwilioGateway::class);
+
+        $this->inTenant($t['org'], function () use ($t, $twilio) {
+            $t['company']->forceFill(['address_line1' => '1 Main St', 'city' => 'Miami', 'state' => 'FL', 'postal_code' => '33101'])->save();
+            $connection = PhoneConnection::factory()->create(['scope_type' => 'company', 'scope_id' => $t['company']->id]);
+            $number = PhoneNumber::factory()->create([
+                'connection_id' => $connection->id, 'scope_type' => PhoneNumber::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id, 'e164' => '+13055550203', 'twilio_sid' => 'PN3055550203',
+            ]);
+            $sentence = fn () => collect(LineHealth::for($number->fresh(), true)['problems'])->firstWhere('key', 'e911')['sentence'] ?? null;
+
+            $this->assertSame('E911: missing — not yet sent to Twilio.', $sentence());
+
+            $twilio->failUpdateIncomingWith = '[HTTP 404] was not found';
+            EmergencyAddress::attach($number, $twilio);
+            $this->assertSame('E911: Twilio refused the address on file ([HTTP 404] was not found).', $sentence());
+
+            $twilio->failUpdateIncomingWith = null;
+            EmergencyAddress::attach($number->fresh(), $twilio);
+            $this->assertNull($sentence());
         });
     }
 }

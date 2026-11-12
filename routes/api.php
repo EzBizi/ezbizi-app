@@ -1060,6 +1060,9 @@ Route::prefix('v1')
         Route::patch('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'update']);
         Route::delete('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'destroy']);
         Route::post('tasks/bulk', [TasksController::class, 'bulk']);
+        // Sensitive tasks: an authenticator code opens them on this session for 5 minutes.
+        Route::delete('tasks/unlock', [TasksController::class, 'lock']);
+        Route::post('tasks/{task}/unlock', [TasksController::class, 'unlock']);
         Route::post('tasks', [TasksController::class, 'store']);
         Route::patch('tasks/{task}/move', [TasksController::class, 'move']);
         Route::post('tasks/{task}/copy', [TasksController::class, 'copy']);

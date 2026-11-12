@@ -40,7 +40,9 @@ final class AttachmentUploader
         $disk = $this->files->defaultDisk();
         // Onboarding uploads hold identity documents (a Social Security card
         // photo, Merav 2026-11-09), so they are encrypted at rest.
-        $encrypted = $subject instanceof \App\Models\Onboarding;
+        // A sensitive task's files likewise, and their names are sealed (SensitiveTasks).
+        $sealed = $subject instanceof \App\Models\TaskUpdate && (bool) $subject->task?->sensitive;
+        $encrypted = $subject instanceof \App\Models\Onboarding || $sealed;
         $directory = $this->files->directoryFor('attachments', $actor->organization_id);
         $path = $encrypted
             ? $this->files->putContents(\Illuminate\Support\Facades\Crypt::encryptString((string) file_get_contents($file->getRealPath())),
@@ -50,17 +52,18 @@ final class AttachmentUploader
         try {
             return DB::transaction(function () use (
                 $actor, $subject, $file, $attachableType, $prepareSubject,
-                $afterPersist, $size, $checksum, $mime, $disk, $path, $encrypted,
+                $afterPersist, $size, $checksum, $mime, $disk, $path, $encrypted, $sealed,
             ): Attachment {
                 $target = $prepareSubject === null ? $subject : $prepareSubject();
                 if ($target->getAttribute('organization_id') !== $actor->organization_id) {
                     throw new RuntimeException('An attachment cannot cross organization boundaries.');
                 }
 
+                $name = mb_substr((string) $file->getClientOriginalName(), 0, 255);
                 $attachment = new Attachment([
                     'attachable_type' => $attachableType ?? $target->getMorphClass(),
                     'attachable_id' => $target->getKey(),
-                    'original_name' => mb_substr((string) $file->getClientOriginalName(), 0, 255),
+                    'original_name' => $sealed ? \App\Support\Tasks\SensitiveTasks::LOCKED_FILE : $name,
                     'mime' => mb_substr($mime, 0, 160),
                     'uploaded_by_user_id' => $actor->getKey(),
                 ]);
@@ -70,6 +73,7 @@ final class AttachmentUploader
                     'size_bytes' => $size,
                     'checksum' => $checksum,
                     'encrypted' => $encrypted,
+                    'sealed_name' => $sealed ? \App\Support\Tasks\SensitiveTasks::seal($name) : null,
                 ])->save();
 
                 $this->audit->log('attachment.added', $attachment, metadata: [

@@ -27,7 +27,7 @@ class LineHealth
             'texting' => $number->sms_outbound_allowed ? null : 'Texting: not registered (A2P), so texts cannot be sent.',
             'e911' => $number->emergency_address_set ? null : (EmergencyAddress::for($number) === null
                 ? EmergencyAddress::NO_ADDRESS
-                : 'E911: missing — the address on file is attached within the hour.'),
+                : (EmergencyAddress::refusal($number) ?? 'E911: missing — not yet sent to Twilio.')),
             'signed_in' => PhonePresence::query()->where('connection_id', $number->connection_id)->available()->exists()
                 ? null : 'Nobody is signed in to take calls on this phone account right now.',
         ]);

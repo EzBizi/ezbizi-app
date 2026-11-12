@@ -9,6 +9,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\JobNote;
 use App\Models\Lead;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
@@ -17,6 +18,7 @@ use App\Models\ServiceArea;
 use App\Models\ServiceAreaSlot;
 use App\Support\Phone\FakeTwilioGateway;
 use App\Support\Phone\TwilioGateway;
+use App\Support\Scheduling\RescheduleOffers;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -68,16 +70,35 @@ class RescheduleOffersTest extends TestCase
         $plan = $as->postJson('/api/v1/scheduling/overbooking/offers/preview', $target)->assertOk()->json('data');
         $this->assertSame('2026-10-29', $plan['offer_date']);
         $this->assertEqualsCanonicalizing([$first->id, $second->id], array_column($plan['candidates'], 'job_id'));
-        $this->assertStringContainsString('is very busy on {booked}', $plan['message']);
+        $this->assertStringContainsString('fully booked on {booked}', $plan['message']);
 
         $as->postJson('/api/v1/scheduling/overbooking/offers/send', $target + ['job_ids' => [$second->id]])
             ->assertOk()->assertJsonPath('data.sent', [$second->id]);
         /** @var FakeTwilioGateway $gateway */
         $gateway = $this->app->make(TwilioGateway::class);
         $text = collect($gateway->calls)->where('method', 'sendMessage')->sole()['args'][3];
-        $this->assertStringContainsString('very busy on Tuesday, Oct 27. Would Thursday, Oct 29, 8:00 AM–11:00 AM work', $text);
+        // Desk, 2026-11-12: ASCII windows and short dates keep the text GSM-7.
+        $this->assertStringContainsString('fully booked on Tue Oct 27. Could we come Thu Oct 29, 8-11 AM instead?', $text);
+        $this->assertSame(0, preg_match('/[^\n\x20-\x7E]/', $text), json_encode($text));
         app(TenantContext::class)->set($t['org']);
-        $this->assertSame('2026-10-29', SchedulingRescheduleOffer::query()->sole()->open_date->toDateString());
+        $offer = SchedulingRescheduleOffer::query()->sole();
+        $this->assertSame('2026-10-29', $offer->open_date->toDateString());
+
+        // NO keeps their time: noted on the job, the offer closed, YES refused after.
+        app(RescheduleOffers::class)->absorbNo('+15553330099', 'No');    // someone else
+        app(RescheduleOffers::class)->absorbNo('+15553330012', 'Yes please');
+        $this->assertNull($offer->fresh()->declined_at);
+        app(RescheduleOffers::class)->absorbNo('+15553330012', 'no thanks');
+        app(TenantContext::class)->set($t['org']);
+        $this->assertNotNull($offer->fresh()->declined_at);
+        $this->assertSame('2026-10-27 09:00:00', (string) $second->fresh()->scheduled_for);
+        $this->assertStringContainsString('replied NO to moving to Thu Oct 29: keeps Tue Oct 27',
+            (string) JobNote::query()->where('job_id', $second->id)->sole()->body);
+        $as->postJson('/api/v1/scheduling/reschedule-offers/'.$offer->id.'/move')->assertStatus(409);
+
+        $this->assertSame('8-11 AM', RescheduleOffers::window('08:00', '11:00'));
+        $this->assertSame('11 AM-2 PM', RescheduleOffers::window('11:00:00', '14:00:00'));
+        $this->assertSame('2:30-5 PM', RescheduleOffers::window('14:30', '17:00'));
     }
 
     public function test_later_customers_are_offered_the_open_day_once_and_replies_land_on_a_reschedule_lead(): void
@@ -116,7 +137,7 @@ class RescheduleOffersTest extends TestCase
         $this->assertCount(1, $sends);
         $this->assertSame('+15553330002', $sends[0]['args'][2]);
         $this->assertStringContainsString('Hi Dana, ', $sends[0]['args'][3]);
-        $this->assertStringContainsString('Tuesday, Oct 27, 8:00 AM–11:00 AM', $sends[0]['args'][3]);
+        $this->assertStringContainsString('Tue Oct 27, 8-11 AM', $sends[0]['args'][3]);
 
         app(TenantContext::class)->set($t['org']);
         $lead = Lead::query()->where('job_id', $later->id)->sole();

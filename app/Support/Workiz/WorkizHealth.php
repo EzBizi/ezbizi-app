@@ -92,7 +92,7 @@ final class WorkizHealth
         $tags = WorkizRecord::query()->where('franchise_id', $branch)->where('type', 'tag')->get(['payload']);
         $org = \App\Models\Organization::query()->find($connection->organization_id);
         $settings = app(SettingsResolver::class);
-        $standard = collect((array) $settings->get('workiz.tag_baseline', $org))->filter('is_array');
+        $standard = collect((array) $settings->get('workiz.tag_baseline', $org))->filter(fn ($v) => is_array($v));
 
         // No standard yet: this account's tags become it, as "Approve current tags" would.
         if ($fix && $v2 && $standard->isEmpty() && $tags->isNotEmpty() && $org !== null) {

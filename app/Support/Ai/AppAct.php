@@ -107,13 +107,15 @@ final class AppAct
             return ['ok' => false, 'status' => 403, 'message' => 'That is not something you can do from WhatsApp.'];
         }
 
-        $token = $viewer->createToken('WhatsApp command', ['*'], now()->addMinutes(2));
+        // Marked as the AI's: a sensitive task is never reached by it (SensitiveTasks).
+        $token = $viewer->createToken('WhatsApp command', ['*', \App\Support\Tasks\SensitiveTasks::AI_READER], now()->addMinutes(2));
         $as = Request::create('/');
         $as->headers->set('Authorization', 'Bearer '.$token->plainTextToken);
         $as->setUserResolver(fn () => $viewer);
 
         try {
-            $response = InternalRequest::send($as, $plan['method'], '/api/v1/'.$plan['path'], $plan['body']);
+            $response = InternalRequest::send($as, $plan['method'], '/api/v1/'.$plan['path'], $plan['body'],
+                attributes: [\App\Support\Tasks\SensitiveTasks::AI_READER => true]);
         } finally {
             $token->accessToken->delete();
         }

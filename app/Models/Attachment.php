@@ -87,8 +87,8 @@ class Attachment extends Model implements HoldsPersonalData
                     .'A file that is evidence refuses to be removed and is reported instead; '
                     .'everything else goes, bytes and row together.'),
                 tenantDefined: true),
-            new PersonalDataEntry('original_name', PersonalDataEntry::CONTENT,
-                'What the person called the file, which often names its subject — '
+            new PersonalDataEntry('original_name, sealed_name', PersonalDataEntry::CONTENT,
+                'What the person called the file (encrypted in sealed_name on a sensitive task), which often names its subject — '
                 .'"marta-licence.pdf" says something even before it is opened.',
                 Erasure::drop('Goes with the file it names. Keeping the row for its '
                     .'filename alone would keep the one part of it that is readable '
@@ -235,6 +235,18 @@ class Attachment extends Model implements HoldsPersonalData
     protected function casts(): array
     {
         return ['size_bytes' => 'integer', 'encrypted' => 'boolean'];
+    }
+
+    /**
+     * What the person called the file. A sensitive task's file is called
+     * "Locked file" in original_name and its real name is sealed; only a
+     * caller that has passed SensitiveTasks::reveal asks for this.
+     */
+    public function realName(): string
+    {
+        return $this->sealed_name !== null
+            ? (string) \App\Support\Tasks\SensitiveTasks::open($this->sealed_name)
+            : (string) $this->original_name;
     }
 
     /** The file's bytes, decrypted when stored encrypted; null when it has gone. */

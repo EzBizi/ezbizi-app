@@ -304,12 +304,16 @@ const Map<String, Tour> reportsTours = {
       TourStep(
         anchor: 'jobs-search',
         title: 'Find a job',
-        body: 'By client, phone, or its EzBizi or Workiz number.',
+        body:
+            'Any column: client, phone, either id, branch, area, source, '
+            'line, type, status, amount or date.',
       ),
       TourStep(
         anchor: 'jobs-source',
         title: 'Narrow it',
-        body: 'By source, the number the client dialed, and area.',
+        body:
+            'By source and the number the client dialed, several at once, '
+            'and by area.',
       ),
       TourStep(
         anchor: 'jobs-totals',

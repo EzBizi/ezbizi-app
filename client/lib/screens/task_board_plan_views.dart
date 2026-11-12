@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/timestamps.dart';
 import '../widgets/calendar_day_field.dart';
+import 'task_board_sensitive.dart';
 
 /// Design 178 (Jose, 2026-11-03): the board's Calendar and Timeline views.
 /// Both draw the tasks they are given; every write goes back through the
@@ -54,7 +55,7 @@ class _Chip extends StatelessWidget {
             border: Border(left: BorderSide(color: colour, width: 3)),
           ),
           child: Text(
-            '${task['title']}',
+            taskTitle(task),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall,
@@ -189,7 +190,7 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
     key: ValueKey('plan-row-${t['id']}'),
     dense: true,
     leading: Container(width: 4, height: 28, color: widget.colourOf(t)),
-    title: Text('${t['title']}', maxLines: 1, overflow: TextOverflow.ellipsis),
+    title: Text(taskTitle(t), maxLines: 1, overflow: TextOverflow.ellipsis),
     onTap: () => widget.onOpen(t),
     trailing: widget.canEdit
         ? TextButton(
@@ -312,7 +313,7 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
                   for (final t in undated)
                     MenuItemButton(
                       onPressed: () => widget.onOpen(t),
-                      child: Text('${t['title']}'),
+                      child: Text(taskTitle(t)),
                     ),
                 ],
                 builder: (context, c, _) => OutlinedButton(
@@ -626,7 +627,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Text(
-                    '${t['title']}',
+                    taskTitle(t),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

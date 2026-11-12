@@ -364,7 +364,13 @@ final class FakeTwilioGateway implements TwilioGateway
     public function updateIncoming(PhoneConnection $connection, string $incomingSid, array $params): void
     {
         $this->record(__FUNCTION__, [$connection->id, $incomingSid, $params]);
+        if ($this->failUpdateIncomingWith !== null) {
+            throw new RuntimeException($this->failUpdateIncomingWith);
+        }
     }
+
+    /** When set, updateIncoming throws this message (E911 refusal tests). */
+    public ?string $failUpdateIncomingWith = null;
 
     public ?string $failMoveIncomingWith = null;
 

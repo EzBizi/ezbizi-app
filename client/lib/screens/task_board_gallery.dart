@@ -9,6 +9,7 @@ import '../core/timestamps.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/side_panel.dart';
 import 'task_board_files.dart';
+import 'task_board_sensitive.dart';
 
 typedef _Json = Map<String, dynamic>;
 
@@ -73,12 +74,7 @@ class _TaskBoardGalleryState extends State<TaskBoardGallery> {
         : formatCalendarDay(DateTime.now().subtract(Duration(days: _days!)));
     final res = await widget.api.get(
       '/task-boards/${widget.boardId}/attachments',
-      {
-        'type': ?_type,
-        'person': ?_person,
-        'from': ?from,
-        'cursor': ?_cursor,
-      },
+      {'type': ?_type, 'person': ?_person, 'from': ?from, 'cursor': ?_cursor},
     );
     if (!mounted) return;
     setState(() {
@@ -172,10 +168,7 @@ class _TaskBoardGalleryState extends State<TaskBoardGallery> {
       body = const Center(child: CircularProgressIndicator());
     } else if (_items.isEmpty && _error != null) {
       body = Center(
-        child: Text(
-          _error!,
-          style: TextStyle(color: theme.colorScheme.error),
-        ),
+        child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
       );
     } else if (_items.isEmpty) {
       body = const EmptyState(
@@ -227,6 +220,15 @@ class _TaskBoardGalleryState extends State<TaskBoardGallery> {
 
   Future<void> _open(_Json a) async {
     final task = a['task'] as _Json?;
+    // A sensitive task's file: no viewer here, its task (which unlocks) instead.
+    if (a['locked'] == true) {
+      if (task == null || !widget.onOpenTask('${task['id']}')) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('That task is not on this board now.')),
+        );
+      }
+      return;
+    }
     void goToTask() {
       Navigator.of(context).maybePop();
       if (task == null || !widget.onOpenTask('${task['id']}')) {
@@ -269,8 +271,27 @@ class _Tile extends StatelessWidget {
     final kind = item['kind'];
     final task = item['task'] as _Json?;
     final Widget face;
-    if (item['thumbnail_url'] is String) {
-      face = _Thumb(api: api, url: '${item['thumbnail_url']}', id: '${item['id']}');
+    if (item['locked'] == true) {
+      // A sensitive task's file: no name, no picture (Jose, 2026-11-12).
+      face = Container(
+        key: ValueKey('gallery-locked-${item['id']}'),
+        color: scheme.surfaceContainerHighest,
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline, size: 36, color: scheme.onSurfaceVariant),
+            const SizedBox(height: 6),
+            Text('Locked', style: theme.textTheme.bodySmall),
+          ],
+        ),
+      );
+    } else if (item['thumbnail_url'] is String) {
+      face = _Thumb(
+        api: api,
+        url: '${item['thumbnail_url']}',
+        id: '${item['id']}',
+      );
     } else if (kind == 'video' && item['poster_url'] is String) {
       // Signed link: no token needed, so a plain network image.
       face = Stack(
@@ -285,7 +306,11 @@ class _Tile extends StatelessWidget {
                 Container(color: scheme.surfaceContainerHighest),
           ),
           Center(
-            child: Icon(Icons.play_circle_fill, size: 44, color: scheme.surface),
+            child: Icon(
+              Icons.play_circle_fill,
+              size: 44,
+              color: scheme.surface,
+            ),
           ),
         ],
       );
@@ -335,7 +360,9 @@ class _Tile extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '${task?['name'] ?? 'A removed task'}',
+            task == null
+                ? 'A removed task'
+                : taskTitle({...task, 'title': task['name']}),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.labelMedium,
@@ -438,11 +465,14 @@ class _FilePanelState extends State<_FilePanel> {
     if (widget.item['kind'] == 'video' && url is String && !Files.underTest) {
       final player = VideoPlayerController.networkUrl(Uri.parse(url));
       _player = player;
-      player.initialize().then((_) {
-        if (mounted) setState(() {});
-      }, onError: (_) {
-        if (mounted) setState(() => _videoFailed = true);
-      });
+      player.initialize().then(
+        (_) {
+          if (mounted) setState(() {});
+        },
+        onError: (_) {
+          if (mounted) setState(() => _videoFailed = true);
+        },
+      );
     }
   }
 

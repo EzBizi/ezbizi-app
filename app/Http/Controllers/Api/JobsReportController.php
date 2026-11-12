@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Franchise;
 use App\Support\Phone\NumberNames;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Workiz\WorkizClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,28 +16,37 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * GET /api/v1/reports/jobs?from&to[&source&dialed&area&q&offset&limit]
+ * GET /api/v1/reports/jobs?from&to[&source[]&dialed[]&area&q&offset&limit]
  *
  * Every job created in the dates (Jose, 2026-11-11: "All created Jobs. Filter
  * by Source, Filter by Phone Number Dialed, Filter by Area. extra column with
  * workiz id and ezbizi id"): Workiz's jobs as every report reads them, with
  * the EzBizi job each one is. The number dialed is the line the client called:
  * the Workiz call tied to the job, else the client's last call in before the
- * job was created. Filters, count and total cover the whole range; the rows
- * come a page at a time.
+ * job was created; Called at is when that call started (Jose, 11-12: "a column
+ * of when the number was dialed"), on the same wall clock as Created. Source and
+ * Number dialed take several values, and the search reads every column (Jose,
+ * 11-12). Filters, count and total cover the whole range; the rows come a page
+ * at a time.
  */
 class JobsReportController extends Controller
 {
     /** How far before a job its client's call can be (a call Friday, booked Monday). */
     private const CALL_DAYS = 7;
 
+    /** A Workiz job with no EzBizi copy this soon after it came in is being copied (1-3 minutes); later it is a stall. */
+    private const SYNC_MINUTES = 15;
+
     public function show(Request $request, RingCentralCallLog $calls): JsonResponse
     {
         $q = $request->validate([
             'from' => ['required', 'date_format:Y-m-d'],
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
-            'source' => ['nullable', 'string', 'max:191'],
-            'dialed' => ['nullable', 'string', 'max:32'],
+            // One value (an older app) or several; 'none' picks the jobs with none.
+            'source' => ['nullable', 'max:191'],
+            'source.*' => ['string', 'max:191'],
+            'dialed' => ['nullable', 'max:191'],
+            'dialed.*' => ['string', 'max:32'],
             'area' => ['nullable', 'string', 'max:191'],
             'q' => ['nullable', 'string', 'max:100'],
             'offset' => ['nullable', 'integer', 'min:0'],
@@ -55,19 +66,30 @@ class JobsReportController extends Controller
                 ->whereRaw("ec.remote_id = concat('EC-', j.external_company_id)"))
             ->orderByDesc('j.booked_at')
             ->get([
-                'e.id as ezbizi_id', 'e.number as ezbizi_number', 'j.remote_id as workiz_id', 'j.serial_id as workiz_number', 'j.v2_id',
-                'j.booked_at as created_at', 'f.name as branch', 'f.timezone', 'j.service_area', 'j.job_type', 'j.status', 'j.created_by',
+                'e.id as ezbizi_id', 'e.number as ezbizi_number', 'j.remote_id as workiz_id', 'j.serial_id as workiz_number', 'j.v2_id', 'j.franchise_id',
+                'j.booked_at as created_at', 'j.created_at as mirrored_at', 'f.name as branch', 'f.timezone', 'j.service_area', 'j.job_type', 'j.status', 'j.created_by',
                 DB::raw("coalesce(nullif(trim(json_unquote(json_extract(ec.payload, '$.company_name'))), ''), j.job_source) as source"),
                 DB::raw("trim(concat_ws(' ', json_unquote(json_extract(j.payload, '$.FirstName')), json_unquote(json_extract(j.payload, '$.LastName')))) as client"),
                 DB::raw("json_unquote(json_extract(j.payload, '$.Phone')) as phone"),
+                DB::raw("json_unquote(json_extract(j.payload, '$.SecondPhone')) as phone2"),
                 DB::raw("cast(coalesce(json_unquote(json_extract(j.payload, '$.JobTotalPrice')), 0) as decimal(12,2)) as total"),
             ]);
 
+        $zone = ReportView::zone();
+        // Each Workiz account's own clock, which need not be its branch's (IL, TX, MA write Central): one source, WorkizClock.
+        $clocks = Franchise::query()->whereIn('id', $jobs->pluck('franchise_id')->unique()->all())->get()
+            ->mapWithKeys(fn (Franchise $f) => [$f->getKey() => WorkizClock::zone($f)])->all();
+        foreach ($jobs as $j) {
+            $j->clock = $clocks[$j->franchise_id] ?? ($j->timezone ?: $zone);
+        }
         [$dialed, $read] = $this->dialed($jobs, $q['from'], $calls);
         $names = $read ? $calls->numberNames() : [];
+        $syncing = now()->subMinutes(self::SYNC_MINUTES)->toDateTimeString();
         $rows = $jobs->map(fn (object $j) => [
             'ezbizi_id' => $j->ezbizi_id,
             'ezbizi_number' => $j->ezbizi_number,
+            // Just in from Workiz, its EzBizi job not made yet: "Syncing", not a dash that reads as never.
+            'ezbizi_syncing' => $j->ezbizi_id === null && (string) $j->mirrored_at >= $syncing,
             'workiz_id' => $j->workiz_id,
             'workiz_number' => $j->workiz_number === null ? null : (string) $j->workiz_number,
             'created_at' => $j->created_at,
@@ -76,7 +98,8 @@ class JobsReportController extends Controller
             'branch' => $j->branch,
             'service_area' => trim((string) $j->service_area) ?: null,
             'source' => trim((string) $j->source) ?: null,
-            'dialed' => $number = $dialed[$j->workiz_id] ?? null,
+            'dialed' => $number = $dialed[$j->workiz_id][0] ?? null,
+            'called_at' => $dialed[$j->workiz_id][1] ?? null,
             'dialed_name' => $number === null ? null : ($names[$number] ?? null),
             'job_type' => $j->job_type,
             'status' => $j->status,
@@ -85,15 +108,19 @@ class JobsReportController extends Controller
         ]);
 
         // Each filter's choices are the whole range's; 'none' picks the jobs with none.
-        $pick = fn (?string $want, string $key) => fn (array $r) => $want === null || ($want === 'none' ? $r[$key] === null : $r[$key] === $want);
-        // The search: a client, who created it, either id, or three digits of the phone.
+        $pick = fn (array $want, string $key) => fn (array $r) => $want === [] || in_array($r[$key] ?? 'none', $want, true);
+        // The search reads every column, as shown (Jose 11-12: "so it gets all columns"), and a phone by its digits.
         $needle = mb_strtolower(trim((string) ($q['q'] ?? '')));
         $digits = (string) preg_replace('/\D/', '', $needle);
+        $date = fn (?string $at) => $at === null ? null : date('n/j/Y', (int) strtotime($at));
         $found = fn (array $r) => $needle === ''
-            || str_contains(mb_strtolower(implode(' ', [$r['ezbizi_number'], $r['workiz_id'], $r['workiz_number'], $r['client'], $r['created_by']])), $needle)
-            || (strlen($digits) >= 3 && str_contains((string) preg_replace('/\D/', '', (string) $r['phone']), $digits));
-        $shown = $rows->filter($pick($q['source'] ?? null, 'source'))->filter($pick($q['dialed'] ?? null, 'dialed'))
-            ->filter($pick($q['area'] ?? null, 'service_area'))->filter($found)->values();
+            || str_contains(mb_strtolower(implode(' ', [$r['ezbizi_number'], $r['workiz_id'], $r['workiz_number'], $r['client'], $r['phone'],
+                $r['branch'], $r['service_area'], $r['source'], $r['dialed'], $r['dialed_name'], $r['job_type'], $r['status'], $r['created_by'],
+                $r['created_at'], $date($r['created_at']), $r['called_at'], $date($r['called_at']), number_format($r['total'], 2, '.', ''), number_format($r['total'], 2)])), $needle)
+            || (strlen($digits) >= 3 && (str_contains((string) preg_replace('/\D/', '', (string) $r['phone']), $digits)
+                || str_contains((string) preg_replace('/\D/', '', (string) $r['dialed']), $digits)));
+        $shown = $rows->filter($pick((array) ($q['source'] ?? []), 'source'))->filter($pick((array) ($q['dialed'] ?? []), 'dialed'))
+            ->filter($pick((array) ($q['area'] ?? []), 'service_area'))->filter($found)->values();
         $counted = fn (string $key) => $rows->countBy(fn (array $r) => $r[$key] ?? 'none')->sortDesc()
             ->map(fn (int $n, string $value) => ['value' => $value, 'count' => $n])->values();
 
@@ -110,17 +137,19 @@ class JobsReportController extends Controller
     }
 
     /**
-     * Workiz job id => the number the client dialed, and whether the call log could be read.
+     * Workiz job id => [the number the client dialed, when (the job's wall clock)], and whether the call log could be read.
      *
      * @param  Collection<int, object>  $jobs
-     * @return array{0: array<string, string>, 1: bool}
+     * @return array{0: array<string, array{0: string, 1: ?string}>, 1: bool}
      */
     private function dialed(Collection $jobs, string $from, RingCentralCallLog $calls): array
     {
         // A Workiz call tied to the job says it outright.
+        // called_at is the Workiz account's wall clock, as the job's own is. Oldest call wins, as it always has.
         $dialed = DB::table('workiz_calls')->where('direction', 'inbound')->whereNotNull('to_number')
             ->whereIn('job_remote_id', $jobs->pluck('v2_id')->filter()->all())->orderByDesc('called_at')
-            ->pluck('to_number', 'job_remote_id')->all();
+            ->get(['job_remote_id', 'to_number', 'called_at'])
+            ->mapWithKeys(fn (object $c) => [$c->job_remote_id => [$c->to_number, $c->called_at]])->all();
         $byJob = [];
         foreach ($jobs as $j) {
             if ($j->v2_id !== null && isset($dialed[$j->v2_id])) {
@@ -133,7 +162,8 @@ class JobsReportController extends Controller
         }
         try {
             $zone = ReportView::zone();
-            $log = $calls->forPeriod(CarbonImmutable::parse($from, $zone)->subDays(self::CALL_DAYS), CarbonImmutable::now($zone));
+            // A day further back: a branch's Workiz clock can run behind the organization's.
+            $log = $calls->forPeriod(CarbonImmutable::parse($from, $zone)->subDays(self::CALL_DAYS + 1), CarbonImmutable::now($zone));
         } catch (Throwable $e) {
             report($e);
 
@@ -145,12 +175,14 @@ class JobsReportController extends Controller
     }
 
     /**
-     * Workiz job id => the line its client last called before the job was booked (Workiz's
-     * wall clock, in the branch's zone), within CALL_DAYS. $log newest first, as forPeriod gives it.
+     * Workiz job id => [the line its client last called (from either phone on the job) before
+     * the job was booked (Workiz's wall clock, read in the job's ->clock, else its branch's
+     * zone), within CALL_DAYS, and when, on that same clock].
+     * $log newest first, as forPeriod gives it.
      *
      * @param  list<array<string, mixed>>  $log
      * @param  Collection<int, object>  $jobs
-     * @return array<string, string>
+     * @return array<string, array{0: string, 1: string}>
      */
     public static function lastCallIn(array $log, Collection $jobs, string $zone): array
     {
@@ -162,16 +194,18 @@ class JobsReportController extends Controller
         }
         $byJob = [];
         foreach ($jobs as $j) {
-            $phone = NumberNames::lastTen($j->phone);
-            if ($phone === null || ! isset($byPhone[$phone])) {
-                continue;
-            }
-            $booked = CarbonImmutable::parse((string) $j->created_at, $j->timezone ?: $zone)->getTimestamp();
-            foreach ($byPhone[$phone] as [$at, $number]) {
-                if ($at <= $booked + 300 && $at >= $booked - self::CALL_DAYS * 86400) {
-                    $byJob[$j->workiz_id] = $number;
-                    break;
+            $booked = CarbonImmutable::parse((string) $j->created_at, $tz = ($j->clock ?? null) ?: ($j->timezone ?: $zone))->getTimestamp();
+            $last = null;
+            foreach (array_unique(array_filter([NumberNames::lastTen($j->phone), NumberNames::lastTen($j->phone2 ?? null)])) as $phone) {
+                foreach ($byPhone[$phone] ?? [] as [$at, $number]) {
+                    if ($at <= $booked + 300 && $at >= $booked - self::CALL_DAYS * 86400) {
+                        $last = $last !== null && $last[0] >= $at ? $last : [$at, $number];
+                        break;
+                    }
                 }
+            }
+            if ($last !== null) {
+                $byJob[$j->workiz_id] = [$last[1], CarbonImmutable::createFromTimestamp($last[0], $tz)->format('Y-m-d H:i:s')];
             }
         }
 
