@@ -18,7 +18,7 @@ class VersionHistory {
       'Task Board: mark a task Sensitive and its contents stay locked until you enter your authenticator code (5 minutes, every unlock logged); it stays out of search, AI, exports and notifications',
       'Workiz: a watchdog checks the sync both ways every 5 minutes, fixes what it can and alerts when a job is stuck; Central and Pacific branches show the right job times',
       'Scheduling: offer texts read "8-11 AM" and "Fri Nov 13", Settings warns when a text would cost more, and a NO reply keeps the customer’s time',
-      'Settings › Integrations loads again (a Workiz check broke the list), and Connect Monday completes its sign-in',
+      'Settings › Integrations is back to its card layout and loads again (a Workiz check broke the list); Connect Monday completes its sign-in',
     ]),
     VersionRelease(version: '0.0.0566', date: '12 Nov 2026', items: [
       'Settings › Integrations is redesigned: what needs your attention first, one row per app that opens to its accounts, and each account shows its checks (pass or fail, why, when) with a fix',
