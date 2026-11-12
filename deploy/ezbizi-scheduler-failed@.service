@@ -1,0 +1,14 @@
+# Raised by OnFailure= on every scheduler unit: a slot killed by its timeout
+# (or failing) is mailed to ezbizi.backups.alert_to and audited, at most once
+# an hour per unit. 2026-11-12: slot 0 was killed twice and nobody knew for an
+# hour.
+
+[Unit]
+Description=Alert: EzBizi scheduler unit %i failed
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/ezbizi-current
+ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:scheduler-failed %i
