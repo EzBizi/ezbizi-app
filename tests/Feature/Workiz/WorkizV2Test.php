@@ -347,6 +347,20 @@ class WorkizV2Test extends TestCase
         $this->assertStringStartsWith('OK · last checked', $health['sync']['detail']);
     }
 
+    /** Reports, 11-12: Texas's Workiz writes Central on a New York branch; its jobs were stamped an hour early. */
+    public function test_an_accounts_clock_is_measured_from_its_copy_lag_not_taken_from_the_branch(): void
+    {
+        [$tenant] = $this->branch();
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-12 18:00:00', 'UTC'));
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            foreach (range(1, 10) as $i) {
+                WorkizJob::query()->create(['franchise_id' => $tenant['franchise']->id, 'remote_id' => 'C'.$i, 'status' => 'Submitted', 'payload' => [],
+                    'booked_at' => '2026-11-12 11:58:00', 'synced_at' => now()]); // copied 2 minutes after noon Central
+            }
+            $this->assertSame('America/Chicago', \App\Support\Workiz\WorkizClock::zone($tenant['franchise']));
+        });
+    }
+
     public function test_dispatch_writes_go_through_v2(): void
     {
         [$tenant, $connection] = $this->branch();
