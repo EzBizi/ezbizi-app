@@ -192,6 +192,24 @@ class IntegrationsOverviewTest extends TestCase
         $this->assertNotEmpty($pointed['reason']);
     }
 
+    public function test_the_health_run_persists_workiz_health_as_checks(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $c = $this->connection($t, SocialProvider::Workiz->value, 'wz1', [], SocialConnection::SCOPE_FRANCHISE, $t['franchise']->id);
+        Http::fake(['*' => Http::response(['data' => []])]);
+
+        $this->artisan('ezbizi:check-connection-health', ['--pause' => 0])->assertSuccessful();
+
+        $checks = SocialConnection::withoutGlobalScopes()->find($c->id)->checks;
+        $this->assertSame(ConnectionChecks::PASS, $checks['workiz_key']['state']);
+        $this->assertSame(ConnectionChecks::FAIL, $checks['workiz_writes']['state'], 'a v1 key without its secret cannot write');
+        $this->assertStringContainsString('v1 secret', $checks['workiz_writes']['reason']);
+
+        $row = $this->find($this->overview($t), $c->id);
+        $this->assertSame('broken', $row['status']);
+        $this->assertSame('EzBizi can write to Workiz', collect($row['checks'])->firstWhere('key', 'workiz_writes')['label']);
+    }
+
     public function test_recheck_returns_the_updated_connection_and_is_throttled(): void
     {
         $t = $this->provisionTenant('A1-Group');
