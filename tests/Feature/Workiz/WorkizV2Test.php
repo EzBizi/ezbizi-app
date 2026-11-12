@@ -607,4 +607,30 @@ class WorkizV2Test extends TestCase
             && $r['description'] === 'Back door' && $r['customFields'] === [['id' => 'CF-1', 'value' => '$99 - Level 1 Inspection']]
             && $r['isAllDay'] === true && $r['date'] === '2026-11-10' && $r['endDate'] === '2026-11-11');
     }
+
+    /** 11-12: a job booked with no date reaches Workiz unscheduled; a field Workiz requires comes back as its refusal. */
+    public function test_a_job_with_no_date_is_created_unscheduled_and_a_missing_required_field_is_named(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $visit = $this->inTenant($tenant['org'], function () use ($connection) {
+            $customer = Customer::create(['owning_franchise_id' => $connection->scope_id, 'number' => 'C-1', 'name' => 'Pat Rivera', 'is_active' => true]);
+
+            return Job::create(['franchise_id' => $connection->scope_id, 'customer_id' => $customer->id, 'number' => 'J-1', 'title' => 'Sweep',
+                'status' => 'Submitted', 'currency' => 'USD']);
+        });
+        Http::fake([
+            'api.workiz.com/crm/api/v2/jobtypes*' => Http::response($this->page([['id' => 'JT-x1', 'name' => 'Chimney Inspection']])),
+            'api.workiz.com/crm/api/v2/jobs' => Http::sequence()
+                ->push(['message' => 'The following custom fields are required: Pricing'], 400)
+                ->push($this->v2Job(['id' => 'JOB-new', 'uuid' => 'NEW001', 'serialId' => 11009, 'date' => null]), 201),
+        ]);
+
+        $first = $this->inTenant($tenant['org'], fn () => app(WorkizJobWriter::class)->create($visit, 'Chimney Inspection'));
+        $this->assertStringContainsString('Pricing', (string) $first['refused']);
+
+        $made = $this->inTenant($tenant['org'], fn () => app(WorkizJobWriter::class)->create($visit, 'Chimney Inspection'));
+        $this->assertNull($made['refused']);
+        Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/v2/jobs')
+            && $r['isScheduled'] === false && ! isset($r['date']));
+    }
 }

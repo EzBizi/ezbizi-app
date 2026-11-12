@@ -663,6 +663,8 @@ final class WorkizJobWriter
             'date' => $day?->toDateString() ?? $body['JobDateTime'] ?? null,
             'endDate' => $day?->copy()->addDay()->toDateString() ?? $body['JobEndDateTime'] ?? null,
             'isAllDay' => $day !== null ? true : null,
+            // A booking with no date goes up unscheduled; v2 otherwise demands one (JOB-58682, 11-12).
+            'isScheduled' => isset($body['JobDateTime']) ? null : false,
             'description' => filled($job->description) ? (string) $job->description : null,
             'customFields' => $this->customFields($job),
             'clientInfo' => is_string($clientId) ? ['clientId' => $clientId] : array_filter([
