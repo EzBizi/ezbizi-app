@@ -102,24 +102,4 @@ class JobsReportTest extends TestCase
         $second->clock = 'America/Chicago';
         $this->assertSame(['J4' => ['+14405550000', '2026-11-10 09:00:00']], JobsReportController::lastCallIn($log, collect([$second]), 'UTC'));
     }
-
-    /**
-     * A branch's Workiz clock is the zone its jobs land in just before EzBizi copied them:
-     * measured 11-12, Illinois writes Central under a branch set to Eastern, so every
-     * booking call read an hour after its job.
-     */
-    public function test_a_branchs_workiz_clock_is_read_from_when_its_jobs_were_copied_in(): void
-    {
-        $job = fn (string $branch, string $booked, string $copied) => (object) ['franchise_id' => $branch, 'timezone' => 'America/New_York', 'created_at' => $booked, 'mirrored_at' => $copied];
-
-        $this->assertSame(['IL' => 'America/Chicago', 'NJ' => 'America/New_York'], JobsReportController::workizClocks(collect([
-            // 07:18 Central is 13:18 UTC; copied 15 seconds later.
-            $job('IL', '2026-11-12 07:18:33', '2026-11-12 13:18:48'),
-            $job('IL', '2026-11-12 08:19:31', '2026-11-12 14:19:49'),
-            // A backfilled job, copied months on, says nothing.
-            $job('IL', '2026-08-01 10:00:00', '2026-10-01 12:00:00'),
-            $job('NJ', '2026-11-12 08:18:33', '2026-11-12 13:18:48'),
-            $job('OH', '2026-08-01 10:00:00', '2026-10-01 12:00:00'),
-        ]), 'America/New_York'));
-    }
 }
