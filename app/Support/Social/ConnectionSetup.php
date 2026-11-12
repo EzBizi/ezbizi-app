@@ -36,7 +36,10 @@ final class ConnectionSetup
         // A failed job has no tenant, and saving a connection needs one.
         app(TenantContext::class)->run(
             Organization::query()->withoutGlobalScopes()->findOrFail($c->organization_id),
-            fn () => $c->forceFill(['status' => SocialConnection::STATUS_BROKEN, 'status_reason' => $sentence])->save(),
+            function () use ($c, $sentence) {
+                $c->forceFill(['status' => SocialConnection::STATUS_BROKEN, 'status_reason' => $sentence])->save();
+                ConnectionChecks::record($c, 'setup', ConnectionChecks::FAIL, $sentence);
+            },
         );
     }
 
@@ -73,11 +76,14 @@ final class ConnectionSetup
         foreach ((array) $r->json('data') as $app) {
             $ours = $appId === '' || (string) ($app['id'] ?? '') === $appId;
             if ($ours && in_array('messages', (array) ($app['subscribed_fields'] ?? []), true)) {
+                ConnectionChecks::record($c, 'messages', ConnectionChecks::PASS);
+
                 return false;
             }
         }
 
         SubscribeMetaMessages::dispatch((string) $c->getKey());
+        ConnectionChecks::record($c, 'messages', ConnectionChecks::UNKNOWN, 'Was missing; set up again.');
 
         return true;
     }
@@ -88,11 +94,17 @@ final class ConnectionSetup
             ->where('phone_number_id', (string) $c->remote_id)
             ->where('organization_id', $c->organization_id)->exists();
         $waba = ((array) $c->credentials)['waba_id'] ?? null;
-        if ($routed || ! is_string($waba) || $waba === '') {
+        if ($routed) {
+            ConnectionChecks::record($c, 'routing', ConnectionChecks::PASS);
+
+            return false;
+        }
+        if (! is_string($waba) || $waba === '') {
             return false;
         }
 
         OnboardWhatsAppNumber::dispatch((string) $c->getKey(), $waba);
+        ConnectionChecks::record($c, 'routing', ConnectionChecks::UNKNOWN, 'Was missing; set up again.');
 
         return true;
     }

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Social\ConnectionChecks;
 use App\Support\Social\Liveness\ConnectionLiveness;
 use App\Support\Social\Liveness\Liveness;
 use App\Support\Social\SocialProvider;
@@ -98,5 +99,12 @@ final class CheckConnectionHealth extends Command
             ])->save(),
             default => null,
         };
+
+        // Per check, for GET integrations/overview.
+        ConnectionChecks::record($c, 'sign_in', match ($result->verdict) {
+            Liveness::ALIVE => ConnectionChecks::PASS,
+            Liveness::REFUSED => ConnectionChecks::FAIL,
+            default => ConnectionChecks::UNKNOWN,
+        }, $result->reason);
     }
 }

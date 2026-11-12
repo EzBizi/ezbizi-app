@@ -66,6 +66,7 @@ use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InstagramCommentsController;
 use App\Http\Controllers\Api\IntegrationDependentsController;
+use App\Http\Controllers\Api\IntegrationsOverviewController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
 use App\Http\Controllers\Api\InventoryIssuesController;
 use App\Http\Controllers\Api\InventoryItemsController;
@@ -2566,6 +2567,8 @@ Route::prefix('v1')
         // What stops working if a connection is disconnected (the disconnect panel).
         Route::get('integrations/{kind}/{id}/dependents', [IntegrationDependentsController::class, 'show'])
             ->where('kind', 'social|phone|workspace');
+        // Settings > Integrations in one payload: summary, apps, per-check results (no live provider calls).
+        Route::get('integrations/overview', [IntegrationsOverviewController::class, 'show']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
             ->where('network', SocialProvider::oauthRoutePattern());
