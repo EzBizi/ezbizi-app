@@ -3889,7 +3889,8 @@ class ActionRunner
         }
 
         return $sent === 0
-            ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nobody chosen has a phone number, so nothing was sent.']
+            // Mostly the hourly repeat after it went (2026-11-11 read "nobody has a phone" all afternoon after the morning send).
+            ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nothing sent: everyone chosen already got it today, has no phone number, or cannot see reports here.']
             : ['type' => $type, 'ok' => true, 'detail' => "Handed \"{$title}\" to WhatsApp for {$sent} ".($sent === 1 ? 'person' : 'people').'.'];
     }
 

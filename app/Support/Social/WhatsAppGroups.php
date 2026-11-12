@@ -618,19 +618,25 @@ final class WhatsAppGroups
      */
     private function lineSizes(WhatsAppNumber $number): array
     {
-        return Cache::remember('whatsapp.report_lines:'.$number->waba_id, now()->addHour(), function () use ($number) {
-            try {
-                $names = array_column($this->cloud->templates((string) $number->waba_id), 'name');
-            } catch (Throwable $e) {
-                report($e);
-
-                return [];
-            }
-            $sizes = array_map(fn (string $n) => (int) substr($n, strlen(self::LINE_TEMPLATE)), preg_grep('/^'.self::LINE_TEMPLATE.'\d+$/', $names) ?: []);
-            sort($sizes);
-
+        $key = 'whatsapp.report_lines:'.$number->waba_id;
+        if (is_array($sizes = Cache::get($key))) {
             return $sizes;
-        });
+        }
+        try {
+            $names = array_column($this->cloud->templates((string) $number->waba_id), 'name');
+        } catch (Throwable $e) {
+            // Meta timed out at 9 PM on 2026-11-11 and the empty answer was kept an hour, so Technician sales
+            // went as the old PDF template: a failed read keeps the last list it had and is asked again next time.
+            report($e);
+
+            return Cache::get($key.':last', []);
+        }
+        $sizes = array_map(fn (string $n) => (int) substr($n, strlen(self::LINE_TEMPLATE)), preg_grep('/^'.self::LINE_TEMPLATE.'\d+$/', $names) ?: []);
+        sort($sizes);
+        Cache::put($key, $sizes, now()->addHour());
+        Cache::forever($key.':last', $sizes);
+
+        return $sizes;
     }
 
     /**
