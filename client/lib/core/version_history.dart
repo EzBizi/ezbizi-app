@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0563', date: '12 Nov 2026', items: [
+      'Jobs: a job booked in EzBizi without a date reaches Workiz as unscheduled; a missing required Workiz field is named',
       'Email: signature images in Gmail replies no longer show as attachments',
       'Reports on WhatsApp: a moment when Meta does not answer no longer switches reports to the old layout for an hour',
       'AI Assistance: the technician bot finds job photos from the job description too',
