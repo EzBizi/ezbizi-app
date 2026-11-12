@@ -84,6 +84,8 @@ class TaskWriter
                 'company_id' => $parent ? $parent->company_id : TaskBoards::companyIdOf($board),
                 'franchise_id' => $parent ? $parent->franchise_id : $board->franchise_id,
                 'title' => $input['title'],
+                // A subtask of a sensitive task is sensitive too (SensitiveTasks).
+                'sensitive' => (bool) ($input['sensitive'] ?? false) || (bool) $parent?->sensitive,
                 'status' => $status?->statusKey() ?? Task::STATUS_NOT_STARTED,
                 'status_id' => $status?->id,
                 'assignee_user_id' => $input['assignee_user_id'] ?? null,
@@ -237,7 +239,10 @@ class TaskWriter
     {
         TaskActivity::query()->create([
             'organization_id' => $task->organization_id, 'task_id' => $task->id, 'user_id' => $actor?->id,
-            'field' => mb_substr($field, 0, 64), 'label' => mb_substr($label, 0, 120), 'from' => $from, 'to' => $to,
+            'field' => mb_substr($field, 0, 64), 'label' => mb_substr($label, 0, 120),
+            // A sensitive task's diffs are sealed like its fields (SensitiveTasks).
+            'from' => $task->sensitive ? SensitiveTasks::seal($from) : $from,
+            'to' => $task->sensitive ? SensitiveTasks::seal($to) : $to,
         ]);
     }
 
@@ -393,6 +398,7 @@ class TaskWriter
             'about_id' => $task->about_id,
             'priority' => $task->priority,
             'estimate_minutes' => $task->estimate_minutes,
+            'sensitive' => (bool) $task->sensitive,
         ];
         if ($sameBoard) {
             $input['status_id'] = $task->status_id;
@@ -440,7 +446,7 @@ class TaskWriter
                 'organization_id' => $task->organization_id,
                 'task_id' => $task->id,
                 'user_id' => $author->getKey(),
-                'body' => $body,
+                'body' => $task->sensitive ? SensitiveTasks::seal($body) : $body,
                 'mentions' => $mentions ?: null,
             ]);
             $this->audit->log('task.update_posted', $task, actor: $author);
@@ -654,6 +660,9 @@ class TaskWriter
 
             if (! $ok) {
                 throw ValidationException::withMessages([$key => $why]);
+            }
+            if ($task->sensitive && SensitiveTasks::sealsColumn($column->type)) {
+                $row['value_text'] = SensitiveTasks::seal($row['value_text']);
             }
             $rows[$column->id] = $row;
         }

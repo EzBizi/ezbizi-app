@@ -15,7 +15,7 @@ use Illuminate\Console\Command;
  */
 class TasksImportMonday extends Command
 {
-    protected $signature = 'ezbizi:tasks-import-monday {file} {--org=} {--as=} {--files= : folder holding <monday asset id><ext>, tried before the export\'s url} {--dry-run}';
+    protected $signature = 'ezbizi:tasks-import-monday {file} {--org=} {--as=} {--files= : folder holding <monday asset id><ext>, tried before the export\'s url} {--dry-run} {--sensitive-items= : monday item ids to mark Sensitive, comma-separated}';
 
     protected $description = 'Import monday.com boards from a JSON export onto the Task Board';
 
@@ -25,7 +25,8 @@ class TasksImportMonday extends Command
         $org = Organization::query()->withoutGlobalScopes()->findOrFail($this->option('org'));
         $dry = (bool) $this->option('dry-run');
 
-        $report = $import->run($org, $data, (string) $this->option('as'), $dry, $this->option('files') ?: null);
+        $report = $import->run($org, $data, (string) $this->option('as'), $dry, $this->option('files') ?: null,
+            sensitiveItems: array_values(array_filter(array_map('trim', explode(',', (string) $this->option('sensitive-items'))))));
 
         $this->line($dry ? '[dry run, nothing saved, no file fetched]' : '[saved]');
         self::print($this, $report);

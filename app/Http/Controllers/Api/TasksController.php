@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Files\UploadLimits;
+use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskLinks;
 use App\Support\Tasks\TaskWriter;
@@ -44,16 +45,48 @@ class TasksController extends Controller
         private readonly TaskWriter $writer,
         private readonly AttachmentUploader $uploader,
         private readonly UploadLimits $limits,
+        private readonly SensitiveTasks $sensitive,
     ) {}
 
-    public function show(Task $task): JsonResponse
+    /** A sensitive task comes back locked (no values, no updates) unless this session has unlocked it. */
+    public function show(Request $request, Task $task): JsonResponse
     {
         $this->authorize('view', $task);
+
+        $reveal = $this->sensitive->reveal($request, $task, 'task');
+
+        return response()->json(['data' => $this->detail($task, $reveal)
+            + ($task->sensitive && $reveal ? ['unlocked_until' => $this->sensitive->until($request)] : [])]);
+    }
+
+    /**
+     * POST tasks/{task}/unlock {code}: a current authenticator code opens
+     * sensitive tasks on this session for 5 minutes; answers this one, open.
+     */
+    public function unlock(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+        $until = $this->sensitive->unlock($request);
+
+        return response()->json(['data' => $this->detail($task, $this->sensitive->reveal($request, $task, 'unlock'))
+            + ['unlocked_until' => $until]]);
+    }
+
+    /** DELETE tasks/unlock: lock again now, on the server too. */
+    public function lock(Request $request): Response
+    {
+        $this->sensitive->lock($request);
+
+        return response()->noContent();
+    }
+
+    private function detail(Task $task, bool $reveal): array
+    {
         $task->load(['assignee:id,name', 'owners.user:id,name', 'creator:id,name', 'updates.user:id,name', 'updates.attachments', 'statusRow', 'values.column'])->loadCount(['updates', 'subtasks']);
 
-        return response()->json(['data' => self::present($task) + [
-            'updates' => $task->updates->map(fn (TaskUpdate $u) => self::presentUpdate($u))->all(),
-        ]]);
+        return self::present($task, $reveal) + [
+            'updates' => $reveal ? $task->updates->map(fn (TaskUpdate $u) => self::presentUpdate($u))->all() : [],
+        ];
     }
 
     /**
@@ -65,7 +98,7 @@ class TasksController extends Controller
     {
         return [
             'id' => $u->id,
-            'body' => $u->body,
+            'body' => (string) SensitiveTasks::open($u->body),
             'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
             'created_at' => $u->created_at?->toIso8601String(),
             'attachments' => $u->attachments->sortBy('created_at')->values()->map(function (Attachment $a) {
@@ -73,7 +106,7 @@ class TasksController extends Controller
 
                 return [
                     'id' => $a->id,
-                    'name' => $a->original_name,
+                    'name' => $a->realName(),
                     'mime' => $a->mime,
                     'size' => (int) $a->size_bytes,
                     'url' => $url,
@@ -101,7 +134,8 @@ class TasksController extends Controller
 
         $task = $this->writer->create($board, $this->toColumns($input), $request->user());
 
-        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()))], 201);
+        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()),
+            $this->sensitive->reveal($request, $task, 'create'))], 201);
     }
 
     public function update(Request $request, Task $task): JsonResponse
@@ -113,9 +147,24 @@ class TasksController extends Controller
             $this->checkOnBoard($task->board, $input);
         }
 
+        // Anyone who can edit it marks it; unmarking opens everything, so it
+        // takes a fresh authenticator code like a reveal does.
+        if (array_key_exists('sensitive', $input)) {
+            $want = (bool) $input['sensitive'];
+            unset($input['sensitive']);
+            if ($want !== (bool) $task->sensitive) {
+                if (! $want && ! $this->sensitive->unlocked($request)) {
+                    throw SensitiveTasks::lockedResponse();
+                }
+                $this->sensitive->mark($task, $want, $request->user());
+                $task->refresh();
+            }
+        }
+
         $task = $this->writer->update($task, $this->toColumns($input), $request->user());
 
-        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()))]);
+        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()),
+            $this->sensitive->reveal($request, $task, 'edit'))]);
     }
 
     public function destroy(Request $request, Task $task): Response
@@ -254,7 +303,7 @@ class TasksController extends Controller
 
     private static function presentLink(Task $t): array
     {
-        return ['id' => $t->id, 'title' => $t->title, 'status' => $t->status, 'board_id' => $t->board_id, 'board_name' => $t->board?->name];
+        return ['id' => $t->id, 'title' => $t->title, 'sensitive' => (bool) $t->sensitive, 'status' => $t->status, 'board_id' => $t->board_id, 'board_name' => $t->board?->name];
     }
 
     public function storeUpdate(Request $request, Task $task): JsonResponse
@@ -290,7 +339,9 @@ class TasksController extends Controller
         }
 
         $update = DB::transaction(function () use ($task, $request, $body, $files, $input) {
-            $mentions = app(\App\Support\Notes\NoteActivity::class)->mention($task, $input['mentions'] ?? [], $request->user(), $body);
+            // A mention on a sensitive task says only that there is something to read.
+            $mentions = app(\App\Support\Notes\NoteActivity::class)->mention($task, $input['mentions'] ?? [],
+                $request->user(), $task->sensitive ? SensitiveTasks::NOTICE : $body);
             $update = $this->writer->comment($task, $request->user(), $body, $mentions);
             foreach ($files as $file) {
                 $this->uploader->upload($request->user(), $update, $file, 'task_updates');
@@ -302,9 +353,14 @@ class TasksController extends Controller
         return response()->json(['data' => self::presentUpdate($update->load(['user:id,name', 'attachments']))], 201);
     }
 
-    public static function present(Task $task): array
+    /**
+     * A task as the board reads it. A sensitive one is `locked` (no values)
+     * unless the caller passed SensitiveTasks::reveal for it; lists never do.
+     */
+    public static function present(Task $task, bool $reveal = false): array
     {
         $about = $task->aboutRecord();
+        $locked = $task->sensitive && ! $reveal;
 
         return [
             'id' => $task->id,
@@ -312,11 +368,13 @@ class TasksController extends Controller
             'parent_task_id' => $task->parent_task_id,
             'group_id' => $task->group_id,
             'title' => $task->title,
+            'sensitive' => (bool) $task->sensitive,
+            'locked' => $locked,
             'status' => $task->status,
             'status_id' => $task->status_id,
             // A roll-up shows a branch's task on its company board, whose statuses differ: matched by name.
             'status_name' => $task->statusRow?->name,
-            'values' => (object) $task->values->mapWithKeys(fn (TaskColumnValue $v) => [$v->column_id => self::valueOf($v)])->all(),
+            'values' => $locked ? (object) [] : (object) $task->values->mapWithKeys(fn (TaskColumnValue $v) => [$v->column_id => self::valueOf($v)])->all(),
             'subtasks_count' => (int) ($task->subtasks_count ?? 0),
             'subtasks_done' => (int) ($task->subtasks_done ?? 0),
             'owner' => $task->assignee ? ['id' => $task->assignee->id, 'name' => $task->assignee->name] : null,
@@ -340,29 +398,37 @@ class TasksController extends Controller
     }
 
     /** GET tasks/{task}/activity: its Activity log, newest first (Jose, 2026-11-09). */
-    public function activity(Task $task): JsonResponse
+    public function activity(Request $request, Task $task): JsonResponse
     {
         $this->authorize('view', $task);
+        // A sensitive task's diffs are its values: locked rows say who, what and when only.
+        $locked = ! $this->sensitive->reveal($request, $task, 'activity');
+        $hide = fn ($a) => $locked && $a->field !== 'sensitive';
 
         return response()->json(['data' => \App\Models\TaskActivity::query()->where('task_id', $task->id)
             ->with('user:id,name')->latest('created_at')->limit(200)->get()
             ->map(fn ($a) => ['id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->user?->name,
-                'field' => $a->field, 'label' => $a->label, 'from' => $a->from, 'to' => $a->to])->values()]);
+                'field' => $a->field, 'label' => $a->label, 'locked' => $hide($a),
+                'from' => $hide($a) ? null : SensitiveTasks::open($a->from),
+                'to' => $hide($a) ? null : SensitiveTasks::open($a->to)])->values()]);
     }
 
     /** A stored value as the client reads it, by its column's type. */
     public static function valueOf(TaskColumnValue $v): mixed
     {
+        // Opened here; whether a sensitive task's values go out at all is present()'s call.
+        $text = SensitiveTasks::open($v->value_text);
+
         return match ($v->column?->type) {
             'number', 'currency' => $v->value_number,
-            'tags' => json_decode((string) $v->value_text, true) ?: [],
-            'link' => TaskWriter::linkOf($v->value_text),
+            'tags' => json_decode((string) $text, true) ?: [],
+            'link' => TaskWriter::linkOf($text),
             'date' => $v->value_date?->toDateString(),
             // Stored as its start (value_date) and end (value_text).
-            'timeline' => $v->value_date ? ['from' => $v->value_date->toDateString(), 'to' => $v->value_text] : null,
+            'timeline' => $v->value_date ? ['from' => $v->value_date->toDateString(), 'to' => $text] : null,
             'person' => $v->value_user_id,
             'checkbox' => (bool) $v->value_number,
-            default => $v->value_text,
+            default => $text,
         };
     }
 
@@ -400,6 +466,7 @@ class TasksController extends Controller
             'about.id' => ['required_with:about', 'uuid'],
             'priority' => ['sometimes', 'nullable', 'string', 'max:16'],
             'estimate_minutes' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000'],
+            'sensitive' => ['sometimes', 'boolean'],
         ];
     }
 

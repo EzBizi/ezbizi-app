@@ -6,6 +6,7 @@ use App\Models\Attachment;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskUpdate;
+use App\Support\Tasks\SensitiveTasks;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,8 +34,13 @@ class TaskBoardGalleryController extends Controller
             'cursor' => ['sometimes', 'string'],
         ]);
 
+        // A sensitive task's files: a locked tile (no name, no thumbnail, no
+        // link); an API key or the AI is not shown them at all. A type filter
+        // leaves them out too, or it would say what kind of file they are.
+        $hidden = SensitiveTasks::machineReader($request->user()) || isset($input['type']);
         $updates = TaskUpdate::query()
-            ->whereIn('task_id', Task::query()->where('board_id', $taskBoard->id)->select('id'))
+            ->whereIn('task_id', Task::query()->where('board_id', $taskBoard->id)
+                ->when($hidden, fn (Builder $q) => $q->where('sensitive', false))->select('id'))
             ->when($input['person'] ?? null, fn (Builder $q, $p) => $q->where('user_id', $p));
 
         $query = Attachment::query()
@@ -52,7 +58,7 @@ class TaskBoardGalleryController extends Controller
             ->orderByDesc('created_at')->orderByDesc('id');
 
         $page = $query->cursorPaginate(self::PAGE);
-        $byUpdate = TaskUpdate::query()->with(['task:id,title', 'user:id,name'])
+        $byUpdate = TaskUpdate::query()->with(['task:id,title,sensitive', 'user:id,name'])
             ->whereKey($page->getCollection()->pluck('attachable_id')->unique()->values())
             ->get()->keyBy('id');
 
@@ -73,6 +79,23 @@ class TaskBoardGalleryController extends Controller
                 $url = url("/api/v1/attachments/{$a->id}");
                 $mime = (string) $a->mime;
                 $inline = in_array($mime, AttachmentsController::INLINE_MIMES, true);
+
+                if ($u?->task?->sensitive) {
+                    return [
+                        'id' => $a->id,
+                        'locked' => true,
+                        'kind' => 'file',
+                        'name' => null,
+                        'mime' => null,
+                        'size' => null,
+                        'created_at' => $a->created_at?->toIso8601String(),
+                        'uploader' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
+                        'task' => ['id' => $u->task->id, 'name' => $u->task->title, 'sensitive' => true],
+                        'url' => null,
+                        'inline_url' => null,
+                        'thumbnail_url' => null,
+                    ];
+                }
 
                 return [
                     'id' => $a->id,

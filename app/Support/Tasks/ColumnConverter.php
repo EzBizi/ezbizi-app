@@ -32,12 +32,23 @@ class ColumnConverter
         $assignable = null;
         $rows = [];
 
-        foreach ($old->values()->with('column')->get() as $v) {
+        foreach ($old->values()->with(['column', 'task' => fn ($q) => $q->withTrashed()->select('id', 'sensitive')])->get() as $v) {
+            $sensitive = (bool) $v->task?->sensitive;
+            // A sensitive task's words never become a column option everyone reads: that value is lost.
+            if ($sensitive && ! SensitiveTasks::sealsColumn($new->type)) {
+                $rows[$v->id] = null;
+
+                continue;
+            }
             $words = $this->words($old, $v);
             $value = $words === null ? null : $this->read($new, $words, $options);
             $probe = $new->replicate();
             $probe->settings = ['options' => $options] + ($new->settings ?? []);
-            $rows[$v->id] = $value === null ? null : $this->writer->encode($probe, $value, $old->board, $assignable)[0];
+            $row = $value === null ? null : $this->writer->encode($probe, $value, $old->board, $assignable)[0];
+            if ($row !== null && $sensitive) {
+                $row['value_text'] = SensitiveTasks::seal($row['value_text']);
+            }
+            $rows[$v->id] = $row;
         }
 
         return ['rows' => $rows, 'options' => $options];
