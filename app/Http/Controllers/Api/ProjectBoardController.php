@@ -193,6 +193,8 @@ class ProjectBoardController extends Controller
                     'paid' => JobMoney::sum($filtered, 'paid'),
                     'due' => JobMoney::sum($filtered, 'due'),
                     'total' => JobMoney::sum($filtered, 'total'),
+                    // Desk, 2026-11-12: paid + remaining overshot the total by the overpaid jobs.
+                    'over' => JobMoney::sum($filtered, 'over'),
                     'currency' => 'USD',
                 ]] : []),
                 'status_days' => (object) $settings->get('project_board.status_days', $place),

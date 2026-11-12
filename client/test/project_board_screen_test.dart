@@ -130,6 +130,13 @@ void main() {
               'part_status': {'WAITING PARTS': 'caution'},
             },
             'settings_scope': {'scope_type': 'company', 'scope_id': 'c-1'},
+            'totals': {
+              'paid': 1500,
+              'due': 1000,
+              'total': 2000,
+              'over': 500,
+              'currency': 'USD',
+            },
             'can_edit': true,
             'sortable': ['status_days', 'customer'],
           },
@@ -155,6 +162,7 @@ void main() {
     // Live: "Updated hh:mm", a manual refresh, and a quiet reload every
     // minute while on screen (Jose, 2026-11-10).
     expect(find.byKey(const Key('project-board-updated')), findsOneWidget);
+    expect(find.byKey(const Key('project-board-total-over')), findsOneWidget);
     final before = requests.length;
     await tester.tap(find.byKey(const Key('project-board-refresh')));
     await tester.pumpAndSettle();
