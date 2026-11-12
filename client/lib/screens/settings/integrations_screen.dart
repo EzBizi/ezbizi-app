@@ -22,6 +22,7 @@ import '../../widgets/open_destination.dart';
 import 'choose_products_panel.dart';
 import 'integration_family_card.dart';
 import 'integration_provider_screen.dart';
+import 'integrations_overview.dart';
 
 /// Settings › Integrations — every outside account this view is connected to,
 /// in one place.
@@ -91,6 +92,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
   bool _loading = true;
   String? _error;
+
+  /// `GET /integrations/overview` (options A and C, Jose 2026-11-12), or
+  /// null when it did not answer: then the older sections draw as before.
+  Map<String, dynamic>? _overview;
 
   /// Google Workspace domains in this view (Jose, 2026-10-15: "On
   /// Integrations we are also missing Google Workspace connections").
@@ -189,10 +194,15 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       'scope_id': me?.scope.id ?? me?.organization.id ?? '',
     });
 
+    final overview = await widget.api.get('/integrations/overview');
+
     if (!mounted) return;
 
     setState(() {
       _loading = false;
+      _overview = overview.ok && overview.body['data'] is Map<String, dynamic>
+          ? overview.body['data'] as Map<String, dynamic>
+          : null;
 
       _numbers = numbers != null && numbers.ok
           ? [
@@ -660,7 +670,18 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             ],
           ),
         ),
-        for (final line in _problems)
+        if (_overview != null)
+          IntegrationsOverview(
+            key: ValueKey(_overview.hashCode),
+            api: widget.api,
+            data: _overview!,
+            phone: _phone,
+            onChanged: _load,
+            onOpenApp: (p) =>
+                setState(() => _open = p == 'phone' ? 'phone_numbers' : p),
+          ),
+        if (_overview != null) const SizedBox(height: 16),
+        for (final line in _overview == null ? _problems : const <String>[])
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
@@ -671,13 +692,21 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               ),
             ),
           ),
+        // The overview draws what is connected; the sections stay for what is
+        // not, and for when the overview did not answer.
+        if (_overview == null) ...[
+          section(
+            'attention',
+            'Needs attention',
+            StateColour.of(context).caution,
+          ),
+          section('connected', 'Connected', null),
+        ],
         section(
-          'attention',
-          'Needs attention',
-          StateColour.of(context).caution,
+          'available',
+          _overview == null ? 'Available' : 'Add a service',
+          null,
         ),
-        section('connected', 'Connected', null),
-        section('available', 'Available', null),
         if (shown.isEmpty) DashboardNote('No service matches in $_viewName.'),
       ],
     );
