@@ -9,8 +9,10 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/email/compose_panel.dart';
 import 'package:ezbizi_client/screens/email/email_screen.dart';
 import 'package:ezbizi_client/screens/email/message_body.dart';
+import 'package:ezbizi_client/screens/email/message_html.dart';
 import 'package:ezbizi_client/screens/email/message_list.dart';
 import 'package:ezbizi_client/screens/email/reply_panel.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -744,6 +746,26 @@ void main() {
     await _tap(tester, find.byKey(const ValueKey('email-attachments-more')));
     expect(find.textContaining('file10.pdf'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  /// Jose 11-12: on Windows, Google's call notices showed only their logos
+  /// and Pinterest's grid fell into one column, because the app drew mail as
+  /// text blocks. HTML mail now goes to the real engine (WebView2 there).
+  testWidgets('on desktop an HTML mail is drawn by the HTML engine, not as '
+      'text blocks', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final detail = {
+      ..._detail('mb-1', 'm-1'),
+      'html': '<!DOCTYPE html><html><body><table><tr><td>Call</td></tr></table></body></html>',
+    };
+
+    await _pump(tester, _handler(detail: detail), size: const Size(1400, 900));
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
+
+    expect(find.byType(MessageHtmlView), findsOneWidget);
+    expect(find.byType(MessageBody), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('a link shows where it goes', (tester) async {
