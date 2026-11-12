@@ -493,3 +493,24 @@ Schedule::command('ezbizi:leads-follow-up-due')->everyFiveMinutes()->withoutOver
 
 // Yesterday's leads in numbers, for a morning WhatsApp or email rule.
 Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlapping(10);
+
+/*
+ * TWO LANES (2026-11-12). The three slots run a minute's commands in
+ * sequence under TimeoutStartSec=300. At 17:20 and 17:25 UTC the slow
+ * Workiz and lead pulls (sync-leads ~90 s, workiz-web-sales ~120 s,
+ * workiz-web-estimate-links hung > 3 min, project-workiz ~100 s) lined up in
+ * slot 0 and systemd killed it mid-project-workiz, stranding its lock: no
+ * Workiz job became an EzBizi job for an hour.
+ *
+ * The SLOW commands now run only in deploy/ezbizi-scheduler-slow.service
+ * (EZBIZI_SCHEDULE_LANE=slow, its own every-minute timer, a 30-minute
+ * timeout); the three fast slots run everything else and are never held
+ * behind them. withoutOverlapping still guards each command.
+ */
+foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event) {
+    $slow = (bool) preg_match(
+        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz)(\s|\'|$)/',
+        (string) $event->command,
+    );
+    $event->when(fn () => $slow === (getenv('EZBIZI_SCHEDULE_LANE') === 'slow'));
+}
