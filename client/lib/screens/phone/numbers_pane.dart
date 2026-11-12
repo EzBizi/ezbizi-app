@@ -824,6 +824,24 @@ class _NumbersPaneState extends State<NumbersPane> {
             line.answers
                 ? Text(_answeredBy(line))
                 : const StatusPill('Nobody answers', tone: Tone.bad),
+            // Pass or fail, with what to fix (Jose, 2026-11-12).
+            if (line.problems != null)
+              Tooltip(
+                message: line.problems!.isEmpty
+                    ? 'Calls arrive, someone answers, texting works, and someone is signed in.'
+                    : line.problems!.join(' '),
+                child: line.problems!.isEmpty
+                    ? const StatusPill('Working', tone: Tone.ok)
+                    : StatusPill(
+                        line.problems!.length == 1
+                            ? '1 problem'
+                            : '${line.problems!.length} problems',
+                        key: Key('number-health-${line.id}'),
+                        tone: Tone.review,
+                      ),
+              ),
+            if (line.problems?.isNotEmpty ?? false)
+              for (final problem in line.problems!) Text(problem, style: small),
             if (showCompany) Text(_company(line), style: small),
             if (_canEdit)
               Row(
@@ -1526,6 +1544,7 @@ class _Line {
     required this.voiceCallerIdLookup,
     required this.voicemailTranscribe,
     this.overrideOn = false,
+    this.problems,
     this.override = const {},
     this.afterHoursNumber,
     this.ringGroupId,
@@ -1579,6 +1598,9 @@ class _Line {
 
   /// Override the call flow (Jose, 2026-11-11): what the line does instead.
   final bool overrideOn;
+
+  /// The server's health check; null from a server that sends none.
+  final List<String>? problems;
   final Map<String, dynamic> override;
   final String? emergencyAddressSid;
   final String? fallbackNumber;
@@ -1629,6 +1651,14 @@ class _Line {
             voiceCallerIdLookup: row['voice_caller_id_lookup'] == true,
             voicemailTranscribe: row['voicemail_transcribe'] == true,
             overrideOn: row['override_on'] == true,
+            problems: row['health'] is Map
+                ? [
+                    for (final p
+                        in ((row['health'] as Map)['problems'] as List? ??
+                            const []))
+                      p.toString(),
+                  ]
+                : null,
             override: row['override'] is Map<String, dynamic>
                 ? row['override'] as Map<String, dynamic>
                 : const {},

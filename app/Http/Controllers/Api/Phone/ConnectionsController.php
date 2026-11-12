@@ -306,6 +306,9 @@ class ConnectionsController extends Controller
 
         $connection->update(['twiml_app_sid' => $app['sid']]);
 
+        // Comes out answering calls: an "Everyone" ring group and a voicemail box.
+        \App\Support\Phone\ConnectionDefaults::ensure($connection);
+
         return response()->json(['data' => $this->row($connection->fresh())], Response::HTTP_CREATED);
     }
 
