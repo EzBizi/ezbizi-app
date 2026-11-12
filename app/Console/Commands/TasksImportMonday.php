@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Organization;
 use App\Models\Task;
+use App\Models\TaskActivity;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
@@ -67,6 +68,7 @@ class TasksImportMonday extends Command
         'boards made' => 0, 'tasks open' => 0, 'tasks done' => 0, 'subtasks open' => 0, 'subtasks done' => 0,
         'restored (deleted earlier)' => 0, 'skipped (already imported)' => 0, 'updates' => 0, 'updates already there' => 0, 'files' => 0,
         'files MB' => 0.0, 'files not carried' => 0, 'statuses made' => 0, 'groups made' => 0, 'columns made' => 0,
+        'assignees kept as text' => 0,
     ];
 
     /** @var array<string, true> */
@@ -82,6 +84,9 @@ class TasksImportMonday extends Command
 
     /** @var array<string, list<string>> board id => user ids it can take as owners */
     private array $assignable = [];
+
+    /** @var list<string> the current item's Monday assignees this board cannot take, by name */
+    private array $asText = [];
 
     public function handle(TaskBoards $boards, TenantContext $tenant): int
     {
@@ -170,6 +175,8 @@ class TasksImportMonday extends Command
         $existing = Task::query()->withTrashed()->where('external_ref', $ref)->first();
         if ($existing !== null && ! $existing->trashed()) {
             $this->counts['skipped (already imported)']++;
+            $this->owners($board, $boards, $item['people'] ?? []);
+            $this->assignedInMonday($existing, $as);
             $this->updates($existing, $item, $as);
 
             return $existing;
@@ -221,6 +228,7 @@ class TasksImportMonday extends Command
             'created_at' => $created,
         ]) + ['completed_at' => $isDone ? (isset($item['completed_at']) ? CarbonImmutable::parse($item['completed_at']) : $task->completed_at) : null])->saveQuietly();
         $this->counts[($parent ? 'subtasks' : 'tasks').($isDone ? ' done' : ' open')]++;
+        $this->assignedInMonday($task, $as);
 
         $this->updates($task, $item, $as);
 
@@ -255,24 +263,48 @@ class TasksImportMonday extends Command
         return $writer->update($task, $input, $as)->refresh();
     }
 
-    /** Owners this board can take; the others are reported, never silently lost. */
+    /**
+     * Owners this board can take. The others are kept as words, never silently
+     * lost: somebody this board cannot take (an admin on another person's
+     * board; Jose, 2026-11-12, declined adding them as members) or nobody here
+     * at all. assignedInMonday() writes them on the task.
+     */
     private function owners(TaskBoard $board, TaskBoards $boards, array $emails): array
     {
         $this->assignable[$board->id] ??= $boards->assignable($board)->pluck('id')->all();
         $out = [];
+        $this->asText = [];
         foreach ($emails as $email) {
             $user = $this->person($email);
-            if ($user === null) {
+            if ($user !== null && in_array($user->id, $this->assignable[$board->id], true)) {
+                $out[] = $user->id;
+
                 continue;
             }
-            if (in_array($user->id, $this->assignable[$board->id], true)) {
-                $out[] = $user->id;
-            } else {
-                $this->ownersDropped[$user->name] = ($this->ownersDropped[$user->name] ?? 0) + 1;
-            }
+            $name = $user?->name ?? $this->mondayNames[mb_strtolower(trim((string) $email))]
+                ?? (preg_match('/^(\d+)@deleted\.user$/', (string) $email, $m) ? 'former Monday user #'.$m[1] : (string) $email);
+            $this->asText[] = $name;
+            $this->ownersDropped[$name] = ($this->ownersDropped[$name] ?? 0) + 1;
         }
+        $this->asText = array_values(array_unique($this->asText));
 
         return array_values(array_unique($out));
+    }
+
+    /** "Assigned in Monday: <name>" in the task's Activity, once per name, for owners kept as words. */
+    private function assignedInMonday(Task $task, User $as): void
+    {
+        foreach ($this->asText as $name) {
+            $said = TaskActivity::query()->where('task_id', $task->id)->where('field', 'monday_assignee')->where('to', $name)->exists();
+            if (! $said) {
+                TaskActivity::query()->create([
+                    'organization_id' => $task->organization_id, 'task_id' => $task->id, 'user_id' => $as->id,
+                    'field' => 'monday_assignee', 'label' => 'Assigned in Monday', 'from' => null, 'to' => mb_substr($name, 0, 255),
+                ]);
+                $this->counts['assignees kept as text']++;
+            }
+        }
+        $this->asText = [];
     }
 
     private function updates(Task $task, array $item, User $as): void
@@ -320,9 +352,15 @@ class TasksImportMonday extends Command
     }
 
     /**
-     * Each file on the update becomes an attachment, within the house limits
-     * (config ezbizi.attachments). What does not fit is named in the update
-     * and in the report. An update that already has a file of that name keeps it.
+     * Every file on the update becomes an attachment, whatever its size or
+     * type (Jose, 2026-11-12: "Get rid of the Limit, we need to import
+     * everything"). The upload limits (config ezbizi.attachments) stay for
+     * people uploading; an import carries what Monday held. Streamed to disk,
+     * never held in memory: Rodrigo's videos run to hundreds of MB. A type
+     * the upload list would refuse is stored as application/octet-stream, so
+     * it downloads and is never rendered in the browser (an .svg can carry
+     * script). Only a file that cannot be fetched is named in the update. An
+     * update that already has a file of that name keeps it.
      */
     private function files(TaskUpdate $update, array $files, User $by, bool $existing): void
     {
@@ -331,8 +369,8 @@ class TasksImportMonday extends Command
         }
         $have = $existing ? $update->attachments()->pluck('original_name')->all() : [];
         $extensions = array_map('mb_strtolower', (array) config('ezbizi.attachments.extensions', []));
-        $max = (int) config('ezbizi.attachments.max_kilobytes') * 1024;
         $notes = [];
+        $carried = [];
         foreach ($files as $f) {
             $name = (string) ($f['name'] ?? 'file');
             if (in_array($name, $have, true)) {
@@ -340,71 +378,81 @@ class TasksImportMonday extends Command
             }
             $ext = mb_strtolower(ltrim((string) ($f['ext'] ?? pathinfo($name, PATHINFO_EXTENSION)), '.'));
             $size = (int) ($f['size'] ?? 0);
-            $why = match (true) {
-                ! in_array($ext, $extensions, true) => "type .$ext not accepted",
-                $size > $max => 'over '.round($max / 1048576).' MB',
-                default => null,
-            };
-            $bytes = null;
-            if ($why === null && ! $this->dry) {
-                $bytes = $this->fetch($f);
-                $why = $bytes === null ? 'could not be fetched' : null;
-            } elseif ($why === null && $this->option('files') && $this->local($f) === null) {
+            $file = null;
+            $why = null;
+            if (! $this->dry) {
+                $file = $this->fetch($f);
+                $why = $file === null ? 'could not be fetched' : null;
+            } elseif ($this->option('files') && $this->local($f) === null) {
                 $why = 'not in the --files folder';
             }
             if ($why !== null) {
                 $line = sprintf('%s (%.1f MB, %s)', $name, $size / 1048576, $why);
                 $this->notCarried[] = $line;
-                $notes[] = '[file not carried from monday: '.$line.']';
+                if (! str_contains($update->body, '[file not carried from monday: '.$name.' (')) {
+                    $notes[] = '[file not carried from monday: '.$line.']';
+                }
                 $this->counts['files not carried']++;
 
                 continue;
             }
             $this->counts['files']++;
             $this->counts['files MB'] += $size / 1048576;
+            $carried[] = $name;
             if ($this->dry) {
                 continue;
             }
-            $tmp = tempnam(sys_get_temp_dir(), 'monday');
-            file_put_contents($tmp, $bytes);
+            [$path, $temporary] = $file;
             try {
-                app(AttachmentUploader::class)->upload($by, $update, new UploadedFile($tmp, $name, null, null, true), 'task_updates');
+                $attachment = app(AttachmentUploader::class)->upload($by, $update, new UploadedFile($path, $name, null, null, true), 'task_updates');
+                if (! in_array($ext, $extensions, true)) {
+                    $attachment->forceFill(['mime' => 'application/octet-stream'])->save();
+                }
             } finally {
-                @unlink($tmp);
+                if ($temporary) {
+                    @unlink($path);
+                }
             }
         }
-        if ($notes !== []) {
-            $update->forceFill(['body' => trim($update->body."\n".implode("\n", $notes))])->saveQuietly();
+        // A note an earlier run left for a file that has now come goes.
+        $body = (string) preg_replace_callback('/\n?\[file not carried from monday: ([^\]]*)\]/u',
+            fn ($m) => ! $this->dry && array_filter($carried, fn ($n) => str_starts_with($m[1], $n.' (')) ? '' : $m[0], $update->body);
+        $body = trim($body.($notes ? "\n".implode("\n", $notes) : ''));
+        if ($body !== $update->body) {
+            $update->forceFill(['body' => $body])->saveQuietly();
         }
     }
 
-    /** The file's copy in the --files folder, named <monday asset id><ext>. */
+    /** The file's copy in the files folder, named <monday asset id><ext>. */
     private function local(array $f): ?string
     {
-        $dir = $this->option('files');
-        if (! $dir || empty($f['monday_id'])) {
+        if (! $this->option('files') || empty($f['monday_id'])) {
             return null;
         }
         $ext = ltrim((string) ($f['ext'] ?? ''), '.');
-        $path = rtrim($dir, '/\\').DIRECTORY_SEPARATOR.$f['monday_id'].($ext !== '' ? '.'.$ext : '');
+        $path = rtrim($this->option('files'), '/\\').DIRECTORY_SEPARATOR.$f['monday_id'].($ext !== '' ? '.'.$ext : '');
 
         return is_file($path) ? $path : null;
     }
 
-    private function fetch(array $f): ?string
+    /** @return array{0: string, 1: bool}|null the file on disk, and whether it is a temporary copy */
+    private function fetch(array $f): ?array
     {
         if ($path = $this->local($f)) {
-            return (string) file_get_contents($path);
+            return [$path, false];
         }
-        if (! empty($f['url'])) {
-            try {
-                $response = Http::timeout(120)->get($f['url']);
-
-                return $response->successful() ? $response->body() : null;
-            } catch (\Throwable) {
-                return null;
+        if (empty($f['url'])) {
+            return null;
+        }
+        $tmp = (string) tempnam(sys_get_temp_dir(), 'monday');
+        try {
+            $response = Http::sink($tmp)->timeout(1800)->get($f['url']);
+            if ($response->successful() && filesize($tmp) > 0) {
+                return [$tmp, true];
             }
+        } catch (\Throwable) {
         }
+        @unlink($tmp);
 
         return null;
     }
