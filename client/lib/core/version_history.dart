@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0564', date: '12 Nov 2026', items: [
+      'Human Resources › Records: removed accounts no longer show in the lists, counts or export',
       'Project Management: the totals are coloured tiles, with an Overpaid tile when jobs are paid beyond their total so the figures add up',
       'Reports › Calls: mark a call Spam or Not a customer so it leaves the booking rate; a Needs Attention filter lists calls the AI heard as booked with no job yet',
       'Jobs: a booking made while Workiz is busy is sent once it is free, complete with its area and technicians',
