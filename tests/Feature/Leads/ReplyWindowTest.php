@@ -83,6 +83,24 @@ class ReplyWindowTest extends TestCase
         $this->assertSame($data['reply_window_ends_at'], $row['reply_window_ends_at']);
     }
 
+    /** Jose, 2026-11-10: a closed window still owes the customer an answer. */
+    public function test_a_closed_window_is_still_overdue_on_the_row_and_the_filter(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->account($t, SocialProvider::FacebookPage->value);
+        $lead = $this->lead($t, Lead::SOURCE_FACEBOOK, $page->id, '3 days');
+        $this->inTenant($t['org'], fn () => $lead->forceFill([
+            'status' => Lead::STATUS_NEW,
+            'last_contact_from' => LeadConversation::FROM_CONSUMER,
+            'last_contact_at' => now()->subDays(3),
+        ])->save());
+
+        $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/leads')->assertOk()->json('data'))->firstWhere('id', $lead->id);
+        $this->assertFalse($row['can_reply'], 'the control: the window is closed');
+        $this->assertTrue($row['reply_overdue']);
+        $this->assertContains($lead->id, array_column($this->getJson('/api/v1/leads?overdue=1')->json('data'), 'id'));
+    }
+
     public function test_a_disconnected_page_and_a_grant_without_messenger_each_say_so(): void
     {
         $t = $this->provisionTenant('A1-Group');

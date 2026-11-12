@@ -7,6 +7,7 @@ import '../../core/numbers.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/address_fields.dart';
+import '../../widgets/copy_button.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/refused.dart';
@@ -234,6 +235,21 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     _done(true);
   }
 
+  /// "No marketing email" saves on its own, at once.
+  Future<void> _saveOptOut(bool on) async {
+    final response = await widget.api.patch('/customers/${widget.id}', {
+      'email_opt_out': on,
+    });
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() => _error = response.reason);
+      return;
+    }
+    final saved = (response.data as Map?)?['email_opt_out'] ?? on;
+    setState(() => _row = {...?_row, 'email_opt_out': saved});
+    _changed = true;
+  }
+
   /// Tags save on their own, at once, with the whole list (UI queue 174).
   Future<bool> _saveTags(List<String> tags) async {
     final response =
@@ -294,6 +310,20 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     _done(true);
   }
 
+  /// The address as one line, for copying.
+  String get _addressLine => [
+    _line1.text,
+    _line2.text,
+    _city.text,
+    [_state.text, _postal.text].where((s) => s.trim().isNotEmpty).join(' '),
+  ].map((s) => s.trim()).where((s) => s.isNotEmpty).join(', ');
+
+  /// A field's copy icon, only while it holds something.
+  Widget? _copyOf(TextEditingController c, String what, String key) =>
+      c.text.trim().isEmpty
+      ? null
+      : CopyButton(c.text.trim(), key: ValueKey(key), what: what);
+
   @override
   Widget build(BuildContext context) {
     final row = _row;
@@ -320,6 +350,12 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       docked: widget.onDone != null,
       onClose: widget.onDone == null ? null : () => _done(null),
       actions: [
+        if (row?['number'] case final String number when number.isNotEmpty)
+          CopyButton(
+            number,
+            key: const ValueKey('copy-customer-number'),
+            what: 'Customer number',
+          ),
         if (row != null && widget.session.me!.can('jobs.create'))
           TextButton.icon(
             key: const ValueKey('customer-book-job'),
@@ -459,7 +495,10 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _phone,
-                  decoration: const InputDecoration(labelText: 'Phone'),
+                  decoration: InputDecoration(
+                    labelText: 'Phone',
+                    suffixIcon: _copyOf(_phone, 'Number', 'copy-phone'),
+                  ),
                   keyboardType: TextInputType.phone,
                   inputFormatters: const [PhoneNumberInputFormatter()],
                   enabled: editable,
@@ -467,10 +506,26 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _email,
-                  decoration: const InputDecoration(labelText: 'Email'),
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    suffixIcon: _copyOf(_email, 'Email', 'copy-email'),
+                  ),
                   keyboardType: TextInputType.emailAddress,
                   enabled: editable,
                 ),
+                // Newsletters skip this customer (customers.email_opt_out_at).
+                // Saves at once, like the tags, behind customers.edit.
+                if (row != null)
+                  SwitchListTile(
+                    key: const ValueKey('customer-email-opt-out'),
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('No marketing email'),
+                    subtitle: const Text('Newsletters are not sent to them.'),
+                    value: row['email_opt_out'] == true,
+                    onChanged: _editRefusal == null && !_loading
+                        ? _saveOptOut
+                        : null,
+                  ),
                 const SizedBox(height: 12),
                 // Found with the lookup, kept in parts (Jose, 2026-09-30).
                 AddressFields(
@@ -483,6 +538,24 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                   enabled: editable,
                   dense: false,
                 ),
+                if (_addressLine.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Copy the address',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        CopyButton(
+                          _addressLine,
+                          key: const ValueKey('copy-address'),
+                          what: 'Address',
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _notes,

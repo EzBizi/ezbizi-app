@@ -428,11 +428,29 @@ class _NewsletterTabState extends State<NewsletterTab> {
     await _load();
   }
 
-  Future<void> _create() async {
-    final response = await widget.api.post('/newsletters', {
-      'subject': 'Untitled newsletter',
-      'blocks': [BlockKind.heading.blank(), BlockKind.text.blank()],
-    });
+  /// A scheduled newsletter back to a draft (review 2026-11-09 A28).
+  Future<void> _unschedule() async {
+    final id = _selectedId;
+    if (id == null) return;
+    final response = await widget.api.post('/newsletters/$id/unschedule', {});
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() => _saveError = response.reason);
+      return;
+    }
+    await _load();
+  }
+
+  /// A copy of the open newsletter, as a new draft (review 2026-11-09 A34).
+  Future<void> _duplicate() => _create(from: _selectedId);
+
+  Future<void> _create({String? from}) async {
+    final response = from != null
+        ? await widget.api.post('/newsletters/$from/duplicate', {})
+        : await widget.api.post('/newsletters', {
+            'subject': 'Untitled newsletter',
+            'blocks': [BlockKind.heading.blank(), BlockKind.text.blank()],
+          });
 
     if (!mounted) return;
 
@@ -462,8 +480,8 @@ class _NewsletterTabState extends State<NewsletterTab> {
   /// only for the autosave to throw it away.
   String? get _readOnlyBecause => switch (_selected?.status) {
     'scheduled' =>
-      'This newsletter is scheduled, so it cannot be changed. Delete it to '
-          'stop it, or start a new one.',
+      'This newsletter is scheduled, so it cannot be changed. Unschedule it '
+          'to edit it again, or Duplicate it.',
     'sending' => 'This newsletter is being sent, so it cannot be changed.',
     'sent' =>
       'This newsletter has gone out, so it cannot be changed — the copy in '
@@ -587,6 +605,32 @@ class _NewsletterTabState extends State<NewsletterTab> {
     };
   }
 
+  /// A bar action: worded on a desk, its icon with the word as a tooltip on
+  /// a phone, where the words would push the picker off the row.
+  Widget _barAction(
+    BuildContext context, {
+    required Key key,
+    required VoidCallback? onPressed,
+    required IconData icon,
+    required String label,
+  }) {
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return IconButton(
+        key: key,
+        tooltip: label,
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+      );
+    }
+
+    return TextButton.icon(
+      key: key,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+    );
+  }
+
   Widget _bar(BuildContext context) {
     final can = widget.session.me?.can('newsletter.create') ?? false;
 
@@ -628,6 +672,40 @@ class _NewsletterTabState extends State<NewsletterTab> {
           // Delete the open one. Offered only when something is open, and
           // refused in the server's words without `newsletter.delete`; a
           // mailing already going out is refused by the server, which says so.
+          if (_selectedId != null && _selected?.status == 'scheduled') ...[
+            const SizedBox(width: 12),
+            Refused(
+              reason: widget.session.me?.refusal(
+                'newsletter.send',
+                'unschedule a newsletter',
+              ),
+              child: _barAction(
+                context,
+                key: const ValueKey('newsletter-unschedule'),
+                onPressed: (widget.session.me?.can('newsletter.send') ?? false)
+                    ? _unschedule
+                    : null,
+                icon: Icons.edit_calendar_outlined,
+                label: 'Unschedule',
+              ),
+            ),
+          ],
+          if (_selectedId != null) ...[
+            const SizedBox(width: 12),
+            Refused(
+              reason: widget.session.me?.refusal(
+                'newsletter.create',
+                'write a newsletter',
+              ),
+              child: _barAction(
+                context,
+                key: const ValueKey('newsletter-duplicate'),
+                onPressed: can ? _duplicate : null,
+                icon: Icons.copy_outlined,
+                label: 'Duplicate',
+              ),
+            ),
+          ],
           if (_selectedId != null) ...[
             const SizedBox(width: 12),
             Refused(
@@ -733,6 +811,13 @@ class _NewsletterTabState extends State<NewsletterTab> {
         _touched();
       },
       onSend: _send,
+      api: widget.api,
+      newsletterId: _selectedId,
+      onSaveNow: () async {
+        _settleTimer?.cancel();
+        await _saveInFlight;
+        if (mounted) await _save();
+      },
     );
   }
 
@@ -767,6 +852,20 @@ class _NewsletterTabState extends State<NewsletterTab> {
       return;
     }
 
+    // How many it reaches, counted the way the send counts (review
+    // 2026-11-09 A32). A list Mailchimp holds has no count here.
+    final counted = await widget.api.get('/newsletters/$_selectedId/preflight');
+    if (!mounted) return;
+    final data = counted.ok ? counted.data : null;
+    final recipients = data is Map
+        ? (data['recipients'] as num?)?.toInt()
+        : null;
+    final audience = data is Map ? data['audience'] as String? : null;
+    final reach = recipients == null
+        ? ''
+        : 'Sends to ${recipients == 1 ? '1 person' : '$recipients people'}'
+              '${audience == null ? '' : ' on “$audience”'}. ';
+
     final go = await showSidePanel<bool>(
       context,
       builder: (context) => SidePanel(
@@ -783,9 +882,11 @@ class _NewsletterTabState extends State<NewsletterTab> {
             child: const Text('Send'),
           ),
         ],
-        child: const Text(
-          'It goes out through the mailing account this company connected, to '
-          'the audience chosen above. A newsletter cannot be unsent.',
+        child: Text(
+          '${reach}It goes out through the mailing account this company '
+          'connected, to the audience chosen above. A newsletter cannot be '
+          'unsent.',
+          key: const ValueKey('newsletter-send-reach'),
         ),
       ),
     );

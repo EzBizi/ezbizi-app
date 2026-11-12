@@ -89,12 +89,17 @@ fi
 if [ -n "${EZBIZI_RELEASE_SHA:-}" ] && [ "$GATED_SHA" != "$EZBIZI_RELEASE_SHA" ]; then
   echo "✗ deploy SHA disagrees with the orchestrator release SHA" >&2; exit 1
 fi
+# Progress for the Development tab's Releases screen. Never fails the deploy.
+source scripts/lib/release-status.sh
+RELEASE_STATUS_SHA=$GATED_SHA
 
 if [ "$SKIP_GATES" -eq 1 ]; then
   echo "⚠ GATES SKIPPED (--skip-gates) — $GATED_SHA is being shipped untested."
+  release_status server_tests 100 "skipped (gates off)"
   BACKEND_TESTS=""
 else
 echo "→ testing the tree about to ship ($GATED_SHA)"
+release_status server_tests 0 "starting the gate on the box"
 # Captured, not just streamed. STATUS.md's test count was retyped by hand and was
 # wrong three times in one day; the number is right here, in the run that gates
 # the deploy, so it is taken from there rather than remembered.
@@ -213,7 +218,8 @@ if ! { gate_ssh "mkdir -p '$GATE_RUNS' && find '$GATE_RUNS' -type f -mtime +7 -d
     && gate_put "$GATE_LOCAL/tree.tar" "$GATE_RUNS/$GATE_RUN.tar" \
     && gate_put "$GATE_LOCAL/gate.sh" "$GATE_RUNS/$GATE_RUN.sh" \
     && gate_ssh "setsid nohup bash '$GATE_RUNS/$GATE_RUN.sh' > '$GATE_RUNS/$GATE_RUN.log' 2>&1 < /dev/null &"; }; then
-  rm -rf "$GATE_LOCAL"; echo "✗ could not start the gate on the box — nothing deployed"; exit 1
+  rm -rf "$GATE_LOCAL"; echo "✗ could not start the gate on the box — nothing deployed"
+  release_status server_tests 0 "✗ could not start the gate on the box"; exit 1
 fi
 rm -rf "$GATE_LOCAL"
 echo "   gate running on the box: $GATE_RUNS/$GATE_RUN.log"
@@ -222,13 +228,15 @@ for ((poll = 1; poll <= 450; poll++)); do   # 450 x 20 s = 2.5 h: an hour's lock
   sleep 20
   GATE_STATUS=$(ssh -o ConnectTimeout=20 "$REMOTE" "cat '$GATE_RUNS/$GATE_RUN.status' 2>/dev/null" 2>/dev/null || true)
   [ -n "$GATE_STATUS" ] && break
+  release_status_gate "$GATE_RUNS/$GATE_RUN.log"
 done
 BACKEND_OUT=$(gate_ssh "cat '$GATE_RUNS/$GATE_RUN.log'" 2>&1 || echo "(could not read $GATE_RUNS/$GATE_RUN.log)")
-[ -n "$GATE_STATUS" ] || { echo "$BACKEND_OUT" | tail -20; echo "✗ the gate did not answer within 2.5 hours — nothing deployed ($GATE_RUNS/$GATE_RUN.log)"; exit 1; }
-[ "$GATE_STATUS" = "0" ] || { echo "$BACKEND_OUT"; echo "✗ backend tests failed — nothing deployed"; exit 1; }
+[ -n "$GATE_STATUS" ] || { echo "$BACKEND_OUT" | tail -20; echo "✗ the gate did not answer within 2.5 hours — nothing deployed ($GATE_RUNS/$GATE_RUN.log)"; release_status server_tests 0 "✗ the gate did not answer within 2.5 hours"; exit 1; }
+[ "$GATE_STATUS" = "0" ] || { echo "$BACKEND_OUT"; echo "✗ backend tests failed — nothing deployed"; release_status server_tests 0 "✗ backend tests failed"; exit 1; }
 echo "$BACKEND_OUT" | tail -3
 BACKEND_TESTS=$(echo "$BACKEND_OUT" | sed -n 's/^EZBIZI_BACKEND_TESTS=\([0-9][0-9]*\)$/\1/p' | tail -1)
-[ -n "$BACKEND_TESTS" ] || { echo "✗ backend test report missing — nothing deployed"; exit 1; }
+[ -n "$BACKEND_TESTS" ] || { echo "✗ backend test report missing — nothing deployed"; release_status server_tests 0 "✗ backend test report missing"; exit 1; }
+release_status server_tests 100 "✓ $BACKEND_TESTS backend tests passed"
 fi
 
 if [ "$CODE_ONLY" != "--code" ]; then
@@ -269,9 +277,11 @@ if [ "$CODE_ONLY" != "--code" ]; then
   else
     echo "→ client analyze + tests (at $GATED_SHA, not your working tree)"
   fi
+  release_status web 5 "client pub get, analyze + tests"
   CLIENT_OUT=$( (cd "$WORKTREE/client" && flutter pub get \
     && { [ "$SKIP_GATES" -eq 1 ] || { flutter analyze && flutter test; }; }) 2>&1 ) || {
-    echo "$CLIENT_OUT"; echo "✗ client checks failed — nothing deployed"; exit 1;
+    echo "$CLIENT_OUT"; echo "✗ client checks failed — nothing deployed"
+    release_status web 5 "✗ client checks failed"; exit 1;
   }
 
   # `flutter pub get` rewrites the generated plugin registrants for linux, macos
@@ -295,6 +305,7 @@ if [ "$CODE_ONLY" != "--code" ]; then
   CLIENT_TESTS=$(echo "$CLIENT_OUT" | grep -oE '\+[0-9]+' | tail -1 | tr -d '+') || true
 
   echo "→ building web"
+  release_status web 40 "building web"
   # Same-origin by default, so the built app talks to whatever host serves it
   # and can never point at the wrong API.
   # No --base-href: the default already is "/", and the app IS the site
@@ -308,6 +319,7 @@ fi
 
 # Stage artifacts first; the receive wrapper activates code before UI under one lock.
 echo "→ pushing code"
+release_status web 70 "pushing code + swapping the UI"
 # Pinning the SHA closes the window where main MOVES. It does not close the
 # window where main is REWRITTEN. If a session amends or rebases published main
 # while this runs, the gated commit can stop being reachable from the branch —
@@ -339,6 +351,7 @@ fi
 # receive-release holds one server flock through the hook and UI activation.
 # Explicit SSH command arguments are restricted above to fixed paths and hex SHA.
 git push --receive-pack="bash $DEPLOY_STAGE/receive-release $GATED_SHA $UI_STAGE" "$PRODUCTION_REPO" "$GATED_SHA":main
+release_status web 90 "live — GitHub push, STATUS numbers, smoke checks"
 # GitHub gets what actually shipped, and only once it has shipped.
 #
 # Until 2026-08-28 every commit in this project existed on one disk. The backup
@@ -544,3 +557,4 @@ fi
 # /download/* is still served from /var/www/www, and release.sh writes it.
 
 echo "✓ done — https://app.ezbizi.com"
+release_status web 100 "✓ done — https://app.ezbizi.com"

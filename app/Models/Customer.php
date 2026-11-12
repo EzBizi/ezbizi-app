@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Memberships\CustomerLinks;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
+use App\Support\Settings\Lists\BusinessLists;
+use App\Support\Tenancy\TenantContext;
 use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -36,10 +39,11 @@ use Illuminate\Support\Collection;
 ])]
 class Customer extends Model implements HoldsPersonalData
 {
+    use BelongsToTenant;
+
     /** @use HasFactory<CustomerFactory> */
     use HasFactory;
     use HasUuids;
-    use BelongsToTenant;
     use SoftDeletes;
 
     protected function casts(): array
@@ -153,7 +157,7 @@ class Customer extends Model implements HoldsPersonalData
      */
     public static function placeholders(string $list): array
     {
-        return self::placeholderList($list, app(\App\Support\Tenancy\TenantContext::class)->id());
+        return self::placeholderList($list, app(TenantContext::class)->id());
     }
 
     private static function placeholderList(string $list, ?string $organizationId): array
@@ -161,7 +165,7 @@ class Customer extends Model implements HoldsPersonalData
         // once() keys on the closure's captured variables, so the org must be one.
         return once(fn () => $organizationId === false ? [] : array_map(
             fn (array $row) => mb_strtolower(trim((string) $row['key'])),
-            app(\App\Support\Settings\Lists\BusinessLists::class)->rows($list),
+            app(BusinessLists::class)->rows($list),
         ));
     }
 
@@ -329,7 +333,7 @@ class Customer extends Model implements HoldsPersonalData
      */
     public function getReviewLinkAttribute(): ?string
     {
-        return \App\Support\Memberships\CustomerLinks::reviewLink($this);
+        return CustomerLinks::reviewLink($this);
     }
 
     /**
@@ -344,11 +348,25 @@ class Customer extends Model implements HoldsPersonalData
 
         return $member || ! MembershipPlan::query()->where('is_active', true)->exists()
             ? null
-            : \App\Support\Memberships\CustomerLinks::joinLink($this);
+            : CustomerLinks::joinLink($this);
     }
 
     public function getMembershipJoinUrlAttribute(): string
     {
-        return \App\Support\Memberships\CustomerLinks::joinUrl($this);
+        return CustomerLinks::joinUrl($this);
+    }
+
+    /**
+     * A search term that reads as a phone, in any format: "(305) 724-2199",
+     * "305.724.2199", "+13057242199" (Trey, 2026-11-11). Matches no rows when
+     * the term has under four digits.
+     */
+    public static function phoneLike(Builder $q, string $term): void
+    {
+        $digits = preg_replace('/\D/', '', $term) ?? '';
+        $digits = strlen($digits) === 11 && $digits[0] === '1' ? substr($digits, 1) : $digits;
+        strlen($digits) < 4
+            ? $q->whereRaw('1 = 0')
+            : $q->whereRaw("REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') LIKE ?", ['%'.$digits.'%']);
     }
 }

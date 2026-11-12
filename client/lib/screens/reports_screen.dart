@@ -23,6 +23,7 @@ import 'reports/report_builder.dart';
 import 'reports/report_dates.dart';
 import 'reports/scoring_report.dart';
 import 'reports/thumbtack_report.dart';
+import 'reports/jobs_report.dart';
 import 'reports/report_run_view.dart';
 import 'reports/report_workspace.dart';
 import 'reports/work_hours_report_panel.dart';
@@ -90,6 +91,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     'Marketing',
     'Meta',
     'Thumbtack',
+    'Jobs',
   };
 
   /// Reports · Builder · Experimental. The builder is a DESTINATION now
@@ -472,6 +474,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
           'Thumbtack',
           Icons.request_quote_outlined,
           () => ThumbtackReport(
+            api: widget.api,
+            span: _span,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
+        ),
+      // Every job created in the dates, with both ids (Jose, 2026-11-11).
+      if (_mayOpen('jobs'))
+        (
+          'Jobs',
+          Icons.work_outline,
+          () => JobsReport(
             api: widget.api,
             span: _span,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,

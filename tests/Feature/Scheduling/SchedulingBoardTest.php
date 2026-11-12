@@ -77,7 +77,7 @@ class SchedulingBoardTest extends TestCase
         $this->assertSame([['member_id' => $ivan->id, 'name' => 'Ivan Sharkov']], $b['scheduled'][0]['team']);
         $tech = collect($b['technicians'])->firstWhere('id', $ivan->id);
         $this->assertSame([1, ['Hartford']], [$tech['jobs'], $tech['service_areas']]);
-        $this->assertSame(['scheduled' => 1, 'unassigned' => 0], $b['counts']);
+        $this->assertSame(['scheduled' => 1, 'unassigned' => 0], array_intersect_key($b['counts'], ['scheduled' => 0, 'unassigned' => 0]));
     }
 
     public function test_a_job_with_nobody_on_it_is_unassigned_and_cancelled_is_left_out(): void
@@ -112,6 +112,20 @@ class SchedulingBoardTest extends TestCase
 
         $this->assertCount(1, $this->board($t, ['franchise_id' => $other->id])['unassigned']);
         $this->assertSame([], $this->board($t, ['franchise_id' => $other->id])['scheduled']);
+    }
+
+    public function test_every_branch_is_counted_once_per_job(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        [$ivan, $harry] = $this->day($t);
+        $other = $this->extraFranchise($t, 'Boston');
+        $this->job($t, '2026-09-25 09:00:00', [$ivan, $harry]);
+        $this->job($t, '2026-09-25 12:00:00');
+        $this->job($t, '2026-09-25 09:00:00', franchise: $other);
+
+        $company = $t['franchise']->company->name;
+        $by = $this->board($t)['counts']['by_branch'];
+        $this->assertSame([2, 1], [$by[$company.' / '.$t['franchise']->name], $by[$company.' / Boston']]);
     }
 
     public function test_the_board_needs_the_schedule_tab(): void

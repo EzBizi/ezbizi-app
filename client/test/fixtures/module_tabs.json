@@ -320,6 +320,7 @@
                 "Marketing",
                 "Meta",
                 "Thumbtack",
+                "Jobs",
                 "Workspace"
             ]
         },
@@ -617,6 +618,7 @@
         "reports.experimental.view",
         "reports.export",
         "reports.handles",
+        "reports.jobs.view",
         "reports.library.view",
         "reports.marketing.view",
         "reports.meta.view",

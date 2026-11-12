@@ -3511,3 +3511,32 @@ publisher: unchanged. Stripe keys on prod 0, `payment_accounts` 0, so `/privacy/
   per the desk). Left alone: no page promises anything narrower.
 - Review-link → Google review matching by name and @mentions: nothing leaves EzBizi; no sentence touched.
 - 0552 trigger stands: reports go as PDF documents over WhatsApp from +1 877-450-8572 (a "Reports" purpose number).
+
+## 2026-11-10: 0.0.0552-0.0.0558 live, and `/privacy/`'s Meta line named only asked-for report files
+
+Production `/download/windows.json` 0.0.0558 at `753e2a424`. Before the edit all 10 live pages matched their
+WP post_content (the theme adds `decoding="async"` to logo `<img>`s; nothing else). www `/ezbizi-api.json`
+byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261110/page8.html` on the websites box). `98837a32e`/`f9e96697d`/
+  `b32e3e76a`/`6af62cdf4` (0553+, ancestors of `753e2a424`): every automation-rule report now goes to a person
+  over WhatsApp as its text plus a PDF (`WhatsAppGroups::deliverTextToUser`, `ReportPdf`), from the number whose
+  purpose is Reports. The Who-we-rely-on Meta line said only "report files a staff member asks for"; it now also
+  names "the reports an organization's automation rules send its people as a message and a PDF". No xAI change
+  (report rules do not call Grok; the weekly-summary sentence already lets rules pick WhatsApp). Undelivered ones
+  are emailed to the rule's maker through SES, already covered. Live, with and without a cache-buster.
+- Review auto-replies (Customer Experience › Auto-replies, `813e2176b`): `/privacy/` already describes the
+  per-listing switch, the 30-day rule and the daily 4-5 star job. Nothing changed.
+- STOP blank line in tenant texts, Workiz tags matrix, switched-off companies hidden, live access refresh, signature
+  preview, Social compose video preview, Mail 4xx retry: no page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages, and over `/privacy/` after the edit: ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
+1, 0.0.0502.
+
+**Desk (11-11, ~13:30 UTC), recorded as given:** Training 3 guides / 144 media (attempts and progress NOT counted,
+so the tense rule's test is still unmeasured); ring groups 2 (a group count, not the resolved fraction the Phone row
+names); LSA `is_test=0` 52,155 (already published); `payment_accounts` 0, no Stripe account, so `/privacy/` names
+no Stripe. Scheduled Jobs: the desk looked for `jobs.scheduled_at`; the row's test is `jobs.scheduled_for` without a
+`workiz_jobs` row — ask that next time. Publishers: the desk counted 7 connected posting providers; in code
+`Publishers::for()` has had 10 since `947e6cc23` (GBP posts, 10-15), and none is new since 0551. No sentence moves.

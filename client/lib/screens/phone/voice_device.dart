@@ -46,7 +46,6 @@ abstract class VoiceDevice {
   /// case. True means stay out of the way.
   bool get ringsItself;
 
-
   /// Register with an access token from POST /phone/tokens.
   /// Build whatever the screen must MOUNT, before [setup] registers.
   ///
@@ -300,3 +299,10 @@ class VoiceIncoming {
 }
 
 VoiceDevice createVoiceDevice() => impl.create();
+
+/// A device that can press keys on the live call (Jose, 2026-11-11: Meta's
+/// call asked him to press 1 and the popup had no keypad). Separate from
+/// [VoiceDevice] so a device without it is still a device.
+abstract interface class SendsDigits {
+  void sendDigits(String digits);
+}

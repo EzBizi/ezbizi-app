@@ -68,7 +68,7 @@ final class SameDayReport
     {
         $branches = Franchise::query()->withoutGlobalScopes()
             ->where('organization_id', $organization->getKey())
-            ->where('is_active', true)
+            ->switchedOn()
             ->whereIn('id', ReportJobs::branchesWithJobs())
             ->orderBy('name')
             ->get();

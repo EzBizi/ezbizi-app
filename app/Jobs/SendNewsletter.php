@@ -126,10 +126,10 @@ final class SendNewsletter implements ShouldQueue
             return;
         }
 
+        $footer = NewsletterIdentity::footer($newsletter) + ['unsubscribe_url' => '*|UNSUB|*'];
         $html = is_string($newsletter->html_override) && $newsletter->html_override !== ''
-            ? $newsletter->html_override
-            : $renderer->render((array) ($newsletter->blocks ?? []),
-                NewsletterIdentity::footer($newsletter) + ['unsubscribe_url' => '*|UNSUB|*']);
+            ? $renderer->withFooter($newsletter->html_override, $footer)
+            : $renderer->render((array) ($newsletter->blocks ?? []), $footer);
 
         try {
             $result = $sender->send($connection, $newsletter, $html, $this->people($newsletter));
@@ -170,7 +170,7 @@ final class SendNewsletter implements ShouldQueue
      *
      * @return array<int, array{email: string, first_name?: string, last_name?: string}>
      */
-    private function people(Newsletter $newsletter): array
+    public static function people(Newsletter $newsletter): array
     {
         $audience = $newsletter->audience;
 

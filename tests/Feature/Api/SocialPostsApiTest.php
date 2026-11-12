@@ -515,7 +515,7 @@ class SocialPostsApiTest extends TestCase
             ->getJson(self::ENDPOINT)
             ->assertOk()
             ->assertJsonCount(20, 'data')
-            ->assertJsonPath('meta.tiles', ['scheduled' => 2, 'sent' => 23, 'failed' => 1]);
+            ->assertJsonPath('meta.tiles', ['scheduled' => 2, 'sent' => 23, 'failed' => 1, 'awaiting' => 1]);
 
         $failed = $this->signedInAs($admin)
             ->getJson(self::ENDPOINT.'?status=failed')

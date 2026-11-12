@@ -77,6 +77,6 @@ final class SmsConsent
             ->where('to_e164', $to)
             ->exists();
 
-        return $texted || stripos($body, 'STOP') !== false ? $body : rtrim($body)."\n".self::FOOTER;
+        return $texted || stripos($body, 'STOP') !== false ? $body : rtrim($body)."\n\n".self::FOOTER;
     }
 }

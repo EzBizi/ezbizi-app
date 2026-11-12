@@ -557,4 +557,22 @@ class HrPersonRecordTest extends TestCase
         $this->assertLessThan(array_search('Aaron Gone', $names), array_search('Zed Here', $names));
         $this->assertSame('Aaron Gone', end($names));
     }
+
+    /** Inactive finds an inactive person past the first page (Jose, 2026-11-10). */
+    public function test_status_filters_on_the_server_across_pages(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $gone = $this->userWithRole($t, 'Gone', ['customers.view']);
+        $this->inTenant($t['org'], fn () => $gone->forceFill(['is_active' => false])->save());
+        $this->userWithRole($t, 'Here', ['customers.view']);
+
+        // One per page: the inactive one sorts last, so it is not on page 1.
+        $this->assertNotContains($gone->id, array_column($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/hr/people?per_page=1')->json('data'), 'id'));
+
+        $this->assertSame([$gone->id], array_column($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/hr/people?per_page=1&status=inactive')->assertOk()->json('data'), 'id'));
+        $this->assertNotContains($gone->id, array_column($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/hr/people?status=active')->json('data'), 'id'));
+    }
 }

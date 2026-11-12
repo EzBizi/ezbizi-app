@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\Controller;
+use App\Mail\BookingConfirmationMail;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\BookingConfirmations;
 use App\Support\Web\SeoFields;
 use App\Support\Web\ValueResolver;
 use Illuminate\Http\JsonResponse;
@@ -215,6 +217,21 @@ class SitesController extends Controller
         $site->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * GET /api/v1/web/sites/{site}/booking-confirmation-preview: the booking
+     * confirmation email this site sends, with sample booking data (Jose, 2026-11-11).
+     */
+    public function bookingConfirmationPreview(WebSite $site, BookingConfirmations $confirmations): Response
+    {
+        $this->authorize('view', $site);
+
+        $details = $confirmations->details($site, now()->addDays(2)->toDateString(),
+            ['start_time' => '08:00', 'end_time' => '11:00'], '123 Main St, Springfield, CT 06810',
+            ['name' => 'Sample Customer', 'service' => 'Inspection']);
+
+        return response(BookingConfirmationMail::page($details), 200, ['Content-Type' => 'text/html; charset=UTF-8']);
     }
 
     /** POST /api/v1/web/sites/{site}/token */

@@ -109,9 +109,7 @@ final class AttachFileToWorkiz implements ShouldQueue
         }
 
         // ponytail: one accounts() read per file; cache per login if photo bursts make it slow.
-        $account = collect(WorkizWebSession::accounts($login))
-            ->search(fn ($name, $a) => WorkizWebSession::franchiseFor($login, (string) $a, $name)?->getKey() === $job->franchise_id);
-        $account = $account === false ? null : $account;
+        $account = WorkizWebSession::accountFor($login, $job->franchise_id);
 
         if ($account === null) {
             return 'No Workiz account of the web login is this branch\'s.';

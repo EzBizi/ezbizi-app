@@ -50,6 +50,7 @@ class ReportsModuleTest extends TestCase
             'marketing.view',
             'meta.view',
             'thumbtack.view',
+            'jobs.view',
             'workspace.view',
         ], $module->actions);
     }
@@ -71,7 +72,7 @@ class ReportsModuleTest extends TestCase
 
         // Renamed by Jose, 2026-10-06 ("Builder to report builder", "new name for experimental");
         // Scoring added 2026-10-13 (Administrators and Lead Managers).
-        $this->assertSame(['Reports', 'Report Builder', 'Performance', 'Scoring', 'Marketing', 'Meta', 'Thumbtack', 'Workspace'], $labels);
+        $this->assertSame(['Reports', 'Report Builder', 'Performance', 'Scoring', 'Marketing', 'Meta', 'Thumbtack', 'Jobs', 'Workspace'], $labels);
     }
 
     /**

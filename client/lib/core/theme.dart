@@ -695,6 +695,13 @@ enum Tone {
 ///
 /// The text is at least 4.5:1 on its fill in both brightnesses, measured by
 /// `tone_colours_test` rather than asserted here.
+/// White or near-black text, whichever reads on [fill]: for a colour the
+/// app does not choose, such as a Workiz tag's (Jose, 2026-11-10).
+Color inkOn(Color fill) =>
+    ThemeData.estimateBrightnessForColor(fill) == Brightness.dark
+    ? Colors.white
+    : Colors.black87;
+
 class ToneColours {
   const ToneColours(this.fill, this.ink);
 

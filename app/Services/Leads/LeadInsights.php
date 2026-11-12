@@ -311,6 +311,9 @@ class LeadInsights
      * when it has none (Jose, 2026-11-05: "Yes, I call you right away").
      * Never sent by itself: the composer offers it and a person taps it.
      */
+    /** Seconds a proofread may take before the reply box gets nothing. */
+    public const PROOFREAD_TIMEOUT = 20;
+
     public function proofread(?Lead $lead, string $text): ?string
     {
         $text = trim($text);
@@ -329,6 +332,9 @@ class LeadInsights
                 $json = GrokCli::about($lead, fn () => GrokCli::ask(
                     $brief."\n\nText:\n".$text,
                     ['type' => 'object', 'properties' => ['fixed' => ['type' => 'string']], 'required' => ['fixed'], 'additionalProperties' => false],
+                    // A person waits on the reply box: give up well inside
+                    // nginx's gateway limit (11-10: 10 x 504 on the 300 s default).
+                    self::PROOFREAD_TIMEOUT,
                 ));
             } catch (Throwable $e) {
                 Log::warning('Grok did not proofread a reply.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);

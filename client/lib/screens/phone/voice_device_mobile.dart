@@ -47,7 +47,7 @@ enum CallingAccountState {
 /// outgoing calls work and incoming ones do not arrive — which is a
 /// configuration state, not a defect, and [registered] reports it honestly
 /// rather than claiming a phone that can take calls.
-class MobileVoiceDevice implements VoiceDevice {
+class MobileVoiceDevice implements VoiceDevice, SendsDigits {
   /// The plugin call, injectable so the failures below can be tested.
   ///
   /// Registration is a platform channel, and its two interesting outcomes —
@@ -78,7 +78,8 @@ class MobileVoiceDevice implements VoiceDevice {
   }) : _register = register ?? _registerWithPlugin,
        _readDeviceToken = readDeviceToken ?? _readFcmToken,
        _ensureCallingAccount = ensureCallingAccount ?? _telecomAccountReady,
-       _registrationTimeout = registrationTimeout ?? _defaultRegistrationTimeout;
+       _registrationTimeout =
+           registrationTimeout ?? _defaultRegistrationTimeout;
 
   final Future<bool?> Function(String token, String? deviceToken) _register;
   final Future<String?> Function() _readDeviceToken;
@@ -165,8 +166,10 @@ class MobileVoiceDevice implements VoiceDevice {
   }
 
   static Future<bool?> _registerWithPlugin(String token, String? deviceToken) =>
-      TwilioVoicePlatform.instance
-          .setTokens(accessToken: token, deviceToken: deviceToken);
+      TwilioVoicePlatform.instance.setTokens(
+        accessToken: token,
+        deviceToken: deviceToken,
+      );
 
   /// The Android app's FCM registration token, from the native side.
   ///
@@ -200,8 +203,9 @@ class MobileVoiceDevice implements VoiceDevice {
   static Future<String?> _readFcmToken() async {
     if (defaultTargetPlatform != TargetPlatform.android) return null;
 
-    return const MethodChannel('com.ezbizi.app/fcm')
-        .invokeMethod<String>('getToken');
+    return const MethodChannel(
+      'com.ezbizi.app/fcm',
+    ).invokeMethod<String>('getToken');
   }
 
   /// How long registration is given before the desk stops waiting.
@@ -321,7 +325,6 @@ class MobileVoiceDevice implements VoiceDevice {
     } catch (_) {
       // Nothing to say here that registration will not say better.
     }
-
 
     // BEFORE the token and before Twilio, because neither can help.
     //
@@ -446,8 +449,11 @@ class MobileVoiceDevice implements VoiceDevice {
       // onError, because a channel that is not there reports it as a stream
       // ERROR rather than by throwing from listen() — so a try/catch around
       // this line alone does not catch it.
-      _events = TwilioVoicePlatform.instance.callEventsListener
-          .listen(_onEvent, onError: (_) {}, cancelOnError: false);
+      _events = TwilioVoicePlatform.instance.callEventsListener.listen(
+        _onEvent,
+        onError: (_) {},
+        cancelOnError: false,
+      );
     } catch (_) {
       // The desk is registered either way; events arriving is a separate
       // concern and one the incoming-call bar reports on its own.
@@ -469,7 +475,9 @@ class MobileVoiceDevice implements VoiceDevice {
       // The native call UI already knows who is calling and is already
       // showing them. This tells the desk so its own banner agrees.
       onIncoming?.call(
-        VoiceIncoming(from: TwilioVoicePlatform.instance.call.activeCall?.from ?? ''),
+        VoiceIncoming(
+          from: TwilioVoicePlatform.instance.call.activeCall?.from ?? '',
+        ),
       );
 
       return;
@@ -623,10 +631,16 @@ class MobileVoiceDevice implements VoiceDevice {
   void hangUp() => unawaited(TwilioVoicePlatform.instance.call.hangUp());
 
   @override
-  void acceptIncoming() => unawaited(TwilioVoicePlatform.instance.call.answer());
+  void sendDigits(String digits) =>
+      unawaited(TwilioVoicePlatform.instance.call.sendDigits(digits));
 
   @override
-  void declineIncoming() => unawaited(TwilioVoicePlatform.instance.call.hangUp());
+  void acceptIncoming() =>
+      unawaited(TwilioVoicePlatform.instance.call.answer());
+
+  @override
+  void declineIncoming() =>
+      unawaited(TwilioVoicePlatform.instance.call.hangUp());
 
   @override
   void dispose() {

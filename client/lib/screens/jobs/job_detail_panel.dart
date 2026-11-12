@@ -14,6 +14,7 @@ import '../../widgets/side_panel.dart';
 import 'job_record_pill.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
+import '../../widgets/colour_field.dart';
 import '../../widgets/tag.dart';
 import 'job_labels.dart';
 import 'job_files.dart';
@@ -39,7 +40,12 @@ class JobDetailPanel extends StatefulWidget {
     this.onDone,
     this.dirty,
     this.labels,
+    this.initialTab = 'job',
   });
+
+  /// The tab it opens on: job, money, files or notes (Jose, 2026-11-10: the
+  /// Attachments count in Project Management opens Photos & files).
+  final String initialTab;
 
   final ApiClient api;
   final Session session;
@@ -68,7 +74,7 @@ class JobDetailPanel extends StatefulWidget {
 class _JobDetailPanelState extends State<JobDetailPanel> {
   /// Job, Money, Photos & files or Notes (UI queue 58; Jose: "as
   /// recommended"; Notes is queue 122).
-  String _tab = 'job';
+  late String _tab = widget.initialTab;
 
   final _title = TextEditingController();
   final _description = TextEditingController();
@@ -297,15 +303,35 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   }
 
   Future<void> _addTag() async {
-    final offered = [
-      for (final t in {...?_labels?.tags})
-        if (!_tags.contains(t)) SearchOption(value: t, label: t),
+    // The job's Workiz account's tags as they are now, each in its colour
+    // (Jose, 2026-11-10); only where it has none, the organization's words.
+    final workiz = [
+      for (final t in (_row?['workiz_tags'] as List?) ?? const [])
+        if (t is Map) ('${t['name']}', ColourField.parse('${t['colour']}')),
     ];
+    final offered = workiz.isNotEmpty
+        ? [
+            for (final (name, colour) in workiz)
+              if (!_tags.contains(name))
+                SearchOption(
+                  value: name,
+                  label: name,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Tag(name, colour: colour),
+                  ),
+                ),
+          ]
+        : [
+            for (final t in {...?_labels?.tags})
+              if (!_tags.contains(t)) SearchOption(value: t, label: t),
+          ];
     final picked = await showSearchPicker<String>(
       context,
       title: 'Add a tag',
       options: offered,
-      create: (typed) => typed,
+      // A Workiz job takes only its account's tags.
+      create: workiz.isNotEmpty ? null : (typed) => typed,
     );
     if (picked == null || picked.trim().isEmpty || _tags.contains(picked)) {
       return;
@@ -332,7 +358,14 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
         for (final t in _tags)
           InputChip(
             key: ValueKey('job-tag-$t'),
-            label: Text(t),
+            label: Text(
+              t,
+              style: switch (jobTagColours(_row)[t]) {
+                final c? => TextStyle(color: inkOn(c)),
+                null => null,
+              },
+            ),
+            backgroundColor: jobTagColours(_row)[t],
             visualDensity: VisualDensity.compact,
             onDeleted: editable
                 ? () => _patchLabel('tags', [
@@ -710,6 +743,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
             formats: _me.display,
             addRefusal: _editRefusal,
             onAdded: (note) => setState(() => _notes = [note, ..._notes]),
+            workizNotes: _row?['workiz_notes'] as String?,
           )
         else
           _jobPage(context, row, editable, extras),

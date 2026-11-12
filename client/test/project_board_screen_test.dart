@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/project_board_screen.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
+import 'package:ezbizi_client/widgets/tag.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -64,6 +65,16 @@ void main() {
           });
         }
         if (request.method == 'PATCH') return _json({'data': {}});
+        if (path.endsWith('/project-board/repair-teams')) {
+          return _json({
+            'data': {
+              'outcomes': {'Ohio': 'created'},
+              'list': [
+                {'name': 'KENNI REPAIR TEAM', 'phone': '555', 'user_id': null},
+              ],
+            },
+          });
+        }
         if (path.endsWith('/project-board/options')) {
           return _json({
             'data': {
@@ -83,7 +94,10 @@ void main() {
               'status': 'Pending',
               'part_status': 'WAITING PARTS',
               'required': 'Crown Repair',
+              'status_days': 8,
+              'ready_missing': <String>[],
               'tags': ['VIP', 'DEPOSIT'],
+              'tag_colours': {'VIP': '#D32F2F'},
             },
           ],
           'meta': {
@@ -104,6 +118,7 @@ void main() {
                 'as_label': true,
               },
               {'key': 'required', 'label': 'Required', 'visible': true},
+              {'key': 'status_days', 'label': 'Status Time', 'visible': true},
               {
                 'key': 'tags',
                 'label': 'Tags',
@@ -115,6 +130,8 @@ void main() {
               'part_status': {'WAITING PARTS': 'caution'},
             },
             'settings_scope': {'scope_type': 'company', 'scope_id': 'c-1'},
+            'can_edit': true,
+            'sortable': ['status_days', 'customer'],
           },
         });
       }),
@@ -135,6 +152,92 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Live: "Updated hh:mm", a manual refresh, and a quiet reload every
+    // minute while on screen (Jose, 2026-11-10).
+    expect(find.byKey(const Key('project-board-updated')), findsOneWidget);
+    final before = requests.length;
+    await tester.tap(find.byKey(const Key('project-board-refresh')));
+    await tester.pumpAndSettle();
+    expect(requests.length, before + 1);
+    expect(requests.last.url.queryParameters['per_page'], '50');
+    await tester.pump(const Duration(seconds: 61));
+    await tester.pumpAndSettle();
+    expect(requests.length, before + 2);
+
+    // Status Time: 7 days and up is red (Jose, 2026-11-10), and Ready to
+    // schedule posts once nothing is missing.
+    expect(
+      tester.widget<StatusPill>(find.widgetWithText(StatusPill, '8 days')).tone,
+      Tone.bad,
+    );
+    await tester.tap(find.byKey(const ValueKey('project-board-ready:j-1')));
+    await tester.pumpAndSettle();
+    // The four questions first; Save waits for all of them (Jose, 2026-11-10).
+    final save = find.byKey(const Key('project-board-times-save'));
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    for (final (key, value) in const [
+      ('date', '2026-11-20'),
+      ('slot', '8 - 11 AM'),
+      ('alt_date', '2026-11-21'),
+      ('alt_slot', '2 - 5 PM'),
+    ]) {
+      final field = find.byKey(Key('project-board-times-$key'));
+      await tester.enterText(
+        tester.widget(field) is TextField
+            ? field
+            : find
+                  .descendant(of: field, matching: find.byType(TextField))
+                  .first,
+        value,
+      );
+      await tester.pump();
+    }
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    final ready = requests.lastWhere(
+      (r) =>
+          r.method == 'POST' &&
+          r.url.path.endsWith('/project-board/jobs/j-1/ready'),
+    );
+    expect(jsonDecode(ready.body), {
+      'date': '2026-11-20',
+      'slot': '8 - 11 AM',
+      'alt_date': '2026-11-21',
+      'alt_slot': '2 - 5 PM',
+    });
+
+    // A header click sorts the whole tab on the server; a second click
+    // reverses it, with an arrow (Jose, 2026-11-10).
+    await tester.tap(find.text('STATUS TIME'));
+    await tester.pumpAndSettle();
+    expect(requests.last.url.queryParameters['sort'], 'status_days');
+    expect(requests.last.url.queryParameters['dir'], 'asc');
+    await tester.tap(find.text('STATUS TIME'));
+    await tester.pumpAndSettle();
+    expect(requests.last.url.queryParameters['dir'], 'desc');
+    expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
+
+    // Part Status opens the parts list: one to order (Jose, 2026-11-10).
+    await tester.tap(find.byKey(const ValueKey('project-board-parts:j-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('project-board-part-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('project-board-part-item-0')),
+      'Stainless cap',
+    );
+    await tester.tap(find.byKey(const Key('project-board-parts-save')));
+    await tester.pumpAndSettle();
+    final put = requests.lastWhere(
+      (r) => r.method == 'PUT' && r.url.path.endsWith('/parts'),
+    );
+    expect((jsonDecode(put.body)['parts'] as List).single, {
+      'kind': 'order',
+      'item': 'Stainless cap',
+      'quantity': 1,
+      'price_minor': null,
+    });
+
     // The company's names and order; a hidden column is not drawn.
     expect(find.text('CLIENT'), findsOneWidget);
     expect(find.text('Lena Park'), findsOneWidget);
@@ -144,7 +247,15 @@ void main() {
     );
     expect(pill.tone, Tone.caution);
     // Tags: one chip per tag.
-    expect(find.widgetWithText(StatusPill, 'VIP'), findsOneWidget);
+    // In its Workiz colour; one without a colour stays grey.
+    expect(
+      tester.widget<Tag>(find.widgetWithText(Tag, 'VIP')).colour,
+      const Color(0xFFD32F2F),
+    );
+    expect(
+      tester.widget<Tag>(find.widgetWithText(Tag, 'DEPOSIT')).colour,
+      isNull,
+    );
 
     await tester.tap(find.byKey(const Key('project-board-franchise')));
     await tester.pumpAndSettle();
@@ -163,6 +274,21 @@ void main() {
 
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
+    // Tag lists are compact pickers, not a wall of chips; the new columns
+    // have their settings (Jose, 2026-11-10).
+    expect(
+      find.byKey(const Key('project-board-tab-tags:unscheduled-add')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('project-board-repair-tags-add')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('project-board-ready-needs:note')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('project-board-warn-days')), findsOneWidget);
     // Statuses are the company's real ones, picked as chips.
     await tester.tap(
       find.descendant(
@@ -205,6 +331,41 @@ void main() {
       'On Hold',
     ]);
     expect(find.text('Project Management settings saved.'), findsOneWidget);
+    // A repair team is added here and on every Workiz account (Jose, 2026-11-10).
+    await tester.ensureVisible(
+      find.byKey(const Key('project-board-repair-tags-add')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('project-board-repair-tags-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('project-board-repair-team-name')),
+      'KENNI REPAIR TEAM',
+    );
+    await tester.enterText(
+      find.byKey(const Key('project-board-repair-team-phone')),
+      '555',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('project-board-repair-team-save')));
+    await tester.pumpAndSettle();
+    final team = requests.lastWhere(
+      (r) => r.url.path.endsWith('/project-board/repair-teams'),
+    );
+    expect(jsonDecode(team.body), {
+      'op': 'create',
+      'name': 'KENNI REPAIR TEAM',
+      'color': null,
+      'phone': '555',
+      'user_id': null,
+    });
+    expect(find.text('Ohio: created'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('project-board-repair-team:KENNI REPAIR TEAM')),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
   });
 }
 

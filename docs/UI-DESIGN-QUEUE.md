@@ -5336,9 +5336,17 @@ Jose 11-06: "I'm also thinking if it would not be best to always put the tags at
 
 Client by UI/UX; server HR 17fb4c40e. Jose via the desk: show current access as a clear list with Add place / remove, plus what the role grants. A "Works at" card: one row per place (Company · Branch) with ×, inline red two-step remove, the last place shows HR's 422 sentence instead; Add place opens the SidePanel search picker from GET hr/people/scope-options; under it, the role and that it applies at every place.
 
+### 192 · Leads › lead detail header, lined up — **APPROVED (standing rule 2026-11-03), recommended option (desk's grid)** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/lead-detail-header.html`)
+
+Jose 11-11: "stuff doesn't seem lined up properly, like there's wasted space still." Desktop: row 1 name + chips left, Call / Edit / Book / ⋯ right; row 2 the status segmented control left-aligned (picker under 640 px); facts and the AI line with even gaps; the Existing customer bar capped at 720 px. Phone bar (design 171) unchanged. Client by UI/UX (`client/lib/widgets/lead_thread.dart`).
+
 ### 190 · HR › Records › Training tab — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-training-tab-layouts.html`)
 
 Jose 11-06 on the Work tab: "this can definitely be shown in a better way, use green and red as well for clock in - out times"; on Training: "same here". Three equal tinted KPI tiles; an aligned table Course | Status (green Passed / amber Due / red Failed-Overdue) | Score bar | Completed | Retake by; empty state; the footnote rewritten plainly. Client by UI/UX (`client/lib/screens/hr/training_card.dart`).
+
+### 191 · Integrations › Workiz › Tags — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/workiz-tags-layouts.html`)
+
+Client by UI/UX on the Workiz backend (session/workiz 5b905b31b). Jose 11-10: "a sub tab where we can see all existing tags per account so if someone in the future changes a tag, we know about it and get a warning". A Tags section on the Workiz provider screen: caution banner for changes in the last 7 days linking to the log, a tags × accounts matrix (sticky tag column and header, colour chip + name, differing cell tinted caution, missing cell "—" in caution), Show only differences + search, Approve current tags as standard (SidePanel confirm, disabled when nothing differs), then the change log (Deleted is Tone.bad, the rest caution). No baseline yet: one line asking to approve the current tags.
 
 ### 189 · HR › Work: work schedule — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-work-schedule-layouts.html`)
 

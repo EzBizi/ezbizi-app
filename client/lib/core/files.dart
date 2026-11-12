@@ -65,6 +65,9 @@ class Files {
   /// Hand back a URL from [previewUrl]. Blobs are held until revoked, so a
   /// composer that picked ten videos would otherwise keep all ten in memory.
   static void releasePreviewUrl(String url) => impl.releasePreviewUrl(url);
+
+  /// Running under `flutter test`, where no platform video player answers.
+  static bool get underTest => impl.underTest;
 }
 
 class PickedFile {

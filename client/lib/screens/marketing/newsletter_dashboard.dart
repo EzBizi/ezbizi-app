@@ -212,6 +212,14 @@ class NewsletterDashboard extends StatelessWidget {
           count: stats.drafts,
           note: 'not sent',
         ),
+        // A send the provider refused; the server counts it and filters it.
+        FilterTile(
+          key: 'failed',
+          label: 'Failed',
+          count: stats.failed,
+          note: 'did not go out',
+          tone: Tone.bad,
+        ),
       ],
     );
 
@@ -424,6 +432,7 @@ class NewsletterStats {
     this.drafts = 0,
     this.scheduled = 0,
     this.sent = 0,
+    this.failed = 0,
     this.recipients = 0,
     this.lastSentAt,
   });
@@ -431,6 +440,7 @@ class NewsletterStats {
   final int drafts;
   final int scheduled;
   final int sent;
+  final int failed;
   final int recipients;
 
   /// ISO 8601, as the server sent it.
@@ -440,6 +450,7 @@ class NewsletterStats {
     drafts: json['drafts'] as int? ?? 0,
     scheduled: json['scheduled'] as int? ?? 0,
     sent: json['sent'] as int? ?? 0,
+    failed: json['failed'] as int? ?? 0,
     recipients: json['recipients'] as int? ?? 0,
     lastSentAt: json['last_sent_at'] as String?,
   );

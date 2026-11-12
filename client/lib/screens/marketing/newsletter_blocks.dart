@@ -98,7 +98,11 @@ class NewsletterAudience {
     required this.name,
     required this.kind,
     this.tag,
+    this.mailchimpListId,
   });
+
+  /// The Mailchimp list this EzBizi list sends through.
+  final String? mailchimpListId;
 
   final String id;
   final String name;
@@ -119,6 +123,7 @@ class NewsletterAudience {
         name: json['name'] as String? ?? '',
         kind: json['kind'] as String? ?? '',
         tag: json['tag'] as String?,
+        mailchimpListId: json['mailchimp_list_id'] as String?,
       );
 }
 

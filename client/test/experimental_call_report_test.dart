@@ -339,7 +339,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Called by Ada'), findsOneWidget);
-    expect(find.text('Connected'), findsOneWidget);
+    // Jose, 2026-11-11: the Call column says Answered for ours out that connected.
+    expect(find.widgetWithText(StatusPill, 'Answered'), findsOneWidget);
     expect(find.byKey(const ValueKey('listen-rec-9')), findsOneWidget);
   });
 
@@ -622,8 +623,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Listed in Missed with who placed it, but not a missed customer. Since
-    // UI queue 78 who placed it is the Answered by column and "No answer"
-    // its Result.
+    // UI queue 78 who placed it is the Answered by column; since 2026-11-11
+    // "Not answered" is its Call (Jose: Answered - Not Answered - Missed Call).
     // Review item 1: Missed is inbound only; our calls out are their own chip.
     expect(find.text('Called by Ada'), findsNothing);
     await tester.tap(
@@ -631,7 +632,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Called by Ada'), findsOneWidget);
-    expect(find.widgetWithText(StatusPill, 'No answer'), findsOneWidget);
+    expect(find.widgetWithText(StatusPill, 'Not answered'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('calls-filter-outbound')));
     await tester.pumpAndSettle();
@@ -1071,6 +1072,16 @@ void main() {
 
     expect(find.textContaining('Blocked drain'), findsOneWidget);
     expect(find.textContaining('Kitchen tap'), findsNothing);
+    // Jose, 2026-11-11: Result says the sale, a Call column what became of
+    // the call, so a booked row reads Booked and Answered side by side.
+    expect(find.text('CALL'), findsOneWidget);
+    expect(find.widgetWithText(StatusPill, 'Booked'), findsOneWidget);
+    expect(find.widgetWithText(StatusPill, 'Answered'), findsOneWidget);
+
+    // Missed call sits in the Call group, beside Answered and Not answered.
+    await tester.tap(find.byKey(const ValueKey('calls-filter-missed')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(StatusPill, 'Booked'), findsNothing);
   });
 
   testWidgets('a line name ending in its queue says the queue once', (

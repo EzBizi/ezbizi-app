@@ -39,7 +39,9 @@ use InvalidArgumentException;
 class AutomationSchedule
 {
     public const DAILY = 'daily';
+
     public const WEEKLY = 'weekly';
+
     public const MONTHLY = 'monthly';
 
     public const KINDS = [self::DAILY, self::WEEKLY, self::MONTHLY];
@@ -50,7 +52,10 @@ class AutomationSchedule
     ];
 
     /**
-     * @param  array{kind: string, time: string, days?: string[], day_of_month?: int, timezone: string}  $schedule
+     * repeat_until: again every hour after `time`, up to this time, on the same days (the Wednesday
+     * losses wait for the P&L, audit 2026-11-11). A step with nothing to say yet sends nothing.
+     *
+     * @param  array{kind: string, time: string, repeat_until?: string, days?: string[], day_of_month?: int, timezone: string}  $schedule
      */
     public function __construct(private readonly array $schedule)
     {
@@ -86,6 +91,11 @@ class AutomationSchedule
             throw new InvalidArgumentException(
                 'A schedule needs a time of day written as HH:MM, such as 09:00.'
             );
+        }
+
+        if (array_key_exists('repeat_until', $schedule) && (! is_string($schedule['repeat_until'])
+            || ! preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $schedule['repeat_until']) || $schedule['repeat_until'] < $schedule['time'])) {
+            throw new InvalidArgumentException('Repeat hourly until a time written as HH:MM, no earlier than the first run.');
         }
 
         $zone = $schedule['timezone'] ?? null;
@@ -143,8 +153,17 @@ class AutomationSchedule
      */
     public function nextAfter(Carbon $after): Carbon
     {
-        $zone = $this->schedule['timezone'];
         [$hour, $minute] = array_map('intval', explode(':', $this->schedule['time']));
+        [$untilHour, $untilMinute] = array_map('intval', explode(':', $this->schedule['repeat_until'] ?? $this->schedule['time']));
+        $last = max($hour, $untilHour - ($untilMinute < $minute ? 1 : 0));
+
+        // The earliest of the day's hourly slots; one slot without repeat_until.
+        return collect(range($hour, $last))->map(fn (int $h) => $this->nextAt($after, $h, $minute))->sortBy(fn (Carbon $at) => $at->getTimestamp())->first();
+    }
+
+    private function nextAt(Carbon $after, int $hour, int $minute): Carbon
+    {
+        $zone = $this->schedule['timezone'];
 
         $local = $after->copy()->setTimezone($zone);
         $candidate = $local->copy()->setTime($hour, $minute, 0);

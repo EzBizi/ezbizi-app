@@ -182,6 +182,24 @@ final class PhoneNumberAccess
      * Softphone / presence: phone.view and at least one granted number on
      * this Twilio connection (view-scope ∩ reach ∩ grant).
      */
+    /**
+     * May this person's desk register and take calls on this account: a line
+     * there, or a place in one of its ring groups. Not narrowed by the view, as
+     * calls arrive whichever company the screen shows (EverDoors' Owners: Jose
+     * was a member, viewing A-1, and was refused, 2026-11-11).
+     */
+    public function takesCallsOn(User $user, PhoneConnection $connection): bool
+    {
+        if ($this->hasLineOn($user, $connection)) {
+            return true;
+        }
+
+        return \App\Models\PhoneRingGroup::query()
+            ->where('connection_id', $connection->getKey())
+            ->get()
+            ->contains(fn ($group) => in_array((string) $user->getKey(), DialPlan::memberUserIds($group), true));
+    }
+
     public function hasLineOn(User $user, PhoneConnection $connection): bool
     {
         if (! $user->hasPermission('phone.view')) {

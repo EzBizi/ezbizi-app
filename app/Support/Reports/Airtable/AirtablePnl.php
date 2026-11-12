@@ -180,7 +180,7 @@ final class AirtablePnl
                     continue;
                 }
 
-                if ($label === self::TOTAL) {
+                if (self::marker($label) === self::TOTAL) {
                     $stated = (float) $amount;
 
                     continue;
@@ -190,7 +190,7 @@ final class AirtablePnl
                 // is the whole week's answer sitting in income's column, and
                 // adding it to income would count the expenses twice, with the
                 // sign making the result look merely disappointing.
-                if ($label === self::NET) {
+                if (self::marker($label) === self::NET) {
                     continue;
                 }
 
@@ -271,6 +271,18 @@ final class AirtablePnl
         ];
     }
 
+    /** Which marker a label is, however the sheet typed it: any case or spacing, "tota" for Total (measured 2026-11-11). */
+    private static function marker(string $label): ?string
+    {
+        $label = strtolower((string) preg_replace('/\s+/', ' ', trim($label)));
+
+        return match (true) {
+            $label === strtolower(self::NET) => self::NET,
+            strlen($label) >= 4 && str_starts_with(strtolower(self::TOTAL), $label) => self::TOTAL,
+            default => null,
+        };
+    }
+
     /**
      * The week's own net-profit cell, for checking ours against.
      *
@@ -279,7 +291,7 @@ final class AirtablePnl
     private function statedNet(array $rows): ?float
     {
         foreach ($rows as $row) {
-            if (trim((string) ($row['Income'] ?? '')) === self::NET && is_numeric($row['Income Amount'] ?? null)) {
+            if (self::marker((string) ($row['Income'] ?? '')) === self::NET && is_numeric($row['Income Amount'] ?? null)) {
                 return (float) $row['Income Amount'];
             }
         }

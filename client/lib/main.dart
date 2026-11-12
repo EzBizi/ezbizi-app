@@ -68,6 +68,7 @@ import 'core/phone_call_service.dart';
 import 'screens/phone/voice_view.dart';
 
 Future<void> main() async {
+  IssueReporter.markLaunch();
   // Bindings first: TokenStore.init reaches a platform channel (the keychain),
   // and a channel used before this call throws.
   WidgetsFlutterBinding.ensureInitialized();
@@ -463,6 +464,13 @@ class _HomeShellState extends State<HomeShell> {
   /// The countdown before a scheduled shift ends (design 2026-09-08 §10.1).
   late final ShiftReminderController _reminder;
   Timer? _clockPoll;
+
+  /// Access changed elsewhere (an inbox granted, a role edited) reaches an
+  /// open app without a reload: /me is asked again every minute and when the
+  /// app comes back, and the page is keyed on its access_version (Jose,
+  /// 2026-11-10).
+  Timer? _accessPoll;
+  AppLifecycleListener? _accessOnResume;
   VoidCallback? _stopClockListening;
 
   _Rail _rail = _Rail.modules;
@@ -636,6 +644,15 @@ class _HomeShellState extends State<HomeShell> {
     // One small block every minute while the organization has the clock on,
     // so an exemption, a schedule change or a server-side close reaches an
     // open app (design 2026-09-08 §3.12). Same cadence as the bell.
+    _accessPoll = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => widget.session.refresh(),
+    );
+    _accessOnResume = AppLifecycleListener(
+      onResume: widget.session.refresh,
+      onShow: widget.session.refresh,
+    );
+
     _clockPoll = Timer.periodic(const Duration(seconds: 60), (_) async {
       final status = widget.session.me?.timeClock;
       if (status == null ||
@@ -682,6 +699,7 @@ class _HomeShellState extends State<HomeShell> {
 
   /// Which view the desk was brought up for, so a change can be noticed.
   String? _deskScope;
+  String? _deskAccess;
 
   /// Try again for a desk that never came up, now that the view has moved.
   ///
@@ -705,6 +723,13 @@ class _HomeShellState extends State<HomeShell> {
   /// since navigated away from. Give it the scope's own line when somebody
   /// asks for that, and decide then what a lineless scope should do.
   void _followScope() {
+    // Access changed (a line or account granted): register on what is new.
+    final access = widget.session.me?.accessVersion;
+    if (access != _deskAccess) {
+      _deskAccess = access;
+      unawaited(PhoneCallService.current.syncAccounts());
+    }
+
     final scope = widget.session.me?.scope;
     final key = scope == null ? null : '${scope.type}:${scope.id}';
     if (key == _deskScope) return;
@@ -759,6 +784,8 @@ class _HomeShellState extends State<HomeShell> {
     PhoneCallService.current.stop();
 
     _clockPoll?.cancel();
+    _accessPoll?.cancel();
+    _accessOnResume?.dispose();
     _stopClockListening?.call();
     _reminder.dispose();
 
@@ -1719,8 +1746,15 @@ class _HomeShellState extends State<HomeShell> {
              */
             AnimatedBuilder(
               animation: PhoneCallService.current,
-              builder: (context, _) =>
+              builder: (context, _) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   voiceDeviceView(PhoneCallService.current.platformView),
+                  // One per other phone account (EverDoors, 2026-11-11).
+                  for (final view in PhoneCallService.current.extraViews)
+                    voiceDeviceView(view),
+                ],
+              ),
             ),
 
             /*
@@ -1956,7 +1990,11 @@ class _HomeShellState extends State<HomeShell> {
                     child: FocusTraversalGroup(
                       key: shellPageGroup,
                       child: KeyedSubtree(
-                        key: ValueKey('${me.scope.type}:${me.scope.id}'),
+                        // And by what they may reach, so a grant made
+                        // elsewhere remounts the page and its lists reload.
+                        key: ValueKey(
+                          '${me.scope.type}:${me.scope.id}:${me.accessVersion}',
+                        ),
                         // Their own account is the last fallback, and the only honest
                         // one: it is the single screen that is theirs by definition and
                         // cannot answer 403. It is what somebody whose role reaches no
@@ -2043,7 +2081,11 @@ class _HomeShellState extends State<HomeShell> {
         }
         if (record != null) {
           DeepLinks.open(
-            DeepLink(module: module, type: module.substring(0, module.length - 1), id: record),
+            DeepLink(
+              module: module,
+              type: module.substring(0, module.length - 1),
+              id: record,
+            ),
           );
         }
         _open(module);

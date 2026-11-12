@@ -3,7 +3,6 @@
 namespace App\Support\Settings;
 
 use App\Models\TimeClockDay;
-
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
@@ -995,9 +994,14 @@ class SettingRegistry
                 // 2026-11-09), except the one rule he gave: Unscheduled is a
                 // Submitted job with DEPOSIT RECEIVED and no date, as in Workiz.
                 default: [
-                    'unscheduled' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED'], 'tags_mode' => 'all', 'scheduled' => false],
-                    'ready_to_schedule' => ['statuses' => []],
-                    'scheduled' => ['statuses' => []],
+                    // Jose, 2026-11-10: "Ready to schedule" adds the READY TO SCHEDULE
+                    // tag, so the job moves on with its status still Submitted.
+                    'unscheduled' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED'], 'tags_mode' => 'all',
+                        'tags_none' => ['READY TO SCHEDULE'], 'scheduled' => false],
+                    'ready_to_schedule' => ['statuses' => ['Submitted'], 'tags' => ['DEPOSIT RECEIVED', 'READY TO SCHEDULE'],
+                        'tags_mode' => 'all', 'scheduled' => false],
+                    // Jose, 2026-11-10: Scheduled is DEPOSIT RECEIVED with a date.
+                    'scheduled' => ['statuses' => ['Submitted', 'Scheduled'], 'tags' => ['DEPOSIT RECEIVED'], 'tags_mode' => 'all', 'scheduled' => true],
                     'in_progress' => ['statuses' => []],
                     'done_waiting_payment' => ['statuses' => []],
                     'complete' => ['statuses' => []],
@@ -1008,7 +1012,8 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'project_board.part_tags', label: 'Project Management: job tags that are a part status',
                 type: SettingDefinition::TYPE_JSON,
-                default: ['WAITING PARTS', 'PARTS ORDERED', 'PARTS RECEIVED'],
+                // A-1's Workiz tags after the 11-10 cleanup: only WAITING PARTS exists.
+                default: ['WAITING PARTS'],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'Shown in the Part Status column.',
             ),
@@ -1025,24 +1030,59 @@ class SettingRegistry
                     ['key' => 'workiz_id', 'label' => 'Workiz ID', 'visible' => true, 'as_label' => false],
                     ['key' => 'customer', 'label' => 'Client Name', 'visible' => true, 'as_label' => false],
                     ['key' => 'franchise', 'label' => 'Area', 'visible' => true, 'as_label' => false],
+                    // Shoval's review (Jose, 2026-11-10): Service Area beside Area, Job Type gone.
+                    ['key' => 'service_area', 'label' => 'Service Area', 'visible' => true, 'as_label' => false],
                     ['key' => 'status', 'label' => 'Job Status', 'visible' => true, 'as_label' => true],
-                    ['key' => 'job_type', 'label' => 'Job Type', 'visible' => true, 'as_label' => false],
+                    ['key' => 'status_days', 'label' => 'Status Time', 'visible' => true, 'as_label' => false],
+                    ['key' => 'technician', 'label' => 'Technician', 'visible' => true, 'as_label' => false],
+                    ['key' => 'repair_team', 'label' => 'Repair Team / Contractor', 'visible' => true, 'as_label' => false],
                     ['key' => 'part_status', 'label' => 'Part Status', 'visible' => true, 'as_label' => true],
                     ['key' => 'tags', 'label' => 'Tags', 'visible' => true, 'as_label' => true],
                     ['key' => 'paid', 'label' => 'Paid Amount', 'visible' => true, 'as_label' => false],
-                    ['key' => 'pending', 'label' => 'Pending Amount', 'visible' => true, 'as_label' => false],
+                    ['key' => 'pending', 'label' => 'Remaining Balance', 'visible' => true, 'as_label' => false],
                     ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
-                    ['key' => 'created', 'label' => 'Date of Creation', 'visible' => true, 'as_label' => false],
-                    ['key' => 'scheduled', 'label' => 'Scheduled Date', 'visible' => true, 'as_label' => false],
+                    ['key' => 'payment_date', 'label' => 'Payment Date', 'visible' => true, 'as_label' => false],
                     ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
+                    ['key' => 'attachments', 'label' => 'Attachments', 'visible' => true, 'as_label' => false],
+                    ['key' => 'notes', 'label' => 'Notes', 'visible' => true, 'as_label' => false],
                 ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'In the order shown. A column without Financials hides its amounts anyway.',
             ),
+            // Jose, 2026-11-10: "the settings need to be updated to manage all
+            // of these new columns".
+            new SettingDefinition(
+                key: 'project_board.repair_tags', label: 'Project Management: repair team and contractor tags',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                // 2026-11-10: managed from Project Management and pushed to every Workiz account; each a name with a phone or user.
+                help: 'The Repair Team / Contractor list: each a job tag, with a phone or a user. None yet: every tag naming a repair team or a contractor.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.ready_requires', label: 'Project Management: what Ready to schedule needs',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['service_area', 'technician', 'repair_team', 'attachment', 'note'],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Service area, technician, repair team, an attachment, a note: the ones ticked must be there.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.client_texts', label: 'Project Management: text the client the times',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Ready to schedule texts the client the date and slot; YES schedules it, NO offers the alternative, NO again asks the PM to call.',
+            ),
+            new SettingDefinition(
+                key: 'project_board.status_days', label: 'Project Management: Status Time colours',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['warn' => 3, 'bad' => 7],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Green below the first number of days, yellow from it, red from the second.',
+            ),
             new SettingDefinition(
                 key: 'project_board.labels', label: 'Project Management: label colours',
                 type: SettingDefinition::TYPE_JSON,
-                default: ['part_status' => ['WAITING PARTS' => 'caution', 'PARTS ORDERED' => 'info', 'PARTS RECEIVED' => 'ok']],
+                default: ['part_status' => ['WAITING PARTS' => 'caution']],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'Per column, each value and its colour: neutral, info, caution, review, ok or bad. A value not listed is neutral; Job Status unlisted keeps its usual colour.',
             ),
@@ -1489,8 +1529,7 @@ class SettingRegistry
                 key: 'scheduling.excluded_tags', label: 'Job tags that free a spot',
                 type: SettingDefinition::TYPE_LIST,
                 default: [
-                    ['value' => 'deposit received', 'label' => 'Deposit received'],
-                    ['value' => 'deposit recieved', 'label' => 'Deposit recieved'],
+                    ['value' => 'deposit received', 'label' => 'DEPOSIT RECEIVED'],
                 ],
                 help: 'A job carrying one of these tags holds no spot (matched ignoring case).',
             ),
@@ -1627,6 +1666,17 @@ class SettingRegistry
                 help: 'The page with the booking widget, e.g. https://www.a-1chimney.com/booking/. '
                     .'{{booking_link}} in an auto reply is this page with a link that files the '
                     .'booking on the same lead. Empty: no link.',
+            ),
+            // Jose, 2026-11-11: an online booking with an email gets a branded confirmation.
+            new SettingDefinition(
+                key: 'leads.booking_confirmation_email',
+                label: 'Email a confirmation for online bookings',
+                type: SettingDefinition::TYPE_BOOL,
+                default: true,
+                editPermission: 'leads.edit',
+                help: 'When a visitor books online and gives an email, they get "Your appointment request '
+                    .'is confirmed" in your logo and colour, with the day, arrival window and address. '
+                    .'Replies go to the email on your website.',
             ),
             new SettingDefinition(
                 key: 'leads.office_phone',
@@ -2494,6 +2544,13 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_STRING, default: '2023-01-01',
                 help: 'The first day (YYYY-MM-DD) a full read of Workiz invoices, payments, estimates '
                     .'and timesheets starts from. Later reads only fetch what changed.',
+            ),
+            new SettingDefinition(
+                key: 'workiz.tag_baseline', label: 'Approved Workiz tags',
+                type: SettingDefinition::TYPE_JSON, default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'The tag names and colours every Workiz account should have, as approved on the '
+                    .'Workiz tags tab. An account that differs is highlighted there.',
             ),
         ];
     }

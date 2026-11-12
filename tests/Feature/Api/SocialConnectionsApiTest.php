@@ -181,7 +181,7 @@ class SocialConnectionsApiTest extends TestCase
         $this->assertSame([
             'id', 'provider', 'provider_label', 'display_name', 'label', 'handle', 'account_email',
             'scope_type', 'scope_id', 'status', 'status_reason', 'detail', 'workiz', 'last_reached_at', 'last_checked_at',
-            'can_publish', 'cannot_publish_because', 'posting_note', 'asks_tiktok_choices',
+            'can_publish', 'cannot_publish_because', 'posting_note', 'asks_tiktok_choices', 'body_limit', 'refuses',
         ], array_keys($row));
 
         $this->assertArrayNotHasKey('credentials', $row);

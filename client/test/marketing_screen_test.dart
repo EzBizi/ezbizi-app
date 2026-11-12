@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/files.dart';
@@ -7,9 +8,11 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/email/message_html.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_blocks.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_import_panel.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_tab.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:ezbizi_client/screens/marketing_screen.dart';
+import 'package:ezbizi_client/widgets/calendar_day_field.dart';
 import 'package:ezbizi_client/widgets/dashboard_card.dart';
 import 'package:ezbizi_client/widgets/month_calendar.dart';
 import 'package:ezbizi_client/widgets/refused.dart';
@@ -22,6 +25,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:video_player/video_player.dart';
 
 /// Marketing — Newsletter and Social Media Management, both built.
 ///
@@ -779,6 +783,69 @@ void main() {
   /// is invisible to every other assertion on this screen, because a dialog and
   /// a panel both show the same words and both return the same answer; only the
   /// type tells them apart, so only a test on the type holds the rule.
+  // Review 2026-11-09 C3 (A24): an expired account looks expired, with the
+  // way back on its row and above the dashboard.
+  testWidgets('a broken account shows its health, a banner and Reconnect', (
+    tester,
+  ) async {
+    final checked = DateTime.now()
+        .subtract(const Duration(hours: 2))
+        .toUtc()
+        .toIso8601String();
+    await _pumpScreen(
+      tester,
+      _handler(
+        canEdit: true,
+        connections: [
+          {
+            ..._pinterestBoard,
+            'status': 'broken',
+            'status_reason': 'Pinterest sign-in expired',
+            'last_checked_at': checked,
+          },
+        ],
+      ),
+    );
+    await _openPosts(tester);
+
+    expect(find.byKey(const ValueKey('social-broken-banner')), findsOneWidget);
+    expect(
+      find.textContaining('Everdoors Boards needs reconnecting'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(
+        'Needs reconnect: Pinterest sign-in expired · checked 2h ago',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('social-reconnect-conn-2')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('social-reconnect-conn-2')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SidePanel), findsOneWidget);
+  });
+
+  testWidgets('a healthy account reads Healthy and offers no Reconnect', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      _handler(canEdit: true, connections: const [_pinterestBoard]),
+    );
+    await _openPosts(tester);
+    expect(find.byKey(const ValueKey('social-broken-banner')), findsNothing);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Healthy'), findsOneWidget);
+    expect(find.byKey(const ValueKey('social-reconnect-conn-2')), findsNothing);
+  });
+
   testWidgets('disconnect confirms in a panel, never a dialog', (tester) async {
     await _pumpScreen(
       tester,
@@ -834,6 +901,40 @@ void main() {
 
       expect(find.widgetWithText(StatusPill, 'Not posted'), findsOneWidget);
       expect(find.widgetWithText(StatusPill, 'Sent'), findsNothing);
+    });
+
+    // Review 2026-11-09 C7 (A21): the edit picks its time like the composer.
+    testWidgets('editing a scheduled post picks the time from a calendar', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          posts: [
+            {
+              ..._landed('scheduled', scheduledFor: '2099-03-04 09:00'),
+              'id': 'c1',
+              'body': 'Free inspection week',
+            },
+          ],
+        ),
+      );
+      await tester.tap(find.text('Free inspection week').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('social-post-edit')));
+      await tester.pumpAndSettle();
+
+      final field = find.descendant(
+        of: find.byType(SidePanel),
+        matching: find.byType(CalendarDayField),
+      );
+      expect(field, findsOneWidget);
+      expect(
+        tester.widget<CalendarDayField>(field).controller.text,
+        '2099-03-04 09:00',
+      );
     });
 
     // Bug review 2026-11-09 #9: fixing the words does not re-send the time,
@@ -1251,6 +1352,212 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Review 2026-11-09 C8 (A23): a day on the calendar is where a post starts.
+    testWidgets('tapping a calendar day opens Compose set to 9:00 that day', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+      );
+      await _openCalendar(tester);
+      final now = DateTime.now();
+      await tester.tap(find.byKey(Key('month-day-${now.day}')));
+      await tester.pumpAndSettle();
+
+      String two(int n) => n.toString().padLeft(2, '0');
+      final field = tester.widget<CalendarDayField>(
+        find.byType(CalendarDayField),
+      );
+      expect(
+        field.controller.text,
+        '${now.year}-${two(now.month)}-${two(now.day)} 09:00',
+      );
+      expect(
+        tester
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Later'))
+            .selected,
+        isTrue,
+      );
+    });
+
+    // Review 2026-11-09 C2: the month is asked for by its days, so a post
+    // older than the newest twenty is still drawn on its day.
+    testWidgets('the calendar asks for the days it draws', (tester) async {
+      final ranges = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+      );
+      await _pumpSocial(tester, (request) async {
+        final from = request.url.queryParameters['from'];
+        if (request.url.path.endsWith('/social/posts') && from != null) {
+          ranges.add('$from..${request.url.queryParameters['to']}');
+          return _json({
+            'data': [_landed('sent')],
+            'meta': {'tiles': <String, int>{}},
+          });
+        }
+        return inner(request);
+      });
+
+      await _openCalendar(tester);
+      expect(ranges, isNotEmpty);
+      expect(
+        find.descendant(
+          of: find.byKey(Key('month-day-${DateTime.now().day}')),
+          matching: find.textContaining('New flue liner'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byTooltip('Next month'));
+      await tester.pumpAndSettle();
+      expect(ranges.length, greaterThan(1));
+    });
+
+    // Review 2026-11-09 C6 (A16, A17): a campaign's listings are one line.
+    testWidgets('a post to many listings reads as one Google line', (
+      tester,
+    ) async {
+      final post = {
+        ..._landed('sent'),
+        'targets': [
+          for (var i = 0; i < 5; i++)
+            {
+              'id': 'gbp-$i',
+              'connection_id': 'conn-g',
+              'account': 'Listing $i',
+              'provider': 'google_business_profile',
+              'provider_label': 'Google Business Profile',
+              'status': i == 4 ? 'failed' : 'sent',
+              'failure': i == 4 ? 'Suspended' : null,
+              'url': null,
+            },
+        ],
+      };
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          posts: [post],
+        ),
+      );
+
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey('social-post-listings-post-1')),
+            )
+            .data,
+        'Google · 5 listings ✓4 ✗1',
+      );
+      expect(find.text('Listing 0'), findsNothing);
+      expect(find.text('ACCOUNTS'), findsOneWidget);
+    });
+
+    // Review 2026-11-09 C9 (B5): every failed account again, in one action.
+    testWidgets('Retry all failed tries each failed account and no other', (
+      tester,
+    ) async {
+      final retried = <String>[];
+      Map<String, Object?> target(String id, String status) => {
+        'id': id,
+        'connection_id': 'conn-2',
+        'account': 'Account $id',
+        'provider': 'pinterest',
+        'provider_label': 'Pinterest',
+        'status': status,
+        'failure': status == 'failed' ? 'Refused' : null,
+        'url': null,
+      };
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [
+          {
+            ..._landed('sent'),
+            'targets': [
+              target('a', 'failed'),
+              target('b', 'failed'),
+              target('c', 'sent'),
+            ],
+          },
+        ],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'POST' && request.url.path.endsWith('/retry')) {
+          retried.add(
+            request.url.pathSegments[request.url.pathSegments.length - 2],
+          );
+          return _json({'data': {}});
+        }
+        return inner(request);
+      });
+
+      await _openCalendar(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(Key('month-day-${DateTime.now().day}')),
+          matching: find.textContaining('New flue liner'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Retry all failed (2)'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('social-post-retry-all')));
+      await tester.pumpAndSettle();
+      expect(retried, ['a', 'b']);
+    });
+
+    // Review 2026-11-09 C5 (A13): approve inside Marketing.
+    testWidgets('a post waiting for approval is approved from its panel', (
+      tester,
+    ) async {
+      String? decided;
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [_landed('awaiting_approval')],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'POST' &&
+            request.url.path.contains('/business-profile/post-queue/')) {
+          decided = request.url.path;
+          return _json({
+            'data': {'id': 'target-1', 'status': 'queued'},
+          });
+        }
+        if (request.method == 'GET' &&
+            request.url.path.endsWith('/social/posts')) {
+          return _json({
+            'data': [_landed('awaiting_approval')],
+            'meta': {
+              'tiles': {'scheduled': 1, 'sent': 0, 'failed': 0, 'awaiting': 1},
+            },
+          });
+        }
+        return inner(request);
+      });
+
+      expect(find.text('NEEDS APPROVAL'), findsOneWidget);
+      await _openCalendar(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(Key('month-day-${DateTime.now().day}')),
+          matching: find.textContaining('New flue liner'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Waiting for approval'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('social-approve-target-1')));
+      await tester.pumpAndSettle();
+      expect(
+        decided,
+        endsWith('/business-profile/post-queue/target-1/approve'),
+      );
+    });
+
     testWidgets('a post on the calendar opens in a panel with each account', (
       tester,
     ) async {
@@ -1512,18 +1819,18 @@ void main() {
         await open(tester);
 
         expect(find.byKey(const ValueKey('social-place-ct-0')), findsNothing);
-        expect(count(tester), '0 of 5 selected');
+        expect(count(tester), '0 of 4 selected');
         expect(switchOn(tester), isFalse);
 
         await tester.tap(find.byKey(const ValueKey('social-places-all')));
         await tester.pumpAndSettle();
         // Every listing that can take a post; the unverified one stays off.
-        expect(count(tester), '4 of 5 selected');
+        expect(count(tester), '4 of 4 selected');
         expect(switchOn(tester), isTrue);
 
         await tester.tap(find.byKey(const ValueKey('social-places-all')));
         await tester.pumpAndSettle();
-        expect(count(tester), '0 of 5 selected');
+        expect(count(tester), '0 of 4 selected');
       });
 
       testWidgets('expanded: groups, a group tick, partial state, city names', (
@@ -1544,7 +1851,7 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey('social-places-group-0')));
         await tester.pumpAndSettle();
-        expect(count(tester), '3 of 5 selected');
+        expect(count(tester), '3 of 4 selected');
         expect(switchOn(tester), isFalse);
         final groupBox = find.descendant(
           of: find.byKey(const ValueKey('social-places-group-0')),
@@ -1554,7 +1861,7 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey('social-place-ct-1')));
         await tester.pumpAndSettle();
-        expect(count(tester), '2 of 5 selected');
+        expect(count(tester), '2 of 4 selected');
         expect(tester.widget<Checkbox>(groupBox).value, isNull);
       });
 
@@ -1603,6 +1910,39 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         expect(find.text('Stamford, CT'), findsOneWidget);
+      });
+
+      // Review 2026-11-09 C1 (A2, A3, A8, A9).
+      testWidgets('a listing that cannot post is named apart and cannot be ticked', (
+        tester,
+      ) async {
+        await open(tester);
+        expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey('social-places-blocked')))
+              .data,
+          '1 cannot post (suspended or unverified)',
+        );
+        await tester.tap(find.byKey(const ValueKey('social-places-expand')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('social-place-ma-1')));
+        await tester.pumpAndSettle();
+        expect(count(tester), '0 of 4 selected');
+      });
+
+      testWidgets('listings alone fill the bar and the preview', (tester) async {
+        await open(tester);
+        expect(find.text('No account ticked yet'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('social-places-all')));
+        await tester.pumpAndSettle();
+        expect(find.text('Going to 4 listings · now'), findsOneWidget);
+        expect(
+          find.text(
+            'Tick an account to see the post the way it will look there.',
+          ),
+          findsNothing,
+        );
+        expect(find.text('4 listings'), findsWidgets);
       });
     });
 
@@ -1708,6 +2048,45 @@ void main() {
 
     // Bug review 2026-11-09 #8: Pinterest's 800 and a ticked listing's
     // Google 1500 are checked before Publish, like X's 280.
+    // Review 2026-11-09 C4: the limit and the caution are the server's.
+    testWidgets('the server sets the limit and says what a network will skip', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [
+            {
+              ..._pinterestBoard,
+              'body_limit': 10,
+              'refuses': {
+                'text':
+                    'Pinterest does not post words on their own. Attach a picture or a video.',
+                'image': null,
+                'video': null,
+              },
+            },
+          ],
+        ),
+      );
+      await _openCompose(tester);
+      await _write(tester);
+
+      expect(_publishRefusal(tester), contains('10 characters at most'));
+      expect(
+        find.byKey(const ValueKey('social-caution-conn-2')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'does not post words on their own. Attach a '
+          'picture or a video. It will be skipped.',
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('too long for Pinterest, or for a ticked listing, is refused', (
       tester,
     ) async {
@@ -1872,6 +2251,84 @@ void main() {
       expect(find.byType(Image), findsNothing);
       expect(find.textContaining('sweep.mp4'), findsWidgets);
       expect(find.textContaining('2 KB'), findsOneWidget);
+    });
+
+    /// Jose, 2026-11-10: "I attached a video, on the preview on the right
+    /// side, it should actually show the video".
+    Future<List<_FakeVideo>> attachVideo(
+      WidgetTester tester, {
+      bool fails = false,
+    }) async {
+      final made = <_FakeVideo>[];
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard, _tiktokDirect],
+        ),
+        pickMedia: () async =>
+            PickedBytes('sweep.mp4', List<int>.filled(2048, 7)),
+        videoPlayer: (uri) {
+          final video = _FakeVideo(uri, fails: fails);
+          made.add(video);
+          return video;
+        },
+      );
+      await _openCompose(tester);
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-7')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Attach a picture or video'),
+      );
+      await tester.pumpAndSettle();
+      return made;
+    }
+
+    testWidgets('one player plays the video in the box and every card', (
+      tester,
+    ) async {
+      final made = await attachVideo(tester);
+
+      expect(made, hasLength(1));
+      final players = tester
+          .widgetList<VideoPlayer>(find.byType(VideoPlayer))
+          .toList();
+      // The attachment box and both network cards.
+      expect(players, hasLength(3));
+      for (final p in players) {
+        expect(identical(p.controller, made.single), isTrue);
+      }
+      expect(made.single.volume, 0);
+      expect(find.text('0:42'), findsNWidgets(3));
+
+      await tester.tap(find.byKey(const ValueKey('social-video-toggle')).first);
+      await tester.pump();
+      expect(made.single.value.isPlaying, isTrue);
+    });
+
+    testWidgets('Remove disposes the player once nothing draws it', (
+      tester,
+    ) async {
+      final made = await attachVideo(tester);
+      expect(made.single.disposed, isFalse);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Remove'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VideoPlayer), findsNothing);
+      expect(made.single.disposed, isTrue);
+    });
+
+    testWidgets('a video that will not load says Preview not available', (
+      tester,
+    ) async {
+      await attachVideo(tester, fails: true);
+
+      expect(find.byType(VideoPlayer), findsNothing);
+      expect(find.text('Preview not available'), findsNWidgets(3));
+      expect(find.textContaining('sweep.mp4'), findsWidgets);
     });
   });
 
@@ -2800,6 +3257,252 @@ void main() {
       expect(find.textContaining('it is what goes out'), findsOneWidget);
     });
 
+    // ── Newsletter audit 2026-11-10 (Rodrigo) ─────────────────────
+
+    testWidgets('the composer says which version goes out, and Back to blocks '
+        'clears the HTML with an Undo', (tester) async {
+      final puts = <Map<String, dynamic>>[];
+      final base = _handler(canEdit: true, newsletters: const [_draftWithHtml]);
+      await _pumpComposer(tester, (request) async {
+        if (request.method == 'PUT') {
+          puts.add(jsonDecode(request.body) as Map<String, dynamic>);
+        }
+        return base(request);
+      });
+
+      expect(find.byKey(const ValueKey('newsletter-mode')), findsOneWidget);
+      expect(find.text('Sending: custom HTML'), findsOneWidget);
+
+      await tester.tap(find.text('Back to blocks'));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Sending: the blocks'), findsOneWidget);
+      expect(puts.last['html_override'], anyOf(isNull, ''));
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Sending: custom HTML'), findsOneWidget);
+      expect(puts.last['html_override'], '<p>Mine</p>');
+    });
+
+    testWidgets('pasted HTML is checked, previewed, refused with a script, and '
+        'undoable once used', (tester) async {
+      await _pumpComposer(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft]),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.text('There is no HTML to import.'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<p>x</p><script>alert(1)</script>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-import-error')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-import-use')), findsNothing);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<p>Imported</p>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widgetList<MessageHtmlView>(find.byType(MessageHtmlView))
+            .any((v) => v.html == '<p>Imported</p>'),
+        isTrue,
+      );
+      expect(find.textContaining('unsubscribe footer'), findsWidgets);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sending: custom HTML'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sending: the blocks'), findsOneWidget);
+      expect(find.text('Autumn sweeps'), findsWidgets);
+    });
+
+    testWidgets('an SVG design becomes editable blocks', (tester) async {
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) async {
+        if (request.url.path.endsWith('/newsletter/import/svg')) {
+          return _json({
+            'data': {
+              'blocks': [
+                {'type': 'heading', 'text': 'Spring sale', 'size': 32, 'align': 'center'},
+                {'type': 'button', 'text': 'Book now', 'url': 'https://e.com', 'align': 'center'},
+              ],
+              'artwork_svg': null,
+              'alt': 'Spring',
+              'warnings': ['Custom fonts are not carried over.'],
+            },
+          });
+        }
+        return base(request);
+      });
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SVG design'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<svg xmlns="http://www.w3.org/2000/svg"><text>Spring sale</text></svg>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Custom fonts'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-import-panel')), findsNothing);
+      expect(find.text('Spring sale'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(NewsletterEmail),
+          matching: find.text('Autumn sweeps'),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(NewsletterEmail),
+          matching: find.text('Autumn sweeps'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('SVG artwork is rasterised, uploaded and placed first with '
+        'its alt text', (tester) async {
+      Map<String, dynamic>? uploaded;
+      List<Map<String, dynamic>>? used;
+      final api = ApiClient(client: MockClient((request) async {
+        if (request.url.path.endsWith('/newsletter/import/svg')) {
+          return _json({
+            'data': {
+              'blocks': [
+                {'type': 'text', 'text': 'Hello', 'align': 'center'},
+              ],
+              'artwork_svg': '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4"/></svg>',
+              'alt': 'Spring art',
+              'warnings': [],
+            },
+          });
+        }
+        if (request.url.path.endsWith('/newsletter/import/artwork')) {
+          uploaded = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {'url': 'https://app.test/api/v1/newsletter/artwork/o/x.png'},
+          }, 201);
+        }
+        return _json({}, 404);
+      }));
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: NewsletterImportPanel(
+              api: api,
+              rasterise: (svg, width) async => Uint8List.fromList([1, 2, 3]),
+              onUseHtml: (_) {},
+              onUseBlocks: (b) => used = b,
+              onClose: () {},
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('SVG design'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('newsletter-import-source')),
+        '<svg/>',
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.pumpAndSettle();
+
+      expect(uploaded!['png'], base64Encode([1, 2, 3]));
+      expect(used!.first, {
+        'type': 'image',
+        'src': 'https://app.test/api/v1/newsletter/artwork/o/x.png',
+        'alt': 'Spring art',
+      });
+      expect(used![1]['text'], 'Hello');
+    });
+
+    testWidgets('preflight lists the checks and a test goes to the one typed '
+        'address', (tester) async {
+      Map<String, dynamic>? tested;
+      final base = _handler(
+        canEdit: true,
+        newsletters: const [_draft],
+        audiences: const [_audience],
+      );
+      await _pumpComposer(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/preflight')) {
+          return _json({
+            'data': {
+              'checks': [
+                {'key': 'footer', 'ok': true, 'label': 'Address and unsubscribe footer', 'detail': '1 Main St'},
+                {'key': 'from_name', 'ok': true, 'label': 'From name', 'detail': 'A-1 Chimney'},
+              ],
+            },
+          });
+        }
+        if (path.endsWith('/n-1/test')) {
+          tested = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': {'sent_to': 'me@example.com'}});
+        }
+        return base(request);
+      });
+
+      expect(find.byKey(const ValueKey('newsletter-audience-explainer')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-test-email')));
+      await tester.enterText(find.byKey(const ValueKey('newsletter-test-email')), 'me@example.com');
+      await tester.tap(find.byKey(const ValueKey('newsletter-test-send')));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+
+      expect(find.textContaining('Address and unsubscribe footer: 1 Main St'), findsOneWidget);
+      expect(find.textContaining('From name: A-1 Chimney'), findsOneWidget);
+      expect(tested, {'email': 'me@example.com'});
+      expect(find.textContaining('Test sent to me@example.com'), findsOneWidget);
+    });
+
+    testWidgets('the chosen list shows which Mailchimp list it sends through', (
+      tester,
+    ) async {
+      await _pumpComposer(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: const [_draft],
+          audiences: const [
+            {'id': 'a-1', 'name': 'Customers', 'kind': 'customers', 'mailchimp_list_id': 'mc-9'},
+          ],
+        ),
+      );
+
+      expect(
+        find.text('Customers (EzBizi, built from your customers) → Mailchimp list mc-9'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('it lays out on a 375-point window without overflowing', (
       tester,
     ) async {
@@ -3083,6 +3786,40 @@ void main() {
       'blocks': [],
     };
 
+    // The server already counts and filters `failed`; the dashboard shows it.
+    testWidgets('a Failed tile counts failed sends and filters to them', (
+      tester,
+    ) async {
+      final asked = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        newsletters: const [_draft],
+        stats: const {
+          'drafts': 1,
+          'scheduled': 0,
+          'sent': 0,
+          'failed': 2,
+          'recipients': 0,
+        },
+      );
+      await _pumpNewsletter(tester, (request) {
+        final status = request.url.queryParameters['status'];
+        if (status != null) asked.add(status);
+        return inner(request);
+      });
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('newsletters-tile-failed')),
+          matching: find.text('2'),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('newsletters-tile-failed')));
+      await tester.pumpAndSettle();
+      expect(asked, contains('failed'));
+    });
+
     testWidgets('a dashboard tile counts and filters the table', (tester) async {
       final asked = <String>[];
       final inner = _handler(
@@ -3139,6 +3876,80 @@ void main() {
       await tester.tap(find.byKey(const Key('newsletters-tile-sent')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('newsletter-n-1')), findsOneWidget);
+    });
+
+    // Review 2026-11-09 C13 (A29): the image block takes a library picture.
+    testWidgets('Choose picture puts a library picture in the image block', (
+      tester,
+    ) async {
+      final saved = <Map<String, dynamic>>[];
+      final draft = <String, Object?>{
+        ..._draft,
+        'blocks': [
+          {'type': 'image', 'src': '', 'alt': ''},
+        ],
+      };
+      final inner = _handler(canEdit: true, newsletters: [draft]);
+      await _pumpComposer(tester, (request) {
+        final path = request.url.path;
+        if (request.method == 'PUT') {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': draft}));
+        }
+        if (path.endsWith('/social/library')) {
+          return Future.value(
+            _json({
+              'data': [
+                {
+                  'id': 'lib-1',
+                  'name': 'Van',
+                  'kind': 'image',
+                  'size': 1000,
+                  'scope_type': 'company',
+                  'created_at': '2026-10-16T12:00:00Z',
+                },
+              ],
+            }),
+          );
+        }
+        if (path.endsWith('/social/library/lib-1/file')) {
+          return Future.value(http.Response('', 404));
+        }
+        if (path.endsWith('/newsletter/import/library/lib-1')) {
+          return Future.value(
+            _json({
+              'data': {
+                'url': 'https://app.example/api/v1/newsletter/artwork/o/x.jpg',
+              },
+            }, 201),
+          );
+        }
+        return inner(request);
+      });
+
+      await tester.tap(find.byKey(const Key('newsletter-block-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-image-library')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-item-lib-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-use')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.widgetWithText(
+          TextFormField,
+          'https://app.example/api/v1/newsletter/artwork/o/x.jpg',
+        ),
+        findsOneWidget,
+      );
+      final blocks = saved.last['blocks'] as List;
+      expect(
+        (blocks.first as Map)['src'],
+        'https://app.example/api/v1/newsletter/artwork/o/x.jpg',
+      );
     });
 
     testWidgets('clicking a block edits it in place, and the edit autosaves', (tester) async {
@@ -3231,6 +4042,41 @@ void main() {
       expect([for (final b in saved.last['blocks'] as List) b['type']], ['text', 'divider', 'text', 'text']);
     });
 
+    // Review 2026-11-09 C13 (A32): the confirmation says how many it reaches.
+    testWidgets('the send confirmation says how many people it goes to', (
+      tester,
+    ) async {
+      final inner = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'PUT') {
+          return Future.value(_json({'data': _draft}));
+        }
+        if (request.url.path.endsWith('/preflight')) {
+          return Future.value(
+            _json({
+              'data': {
+                'checks': [],
+                'recipients': 1284,
+                'audience': 'Customers',
+              },
+            }),
+          );
+        }
+        return inner(request);
+      });
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Send now'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Send this newsletter?'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('newsletter-send-reach')))
+            .data,
+        startsWith('Sends to 1284 people on “Customers”. '),
+      );
+    });
+
     testWidgets('Send stops with the error when the save before it fails', (tester) async {
       final posts = <String>[];
       final inner = _handler(canEdit: true, newsletters: const [_draft]);
@@ -3296,6 +4142,39 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.getSize(email).width, NewsletterEmail.phoneWidth);
+    });
+
+    // Review 2026-11-09 C14 (A28, A34): a scheduled one comes back to a
+    // draft, and any one can be copied.
+    testWidgets('Unschedule and Duplicate ask the server for each', (
+      tester,
+    ) async {
+      final posts = <String>[];
+      final scheduled = <String, Object?>{
+        ..._draft,
+        'status': 'scheduled',
+        'scheduled_for': '2099-03-04 09:00',
+      };
+      final inner = _handler(canEdit: true, newsletters: [scheduled]);
+      await _pumpComposer(tester, (request) {
+        if (request.method == 'POST') {
+          posts.add(request.url.path);
+          return Future.value(_json({'data': _draft}, 201));
+        }
+        return inner(request);
+      });
+
+      expect(
+        find.textContaining('Unschedule it to edit it again'),
+        findsWidgets,
+      );
+      await tester.tap(find.byKey(const ValueKey('newsletter-unschedule')));
+      await tester.pumpAndSettle();
+      expect(posts.last, endsWith('/newsletters/n-1/unschedule'));
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-duplicate')));
+      await tester.pumpAndSettle();
+      expect(posts.last, endsWith('/newsletters/n-1/duplicate'));
     });
 
     testWidgets('a sent newsletter is read-only', (tester) async {
@@ -3420,6 +4299,17 @@ const _draftOfThree = {
   ],
 };
 
+const _draftWithHtml = {
+  'id': 'n-1',
+  'subject': 'Autumn sweeps',
+  'status': 'draft',
+  'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+  'html_override': '<p>Mine</p>',
+  'blocks': [
+    {'type': 'heading', 'text': 'Autumn sweeps', 'align': 'left'},
+  ],
+};
+
 const _draftWithoutAudience = {
   'id': 'n-2',
   'subject': 'No list yet',
@@ -3513,13 +4403,49 @@ Future<void> _pumpSocial(
   WidgetTester tester,
   MockClientHandler handler, {
   Future<PickedBytes?> Function()? pickMedia,
+  VideoPlayerController? Function(Uri)? videoPlayer,
   Size size = const Size(1400, 1600),
 }) =>
     _pump(tester, handler, size, (api, session) => SocialMediaTab(
           api: api,
           session: session,
           pickMedia: pickMedia ?? () async => null,
+          videoPlayer: videoPlayer ?? (_) => null,
         ));
+
+/// A player with no platform behind it: 16:9, 42 seconds, or a refusal.
+class _FakeVideo extends VideoPlayerController {
+  _FakeVideo(super.url, {this.fails = false}) : super.networkUrl();
+
+  final bool fails;
+  bool disposed = false;
+  double? volume;
+
+  @override
+  Future<void> initialize() async {
+    if (fails) throw Exception('cannot decode');
+    value = value.copyWith(
+      isInitialized: true,
+      size: const Size(1920, 1080),
+      duration: const Duration(seconds: 42),
+    );
+  }
+
+  @override
+  Future<void> setVolume(double volume) async => this.volume = volume;
+
+  @override
+  Future<void> play() async => value = value.copyWith(isPlaying: true);
+
+  @override
+  Future<void> pause() async => value = value.copyWith(isPlaying: false);
+
+  @override
+  Future<void> dispose() async {
+    disposed = true;
+    await super.dispose();
+  }
+}
 
 /// Marketing → Social Media Management → Posts, which is where compose lives.
 Future<void> _openPosts(WidgetTester tester) async {
@@ -3809,7 +4735,12 @@ MockClientHandler _handler({
 
       // As the server answers: the tiles counted across the whole list, and
       // `status` narrowing the rows (SocialPostsController::index).
-      final all = postsFor != null ? postsFor() : (posts ?? <Map<String, Object?>>[]);
+      // The calendar's own date-range read is not one of the list reads a
+      // test counts through postsFor.
+      final range = request.url.queryParameters.containsKey('from');
+      final all = postsFor != null
+          ? (range ? <Map<String, Object?>>[] : postsFor())
+          : (posts ?? <Map<String, Object?>>[]);
       final status = request.url.queryParameters['status'];
 
       return _json({

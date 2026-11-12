@@ -472,7 +472,7 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
         .trim()
         .replaceAll('{first_name}', '${first?['first_name'] ?? 'there'}')
         .replaceAll('{company}', '${first?['company'] ?? ''}');
-    return body.toUpperCase().contains('STOP') ? body : '$body\n$_footer';
+    return body.toUpperCase().contains('STOP') ? body : '$body\n\n$_footer';
   }
 
   Future<void> _addPicture() async {

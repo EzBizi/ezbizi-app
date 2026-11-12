@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -149,6 +150,8 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // Tells the browser the sign-in worked, so it offers to save it.
+    TextInput.finishAutofillContext();
     await _adopt(response.body);
   }
 
@@ -240,162 +243,166 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _loginForm(BuildContext context) {
+    // AutofillGroup is what lets the browser and password managers offer and
+    // save the email + password together (Jose, 11-11: no autofill on web).
     return Form(
       key: _formKey,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // No wordmark here: the panel beside it already carries the brand,
-          // and on a narrow screen AuthShell puts one at the top. Two on one
-          // screen is a logo competing with itself.
-          Text(
-            'Welcome back',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            // Two different people arrive at this screen and they are owed
-            // different sentences. Somebody who pressed Sign out meant to be
-            // here. Somebody whose session lapsed overnight did not, and "why
-            // am I looking at a login screen" is their first thought — so the
-            // subtitle answers it rather than making them wonder whether
-            // something is broken.
-            widget.session.expired
-                ? 'Your session ended, so you have been signed out. Sign in '
-                      'again to pick up where you were.'
-                : UiStrings.t('shell.sign_in_prompt'),
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 28),
-
-          TextFormField(
-            controller: _email,
-            decoration: const InputDecoration(
-              labelText: 'Email address',
-              prefixIcon: Icon(Icons.alternate_email, size: 18),
+      child: AutofillGroup(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // No wordmark here: the panel beside it already carries the brand,
+            // and on a narrow screen AuthShell puts one at the top. Two on one
+            // screen is a logo competing with itself.
+            Text(
+              'Welcome back',
+              style: Theme.of(context).textTheme.headlineSmall,
             ),
-            keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.username],
-            enabled: !_busy,
-            validator: (v) => (v == null || !v.contains('@'))
-                ? 'Enter your email address'
-                : null,
-            onFieldSubmitted: (_) => _submit(),
-          ),
-          const SizedBox(height: 14),
-
-          TextFormField(
-            controller: _password,
-            decoration: InputDecoration(
-              labelText: 'Password',
-              prefixIcon: const Icon(Icons.lock_outline, size: 18),
-              suffixIcon: IconButton(
-                // Shown on request. A password field nobody can read is how
-                // people end up locked out by a keyboard layout they cannot see.
-                icon: Icon(
-                  _showPassword
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined,
-                ),
-                tooltip: _showPassword ? 'Hide the password' : 'Show the password',
-                onPressed: () => setState(() => _showPassword = !_showPassword),
-              ),
+            const SizedBox(height: 6),
+            Text(
+              // Two different people arrive at this screen and they are owed
+              // different sentences. Somebody who pressed Sign out meant to be
+              // here. Somebody whose session lapsed overnight did not, and "why
+              // am I looking at a login screen" is their first thought — so the
+              // subtitle answers it rather than making them wonder whether
+              // something is broken.
+              widget.session.expired
+                  ? 'Your session ended, so you have been signed out. Sign in '
+                        'again to pick up where you were.'
+                  : UiStrings.t('shell.sign_in_prompt'),
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
-            obscureText: !_showPassword,
-            autofillHints: const [AutofillHints.password],
-            enabled: !_busy,
-            validator: (v) =>
-                (v == null || v.isEmpty) ? 'Enter your password' : null,
-            onFieldSubmitted: (_) => _submit(),
-          ),
+            const SizedBox(height: 28),
 
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              // A Checkbox carries a 48px tap target of its own, which pushed
-              // the label out of line with the button opposite and wrapped it
-              // onto two lines.
-              Transform.translate(
-                offset: const Offset(-4, 0),
-                child: Checkbox(
-                  value: _stayed,
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  onChanged: _busy
-                      ? null
-                      : (v) => setState(() => _stayed = v ?? false),
+            TextFormField(
+              controller: _email,
+              decoration: const InputDecoration(
+                labelText: 'Email address',
+                prefixIcon: Icon(Icons.alternate_email, size: 18),
+              ),
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.username],
+              enabled: !_busy,
+              validator: (v) => (v == null || !v.contains('@'))
+                  ? 'Enter your email address'
+                  : null,
+              onFieldSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: 14),
+
+            TextFormField(
+              controller: _password,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                prefixIcon: const Icon(Icons.lock_outline, size: 18),
+                suffixIcon: IconButton(
+                  // Shown on request. A password field nobody can read is how
+                  // people end up locked out by a keyboard layout they cannot see.
+                  icon: Icon(
+                    _showPassword
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                  tooltip: _showPassword
+                      ? 'Hide the password'
+                      : 'Show the password',
+                  onPressed: () =>
+                      setState(() => _showPassword = !_showPassword),
                 ),
               ),
-              const SizedBox(width: 6),
-              // Expanded, not Spacer + fixed Text. `softWrap: false` on a rigid
-              // Text meant the row could not shrink at all and overflowed by
-              // 110px the moment the panel was narrower than the label plus the
-              // button. This fills the gap AND gives way when it has to.
-              const Expanded(
-                child: Text(
-                  'Keep me signed in',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: _busy ? null : _forgot,
-                child: const Text('Forgot password?'),
-              ),
-            ],
-          ),
+              obscureText: !_showPassword,
+              autofillHints: const [AutofillHints.password],
+              enabled: !_busy,
+              validator: (v) =>
+                  (v == null || v.isEmpty) ? 'Enter your password' : null,
+              onFieldSubmitted: (_) => _submit(),
+            ),
 
-          if (_error != null) ...[
-            const SizedBox(height: 16),
-            ErrorNote(_error!),
-          ],
-
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: _busy ? null : _submit,
-            child: _busy
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : Text(UiStrings.t('shell.sign_in')),
-          ),
-
-          // The only door into signup, and it is here because this is where
-          // somebody without an account arrives — there is no marketing page in
-          // the app to put it on. Hidden when the server has closed the front
-          // door (no mailbox to verify an address). Invitations still work.
-          if (UiStrings.signupOpen) ...[
             const SizedBox(height: 4),
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Flexible(
+                // A Checkbox carries a 48px tap target of its own, which pushed
+                // the label out of line with the button opposite and wrapped it
+                // onto two lines.
+                Transform.translate(
+                  offset: const Offset(-4, 0),
+                  child: Checkbox(
+                    value: _stayed,
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    onChanged: _busy
+                        ? null
+                        : (v) => setState(() => _stayed = v ?? false),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                // Expanded, not Spacer + fixed Text. `softWrap: false` on a rigid
+                // Text meant the row could not shrink at all and overflowed by
+                // 110px the moment the panel was narrower than the label plus the
+                // button. This fills the gap AND gives way when it has to.
+                const Expanded(
                   child: Text(
-                    'New to EzBizi?',
-                    style: Theme.of(context).textTheme.bodySmall,
+                    'Keep me signed in',
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                const SizedBox(width: 8),
                 TextButton(
-                  onPressed: _busy ? null : widget.onCreateAccount,
-                  child: Text(UiStrings.t('shell.create_account')),
+                  onPressed: _busy ? null : _forgot,
+                  child: const Text('Forgot password?'),
                 ),
               ],
             ),
+
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              ErrorNote(_error!),
+            ],
+
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _busy ? null : _submit,
+              child: _busy
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(UiStrings.t('shell.sign_in')),
+            ),
+
+            // The only door into signup, and it is here because this is where
+            // somebody without an account arrives — there is no marketing page in
+            // the app to put it on. Hidden when the server has closed the front
+            // door (no mailbox to verify an address). Invitations still work.
+            if (UiStrings.signupOpen) ...[
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      'New to EzBizi?',
+                      style: Theme.of(context).textTheme.bodySmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _busy ? null : widget.onCreateAccount,
+                    child: Text(UiStrings.t('shell.create_account')),
+                  ),
+                ],
+              ),
+            ],
+            // On the web only: the apps for this device (UI queue 106).
+            if (kIsWeb) ...[const SizedBox(height: 20), const GetTheAppRow()],
           ],
-          // On the web only: the apps for this device (UI queue 106).
-          if (kIsWeb) ...[
-            const SizedBox(height: 20),
-            const GetTheAppRow(),
-          ],
-        ],
+        ),
       ),
     );
   }

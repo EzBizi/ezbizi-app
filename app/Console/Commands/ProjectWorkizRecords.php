@@ -119,6 +119,18 @@ class ProjectWorkizRecords extends Command
             return self::SUCCESS;
         }
 
+        // A run killed mid-way (a deploy restarting the scheduler) frees the
+        // lock at once instead of holding projection off for its full hour
+        // (11-10: 30 minutes of bookings waited). ponytail: SIGKILL cannot be
+        // trapped; that case still waits out LOCK_SECONDS.
+        if (extension_loaded('pcntl')) {
+            $this->trap([SIGTERM, SIGINT, SIGHUP], function () use ($lock) {
+                $lock->release();
+
+                exit(1);
+            });
+        }
+
         try {
             return $this->project($tenant, $numbers, $audit, $events);
         } finally {
@@ -613,10 +625,10 @@ class ProjectWorkizRecords extends Command
      * invoiced — most imported jobs read USD 0.00 because A1 Tools last saw
      * them before they were priced.
      */
-    private const FOLLOWED = ['status', 'scheduled_for', 'amount_minor', 'performed_by_user_id', 'job_type', 'sub_status', 'tags'];
+    private const FOLLOWED = ['status', 'scheduled_for', 'amount_minor', 'performed_by_user_id', 'job_type', 'sub_status', 'tags', 'description'];
 
-    /** Followed since 2026-11-02 (Jobs); a row projected before has none recorded. */
-    private const LABELS = ['job_type', 'sub_status', 'tags'];
+    /** Followed since 2026-11-02 (Jobs), description since 11-10; a row projected before has none recorded. */
+    private const LABELS = ['job_type', 'sub_status', 'tags', 'description'];
 
     /**
      * Keep projected jobs following Workiz — per field, and only where nobody
@@ -677,6 +689,7 @@ class ProjectWorkizRecords extends Command
                     ->orWhereRaw("NOT (JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobType')) <=> jobs.job_type)")
                     ->orWhereRaw("NOT (JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.SubStatus')) <=> jobs.sub_status)")
                     ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.payload, '$.Tags') <=> CAST(jobs.tags AS JSON))")
+                    ->orWhereRaw("NOT (TRIM(JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobNotes'))) <=> jobs.description)")
                     // Workiz's team moved since it was handed to Scheduling: team() below.
                     ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.team') <=> JSON_EXTRACT(workiz_jobs.payload, '$.Team[*].id'))");
             })
@@ -700,6 +713,7 @@ class ProjectWorkizRecords extends Command
                         'scheduled_for' => $row->scheduled_for?->format('Y-m-d H:i:s'),
                         'amount_minor' => $this->minor($row->payload['JobTotalPrice'] ?? null),
                         'performed_by_user_id' => $this->performer($row),
+                        'description' => $this->text($row->payload['JobNotes'] ?? null),
                     ] + $this->labels($row);
 
                     // No label recorded as ours yet: the job's own is ours only
@@ -707,7 +721,12 @@ class ProjectWorkizRecords extends Command
                     // otherwise a person's, or free to fill when empty.
                     foreach (self::LABELS as $field) {
                         if (! array_key_exists($field, $last)) {
-                            $last[$field] = $this->same($now[$field], $workiz[$field]) ? $now[$field] : null;
+                            // Workiz's notes grow after a job is copied (Jobs, 11-10:
+                            // JOB-57727 held the first three lines): a description that
+                            // is the start of Workiz's notes is still ours.
+                            $grew = $field === 'description' && $now[$field] !== null && $workiz[$field] !== null
+                                && str_starts_with($workiz[$field], $now[$field]);
+                            $last[$field] = $grew || $this->same($now[$field], $workiz[$field]) ? $now[$field] : null;
                         }
                     }
 
@@ -1036,6 +1055,7 @@ class ProjectWorkizRecords extends Command
             'sub_status' => $job->sub_status,
             // One JSON spelling, so same() compares it as a string (MySQL re-spaces a JSON column).
             'tags' => $job->tags === null ? null : json_encode($job->tags, JSON_UNESCAPED_UNICODE),
+            'description' => $job->description,
         ];
     }
 

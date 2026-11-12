@@ -1648,6 +1648,26 @@ class ActionRunner
             return ['type' => $type, 'ok' => true, 'detail' => "Handed the \"{$template}\" template to WhatsApp for the customer; it is on the enquiry."];
         }
 
+        // A person here hears from the Reports number, as a report; Main is for the assistant and customers (Jose, 2026-11-11).
+        $reports = str_starts_with($field, self::RECIPIENT_USER) ? \App\Models\WhatsAppNumber::forPurpose('reports') : null;
+        if ($reports !== null) {
+            $user = $this->userFromStored($field);
+            if ($user === null) {
+                return ['type' => $type, 'ok' => false, 'detail' => 'The person this step sends to no longer works here.'];
+            }
+            $parts = array_map(fn ($value) => $this->interpolate((string) $value, $event, $subject), array_values((array) ($action['parameters'] ?? [])));
+            $title = trim((string) array_shift($parts)) ?: 'EzBizi alert';
+            try {
+                $sent = app(\App\Support\Social\WhatsAppGroups::class)->deliverTextToUser($reports, $user, $title, implode("\n", $parts));
+            } catch (RuntimeException $refusal) {
+                return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+            }
+
+            return $sent
+                ? ['type' => $type, 'ok' => true, 'detail' => "Sent \"{$title}\" to {$user->name} from the Reports number."]
+                : ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => "{$user->name} has no phone number, so nothing was sent."];
+        }
+
         $to = $this->contactFromStored($field, $event, 'phone', $subject);
 
         if (! is_string($to) || trim($to) === '') {
@@ -3730,8 +3750,11 @@ class ActionRunner
             ?? (($scope['type'] ?? null) === 'company' ? Company::query()->find($scope['id'] ?? null) : null)
             ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null);
         // A Sub Company and its franchises have no board (Jose, 2026-11-06).
+        // Its parent company's board then, not the first assignee's personal
+        // board, which refuses every other owner (Complaint call on AngiSweep, 11-10).
         if ($owner !== null && ! TaskBoards::hasPlaceBoard($owner)) {
-            $owner = null;
+            $owner = collect($scope['company_chain'] ?? [])->map(fn ($id) => Company::query()->find($id))
+                ->first(fn (?Company $c) => $c !== null && TaskBoards::hasPlaceBoard($c));
         }
         $owner ??= $assignee;
 
@@ -3859,7 +3882,8 @@ class ActionRunner
 
         // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
         $sent = self::deliverReportText((string) ($action['from'] ?? ''), self::idList($action['user_ids'] ?? []),
-            $automation->scope_type, $automation->scope_id, $title, $text, "report.text:{$automation->id}:{$kind}:{$day->toDateString()}");
+            $automation->scope_type, $automation->scope_id, $title, $text, "report.text:{$automation->id}:{$kind}:{$day->toDateString()}",
+            app(DailyTexts::class)->attachment($kind, $org, $day, $branches));
         if (is_string($sent)) {
             return ['type' => $type, 'ok' => false, 'detail' => $sent];
         }
@@ -3877,7 +3901,7 @@ class ActionRunner
      * @param  list<string>  $userIds
      * @return int|string how many it went to, or why nothing could go
      */
-    public static function deliverReportText(string $from, array $userIds, ?string $scopeType, ?string $scopeId, string $title, string $text, ?string $once = null): int|string
+    public static function deliverReportText(string $from, array $userIds, ?string $scopeType, ?string $scopeId, string $title, string $text, ?string $once = null, ?string $pdf = null): int|string
     {
         // The Reports number when there is one, whatever the rule names (Jose, 2026-11-09).
         $number = WhatsAppNumber::forPurpose('reports')
@@ -3897,7 +3921,7 @@ class ActionRunner
             try {
                 // The key names the rule, so ReportDeliveryCheck can tell its maker one did not arrive.
                 $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text, $once === null ? null : "{$once}:{$user->id}",
-                    $scopeType === 'company' ? Company::query()->find($scopeId) : null) ? 1 : 0;
+                    $scopeType === 'company' ? Company::query()->find($scopeId) : null, $pdf) ? 1 : 0;
             } catch (RuntimeException $refusal) {
                 // Not sent, so a retry may try again rather than report "nobody has a phone".
                 if ($once !== null) {

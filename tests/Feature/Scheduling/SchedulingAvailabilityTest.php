@@ -344,7 +344,7 @@ class SchedulingAvailabilityTest extends TestCase
 
         $this->booked($tenant, '2026-10-05 07:00:00', 'Canceled');
         $this->booked($tenant, '2026-10-05 08:00:00', 'Done');
-        $this->booked($tenant, '2026-10-05 09:00:00', 'Submitted', ['DONT CHANGE TECH', 'DEPOSIT RECIEVED']);
+        $this->booked($tenant, '2026-10-05 09:00:00', 'Submitted', ['DONT CHANGE TECH', 'DEPOSIT RECEIVED']);
         $this->booked($tenant, '2026-10-05 09:30:00', 'Submitted', ['deposit received ']);
         $this->booked($tenant, '2026-10-05 10:00:00', 'Something new');
 

@@ -18,28 +18,14 @@ import 'package:http/testing.dart';
 /// nobody can see on a screen is one nobody reviews, which is the whole reason
 /// §4.2 asks for it to be deliberate rather than implied.
 void main() {
-  testWidgets('the account outside the audit trail is labelled as such', (
-    tester,
-  ) async {
+  // Jose, 2026-11-11: "remove the option to not audit, but leave me Jose as not
+  // audited, but also remove the tag." The exemption stays on the server; the
+  // screen neither shows it nor offers to change it.
+  testWidgets('no account carries a Not audited tag', (tester) async {
     await _pump(tester, _handler());
 
     expect(find.text('Owner'), findsOneWidget);
-    expect(find.text('Second Lead'), findsOneWidget);
-
-    // Exactly one, on the row that holds it — not on the other Lead Developer,
-    // which is the distinction the whole fix is about.
-    expect(find.text('Not audited'), findsOneWidget);
-
-    final tagged = find.ancestor(
-      of: find.text('Not audited'),
-      matching: find.byType(Card),
-    );
-
-    expect(
-      find.descendant(of: tagged, matching: find.text('Owner')),
-      findsOneWidget,
-      reason: 'The exemption was shown against the wrong account.',
-    );
+    expect(find.text('Not audited'), findsNothing);
   });
 
   testWidgets('the tier description no longer promises an exemption', (
@@ -53,8 +39,6 @@ void main() {
     await tester.tap(find.text('Lead Developer').last);
     await tester.pumpAndSettle();
 
-    // The tier grants reach and staff management. It does not take the account
-    // out of the audit trail, and the form must not say it does.
     expect(
       find.textContaining('NOT exempt from the audit trail'),
       findsOneWidget,
@@ -65,78 +49,29 @@ void main() {
     );
   });
 
-  testWidgets('granting and revoking it is one control, offered on your own row', (
+  testWidgets('no row offers to grant or revoke the audit exemption', (
     tester,
   ) async {
-    final sent = <Map<String, dynamic>>[];
+    await _pump(tester, _handler());
 
-    await _pump(tester, _handler(onPatch: sent.add));
+    // Your own row (the exempt one) has nothing left to offer, so no menu.
+    expect(find.byType(PopupMenuButton<String>), findsOneWidget);
 
-    // The exempt account is the signed-in one, so this menu is on the "You" row
-    // — deliberately, because the owner granting it to their own account is the
-    // case it exists for.
-    await tester.tap(find.byType(PopupMenuButton<String>).first);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Put back in the audit trail'), findsOneWidget);
-
-    await tester.tap(find.text('Put back in the audit trail'));
-    await tester.pumpAndSettle();
-
-    expect(sent, [
-      {'audit_exempt': false},
-    ]);
-  });
-
-  testWidgets('the servers refusal is shown rather than reworded', (
-    tester,
-  ) async {
-    const refusal =
-        'The audit exemption is held by owner@ezbizi.test, and it belongs to '
-        'one account at a time. Revoke it there first.';
-
-    await _pump(tester, _handler(refuseWith: refusal));
-
-    // The second row: the other Lead Developer, who cannot also hold it.
     await tester.tap(find.byType(PopupMenuButton<String>).last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Exempt from the audit trail'));
-    await tester.pumpAndSettle();
-
-    // The server's refusal names who holds it, which is the answer to "why
-    // can't I?" — rewording it here would lose that.
-    expect(find.text(refusal), findsOneWidget);
+    expect(find.text('Re-enroll authenticator'), findsOneWidget);
+    expect(find.text('Exempt from the audit trail'), findsNothing);
+    expect(find.text('Put back in the audit trail'), findsNothing);
   });
 
-  testWidgets('a Developer row is not offered an exemption it cannot have', (
-    tester,
-  ) async {
+  testWidgets('a Developer row offers promotion', (tester) async {
     await _pump(tester, _handler(secondTier: 'developer'));
 
     await tester.tap(find.byType(PopupMenuButton<String>).last);
     await tester.pumpAndSettle();
 
-    // Only a Lead Developer may hold it (§4.2), so on a Developer this item
-    // existed to be refused — a control that answers "no" every time is a dead
-    // end, and the refusal it produced was written for the other direction.
-    expect(find.text('Exempt from the audit trail'), findsNothing);
     expect(find.text('Make Lead Developer'), findsOneWidget);
-  });
-
-  testWidgets('your own row does not open with a divider above everything', (
-    tester,
-  ) async {
-    await _pump(tester, _handler());
-
-    // The first row is the signed-in account: the two items that are hidden on
-    // your own row used to leave their divider behind, so the menu opened with
-    // a rule across the top and nothing over it.
-    await tester.tap(find.byType(PopupMenuButton<String>).first);
-    await tester.pumpAndSettle();
-
-    expect(find.byType(PopupMenuDivider), findsNothing);
-    expect(find.text('Put back in the audit trail'), findsOneWidget);
   });
 }
 
@@ -209,11 +144,17 @@ MockClientHandler _handler({
       }
 
       return _json({
-        'data': _account(id: 'staff-1', name: 'Owner', email: 'owner@ezbizi.test'),
+        'data': _account(
+          id: 'staff-1',
+          name: 'Owner',
+          email: 'owner@ezbizi.test',
+        ),
       });
     }
 
-    return _json({'message': 'unexpected ${request.method} $path'}, status: 404);
+    return _json({
+      'message': 'unexpected ${request.method} $path',
+    }, status: 404);
   };
 }
 

@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/phone/voice_device.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -90,6 +91,35 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('on-call-bar')), findsNothing);
+  });
+
+  /// Jose, 2026-11-11: Meta's call said "press 1" and the bar had no keypad.
+  testWidgets('the on-call keypad presses keys on the live call', (
+    tester,
+  ) async {
+    final device = _DigitsDevice();
+    final service = PhoneCallService.forTest(device);
+    PhoneCallService.overrideForTest = service;
+
+    await _pumpShell(tester);
+
+    device.ring('+13055550100');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('incoming-call-answer')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('on-call-keypad')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('on-call-key-1')));
+    await tester.tap(find.byKey(const Key('on-call-key-#')));
+    await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
+    await tester.pumpAndSettle();
+
+    expect(device.digits, ['1', '#', '2']);
+    expect(find.text('1#2'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('on-call-hang-up')));
+    await tester.pumpAndSettle();
   });
 
   /// A live call can be moved to the phone in your pocket.
@@ -352,4 +382,11 @@ class _FakeDevice implements VoiceDevice {
   void dispose() => onIncoming = null;
 
   void ring(String from) => onIncoming?.call(VoiceIncoming(from: from));
+}
+
+class _DigitsDevice extends _FakeDevice implements SendsDigits {
+  final digits = <String>[];
+
+  @override
+  void sendDigits(String value) => digits.add(value);
 }

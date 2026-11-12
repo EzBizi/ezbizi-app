@@ -722,7 +722,7 @@ class _NumbersPaneState extends State<NumbersPane> {
   /// The company a line belongs to, by name, when this view spans several.
   /// The row carries `scope_id`; the name is the one `/me` already has.
   String _company(_Line line) {
-    final company = _me.companiesInView
+    final company = _me.companies
         .where((c) => c.id == line.scopeId)
         .firstOrNull;
 
@@ -1170,6 +1170,11 @@ class _LineFormState extends State<_LineForm> {
   late bool _leadLine;
   late bool _transcribe;
   late String _afterHours;
+  late bool _overrideOn;
+  late String _overrideAction;
+  late String? _overrideGroup;
+  late final TextEditingController _overrideNumber;
+  late final TextEditingController _overrideSay;
 
   /// Carrier fields, populated only once the panel reports a change.
   Map<String, dynamic> _carrier = const {};
@@ -1189,6 +1194,12 @@ class _LineFormState extends State<_LineForm> {
     _leadLine = widget.line.leadLine;
     _transcribe = widget.line.transcribe;
     _afterHours = widget.line.afterHours;
+    final o = widget.line.override;
+    _overrideOn = widget.line.overrideOn;
+    _overrideAction = o['action'] as String? ?? 'forward';
+    _overrideGroup = o['ring_group_id'] as String?;
+    _overrideNumber = TextEditingController(text: o['number'] as String? ?? '');
+    _overrideSay = TextEditingController(text: o['say'] as String? ?? '');
   }
 
   @override
@@ -1197,6 +1208,8 @@ class _LineFormState extends State<_LineForm> {
     _forwardTo.dispose();
     _fallback.dispose();
     _notice.dispose();
+    _overrideNumber.dispose();
+    _overrideSay.dispose();
     super.dispose();
   }
 
@@ -1239,6 +1252,68 @@ class _LineFormState extends State<_LineForm> {
             border: OutlineInputBorder(),
           ),
         ),
+
+        // Jose, 2026-11-11: "an OVERRIDE TOGGLE in the numbers edit".
+        SwitchListTile(
+          key: const Key('number-override'),
+          contentPadding: EdgeInsets.zero,
+          value: _overrideOn,
+          onChanged: (v) => setState(() => _overrideOn = v),
+          title: const Text('Override the call flow'),
+          subtitle: Text(
+            'Calls to this line skip the hours and menu and do only this.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+        if (_overrideOn) ...[
+          const SizedBox(height: 8),
+          SearchPickerField<String>(
+            value: _overrideAction,
+            label: 'Instead, calls',
+            border: const OutlineInputBorder(),
+            options: const [
+              SearchOption(value: 'forward', label: 'Forward to a number'),
+              SearchOption(value: 'ring_group', label: 'Ring a ring group'),
+              SearchOption(value: 'voicemail', label: 'Go to voicemail'),
+              SearchOption(
+                value: 'hangup',
+                label: 'Hear a message, then hang up',
+              ),
+            ],
+            onChanged: (v) => setState(() => _overrideAction = v ?? 'forward'),
+          ),
+          const SizedBox(height: 12),
+          if (_overrideAction == 'forward')
+            TextField(
+              controller: _overrideNumber,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Forward to',
+                hintText: '+13055550100',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          if (_overrideAction == 'ring_group')
+            SearchPickerField<String?>(
+              value: _overrideGroup,
+              label: 'Ring group',
+              border: const OutlineInputBorder(),
+              options: [
+                for (final g in widget.groups)
+                  SearchOption<String?>(value: g.id, label: g.name),
+              ],
+              onChanged: (v) => setState(() => _overrideGroup = v),
+            ),
+          if (_overrideAction == 'hangup')
+            TextField(
+              controller: _overrideSay,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Message',
+                border: OutlineInputBorder(),
+              ),
+            ),
+        ],
 
         const SizedBox(height: 16),
         SearchPickerField<String?>(
@@ -1409,6 +1484,17 @@ class _LineFormState extends State<_LineForm> {
                       // on again.
                       'recording_notice': _notice.text.trim(),
 
+                      'override_on': _overrideOn,
+                      'override': {
+                        'action': _overrideAction,
+                        if (_overrideAction == 'forward')
+                          'number': _overrideNumber.text.trim(),
+                        if (_overrideAction == 'ring_group')
+                          'ring_group_id': _overrideGroup,
+                        if (_overrideAction == 'hangup')
+                          'say': _overrideSay.text.trim(),
+                      },
+
                       // Only what the carrier panel actually reports having
                       // changed — sending an untouched emergency address back
                       // would be a pointless Twilio write on every save.
@@ -1439,6 +1525,8 @@ class _Line {
     required this.scopeId,
     required this.voiceCallerIdLookup,
     required this.voicemailTranscribe,
+    this.overrideOn = false,
+    this.override = const {},
     this.afterHoursNumber,
     this.ringGroupId,
     this.hoursScheduleId,
@@ -1488,6 +1576,10 @@ class _Line {
 
   final bool voiceCallerIdLookup;
   final bool voicemailTranscribe;
+
+  /// Override the call flow (Jose, 2026-11-11): what the line does instead.
+  final bool overrideOn;
+  final Map<String, dynamic> override;
   final String? emergencyAddressSid;
   final String? fallbackNumber;
 
@@ -1536,6 +1628,10 @@ class _Line {
                 (row['ring_group_id'] != null || row['flow_id'] != null),
             voiceCallerIdLookup: row['voice_caller_id_lookup'] == true,
             voicemailTranscribe: row['voicemail_transcribe'] == true,
+            overrideOn: row['override_on'] == true,
+            override: row['override'] is Map<String, dynamic>
+                ? row['override'] as Map<String, dynamic>
+                : const {},
             emergencyAddressSid: row['emergency_address_sid'] as String?,
             fallbackNumber: row['fallback_number'] as String?,
             recordingNotice: row['recording_notice'] as String?,

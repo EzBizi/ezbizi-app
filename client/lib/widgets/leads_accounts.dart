@@ -1620,7 +1620,7 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
               options: [
                 const SearchOption(value: null, label: 'Company level'),
                 for (final b in branchOptions(
-                  widget.session.me?.franchises ?? const [],
+                  widget.session.me?.switchableFranchises ?? const [],
                   widget.session.me?.companies ?? const [],
                 ))
                   SearchOption(value: b.id, label: b.label),

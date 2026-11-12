@@ -68,7 +68,8 @@ class SocialPostsController extends Controller
     private const MAX_BODY = 5000;
 
     /** The Posts tiles, in the order the screen draws them. */
-    private const TILES = ['scheduled', 'sent', 'failed'];
+    // `awaiting` is also inside Scheduled: it is a work queue, not a share of the total.
+    private const TILES = ['scheduled', 'sent', 'failed', 'awaiting'];
 
     /** Business Profile's call-to-action buttons (v4 localPosts actionType). */
     private const CTA_TYPES = ['BOOK', 'ORDER', 'SHOP', 'LEARN_MORE', 'SIGN_UP', 'CALL'];
@@ -129,13 +130,30 @@ class SocialPostsController extends Controller
             $query->where(fn ($w) => $w->where('title', 'like', $like)->orWhere('body', 'like', $like));
         }
 
+        // The calendar asks for the days it draws (review 2026-11-09 A1): a
+        // post is on the day it is scheduled for, or else the day it was
+        // made. A range lifts the twenty cap to what a month can hold.
+        $range = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ]);
+        $from = $range['from'] ?? null;
+        $to = $range['to'] ?? null;
+        if ($from !== null && $to !== null) {
+            $start = $from.' 00:00:00';
+            $end = $to.' 23:59:59';
+            $query->where(fn ($w) => $w
+                ->whereBetween('scheduled_for', [$start, $end])
+                ->orWhere(fn ($n) => $n->whereNull('scheduled_for')->whereBetween('created_at', [$start, $end])));
+        }
+
         $posts = $query
             ->with(['targets', 'author:id,name'])
             ->latest()
             // ponytail: the twenty most recent, no paging. This is the "did it
             // send" list under the composer, not an archive; the tiles above
             // carry the whole count and filter on the server.
-            ->limit(20)
+            ->limit($from !== null && $to !== null ? 500 : 20)
             ->get();
 
         return response()->json([
@@ -898,6 +916,9 @@ class SocialPostsController extends Controller
         return match ($status) {
             'failed' => $query->whereHas('targets', fn ($q) => $targets($q)
                 ->where('status', SocialPostTarget::STATUS_FAILED)),
+            // Needs approval (review 2026-11-09 A13): somebody has to decide it.
+            'awaiting' => $query->whereHas('targets', fn ($q) => $targets($q)
+                ->where('status', SocialPostTarget::STATUS_AWAITING_APPROVAL)),
             // Waiting for approval has not gone out yet: it reads as Scheduled, never Sent.
             'scheduled' => $query->whereDoesntHave('targets', fn ($q) => $targets($q)
                 ->whereNotIn('status', [SocialPostTarget::STATUS_SCHEDULED, SocialPostTarget::STATUS_AWAITING_APPROVAL])),

@@ -7,6 +7,7 @@ import 'package:ezbizi_client/screens/leads_screen.dart';
 import 'package:ezbizi_client/widgets/lead_thread.dart';
 import 'package:ezbizi_client/widgets/leads_accounts.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:http/http.dart' as http;
@@ -1895,75 +1896,59 @@ void _conversationRowTests() {
     );
   });
 
-  /// Phone audit 2026-11-04: beside the name the chips clipped to "Rep" and
-  /// the names to 8 letters. On a phone they go on line 2, under the time
-  /// (design 187).
-  testWidgets('on a phone a row puts its chips under the name', (
-    tester,
-  ) async {
-    await _pump(
+  /// Jose, 2026-11-10: "add a third line, move all the tags to the third
+  /// line instead, maybe make them a bit smaller too". Name, time and star on
+  /// line 1; every tag on line 3, under the name, status first. Same on phone.
+  for (final size in const [Size(1400, 900), Size(390, 844)]) {
+    testWidgets('every tag is on line 3, under the name (${size.width})', (
       tester,
-      leads: [
-        {
-          ..._lead('lead-1', 'Christopher Wellington', canReply: true),
-          'customer': {'id': 'c1'},
-        },
-      ],
-      connections: _connected,
-      size: const Size(390, 844),
-    );
+    ) async {
+      await _pump(
+        tester,
+        leads: [
+          {
+            ..._lead('lead-1', 'Christopher Wellington', canReply: true),
+            'customer': {'id': 'c1'},
+            'status': 'booked',
+          },
+        ],
+        connections: _connected,
+        size: size,
+      );
 
-    expect(find.byKey(const ValueKey('lead-chips-lead-1')), findsOneWidget);
-    final name = tester.getRect(find.text('Christopher Wellington').first);
-    final badge = tester.getRect(
-      find.byKey(const ValueKey('reply-badge-lead-1')),
-    );
-    expect(badge.top, greaterThan(name.bottom - 1));
-    expect(name.width, greaterThan(150));
-    expect(tester.takeException(), isNull);
-  });
-
-  /// Design 187 (Jose, 2026-11-06: "moving all the tabs to the left side of
-  /// the time, so they all line up"): one straight edge down the list, two
-  /// tags at most, then "+N".
-  testWidgets("a row's tags line up beside the time, two then +N", (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      leads: [
-        {
-          ..._lead('lead-1', 'Ann Lee', canReply: true),
-          'customer': {'id': 'c1'},
-          'status': 'booked',
-        },
-        {
-          ..._lead('lead-2', 'Christopher Wellington'),
-          'status': 'completed',
-          'received_at': '2026-01-02T09:00:00Z',
-        },
-      ],
-      connections: _connected,
-    );
-
-    Rect at(String key) => tester.getRect(find.byKey(ValueKey(key)));
-    expect(at('lead-tags-lead-1').right, at('lead-tags-lead-2').right);
-    // Line 2's source and channel line up under the time as well.
-    expect(at('lead-chips-lead-1').right, at('lead-chips-lead-2').right);
-    expect(
-      at('source-badge-lead-1').left,
-      greaterThan(at('lead-tags-lead-1').left - 1),
-    );
-    expect(
-      at('status-pill-lead-1').right,
-      lessThan(at('lead-tags-lead-1').right),
-    );
-    // Booked, Customer, then Awaiting reply behind "+N".
-    expect(find.byKey(const ValueKey('customer-badge-lead-1')), findsOneWidget);
-    expect(find.byKey(const ValueKey('reply-badge-lead-1')), findsNothing);
-    expect(find.textContaining(RegExp(r'^\+\d$')), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      Rect at(String key) => tester.getRect(find.byKey(ValueKey(key)));
+      final name = tester.getRect(find.text('Christopher Wellington').first);
+      final line3 = at('lead-tags-lead-1');
+      expect(line3.top, greaterThan(name.bottom));
+      expect((line3.left - name.left).abs(), lessThan(1));
+      // The star stays on line 1, beside the time.
+      expect(at('star-lead-1').center.dy, lessThan(line3.top));
+      // Status, then reply, then Customer, then the source, in reading
+      // order across however many runs the pane needs; none hidden.
+      final order = [
+        'status-pill-lead-1',
+        'reply-badge-lead-1',
+        'customer-badge-lead-1',
+        'source-badge-lead-1',
+      ].map((k) => at(k).top.round() * 10000 + at(k).left).toList();
+      expect(order, [...order]..sort());
+      for (final k in ['status-pill', 'reply-badge', 'customer-badge']) {
+        expect(at('$k-lead-1').top, greaterThanOrEqualTo(line3.top));
+      }
+      expect(find.textContaining(RegExp(r'^\+\d$')), findsNothing);
+      // Smaller than today's labelSmall.
+      expect(
+        tester
+            .renderObject<RenderParagraph>(find.text('Customer'))
+            .text
+            .style
+            ?.fontSize,
+        10,
+      );
+      expect(name.width, greaterThan(150));
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   /// Tapping a row opens the thread in place, with a way back: never a page
   /// pushed over the app (the containment rule; design 30).

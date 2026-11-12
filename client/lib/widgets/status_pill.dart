@@ -8,17 +8,27 @@ import '../core/theme.dart';
 /// gap for sitting there. This is the state of the thing itself, in its own
 /// column, and its colour is the reading — see [Tone].
 class StatusPill extends StatelessWidget {
-  const StatusPill(this.label, {super.key, this.tone = Tone.neutral});
+  const StatusPill(
+    this.label, {
+    super.key,
+    this.tone = Tone.neutral,
+    this.dense = false,
+  });
 
   final String label;
   final Tone tone;
+
+  /// Sized like the small chips beside it on a list row (labelSmall).
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
     final colours = ToneColours.of(context, tone);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
+      padding: dense
+          ? const EdgeInsets.symmetric(horizontal: 6, vertical: 1)
+          : const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
       decoration: BoxDecoration(
         color: colours.fill,
         borderRadius: BorderRadius.circular(999),
@@ -27,11 +37,16 @@ class StatusPill extends StatelessWidget {
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w700,
-          color: colours.ink,
-        ),
+        style: dense
+            ? Theme.of(context).textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: colours.ink,
+              )
+            : TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: colours.ink,
+              ),
       ),
     );
   }

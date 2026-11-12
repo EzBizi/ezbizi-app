@@ -821,9 +821,13 @@ class _CompanyFocusState extends State<CompanyFocus> {
     final response = await widget.api.get('/companies');
     if (!mounted || !response.ok) return;
     final rows = <(String, String, int)>[];
+    // A switched-off company, and every Sub Company under it, is not offered
+    // (Jose, 2026-11-10); Settings › Organization still lists them.
     for (final c in (response.body['companies'] as List? ?? const [])) {
+      if (c['is_active'] == false) continue;
       rows.add((c['id'] as String, c['name'] as String, 0));
       for (final s in (c['sub_companies'] as List? ?? const [])) {
+        if (s['is_active'] == false) continue;
         rows.add((s['id'] as String, s['name'] as String, 1));
       }
     }

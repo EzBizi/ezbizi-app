@@ -23,6 +23,7 @@ class JobNotes extends StatefulWidget {
     required this.draft,
     required this.formats,
     required this.onAdded,
+    this.workizNotes,
     this.addRefusal,
     this.now,
   });
@@ -35,6 +36,10 @@ class JobNotes extends StatefulWidget {
   final TextEditingController draft;
   final DisplayFormats formats;
   final ValueChanged<Map<String, dynamic>> onAdded;
+
+  /// Workiz's job notes, read only (Jose, 2026-11-10: they were in the
+  /// Notes column but not here).
+  final String? workizNotes;
 
   /// Why this reader may not add one (`jobs.edit`), or null when they may.
   final String? addRefusal;
@@ -162,7 +167,35 @@ class _JobNotesState extends State<JobNotes> {
               ErrorNote(_error!, key: const Key('job-note-error')),
             ],
             const SizedBox(height: 16),
-            if (widget.notes.isEmpty)
+            if (widget.workizNotes case final w?) ...[
+              Container(
+                key: const Key('job-notes-workiz'),
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.5,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FROM WORKIZ · READ ONLY',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: muted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SelectableText(w),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (widget.notes.isEmpty && widget.workizNotes == null)
               Text(
                 'No notes yet',
                 key: const Key('job-notes-empty'),

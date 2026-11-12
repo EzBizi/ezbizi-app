@@ -1076,14 +1076,16 @@ class _InvitePanelState extends State<_InvitePanel> {
             helperMaxLines: 3,
             border: OutlineInputBorder(),
             options: [
+              // Switched-off places are not offered (Jose, 2026-11-10).
               for (final scope in widget.options.scopes)
-                SearchOption(
-                  value: scope.value,
-                  label: scope.isActive
-                      ? scope.pathLabel
-                      : '${scope.pathLabel} — deactivated',
-                  enabled: scope.isActive,
-                ),
+                if (scope.isActive || scope.value == _scope)
+                  SearchOption(
+                    value: scope.value,
+                    label: scope.isActive
+                        ? scope.pathLabel
+                        : '${scope.pathLabel} — deactivated',
+                    enabled: scope.isActive,
+                  ),
             ],
             onChanged: _busy ? null : (v) => setState(() => _scope = v),
           ),

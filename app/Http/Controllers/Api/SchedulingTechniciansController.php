@@ -40,7 +40,8 @@ class SchedulingTechniciansController extends Controller
     {
         $this->authorize('viewAny', ServiceArea::class);
 
-        $franchiseIds = ViewScope::forUser($request->user())->franchiseIds();
+        // A switched-off branch's team is not listed (Jose, 2026-11-10).
+        $franchiseIds = ViewScope::forUser($request->user())->switchedOnFranchiseIds();
         $franchises = Franchise::whereIn('id', $franchiseIds)->pluck('name', 'id');
 
         $members = WorkizTeamMember::query()

@@ -82,7 +82,8 @@ class SyncWorkizWebPayments extends Command
                         fn ($row) => is_array($row) && ($row['isTotalsRow'] ?? false) !== true && isset($row['id'])));
 
                     $count += WorkizRecords::landRows($connection, $franchise->getKey(), self::TYPE, array_map(fn (array $row) => [
-                        'remote_id' => 'WP-'.$row['id'],
+                        // The report's id is not unique (two rows can share one, audit 11-11): the row's own facts are its key.
+                        'remote_id' => 'WP-'.sha1(json_encode([$row['id'], $row['timestamp'] ?? null, $row['amount'] ?? null, $row['client_id'] ?? null])),
                         'job_remote_id' => null,
                         'user_remote_id' => null,
                         'starts_at' => self::moment($row['date'] ?? $row['payment_date'] ?? null),

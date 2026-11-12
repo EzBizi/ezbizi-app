@@ -17,6 +17,7 @@ use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\SocialConnectionAccess;
+use App\Support\Social\SocialMediaKind;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\SocialProviderRegistry;
 use App\Support\Social\ThumbtackAccount;
@@ -148,6 +149,16 @@ class SocialConnectionsController extends Controller
                 // TikTok Direct Post: the composer must ask privacy, interactions
                 // and disclosure for this account (GET .../tiktok-creator).
                 'asks_tiktok_choices' => $c->providerEnum() === SocialProvider::TikTok && Publishers::tiktokIsAudited(),
+                // The composer's limit and pre-flight caution come from the
+                // same rules that refuse at publish (review 2026-11-09 C4).
+                // Only for a network that posts: Mailchimp, Workiz and the rest
+                // are connections with nothing to refuse.
+                'body_limit' => $c->providerEnum()?->maxBodyLength(),
+                'refuses' => Publishers::refusalFor($c->providerEnum()) === null
+                    ? collect(SocialMediaKind::cases())
+                        ->mapWithKeys(fn (SocialMediaKind $k) => [$k->value => $c->providerEnum()?->refuses($k)])
+                        ->all()
+                    : (object) [],
             ])->all(),
         ]);
     }

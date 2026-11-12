@@ -513,6 +513,11 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
                 .'they agreed to; erased with them, because a consent with nobody attached '
                 .'to it is not a record of anything.',
                 Erasure::erase()),
+            new PersonalDataEntry('sms_consent_at, sms_consent_text, sms_consent_site, sms_consent_ip', PersonalDataEntry::ACTIVITY,
+                'Whether this person agreed to receive texts, when, the exact words beside the '
+                .'box they ticked, the website and the address it came from: the record a '
+                .'carrier asks for. Erased with them.',
+                Erasure::erase()),
             new PersonalDataEntry('last_contact_preview', PersonalDataEntry::CONTENT,
                 'The first line of the latest message on the enquiry, copied here so the list '
                 .'can show it without a query per row. A copy of conversation text, erased '
@@ -548,6 +553,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         'organization_id', 'company_id', 'franchise_id', 'connection_id', 'remote_customer_id', 'job_id', 'job_matched_by',
         'source', 'is_test', 'remote_id', 'contact_name', 'handle', 'avatar_url', 'phone', 'email', 'phone_digits', 'postal_code', 'address', 'city', 'referral',
         'marketing_consent_at', 'marketing_consent_text',
+        'sms_consent_at', 'sms_consent_text', 'sms_consent_site', 'sms_consent_ip',
         'lead_type', 'category', 'service', 'locale', 'summary', 'site_host', 'note', 'note_by_user_id', 'note_updated_at', 'note_mentions',
         'status', 'dispatcher', 'dispatcher_by_user_id', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'service_state', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
@@ -572,6 +578,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'classified_at' => 'datetime',
             'credit_requested_at' => 'datetime',
             'marketing_consent_at' => 'datetime',
+            'sms_consent_at' => 'datetime',
             'form_answers' => 'array',
             'form_submitted_at' => 'datetime',
         ];

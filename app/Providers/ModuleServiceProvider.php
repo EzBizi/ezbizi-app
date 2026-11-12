@@ -239,6 +239,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'or switched back on. Switching one OFF raises "Deactivated" '
                             .'instead of this.',
                     ),
+                    // Jose, 2026-11-10: a tag renamed, recoloured, added or deleted in a branch's Workiz.
+                    new TriggerDefinition(
+                        key: 'franchise.workiz_tag_changed',
+                        label: 'Workiz tag changed',
+                        description: 'Somebody renamed, recoloured, added or deleted a tag in this branch\'s '
+                            .'Workiz account. It carries the change, and the tag before and after.',
+                    ),
                     new TriggerDefinition(
                         key: 'franchise.deactivated',
                         label: 'Deactivated',
@@ -3115,8 +3122,9 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Daily leads digest',
                         description: 'Every morning, yesterday in numbers: how many leads by source, '
                             .'how many were answered and how fast, how many were booked, and each '
-                            .'company\'s count. It carries a one-line summary ready for a WhatsApp or '
-                            .'email step, and each figure on its own for conditions.',
+                            .'company\'s leads and bookings. It carries a one-line summary for a WhatsApp '
+                            .'template, summary_lines (a line each) for a report or email, and each '
+                            .'figure on its own for conditions.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.follow_up_due',
@@ -4510,6 +4518,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('meta', 'Meta'),
                     // Thumbtack lead spend by category and branch (2026-10-13).
                     new TabDefinition('thumbtack', 'Thumbtack'),
+                    // Every job created in the dates, with its Workiz and EzBizi ids (Jose, 2026-11-11).
+                    new TabDefinition('jobs', 'Jobs'),
                     // Pick a report, preview it, export, approve or send it
                     // (takeover row 10, UI queue 157, Jose 2026-10-29).
                     new TabDefinition('workspace', 'Workspace'),

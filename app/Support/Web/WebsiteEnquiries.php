@@ -343,6 +343,7 @@ final class WebsiteEnquiries
         // twice, 6 minutes apart, and showed as two leads - "yes, it should").
         $lead = self::recentWebLead($site, $visitor, [Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_CHAT, Lead::SOURCE_WEBSITE_BOOKING])
             ?? $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));
+        self::recordSmsConsent($lead, $site, $visitor);
         // A repeat form fills what the earlier lead lacks; it never overwrites.
         $lead->fill(array_filter([
             'address' => $lead->address === null && ($visitor['address'] ?? '') !== '' ? mb_substr($visitor['address'], 0, 255) : null,
@@ -392,6 +393,7 @@ final class WebsiteEnquiries
         // that lead's thread rather than starting a second lead.
         $lead = $existing ?? self::recentWebLead($site, $visitor, [Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_CHAT, Lead::SOURCE_WEBSITE_BOOKING])
             ?? $this->lead($site, Lead::SOURCE_WEBSITE_BOOKING, $remoteId, $visitor + ['address' => $address]);
+        self::recordSmsConsent($lead, $site, $visitor);
         $visitor['name'] = ($visitor['name'] ?? '') !== '' ? $visitor['name'] : $lead->contact_name;
         $visitor['phone'] = ($visitor['phone'] ?? '') !== '' ? $visitor['phone'] : $lead->phone;
 
@@ -448,6 +450,26 @@ final class WebsiteEnquiries
      *
      * @param  list<string>  $sources
      */
+    /**
+     * The booking widget's SMS box, ticked (Jose, 2026-11-11). Unticked records
+     * nothing and takes nothing away: the box is never a condition of booking.
+     */
+    public static function recordSmsConsent(Lead $lead, WebSite $site, array $visitor): void
+    {
+        $text = trim((string) ($visitor['sms_consent_text'] ?? ''));
+
+        if (($visitor['sms_consent'] ?? false) !== true || $text === '') {
+            return;
+        }
+
+        $lead->forceFill([
+            'sms_consent_at' => now(),
+            'sms_consent_text' => mb_substr($text, 0, 1000),
+            'sms_consent_site' => $site->host,
+            'sms_consent_ip' => $visitor['ip'] ?? null,
+        ])->save();
+    }
+
     public static function recentWebLead(WebSite $site, array $visitor, array $sources): ?Lead
     {
         $digits = Lead::digits((string) Lead::e164($visitor['phone'] ?? null));

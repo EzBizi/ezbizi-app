@@ -21,6 +21,7 @@ use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\BookingConfirmations;
 use App\Support\Web\BookingLink;
 use App\Support\Web\ChatPeople;
 use App\Support\Web\FormChallenge;
@@ -248,6 +249,9 @@ class EnquiriesController extends Controller
             // A review link's customer token: the faces' sad form sends it
             // instead of asking for a name, phone and email (Jose, 2026-10-08).
             'c' => ['nullable', 'string', 'max:200'],
+            // The booking widget's SMS box, when its ZIP has no area and it files a form.
+            'sms_consent' => ['nullable', 'boolean'],
+            'sms_consent_text' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
@@ -298,6 +302,9 @@ class EnquiriesController extends Controller
                 'page_url' => $input['page_url'] ?? null,
                 'marketing_consent' => (bool) ($input['marketing_consent'] ?? false),
                 'marketing_consent_text' => $input['marketing_consent_text'] ?? null,
+                'sms_consent' => (bool) ($input['sms_consent'] ?? false),
+                'sms_consent_text' => $input['sms_consent_text'] ?? null,
+                'ip' => $request->ip(),
             ], $attachments);
 
             $this->notify($site, (string) ($form['notify'] ?? ''), $input['fields'], $attachments);
@@ -449,10 +456,16 @@ class EnquiriesController extends Controller
             'name' => [$linked ? 'nullable' : 'required', 'string', 'max:191'],
             'phone' => [$linked ? 'nullable' : 'required', 'string', 'max:40'],
             'address' => ['required', 'string', 'max:300'],
+            // Optional; where the confirmation email goes (Jose, 2026-11-11).
+            'email' => ['nullable', 'email', 'max:191'],
             'page_url' => ['nullable', 'string', 'max:500'],
             'captcha' => ['nullable', 'string', 'max:2000'],
             'turnstile' => ['nullable', 'string', 'max:4000'],
+            // The SMS box on the last step and the words beside it (Jose, 2026-11-11).
+            'sms_consent' => ['nullable', 'boolean'],
+            'sms_consent_text' => ['nullable', 'string', 'max:1000'],
         ]);
+        $input['ip'] = $request->ip();
 
         // Spam bookings would hold real seats, so the robot check is never off here.
         if (! FormChallenge::passes($input['captcha'] ?? null)
@@ -498,12 +511,22 @@ class EnquiriesController extends Controller
                         Response::HTTP_CONFLICT)->withHeaders($this->browserHeaders());
                 }
 
-                DB::transaction(fn () => $this->enquiries->submitBooking($site, $area, $input['date'], $window, $input['address'], [
+                $visitor = [
                     'name' => $input['name'] ?? null,
                     'phone' => $input['phone'] ?? null,
+                    'email' => $input['email'] ?? null,
                     'zip' => $input['zip'],
                     'page_url' => $input['page_url'] ?? null,
-                ], $lead));
+                    'sms_consent' => (bool) ($input['sms_consent'] ?? false),
+                    'sms_consent_text' => $input['sms_consent_text'] ?? null,
+                    'ip' => $input['ip'],
+                ];
+                DB::transaction(fn () => $this->enquiries->submitBooking($site, $area, $input['date'], $window, $input['address'], $visitor, $lead));
+
+                if (($input['email'] ?? '') !== '') {
+                    $confirm = app(BookingConfirmations::class);
+                    $confirm->send($site, $input['email'], $confirm->details($site, $input['date'], $window, $input['address'], $visitor));
+                }
 
                 return response()->json(['received' => true, 'date' => $input['date']] + $window, Response::HTTP_CREATED)
                     ->withHeaders($this->browserHeaders());

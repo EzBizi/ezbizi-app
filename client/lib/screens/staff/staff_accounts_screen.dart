@@ -49,7 +49,6 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
         account['email'],
         account['tier'] == 'lead_developer' ? 'Lead Developer' : 'Developer',
         if (account['is_active'] == false) 'Disabled',
-        if (account['audit_exempt'] == true) 'Not audited',
       ].whereType<String>().join(' ').toLowerCase();
       return text.contains(q);
     }).toList();
@@ -149,7 +148,6 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
 
   Widget _row(BuildContext context, Map<String, dynamic> account) {
     final active = account['is_active'] as bool? ?? false;
-    final exempt = account['audit_exempt'] as bool? ?? false;
     final confirmed = account['totp_confirmed'] as bool? ?? false;
     final pending = account['totp_pending'] as bool? ?? false;
     final isMe = account['id'] == widget.staff.me!.id;
@@ -177,11 +175,6 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
                           ),
                           if (isMe) const Tag('You'),
                           if (!active) const Tag('Disabled', warn: true),
-                          // §4.2's exemption, on the screen rather than only in
-                          // the database. One account is outside the business
-                          // audit trail; which one has to be visible to whoever
-                          // is looking at this list, or nobody ever reviews it.
-                          if (exempt) const Tag('Not audited', warn: true),
                         ],
                       ),
                       const SizedBox(height: 2),
@@ -193,13 +186,16 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
                     ],
                   ),
                 ),
-                PopupMenuButton<String>(
-                  // One of these per row, all the same icon: the framework
-                  // default reads "Show menu" on every one of them.
-                  tooltip: 'What to do about ${account['name'] ?? account['email']}',
-                  itemBuilder: (_) => _menuFor(account),
-                  onSelected: (action) => _act(action, account),
-                ),
+                // Your own row has nothing to offer unless an authenticator waits.
+                if (_menuFor(account).isNotEmpty)
+                  PopupMenuButton<String>(
+                    // One of these per row, all the same icon: the framework
+                    // default reads "Show menu" on every one of them.
+                    tooltip:
+                        'What to do about ${account['name'] ?? account['email']}',
+                    itemBuilder: (_) => _menuFor(account),
+                    onSelected: (action) => _act(action, account),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
@@ -235,7 +231,6 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
   /// menu opened with a rule across the top and nothing over it.
   List<PopupMenuEntry<String>> _menuFor(Map<String, dynamic> account) {
     final active = account['is_active'] as bool? ?? false;
-    final exempt = account['audit_exempt'] as bool? ?? false;
     final pending = account['totp_pending'] as bool? ?? false;
     final isLead = account['tier'] == 'lead_developer';
     final isMe = account['id'] == widget.staff.me!.id;
@@ -263,7 +258,7 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
       items.add(
         const PopupMenuItem(
           value: 'reset',
-          child: Text('Re-enrol authenticator'),
+          child: Text('Re-enroll authenticator'),
         ),
       );
 
@@ -279,31 +274,6 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
         PopupMenuItem(
           value: 'tier',
           child: Text(isLead ? 'Make Developer' : 'Make Lead Developer'),
-        ),
-      );
-    }
-
-    // Offered on your OWN row too, unlike the two above. Those are guarded
-    // because locking yourself out of the control plane leaves the console on
-    // the box as the only way back; nothing here can lock anybody out, and the
-    // owner granting it to their own account is the case it exists for.
-    //
-    // Not offered on a Developer row, though, which it used to be: only a Lead
-    // Developer may hold the exemption (§4.2), so on a Developer the item was a
-    // control that existed only to be refused. Revoking one stays available
-    // whatever the tier — an account that somehow holds it must always be able
-    // to give it back.
-    if (isLead || exempt) {
-      divide();
-
-      items.add(
-        PopupMenuItem(
-          value: 'exempt',
-          child: Text(
-            exempt
-                ? 'Put back in the audit trail'
-                : 'Exempt from the audit trail',
-          ),
         ),
       );
     }
@@ -326,10 +296,6 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
           'tier': account['tier'] == 'lead_developer'
               ? 'developer'
               : 'lead_developer',
-        });
-      case 'exempt':
-        await _patch(account, {
-          'audit_exempt': !(account['audit_exempt'] as bool? ?? false),
         });
     }
   }
@@ -378,7 +344,7 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
     final confirmed = await showSidePanel<bool>(
       context,
       builder: (context) => SidePanel(
-        title: 'Re-enrol ${account['name']}?',
+        title: 'Re-enroll ${account['name']}?',
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -386,7 +352,7 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Re-enrol'),
+            child: const Text('Re-enroll'),
           ),
         ],
         child: const Text(

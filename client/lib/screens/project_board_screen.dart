@@ -9,11 +9,16 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
+import '../widgets/calendar_day_field.dart';
+import '../widgets/colour_field.dart';
 import '../widgets/list_search.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/list_table.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
+import '../widgets/tag.dart';
+import 'jobs/job_labels.dart';
 import 'jobs/job_detail_panel.dart';
 
 /// Project Management (Jose, 2026-11-06): six sub-tabs of jobs, from
@@ -37,7 +42,8 @@ class ProjectBoardScreen extends StatefulWidget {
   State<ProjectBoardScreen> createState() => _ProjectBoardScreenState();
 }
 
-class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
+class _ProjectBoardScreenState extends State<ProjectBoardScreen>
+    with WidgetsBindingObserver {
   bool _loading = true;
   bool _loaded = false;
   bool _fetching = false;
@@ -48,10 +54,52 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
   Map<String, dynamic> _labels = const {};
   Map<String, String> _scope = const {};
   Map<String, dynamic> _counts = const {};
+
+  /// Total Paid, Remaining Balance and Amount over the whole tab (Jose,
+  /// 2026-11-10); null without Financials.
+  Map<String, dynamic>? _totals;
+
+  /// The repair-team and contractor tags on offer (Workiz's), and whether
+  /// this person may change a job.
+
+  bool _canEditJobs = false;
+
+  /// Status Time colours: yellow from [warn] days, red from [bad] (Settings).
+  ({int warn, int bad}) _days = (warn: 3, bad: 7);
+
+  /// The columns the server can sort by, and the sort in force: per person,
+  /// on every device (Jose, 2026-11-10: "clicking the column orders it").
+  Set<String> _sortable = const {};
+  late final List<String> _savedSort =
+      '${widget.session.me?.preferences['project_board.sort'] ?? ''}'.split(
+        ':',
+      );
+  late String? _sortKey = _savedSort.first.isEmpty ? null : _savedSort.first;
+  late bool _sortDesc = _savedSort.length > 1 && _savedSort[1] == 'desc';
+
+  void _sortBy(String key) {
+    setState(() {
+      _sortDesc = _sortKey == key ? !_sortDesc : false;
+      _sortKey = key;
+      _rows = const [];
+    });
+    widget.session.setPreference(
+      'project_board.sort',
+      '$key:${_sortDesc ? 'desc' : 'asc'}',
+    );
+    _load();
+  }
+
   String _tab = _tabs.first.$1;
   String? _franchise;
   final _search = TextEditingController();
   Timer? _debounce;
+
+  /// Live refresh (Jose, 2026-11-10: "if I stay on this window, will I see
+  /// changes?"): Workiz syncs every minute, so the board looks again every
+  /// minute while it is on screen, and whenever the window comes back.
+  Timer? _live;
+  DateTime? _updated;
   String _q = '';
   int _page = 1;
   int _lastPage = 1;
@@ -67,11 +115,33 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _live = Timer.periodic(const Duration(seconds: 60), (_) => _refresh());
     _load();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  /// A quiet reload of what is on screen: the same rows and counts, no
+  /// spinner, so the scroll stays where it is. Skipped while the screen is
+  /// hidden (another module, or a sub-tab off stage) or Settings is open.
+  void _refresh() {
+    if (!mounted || _fetching || _tab == 'settings') return;
+    if (!TickerMode.valuesOf(context).enabled) return;
+    if (WidgetsBinding.instance.lifecycleState case final s?
+        when s != AppLifecycleState.resumed) {
+      return;
+    }
+    _load(quiet: true);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _live?.cancel();
     _debounce?.cancel();
     _search.dispose();
     super.dispose();
@@ -87,9 +157,11 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
     });
   }
 
-  Future<void> _load({int page = 1}) async {
+  Future<void> _load({int page = 1, bool quiet = false}) async {
+    // Quiet: every page already shown, in one call of the same rows.
+    final shownPages = quiet ? _page.clamp(1, 4) : page;
     setState(() {
-      _loading = true;
+      if (!quiet) _loading = true;
       _fetching = true;
     });
     final tab = _tab == 'settings' ? _tabs.first.$1 : _tab;
@@ -97,12 +169,15 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
     final q = _q;
     final response = await widget.api.get('/project-board/jobs', {
       'tab': tab,
-      'page': '$page',
+      'page': quiet ? '1' : '$page',
+      if (quiet) 'per_page': '${50 * shownPages}',
       if (franchise != null && franchise.startsWith('company:'))
         'company_id': franchise.substring(8)
       else
         'franchise_id': ?franchise,
       if (q.isNotEmpty) 'q': q,
+      'sort': ?_sortKey,
+      if (_sortKey != null) 'dir': _sortDesc ? 'desc' : 'asc',
     });
     if (!mounted || franchise != _franchise || q != _q) return;
     setState(() {
@@ -112,19 +187,104 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
       _error = response.ok ? null : response.message;
       if (!response.ok) return;
       final rows = _maps(response.body['data']);
-      _rows = page == 1 ? rows : [..._rows, ...rows];
+      _rows = page == 1 || quiet ? rows : [..._rows, ...rows];
       final meta = (response.body['meta'] as Map?) ?? const {};
       _total = meta['total'] as int? ?? _rows.length;
-      _lastPage = meta['last_page'] as int? ?? 1;
+      _lastPage = quiet
+          ? (_total / 50).ceil().clamp(1, 1 << 30)
+          : meta['last_page'] as int? ?? 1;
+      _updated = DateTime.now();
       _counts = (meta['counts'] as Map?)?.cast<String, dynamic>() ?? _counts;
+      _totals = (meta['totals'] as Map?)?.cast<String, dynamic>();
       _franchises = _maps(meta['places']);
       _columns = _maps(meta['columns']);
       _labels = (meta['labels'] as Map?)?.cast<String, dynamic>() ?? const {};
+      _canEditJobs = meta['can_edit'] == true;
+      final days = (meta['status_days'] as Map?) ?? const {};
+      _days = (
+        warn: (days['warn'] as num?)?.toInt() ?? 3,
+        bad: (days['bad'] as num?)?.toInt() ?? 7,
+      );
+      _sortable = {
+        for (final k in (meta['sortable'] as List?) ?? const []) '$k',
+      };
+
       _scope = ((meta['settings_scope'] as Map?) ?? const {}).map(
         (k, v) => MapEntry('$k', '$v'),
       );
-      _page = page;
+      _page = quiet ? shownPages : page;
     });
+  }
+
+  void _resize(int column, double width) {
+    final all = {
+      if (widget.session.me?.preferences['lists.column_widths']
+          case final Map saved)
+        ...saved,
+      'project-board:$column': width.roundToDouble(),
+    };
+    widget.session.setPreference('lists.column_widths', all);
+    setState(() {});
+  }
+
+  /// The job's parts, each "Need to order" (item, quantity, price,
+  /// delivery date) or "In stock" (item, quantity, price), in a side panel.
+  Future<void> _editParts(Map<String, dynamic> row) async {
+    final parts = [
+      for (final p in (row['parts'] as List?) ?? const [])
+        if (p is Map) Map<String, dynamic>.from(p),
+    ];
+    final saved = await showSidePanel<List<Map<String, dynamic>>>(
+      context,
+      builder: (panel) => _PartsPanel(
+        customer: '${row['customer'] ?? ''}',
+        parts: parts,
+        formats: widget.session.me?.display ?? DisplayFormats.fallback,
+      ),
+    );
+    if (saved == null || !mounted) return;
+    final r = await widget.api.put('/project-board/jobs/${row['id']}/parts', {
+      'parts': saved,
+    });
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    _load(quiet: true);
+  }
+
+  Widget _totalsStrip(Map<String, dynamic> t) {
+    final theme = Theme.of(context);
+    final currency = '${t['currency'] ?? 'USD'}';
+    Widget figure(String key, String label) => Padding(
+      padding: const EdgeInsets.only(right: 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: theme.textTheme.bodySmall),
+          Text(
+            formatMoney((t[key] as num?)?.toInt() ?? 0, currency: currency),
+            key: Key('project-board-total-$key'),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        children: [
+          figure('paid', 'Total Paid'),
+          figure('due', 'Total Remaining Balance'),
+          figure('total', 'Total Amount of Jobs'),
+        ],
+      ),
+    );
   }
 
   void _switch(int i) {
@@ -143,14 +303,16 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
     _load();
   }
 
-  void _open(Map<String, dynamic> row) => showSidePanel<bool>(
-    context,
-    builder: (_) => JobDetailPanel(
-      api: widget.api,
-      session: widget.session,
-      id: '${row['id']}',
-    ),
-  ).then((_) => _load());
+  void _open(Map<String, dynamic> row, {String tab = 'job'}) =>
+      showSidePanel<bool>(
+        context,
+        builder: (_) => JobDetailPanel(
+          api: widget.api,
+          session: widget.session,
+          id: '${row['id']}',
+          initialTab: tab,
+        ),
+      ).then((_) => _load());
 
   String _date(Object? ymd) {
     final at = ymd is String ? DateTime.tryParse(ymd) : null;
@@ -161,9 +323,343 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
           );
   }
 
+  /// Shoval's Unscheduled columns (Jose, 2026-11-10).
+  Widget? _unscheduledCell(
+    Map<String, dynamic> row,
+    String key,
+    Object? value,
+  ) {
+    final theme = Theme.of(context);
+    switch (key) {
+      case 'part_status':
+        // The job's parts (Jose, 2026-11-10), else its part tags.
+        final parts = [
+          for (final p in (row['parts'] as List?) ?? const [])
+            if (p is Map) p,
+        ];
+        if (parts.isEmpty && !_canEditJobs) return null;
+        final order = parts.where((p) => p['kind'] == 'order').toList();
+        final stock = parts.length - order.length;
+        final eta = [
+          for (final p in order)
+            ?DateTime.tryParse('${p['delivery_on'] ?? ''}'),
+        ]..sort();
+        final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+        final summary = [
+          if (order.isNotEmpty) '${order.length} to order',
+          if (eta.isNotEmpty) 'ETA ${formats.formatDate(eta.last)}',
+          if (stock > 0) '$stock in stock',
+        ].join(' · ');
+        return InkWell(
+          key: ValueKey('project-board-parts:${row['id']}'),
+          onTap: _canEditJobs ? () => _editParts(row) : null,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: parts.isEmpty
+                ? (value == null
+                      ? const Text('Add parts…')
+                      : StatusPill('$value', tone: Tone.caution))
+                : StatusPill(
+                    summary,
+                    tone: order.isEmpty ? Tone.ok : Tone.caution,
+                  ),
+          ),
+        );
+      case 'status_days':
+        if (value is! int) return const Text('—');
+        // Under 3 days green, 3 to 7 yellow, 7 and up red.
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: StatusPill(
+            value == 1 ? '1 day' : '$value days',
+            tone: value < _days.warn
+                ? Tone.ok
+                : value < _days.bad
+                ? Tone.caution
+                : Tone.bad,
+          ),
+        );
+      case 'payment_date':
+        final at = value is String
+            ? DateTime.tryParse(value.replaceFirst(' ', 'T'))
+            : null;
+        if (at == null) return const Text('—');
+        final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+        return Text(
+          '${formats.formatDate(at)} at ${TimeOfDay.fromDateTime(at).format(context)}',
+        );
+      case 'repair_team':
+        // The job's Workiz repair-team / contractor tag (Jose, 2026-11-10).
+        final current = value as String?;
+        // Only that job's own Workiz account's tags (Jose, 2026-11-10).
+        final options = [
+          for (final t in (row['repair_options'] as List?) ?? const [])
+            if (t is Map) ('${t['name']}', ColourField.parse('${t['colour']}')),
+        ];
+        if (!_canEditJobs || options.isEmpty) {
+          return current == null
+              ? const Text('—')
+              : Align(
+                  alignment: Alignment.centerLeft,
+                  child: Tag(current, colour: jobTagColours(row)[current]),
+                );
+        }
+        return MenuAnchor(
+          menuChildren: [
+            if (current != null)
+              MenuItemButton(
+                key: ValueKey('project-board-repair:${row['id']}:none'),
+                leadingIcon: const Icon(Icons.close, size: 18),
+                onPressed: () => _setRepairTeam(row, null),
+                child: const Text('Unassign'),
+              ),
+            for (final (t, colour) in options)
+              MenuItemButton(
+                key: ValueKey('project-board-repair:${row['id']}:$t'),
+                onPressed: () => _setRepairTeam(row, t),
+                child: Tag(t, colour: colour),
+              ),
+          ],
+          builder: (context, menu, _) => TextButton(
+            key: ValueKey('project-board-repair:${row['id']}'),
+            onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+            // The one tag, as its coloured chip on one line.
+            child: current == null
+                ? const Text('Assign…')
+                : Tag(current, colour: jobTagColours(row)[current]),
+          ),
+        );
+      case 'attachments':
+        final n = value is int ? value : 0;
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: ValueKey('project-board-files:${row['id']}'),
+            onPressed: () => _open(row, tab: 'files'),
+            icon: const Icon(Icons.attach_file, size: 18),
+            label: Text('$n'),
+          ),
+        );
+      case 'notes':
+        final text = value as String?;
+        if (text == null) return const Text('—');
+        return Tooltip(
+          message: text,
+          child: Text(
+            text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          ),
+        );
+      case 'required':
+        // Line by line, a small gap between items so a long one reads as
+        // one (Jose, 2026-11-10).
+        if (value == null) return const Text('—');
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (i, item) in '$value'.split(_newline).indexed)
+              Padding(
+                padding: EdgeInsets.only(top: i == 0 ? 0 : 5),
+                child: Text(item),
+              ),
+          ],
+        );
+    }
+    return null;
+  }
+
+  /// The job's repair team, here and in Workiz: a pick replaces the old
+  /// one, null unassigns (Jose, 2026-11-10).
+  Future<void> _setRepairTeam(Map<String, dynamic> row, String? team) async {
+    final r = await widget.api.patch(
+      '/project-board/jobs/${row['id']}/repair-team',
+      {'repair_team': team},
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          !r.ok
+              ? r.reason
+              : team == null
+              ? 'Unassigned.'
+              : '$team assigned.',
+        ),
+      ),
+    );
+    if (r.ok) _load(quiet: true);
+  }
+
+  /// "Ready to schedule": adds READY TO SCHEDULE in Workiz; only once
+  /// every column it needs is filled.
+  Widget _readyButton(Map<String, dynamic> row) {
+    final missing = [
+      for (final m in (row['ready_missing'] as List?) ?? const []) '$m',
+    ];
+    final button = FilledButton(
+      key: ValueKey('project-board-ready:${row['id']}'),
+      // Roomier, and centred in its cell (Jose, 2026-11-10).
+      style: FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
+      onPressed: missing.isEmpty && _canEditJobs ? () => _ready(row) : null,
+      child: const Text('Ready to schedule'),
+    );
+    return Center(
+      child: missing.isEmpty
+          ? button
+          : Tooltip(
+              message: 'Still needs ${missing.join(', ')}',
+              child: button,
+            ),
+    );
+  }
+
+  Future<void> _ready(Map<String, dynamic> row) async {
+    final times = await _askTimes(row, title: 'Ready to schedule');
+    if (times == null || !mounted) return;
+    final r = await widget.api.post(
+      '/project-board/jobs/${row['id']}/ready',
+      times,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(r.ok ? 'Moved to Ready to Schedule.' : r.reason)),
+    );
+    if (r.ok) _load(quiet: true);
+  }
+
+  /// Date, time slot, alternative date, alternative time slot, in a side
+  /// panel (Jose, 2026-11-10). Pops the four, or null when cancelled.
+  Future<Map<String, String>?> _askTimes(
+    Map<String, dynamic> row, {
+    required String title,
+  }) {
+    final had = (row['schedule_proposal'] as Map?) ?? const {};
+    final fields = {
+      for (final k in const ['date', 'slot', 'alt_date', 'alt_slot'])
+        k: TextEditingController(text: '${had[k] ?? ''}'),
+    };
+    final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+    return showSidePanel<Map<String, String>>(
+      context,
+      builder: (panel) => StatefulBuilder(
+        builder: (panel, set) {
+          final done = fields.values.every((c) => c.text.trim().isNotEmpty);
+          Widget slot(String key, String label) => Autocomplete<String>(
+            initialValue: TextEditingValue(text: fields[key]!.text),
+            optionsBuilder: (v) => _slots.where(
+              (s) => s.toLowerCase().contains(v.text.toLowerCase()),
+            ),
+            onSelected: (v) => set(() => fields[key]!.text = v),
+            fieldViewBuilder: (context, c, focus, submit) => TextField(
+              key: Key('project-board-times-$key'),
+              controller: c,
+              focusNode: focus,
+              onChanged: (v) => set(() => fields[key]!.text = v),
+              decoration: InputDecoration(
+                labelText: label,
+                hintText: 'e.g. 8 - 11 AM',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          );
+          Widget day(String key, String label) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: Theme.of(panel).textTheme.labelLarge),
+              const SizedBox(height: 4),
+              CalendarDayField(
+                key: Key('project-board-times-$key'),
+                controller: fields[key]!,
+                formats: formats,
+                dense: true,
+                onChanged: (_) => set(() {}),
+              ),
+            ],
+          );
+          return SidePanel(
+            title: title,
+            subtitle: '${row['customer'] ?? ''}',
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(panel).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                key: const Key('project-board-times-save'),
+                onPressed: done
+                    ? () => Navigator.of(panel).pop({
+                        for (final e in fields.entries)
+                          e.key: e.value.text.trim(),
+                      })
+                    : null,
+                child: const Text('Save'),
+              ),
+            ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                day('date', 'Date'),
+                const SizedBox(height: 12),
+                slot('slot', 'Time slot'),
+                const SizedBox(height: 20),
+                day('alt_date', 'Alternative date'),
+                const SizedBox(height: 12),
+                slot('alt_slot', 'Alternative time slot'),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// The Schedule column on Ready to Schedule: the offered times; a click
+  /// shows and changes them.
+  Widget _proposalCell(Map<String, dynamic> row) {
+    final p = (row['schedule_proposal'] as Map?) ?? const {};
+    final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+    String day(Object? v) {
+      final at = DateTime.tryParse('${v ?? ''}');
+      return at == null ? '—' : formats.formatDate(at);
+    }
+
+    return InkWell(
+      key: ValueKey('project-board-proposal:${row['id']}'),
+      onTap: _canEditJobs
+          ? () async {
+              final times = await _askTimes(row, title: 'Schedule');
+              if (times == null || !mounted) return;
+              final r = await widget.api.patch(
+                '/project-board/jobs/${row['id']}/proposal',
+                times,
+              );
+              if (!mounted) return;
+              if (!r.ok) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(r.reason)));
+                return;
+              }
+              _load(quiet: true);
+            }
+          : null,
+      child: p.isEmpty
+          ? const Text('Set times…')
+          : Text(
+              '${day(p['date'])} · ${p['slot']}\nor ${day(p['alt_date'])} · ${p['alt_slot']}',
+            ),
+    );
+  }
+
   Widget _cell(Map<String, dynamic> row, Map<String, dynamic> column) {
     final key = '${column['key']}';
     final value = row[key];
+    if (_unscheduledCell(row, key, value) case final special?) return special;
     if (_moneyKeys.contains(key)) {
       return Text(
         value is int
@@ -172,8 +668,19 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
       );
     }
     if (value is List) {
-      // Tags: one chip each, coloured like any label column.
+      // Tags: one chip each, in its Workiz colour where known (Jose,
+      // 2026-11-10), else coloured like any label column.
       if (value.isEmpty) return const Text('—');
+      final workiz = key == 'tags'
+          ? jobTagColours(row)
+          : const <String, Color>{};
+      if (workiz.isNotEmpty) {
+        return Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: [for (final t in value) Tag('$t', colour: workiz['$t'])],
+        );
+      }
       final named = (_labels[key] as Map?) ?? const {};
       return Wrap(
         spacing: 4,
@@ -266,46 +773,106 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
                     onSaved: _load,
                   )
                 else ...[
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        '${shown[selected].$2} · $_total jobs',
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      DropdownMenu<String>(
-                        enableFilter: true,
-                        requestFocusOnTap: true,
-                        key: const Key('project-board-franchise'),
-                        label: const Text('Franchise'),
-                        initialSelection: _franchise ?? '',
-                        onSelected: (v) =>
-                            _pick(v == null || v.isEmpty ? null : v),
-                        dropdownMenuEntries: [
-                          const DropdownMenuEntry(value: '', label: 'All'),
-                          // Hierarchy order from the server, indented by level.
-                          for (final f in _franchises)
-                            DropdownMenuEntry(
-                              value: '${f['value']}',
-                              label: '${f['label']}',
-                              labelWidget: Padding(
-                                padding: EdgeInsets.only(
-                                  left: 16.0 * ((f['depth'] as int?) ?? 0),
-                                ),
-                                child: Text('${f['label']}'),
-                              ),
-                            ),
-                        ],
-                      ),
-                      ListSearch(
+                  // The search takes what is left of the row (Jose,
+                  // 2026-11-10); on a narrow window it wraps below.
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      final search = ListSearch(
                         key: const Key('project-board-search'),
                         controller: _search,
-                        hint: 'Customer, job number or address',
+                        hint:
+                            'Customer, job number, phone, address or technician',
+                        width: box.maxWidth >= 900 ? double.infinity : 280,
                         onChanged: _searched,
-                      ),
-                    ],
+                      );
+                      final items = <Widget>[
+                        Text(
+                          '${shown[selected].$2} · $_total jobs',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        if (_updated case final at?)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Updated ${TimeOfDay.fromDateTime(at).format(context)}',
+                                key: const Key('project-board-updated'),
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              IconButton(
+                                key: const Key('project-board-refresh'),
+                                tooltip: 'Refresh now',
+                                icon: const Icon(Icons.refresh, size: 18),
+                                onPressed: _fetching
+                                    ? null
+                                    : () => _load(quiet: true),
+                              ),
+                            ],
+                          ),
+                        DropdownMenu<String>(
+                          enableFilter: true,
+                          requestFocusOnTap: true,
+                          key: const Key('project-board-franchise'),
+                          // The same size as the search beside it, and a
+                          // list that scrolls past the screen's height
+                          // (Jose, 2026-11-10).
+                          width: 280,
+                          menuHeight: 420,
+                          hintText: 'Franchise',
+                          leadingIcon: const Icon(
+                            Icons.store_outlined,
+                            size: 18,
+                          ),
+                          inputDecorationTheme: InputDecorationTheme(
+                            isDense: true,
+                            constraints: BoxConstraints.tightFor(
+                              height: ListSearch.height,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          initialSelection: _franchise ?? '',
+                          onSelected: (v) =>
+                              _pick(v == null || v.isEmpty ? null : v),
+                          dropdownMenuEntries: [
+                            const DropdownMenuEntry(value: '', label: 'All'),
+                            // Hierarchy order from the server, indented by level.
+                            for (final f in _franchises)
+                              DropdownMenuEntry(
+                                value: '${f['value']}',
+                                label: '${f['label']}',
+                                labelWidget: Padding(
+                                  padding: EdgeInsets.only(
+                                    left: 16.0 * ((f['depth'] as int?) ?? 0),
+                                  ),
+                                  child: Text('${f['label']}'),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ];
+                      if (box.maxWidth < 900) {
+                        return Wrap(
+                          spacing: 16,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [...items, search],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          for (final w in items) ...[
+                            w,
+                            const SizedBox(width: 16),
+                          ],
+                          Expanded(child: search),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   if (rows.isEmpty && _fetching)
@@ -316,8 +883,18 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
                           ? 'No job matches "$_q".'
                           : 'No jobs in ${shown[selected].$2}.',
                     )
-                  else
+                  else ...[
+                    if (_totals case final t?) _totalsStrip(t),
                     ListTable(
+                      // Dragged widths, per person on every device (Jose,
+                      // 2026-11-10). ponytail: by column position; a
+                      // reordered column keeps the slot's width.
+                      widths:
+                          widget.session.me?.listColumnWidths(
+                            'project-board',
+                          ) ??
+                          const {},
+                      onResize: _resize,
                       rowKey: (i) =>
                           ValueKey('project-board-job:${rows[i]['id']}'),
                       onTap: (i) => _open(rows[i]),
@@ -329,13 +906,26 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen> {
                                 ? 4
                                 : 2,
                             end: _moneyKeys.contains(c['key']),
+                            onSort: _sortable.contains(c['key'])
+                                ? () => _sortBy('${c['key']}')
+                                : null,
+                            sorted: _sortKey == c['key'] ? _sortDesc : null,
                           ),
+                        if (_tab == 'unscheduled')
+                          const ListColumn('', flex: 3),
+                        if (_tab == 'ready_to_schedule')
+                          const ListColumn('Schedule', flex: 3),
                       ],
                       rows: [
                         for (final row in rows)
-                          [for (final c in columns) _cell(row, c)],
+                          [
+                            for (final c in columns) _cell(row, c),
+                            if (_tab == 'unscheduled') _readyButton(row),
+                            if (_tab == 'ready_to_schedule') _proposalCell(row),
+                          ],
                       ],
                     ),
+                  ],
                   if (_page < _lastPage)
                     Center(
                       child: TextButton(
@@ -399,10 +989,20 @@ class _BoardSettingsState extends State<_BoardSettings> {
   final Map<String, List<String>> _tabTags = {};
   final Map<String, bool> _anyTag = {};
   List<String> _partTags = [];
+  final Map<String, List<String>> _tabNoTags = {};
 
   /// The company's real job statuses and tags, most used first.
   List<String> _knownStatuses = const [];
   List<String> _knownTags = const [];
+  Map<String, Color> _tagColours = const {};
+
+  /// Settings for the new columns (Jose, 2026-11-10).
+  List<Map<String, dynamic>> _repairTeams = [];
+  List<Map<String, dynamic>> _users = const [];
+  List<String> _repairColours = const [];
+  final Set<String> _readyNeeds = {};
+  final _warnDays = TextEditingController();
+  final _badDays = TextEditingController();
   bool _ready = false;
   String? _saving;
   String? _error;
@@ -420,6 +1020,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
         c.dispose();
       }
     }
+    _warnDays.dispose();
+    _badDays.dispose();
     super.dispose();
   }
 
@@ -443,6 +1045,36 @@ class _BoardSettingsState extends State<_BoardSettings> {
       _knownTags = [
         for (final t in (options['tags'] as List?) ?? const []) '$t',
       ];
+      _tagColours = jobTagColours({'tag_colours': options['tag_colours']});
+      _repairTeams = [
+        for (final t
+            in (byKey['project_board.repair_tags'] as List?) ?? const [])
+          t is Map ? Map<String, dynamic>.from(t) : {'name': '$t'},
+      ];
+      _users = [
+        for (final u in (options['users'] as List?) ?? const [])
+          if (u is Map) Map<String, dynamic>.from(u),
+      ];
+      _repairColours = [
+        for (final c in (options['repair_colours'] as List?) ?? const []) '$c',
+      ];
+      _readyNeeds
+        ..clear()
+        ..addAll([
+          for (final k
+              in (byKey['project_board.ready_requires'] as List?) ??
+                  const [
+                    'service_area',
+                    'technician',
+                    'repair_team',
+                    'attachment',
+                    'note',
+                  ])
+            '$k',
+        ]);
+      final days = (byKey['project_board.status_days'] as Map?) ?? const {};
+      _warnDays.text = '${days['warn'] ?? 3}';
+      _badDays.text = '${days['bad'] ?? 7}';
       for (final (key, _, _) in _tabs) {
         final rule = (tabs[key] as Map?) ?? const {};
         _statuses[key] = [
@@ -453,6 +1085,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
           for (final t in (rule['tags'] as List?) ?? const []) '$t',
         ];
         _anyTag[key] = rule['tags_mode'] == 'any';
+        _tabNoTags[key] = [
+          for (final t in (rule['tags_none'] as List?) ?? const []) '$t',
+        ];
       }
       _partTags = [
         for (final t in (byKey['project_board.part_tags'] as List?) ?? const [])
@@ -533,6 +1168,149 @@ class _BoardSettingsState extends State<_BoardSettings> {
       ),
     );
   }
+
+  /// The Repair Team / Contractor list (Jose, 2026-11-10): managed here,
+  /// each a Workiz tag on every account, with a phone or a user. Each change
+  /// is saved at once and shows what every Workiz account answered.
+  Widget _repairCard() {
+    final theme = Theme.of(context);
+    String? userName(Object? id) =>
+        _users.where((u) => u['id'] == id).firstOrNull?['name'] as String?;
+    return Card(
+      key: const Key('project-board-repair-teams'),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Repair teams / contractors',
+              style: theme.textTheme.titleMedium,
+            ),
+            Text(
+              'Each is a job tag in every Workiz account: adding, renaming or deleting one here does it there too.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            for (final t in _repairTeams)
+              ListTile(
+                key: ValueKey('project-board-repair-team:${t['name']}'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Tag('${t['name']}', colour: _tagColours[t['name']]),
+                ),
+                subtitle: Text(
+                  [
+                    if ('${t['phone'] ?? ''}'.isNotEmpty) '${t['phone']}',
+                    ?userName(t['user_id']),
+                  ].join(' · '),
+                ),
+                trailing: const Icon(Icons.edit_outlined, size: 18),
+                onTap: _saving != null ? null : () => _editRepairTeam(t),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('project-board-repair-tags-add'),
+                onPressed: _saving != null ? null : () => _editRepairTeam(null),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add a repair team / contractor'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editRepairTeam(Map<String, dynamic>? team) async {
+    final body = await showSidePanel<Map<String, Object?>>(
+      context,
+      builder: (_) =>
+          _RepairTeamPanel(team: team, users: _users, colours: _repairColours),
+    );
+    if (body == null || !mounted) return;
+    setState(() => _saving = 'repair');
+    final r = await widget.api.post('/project-board/repair-teams', body);
+    if (!mounted) return;
+    setState(() => _saving = null);
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.message)));
+      return;
+    }
+    final data = r.data as Map;
+    final outcomes = (data['outcomes'] as Map?) ?? const {};
+    setState(
+      () => _repairTeams = [
+        for (final t in (data['list'] as List?) ?? const [])
+          Map<String, dynamic>.from(t as Map),
+      ],
+    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            outcomes.isEmpty
+                ? 'Saved.'
+                : [
+                    for (final e in outcomes.entries) '${e.key}: ${e.value}',
+                  ].join(_newline),
+          ),
+        ),
+      );
+  }
+
+  /// The chosen tags as coloured chips, and "+ Add tag" opening a searchable
+  /// list (Jose, 2026-11-10: the ~95 chips were a wall, four times over).
+  Widget _tagPicker(String key, List<String> chosen) => Wrap(
+    key: Key(key),
+    spacing: 6,
+    runSpacing: 6,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      for (final t in chosen)
+        InputChip(
+          label: Text(
+            t,
+            style: _tagColours[t] == null
+                ? null
+                : TextStyle(color: inkOn(_tagColours[t]!)),
+          ),
+          backgroundColor: _tagColours[t],
+          onDeleted: () => setState(() => chosen.remove(t)),
+        ),
+      ActionChip(
+        key: Key('$key-add'),
+        avatar: const Icon(Icons.add, size: 16),
+        label: const Text('Add tag'),
+        onPressed: () async {
+          final picked = await showSearchPicker<String>(
+            context,
+            title: 'Add a tag',
+            options: [
+              for (final t in _knownTags)
+                if (!chosen.contains(t))
+                  SearchOption(
+                    value: t,
+                    label: t,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Tag(t, colour: _tagColours[t]),
+                    ),
+                  ),
+            ],
+          );
+          if (picked != null && mounted) setState(() => chosen.add(picked));
+        },
+      ),
+    ],
+  );
 
   /// Every known value as a chip, the chosen ones ticked; a chosen value the
   /// company no longer uses stays listed so it can be unticked.
@@ -809,10 +1587,16 @@ class _BoardSettingsState extends State<_BoardSettings> {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    _chips(
-                      'project-board-tab-tags:$key',
-                      _knownTags,
-                      _tabTags[key]!,
+                    _tagPicker('project-board-tab-tags:$key', _tabTags[key]!),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Must not have any of these tags',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 4),
+                    _tagPicker(
+                      'project-board-tab-no-tags:$key',
+                      _tabNoTags[key]!,
                     ),
                   ],
                 ),
@@ -827,6 +1611,8 @@ class _BoardSettingsState extends State<_BoardSettings> {
                     'tags': _tabTags[key]!,
                     'tags_mode': _anyTag[key] == true ? 'any' : 'all',
                   },
+                  if (_tabNoTags[key]!.isNotEmpty)
+                    'tags_none': _tabNoTags[key]!,
                   if (_scheduled[key] != null) 'scheduled': _scheduled[key]!,
                 },
             },
@@ -839,14 +1625,73 @@ class _BoardSettingsState extends State<_BoardSettings> {
           [
             KeyedSubtree(
               key: const Key('project-board-part-tags'),
-              child: _chips(
-                'project-board-part-tags-chips',
-                _knownTags,
-                _partTags,
-              ),
+              child: _tagPicker('project-board-part-tags-chips', _partTags),
             ),
           ],
           () => {'project_board.part_tags': _partTags},
+        ),
+        _repairCard(),
+        _card(
+          'ready',
+          'Ready to schedule',
+          'What a job needs before "Ready to schedule" can move it on.',
+          [
+            for (final (k, label) in const [
+              ('service_area', 'Service Area'),
+              ('technician', 'Technician'),
+              ('repair_team', 'Repair Team / Contractor'),
+              ('attachment', 'At least one attachment'),
+              ('note', 'At least one note'),
+            ])
+              CheckboxListTile(
+                key: ValueKey('project-board-ready-needs:$k'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(label),
+                value: _readyNeeds.contains(k),
+                onChanged: (on) => setState(
+                  () => on == true ? _readyNeeds.add(k) : _readyNeeds.remove(k),
+                ),
+              ),
+          ],
+          () => {'project_board.ready_requires': _readyNeeds.toList()},
+        ),
+        _card(
+          'status_days',
+          'Status Time colours',
+          'Green below the first number of days, yellow from it, red from the second.',
+          [
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                for (final (c, label, key) in [
+                  (_warnDays, 'Yellow from (days)', 'project-board-warn-days'),
+                  (_badDays, 'Red from (days)', 'project-board-bad-days'),
+                ])
+                  SizedBox(
+                    width: 180,
+                    child: TextField(
+                      key: Key(key),
+                      controller: c,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: label,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          () => {
+            'project_board.status_days': {
+              'warn': int.tryParse(_warnDays.text.trim()) ?? 3,
+              'bad': int.tryParse(_badDays.text.trim()) ?? 7,
+            },
+          },
         ),
       ],
     );
@@ -879,3 +1724,365 @@ const _tabs = [
   ('done_waiting_payment', 'Done Waiting Payment', Icons.payments_outlined),
   ('complete', 'Complete', Icons.task_alt),
 ];
+
+/// One required item per line, as the server joins them.
+const _newline = '\n';
+
+/// Time slots offered in the Ready to schedule questions; any other can be typed.
+const _slots = ['8 - 11 AM', '11 AM - 2 PM', '2 - 5 PM'];
+
+/// Editing a job's parts: rows of kind, item, quantity, price and (to order)
+/// delivery date. Pops the list to save, or null.
+class _PartsPanel extends StatefulWidget {
+  const _PartsPanel({
+    required this.customer,
+    required this.parts,
+    required this.formats,
+  });
+
+  final String customer;
+  final List<Map<String, dynamic>> parts;
+  final DisplayFormats formats;
+
+  @override
+  State<_PartsPanel> createState() => _PartsPanelState();
+}
+
+class _PartsPanelState extends State<_PartsPanel> {
+  late final List<
+    ({
+      String kind,
+      TextEditingController item,
+      TextEditingController quantity,
+      TextEditingController price,
+      TextEditingController delivery,
+    })
+  >
+  _rows = [for (final p in widget.parts) _row(p)];
+
+  ({
+    String kind,
+    TextEditingController item,
+    TextEditingController quantity,
+    TextEditingController price,
+    TextEditingController delivery,
+  })
+  _row(Map<String, dynamic> p) => (
+    kind: '${p['kind'] ?? 'order'}',
+    item: TextEditingController(text: '${p['item'] ?? ''}'),
+    quantity: TextEditingController(text: '${p['quantity'] ?? 1}'),
+    price: TextEditingController(
+      text: p['price_minor'] is num
+          ? ((p['price_minor'] as num) / 100).toStringAsFixed(2)
+          : '',
+    ),
+    delivery: TextEditingController(text: '${p['delivery_on'] ?? ''}'),
+  );
+
+  @override
+  void dispose() {
+    for (final r in _rows) {
+      r.item.dispose();
+      r.quantity.dispose();
+      r.price.dispose();
+      r.delivery.dispose();
+    }
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _value => [
+    for (final r in _rows)
+      if (r.item.text.trim().isNotEmpty)
+        {
+          'kind': r.kind,
+          'item': r.item.text.trim(),
+          'quantity': int.tryParse(r.quantity.text.trim()) ?? 1,
+          'price_minor': switch (double.tryParse(
+            r.price.text.trim().replaceAll(r'$', ''),
+          )) {
+            final d? => (d * 100).round(),
+            null => null,
+          },
+          if (r.kind == 'order' && r.delivery.text.trim().isNotEmpty)
+            'delivery_on': r.delivery.text.trim(),
+        },
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    InputDecoration box(String label) => InputDecoration(
+      isDense: true,
+      labelText: label,
+      border: const OutlineInputBorder(),
+    );
+    return SidePanel(
+      title: 'Parts',
+      subtitle: widget.customer,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('project-board-parts-save'),
+          onPressed: () => Navigator.of(context).pop(_value),
+          child: const Text('Save'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, r) in _rows.indexed)
+            Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SegmentedButton<String>(
+                            key: ValueKey('project-board-part-kind-$i'),
+                            showSelectedIcon: false,
+                            segments: const [
+                              ButtonSegment(
+                                value: 'order',
+                                label: Text('Need to order'),
+                              ),
+                              ButtonSegment(
+                                value: 'stock',
+                                label: Text('In stock'),
+                              ),
+                            ],
+                            selected: {r.kind},
+                            onSelectionChanged: (v) => setState(
+                              () => _rows[i] = (
+                                kind: v.first,
+                                item: r.item,
+                                quantity: r.quantity,
+                                price: r.price,
+                                delivery: r.delivery,
+                              ),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove',
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => setState(() => _rows.removeAt(i)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      key: ValueKey('project-board-part-item-$i'),
+                      controller: r.item,
+                      decoration: box('Item'),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: r.quantity,
+                            keyboardType: TextInputType.number,
+                            decoration: box('Quantity'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: r.price,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: box('Price'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (r.kind == 'order') ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Delivery date',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 4),
+                      CalendarDayField(
+                        controller: r.delivery,
+                        formats: widget.formats,
+                        dense: true,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('project-board-part-add'),
+              onPressed: () => setState(
+                () => _rows.add(_row(const {'kind': 'order', 'quantity': 1})),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add a part'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Adding or changing one repair team / contractor: its name, (new) its
+/// Workiz colour, a phone or a user; Delete removes it everywhere. Pops the
+/// request body for POST /project-board/repair-teams, or null.
+class _RepairTeamPanel extends StatefulWidget {
+  const _RepairTeamPanel({
+    required this.team,
+    required this.users,
+    required this.colours,
+  });
+
+  final Map<String, dynamic>? team;
+  final List<Map<String, dynamic>> users;
+  final List<String> colours;
+
+  @override
+  State<_RepairTeamPanel> createState() => _RepairTeamPanelState();
+}
+
+class _RepairTeamPanelState extends State<_RepairTeamPanel> {
+  late final _name = TextEditingController(
+    text: '${widget.team?['name'] ?? ''}',
+  );
+  late final _phone = TextEditingController(
+    text: '${widget.team?['phone'] ?? ''}',
+  );
+  late String? _userId = widget.team?['user_id'] as String?;
+  late String? _colour = widget.colours.firstOrNull;
+  bool _deleting = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  bool get _isNew => widget.team == null;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = widget.users.where((u) => u['id'] == _userId).firstOrNull;
+    return SidePanel(
+      title: _isNew
+          ? 'Add a repair team / contractor'
+          : 'Repair team / contractor',
+      actions: [
+        if (!_isNew)
+          TextButton(
+            key: const Key('project-board-repair-team-delete'),
+            onPressed: () => _deleting
+                ? Navigator.of(context).pop(<String, Object?>{
+                    'op': 'delete',
+                    'name': widget.team!['name'],
+                  })
+                : setState(() => _deleting = true),
+            child: Text(
+              _deleting ? 'Delete from every Workiz account' : 'Delete',
+            ),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ValueListenableBuilder(
+          valueListenable: _name,
+          builder: (context, name, _) => FilledButton(
+            key: const Key('project-board-repair-team-save'),
+            onPressed: name.text.trim().isEmpty
+                ? null
+                : () => Navigator.of(context).pop(<String, Object?>{
+                    'op': _isNew ? 'create' : 'update',
+                    'name': _isNew ? name.text.trim() : widget.team!['name'],
+                    if (!_isNew) 'to': name.text.trim(),
+                    if (_isNew) 'color': _colour,
+                    'phone': _phone.text.trim().isEmpty
+                        ? null
+                        : _phone.text.trim(),
+                    'user_id': _userId,
+                  }),
+            child: const Text('Save'),
+          ),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: const Key('project-board-repair-team-name'),
+            controller: _name,
+            decoration: const InputDecoration(
+              labelText: 'Name (the Workiz tag)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (_isNew) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final c in widget.colours)
+                  ChoiceChip(
+                    key: ValueKey('project-board-repair-colour:$c'),
+                    showCheckmark: false,
+                    label: const SizedBox(width: 16, height: 16),
+                    backgroundColor: ColourField.parse(c),
+                    selectedColor: ColourField.parse(c),
+                    side: _colour == c ? const BorderSide(width: 3) : null,
+                    selected: _colour == c,
+                    onSelected: (_) => setState(() => _colour = c),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('project-board-repair-team-phone'),
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Phone',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const Key('project-board-repair-team-user'),
+            icon: const Icon(Icons.person_outline, size: 18),
+            label: Text('${user?['name'] ?? 'Pick a user'}'),
+            onPressed: () async {
+              final picked = await showSearchPicker<String>(
+                context,
+                title: 'User',
+                value: _userId,
+                options: [
+                  const SearchOption(value: '', label: 'Nobody'),
+                  for (final u in widget.users)
+                    SearchOption(value: '${u['id']}', label: '${u['name']}'),
+                ],
+              );
+              if (picked != null && mounted) {
+                setState(() => _userId = picked.isEmpty ? null : picked);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}

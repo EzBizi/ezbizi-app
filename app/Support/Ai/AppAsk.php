@@ -188,7 +188,8 @@ final class AppAsk
             })->take(60)->implode("\n");
 
         return $lines === '' ? '' : 'Their companies and the branches (franchises) of each - a question naming a '
-            ."company means all of its branches together:\n{$lines}\n\n";
+            ."company means all of its branches together - lead with the total, then each branch "
+            ."(a board's counts.by_branch has them):\n{$lines}\n\n";
     }
 
     /** Every tenant GET endpoint, one per line. */

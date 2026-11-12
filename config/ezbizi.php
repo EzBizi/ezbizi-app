@@ -144,6 +144,14 @@ return [
      * Production sets `EZBIZI_PEER_URL=https://panel.triplexhost.net`. An unset
      * value is reported as missing, the same way MailStatus names an empty key.
      */
+    /*
+     * Where scripts/lib/release-status.sh appends a release's progress, one
+     * JSON line per stage boundary, over the deploy's own ssh. Outside storage/
+     * because the deploy user writes it and www-data owns storage. Read by the
+     * Development tab's Releases screen (StaffReleaseStatusController).
+     */
+    'release_status_file' => env('EZBIZI_RELEASE_STATUS_FILE', '/var/www/ezbizi/release-status.jsonl'),
+
     'peer' => [
         'status_file' => env('EZBIZI_PEER_STATUS', storage_path('app/peer-status.json')),
         'url' => env('EZBIZI_PEER_URL'),

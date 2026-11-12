@@ -430,6 +430,25 @@ void main() {
     expect(queries.last.containsKey('missing'), isFalse);
   });
 
+  testWidgets('Active and Inactive ask the server, not the loaded page', (
+    tester,
+  ) async {
+    final queries = <Map<String, String>>[];
+
+    await _pump(tester, _handler(onPeopleQuery: queries.add));
+    await _tap(tester, _tab('Records'));
+    expect(queries.last.containsKey('status'), isFalse);
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Inactive'));
+    expect(queries.last['status'], 'inactive');
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Active'));
+    expect(queries.last['status'], 'active');
+
+    await _tap(tester, find.widgetWithText(ChoiceChip, 'Everyone'));
+    expect(queries.last.containsKey('status'), isFalse);
+  });
+
   // Jose, 2026-09-30: the invite can start the paperwork, "but toggable, some
   // people dont need contracts". Off sends no contract; on needs one chosen.
   testWidgets('an invitation can start the paperwork with a contract', (
@@ -490,23 +509,19 @@ void main() {
     // The organization first — it is the widest thing on offer — then
     // everything else by its whole path, so a company is followed by the
     // franchises under it rather than by an alphabetical run of Connecticuts.
+    // §4: an assignment to a deactivated scope grants nothing, and a
+    // switched-off place does not show up at all (Jose, 2026-11-10), so
+    // Rhode Island (fr-4) is not drawn.
     expect(scopes.options.map((o) => o.value), [
       'organization:org-1',
       'company:co-1',
       'franchise:fr-9',
-      'franchise:fr-4',
     ]);
 
     expect(scopes.options.map((o) => o.label), [
       'Everdoors',
       'Serenisima',
       'Serenisima › Connecticut',
-      // §4: an assignment to a deactivated scope grants nothing, so it is drawn
-      // and refused rather than offered as a silent mistake.
-      'Serenisima › Rhode Island — deactivated',
-    ]);
-    expect(scopes.options.where((o) => !o.enabled).map((o) => o.value), [
-      'franchise:fr-4',
     ]);
 
     // `/me` knows about Texas and does not know about Connecticut. Neither

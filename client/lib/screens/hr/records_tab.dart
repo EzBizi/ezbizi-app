@@ -175,10 +175,11 @@ class _RecordsTabState extends State<RecordsTab> {
       return names.join(' › ');
     }
 
+    // Switched-off ones are not offered (Jose, 2026-11-10).
     final rows = [
-      for (final c in me.companies)
+      for (final c in me.switchableCompanies)
         SearchOption(value: 'company:${c.id}', label: pathOf(c.id)),
-      for (final f in me.franchises)
+      for (final f in me.switchableFranchises)
         SearchOption(
           value: 'franchise:${f.id}',
           label: [
@@ -210,6 +211,9 @@ class _RecordsTabState extends State<RecordsTab> {
         'role_id': ?_roleId,
         if (_place?.split(':') case [final kind, final id]) '${kind}_id': id,
         'missing': ?_missing,
+        // Server-side, so Inactive finds people past the first page (Jose, 2026-11-10).
+        if (_showing != _Showing.everyone)
+          'status': _showing == _Showing.active ? 'active' : 'inactive',
       }),
       widget.api.get('/hr/people/scope-options'),
     ]);
@@ -284,17 +288,8 @@ class _RecordsTabState extends State<RecordsTab> {
     });
   }
 
-  List<Map<String, dynamic>> get _shown => switch (_showing) {
-    _Showing.everyone => _people,
-    _Showing.active => [
-      for (final p in _people)
-        if (p['is_active'] != false) p,
-    ],
-    _Showing.deactivated => [
-      for (final p in _people)
-        if (p['is_active'] == false) p,
-    ],
-  };
+  // The server filters by status; see _load.
+  List<Map<String, dynamic>> get _shown => _people;
 
   Map<String, dynamic>? get _selectedPerson {
     for (final person in _people) {
@@ -411,7 +406,10 @@ class _RecordsTabState extends State<RecordsTab> {
                   label: Text(label),
                   selected: _showing == value,
                   visualDensity: VisualDensity.compact,
-                  onSelected: (_) => setState(() => _showing = value),
+                  onSelected: (_) {
+                    setState(() => _showing = value);
+                    _load();
+                  },
                 ),
             ],
           ),
@@ -2084,15 +2082,10 @@ class _WorksAtState extends State<_WorksAt> {
       context,
       title: 'Add place',
       options: [
+        // Switched-off places are not offered (Jose, 2026-11-10).
         for (final scope in widget.options.scopes)
-          if (!have.contains(scope.value))
-            SearchOption(
-              value: scope.value,
-              label: scope.isActive
-                  ? scope.pathLabel
-                  : '${scope.pathLabel} — deactivated',
-              enabled: scope.isActive,
-            ),
+          if (!have.contains(scope.value) && scope.isActive)
+            SearchOption(value: scope.value, label: scope.pathLabel),
       ],
     );
     if (picked == null || !mounted) return;

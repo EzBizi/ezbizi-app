@@ -77,7 +77,7 @@ class PromotionsTest extends TestCase
         $gateway = $this->app->make(TwilioGateway::class);
         $sends = collect($gateway->calls)->where('method', 'sendMessage')->values();
         $this->assertCount(1, $sends);
-        $this->assertSame(['+18555550100', '+12035550001', "Hi Dana, {$t['company']->name} here: \$299 chimney sweep & inspection. Reply to book.\n".SmsConsent::FOOTER],
+        $this->assertSame(['+18555550100', '+12035550001', "Hi Dana, {$t['company']->name} here: \$299 chimney sweep & inspection. Reply to book.\n\n".SmsConsent::FOOTER],
             array_slice($sends[0]['args'], 1, 3));
         $as->getJson('/api/v1/memberships/promotions')->assertOk()
             ->assertJsonPath('data.0.sent', 1)->assertJsonPath('data.0.replies', 0);
@@ -153,7 +153,7 @@ class PromotionsTest extends TestCase
         $gateway = $this->app->make(TwilioGateway::class);
         $sends = collect($gateway->calls)->where('method', 'sendMessage')->values();
         $this->assertCount(1, $sends);   // Ann was unticked
-        $this->assertSame(['+12035550012', "Hi Bo\n".SmsConsent::FOOTER], array_slice($sends[0]['args'], 2, 2));
+        $this->assertSame(['+12035550012', "Hi Bo\n\n".SmsConsent::FOOTER], array_slice($sends[0]['args'], 2, 2));
         $url = last($sends[0]['args'])['media'][0];
         $this->get($url)->assertOk()->assertHeader('Content-Type', 'image/png');
         $this->get(preg_replace('/signature=\w+/', 'signature=x', $url))->assertForbidden();
@@ -177,7 +177,7 @@ class PromotionsTest extends TestCase
         $gateway = $this->app->make(TwilioGateway::class);
         $sends = collect($gateway->calls)->where('method', 'sendMessage')->values();
         $this->assertCount(1, $sends);
-        $this->assertSame(['+12035550099', "TEST: Hi Dana, A-1 here.\n".SmsConsent::FOOTER], array_slice($sends[0]['args'], 2, 2));
+        $this->assertSame(['+12035550099', "TEST: Hi Dana, A-1 here.\n\n".SmsConsent::FOOTER], array_slice($sends[0]['args'], 2, 2));
         $this->inTenant($t['org'], fn () => $this->assertSame(0, Promotion::query()->count()));
         $as->getJson('/api/v1/memberships/promotions')->assertOk()->assertJsonCount(0, 'data');
     }
