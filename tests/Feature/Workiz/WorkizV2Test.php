@@ -292,6 +292,20 @@ class WorkizV2Test extends TestCase
         $this->signedInAs($admin)->getJson('/api/v1/social/connections')->assertOk();
     }
 
+    /** 11-12: a slot killed by its 300s timeout left the projection lock held an hour; no Workiz job reached EzBizi. */
+    public function test_a_killed_runs_lock_frees_within_five_minutes_and_health_flags_a_waiting_job(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $this->inTenant($tenant['org'], fn () => WorkizJob::land($connection, WorkizV2::job($this->v2Job())));
+        \Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, \App\Console\Commands\ProjectWorkizRecords::LOCK_SECONDS)->get();
+
+        $this->travel(11)->minutes();
+        $health = collect($this->inTenant($tenant['org'], fn () => \App\Support\Workiz\WorkizHealth::check($connection)))->keyBy('key');
+        $this->assertFalse($health['projection']['ok']);
+        $this->assertStringContainsString('waiting since', $health['projection']['detail']);
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, 1)->get(), 'the dead run no longer holds it');
+    }
+
     public function test_dispatch_writes_go_through_v2(): void
     {
         [$tenant, $connection] = $this->branch();

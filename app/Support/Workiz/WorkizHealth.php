@@ -89,6 +89,8 @@ final class WorkizHealth
         $missing = $standard->reject(fn ($t) => isset($held[$key($t['name'] ?? '')]))->pluck('name');
         $login = SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)->where('status', 'connected')->first();
         $jobs = WorkizJob::query()->where('franchise_id', $branch)->count();
+        // Mirrored but not yet an EzBizi job; a normal pass takes about 2 minutes.
+        $waiting = WorkizJob::query()->where('franchise_id', $branch)->whereNull('job_id')->min('created_at');
         $nudged = ($at = \Illuminate\Support\Facades\Cache::get(self::NUDGED.$connection->getKey())) ? \Illuminate\Support\Carbon::parse($at) : null;
 
         $steps = [
@@ -113,6 +115,9 @@ final class WorkizHealth
                     : 'Workiz has no API for this: in Workiz › Automation Center add a rule "post webhook" to '.url('/api/v1/social/workiz/webhook/'.$connection->getKey()).'.'],
             ['key' => 'jobs', 'label' => 'Jobs mirrored', 'ok' => $jobs > 0,
                 'detail' => $jobs > 0 ? $jobs.' jobs' : 'The first read is queued; it runs on the schedule.'],
+            ['key' => 'projection', 'label' => 'New Workiz jobs reach EzBizi within minutes',
+                'ok' => $waiting === null || \Illuminate\Support\Carbon::parse($waiting)->gt(now()->subMinutes(10)),
+                'detail' => $waiting === null ? 'Yes' : 'Oldest job waiting since '.\Illuminate\Support\Carbon::parse($waiting)->diffForHumans().'.'],
         ];
 
         return $steps;
