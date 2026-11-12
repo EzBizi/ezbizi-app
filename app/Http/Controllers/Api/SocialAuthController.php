@@ -32,6 +32,7 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
 
@@ -420,6 +421,11 @@ class SocialAuthController extends Controller
                     // A Business Profile reads its listings now, not at tomorrow's sync (Jose, 2026-10-29).
                     if ($provider === SocialProvider::GoogleBusinessProfile) {
                         SyncBusinessProfileConnection::start($connection);
+                    }
+
+                    // Facebook Ads reads its campaigns now, not at the 05:30 run (Jose, 2026-11-12).
+                    if ($provider === SocialProvider::FacebookAds) {
+                        Artisan::queue('ezbizi:meta-ads-sync', ['--connection' => (string) $connection->getKey()]);
                     }
 
                     // Meta the same way: a Page or Instagram account sends its

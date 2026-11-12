@@ -2,6 +2,7 @@
 
 namespace App\Support\Social;
 
+use App\Models\Franchise;
 use App\Models\MetaAdCampaign;
 use App\Models\MetaAdInsight;
 use App\Models\Organization;
@@ -63,6 +64,7 @@ final class MetaAdInsights
                     'organization_id' => $connection->organization_id,
                     'service_group_id' => $groups->first(fn ($g) => Str::contains($name, $g->name, ignoreCase: true))?->id,
                     'state' => self::stateIn($name),
+                    'franchise_id' => self::branchFor($connection, self::stateIn($name)),
                 ]);
             }
 
@@ -167,6 +169,25 @@ final class MetaAdInsights
                 'clicks' => (int) $r->clicks,
                 'impressions' => (int) $r->impressions,
             ])->all();
+    }
+
+    /**
+     * The branch a campaign's state names, guessed once like its service: the
+     * one branch of the account's company called by that state's name
+     * ("NJ" → "New Jersey"). Two of that name, or none, is left for staff.
+     * ponytail: states only; a city in the name (Chicago, DFW) maps nothing.
+     */
+    public static function branchFor(SocialConnection $connection, ?string $state): ?string
+    {
+        if ($connection->scope_type === SocialConnection::SCOPE_FRANCHISE) {
+            return $connection->scope_id;
+        }
+
+        $ids = $state === null ? collect() : Franchise::query()->where('name', self::STATES[$state])
+            ->when($connection->scope_type === SocialConnection::SCOPE_COMPANY, fn ($q) => $q->where('company_id', $connection->scope_id))
+            ->pluck('id');
+
+        return $ids->count() === 1 ? $ids->first() : null;
     }
 
     /** A two-letter state named in a campaign name: "Texas" or a standalone "TX". */

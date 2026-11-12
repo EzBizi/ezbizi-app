@@ -21,7 +21,7 @@ use Throwable;
  */
 class MetaAdsSync extends Command
 {
-    protected $signature = 'ezbizi:meta-ads-sync {--days=3} {--backfill}';
+    protected $signature = 'ezbizi:meta-ads-sync {--days=3} {--backfill} {--connection= : one connection only, as right after it connects}';
 
     protected $description = 'Read Facebook ad campaigns and daily ad-set results into Reports';
 
@@ -30,6 +30,7 @@ class MetaAdsSync extends Command
         $connections = SocialConnection::query()->withoutGlobalScopes()
             ->where('provider', SocialProvider::FacebookAds->value)
             ->where('status', 'connected')
+            ->when($this->option('connection'), fn ($q, $id) => $q->whereKey($id))
             ->get();
 
         foreach ($connections as $connection) {

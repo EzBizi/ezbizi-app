@@ -114,7 +114,7 @@ final class OnboardWhatsAppNumber implements ShouldQueue
         }
         $digits = preg_replace('/\D+/', '', (string) ($info->json('display_phone_number') ?: $connection->handle)) ?? '';
 
-        WhatsAppNumber::query()->updateOrCreate(
+        $number = WhatsAppNumber::query()->updateOrCreate(
             ['phone_number_id' => $phoneNumberId],
             [
                 'organization_id' => $connection->organization_id,
@@ -125,6 +125,13 @@ final class OnboardWhatsAppNumber implements ShouldQueue
                 'auto_reply' => $info->json('is_on_biz_app') !== true,
             ],
         );
+
+        // Never left without a purpose (Jose, 2026-11-12, EverDoors landed NULL):
+        // a new number is its company's customer chat until its card says
+        // otherwise. A reconnect keeps whatever was chosen.
+        if ($number->purpose === null) {
+            $number->forceFill(['purpose' => 'company'])->save();
+        }
     }
 
     private function ok(Response $response, string $what): void

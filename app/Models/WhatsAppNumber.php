@@ -52,6 +52,9 @@ class WhatsAppNumber extends Model implements StatesRetention
     /** What a number is for. Reports send from `reports`, the staff bot answers on `support`. */
     public const PURPOSES = ['reports', 'support', 'authentication', 'company'];
 
+    /** The purposes forPurpose() resolves: one number each per organization. */
+    public const ONE_PER_ORGANIZATION = ['reports', 'authentication'];
+
     /**
      * This organization's number for $purpose, or null when none is marked
      * for it: the caller keeps its own choice then. Inside the tenant.
