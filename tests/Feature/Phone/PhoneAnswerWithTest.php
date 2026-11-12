@@ -343,6 +343,11 @@ class PhoneAnswerWithTest extends TestCase
         $this->assertFalse($health['ok']);
         $this->assertContains('Calls reach nobody: choose who answers, or a ring group.', $health['problems']);
         $this->assertContains('Nobody is signed in to take calls on this phone account right now.', $health['problems']);
+        $this->assertContains('route', array_column($health['checks'], 'key'));
+        $this->assertSame(
+            array_column(\App\Support\Phone\LineHealth::for($number->fresh())['problems'], 'key'),
+            array_column($health['checks'], 'key'),
+        );
     }
 
     /** Switched off, the regular flow runs: the override is kept but ignored. */

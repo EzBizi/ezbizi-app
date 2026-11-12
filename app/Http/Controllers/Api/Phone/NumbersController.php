@@ -1202,23 +1202,6 @@ class NumbersController extends Controller
             ->all();
     }
 
-    /** @return array{ok: bool, problems: list<string>} */
-    private function health(PhoneNumber $number, bool $answers): array
-    {
-        $problems = array_values(array_filter([
-            blank($number->twilio_sid) ? 'Not pointed at EzBizi yet, so calls never arrive here.' : null,
-            $number->override_on || $answers ? null : 'Calls reach nobody: choose who answers, or a ring group.',
-            $number->sms_outbound_allowed ? null : 'Texting: not registered (A2P), so texts cannot be sent.',
-            $number->emergency_address_set ? null : (\App\Support\Phone\EmergencyAddress::for($number) === null
-                ? \App\Support\Phone\EmergencyAddress::NO_ADDRESS
-                : 'E911: missing — the address on file is attached within the hour.'),
-            \App\Models\PhonePresence::query()->where('connection_id', $number->connection_id)->available()->exists()
-                ? null : 'Nobody is signed in to take calls on this phone account right now.',
-        ]));
-
-        return ['ok' => $problems === [], 'problems' => $problems];
-    }
-
     /**
      * @param  array<string, array{name: ?string}>  $live
      */
@@ -1286,7 +1269,12 @@ class NumbersController extends Controller
 
             // PASS OR FAIL on the card (Jose, 2026-11-12: a connection should
             // come out working). Each problem is a sentence saying what to fix.
-            'health' => $this->health($number, (bool) (collect($steps)->firstWhere('step', 'answer')['usable'] ?? false)),
+            'health' => (function () use ($number, $steps) {
+                $health = \App\Support\Phone\LineHealth::for($number, (bool) (collect($steps)->firstWhere('step', 'answer')['usable'] ?? false));
+
+                // `problems` stays plain sentences for the card; `checks` carries the keys.
+                return ['ok' => $health['ok'], 'problems' => array_column($health['problems'], 'sentence'), 'checks' => $health['problems']];
+            })(),
 
             // Whether THIS is the line the person reading calls out from.
             //
