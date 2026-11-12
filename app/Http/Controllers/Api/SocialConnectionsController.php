@@ -131,6 +131,7 @@ class SocialConnectionsController extends Controller
                     'method' => WorkizV2::uses($c) ? 'v2' : 'v1',
                     'last_synced_at' => \App\Models\WorkizJob::query()->where('franchise_id', $c->scope_id)->max('synced_at'),
                     'history' => BackfillWorkizJobs::state($c),
+                    'health' => \App\Support\Workiz\WorkizHealth::check($c),
                 ] : null,
                 // What the number is for; its card asks right after connecting
                 // (PATCH .../whatsapp-purpose) and shows .../whatsapp-health.

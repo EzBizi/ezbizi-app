@@ -263,6 +263,35 @@ class WorkizV2Test extends TestCase
         $this->assertSame(['api_token' => 'api_MA', 'auth_secret' => 'sec_MA'], $credentials['v1']);
     }
 
+    /** Jose, 11-12: Connect does the whole setup and answers what passed and what still needs a person. */
+    public function test_connecting_reads_the_lists_sets_a_missing_standard_and_answers_its_health(): void
+    {
+        [$tenant, $connection] = $this->branch('v1');
+        Http::fake([
+            'api.workiz.com/api/v1/*' => Http::response(['error' => 'Forbidden'], 403),
+            'api.workiz.com/crm/api/v2/tags*' => Http::response($this->page([['id' => 'T1', 'name' => 'DEPOSIT RECEIVED', 'color' => '#0059a0']])),
+            'api.workiz.com/crm/api/v2/*' => Http::response($this->page([])),
+        ]);
+        $admin = $this->inTenant($tenant['org'], function () use ($tenant, $connection) {
+            $tenant['admin']->forceFill(['preferences' => ['navigation.scope' => 'franchise:'.$connection->scope_id]])->save();
+
+            return $tenant['admin']->fresh();
+        });
+
+        $health = collect($this->signedInAs($admin)->postJson('/api/v1/social/workiz', ['api_token' => 'v2key_MA'])->assertCreated()->json('data.health'))->keyBy('key');
+
+        $this->assertTrue($health['key']['ok']);
+        $this->assertTrue($health['tags']['ok'], 'the tag list is read at Connect, not on the next schedule');
+        $this->assertTrue($health['standard']['ok'], 'with no standard yet, this account sets it');
+        $this->assertFalse($health['web_login']['ok']);
+        $this->assertSame('No Workiz web login is connected.', $health['web_login']['detail']);
+        $this->assertFalse($health['webhook']['ok']);
+        $this->assertStringContainsString('/api/v1/social/workiz/webhook/'.$connection->getKey(), $health['webhook']['detail']);
+        $this->assertSame(['DEPOSIT RECEIVED'], collect($this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)
+            ->get('workiz.tag_baseline', $tenant['org'])))->pluck('name')->all());
+        $this->signedInAs($admin)->getJson('/api/v1/social/connections')->assertOk();
+    }
+
     public function test_dispatch_writes_go_through_v2(): void
     {
         [$tenant, $connection] = $this->branch();
