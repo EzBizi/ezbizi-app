@@ -19,6 +19,7 @@ import '../widgets/status_pill.dart';
 import 'task_board_automate.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
+import 'task_board_gallery.dart';
 import '../widgets/list_filters.dart';
 import '../widgets/list_toolbar.dart';
 import '../widgets/mention_field.dart';
@@ -1409,6 +1410,17 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     _replace(res.body['data'] as _Json);
   }
 
+  /// The Gallery's "Go to task": false when this board's list lacks it.
+  bool _openTaskById(String id) {
+    for (final t in _tasks) {
+      if (t['id'] == id) {
+        _openTask(t);
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _openTask(_Json task) async {
     final people = _people;
     final groups = _groups(_board!);
@@ -1457,6 +1469,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               'kanban' => _kanbanView(context, narrow: cards),
                               'calendar' => _calendarView(phone: cards),
                               'timeline' => _timelineView(phone: cards),
+                              'gallery' => TaskBoardGallery(
+                                key: ValueKey('gallery-${_board!['id']}'),
+                                api: widget.api,
+                                boardId: '${_board!['id']}',
+                                formats: _formats,
+                                onOpenTask: _openTaskById,
+                              ),
                               _ => _tableView(context, cards: cards),
                             },
                           ),
@@ -1657,6 +1676,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 ('kanban', 'Kanban', Icons.view_kanban_outlined),
                 ('calendar', 'Calendar', Icons.calendar_month_outlined),
                 ('timeline', 'Timeline', Icons.view_timeline_outlined),
+                ('gallery', 'Gallery', Icons.photo_library_outlined),
               ])
                 ButtonSegment(
                   value: v,
