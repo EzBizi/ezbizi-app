@@ -3565,3 +3565,20 @@ app's `/api/v1/openapi.json`.
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
 LIVE pages, and over `/privacy/` after the edit: ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount`
 1, 0.0.0502.
+
+**Desk (11-11, ~23:45 UTC), recorded as given:** 0559 `dfb0bf8be`, 0560 `3edfd3a51`, 0561 `8d069094e`, 0562 `ec1229d74`
+all live (web + natives). iOS 0558 rejected for the "Advertising" age-rating descriptor, reply sent, awaiting Apple; the
+iOS card stays unlinked (lookup still 0.0.0502). SMS consent: `leads.sms_consent_ip` set on **1** row (first real
+booking, 23:27 UTC), so the edit above is now true by data, not only by code. Booking confirmation email goes through
+SES, EzBizi's From with the business name, business's site email as Reply-To: covered by "Amazon SES — email we send
+on the service's behalf"; nothing added.
+
+- **Training: `training_attempts` 58, `training_progress` 78 — the zeros this row's tense rule rested on are gone.**
+  The card's four imperatives stay true; nothing was added. A usage sentence ("teams train on it") is now allowed by
+  the count, but none was written: no one asked for it and a count is not a claim's wording.
+- **Scheduling: jobs with `scheduled_for`, not deleted, and no `workiz_jobs` row = 38. The row's own test (nonzero
+  inverts) has tripped.** Not published today, for one checkable reason: whose 38 they are. Next run, ask the desk
+  for those 38 grouped by organization and by how they were created (Jobs screen vs. website booking). If any is a
+  real tenant setting a date inside EzBizi, the row inverts and a scheduling sentence can go on the homepage.
+- Ring groups 3; numbers with `override_on` 0. Still a group count, not the row's resolved fraction; held.
+- Publishers: still the same 7 connected providers; no 7th written. LSA external_id/timestamp: not measured.
