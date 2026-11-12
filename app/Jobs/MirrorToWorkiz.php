@@ -41,9 +41,10 @@ final class MirrorToWorkiz implements ShouldQueue
     ) {}
 
     /** A booking the sync lock turned away: retried on BACKOFF, `workiz.mirror_failed` if it never lands (Desk, 11-12). */
-    public static function later(Job $job, ?string $jobType, ?string $jobSource): string
+    public static function later(Job $job, ?string $jobType, ?string $jobSource, ?string $serviceArea = null, array $memberIds = []): string
     {
-        self::dispatch($job->organization_id, $job->getKey(), 'create', ['job_type' => $jobType, 'job_source' => $jobSource])
+        self::dispatch($job->organization_id, $job->getKey(), 'create', ['job_type' => $jobType, 'job_source' => $jobSource,
+            'service_area' => $serviceArea, 'workiz_member_ids' => array_values($memberIds)])
             ->delay(now()->addMinutes(self::BACKOFF[0]));
 
         return 'The Workiz sync is busy: EzBizi will send job '.$job->number.' to Workiz in a minute, and flags it if Workiz never takes it.';
@@ -97,9 +98,33 @@ final class MirrorToWorkiz implements ShouldQueue
     {
         $mirror = WorkizJob::query()->where('job_id', $job->getKey())->first();
 
+        // The whole booking, as the immediate path sends it: the job, its area, then each technician (Desk, 11-12).
         if ($this->op === 'create') {
-            return $mirror !== null ? null
-                : $writer->create($job, $this->args['job_type'] ?? $job->job_type, $this->args['job_source'] ?? $job->job_source)['refused'];
+            $made = $mirror !== null ? ['job' => $mirror, 'refused' => null]
+                : $writer->create($job, $this->args['job_type'] ?? $job->job_type, $this->args['job_source'] ?? $job->job_source);
+
+            if ($made['refused'] !== null || $made['job'] === null) {
+                return $made['refused'];
+            }
+
+            // ponytail: a retry after a later step failed re-sends the area and technicians; Workiz takes them again.
+            if (filled($this->args['service_area'] ?? null)) {
+                $set = $writer->setServiceArea($made['job'], (string) $this->args['service_area']);
+
+                if ($set['refused'] !== null) {
+                    return 'Service area '.$this->args['service_area'].': '.$set['refused'];
+                }
+            }
+
+            foreach (WorkizTeamMember::query()->whereKey($this->args['workiz_member_ids'] ?? [])->get() as $m) {
+                $sent = $writer->assign($made['job'], $m);
+
+                if ($sent['refused'] !== null) {
+                    return $m->name.': '.$sent['refused'];
+                }
+            }
+
+            return null;
         }
 
         // Not in Workiz (yet): there is nothing there to change.
