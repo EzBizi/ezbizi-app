@@ -117,7 +117,8 @@ class SocialConnectionsController extends Controller
                 'detail' => match ($c->provider) {
                     SocialProvider::Workiz->value => self::workizDetail($c),
                     SocialProvider::Telegram->value => TelegramBotStatus::detail($c),
-                    default => null,
+                    // What the person must still do (Jose, 2026-11-12).
+                    default => \App\Support\Leads\ConnectBranch::detail($c),
                 },
                 // The same, as fields for the Workiz card's own controls.
                 'workiz' => $c->provider === SocialProvider::Workiz->value ? [

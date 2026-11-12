@@ -14,6 +14,7 @@ use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\Publishing\XPublisher;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackClient;
+use App\Support\Social\ThumbtackWebhooks;
 use App\Support\Workiz\WorkizV2;
 use Closure;
 use Illuminate\Http\Client\ConnectionException;
@@ -201,6 +202,29 @@ final class ConnectionLiveness
         }
 
         return Liveness::alive();
+    }
+
+    /**
+     * A Thumbtack business whose webhook is gone hears nothing, for good: their
+     * API cannot list what it missed (desk audit, 2026-11-12). Read it back and
+     * register it again; per business, so siblings that share a renewal are
+     * each checked. Only what Thumbtack refuses marks the row broken.
+     */
+    public static function thumbtackHeard(SocialConnection $c, Liveness $renewed): Liveness
+    {
+        if ($c->provider !== SocialProvider::Thumbtack->value || $renewed->verdict !== Liveness::ALIVE) {
+            return $renewed;
+        }
+
+        try {
+            ThumbtackWebhooks::for($c)->ensure(route('social.thumbtack.webhook'));
+        } catch (ConnectionException) {
+            return Liveness::unknown('Thumbtack did not answer.');
+        } catch (Throwable) {
+            return Liveness::refused("Thumbtack is not sending this business's leads: its webhook could not be registered. Reconnect Thumbtack.");
+        }
+
+        return $renewed;
     }
 
     private static function workiz(SocialConnection $c): Liveness
