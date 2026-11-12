@@ -22,6 +22,7 @@ class VersionHistory {
       'Development › Releases opens first and shows the time left, each stage, the live log and what ships; What’s new shows a bar when an update is on its way',
       'Task Board: videos play in the Gallery; Monday boards import with every file, done items and their dates',
       'Workiz: a job made in Workiz reaches EzBizi within minutes even when a background run stalls; the Workiz card turns red if one waits too long',
+      'Project Management: the table scrolls sideways whenever it is wider than the window, so the Ready to Schedule button is always reachable; prices are centred',
     ]),
     VersionRelease(version: '0.0.0565', date: '12 Nov 2026', items: [
       'Project Management: narrowing a column wraps its text and the row grows; a scrollbar reaches the columns past the window edge',
