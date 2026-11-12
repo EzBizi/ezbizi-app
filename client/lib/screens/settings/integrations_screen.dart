@@ -541,6 +541,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     ('social', 'Social'),
     ('leads', 'Advertising and listings'),
     ('reporting', 'Reporting'),
+    ('tasks', 'Tasks'),
   ];
 
   String? _category;
@@ -1224,6 +1225,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'ringcentral': 'Calls from RingCentral, for reports.',
     'whatsapp': 'Your own WhatsApp number, to message customers.',
     'telegram': 'Your staff Tech Assistant bot on Telegram.',
+    'monday': 'Keeps the boards brought over from Monday in step.',
     'google_workspace': 'Shared inboxes from your Google Workspace domain.',
     'phone_numbers': 'Calls and texts on your EzBizi numbers.',
     'sending_server':

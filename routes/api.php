@@ -108,6 +108,7 @@ use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MetaMediaController;
 use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\MondayWebhookController;
 use App\Http\Controllers\Api\Monitoring\CameraBridgeController;
 use App\Http\Controllers\Api\Monitoring\CameraRelayController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
@@ -649,6 +650,12 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
     ->middleware('throttle:30,1')
     ->where('network', SocialProvider::oauthRoutePattern())
     ->name('social.callback');
+
+// Monday says an item changed. Unauthenticated by necessity: the JWT Monday
+// signs with the app's Signing Secret is what is checked (MondayWebhookController).
+Route::post('v1/integrations/monday/webhook', MondayWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('integrations.monday.webhook');
 
 /*
 |--------------------------------------------------------------------------

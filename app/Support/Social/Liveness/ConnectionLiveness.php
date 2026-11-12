@@ -126,7 +126,30 @@ final class ConnectionLiveness
                 fn () => self::stored($c, 'bot_token'),
                 fn (string $t) => Http::timeout(self::TIMEOUT)->get('https://api.telegram.org/bot'.$t.'/getMe')),
             SocialProvider::Mailchimp->value => fn (SocialConnection $c) => self::mailchimp($c),
+            SocialProvider::Monday->value => fn (SocialConnection $c) => self::monday($c),
         ];
+    }
+
+    /**
+     * Monday: who the token is (`me`). Monday answers 200 with an `errors`
+     * array for some refusals, so the body decides, not only the status.
+     */
+    private static function monday(SocialConnection $c): Liveness
+    {
+        $token = self::stored($c, 'access_token');
+        if ($token === null) {
+            return Liveness::refused(self::sentence('Monday'));
+        }
+        $r = Http::withHeaders(['Authorization' => $token])->acceptJson()->timeout(self::TIMEOUT)
+            ->post('https://api.monday.com/v2', ['query' => '{ me { id } }']);
+        if (in_array($r->status(), [401, 403], true)) {
+            return Liveness::refused(self::sentence('Monday'));
+        }
+        if ($r->successful() && $r->json('data.me.id') !== null) {
+            return Liveness::alive();
+        }
+
+        return Liveness::unknown('Monday answered HTTP '.$r->status().' without saying who the token is.');
     }
 
     /**

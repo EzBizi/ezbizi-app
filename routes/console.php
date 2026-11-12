@@ -194,6 +194,10 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  * what changed, about eight calls a branch, well under the key's burst limit.
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
+// Monday → Task Board for the boards imported from Monday (desk, 11-12): the changed items every ten
+// minutes, every item nightly (a reply does not always move its item's updated_at). Read only.
+Schedule::command('ezbizi:monday-sync')->everyTenMinutes()->withoutOverlapping(20);
+Schedule::command('ezbizi:monday-sync --full')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
 Schedule::command('ezbizi:sync-workiz-records --type=payment --days=35 --pages=200')->dailyAt('03:20')->withoutOverlapping(60);

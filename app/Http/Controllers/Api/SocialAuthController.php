@@ -32,6 +32,7 @@ use App\Support\Social\SocialOAuthSignIns;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\YouTubeOAuth;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Foundation\Console\QueuedCommand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -433,6 +434,16 @@ class SocialAuthController extends Controller
                     // Facebook Ads reads its campaigns now, not at the 05:30 run (Jose, 2026-11-12).
                     if ($provider === SocialProvider::FacebookAds) {
                         Artisan::queue('ezbizi:meta-ads-sync', ['--connection' => (string) $connection->getKey()]);
+                    }
+
+                    // Monday: who connected is who the sync acts as, and the
+                    // boards imported from Monday are read now (MondaySync).
+                    if ($provider === SocialProvider::Monday) {
+                        $setup = (array) ($connection->setup ?? []);
+                        $setup['monday']['as'] = (string) $user->getKey();
+                        $connection->forceFill(['setup' => $setup])->save();
+                        QueuedCommand::dispatch(['ezbizi:monday-sync', ['--connection' => (string) $connection->getKey(), '--full' => true]])
+                            ->afterCommit();
                     }
 
                     // Meta the same way: a Page or Instagram account sends its
