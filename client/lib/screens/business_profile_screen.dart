@@ -170,6 +170,13 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       );
       // Look again until the connect-time sync has read the listings.
       _serverSyncing = meta['syncing'] == true;
+      // A read that failed says so on the card instead of looking idle (2026-11-12).
+      final failed = [
+        for (final e
+            in (meta['sync_errors'] as List? ?? const []).whereType<Map>())
+          '${e['connection']}: ${e['message']}',
+      ];
+      if (failed.isNotEmpty) _notice = failed.join(' · ');
       _syncPoll?.cancel();
       _syncPoll = _serverSyncing
           ? Timer(const Duration(seconds: 10), _load)

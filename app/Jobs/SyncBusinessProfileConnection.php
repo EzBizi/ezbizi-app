@@ -48,6 +48,9 @@ final class SyncBusinessProfileConnection implements ShouldQueue
         }
     }
 
+    /** Why the last listings read failed, for the card; cleared by the next one that works. */
+    public const FAILED_KEY = 'gbp-sync-failed:';
+
     /** Queue it and raise the screen's "Syncing…" flag; the job lowers it. */
     public static function start(SocialConnection $connection): void
     {
@@ -76,7 +79,14 @@ final class SyncBusinessProfileConnection implements ShouldQueue
 
                     return;
                 }
-                $locations->sync($connection);
+                try {
+                    $locations->sync($connection);
+                    Cache::forget(self::FAILED_KEY.$connection->getKey());
+                } catch (Throwable $e) {
+                    // The card says it failed rather than quietly going back to idle (audit, 2026-11-12).
+                    Cache::put(self::FAILED_KEY.$connection->getKey(), 'Reading the listings failed: '.$e->getMessage(), now()->addDay());
+                    throw $e;
+                }
                 // Listings stand on their own; their reviews follow on the long worker.
                 self::dispatch((string) $connection->getKey(), true);
             });

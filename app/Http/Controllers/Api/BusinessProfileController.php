@@ -69,6 +69,10 @@ class BusinessProfileController extends Controller
                 // A just-connected account still reading its listings: the screen says "Syncing…".
                 'syncing' => SocialConnection::query()->where('provider', SocialProvider::GoogleBusinessProfile->value)->pluck('id')
                     ->contains(fn ($id) => \Illuminate\Support\Facades\Cache::has(\App\Jobs\SyncBusinessProfileConnection::SYNCING_KEY.$id)),
+                // A read that failed says so instead of looking idle (audit, 2026-11-12).
+                'sync_errors' => SocialConnection::query()->where('provider', SocialProvider::GoogleBusinessProfile->value)->get(['id', 'display_name'])
+                    ->map(fn ($c) => ($m = \Illuminate\Support\Facades\Cache::get(\App\Jobs\SyncBusinessProfileConnection::FAILED_KEY.$c->id))
+                        ? ['connection' => $c->display_name, 'message' => $m] : null)->filter()->values()->all(),
             ],
         ]);
     }
