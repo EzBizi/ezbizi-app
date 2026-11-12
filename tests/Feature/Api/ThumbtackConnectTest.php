@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Jobs\CheckNewConnections;
 use App\Jobs\RegisterThumbtackWebhook;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
@@ -84,6 +85,92 @@ class ThumbtackConnectTest extends TestCase
         // against a businessID, so a single job would leave the second business
         // silent while the screen claimed both were connected.
         Bus::assertDispatchedTimes(RegisterThumbtackWebhook::class, 2);
+    }
+
+    /**
+     * Jose, 2026-11-12: "doing a connection should take care of the whole
+     * process". One branch is the branch; two are a person's choice, and the
+     * card says so. Either way the health check runs now, not tomorrow.
+     */
+    public function test_connect_picks_the_only_branch_checks_health_now_and_says_what_is_left(): void
+    {
+        Bus::fake();
+        $t = $this->provisionTenant('A1-Group');
+        $this->fakeTwoBusinesses();
+
+        $this->get('/api/v1/social/thumbtack/callback?code=an-auth-code&state='.$this->beginSignIn($t))->assertOk();
+
+        $rows = $this->inTenant($t['org'], fn () => SocialConnection::query()->where('provider', 'thumbtack')->get());
+        $this->assertSame([$t['franchise']->id, $t['franchise']->id], $rows->pluck('leads_franchise_id')->all());
+        Bus::assertDispatched(CheckNewConnections::class, fn (CheckNewConnections $job) => collect($job->ids)->sort()->values()->all() === $rows->pluck('id')->map(fn ($id) => (string) $id)->sort()->values()->all());
+
+        // A second branch: nothing to infer, so nothing is guessed.
+        $this->extraFranchise($t, 'Cleveland');
+        $this->inTenant($t['org'], fn () => SocialConnection::query()->update(['leads_franchise_id' => null]));
+        $this->get('/api/v1/social/thumbtack/callback?code=an-auth-code&state='.$this->beginSignIn($t))->assertOk();
+
+        $this->assertSame(0, $this->inTenant($t['org'], fn () => SocialConnection::query()->whereNotNull('leads_franchise_id')->count()));
+        $details = collect($this->signedInAs($t['admin'])->getJson('/api/v1/social/connections?include=data_sources')->assertOk()->json('data'))
+            ->where('provider', 'thumbtack')->pluck('detail')->unique()->values()->all();
+        $this->assertSame(['No branch: its leads arrive unassigned. Choose one in Leads › Accounts.'], $details);
+    }
+
+    /** The health job records what the daily command would, for each new row. */
+    public function test_the_connect_health_check_stamps_the_row(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->inTenant($t['org'], function () use ($t) {
+            $c = new SocialConnection;
+            $c->forceFill([
+                'organization_id' => $t['org']->id, 'scope_type' => 'company', 'scope_id' => $t['company']->id,
+                'provider' => 'thumbtack', 'remote_id' => 'biz-1', 'display_name' => 'A-1 Chimney',
+            ]);
+            $c->connect(['access_token' => 'a', 'refresh_token' => 'r', 'expires_at' => now()->addHour()->toIso8601String()]);
+            $c->save();
+
+            return $c;
+        });
+        Http::fake([
+            'auth.thumbtack.com/oauth2/token' => Http::response(['access_token' => 'b', 'refresh_token' => 'r2', 'expires_in' => 3600]),
+            'api.thumbtack.com/*' => Http::response(['data' => []]),
+        ]);
+
+        (new CheckNewConnections([(string) $row->id]))->handle(app(\App\Support\Tenancy\TenantContext::class), app(\App\Support\Social\Liveness\ConnectionLiveness::class));
+
+        $this->assertNotNull($row->fresh()->last_checked_at);
+        // Thumbtack listed no webhook for it, so the check registered one again (desk audit, 2026-11-12).
+        Http::assertSent(fn ($r) => $r->method() === 'POST' && str_ends_with($r->url(), '/webhooks'));
+        $this->assertSame(SocialConnection::STATUS_CONNECTED, $row->fresh()->status);
+
+        // A Google Ads account nobody has read for hours says so on its card, as on Leads.
+        $ads = $this->inTenant($t['org'], function () use ($t) {
+            $c = new SocialConnection;
+            $c->forceFill([
+                'organization_id' => $t['org']->id, 'scope_type' => 'company', 'scope_id' => $t['company']->id,
+                'provider' => 'google_ads', 'remote_id' => '1234567890', 'display_name' => 'A1 Chimney - Austin',
+                'leads_franchise_id' => $t['franchise']->id, 'created_at' => now()->subDays(3),
+            ]);
+            $c->connect(['refresh_token' => 'rt']);
+            $c->forceFill(['last_reached_at' => now()->subDays(2)]);
+            $c->save();
+
+            return $c;
+        });
+        $card = collect($this->signedInAs($t['admin'])->getJson('/api/v1/social/connections?include=data_sources')->json('data'))->firstWhere('id', $ads->id);
+        $this->assertStringStartsWith('Not fetching:', (string) $card['detail']);
+    }
+
+    private function fakeTwoBusinesses(): void
+    {
+        Http::fake([
+            'auth.thumbtack.com/oauth2/token' => Http::response([
+                'access_token' => 'an-access-token', 'refresh_token' => 'a-refresh-token', 'expires_in' => 3600,
+            ]),
+            'api.thumbtack.com/api/v4/businesses*' => Http::response(['data' => [
+                ['businessID' => 'biz-1', 'name' => 'A-1 Chimney', 'imageURL' => 'https://x.test/1.png'],
+                ['businessID' => 'biz-2', 'name' => 'A-1 Cleveland', 'imageURL' => 'https://x.test/2.png'],
+            ]]),
+        ]);
     }
 
     public function test_connecting_something_that_is_not_thumbtack_queues_nothing(): void

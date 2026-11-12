@@ -163,7 +163,7 @@ final class MarketingReport
 
         $rows = DB::table('leads')
             ->join('social_connections', 'social_connections.id', '=', 'leads.connection_id')
-            ->where('social_connections.leads_franchise_id', $branch->getKey())
+            ->whereRaw(\App\Models\SocialConnection::BRANCH_SQL.' = ?', [$branch->getKey()])
             ->where('leads.is_test', false)
             ->where('leads.source', 'local_services')
             ->whereBetween('leads.received_at', [$from.' 00:00:00', $to.' 23:59:59'])

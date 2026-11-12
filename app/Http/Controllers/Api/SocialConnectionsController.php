@@ -124,9 +124,12 @@ class SocialConnectionsController extends Controller
                     SocialProvider::Workiz->value => self::workizDetail($c),
                     SocialProvider::Telegram->value => TelegramBotStatus::detail($c),
                     // Meta refused the lead-ad subscription; Messenger still arrives (SubscribeMetaMessages).
-                    SocialProvider::FacebookPage->value => isset($c->credentials['leadgen_refused'])
-                        ? 'Lead ads: off — '.$c->credentials['leadgen_refused'] : null,
-                    default => null,
+                    SocialProvider::FacebookPage->value => implode(' ', array_filter([
+                        isset($c->credentials['leadgen_refused']) ? 'Lead ads: off — '.$c->credentials['leadgen_refused'] : null,
+                        \App\Support\Leads\ConnectBranch::detail($c),
+                    ])) ?: null,
+                    // What the person must still do (Jose, 2026-11-12).
+                    default => \App\Support\Leads\ConnectBranch::detail($c),
                 },
                 // The same, as fields for the Workiz card's own controls.
                 'workiz' => $c->provider === SocialProvider::Workiz->value ? [
