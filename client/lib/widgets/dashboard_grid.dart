@@ -20,7 +20,11 @@ class DashboardPanel {
     this.badge,
     this.controls,
     this.size = 'medium',
+    this.onOpen,
   });
+
+  /// Opens the panel's module when the card is clicked; null for none.
+  final VoidCallback? onOpen;
 
   final String key;
   final String title;
@@ -251,6 +255,7 @@ class _DashboardGridState extends State<DashboardGrid> {
       icon: panel.icon,
       badge: panel.badge,
       controls: panel.controls,
+      onOpen: arranging ? null : panel.onOpen,
       child: arranging
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
