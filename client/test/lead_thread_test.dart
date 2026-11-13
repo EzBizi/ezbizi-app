@@ -581,6 +581,31 @@ void main() {
     expect(find.byKey(const ValueKey('attachment-outside-1')), findsNothing);
   });
 
+  // The reply reader (Jose, 2026-11-13): what the customer said, and a
+  // one-tap "Use …?" for a different number they gave.
+  testWidgets('the reading shows what the customer said and offers their number', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: const Size(1200, 900),
+      reading: {
+        'suggest': {'phone': '(516) 404-1690'},
+        'availability': 'not Tue',
+        'deadline': 'before Fri 11/20',
+        'source': 'My cell is (516)404-1690. Off Tuesdays.',
+      },
+    );
+
+    expect(find.text('not Tue · before Fri 11/20'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('reading-use-phone')));
+    await tester.pumpAndSettle();
+
+    expect(_booked, [{'use': 'phone'}]);
+    expect(find.byKey(const ValueKey('reading-use-phone')), findsNothing, reason: 'used, the offer goes');
+    expect(find.byKey(const ValueKey('reading-said')), findsNothing, reason: 'the reply carried no source');
+  });
+
   testWidgets('a message copies in one press', (tester) async {
     String? copied;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
@@ -1476,6 +1501,7 @@ Future<void> _pump(
   bool bookable = false,
   Map<String, dynamic>? offer,
   String? proofread,
+  Map<String, dynamic>? reading,
 }) async {
   _sent.clear();
   _booked.clear();
@@ -1700,6 +1726,12 @@ Future<void> _pump(
           },
         });
       }
+      if (request.url.path.endsWith('/reading/use')) {
+        _booked.add({'use': (jsonDecode(request.body) as Map)['field']});
+        return _ok({
+          'data': {'phone': '+15164041690', 'reading': {'availability': 'not Tue'}},
+        });
+      }
       if (bookable &&
           request.method == 'POST' &&
           request.url.path.endsWith('/jobs/book')) {
@@ -1747,6 +1779,7 @@ Future<void> _pump(
             'postal_code': ?postalCode,
             'email': ?email,
             'credit': ?credit,
+            'reading': ?reading,
             if (offer != null) 'lead_type': 'Reschedule',
           },
           onStatusChanged: (_) async {},

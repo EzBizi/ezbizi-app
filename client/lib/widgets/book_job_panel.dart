@@ -50,6 +50,7 @@ class BookPrefill {
     this.description = '',
     this.jobSource,
     this.matches = const [],
+    this.customerTimes,
   });
 
   /// Leads: the lead's contact, address and source, with `lead_id`. The
@@ -77,6 +78,11 @@ class BookPrefill {
         : fromForm.isNotEmpty
         ? fromForm
         : (stored is String ? stored : '');
+    final reading = lead['reading'] as Map?;
+    final times = [
+      for (final k in const ['availability', 'deadline'])
+        if (reading?[k] is String) reading![k] as String,
+    ].join(' · ');
     return BookPrefill(
       leadId: lead['id'] as String?,
       franchiseId:
@@ -99,6 +105,7 @@ class BookPrefill {
       description: (lead['summary'] as String?) ?? '',
       jobSource: humaniseService(lead['source'] as String?),
       matches: matches,
+      customerTimes: times.isEmpty ? null : times,
     );
   }
 
@@ -108,6 +115,10 @@ class BookPrefill {
   final String name, phone, email;
   final String line1, line2, city, state, postal;
   final String title;
+
+  /// When the customer said they can be there, and by when (the reply
+  /// reader's availability and deadline), shown over the date.
+  final String? customerTimes;
 
   /// The job's description: a lead's summary.
   final String description;
@@ -1171,6 +1182,15 @@ class _BookJobPanelState extends State<BookJobPanel> {
           onChanged: _busy ? null : (v) => setState(() => _scheduled = v),
         ),
         if (_scheduled) ...[
+          if (_p.customerTimes case final times?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Customer: $times',
+                key: const ValueKey('book-customer-times'),
+                style: muted,
+              ),
+            ),
           if (s != null)
             Row(
               key: const ValueKey('book-suggestion'),
