@@ -172,6 +172,14 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
 
   static bool _lsa(Map<String, dynamic> c) => c['type'] == 'LOCAL_SERVICES';
 
+  /// A Local Services budget is set per WEEK; Google's API reports it as
+  /// DAILY = week / 7 (measured 2026-11-13: Columbus $28,571.43 = $200,000
+  /// a week). Shown per day, it read as a day's budget above a month's spend.
+  /// [lsaWeekly] undoes the cents Google rounded the division to.
+  static String _budgetText(Map<String, dynamic> c) => _lsa(c)
+      ? '${_money(lsaWeekly(_num(c['daily_budget'])))} / week'
+      : _money(c['daily_budget']);
+
   /// "Limited", "Not eligible"… when it is on and still not fully showing.
   static String? _why(Map<String, dynamic> c) {
     if (c['status'] == 'PAUSED') return 'Paused';
@@ -464,12 +472,12 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
     final daily = c['daily_budget'];
     if (daily == null) return Text('—', style: theme.textTheme.bodySmall);
     if (c['shared_budget'] == true) {
-      return Text('${_money(daily)} shared', style: theme.textTheme.bodySmall);
+      return Text('${_budgetText(c)} shared', style: theme.textTheme.bodySmall);
     }
-    if (!_canManage) return Text(_money(daily));
+    if (!_canManage) return Text(_budgetText(c));
     return _link(
       'google-budget-${c['id']}',
-      _money(daily),
+      _budgetText(c),
       () => _edit(c, target: false),
       theme,
     );
@@ -712,6 +720,9 @@ class _AmountPanel extends StatefulWidget {
 class _AmountPanelState extends State<_AmountPanel> {
   late final bool _roas =
       widget.target && widget.campaign['target_kind'] == 'roas';
+  // A Local Services budget is typed per week, as it is set in LSA.
+  late final bool _weekly =
+      !widget.target && widget.campaign['type'] == 'LOCAL_SERVICES';
   late final TextEditingController _amount = TextEditingController(
     text: _start(),
   );
@@ -723,6 +734,7 @@ class _AmountPanelState extends State<_AmountPanel> {
         (widget.campaign[widget.target ? 'target' : 'daily_budget'] as num?)
             ?.toDouble();
     if (v == null) return '';
+    if (_weekly) return lsaWeekly(v).toStringAsFixed(2);
     return _roas ? (v * 100).round().toString() : v.toStringAsFixed(2);
   }
 
@@ -758,7 +770,7 @@ class _AmountPanelState extends State<_AmountPanel> {
         if (widget.target)
           'target': _roas ? typed / 100 : typed
         else
-          'daily_budget': typed,
+          'daily_budget': _weekly ? typed / 7 : typed,
       },
     );
     if (!mounted) return;
@@ -781,7 +793,7 @@ class _AmountPanelState extends State<_AmountPanel> {
     );
 
     return SidePanel(
-      title: '${widget.target ? 'Bid target' : 'Daily budget'} · ${c['name']}',
+      title: '${widget.target ? 'Bid target' : _weekly ? 'Weekly budget' : 'Daily budget'} · ${c['name']}',
       onClose: () => Navigator.of(context).pop(),
       actions: [
         TextButton(
@@ -809,6 +821,8 @@ class _AmountPanelState extends State<_AmountPanel> {
                   ? (_roas
                         ? 'Target return on ad spend'
                         : 'Target cost per conversion')
+                  : _weekly
+                  ? 'Per week'
                   : 'Per day',
             ),
             onSubmitted: (_) => _save(),
@@ -817,6 +831,9 @@ class _AmountPanelState extends State<_AmountPanel> {
           Text(
             widget.target
                 ? 'Google bids to reach this on average; it changes the campaign at once.'
+                : _weekly
+                ? 'Last ${widget.days} ${widget.days == 1 ? 'day' : 'days'} spent $spent a day. '
+                      'Local Services budgets are weekly, as in Local Services Ads.'
                 : 'Last ${widget.days} ${widget.days == 1 ? 'day' : 'days'} spent $spent a day. '
                       'Google may spend up to twice this on a busy day.',
             style: theme.textTheme.bodySmall,
@@ -833,4 +850,13 @@ class _AmountPanelState extends State<_AmountPanel> {
       ),
     );
   }
+}
+
+/// A Local Services weekly budget from Google's per-day figure (week / 7,
+/// rounded to cents): $857.14 is $6,000, not $5,999.98. Whole dollars when
+/// within the rounding Google did, else to the cent.
+double lsaWeekly(num daily) {
+  final week = daily * 7;
+  final whole = week.roundToDouble();
+  return (week - whole).abs() <= 0.035 ? whole : (week * 100).round() / 100;
 }
