@@ -58,6 +58,9 @@ class _JobsScreenState extends State<JobsScreen> {
   final _search = TextEditingController();
 
   bool _loading = true;
+
+  /// A first-page reload with rows already up (a filter changed).
+  bool _refreshing = false;
   String? _error;
   List<Map<String, dynamic>> _jobs = [];
   List<JobStatus> _statusChoices = const [];
@@ -203,6 +206,7 @@ class _JobsScreenState extends State<JobsScreen> {
       // refetch after creating a job comes through here with rows on screen,
       // and they stay up until the new ones land.
       _loading = page == 1 && _jobs.isEmpty;
+      _refreshing = page == 1 && _jobs.isNotEmpty;
       _fetching = true;
       _error = null;
       _pageError = null;
@@ -230,6 +234,7 @@ class _JobsScreenState extends State<JobsScreen> {
 
     setState(() {
       _loading = false;
+      _refreshing = false;
       _fetching = false;
 
       if (!response.ok) {
@@ -382,6 +387,7 @@ class _JobsScreenState extends State<JobsScreen> {
           ),
           list: AsyncBody(
             loading: _loading,
+            refreshing: _refreshing,
             error: _error,
             onRetry: _load,
             child: _body(context, wide: wide),
