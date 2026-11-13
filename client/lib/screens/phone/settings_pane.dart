@@ -207,7 +207,6 @@ class SettingsPaneFooter extends StatelessWidget {
     required this.onSave,
     required this.onDiscard,
     this.saving = false,
-    this.savedNote,
     this.discardLabel = 'Discard',
   });
 
@@ -221,9 +220,6 @@ class SettingsPaneFooter extends StatelessWidget {
   final VoidCallback? onSave;
   final VoidCallback onDiscard;
   final bool saving;
-
-  /// Shown when nothing is unsaved — "Everything saved".
-  final String? savedNote;
   final String discardLabel;
 
   static const _words = [
@@ -276,7 +272,7 @@ class SettingsPaneFooter extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              dirty ? describe(unsaved) : (savedNote ?? 'Everything saved'),
+              dirty ? describe(unsaved) : 'Everything saved',
               style: theme.textTheme.bodySmall?.copyWith(
                 // Attention, not alarm. Unsaved work is not an error, and
                 // colouring it like one would spend the vocabulary that

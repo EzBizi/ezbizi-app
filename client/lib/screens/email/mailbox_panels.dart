@@ -990,8 +990,6 @@ class ConnectMailboxPanel extends StatefulWidget {
     this.imapPorts = const [],
     this.smtpPorts = const [],
     this.openConsent = openConsentWindow,
-    this.pollEvery = const Duration(seconds: 2),
-    this.waitAtMost = const Duration(minutes: 5),
   });
 
   final ApiClient api;
@@ -1018,8 +1016,8 @@ class ConnectMailboxPanel extends StatefulWidget {
   /// somebody left open at lunchtime. Five minutes is long enough to find a
   /// password, sign in and pick an account; past that this stops and says so,
   /// rather than sitting there looking like it is still working.
-  final Duration pollEvery;
-  final Duration waitAtMost;
+  static const pollEvery = Duration(seconds: 2);
+  static const waitAtMost = Duration(minutes: 5);
 
   @override
   State<ConnectMailboxPanel> createState() => _ConnectMailboxPanelState();
@@ -1278,10 +1276,10 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
       // first one's success and close on it.
       _flow = data is Map<String, dynamic> ? data['flow'] as String? : null;
       _asksLeft =
-          widget.waitAtMost.inMilliseconds ~/
-          (widget.pollEvery.inMilliseconds == 0
+          ConnectMailboxPanel.waitAtMost.inMilliseconds ~/
+          (ConnectMailboxPanel.pollEvery.inMilliseconds == 0
               ? 1
-              : widget.pollEvery.inMilliseconds);
+              : ConnectMailboxPanel.pollEvery.inMilliseconds);
     });
 
     _askAgainLater();
@@ -1289,7 +1287,7 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
 
   void _askAgainLater() {
     _poll?.cancel();
-    _poll = Timer(widget.pollEvery, _hasItConnectedYet);
+    _poll = Timer(ConnectMailboxPanel.pollEvery, _hasItConnectedYet);
   }
 
   void _stopWaiting() {
@@ -1423,7 +1421,7 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
         _step = _Step.idle;
         _notice =
             'EzBizi has stopped waiting for $_serviceLabel — nothing came back '
-            'for ${_minutes(widget.waitAtMost)}. Nothing has changed. If you '
+            'for ${_minutes(ConnectMailboxPanel.waitAtMost)}. Nothing has changed. If you '
             'finished signing in after that, press the button again and it will '
             'pick the answer straight up.';
       });
@@ -1828,14 +1826,12 @@ class ConnectWorkspacePanel extends StatefulWidget {
     super.key,
     required this.api,
     this.openConsent = openConsentWindow,
-    this.pollEvery = const Duration(seconds: 2),
-    this.waitAtMost = const Duration(minutes: 5),
   });
 
   final ApiClient api;
   final OpenConsentWindow openConsent;
-  final Duration pollEvery;
-  final Duration waitAtMost;
+  static const pollEvery = ConnectMailboxPanel.pollEvery;
+  static const waitAtMost = ConnectMailboxPanel.waitAtMost;
 
   @override
   State<ConnectWorkspacePanel> createState() => _ConnectWorkspacePanelState();
@@ -1925,10 +1921,10 @@ class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
       _window = window;
       _flow = data is Map<String, dynamic> ? data['flow'] as String? : null;
       _asksLeft =
-          widget.waitAtMost.inMilliseconds ~/
-          (widget.pollEvery.inMilliseconds == 0
+          ConnectWorkspacePanel.waitAtMost.inMilliseconds ~/
+          (ConnectWorkspacePanel.pollEvery.inMilliseconds == 0
               ? 1
-              : widget.pollEvery.inMilliseconds);
+              : ConnectWorkspacePanel.pollEvery.inMilliseconds);
     });
 
     _askAgainLater();
@@ -1936,7 +1932,7 @@ class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
 
   void _askAgainLater() {
     _poll?.cancel();
-    _poll = Timer(widget.pollEvery, _ask);
+    _poll = Timer(ConnectWorkspacePanel.pollEvery, _ask);
   }
 
   Future<void> _ask() async {

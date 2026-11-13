@@ -26,7 +26,6 @@ class ChargeSheetsTab extends StatefulWidget {
     required this.me,
     required this.onMade,
     required this.onOpenInvoice,
-    this.saveDelay = const Duration(milliseconds: 700),
   });
 
   final ApiClient api;
@@ -39,7 +38,7 @@ class ChargeSheetsTab extends StatefulWidget {
   final ValueChanged<String> onOpenInvoice;
 
   /// How long after the last keystroke a cell is saved.
-  final Duration saveDelay;
+  static const saveDelay = Duration(milliseconds: 700);
 
   @override
   State<ChargeSheetsTab> createState() => _ChargeSheetsTabState();
@@ -236,7 +235,7 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
 
   void _schedule() {
     _debounce?.cancel();
-    _debounce = Timer(widget.saveDelay, _flush);
+    _debounce = Timer(ChargeSheetsTab.saveDelay, _flush);
   }
 
   Future<void> _flush() async {
