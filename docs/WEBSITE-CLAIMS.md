@@ -3604,3 +3604,18 @@ Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbi
 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
 Desk asked (11-12): 0563-0567 live status, Monday connection count, the 38 scheduled jobs by organization and
 origin (the scheduling row's open question), ring-group resolution, Training/LSA/7th publisher/Stripe.
+
+**Desk (11-12, ~23:50 UTC), recorded as given:** 0563 never shipped (web build crashed; 0564 carried it); 0564-0567
+live web + natives; 0568 cutting (Integrations status lines, Monday token refresh, imported video types, E911 wording).
+- Monday: 1 connection (A-1/Triplex, connected 21:16 UTC), 5 personal boards imported (254 tasks, 275 subtasks, 814
+  updates, 705 files), poll running, 0 webhooks registered. Read-only confirmed by data; no edit.
+- **Scheduling: 72 (up from 38), all in Triplex Group.** `jobs` has no source/created-via column, so the split by
+  origin could not be taken, and the desk warns the test may count EzBizi jobs mirrored through another link. Held:
+  one organization, origin unknown, and the test itself is suspect. **Next run:** ask for the 72 by `created_by`
+  (a staff user vs null/system) and by whether a lead with `source = website_booking` points at them; a job a staff
+  member dated on the Jobs screen inverts the row.
+- Ring groups 6 (3 "Everyone"); 6 of 15 numbers point at a group directly; 4 of 4 phone connections have a default
+  group. Closer to the row's resolved fraction, still held (the row is about selling ring groups, and nothing asks to).
+- Publishers on prod: bluesky, facebook_page, google_business_profile, instagram_professional, pinterest, tiktok, x,
+  youtube connected; no new publisher; LinkedIn 0 rows. `payment_accounts` 0, no Stripe secret. Training, LSA: not measured.
+No sentence moves.
