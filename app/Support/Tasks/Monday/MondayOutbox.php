@@ -67,7 +67,9 @@ final class MondayOutbox
     private function linked(Task $task): bool
     {
         $board = $task->relationLoaded('board') ? $task->board : $task->board()->withoutGlobalScopes()->first();
-        if ($board === null || ! str_starts_with((string) $board->external_ref, 'monday:')) {
+        // An archived board is a read-only mirror of an archived Monday board (All Calls, Toula;
+        // Jose via desk 11-13): nothing on it is written back.
+        if ($board === null || ! str_starts_with((string) $board->external_ref, 'monday:') || $board->archived_at !== null) {
             return false;
         }
 

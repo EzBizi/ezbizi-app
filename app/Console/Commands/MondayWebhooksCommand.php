@@ -36,7 +36,7 @@ class MondayWebhooksCommand extends Command
 
         foreach ($connections as $connection) {
             $org = Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id);
-            $boards = $tenant->run($org, fn () => TaskBoard::query()->where('external_ref', 'like', 'monday:%')->pluck('external_ref')
+            $boards = $tenant->run($org, fn () => TaskBoard::query()->where('external_ref', 'like', 'monday:%')->whereNull('archived_at')->pluck('external_ref')
                 ->map(fn ($ref) => substr((string) $ref, 7))->filter(fn ($id) => ctype_digit($id))->values()->all());
             $writer = $this->option('dry-run') ? null : new MondayWriter($tokens->for($connection));
             $setup = (array) ($connection->setup ?? []);

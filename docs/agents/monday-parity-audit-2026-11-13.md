@@ -123,7 +123,7 @@ deleted member 76893540 ("David", Analorena), Monday user 78455682 (Liraz - DMV,
 people list).
 
 Recreation: `ezbizi:monday-automations --spec=docs/agents/monday-automations-2026-11-13.json
---org=<org>` writes one ordinary Automations rule per recipe (109; 37 not carried: All Calls,
+--org=<org>` writes one ordinary Automations rule per recipe (135, All Calls' 26 off as on Monday; 11 not carried:
 webhooks, dependency recipes on templates), on the board the import made, first condition
 `board_id eq <board>` (so it shows in the board's ⚡ Automate and in Automations), on/off as on
 Monday. A recipe naming something not here (a person with no account, a group Monday itself no
@@ -189,18 +189,20 @@ Read live through the Monday connection; nothing kept. 32,076 Monday items on 39
 
 1. `php artisan migrate` (monday_outbox) — part of the deploy.
 2. `ezbizi:monday-import-boards --map=docs/agents/monday-board-map-2026-11-13.json --dry-run`, then
-   without `--dry-run` (NW last if run per board: ~1 h of Monday reads).
+   without `--dry-run` (NW ~1 h of Monday reads; All Calls, 52,684 items, likely ~2 h: run it last, `--board=9342236072`).
 3. `ezbizi:monday-automations --spec=docs/agents/monday-automations-2026-11-13.json --org=019fd712-74fd-712c-b179-fd88052cc371`.
 4. `ezbizi:monday-webhooks` (registers 9 events per imported board; `--dry-run` lists them).
 5. The scheduler then runs `ezbizi:monday-sync` (10 min + nightly full), `ezbizi:monday-push`
    (every minute) and `ezbizi:tasks-dates-arrived` (hourly).
 
-## 7. Open questions for Jose (only what cannot be mirrored as-is)
+## 7. Decisions (desk relaying Jose, 11-13)
 
-1. **All Calls** (archived on Monday, 52,684 call rows, 31 disabled automations): mirror as an
-   archived board, or leave it (EzBizi Phone already holds the calls)? Default: left out.
-2. Rules whose Monday recipient has no EzBizi account (Nehorai, Moshe, Ron, deleted "David",
-   deleted Ohio manager): recreate pointed at whom? Default: recreated with no recipient, off.
+1. **All Calls**: "import everything": a board in the archive (A-1 Chimney, private), a
+   read-only mirror. An archived board is never written back to Monday (MondayOutbox), never
+   polled by the 10-minute/nightly sync and gets no webhooks (Monday's board is archived and
+   does not change). Its 26 automations are recreated off, as Monday has them.
+2. Rules whose Monday recipient has no EzBizi account: created off (as built).
+3. Liraz - DMV: stays a separate DMV board until Jose says whether Leroy Sapir is Liraz.
 
 ---
 
