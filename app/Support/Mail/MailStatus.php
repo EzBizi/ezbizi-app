@@ -54,14 +54,6 @@ class MailStatus
     {
         $missing = [];
 
-        if ($this->transport() === 'ses') {
-            foreach (['key' => 'AWS_ACCESS_KEY_ID', 'secret' => 'AWS_SECRET_ACCESS_KEY'] as $path => $label) {
-                if (blank(config("services.ses.{$path}"))) {
-                    $missing[] = $label;
-                }
-            }
-        }
-
         if ($this->transport() === 'smtp' && blank(config('mail.mailers.smtp.username'))) {
             $missing[] = 'MAIL_USERNAME';
         }
