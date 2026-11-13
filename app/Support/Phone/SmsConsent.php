@@ -52,6 +52,24 @@ final class SmsConsent
         return null;
     }
 
+    /**
+     * Twilio refused because the number is opted out on Twilio's side
+     * (21610), e.g. a STOP sent before we listened. Recorded here so the guard
+     * refuses the next one before it reaches Twilio. True when it was that.
+     */
+    public static function absorbCarrierRefusal(string $organizationId, string $to, \Throwable $e): bool
+    {
+        if ($e->getCode() !== 21610 && ! str_contains($e->getMessage(), 'unsubscribed recipient')) {
+            return false;
+        }
+        DB::table('sms_opt_outs')->updateOrInsert(
+            ['organization_id' => $organizationId, 'e164' => $to],
+            ['keyword' => 'STOP', 'created_at' => now()],
+        );
+
+        return true;
+    }
+
     public static function optedOut(string $organizationId, string $to): bool
     {
         return DB::table('sms_opt_outs')->where(['organization_id' => $organizationId, 'e164' => $to])->exists();

@@ -2123,12 +2123,16 @@ class ActionRunner
 
         $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true);
         if ($body === null) {
-            return ['type' => $type, 'ok' => false, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
+            // The customer said STOP: honouring it is correct, not a failure (sweep 11-13).
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
         }
 
         try {
             $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body, $number->account_sid);
         } catch (Throwable $e) {
+            if (\App\Support\Phone\SmsConsent::absorbCarrierRefusal((string) $connection->organization_id, $to, $e)) {
+                return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
+            }
             // Twilio's own sentence, because a code we have never seen still
             // explains itself and a rewrite of it does not.
             return [

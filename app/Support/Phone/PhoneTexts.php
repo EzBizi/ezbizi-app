@@ -54,6 +54,9 @@ final class PhoneTexts
         try {
             $sent = $this->twilio->sendMessage($connection, $from, $to, $body, $number->account_sid, $mediaUrls);
         } catch (Throwable $e) {
+            if (SmsConsent::absorbCarrierRefusal((string) $connection->organization_id, $to, $e)) {
+                throw new TextRefused(SmsConsent::REFUSAL, 422);
+            }
             $reason = self::refusal($e) ?? ($e->getMessage() !== '' ? $e->getMessage() : 'Twilio refused to send from this phone line.');
             if (PhoneLineHealth::isLineBreakingFault(null, $e)) {
                 $this->health->reportBroken($connection, $reason, $number);
