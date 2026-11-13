@@ -159,7 +159,7 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
   List<Map<String, dynamic>> _rows() {
     final rows = [
       for (final c in _campaigns ?? const <Map<String, dynamic>>[])
-        if (_needle.isEmpty || '${c['name']}'.toLowerCase().contains(_needle))
+        if (_needle.isEmpty || '${c['name']} ${_title(c)}'.toLowerCase().contains(_needle))
           c,
     ];
     rows.sort((a, b) {
@@ -171,6 +171,17 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
   }
 
   static bool _lsa(Map<String, dynamic> c) => c['type'] == 'LOCAL_SERVICES';
+
+  /// Google names a Local Services campaign "LocalServicesCampaign:
+  /// SystemGenerated:000630b3eb55"; shown as "Local Services · (account)"
+  /// (UI/UX audit 2026-11-13 §9.11). The raw name stays in the tooltip.
+  String _title(Map<String, dynamic> c) {
+    final name = '${c['name']}';
+    if (!name.startsWith('LocalServicesCampaign:')) return name;
+    final account = _accounts
+        ?.firstWhere((a) => a['connection_id'] == _account, orElse: () => const {})['name'];
+    return account == null ? 'Local Services' : 'Local Services · $account';
+  }
 
   /// A Local Services budget is set per WEEK; Google's API reports it as
   /// DAILY = week / 7 (measured 2026-11-13: Columbus $28,571.43 = $200,000
@@ -194,7 +205,7 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
   Future<void> _toggle(Map<String, dynamic> c, bool on) async {
     final ok = await confirmAdChange(
       context,
-      title: on ? 'Turn on ${c['name']}?' : 'Pause ${c['name']}?',
+      title: on ? 'Turn on ${_title(c)}?' : 'Pause ${_title(c)}?',
       change: on
           ? 'Google starts showing this campaign again.'
           : 'Google stops showing this campaign until it is turned on.',
@@ -215,7 +226,7 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
         SnackBar(
           content: Text(
             response.ok
-                ? '${c['name']} ${on ? 'on' : 'paused'}'
+                ? '${_title(c)} ${on ? 'on' : 'paused'}'
                 : response.message,
           ),
         ),
@@ -229,7 +240,7 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
       builder: (_) => _AmountPanel(
         api: widget.api,
         connectionId: _account!,
-        campaign: c,
+        campaign: {...c, 'name': _title(c)},
         target: target,
         days: _days,
       ),
@@ -243,7 +254,7 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
       api: widget.api,
       connectionId: _account!,
       objectId: '${c['id']}',
-      objectName: '${c['name']}',
+      objectName: _title(c),
       schedule: _schedules['${c['id']}'],
       canManage: _canManage,
     );
@@ -531,14 +542,18 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
   Widget _name(Map<String, dynamic> c, ThemeData theme, {int lines = 1}) => Row(
     children: [
       Flexible(
-        child: Text(
-          '${c['name']}',
-          maxLines: lines,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w600),
+        child: Tooltip(
+          message: '${c['name']}',
+          child: Text(
+            _title(c),
+            key: ValueKey('google-name-${c['id']}'),
+            maxLines: lines,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
         ),
       ),
-      if (_lsa(c)) ...[
+      if (_lsa(c) && _title(c) == '${c['name']}') ...[
         const SizedBox(width: 6),
         Text('Local Services', style: theme.textTheme.labelSmall),
       ],
