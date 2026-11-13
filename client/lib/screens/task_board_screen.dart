@@ -897,11 +897,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             'number' || 'currency' || 'formula' => 'number',
             'date' || 'datetime' || 'timeline' => 'date',
             'status' || 'dropdown' || 'tags' => 'options',
-            'person' => 'people',
+            'person' || 'people' => 'people',
             'checkbox' => 'checkbox',
             _ => 'text',
           },
-          options: c.type == 'person'
+          options: c.type == 'person' || c.type == 'people'
               ? people
               : [for (final o in c.options) (o.id, o.label)],
           read: (t) {
@@ -2790,7 +2790,27 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 _cell(
                   context,
                   _w('owner'),
-                  owner == null
+                  _canEdit
+                      ? _ownerMenu(
+                          t,
+                          owner == null
+                              ? _automationOwner(t)
+                              : Row(
+                                  children: [
+                                    _avatar(context, owner),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        owner.split(' ').first,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (owners.length > 1)
+                                      _moreOwners(t, owners),
+                                  ],
+                                ),
+                        )
+                      : owner == null
                       ? _automationOwner(t)
                       : Row(
                           children: [
@@ -2853,6 +2873,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               : null,
                           onEditOptions: _canEdit ? () => _editColumn(c) : null,
                           onMenu: _statusMenu,
+                          api: widget.api,
                           onAutoAssign: _canEdit && c.type == 'status'
                               ? () => _suggestLabel(t, c.id)
                               : null,
@@ -2874,6 +2895,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               : null,
                           onEditOptions: _canEdit ? () => _editColumn(c) : null,
                           onMenu: _statusMenu,
+                          api: widget.api,
                           onAutoAssign: _canEdit && c.type == 'status'
                               ? () => _suggestLabel(t, c.id)
                               : null,
@@ -2883,16 +2905,25 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 _cell(
                   context,
                   _w('about'),
-                  Text(
-                    about ?? '—',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: about == null
-                        ? TextStyle(color: theme.colorScheme.onSurfaceVariant)
-                        : TextStyle(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w700,
-                          ),
+                  InkWell(
+                    key: ValueKey('task-about-${t['id']}'),
+                    onTap: _canEdit ? () => _editAbout(t) : null,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        about ?? '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: about == null
+                            ? TextStyle(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              )
+                            : TextStyle(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                      ),
+                    ),
                   ),
                 ),
               if (shown('updates'))
@@ -3168,6 +3199,37 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         ),
       ),
     );
+  }
+
+  /// Owner edits where it is: a list of the board's people (Jose 11-13:
+  /// only the name opens the task).
+  Widget _ownerMenu(_Json t, Widget shown) => MenuAnchor(
+    menuChildren: [
+      MenuItemButton(
+        onPressed: () => _patchTask(t, {'assignee_user_id': null}),
+        child: const Text('Nobody'),
+      ),
+      for (final p in _people.entries)
+        MenuItemButton(
+          key: ValueKey('task-owner-${t['id']}-${p.key}'),
+          onPressed: () => _patchTask(t, {'assignee_user_id': p.key}),
+          child: Text(p.value),
+        ),
+    ],
+    builder: (context, menu, _) => InkWell(
+      key: ValueKey('task-owner-${t['id']}'),
+      onTap: () => menu.isOpen ? menu.close() : menu.open(),
+      child: Align(alignment: Alignment.centerLeft, child: shown),
+    ),
+  );
+
+  /// About: straight to the link search, not the whole task.
+  Future<void> _editAbout(_Json t) async {
+    await showSidePanel<void>(
+      context,
+      builder: (_) => TaskLinkPanel(api: widget.api, task: t),
+    );
+    if (mounted) await _load();
   }
 
   /// Monday's "Auto-assign labels": the AI's pick for [t] in a status

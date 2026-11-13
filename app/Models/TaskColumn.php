@@ -25,7 +25,7 @@ class TaskColumn extends Model implements StatesRetention
      * customer or job, "customer:<id>" / "job:<id>") joined the first nine.
      */
     public const TYPES = ['text', 'number', 'status', 'date', 'person', 'dropdown', 'checkbox', 'timeline', 'formula',
-        'long_text', 'currency', 'phone', 'email', 'url', 'datetime', 'tags', 'link'];
+        'long_text', 'currency', 'phone', 'email', 'url', 'datetime', 'tags', 'link', 'people'];
 
     /** How a number or formula shows (design 178): plain, currency or a percentage. */
     public const FORMATS = ['plain', 'currency', 'percent'];

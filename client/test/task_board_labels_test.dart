@@ -96,4 +96,15 @@ void main() {
     );
     expect(dateRangeLabel(const [], formats), isNull);
   });
+
+  testWidgets('a people cell shows three faces and +N', (tester) async {
+    await tester.pumpWidget(
+      host(
+        const PeopleAvatars(names: ['Ann Lee', 'Bo Ray', 'Cy Dee', 'Di Fo']),
+      ),
+    );
+    expect(find.text('AL'), findsOneWidget);
+    expect(find.text('DF'), findsNothing);
+    expect(find.text('+1'), findsOneWidget);
+  });
 }
