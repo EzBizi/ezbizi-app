@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:async';
 import '../widgets/list_search.dart';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -367,6 +369,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   @override
   void dispose() {
     DeepLinks.pending.removeListener(_takeLink);
+    _rangeFocus.dispose();
     _newTitle.dispose();
     _groupName.dispose();
     _columnName.dispose();
@@ -3484,48 +3487,61 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 ),
               for (final c in boardColumns(_board))
                 c.type == 'status'
-                    ? SizedBox(
-                        width: _w('c:${c.id}'),
-                        child: ColumnCell(
-                          column: c,
-                          value: columnValue(t, c),
-                          people: _people,
-                          formats: _formats,
-                          onChanged: _canEdit
-                              ? (v) => _setValue(t, c.id, v)
-                              : null,
-                          onAddOption: _canEdit
-                              ? (label) => _addOption(c, label)
-                              : null,
-                          onEditOptions: _canEdit ? () => _editColumn(c) : null,
-                          onMenu: _statusMenu,
-                          api: widget.api,
-                          onAutoAssign: _canEdit && c.type == 'status'
-                              ? () => _suggestLabel(t, c.id)
-                              : null,
+                    ? _rangeCell(
+                        t,
+                        c,
+                        SizedBox(
+                          width: _w('c:${c.id}'),
+                          child: ColumnCell(
+                            column: c,
+                            value: columnValue(t, c),
+                            people: _people,
+                            formats: _formats,
+                            onChanged: _canEdit
+                                ? (v) => _setValue(t, c.id, v)
+                                : null,
+                            onAddOption: _canEdit
+                                ? (label) => _addOption(c, label)
+                                : null,
+                            onEditOptions: _canEdit
+                                ? () => _editColumn(c)
+                                : null,
+                            onMenu: _statusMenu,
+                            api: widget.api,
+                            onAutoAssign: _canEdit && c.type == 'status'
+                                ? () => _suggestLabel(t, c.id)
+                                : null,
+                          ),
                         ),
                       )
-                    : _cell(
-                        context,
-                        _w('c:${c.id}'),
-                        ColumnCell(
-                          column: c,
-                          value: columnValue(t, c),
-                          people: _people,
-                          formats: _formats,
-                          onChanged: _canEdit
-                              ? (v) => _setValue(t, c.id, v)
-                              : null,
-                          onAddOption: _canEdit
-                              ? (label) => _addOption(c, label)
-                              : null,
-                          onEditOptions: _canEdit ? () => _editColumn(c) : null,
-                          onMenu: _statusMenu,
-                          api: widget.api,
-                          boardId: '${_board!['id']}',
-                          onAutoAssign: _canEdit && c.type == 'status'
-                              ? () => _suggestLabel(t, c.id)
-                              : null,
+                    : _rangeCell(
+                        t,
+                        c,
+                        _cell(
+                          context,
+                          _w('c:${c.id}'),
+                          ColumnCell(
+                            column: c,
+                            value: columnValue(t, c),
+                            people: _people,
+                            formats: _formats,
+                            onChanged: _canEdit
+                                ? (v) => _setValue(t, c.id, v)
+                                : null,
+                            onAddOption: _canEdit
+                                ? (label) => _addOption(c, label)
+                                : null,
+                            onEditOptions: _canEdit
+                                ? () => _editColumn(c)
+                                : null,
+                            onMenu: _statusMenu,
+                            api: widget.api,
+                            boardId: '${_board!['id']}',
+                            onFilter: () => _filterTo(c.id, _valueOf(c.id, t)),
+                            onAutoAssign: _canEdit && c.type == 'status'
+                                ? () => _suggestLabel(t, c.id)
+                                : null,
+                          ),
                         ),
                       ),
               if (shown('about'))
@@ -3605,6 +3621,168 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           onChanged: (v) => _patchTask(t, {'due_on': v}),
           child: label,
         );
+
+  // ── Cell range: right-click filter, Shift/Ctrl select, copy/paste ──
+
+  /// The column a range of cells is picked in, and the tasks picked.
+  String? _rangeColumn;
+  final List<String> _range = [];
+  String? _rangeAnchor;
+  final _rangeFocus = FocusNode(debugLabel: 'task-board-range');
+
+  /// Shift-click extends the range from the last cell clicked down or up the
+  /// column; Ctrl (or Cmd) toggles one cell. A plain click clears it.
+  void _pickCell(_Json t, BoardColumn c) {
+    final keys = HardwareKeyboard.instance;
+    final id = t['id'] as String;
+    final shift = keys.isShiftPressed;
+    final toggle = keys.isControlPressed || keys.isMetaPressed;
+    if (!shift && !toggle) {
+      if (_range.isNotEmpty) setState(_clearRange);
+      _rangeAnchor = id;
+      _rangeColumn = c.id;
+      return;
+    }
+    setState(() {
+      if (_rangeColumn != c.id) {
+        _range.clear();
+        _rangeColumn = c.id;
+      }
+      if (toggle) {
+        _range.contains(id) ? _range.remove(id) : _range.add(id);
+      } else {
+        final order = [for (final x in _shownTasks) x['id'] as String];
+        final from = order.indexOf(_rangeAnchor ?? id);
+        final to = order.indexOf(id);
+        _range
+          ..clear()
+          ..addAll(
+            from < 0
+                ? [id]
+                : order.sublist(math.min(from, to), math.max(from, to) + 1),
+          );
+      }
+      _rangeAnchor ??= id;
+    });
+    _rangeFocus.requestFocus();
+  }
+
+  void _clearRange() {
+    _range.clear();
+    _rangeColumn = null;
+  }
+
+  /// Ctrl+C copies the range's first value; Ctrl+V writes the clipboard to
+  /// every cell in it; Esc lets go.
+  KeyEventResult _rangeKey(FocusNode _, KeyEvent e) {
+    if (e is! KeyDownEvent || _range.isEmpty) return KeyEventResult.ignored;
+    final keys = HardwareKeyboard.instance;
+    final mod = keys.isControlPressed || keys.isMetaPressed;
+    if (e.logicalKey == LogicalKeyboardKey.escape) {
+      setState(_clearRange);
+      return KeyEventResult.handled;
+    }
+    if (mod && e.logicalKey == LogicalKeyboardKey.keyC) {
+      _copyRange();
+      return KeyEventResult.handled;
+    }
+    if (mod && e.logicalKey == LogicalKeyboardKey.keyV && _canEdit) {
+      _pasteRange();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  BoardColumn? get _rangeCol =>
+      boardColumns(_board).where((c) => c.id == _rangeColumn).firstOrNull;
+
+  Future<void> _copyRange() async {
+    final c = _rangeCol;
+    final t = _tasks.where((x) => x['id'] == _range.first).firstOrNull;
+    if (c == null || t == null) return;
+    final v = columnValue(t, c);
+    await Clipboard.setData(
+      ClipboardData(text: v == null ? '' : (v is String ? v : jsonEncode(v))),
+    );
+    if (mounted) _say(_range.length == 1 ? 'Copied' : 'Copied the first cell');
+  }
+
+  Future<void> _pasteRange() async {
+    final c = _rangeCol;
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    if (c == null || text == null || !mounted) return;
+    Object? value = text.trim().isEmpty ? null : text;
+    if (text.startsWith('[') || text.startsWith('{')) {
+      try {
+        value = jsonDecode(text);
+      } on FormatException {
+        // Plain text that only looks like JSON.
+      }
+    } else if (c.type == 'number' || c.type == 'currency') {
+      value = num.tryParse(text.trim());
+    } else if (c.type == 'checkbox') {
+      value = text.trim() == 'true';
+    }
+    for (final id in List.of(_range)) {
+      final t = _tasks.where((x) => x['id'] == id).firstOrNull;
+      if (t != null) await _setValue(t, c.id, value);
+      if (!mounted) return;
+    }
+    _say(
+      _range.length == 1 ? '1 cell pasted' : '${_range.length} cells pasted',
+    );
+  }
+
+  /// A board column's cell: picked into a range, and on right-click
+  /// Monday's "Filter by this value".
+  Widget _rangeCell(_Json t, BoardColumn c, Widget child) {
+    final picked = _rangeColumn == c.id && _range.contains(t['id']);
+    final scheme = Theme.of(context).colorScheme;
+    final value = _valueOf(c.id, t);
+    final menu = MenuController();
+    return MenuAnchor(
+      controller: menu,
+      menuChildren: [
+        MenuItemButton(
+          key: const Key('cell-filter-value'),
+          leadingIcon: const Icon(Icons.filter_list, size: 18),
+          onPressed: value.isEmpty ? null : () => _filterTo(c.id, value),
+          child: const Text('Filter by this value'),
+        ),
+        if (_filteredOn(c.id))
+          MenuItemButton(
+            onPressed: () => _clearFilterOn(c.id),
+            child: const Text('Clear filter'),
+          ),
+      ],
+      // A Listener for the pick: the cell's own editor wins the tap arena.
+      child: Listener(
+        key: ValueKey('range-cell-${c.id}-${t['id']}'),
+        onPointerDown: (e) {
+          if (e.buttons == kPrimaryButton) _pickCell(t, c);
+        },
+        // A gesture for the menu, so it wins over the row's right-click; an
+        // in-place cell has its own menu, with Filter by this value.
+        child: GestureDetector(
+          onSecondaryTapUp: ColumnCell.editsInPlace(c, editable: _canEdit)
+              ? null
+              : (d) => menu.open(position: d.localPosition),
+          child: Focus(
+            focusNode: picked && _range.first == t['id'] ? _rangeFocus : null,
+            onKeyEvent: _rangeKey,
+            child: DecoratedBox(
+              position: DecorationPosition.foreground,
+              decoration: BoxDecoration(
+                color: picked ? scheme.primary.withValues(alpha: 0.10) : null,
+                border: picked ? Border.all(color: scheme.primary) : null,
+              ),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _dragHandle(BuildContext context, _Json t) {
     final theme = Theme.of(context);

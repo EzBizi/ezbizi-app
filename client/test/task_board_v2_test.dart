@@ -6,7 +6,9 @@ import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -833,5 +835,78 @@ void main() {
     await tester.tap(find.byKey(const Key('group-by-none')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('task-group-g1')), findsOneWidget);
+  });
+
+  testWidgets('right-click a cell and Filter by this value keeps the tasks '
+      'with it', (tester) async {
+    extra = [doneTask()];
+    await pump(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('range-cell-c-hours-t1')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cell-filter-value')));
+    await tester.pumpAndSettle();
+    expect(find.text('Order liner parts for the Oak Park job'), findsOneWidget);
+    expect(find.text('Sweep the Elm St chimney'), findsNothing);
+  });
+
+  testWidgets('Ctrl-click picks cells in one column and Ctrl+V pastes over '
+      'every one', (tester) async {
+    extra = [doneTask()];
+    await pump(tester);
+    String? clip = '7';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.getData') return {'text': clip};
+        if (call.method == 'Clipboard.setData') {
+          clip = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    for (final id in ['t1', 't9']) {
+      await tester.tap(find.byKey(ValueKey('range-cell-c-hours-$id')));
+      await tester.pump();
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.pump();
+    expect(clip, '3.5');
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    final patches = [
+      for (final (m, p, b) in log)
+        if (m == 'PATCH') '$p ${jsonEncode(b)}',
+    ];
+    expect(patches, [
+      '/tasks/t1 {"values":{"c-hours":3.5}}',
+      '/tasks/t9 {"values":{"c-hours":3.5}}',
+    ]);
+  });
+
+  testWidgets('a label cell has Filter by this value on right-click too', (
+    tester,
+  ) async {
+    extra = [doneTask()];
+    await pump(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('range-cell-c-type-t1')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cell-filter-value')));
+    await tester.pumpAndSettle();
+    expect(find.text('Sweep the Elm St chimney'), findsNothing);
   });
 }
