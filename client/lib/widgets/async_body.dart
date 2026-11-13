@@ -33,7 +33,14 @@ class AsyncBody extends StatelessWidget {
     required this.onRetry,
     required this.child,
     this.skeleton = false,
+    this.refreshing = false,
   });
+
+  /// A new answer is on its way while the old rows are still on screen
+  /// (a filter changed). They are dimmed and not clickable under a thin
+  /// progress line, so the screen never passes them off as the new filter's
+  /// (Muse audit 4A).
+  final bool refreshing;
 
   final bool loading;
   final String? error;
@@ -69,7 +76,19 @@ class AsyncBody extends StatelessWidget {
       );
     }
 
-    return child;
+    if (!refreshing) return child;
+
+    return Stack(
+      children: [
+        IgnorePointer(child: Opacity(opacity: 0.4, child: child)),
+        const Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          child: LinearProgressIndicator(minHeight: 2),
+        ),
+      ],
+    );
   }
 }
 
