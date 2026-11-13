@@ -60,6 +60,7 @@ void main() {
       'can_manage': manage,
       'can_rename': (owner ?? manage) && kind == 'custom',
       'members_count': 2,
+      'automations_count': 1,
       'statuses': [
         {
           'id': 's-stuck',
@@ -254,7 +255,7 @@ void main() {
       'the board', (tester) async {
     await pump(tester);
 
-    expect(find.text('People · 2'), findsOneWidget);
+    expect(find.text('Invite · 2'), findsOneWidget);
     expect(find.text('Private'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('tasks-people')));
@@ -511,5 +512,30 @@ void main() {
     await pump(tester, kind: 'franchise', manage: false);
 
     expect(find.byKey(const Key('tasks-automate')), findsNothing);
+  });
+
+  testWidgets('the top bar counts rules and people, offers Integrate, and '
+      'Import adds one task per pasted line', (tester) async {
+    await pump(tester, automations: true, kind: 'franchise');
+
+    expect(find.text('Automate · 1'), findsOneWidget);
+    expect(find.text('Invite · 2'), findsOneWidget);
+    expect(find.byKey(const Key('tasks-integrate')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('tasks-new-more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tasks-import')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('tasks-import-text')),
+      'Sweep the flue\tMonday\n\nOrder a cap,12\n',
+    );
+    await tester.tap(find.byKey(const Key('tasks-import-go')));
+    await tester.pumpAndSettle();
+    final posts = [
+      for (final (m, p, b) in log)
+        if (m == 'POST' && p == '/tasks') (b as Map)['title'],
+    ];
+    expect(posts, ['Sweep the flue', 'Order a cap']);
   });
 }
