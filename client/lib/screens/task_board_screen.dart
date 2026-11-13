@@ -29,6 +29,7 @@ import '../widgets/list_toolbar.dart';
 import '../widgets/mention_field.dart';
 import 'task_board_move.dart';
 import 'task_board_people.dart';
+import 'task_board_person_card.dart';
 import 'task_board_plan_views.dart';
 import 'task_board_sidebar.dart';
 import 'task_board_sensitive.dart';
@@ -552,7 +553,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final r = await widget.api.post('/task-boards/${_board!['id']}/views', {
       'name': name,
       'shared': _canEdit,
-      'config': _filter.toJson(),
+      'config': _filter.copyWith(layout: _view).toJson(),
     });
     if (!mounted) return;
     if (!r.ok) {
@@ -583,7 +584,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     key: const Key('tasks-toolbar'),
     fields: _filterFields.values.toList(),
     query: _filter,
-    onChanged: (q) => setState(() => _filter = q),
+    // A saved view brings its layout (Monday's Kanban / Calendar views).
+    onChanged: (q) => setState(() {
+      if (q.layout != null && q.layout != _filter.layout) _view = q.layout!;
+      _filter = q;
+    }),
     views: [
       for (final v in _views)
         (
@@ -1113,6 +1118,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   /// Every owner's id, for the person filter.
+  /// The first owner's face, with Monday's hover card on it.
+  Widget _ownerFace(BuildContext context, _Json t, String owner) {
+    final id = _ownerIds(t).firstOrNull;
+    final face = _avatar(context, owner, api: widget.api, userId: _ownerId(t));
+    if (id == null || _board == null) return face;
+    return PersonHoverCard(
+      api: widget.api,
+      boardId: '${_board!['id']}',
+      userId: id,
+      child: face,
+    );
+  }
+
   List<String> _ownerIds(_Json t) {
     final ids = [
       for (final o in (t['owners'] as List? ?? const []))
@@ -1318,51 +1336,117 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     });
   }
 
+  // ── Header sort (Monday parity, Jose 11-13) ─────────────────────
+
+  /// The direction [field] is sorted in: true descending, false ascending,
+  /// null not sorted.
+  bool? _sortDir(String field) {
+    for (final r in _filter.sort) {
+      if (r.field == field) return r.desc;
+    }
+    return null;
+  }
+
+  /// Sorts by [field] alone; null clears the sort.
+  void _sortBy(String field, bool? desc) => setState(
+    () => _filter = _filter.copyWith(
+      sort: desc == null ? const [] : [(field: field, desc: desc)],
+    ),
+  );
+
+  Widget _sortable(String field, Widget label) {
+    if (!_filterFields.containsKey(field)) return label;
+    final dir = _sortDir(field);
+    // The arrow sits beside the heading, outside the tap that opens its menu.
+    return Row(
+      children: [
+        Expanded(child: label),
+        SortArrow(
+          key: ValueKey('sort-$field'),
+          dir: dir,
+          // Ascending, descending, off.
+          onTap: () => _sortBy(field, switch (dir) {
+            null => false,
+            false => true,
+            true => null,
+          }),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _sortItems(String field) => [
+    if (_filterFields.containsKey(field)) ...[
+      MenuItemButton(
+        key: ValueKey('sort-asc-$field'),
+        leadingIcon: const Icon(Icons.arrow_upward, size: 18),
+        onPressed: () => _sortBy(field, false),
+        child: const Text('Sort ascending'),
+      ),
+      MenuItemButton(
+        key: ValueKey('sort-desc-$field'),
+        leadingIcon: const Icon(Icons.arrow_downward, size: 18),
+        onPressed: () => _sortBy(field, true),
+        child: const Text('Sort descending'),
+      ),
+      if (_sortDir(field) != null)
+        MenuItemButton(
+          onPressed: () => _sortBy(field, null),
+          child: const Text('Clear sort'),
+        ),
+      const Divider(height: 8),
+    ],
+  ];
+
   /// A built-in column's heading: its name, and on a board you may edit a
   /// menu to rename or hide it (Jose, 2026-10-20).
   Widget _builtinHead(String key, Object? group, Widget label) {
-    if (!_canEdit) return label;
-    return MenuAnchor(
-      menuChildren: [
-        // What a built-in column is for (Jose, 2026-11-12: "not sure where
-        // those are managed").
-        MenuItemButton(
-          key: ValueKey('builtin-about-$key'),
-          onPressed: null,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 240),
-            child: Text(_builtinHelp[key]!, softWrap: true),
-          ),
-        ),
-        const Divider(height: 8),
-        MenuItemButton(
-          key: ValueKey('builtin-rename-$key'),
-          leadingIcon: const Icon(Icons.edit_outlined, size: 18),
-          onPressed: () => setState(() {
-            _renaming = (key: key, group: group);
-            _renameError = null;
-            _columnName.text = _builtinLabel(_board, key);
-          }),
-          child: const Text('Rename'),
-        ),
-        if (key == 'status')
+    if (!_canEdit) return _sortable(key, label);
+    return _sortable(
+      key,
+      MenuAnchor(
+        menuChildren: [
+          ..._sortItems(key),
+          // What a built-in column is for (Jose, 2026-11-12: "not sure where
+          // those are managed").
           MenuItemButton(
-            key: const Key('builtin-status-labels'),
-            leadingIcon: const Icon(Icons.label_outline, size: 18),
-            onPressed: _editStatuses,
-            child: const Text('Edit labels…'),
+            key: ValueKey('builtin-about-$key'),
+            onPressed: null,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 240),
+              child: Text(_builtinHelp[key]!, softWrap: true),
+            ),
           ),
-        MenuItemButton(
-          key: ValueKey('builtin-hide-$key'),
-          leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
-          onPressed: () => _showBuiltin(key, false),
-          child: const Text('Hide column'),
+          const Divider(height: 8),
+          MenuItemButton(
+            key: ValueKey('builtin-rename-$key'),
+            leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+            onPressed: () => setState(() {
+              _renaming = (key: key, group: group);
+              _renameError = null;
+              _columnName.text = _builtinLabel(_board, key);
+            }),
+            child: const Text('Rename'),
+          ),
+          if (key == 'status')
+            MenuItemButton(
+              key: const Key('builtin-status-labels'),
+              leadingIcon: const Icon(Icons.label_outline, size: 18),
+              onPressed: _editStatuses,
+              child: const Text('Edit labels…'),
+            ),
+          MenuItemButton(
+            key: ValueKey('builtin-hide-$key'),
+            leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
+            onPressed: () => _showBuiltin(key, false),
+            child: const Text('Hide column'),
+          ),
+        ],
+        builder: (context, menu, _) => InkWell(
+          key: ValueKey('builtin-head-$key'),
+          onTap: () => menu.isOpen ? menu.close() : menu.open(),
+          child: Align(alignment: Alignment.centerLeft, child: label),
         ),
-      ],
-      builder: (context, menu, _) => InkWell(
-        key: ValueKey('builtin-head-$key'),
-        onTap: () => menu.isOpen ? menu.close() : menu.open(),
-        child: Align(alignment: Alignment.centerLeft, child: label),
       ),
     );
   }
@@ -1496,62 +1580,68 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       await _load();
     }
 
-    return MenuAnchor(
-      menuChildren: [
-        MenuItemButton(
-          key: ValueKey('column-menu-edit-${c.id}'),
-          leadingIcon: const Icon(Icons.edit_outlined, size: 18),
-          onPressed: () => _editColumn(c),
-          child: Text(
-            const {'status', 'dropdown', 'tags'}.contains(c.type)
-                ? 'Rename, labels and colours…'
-                : 'Rename and settings…',
+    return _sortable(
+      c.id,
+      MenuAnchor(
+        menuChildren: [
+          ..._sortItems(c.id),
+          MenuItemButton(
+            key: ValueKey('column-menu-edit-${c.id}'),
+            leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+            onPressed: () => _editColumn(c),
+            child: Text(
+              const {'status', 'dropdown', 'tags'}.contains(c.type)
+                  ? 'Rename, labels and colours…'
+                  : 'Rename and settings…',
+            ),
           ),
-        ),
-        SubmenuButton(
-          key: ValueKey('column-menu-type-${c.id}'),
-          leadingIcon: const Icon(Icons.swap_horiz, size: 18),
-          menuChildren: [
-            for (final (type, label, icon) in columnTypes)
-              if (type != c.type)
-                MenuItemButton(
-                  key: ValueKey('column-menu-type-${c.id}-$type'),
-                  leadingIcon: Icon(icon, size: 18),
-                  onPressed: () => _editColumn(c, type: type),
-                  child: Text(label),
-                ),
-          ],
-          child: Text('Type: ${columnTypeLabel(c.type)}'),
-        ),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.arrow_back, size: 18),
-          onPressed: () => patch({'position': (at - 1).clamp(0, 1000)}),
-          child: const Text('Move left'),
-        ),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.arrow_forward, size: 18),
-          onPressed: () => patch({'position': at + 1}),
-          child: const Text('Move right'),
-        ),
-        MenuItemButton(
-          key: ValueKey('column-menu-hide-${c.id}'),
-          leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
-          onPressed: () => patch({'hidden': true}),
-          child: const Text('Hide'),
-        ),
-        MenuItemButton(
-          key: ValueKey('column-menu-remove-${c.id}'),
-          leadingIcon: const Icon(Icons.delete_outline, size: 18),
-          onPressed: () => _editColumn(c),
-          child: const Text('Remove column…'),
-        ),
-      ],
-      builder: (context, menu, _) => InkWell(
-        key: ValueKey('column-head-${c.id}'),
-        onTap: _canEdit ? () => menu.isOpen ? menu.close() : menu.open() : null,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Tooltip(message: c.name, child: title),
+          SubmenuButton(
+            key: ValueKey('column-menu-type-${c.id}'),
+            leadingIcon: const Icon(Icons.swap_horiz, size: 18),
+            menuChildren: [
+              for (final (type, label, icon) in columnTypes)
+                if (type != c.type)
+                  MenuItemButton(
+                    key: ValueKey('column-menu-type-${c.id}-$type'),
+                    leadingIcon: Icon(icon, size: 18),
+                    onPressed: () => _editColumn(c, type: type),
+                    child: Text(label),
+                  ),
+            ],
+            child: Text('Type: ${columnTypeLabel(c.type)}'),
+          ),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.arrow_back, size: 18),
+            onPressed: () => patch({'position': (at - 1).clamp(0, 1000)}),
+            child: const Text('Move left'),
+          ),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.arrow_forward, size: 18),
+            onPressed: () => patch({'position': at + 1}),
+            child: const Text('Move right'),
+          ),
+          MenuItemButton(
+            key: ValueKey('column-menu-hide-${c.id}'),
+            leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
+            onPressed: () => patch({'hidden': true}),
+            child: const Text('Hide'),
+          ),
+          MenuItemButton(
+            key: ValueKey('column-menu-remove-${c.id}'),
+            leadingIcon: const Icon(Icons.delete_outline, size: 18),
+            onPressed: () => _editColumn(c),
+            child: const Text('Remove column…'),
+          ),
+        ],
+        builder: (context, menu, _) => InkWell(
+          key: ValueKey('column-head-${c.id}'),
+          onTap: _canEdit
+              ? () => menu.isOpen ? menu.close() : menu.open()
+              : null,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Tooltip(message: c.name, child: title),
+          ),
         ),
       ),
     );
@@ -1843,6 +1933,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       if (i != _selected) _open(i);
     },
     onDropTask: _canEdit ? _dropOnBoard : null,
+    api: widget.api,
+    canArrange: widget.session.me?.can('tasks.create_boards') ?? false,
+    onArranged: _load,
     onNewBoard: (widget.session.me?.can('tasks.create_boards') ?? false)
         ? () {
             setState(() => _choosing = false);
@@ -2016,8 +2109,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 ),
             ],
             selected: {_view},
-            onSelectionChanged: (v) => setState(() => _view = v.first),
+            onSelectionChanged: (v) => setState(() {
+              _view = v.first;
+              _filter = _filter.copyWith(layout: v.first);
+            }),
           ),
+          if (_canEdit && _view == 'table') _newTaskButton(),
           SizedBox(
             width: phone ? 200 : 240,
             child: ListSearch(
@@ -2056,6 +2153,62 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   /// Folded away on a phone until asked for.
   bool _toolsOpen = false;
+
+  /// Monday's "New task" split button: the task opens its add box in the
+  /// first group; the arrow offers a new group (Jose 11-13).
+  Widget _newTaskButton() {
+    final first = _groups(_board!).where((g) => g['id'] != null).firstOrNull;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FilledButton.icon(
+          key: const Key('tasks-new-task'),
+          style: FilledButton.styleFrom(
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.horizontal(left: Radius.circular(8)),
+            ),
+          ),
+          onPressed: first == null
+              ? null
+              : () => setState(() {
+                  _adding = '${first['id']}';
+                  _addError = null;
+                  _newTitle.clear();
+                }),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('New task'),
+        ),
+        const SizedBox(width: 1),
+        MenuAnchor(
+          menuChildren: [
+            MenuItemButton(
+              key: const Key('tasks-new-group'),
+              leadingIcon: const Icon(Icons.playlist_add, size: 18),
+              onPressed: () => setState(() {
+                _naming = 'new';
+                _groupName.clear();
+              }),
+              child: const Text('New group'),
+            ),
+          ],
+          builder: (context, menu, _) => FilledButton(
+            key: const Key('tasks-new-more'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              minimumSize: const Size(32, 40),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.horizontal(
+                  right: Radius.circular(8),
+                ),
+              ),
+            ),
+            onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+            child: const Icon(Icons.arrow_drop_down, size: 20),
+          ),
+        ),
+      ],
+    );
+  }
 
   /// Archive, delete and restore (Jose, 2026-11-09: "I can't delete boards").
   Widget _boardMenu() {
@@ -3013,7 +3166,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               ? _automationOwner(t)
                               : Row(
                                   children: [
-                                    _avatar(context, owner),
+                                    _ownerFace(context, t, owner),
                                     const SizedBox(width: 6),
                                     Flexible(
                                       child: Text(
@@ -3030,12 +3183,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                       ? _automationOwner(t)
                       : Row(
                           children: [
-                            _avatar(
-                              context,
-                              owner,
-                              api: widget.api,
-                              userId: _ownerId(t),
-                            ),
+                            _ownerFace(context, t, owner),
                             const SizedBox(width: 6),
                             Flexible(
                               child: Text(
@@ -3550,12 +3698,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                 ),
                               ),
                             if (owner != null && shown('owner')) ...[
-                              _avatar(
-                                context,
-                                owner,
-                                api: widget.api,
-                                userId: _ownerId(t),
-                              ),
+                              _ownerFace(context, t, owner),
                               if (owners.length > 1) _moreOwners(t, owners),
                             ],
                             if (!sub) ...[
@@ -4615,6 +4758,55 @@ class _TaskPanelState extends State<_TaskPanel> {
             ),
         ],
       ],
+    );
+  }
+}
+
+/// A column heading's sort arrow: shown while sorted, and faintly on hover
+/// so the heading stays quiet otherwise (Monday parity, Jose 11-13).
+class SortArrow extends StatefulWidget {
+  const SortArrow({super.key, required this.dir, required this.onTap});
+
+  /// true descending, false ascending, null unsorted.
+  final bool? dir;
+  final VoidCallback onTap;
+
+  @override
+  State<SortArrow> createState() => _SortArrowState();
+}
+
+class _SortArrowState extends State<SortArrow> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final on = widget.dir != null;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Tooltip(
+        message: switch (widget.dir) {
+          null => 'Sort ascending',
+          false => 'Sort descending',
+          true => 'Clear sort',
+        },
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Opacity(
+              opacity: on ? 1 : (_hover ? 0.6 : 0.15),
+              child: Icon(
+                widget.dir == true ? Icons.arrow_downward : Icons.arrow_upward,
+                size: 14,
+                color: on ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

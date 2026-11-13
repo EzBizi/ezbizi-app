@@ -1043,6 +1043,12 @@ Route::prefix('v1')
         Route::post('task-boards/{taskBoard}/unarchive', [TaskBoardsController::class, 'unarchive']);
         Route::post('task-boards/{id}/restore', [TaskBoardsController::class, 'restore']);
         Route::get('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'members']);
+        Route::get('task-boards/{taskBoard}/people/{user}', [TaskBoardsController::class, 'person']);
+        // Folders and colours on the board list (Jose 11-13), shared for the organization.
+        Route::get('task-board-folders', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'index']);
+        Route::post('task-board-folders', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'store']);
+        Route::patch('task-board-folders/{folder}', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'update']);
+        Route::delete('task-board-folders/{folder}', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'destroy']);
         Route::get('task-boards/{taskBoard}/attachments', [TaskBoardGalleryController::class, 'index']);
         Route::post('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'storeMember']);
         Route::patch('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'updateMember']);
