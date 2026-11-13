@@ -137,14 +137,19 @@ class FieldController extends Controller
             ->limit(50)
             ->get();
 
+        $open = FieldAlert::query()->whereIn('user_id', $ids)->whereNull('acknowledged_at')
+            ->selectRaw('kind, count(*) as n')->groupBy('kind')->pluck('n', 'kind')->map(fn ($n) => (int) $n)->all();
+
         return response()->json(['data' => [
             'counts' => [
                 'tracked' => count($ids),
                 'reporting' => $fresh->count(),
                 'at_job' => $fresh->whereNotNull('at_job_id')->count(),
-                'stopped' => $fresh->where('stopped_alerted', true)->count(),
-                'silent' => $presences->where('signal_lost_alerted', true)->count(),
-                'open_alerts' => $alerts->whereNull('acknowledged_at')->count(),
+                // Open alerts by kind, uncapped: the total is the sum of its tiles (UI audit 10.1).
+                'stopped' => $open[FieldAlert::STOPPED] ?? 0,
+                'silent' => $open[FieldAlert::SIGNAL_LOST] ?? 0,
+                'sos' => $open[FieldAlert::SOS] ?? 0,
+                'open_alerts' => array_sum($open),
             ],
             'alerts' => $alerts->map(fn (FieldAlert $a) => $this->presentAlert($a))->values(),
             'me' => $this->tracking->status($request->user()),

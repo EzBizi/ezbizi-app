@@ -661,6 +661,26 @@ class FieldTest extends TestCase
             ->assertJsonPath('data.counts.reporting', 1);
     }
 
+    public function test_open_alerts_is_the_sum_of_its_tiles_however_old(): void
+    {
+        // UI audit 10.1: 32 open vs 21 + 3. The tiles counted people right now;
+        // a stopped alert stays open after its person goes quiet. 60 > the list's cap.
+        $this->inTenant($this->t['org'], function () {
+            foreach ([FieldAlert::STOPPED => 40, FieldAlert::SIGNAL_LOST => 18, FieldAlert::SOS => 2] as $kind => $n) {
+                for ($i = 0; $i < $n; $i++) {
+                    FieldAlert::query()->create(['user_id' => $this->tech->id, 'kind' => $kind, 'latitude' => 40, 'longitude' => -75])
+                        ->forceFill(['created_at' => now()->subDays(3)])->save();
+                }
+            }
+        });
+
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/dashboard')
+            ->assertJsonPath('data.counts.stopped', 40)
+            ->assertJsonPath('data.counts.silent', 18)
+            ->assertJsonPath('data.counts.sos', 2)
+            ->assertJsonPath('data.counts.open_alerts', 60);
+    }
+
     public function test_the_dashboard_glance_says_who_is_reporting(): void
     {
         $this->mode('always');

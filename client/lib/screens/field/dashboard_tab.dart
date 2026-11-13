@@ -259,7 +259,9 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                       Icons.signal_cellular_off,
                     ),
                     tile(
-                      'Open alerts',
+                      (counts['sos'] as num? ?? 0) > 0
+                          ? 'Open alerts (${counts['sos']} SOS)'
+                          : 'Open alerts',
                       counts['open_alerts'],
                       Icons.warning_amber,
                     ),
