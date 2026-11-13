@@ -51,6 +51,12 @@ class EzBiziTheme {
   /// The corner of every button, chip and field. Cards are rounder (14).
   static const double controlRadius = 10;
 
+  /// The height of a toolbar's field, picker and button side by side (Jose,
+  /// 2026-11-13: "The Filters button is not the same size as the status
+  /// picker or the field"). Such a row sets [VisualDensity.standard]: the
+  /// desktop's compact density draws a field 8 shorter than its slot.
+  static const double controlHeight = 44;
+
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
 
