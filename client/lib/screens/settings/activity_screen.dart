@@ -1,3 +1,4 @@
+import '../../core/mask.dart';
 import '../../widgets/list_search.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -430,7 +431,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     // A sentence, never the server's code (UI queue 110).
-                    Text(rest),
+                    Text(maskContacts(rest)),
                     Text(
                       '${row['where'] ?? ''}',
                       maxLines: 1,
@@ -447,7 +448,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(what),
+                      Text(maskContacts(what)),
                       const SizedBox(height: 2),
                       Text(
                         [
