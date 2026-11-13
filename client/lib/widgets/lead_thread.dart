@@ -26,6 +26,7 @@ import 'async_body.dart';
 import 'book_job_panel.dart';
 import 'lead_edit_panel.dart';
 import 'lead_source_details.dart';
+import 'mail_text.dart';
 import 'mention_field.dart';
 import 'proofread_hint.dart';
 import 'side_panel.dart';
@@ -2925,6 +2926,8 @@ class _LeadThreadState extends State<LeadThread> {
     // without passing for something they typed. A missing flag is false.
     final adQuestion = !mine && c['ad_question'] == true;
     const padding = EdgeInsets.fromLTRB(11, 8, 11, 6);
+    final text = c['text'] as String?;
+    final mail = !mine && text != null && text.isNotEmpty ? MailText.of(text) : null;
 
     final content = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2944,11 +2947,29 @@ class _LeadThreadState extends State<LeadThread> {
             ),
           // Selectable, so part of a message can be copied too (the
           // dispatchers, via Jose, 2026-09-29: "copy and paste").
-          if ((c['text'] as String?)?.isNotEmpty == true)
+          if ((c['text'] as String?)?.isNotEmpty == true && mine)
             SelectableText(
               c['text'] as String,
               style: theme.textTheme.bodyMedium?.copyWith(color: ink),
             ),
+          // The customer's: mail wrapping joined, links as their domain, the
+          // mail app's signature as a quiet last line (MailText).
+          if (mail != null) ...[
+            if (mail.body.isNotEmpty)
+              SelectableText.rich(
+                key: ValueKey('message-text-${c['id']}'),
+                TextSpan(children: mail.spans(TextStyle(color: scheme.primary, decoration: TextDecoration.underline))),
+                style: theme.textTheme.bodyMedium?.copyWith(color: ink),
+              ),
+            if (mail.footer case final footer?)
+              Text(
+                footer,
+                key: ValueKey('mail-footer-${c['id']}'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(color: quiet),
+              ),
+          ],
           for (var i = 0; i < media.length; i++)
             Padding(
               padding: const EdgeInsets.only(top: 6),

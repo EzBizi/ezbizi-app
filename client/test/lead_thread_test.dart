@@ -600,7 +600,7 @@ void main() {
     await tester.pump();
 
     expect(copied, 'Is Saturday ok?');
-    expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == 'Is Saturday ok?'), findsOneWidget,
+    expect(find.byWidgetPredicate((w) => w is SelectableText && (w.data ?? w.textSpan?.toPlainText()) == 'Is Saturday ok?'), findsOneWidget,
         reason: 'part of a message can be selected too');
   });
 
