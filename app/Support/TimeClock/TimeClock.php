@@ -2,7 +2,6 @@
 
 namespace App\Support\TimeClock;
 
-use App\Jobs\TellManagersShiftFinished;
 use App\Models\Assignment;
 use App\Models\AuditEvent;
 use App\Models\AutomationEvent;
@@ -376,9 +375,10 @@ final class TimeClock
             $open->save();
 
             $this->audit->log('time_clock.clocked_out', $open);
-            // Their branch's managers hear on WhatsApp, after the commit (Jose, 2026-11-13).
+            // Their branch's managers hear through an Automations rule (Jose, 2026-11-13).
             if (app(ShiftFinishedNotice::class)->isManual($user)) {
-                TellManagersShiftFinished::dispatch($open->id, $open->organization_id)->afterCommit();
+                $this->events->emit('time_clock.technician_clocked_out', $user,
+                    [...$this->eventPayload($open), ...app(ShiftFinishedNotice::class)->compose($open)], causedBy: $causedBy);
             }
             $this->events->emit(
                 'time_clock.clocked_out',

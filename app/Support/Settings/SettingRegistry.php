@@ -2170,16 +2170,7 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_ROLES,
                 default: [],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
-                help: 'Their shift never ends at the scheduled time; they clock out themselves. Each finished shift goes on WhatsApp to the managers of their branch.',
-            ),
-            new SettingDefinition(
-                key: 'time_clock.shift_finished_template',
-                section: 'Shift timing',
-                label: 'WhatsApp template for a finished shift',
-                type: SettingDefinition::TYPE_STRING,
-                default: 'shift_finished',
-                allowedScopes: $orgOnly,
-                help: 'An approved template on the Reports number with four values: who, in, out, total. Used outside the 24-hour window.',
+                help: 'Their shift never ends at the scheduled time; they clock out themselves. Each finished shift raises "Technician clocked out" for Automations (A-1: a WhatsApp to the branch managers).',
             ),
             new SettingDefinition(
                 key: 'time_clock.approval_roles',
