@@ -58,6 +58,12 @@ class DeepLinks {
   /// Hand a link to whichever screen owns [link.module].
   static void open(DeepLink link) => pending.value = link;
 
+  /// A module the shell should switch to (a dashboard card was clicked).
+  /// The shell listens and clears it.
+  static final ValueNotifier<String?> module = ValueNotifier<String?>(null);
+
+  static void openModule(String key) => module.value = key;
+
   /// The pending link for [module], consumed — or null when the waiting link
   /// belongs to another module (it stays for that one) or there is none.
   ///
