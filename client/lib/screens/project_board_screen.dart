@@ -974,6 +974,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                   else ...[
                     if (_totals case final t?) _totalsStrip(t),
                     ListTable(
+                      // Own height: rows scroll inside, so the header and the
+                      // sideways bar stay on screen (Jose, 2026-11-13).
+                      height: (MediaQuery.sizeOf(context).height - 160)
+                          .clamp(360.0, double.infinity),
                       // Dragged widths, per person on every device (Jose,
                       // 2026-11-10). ponytail: by column position; a
                       // reordered column keeps the slot's width.
