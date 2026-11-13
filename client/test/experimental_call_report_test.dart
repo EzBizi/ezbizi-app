@@ -388,6 +388,29 @@ void main() {
     expect(find.byTooltip('AI heard a booking, no job yet'), findsOneWidget);
   });
 
+  // Trey, 2026-11-13: "jobs that are existing, booked and show ai heard a
+  // booking no job yet are also jobs i manually have to double check".
+  testWidgets('an existing client the AI heard book shows Needs Attention, '
+      'in the list and in their person', (tester) async {
+    final heard = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    final first = (heard['calls'] as List).first as Map;
+    first['queue'] = 'A1 - Existing Client';
+    first['needs_attention'] = true;
+    await _pump(tester, width: 1400, view: 'Calls', report: () => heard);
+
+    expect(find.widgetWithText(StatusPill, 'Needs Attention'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('calls-filter-ai_booked_no_job')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Kitchen tap'), findsOneWidget);
+
+    await _pump(tester, width: 1400, view: 'People', report: () => heard);
+    await tester.tap(find.text('Ada'));
+    await tester.pumpAndSettle();
+    expect(find.text('Needs Attention 1'), findsOneWidget);
+  });
+
   testWidgets('Calls has headings, and the search narrows the calls', (
     tester,
   ) async {
