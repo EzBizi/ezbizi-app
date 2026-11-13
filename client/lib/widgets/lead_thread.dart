@@ -974,6 +974,12 @@ class _LeadThreadState extends State<LeadThread> {
     final mayCheck =
         d != null &&
         widget.session?.me?.can('scheduling.availability.view') == true;
+    final reading = (lead['reading'] as Map?)?.cast<String, dynamic>();
+    final said = [
+      for (final k in const ['scope', 'availability', 'deadline'])
+        if (reading?[k] is String) reading![k] as String,
+    ].join(' · ');
+    final suggest = ((reading?['suggest'] as Map?) ?? const {}).cast<String, dynamic>();
     final where = [
       ?address,
       if (zip != null && !(address ?? '').contains(zip)) 'ZIP $zip',
@@ -1109,6 +1115,26 @@ class _LeadThreadState extends State<LeadThread> {
             ],
           ),
         ),
+      // The reply reader (Jose, 2026-11-13): what the customer's last
+      // message said, with the message itself behind it.
+      if (all && reading?['source'] is String && said.isNotEmpty)
+        fact(
+          'Customer said',
+          Tooltip(
+            message: '${reading!['source']}',
+            child: text(said, key: const ValueKey('reading-said')),
+          ),
+        ),
+      if (all && widget.onStatusChanged != null)
+        for (final MapEntry(:key, :value) in suggest.entries)
+          ActionChip(
+            key: ValueKey('reading-use-$key'),
+            visualDensity: VisualDensity.compact,
+            avatar: const Icon(Icons.auto_awesome, size: 14),
+            tooltip: 'The customer wrote a different $key. Tap to use it.',
+            label: Text('Use $value?'),
+            onPressed: () => _useReading(key),
+          ),
       if (all && src.adName != null)
         fact(
           'Via ad',
@@ -1166,6 +1192,23 @@ class _LeadThreadState extends State<LeadThread> {
       ),
     ),
   );
+
+  /// "Use (516) 404-1690?": the customer's own value replaces the lead's.
+  Future<void> _useReading(String field) async {
+    final response = await widget.api.post(
+      '/leads/${widget.lead['id']}/reading/use',
+      {'field': field},
+    );
+    if (!mounted) return;
+    final data = response.data;
+    if (!response.ok || data is! Map) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
+      return;
+    }
+    setState(() => _lead = {..._lead, ...data.cast<String, dynamic>()});
+  }
 
   Future<void> _edit() async {
     final saved = await showLeadEditPanel(

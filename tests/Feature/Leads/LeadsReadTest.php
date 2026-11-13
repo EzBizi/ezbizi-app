@@ -384,4 +384,25 @@ class LeadsReadTest extends TestCase
             $this->assertSame('tomorrow, any day next week', $lead->ai_set['reading']['availability']);
         });
     }
+
+    /** The reader's "Use …?" replaces the held value as a person's choice, once. */
+    public function test_using_an_offer_replaces_the_field_and_withdraws_it(): void
+    {
+        $lead = $this->callLead('Rose Wyka', 'hi');
+        $this->inTenant($this->t['org'], fn () => $lead->forceFill(['phone' => '+15550001111', 'email' => 'old@example.com', 'ai_set' => [
+            'phone' => '+15550001111',
+            'reading' => ['suggest' => ['phone' => '(516) 404-1690', 'email' => 'rosewyka@yahoo.com'], 'availability' => 'not Tue'],
+        ]])->save());
+
+        $this->signedInAs($this->t['admin'])->postJson("/api/v1/leads/{$lead->id}/reading/use", ['field' => 'phone'])
+            ->assertOk()->assertJsonPath('data.phone', '+15164041690')->assertJsonPath('data.reading.suggest', ['email' => 'rosewyka@yahoo.com']);
+        $this->signedInAs($this->t['admin'])->postJson("/api/v1/leads/{$lead->id}/reading/use", ['field' => 'phone'])->assertStatus(422);
+
+        $this->inTenant($this->t['org'], function () use ($lead) {
+            $lead->refresh();
+            $this->assertSame('5164041690', substr((string) $lead->phone_digits, -10));
+            $this->assertNotContains('phone', \App\Http\Controllers\Api\LeadsController::aiHeld($lead), 'a person chose it');
+            $this->assertSame('not Tue', $lead->ai_set['reading']['availability']);
+        });
+    }
 }
