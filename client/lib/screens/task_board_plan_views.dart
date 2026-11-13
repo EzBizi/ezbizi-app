@@ -15,9 +15,6 @@ DateTime? planDay(Object? v) => v is String && v.length >= 10
     ? DateTime.tryParse(v.substring(0, 10))
     : null;
 
-String planIso(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
 DateTime _today() {
   final n = DateTime.now();
   return DateTime(n.year, n.month, n.day);
@@ -227,11 +224,11 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
       final outside = !_week && d.month != _anchor.month;
       final today = d == _today();
       return DragTarget<PlanTask>(
-        key: ValueKey('plan-day-${planIso(d)}'),
+        key: ValueKey('plan-day-${formatCalendarDay(d)}'),
         onWillAcceptWithDetails: (_) => widget.canEdit,
         onAcceptWithDetails: (det) {
           if (planDay(det.data['due_on']) != d) {
-            widget.onMoveDate(det.data, planIso(d));
+            widget.onMoveDate(det.data, formatCalendarDay(d));
           }
         },
         builder: (context, hover, _) => Container(
@@ -268,7 +265,7 @@ class _TaskBoardCalendarState extends State<TaskBoardCalendar> {
                       ),
                     if (shown.length < tasks.length)
                       InkWell(
-                        key: ValueKey('plan-more-${planIso(d)}'),
+                        key: ValueKey('plan-more-${formatCalendarDay(d)}'),
                         onTap: () => setState(() => _opened.add(d)),
                         child: Text(
                           '+${tasks.length - shown.length} more',
@@ -510,7 +507,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
         final cur = _drag;
         setState(() => _drag = null);
         if (cur != null && (cur.move != 0 || cur.grow != 0)) {
-          widget.onSetRange(t, planIso(from), planIso(to));
+          widget.onSetRange(t, formatCalendarDay(from), formatCalendarDay(to));
         }
       }
 

@@ -1,3 +1,4 @@
+import '../../core/timestamps.dart';
 import '../../widgets/list_search.dart';
 import 'dart:async';
 import 'dart:typed_data';
@@ -25,11 +26,6 @@ int? _cents(String t) {
 String _dollars(Object? cents) =>
     cents is int ? (cents / 100).toStringAsFixed(2) : '';
 
-String _day(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-'
-    '${d.month.toString().padLeft(2, '0')}-'
-    '${d.day.toString().padLeft(2, '0')}';
-
 /// The date ranges offered, and the `from`/`to` each sends. `all` sends none.
 const _ranges = [
   ('all', 'All dates'),
@@ -50,7 +46,9 @@ Map<String, String> _rangeQuery(String key, DateTime now) {
     'this_year' => (DateTime(now.year), now),
     _ => null,
   };
-  return span == null ? {} : {'from': _day(span.$1), 'to': _day(span.$2)};
+  return span == null
+      ? {}
+      : {'from': formatCalendarDay(span.$1), 'to': formatCalendarDay(span.$2)};
 }
 
 /// Financials → Lead source results (Jose, 2026-10-27, ACE option A): an
@@ -653,7 +651,9 @@ class _ResultPanel extends StatefulWidget {
 }
 
 class _ResultPanelState extends State<_ResultPanel> {
-  late final _f = _Figures(widget.row ?? {'date': _day(DateTime.now())});
+  late final _f = _Figures(
+    widget.row ?? {'date': formatCalendarDay(DateTime.now())},
+  );
   late final _source = TextEditingController(
     text: widget.row?['source'] as String? ?? '',
   );

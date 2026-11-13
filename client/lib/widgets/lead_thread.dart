@@ -3590,8 +3590,7 @@ String leadWhen(String? iso) {
   if (ago.inHours < 24) return '${ago.inHours}h ago';
   if (ago.inDays < 7) return '${ago.inDays}d ago';
 
-  return '${at.year}-${at.month.toString().padLeft(2, '0')}-'
-      '${at.day.toString().padLeft(2, '0')}';
+  return formatCalendarDay(at);
 }
 
 /// A message's time of day, and how long ago while that is still today's

@@ -3742,11 +3742,6 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
     _loadRange();
   }
 
-  static String _day(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
   /// The month's grid with a week either side, and this week for the
   /// Weekly card.
   Future<void> _loadRange() async {
@@ -3761,8 +3756,8 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
     if (sunday.isAfter(to)) to = sunday;
 
     final response = await api.get('/social/posts', {
-      'from': _day(from),
-      'to': _day(to),
+      'from': formatCalendarDay(from),
+      'to': formatCalendarDay(to),
     });
     if (!mounted || month != _month || !response.ok) return;
     setState(() => _range = _SocialMediaTabState._readPosts(response));

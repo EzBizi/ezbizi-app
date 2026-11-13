@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/list_search.dart';
 import '../widgets/search_picker.dart';
@@ -511,9 +512,6 @@ class _CompanyKpisState extends State<CompanyKpis> {
   Map<String, dynamic>? _goals;
   String _query = '';
 
-  String _day(DateTime d) =>
-      '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
-
   @override
   void initState() {
     super.initState();
@@ -524,8 +522,8 @@ class _CompanyKpisState extends State<CompanyKpis> {
     final today = (widget.now ?? DateTime.now)();
     final results = await Future.wait([
       widget.api.get('/reports/experimental/calls', {
-        'from': _day(today.subtract(const Duration(days: 29))),
-        'to': _day(today),
+        'from': formatCalendarDay(today.subtract(const Duration(days: 29))),
+        'to': formatCalendarDay(today),
       }),
       widget.api.get('/reports/goals'),
     ]);

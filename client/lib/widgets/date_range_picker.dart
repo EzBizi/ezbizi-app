@@ -34,8 +34,8 @@ class DateSpan {
   int get days => to.difference(from).inDays + 1;
   bool get single => from == to;
 
-  String get fromKey => dayKey(from);
-  String get toKey => dayKey(to);
+  String get fromKey => formatCalendarDay(from);
+  String get toKey => formatCalendarDay(to);
 
   /// The same length, [steps] lengths earlier or later.
   DateSpan shift(int steps) => DateSpan(
@@ -53,12 +53,6 @@ class DateSpan {
   @override
   String toString() => '$fromKey..$toKey';
 }
-
-/// `YYYY-MM-DD`, what the server is sent.
-String dayKey(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-'
-    '${d.month.toString().padLeft(2, '0')}-'
-    '${d.day.toString().padLeft(2, '0')}';
 
 /// A quick choice: its name, and the dates it means today.
 class RangePreset {
@@ -726,7 +720,7 @@ class _MonthGrid extends StatelessWidget {
             right: Radius.circular(day == span.to ? 14 : 0),
           ),
           child: InkWell(
-            key: ValueKey('date-day-${dayKey(day)}'),
+            key: ValueKey('date-day-${formatCalendarDay(day)}'),
             onTap: future ? null : () => onTap(day),
             child: Container(
               height: 30,

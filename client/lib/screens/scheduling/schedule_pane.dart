@@ -79,11 +79,6 @@ class _SchedulePaneState extends State<SchedulePane> {
     super.dispose();
   }
 
-  static String _ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
   Future<void> _load() async {
     final ticket = ++_request;
     setState(() {
@@ -92,7 +87,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     });
 
     final response = await widget.api.get('/scheduling/board', {
-      'date': _ymd(_day),
+      'date': formatCalendarDay(_day),
       'franchise_id': ?_franchiseId,
     });
     if (!mounted || ticket != _request) return;
@@ -924,7 +919,7 @@ class _SchedulePaneState extends State<SchedulePane> {
                     _moveWindow! >= windows.length
                 ? null
                 : () => _dispatch('reschedule', {
-                    'date': _ymd(_moveDay!),
+                    'date': formatCalendarDay(_moveDay!),
                     'start_time': windows[_moveWindow!]['start_time'],
                     'end_time': windows[_moveWindow!]['end_time'],
                   }),

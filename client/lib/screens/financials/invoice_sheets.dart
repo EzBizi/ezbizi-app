@@ -828,10 +828,10 @@ class _NewSheetPanel extends StatefulWidget {
 class _NewSheetPanelState extends State<_NewSheetPanel> {
   static DateTime get _now => DateTime.now();
   final _from = TextEditingController(
-    text: isoDay(DateTime(_now.year, _now.month - 1, 1)),
+    text: formatCalendarDay(DateTime(_now.year, _now.month - 1, 1)),
   );
   final _to = TextEditingController(
-    text: isoDay(DateTime(_now.year, _now.month, 0)),
+    text: formatCalendarDay(DateTime(_now.year, _now.month, 0)),
   );
   final _title = TextEditingController();
   String? _error;

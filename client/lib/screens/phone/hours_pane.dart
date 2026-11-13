@@ -493,9 +493,7 @@ class _HoursPaneState extends State<HoursPane> {
 
               if (picked == null || !mounted) return;
 
-              final iso = '${picked.year.toString().padLeft(4, '0')}-'
-                  '${picked.month.toString().padLeft(2, '0')}-'
-                  '${picked.day.toString().padLeft(2, '0')}';
+              final iso = formatCalendarDay(picked);
 
               setState(() {
                 if (!draft.closedDates.contains(iso)) draft.closedDates.add(iso);

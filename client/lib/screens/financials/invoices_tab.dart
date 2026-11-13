@@ -199,8 +199,8 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     };
     if (_month case final m?) {
       final first = DateTime.parse('$m-01');
-      query['from'] = isoDay(first);
-      query['to'] = isoDay(DateTime(first.year, first.month + 1, 0));
+      query['from'] = formatCalendarDay(first);
+      query['to'] = formatCalendarDay(DateTime(first.year, first.month + 1, 0));
     }
     final r = await widget.api.get('/invoices', query.isEmpty ? null : query);
     if (!mounted) return;
