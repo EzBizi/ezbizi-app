@@ -369,48 +369,15 @@ class _JobsScreenState extends State<JobsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              PanelHeader(
-                note: _note(me),
-                // A Wrap rather than a Row, for the reason customers_screen
-                // gives: two controls side by side overflow a narrow window.
-                action: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    // No `onImported`: jobs are export-only, so nothing this
-                    // widget does can change the list behind it.
-                    DataTransfer(
-                      api: widget.api,
-                      session: widget.session,
-                      resource: 'jobs',
-                    ),
-                    Refused(
-                      // §4 refuses in two places and they have different
-                      // remedies. The screen used to test only the second, so
-                      // somebody whose role lacks `jobs.create` was offered the
-                      // button and got a 403; and the sentence it did have named
-                      // "franchise" rather than whatever this organization calls
-                      // one (§8).
-                      reason: refused,
-                      child: FilledButton.icon(
-                        key: const ValueKey('tour-jobs-add'),
-                        onPressed: refused == null ? _create : null,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add job'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Chips on a wide screen, where they fit on a line and double as
-              // the legend for the pills below. On a phone seven of them wrap to
-              // three lines of chrome, so the same choice is a picker there.
-              if (wide && _statusChoices.isNotEmpty) _statusChips(context),
-              if (_seesMoney) _moneyChips(context, wide: wide),
-              _filters(context, me, wide: wide),
+              // Option A of the Jobs filters gallery (Jose, 2026-11-13): money
+              // tiles that filter, one status row, one toolbar, the rest in a
+              // Filters panel, and what is on as removable chips.
+              PanelHeader(note: _note(me)),
               if (_seesMoney && _moneyTotals.isNotEmpty)
-                _moneyTotalsLine(context, wide: wide),
+                _moneyTiles(context, wide: wide),
+              if (_statusChoices.isNotEmpty) _statusChips(context),
+              _toolbar(context, me, refused, wide: wide),
+              _activeChips(context, me),
             ],
           ),
           list: AsyncBody(
@@ -491,150 +458,124 @@ class _JobsScreenState extends State<JobsScreen> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
-      child: Wrap(
+      child: SingleChildScrollView(
         key: const ValueKey('tour-jobs-status'),
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          _chip(
-            context,
-            value: null,
-            label: 'All',
-            count: counted ? all : null,
-          ),
-          for (final s in _chipStatuses())
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          spacing: 6,
+          children: [
             _chip(
               context,
-              value: s.value,
-              label: s.label,
-              count: counted ? (_statusCounts[s.value] ?? 0) : null,
-              tone: toneForJobStatus(s.value),
+              value: null,
+              label: 'All',
+              count: counted ? all : null,
             ),
-        ],
+            for (final s in _chipStatuses())
+              _chip(
+                context,
+                value: s.value,
+                label: s.label,
+                count: counted ? (_statusCounts[s.value] ?? 0) : null,
+                tone: toneForJobStatus(s.value),
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  /// The money states beside the status chips they narrow with, each with
-  /// its count (queue 31, Jose's 1 and 4). A desk wraps them; a phone swipes
-  /// them, as it swipes nothing else here, because six chips wrap to three
-  /// lines of chrome at 375.
-  Widget _moneyChips(BuildContext context, {required bool wide}) {
+  /// Billed, Paid, Due and Overdue over the jobs the other filters leave, per
+  /// currency and never added across them (queue 31). Each tile IS the money
+  /// filter: Billed clears it.
+  Widget _moneyTiles(BuildContext context, {required bool wide}) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
 
-    Widget chip(String? value, String label, {Tone? tone, int? count}) =>
-        ChoiceChip(
+    Widget tile(String label, String key, String? value, Tone? tone) {
+      final colours = tone == null ? null : ToneColours.of(context, tone);
+      final selected = _money == value;
+      final count = value == null ? null : _moneyCounts[value];
+      return Material(
+        color: colours?.fill ?? theme.colorScheme.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: selected
+              ? BorderSide(
+                  width: 2,
+                  color: colours?.ink ?? theme.colorScheme.primary,
+                )
+              : BorderSide.none,
+        ),
+        child: InkWell(
           key: ValueKey('money-chip-${value ?? 'any'}'),
-          avatar: tone == null ? null : ToneDot(tone),
-          showCheckmark: false,
-          selected: _money == value,
-          label: Text.rich(
-            TextSpan(
-              text: label,
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _set(() => _money = value),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (count != null)
-                  TextSpan(
-                    text: '  ${formatCount(count)}',
-                    style: TextStyle(color: muted, fontWeight: FontWeight.w500),
+                Text(
+                  count == null ? label : '$label · ${formatCount(count)}',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: colours?.ink ?? muted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                for (final MapEntry(key: currency, value: t)
+                    in _moneyTotals.entries)
+                  Text(
+                    wide
+                        ? formatMoney(
+                            t[key] ?? 0,
+                            currency: currency,
+                            cents: false,
+                          )
+                        : shortMinor(t[key] ?? 0, currency: currency),
+                    key: ValueKey(
+                      'money-total-${label.toLowerCase()}-$currency',
+                    ),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: colours?.ink,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
               ],
             ),
           ),
-          onSelected: (_) {
-            setState(() => _money = value);
-            _load();
-          },
-        );
-
-    final chips = [
-      Text(
-        'MONEY',
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: muted,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.6,
         ),
-      ),
-      chip(null, 'Any'),
-      for (final (value, label, tone) in moneyStates)
-        chip(value, label, tone: tone, count: _moneyCounts[value]),
+      );
+    }
+
+    final tiles = [
+      tile('Billed', 'total', null, null),
+      tile('Paid', 'paid', 'paid', Tone.ok),
+      tile('Due', 'due', 'due', Tone.caution),
+      tile('Overdue', 'overdue', 'overdue', Tone.bad),
     ];
 
     return Padding(
       key: const ValueKey('tour-jobs-money'),
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
       child: wide
-          ? Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: chips,
+          ? Row(
+              spacing: 8,
+              children: [for (final t in tiles) Expanded(child: t)],
             )
-          : SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final c in chips)
-                    Padding(padding: const EdgeInsets.only(right: 6), child: c),
-                ],
-              ),
-            ),
-    );
-  }
-
-  /// Billed, paid, due and overdue over the jobs the other filters leave,
-  /// per currency and never added across them (queue 31).
-  Widget _moneyTotalsLine(BuildContext context, {required bool wide}) {
-    final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
-
-    Widget figure(String label, int minor, String currency, {Tone? tone}) =>
-        Text.rich(
-          TextSpan(
-            text: '$label ',
-            style: theme.textTheme.bodySmall?.copyWith(color: muted),
-            children: [
-              TextSpan(
-                text: wide
-                    ? formatMoney(minor, currency: currency, cents: false)
-                    : shortMinor(minor, currency: currency),
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: tone == null
-                      ? null
-                      : ToneColours.of(context, tone).ink,
-                ),
-              ),
-            ],
-          ),
-          key: ValueKey('money-total-${label.toLowerCase()}-$currency'),
-        );
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final MapEntry(key: currency, value: t) in _moneyTotals.entries)
-            Wrap(
-              spacing: 18,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
+          : Column(
+              spacing: 8,
               children: [
-                figure('Billed', t['total'] ?? 0, currency),
-                figure('Paid', t['paid'] ?? 0, currency, tone: Tone.ok),
-                figure('Due', t['due'] ?? 0, currency),
-                figure('Overdue', t['overdue'] ?? 0, currency, tone: Tone.bad),
-                if (wide)
-                  Text(
-                    'From Workiz · read only',
-                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                for (var i = 0; i < 4; i += 2)
+                  Row(
+                    spacing: 8,
+                    children: [
+                      Expanded(child: tiles[i]),
+                      Expanded(child: tiles[i + 1]),
+                    ],
                   ),
               ],
             ),
-        ],
-      ),
     );
   }
 
@@ -733,18 +674,22 @@ class _JobsScreenState extends State<JobsScreen> {
     );
   }
 
-  Widget _filters(BuildContext context, Me me, {required bool wide}) {
-    final franchises = me.franchisesInView;
-
+  Widget _toolbar(
+    BuildContext context,
+    Me me,
+    String? refused, {
+    required bool wide,
+  }) {
+    final n = _activeCount;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
       child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
+        spacing: 8,
+        runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           SizedBox(
-            width: 320,
+            width: wide ? 320 : double.infinity,
             child: ListSearch(
               key: const ValueKey('tour-jobs-search'),
               controller: _search,
@@ -757,104 +702,222 @@ class _JobsScreenState extends State<JobsScreen> {
               },
             ),
           ),
-          if (!wide && _statusChoices.isNotEmpty)
-            SizedBox(
-              // Two to a line at 375, not one each under the search box.
-              width: wide ? 220 : 160,
-              child: SearchPickerField<String?>(
-                value: _status,
-                label: 'Status',
-                options: [
-                  const SearchOption<String?>(value: null, label: 'Any status'),
-                  for (final s in _chipStatuses())
-                    SearchOption<String?>(value: s.value, label: s.label),
-                ],
-                onChanged: (value) {
-                  setState(() => _status = value);
-                  _load();
-                },
-              ),
-            ),
-          // One franchise with no areas is no choice, and a picker offering it
-          // is chrome.
-          if (franchises.length > 1 || _areas.isNotEmpty)
-            SizedBox(
-              // Two to a line at 375, not one each under the search box.
-              width: wide ? 260 : 160,
-              child: SearchPickerField<String?>(
-                key: const Key('jobs-where'),
-                value: _where,
-                label: 'Where',
-                options: _whereOptions(me),
-                onChanged: (value) {
-                  setState(() => _where = value);
-                  _load();
-                },
-              ),
-            ),
-          // The same control as status, for the same reason: it sits in
-          // this Wrap rather than opening over the form, and its choices
-          // are discovered from the rows already on screen rather than
-          // fetched, since every job already carries its role (Task 5).
-          if (_roles.isNotEmpty)
-            SizedBox(
-              // Two to a line at 375, not one each under the search box.
-              width: wide ? 220 : 160,
-              child: SearchPickerField<String?>(
-                value: _roleId,
-                label: 'Role',
-                options: [
-                  const SearchOption<String?>(value: null, label: 'Any role'),
-                  ..._roles.entries.map(
-                    (role) => SearchOption<String?>(
-                      value: role.key,
-                      label: role.value,
-                    ),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() => _roleId = value);
-                  _load();
-                },
-              ),
-            ),
-          if (_labels.jobTypes.isNotEmpty || _types.isNotEmpty)
-            SizedBox(
-              width: wide ? 220 : 160,
-              child: SearchMultiPickerField<String>(
-                key: const Key('jobs-type-filter'),
-                values: _types,
-                label: 'Type',
-                hint: 'Any type',
-                options: [
-                  for (final t in {..._labels.jobTypes, ..._types})
-                    SearchOption(value: t, label: t),
-                ],
-                onChanged: (picked) {
-                  setState(() => _types = picked);
-                  _load();
-                },
-              ),
-            ),
-          if (_labels.tags.isNotEmpty || _tags.isNotEmpty)
-            SizedBox(
-              width: wide ? 220 : 160,
-              child: SearchMultiPickerField<String>(
-                key: const Key('jobs-tag-filter'),
-                values: _tags,
-                label: 'Tags',
-                hint: 'Any tag',
-                options: [
-                  for (final t in {..._labels.tags, ..._tags})
-                    SearchOption(value: t, label: t),
-                ],
-                onChanged: (picked) {
-                  setState(() => _tags = picked);
-                  _load();
-                },
-              ),
-            ),
           _window(wide: wide),
+          OutlinedButton.icon(
+            key: const Key('jobs-filters'),
+            onPressed: () => _openFilters(me),
+            icon: const Icon(Icons.tune, size: 18),
+            label: Text(n == 0 ? 'Filters' : 'Filters · $n'),
+          ),
+          // No `onImported`: jobs are export-only.
+          DataTransfer(
+            api: widget.api,
+            session: widget.session,
+            resource: 'jobs',
+          ),
+          Refused(
+            // Two refusals with different remedies; see _jobsTab.
+            reason: refused,
+            child: FilledButton.icon(
+              key: const ValueKey('tour-jobs-add'),
+              onPressed: refused == null ? _create : null,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add job'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The money states the tiles do not carry.
+  static const _panelMoney = {'unpaid', 'partial', 'credit'};
+
+  int get _activeCount =>
+      (_status == null ? 0 : 1) +
+      (_money == null ? 0 : 1) +
+      (_where == null ? 0 : 1) +
+      (_roleId == null ? 0 : 1) +
+      _types.length +
+      _tags.length;
+
+  void _set(VoidCallback change) {
+    setState(change);
+    _load();
+  }
+
+  /// Unpaid, Partly paid, Credit, Where, Role, Type and Tags, beside the list.
+  /// Each choice applies at once; the list behind is already the answer.
+  Future<void> _openFilters(Me me) => showSidePanel<void>(
+    context,
+    builder: (_) => StatefulBuilder(
+      builder: (context, setPanel) {
+        void apply(VoidCallback change) {
+          _set(change);
+          setPanel(() {});
+        }
+
+        final franchises = me.franchisesInView;
+        final theme = Theme.of(context);
+        Widget heading(String t) => Padding(
+          padding: const EdgeInsets.only(top: 16, bottom: 6),
+          child: Text(
+            t.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.6,
+            ),
+          ),
+        );
+
+        return SidePanel(
+          title: 'Filters',
+          actions: [
+            TextButton(
+              onPressed: _activeCount == 0 ? null : () => apply(_clearAll),
+              child: const Text('Clear all'),
+            ),
+            FilledButton(
+              key: const Key('jobs-filters-done'),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_seesMoney) ...[
+                heading('Money'),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final (value, label, tone) in moneyStates)
+                      if (_panelMoney.contains(value))
+                        ChoiceChip(
+                          key: ValueKey('money-chip-$value'),
+                          avatar: tone == null ? null : ToneDot(tone),
+                          showCheckmark: false,
+                          selected: _money == value,
+                          label: Text(
+                            _moneyCounts[value] == null
+                                ? label
+                                : '$label  ${formatCount(_moneyCounts[value]!)}',
+                          ),
+                          onSelected: (on) =>
+                              apply(() => _money = on ? value : null),
+                        ),
+                  ],
+                ),
+              ],
+              // One franchise with no areas is no choice.
+              if (franchises.length > 1 || _areas.isNotEmpty) ...[
+                heading('Where'),
+                SearchPickerField<String?>(
+                  key: const Key('jobs-where'),
+                  value: _where,
+                  label: 'Where',
+                  options: _whereOptions(me),
+                  onChanged: (value) => apply(() => _where = value),
+                ),
+              ],
+              if (_roles.isNotEmpty) ...[
+                heading('Role'),
+                SearchPickerField<String?>(
+                  value: _roleId,
+                  label: 'Role',
+                  options: [
+                    const SearchOption<String?>(value: null, label: 'Any role'),
+                    for (final role in _roles.entries)
+                      SearchOption<String?>(value: role.key, label: role.value),
+                  ],
+                  onChanged: (value) => apply(() => _roleId = value),
+                ),
+              ],
+              if (_labels.jobTypes.isNotEmpty || _types.isNotEmpty) ...[
+                heading('Type'),
+                SearchMultiPickerField<String>(
+                  key: const Key('jobs-type-filter'),
+                  values: _types,
+                  label: 'Type',
+                  hint: 'Any type',
+                  options: [
+                    for (final t in {..._labels.jobTypes, ..._types})
+                      SearchOption(value: t, label: t),
+                  ],
+                  onChanged: (picked) => apply(() => _types = picked),
+                ),
+              ],
+              if (_labels.tags.isNotEmpty || _tags.isNotEmpty) ...[
+                heading('Tags'),
+                SearchMultiPickerField<String>(
+                  key: const Key('jobs-tag-filter'),
+                  values: _tags,
+                  label: 'Tags',
+                  hint: 'Any tag',
+                  options: [
+                    for (final t in {..._labels.tags, ..._tags})
+                      SearchOption(value: t, label: t),
+                  ],
+                  onChanged: (picked) => apply(() => _tags = picked),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    ),
+  );
+
+  void _clearAll() {
+    _status = null;
+    _money = null;
+    _where = null;
+    _roleId = null;
+    _types = {};
+    _tags = {};
+  }
+
+  /// What is on, each removable, and Clear all.
+  Widget _activeChips(BuildContext context, Me me) {
+    String moneyLabel(String v) => v == 'due'
+        ? 'Due'
+        : moneyStates.where((m) => m.$1 == v).firstOrNull?.$2 ?? v;
+    final chips = <(String, VoidCallback)>[
+      if (_status != null)
+        (
+          'Status: ${_chipStatuses().where((s) => s.value == _status).firstOrNull?.label ?? _status}',
+          () => _status = null,
+        ),
+      if (_money != null) (moneyLabel(_money!), () => _money = null),
+      if (_where != null)
+        (
+          'Where: ${_whereOptions(me).where((o) => o.value == _where).firstOrNull?.label ?? _where}',
+          () => _where = null,
+        ),
+      if (_roleId != null)
+        ('Role: ${_roles[_roleId] ?? _roleId}', () => _roleId = null),
+      for (final t in _types)
+        ('Type: $t', () => _types = {..._types}..remove(t)),
+      for (final t in _tags) ('Tag: $t', () => _tags = {..._tags}..remove(t)),
+    ];
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      key: const Key('jobs-active-filters'),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (final (label, remove) in chips)
+            InputChip(label: Text(label), onDeleted: () => _set(remove)),
+          TextButton(
+            onPressed: () => _set(_clearAll),
+            child: const Text('Clear all'),
+          ),
         ],
       ),
     );

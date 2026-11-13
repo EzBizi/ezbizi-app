@@ -212,12 +212,13 @@ const Map<String, Tour> tabTours = {
       TourStep(
         anchor: 'tour-jobs-money',
         title: 'Money',
-        body: 'Narrows to jobs by where their money stands, with counts.',
+        body:
+            'Billed, paid, due and overdue. Click one to show only those jobs.',
       ),
       TourStep(
-        anchor: 'jobs-where',
-        title: 'Where',
-        body: 'Anywhere, not placed yet, one franchise, or one area.',
+        anchor: 'jobs-filters',
+        title: 'Filters',
+        body: 'Unpaid, partly paid, credit, where, role, type and tags.',
       ),
       TourStep(
         anchor: 'jobs-window',
@@ -277,7 +278,8 @@ const Map<String, Tour> tabTours = {
       TourStep(
         anchor: 'customers-tag-filter',
         title: 'Tag',
-        body: 'Only the customers with one tag. Appears once a customer is tagged.',
+        body:
+            'Only the customers with one tag. Appears once a customer is tagged.',
         since: 2,
       ),
       TourStep(

@@ -73,7 +73,7 @@ class JobMoneyListTest extends TestCase
         $meta = $this->signedInAs($this->alpha['admin'])
             ->getJson('/api/v1/jobs?money=paid&today=2026-09-29')->assertOk()->json('meta');
 
-        $this->assertSame(['unpaid' => 3, 'partial' => 1, 'overdue' => 1, 'paid' => 1, 'credit' => 1],
+        $this->assertSame(['unpaid' => 3, 'partial' => 1, 'overdue' => 1, 'paid' => 1, 'credit' => 1, 'due' => 4],
             $meta['money_counts']);
     }
 
