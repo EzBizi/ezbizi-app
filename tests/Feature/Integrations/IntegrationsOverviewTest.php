@@ -2,9 +2,13 @@
 
 namespace Tests\Feature\Integrations;
 
+use App\Http\Controllers\Api\IntegrationsOverviewController;
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\PhoneConnection;
+use App\Models\PhoneNumber;
 use App\Models\SocialConnection;
+use App\Support\Phone\LineHealth;
 use App\Support\Social\ConnectionChecks;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -64,7 +68,7 @@ class IntegrationsOverviewTest extends TestCase
         foreach (['id', 'provider', 'label', 'branch_id', 'branch_label', 'status', 'choices', 'used_by', 'last_checked_at', 'checks'] as $k) {
             $this->assertArrayHasKey($k, $row);
         }
-        $this->assertSame(['key', 'label', 'state', 'reason', 'fix', 'checked_at', 'next_retry_at'], array_keys($row['checks'][0]));
+        $this->assertSame(['key', 'label', 'state', 'reason', 'summary', 'fix', 'checked_at', 'next_retry_at'], array_keys($row['checks'][0]));
         $this->assertSame('ok', $row['status']);
         $this->assertSame([['id' => $t['franchise']->id, 'label' => $t['franchise']->name]], $data['branches']);
     }
@@ -162,16 +166,16 @@ class IntegrationsOverviewTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $line = $this->inTenant($t['org'], function () use ($t) {
-            $connection = \App\Models\PhoneConnection::factory()->create([
-                'scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
             ]);
 
             // No E911 address on file: the `e911` check fails.
-            return \App\Models\PhoneNumber::query()->create([
+            return PhoneNumber::query()->create([
                 'organization_id' => $t['org']->id,
                 'connection_id' => $connection->id,
-                'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
                 'twilio_sid' => 'PN'.str_repeat('c', 32),
                 'e164' => '+15615550009',
@@ -184,7 +188,7 @@ class IntegrationsOverviewTest extends TestCase
 
         $this->assertSame('phone', $row['provider']);
         $this->assertSame('broken', $row['status']);
-        $this->assertSame(\App\Support\Phone\LineHealth::KEYS, array_column($row['checks'], 'key'));
+        $this->assertSame(LineHealth::KEYS, array_column($row['checks'], 'key'));
         $pointed = collect($row['checks'])->firstWhere('key', 'e911');
         $this->assertSame('fail', $pointed['state']);
         $this->assertSame('E911 address', $pointed['label']);
@@ -235,5 +239,19 @@ class IntegrationsOverviewTest extends TestCase
         $this->assertSame($row, $this->find($this->overview($t), $c->id), 'same shape as the overview');
 
         $this->signedInAs($t['admin'])->postJson("/api/v1/integrations/{$c->id}/recheck")->assertStatus(429);
+    }
+
+    public function test_plain_summary_hides_urls_ids_and_api_errors_and_groups_branches(): void
+    {
+        $plain = fn (string $r) => IntegrationsOverviewController::plain($r);
+
+        $a = $plain('Workiz has no API for this: in Workiz › Automation Center add a rule "post webhook" to https://app.ezbizi.com/api/v1/social/workiz/webhook/01a0a56c-34bc-705a-9b8d-a3c851df9a72.');
+        $b = $plain('Workiz has no API for this: in Workiz › Automation Center add a rule "post webhook" to https://app.ezbizi.com/api/v1/social/workiz/webhook/01a0a56c-40b8-7200-baa7-f0cc13a2e5f4.');
+        $this->assertSame($a, $b, 'nine branches, one line');
+        $this->assertSame('has no 911 address yet', $plain('E911: Twilio refused the address on file ([HTTP 404] Unable to update record: /2010-04-01/Accounts/AC1/IncomingPhoneNumbers/PN1.json was not found).'));
+
+        $scrubbed = $plain('Refused (see https://x.test/a/b) for 01a0a56c-34bc-705a-9b8d-a3c851df9a72 now');
+        $this->assertStringNotContainsString('http', $scrubbed);
+        $this->assertStringNotContainsString('01a0a56c', $scrubbed);
     }
 }
