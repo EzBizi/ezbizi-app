@@ -4693,6 +4693,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (value.isEmpty) return 'nobody yet';
     if (value == 'customer:') return 'the customer it is about';
     if (value == 'assignee:') return 'whoever the task is given to';
+    if (value == 'branch_managers:') return "the managers of the person's branch";
     if (value.startsWith('user:')) {
       final person = widget.catalogue.people
           .where((p) => p.key == value)
@@ -5575,6 +5576,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 value: 'assignee',
                 label: 'Whoever the task is given to',
               ),
+            // Whoever approves hours at the person's branch (Clock In, 2026-11-13).
+            if (const {'whatsapp.send', 'email.send'}.contains(row.type))
+              const SearchOption(
+                value: 'branch_managers',
+                label: "Managers of the person's branch",
+              ),
             SearchOption(value: 'field', label: kindOf == 'person_or_field'
                   ? 'Whoever the event names'
                   : wantsPhone
@@ -5588,6 +5595,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                   controller.text = switch (chosen) {
                     'customer' => 'customer:',
                     'assignee' => 'assignee:',
+                    'branch_managers' => 'branch_managers:',
                     _ => '',
                   };
                 }),
@@ -5602,6 +5610,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 : 'Their address is read when the rule runs. A rule about something '
                     'with no customer, or a customer with no address, sends nothing '
                     'and says so in the run log.',
+            style: Theme.of(context).textTheme.bodySmall,
+          )
+        else if (kind == 'branch_managers')
+          Text(
+            'Everyone who approves hours at the branch of the person the event '
+            'is about, read when the rule runs. Each gets their own message.',
             style: Theme.of(context).textTheme.bodySmall,
           )
         else if (kind == 'person')
@@ -5903,6 +5917,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (value.startsWith('user:')) return 'person';
     if (value == 'customer:') return 'customer';
     if (value == 'assignee:') return 'assignee';
+    if (value == 'branch_managers:') return 'branch_managers';
     // An assignment names a person or a field and never a typed value, so a
     // non-empty value there can only be a field.
     if (kindOf != 'person_or_field') {
