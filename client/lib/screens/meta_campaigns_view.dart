@@ -415,8 +415,14 @@ class _MetaCampaignsViewState extends State<MetaCampaignsView> {
       'Clicks': formatCount(clicks.round()),
     };
     final theme = Theme.of(context);
+    // UI/UX audit 11-13 §10.1: $9,018 under 21 paused campaigns read as a
+    // bug; Meta agreed to the cent, all of it spent before the pause (11-09).
+    final allPaused =
+        spend > 0 &&
+        campaigns.isNotEmpty &&
+        campaigns.every((c) => c['status'] != 'ACTIVE');
 
-    return LayoutBuilder(
+    final grid = LayoutBuilder(
       builder: (context, box) {
         final width = phone ? (box.maxWidth - 10) / 2 : (box.maxWidth - 30) / 4;
         return Wrap(
@@ -448,6 +454,21 @@ class _MetaCampaignsViewState extends State<MetaCampaignsView> {
           ],
         );
       },
+    );
+    if (!allPaused) return grid;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        grid,
+        const SizedBox(height: 6),
+        Text(
+          'Every campaign is paused now. This spend is from before they '
+          'were paused.',
+          key: const ValueKey('meta-kpi-all-paused'),
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
     );
   }
 
