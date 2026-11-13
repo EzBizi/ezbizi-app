@@ -32,9 +32,20 @@ final class MondayClient
         if (preg_match('/^\s*mutation\b/i', $query)) {
             throw new RuntimeException('EzBizi does not write to Monday.');
         }
-        $response = Http::withHeaders(['Authorization' => $this->token])
-            ->acceptJson()->timeout(60)
-            ->post(self::API, ['query' => $query, 'variables' => (object) $variables]);
+        // Monday's budget (complexity per minute, requests per minute) answers "wait N seconds":
+        // a whole-board read (NW: ~1,000 queries) waits and goes on rather than failing midway.
+        for ($attempt = 1; ; $attempt++) {
+            $response = Http::withHeaders(['Authorization' => $this->token])
+                ->acceptJson()->timeout(60)
+                ->post(self::API, ['query' => $query, 'variables' => (object) $variables]);
+            $wait = $response->status() === 429 ? (int) ($response->header('Retry-After') ?: 30)
+                : (int) collect((array) $response->json('errors'))->map(fn ($e) => in_array($e['extensions']['code'] ?? null, ['COMPLEXITY_BUDGET_EXHAUSTED', 'RATE_LIMIT_EXCEEDED', 'ComplexityException'], true)
+                    ? (int) ($e['extensions']['retry_in_seconds'] ?? 30) : 0)->max();
+            if ($wait <= 0 || $attempt >= 5) {
+                break;
+            }
+            sleep(min(65, max(1, $wait)));
+        }
 
         if (in_array($response->status(), [401, 403], true)) {
             throw new MondayRefused(MondayRefused::RECONNECT);

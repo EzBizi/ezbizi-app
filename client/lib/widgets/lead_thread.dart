@@ -32,6 +32,7 @@ import 'proofread_hint.dart';
 import 'side_panel.dart';
 import 'search_picker.dart';
 import 'status_pill.dart';
+import 'user_avatar.dart';
 
 /// The reply box's one-line height, which Send, Suggest and the emoji
 /// button share.
@@ -2269,7 +2270,11 @@ class _LeadThreadState extends State<LeadThread> {
       final sender = c['automatic'] == true
           ? _sender(theme, null, automatic: true)
           : mine && c['sent_by'] is String
-          ? _sender(theme, c['sent_by'] as String)
+          ? _sender(
+              theme,
+              c['sent_by'] as String,
+              userId: c['sent_by_id'] as String?,
+            )
           : null;
 
       return Align(
@@ -2337,7 +2342,25 @@ class _LeadThreadState extends State<LeadThread> {
   );
 
   /// Initials in the person's own colour; a bot for a rule.
-  Widget _sender(ThemeData theme, String? name, {bool automatic = false}) {
+  Widget _sender(
+    ThemeData theme,
+    String? name, {
+    bool automatic = false,
+    String? userId,
+  }) {
+    // Their photo when the server names the user (Jose, 2026-11-13).
+    if (!automatic && userId != null) {
+      return Tooltip(
+        message: '$name · via EzBizi',
+        child: UserAvatar(
+          key: ValueKey('sender-$userId'),
+          api: widget.api,
+          userId: userId,
+          name: name!,
+          radius: 10,
+        ),
+      );
+    }
     // Each person keeps one colour (the theme's person palette, AA in light
     // and dark); a rule is neutral.
     final colours = automatic
@@ -3568,8 +3591,26 @@ String leadWhen(String? iso) {
   if (ago.inHours < 24) return '${ago.inHours}h ago';
   if (ago.inDays < 7) return '${ago.inDays}d ago';
 
-  return '${at.year}-${at.month.toString().padLeft(2, '0')}-'
-      '${at.day.toString().padLeft(2, '0')}';
+  // "Nov 5", with "'25" in an earlier year: a full 2026-11-05 did not fit
+  // the 62px list column and read as "2026-11-0" (Muse audit 9.12).
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final day = '${months[at.month - 1]} ${at.day}';
+  return at.year == DateTime.now().year
+      ? day
+      : "$day '${(at.year % 100).toString().padLeft(2, '0')}";
 }
 
 /// A message's time of day, and how long ago while that is still today's

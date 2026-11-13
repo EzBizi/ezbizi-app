@@ -1,0 +1,2571 @@
+{
+ "_about": "Monday automations read 2026-11-13 (Board > Automate, all boards), names resolved; ezbizi:monday-automations recreates them. skipped: not carried, with why.",
+ "automations": [
+  {
+   "monday_id": "472835278",
+   "board": "10084134034",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "472876667",
+   "board": "10084134034",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign creator as person",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "creator",
+     "add": false
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "558735906",
+   "board": "10084134034",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [
+    {
+     "group": "Customer Relations - Adeline"
+    }
+   ],
+   "actions": [
+    {
+     "assign": "dispatcher1@a-1chimney.com",
+     "add": false
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "558736974",
+   "board": "10084134034",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Connecticut"
+   },
+   "conditions": [
+    {
+     "group": "Customer Relations - Adeline"
+    }
+   ],
+   "actions": [
+    {
+     "assign": "mike@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "558737737",
+   "board": "10084134034",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "New Jersey"
+   },
+   "conditions": [
+    {
+     "group": "Customer Relations - Adeline"
+    }
+   ],
+   "actions": [
+    {
+     "assign": "manny@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "558738211",
+   "board": "10084134034",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Illinois"
+   },
+   "conditions": [
+    {
+     "group": "Customer Relations - Adeline"
+    }
+   ],
+   "actions": [
+    {
+     "assign": "moses@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "558738366",
+   "board": "10084134034",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Texas"
+   },
+   "conditions": [
+    {
+     "group": "Customer Relations - Adeline"
+    }
+   ],
+   "actions": [
+    {
+     "assign": "ben@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "558738590",
+   "board": "10084134034",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Ohio"
+   },
+   "conditions": [
+    {
+     "group": "Customer Relations - Adeline"
+    }
+   ],
+   "actions": [
+    {
+     "assign": "monday user 71550800",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "558738918",
+   "board": "10084134034",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Georgia"
+   },
+   "conditions": [
+    {
+     "group": "Customer Relations - Adeline"
+    }
+   ],
+   "actions": [
+    {
+     "assign": "netanel@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "558739109",
+   "board": "10084134034",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Wisonsin"
+   },
+   "conditions": [
+    {
+     "group": "Customer Relations - Adeline"
+    }
+   ],
+   "actions": [
+    {
+     "assign": "moses@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "617933406",
+   "board": "18424929266",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "621484662",
+   "board": "18426054807",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "621476399",
+   "board": "18426052010",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "622751435",
+   "board": "18426444271",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652281765",
+   "board": "18435173396",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652281766",
+   "board": "18435173396",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign creator as person",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "creator",
+     "add": false
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652281767",
+   "board": "18435173396",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Illinois"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "moses@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652281768",
+   "board": "18435173396",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Connecticut"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "mike@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652281769",
+   "board": "18435173396",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Wisonsin"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "moses@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652281770",
+   "board": "18435173396",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Ohio"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "monday user 71550800",
+     "add": true
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652281772",
+   "board": "18435173396",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Georgia"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "netanel@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652281774",
+   "board": "18435173396",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "New Jersey"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "manny@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652281775",
+   "board": "18435173396",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Area",
+    "to": "Texas"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "ben@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652281777",
+   "board": "18435173396",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "dispatcher1@a-1chimney.com",
+     "add": false
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "652261462",
+   "board": "18435168865",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "624565724",
+   "board": "18427055247",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "622758741",
+   "board": "18426446570",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "423149438",
+   "board": "9129262284",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "423149441",
+   "board": "9129262284",
+   "active": false,
+   "monday_state": "error",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "dismanager@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "388864751",
+   "board": "8447409431",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "merav@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "388864752",
+   "board": "8447409431",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "472237953",
+   "board": "10073337047",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [
+    {
+     "group": "Triplex Group"
+    }
+   ],
+   "actions": [
+    {
+     "move_group": "Triplex - Done"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "472243617",
+   "board": "10073337047",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [
+    {
+     "group": "A1 Chimney"
+    }
+   ],
+   "actions": [
+    {
+     "move_group": "A1 Chimney - Done"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "472243689",
+   "board": "10073337047",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [
+    {
+     "group": "Everdoors"
+    }
+   ],
+   "actions": [
+    {
+     "move_group": "Speedy Garage Doors - Done"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "472244142",
+   "board": "10073337047",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "move_group": "Crestline Home - Done"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "472244313",
+   "board": "10073337047",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something and only if item is in this group move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "move_group": "US Chimney Supply - Done"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383627548",
+   "board": "8312752945",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When an item is created set date to today and push due date by some days",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "set": null,
+     "value": "today"
+    },
+    {
+     "shift": null,
+     "amount": 7,
+     "unit": "days"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "383660163",
+   "board": "8312752945",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When date arrives notify someone",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": null,
+    "days_before": 1,
+    "hour": 15.0
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "assignees",
+     "message": "Hi there,\nThis is a friendly reminder that your task is due tomorrow.\nPlease ensure the following task is completed by {{due_on}}:\n{{title}}\nThank you, and let me know if you have any questions or need assistance!\n\nBest regards,\nA1 Chimney"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "383839110",
+   "board": "8312752945",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "384190975",
+   "board": "8312752945",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "baro@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "384191380",
+   "board": "8312752945",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "chaim@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "384191523",
+   "board": "8312752945",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created and only if item is in this group assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "assign": "info@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "469619528",
+   "board": "8312752945",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created and only if item is in this group create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9709588999",
+     "group": "A1 Chimney"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "652266455",
+   "board": "18435169766",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "dismanager@a-1chimney.com"
+  },
+  {
+   "monday_id": "471166055",
+   "board": "9709588999",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "471246127",
+   "board": "10040982416",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Done"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383680319",
+   "board": "8343765247",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When date arrives notify someone",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": null,
+    "days_before": 1,
+    "hour": 15.0
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "assignees",
+     "message": "Hi there,\nThis is a friendly reminder that your task is due tomorrow.\nPlease ensure the following task is completed by {{due_on}}:\n{{title}}\nThank you, and let me know if you have any questions or need assistance!\n\nBest regards,\nA1 Chimney"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "383680320",
+   "board": "8343765247",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group and notify someone",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    },
+    {
+     "notify": "baro@a-1chimney.com",
+     "message": "Hi the status for \"{{title}}\" changed to \"{{status}}\".\n"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "383680323",
+   "board": "8343765247",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When an item is created set date to today and push due date by some days",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "set": null,
+     "value": "today"
+    },
+    {
+     "shift": null,
+     "amount": 7,
+     "unit": "days"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "385936890",
+   "board": "8343765247",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "jose@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "391972862",
+   "board": "8508945126",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "469629396",
+   "board": "8508945126",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created and only if item is in this group create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9709588999",
+     "group": "Everdoors"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "426932354",
+   "board": "9204581187",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "426932859",
+   "board": "9204581187",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "rodrigo@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383813119",
+   "board": "8346436834",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383813120",
+   "board": "8346436834",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When date arrives notify someone",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": null,
+    "days_before": 1,
+    "hour": 15.0
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "assignees",
+     "message": "Hi there,\nThis is a friendly reminder that your task is due tomorrow.\nPlease ensure the following task is completed by {{due_on}}:\n{{title}}\nThank you, and let me know if you have any questions or need assistance!\n\nBest regards,\nA1 Chimney"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383813121",
+   "board": "8346436834",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When an item is created set date to today and push due date by some days",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "set": null,
+     "value": "today"
+    },
+    {
+     "shift": null,
+     "amount": 7,
+     "unit": "days"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "384190633",
+   "board": "8346436834",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "ben@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "389721273",
+   "board": "8346436834",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "Every time period notify someone",
+   "trigger": {
+    "kind": "schedule",
+    "every": "weekly",
+    "days": [
+     "monday"
+    ],
+    "time": "15:00"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "ben@a-1chimney.com",
+     "message": "Please make sure to complete your weeekly tasks."
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "442882858",
+   "board": "8346436834",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When date arrives and only if item is in this group and if column is empty and only if status is something notify someone and push due date by some days",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date",
+    "days_before": 0,
+    "hour": 13.0
+   },
+   "conditions": [
+    {
+     "group": "Reccuring Tasks"
+    },
+    {
+     "status": "Monthly Task"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "ben@a-1chimney.com",
+     "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
+    },
+    {
+     "shift": "Date",
+     "amount": 1,
+     "unit": "months"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383813331",
+   "board": "8346438973",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383813332",
+   "board": "8346438973",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When date arrives notify someone",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": null,
+    "days_before": 1,
+    "hour": 15.0
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "assignees",
+     "message": "Hi there,\nThis is a friendly reminder that your task is due tomorrow.\nPlease ensure the following task is completed by {{due_on}}:\n{{title}}\nThank you, and let me know if you have any questions or need assistance!\n\nBest regards,\nA1 Chimney"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383813333",
+   "board": "8346438973",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When an item is created set date to today and push due date by some days",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "set": null,
+     "value": "today"
+    },
+    {
+     "shift": null,
+     "amount": 7,
+     "unit": "days"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "384190388",
+   "board": "8346438973",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "moses@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "389720720",
+   "board": "8346438973",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "Every time period notify someone",
+   "trigger": {
+    "kind": "schedule",
+    "every": "weekly",
+    "days": [
+     "monday"
+    ],
+    "time": "15:00"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "moses@a-1chimney.com",
+     "message": "Please make sure to complete your weeekly tasks."
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "442885311",
+   "board": "8346438973",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When date arrives and only if item is in this group and if column is empty and only if status is something notify someone and push due date by some days",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date",
+    "days_before": 0,
+    "hour": 13.0
+   },
+   "conditions": [
+    {
+     "group": "Reccuring Tasks"
+    },
+    {
+     "status": "Monthly Task"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "moses@a-1chimney.com",
+     "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
+    },
+    {
+     "shift": "Date",
+     "amount": 1,
+     "unit": "months"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383677907",
+   "board": "8343738207",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group and notify someone",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    },
+    {
+     "notify": "baro@a-1chimney.com",
+     "message": "Hi the following task is done.\n{{title}}"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "386926489",
+   "board": "8343738207",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "monday user 76893540",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "452447948",
+   "board": "8343738207",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When date arrives and only if item is in this group and only if status is something notify someone and set date to today and set status to something",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "due",
+    "days_before": 0,
+    "hour": 21.25
+   },
+   "conditions": [
+    {
+     "group": null
+    },
+    {
+     "column": "Reminder",
+     "is": "Done"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "monday user 76893540",
+     "message": "Hi David,\nPlease make sure to check the following tasks:\n{{title}}\nThank you."
+    },
+    {
+     "set": "due",
+     "value": "today"
+    },
+    {
+     "set": "Reminder",
+     "value": "Reminder"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383812489",
+   "board": "8346429475",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "384190065",
+   "board": "8346429475",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "manny@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "389720308",
+   "board": "8346429475",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "Every time period notify someone",
+   "trigger": {
+    "kind": "schedule",
+    "every": "weekly",
+    "days": [
+     "monday"
+    ],
+    "time": "15:00"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "manny@a-1chimney.com",
+     "message": "Please make sure to complete your weeekly tasks."
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "442878404",
+   "board": "8346429475",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When date arrives and only if item is in this group and if column is empty and only if status is something notify someone and push due date by some days",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date",
+    "days_before": 0,
+    "hour": 13.0
+   },
+   "conditions": [
+    {
+     "group": "Reccuring Tasks"
+    },
+    {
+     "status": "Monthly Task"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "manny@a-1chimney.com",
+     "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
+    },
+    {
+     "shift": "Date",
+     "amount": 1,
+     "unit": "months"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383669851",
+   "board": "8343603747",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "384189757",
+   "board": "8343603747",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "mike@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "389719187",
+   "board": "8343603747",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "Every time period notify someone",
+   "trigger": {
+    "kind": "schedule",
+    "every": "weekly",
+    "days": [
+     "monday"
+    ],
+    "time": "15:00"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "mike@a-1chimney.com",
+     "message": "Please make sure to complete your weekly tasks."
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "442882357",
+   "board": "8343603747",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When date arrives and only if item is in this group and if column is empty and only if status is something notify someone and push due date by some days",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date",
+    "days_before": 0,
+    "hour": 13.0
+   },
+   "conditions": [
+    {
+     "group": "Reccuring Tasks"
+    },
+    {
+     "status": "Monthly Task"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "mike@a-1chimney.com",
+     "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
+    },
+    {
+     "shift": "Date",
+     "amount": 1,
+     "unit": "months"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "383667440",
+   "board": "8343560998",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When date arrives notify someone",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": null,
+    "days_before": 1,
+    "hour": 15.0
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "assignees",
+     "message": "Hi there,\nThis is a friendly reminder that your task is due tomorrow.\nPlease ensure the following task is completed by {{due_on}}:\n{{title}}\nThank you, and let me know if you have any questions or need assistance!\n\nBest regards,\nA1 Chimney"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "383667442",
+   "board": "8343560998",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When an item is created set date to today and push due date by some days",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "set": null,
+     "value": "today"
+    },
+    {
+     "shift": null,
+     "amount": 7,
+     "unit": "days"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "383668552",
+   "board": "8343560998",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "384189295",
+   "board": "8343560998",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "monday user 71550800",
+     "add": true
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "389713577",
+   "board": "8343560998",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "Every time period notify someone",
+   "trigger": {
+    "kind": "schedule",
+    "every": "weekly",
+    "days": [
+     "monday"
+    ],
+    "time": "15:00"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "monday user 71550800",
+     "message": "Please make sure to complete your weeekly tasks."
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "442884261",
+   "board": "8343560998",
+   "active": false,
+   "monday_state": "error",
+   "sentence": "When date arrives and only if item is in this group and if column is empty and only if status is something notify someone and push due date by some days",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": null,
+    "days_before": 0,
+    "hour": 13.0
+   },
+   "conditions": [
+    {
+     "group": "Reccuring Tasks"
+    },
+    {
+     "status": "Monthly Task"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "monday user 71550800",
+     "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
+    },
+    {
+     "shift": null,
+     "amount": 1,
+     "unit": "months"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "641585529",
+   "board": "18432440457",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Hirings"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "446771947",
+   "board": "9595076383",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "Every time period notify someone",
+   "trigger": {
+    "kind": "schedule",
+    "every": "weekly",
+    "days": [
+     "monday"
+    ],
+    "time": "15:00"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "monday user 78455682",
+     "message": "Please make sure to complete your weeekly tasks."
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "446771950",
+   "board": "9595076383",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "monday user 78455682",
+     "add": true
+    },
+    {
+     "assign": "monday user 78455682",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "446771952",
+   "board": "9595076383",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "446771954",
+   "board": "9595076383",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When date arrives and only if item is in this group and if column is empty and only if status is something notify someone and push due date by some days",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date",
+    "days_before": 0,
+    "hour": 13.0
+   },
+   "conditions": [
+    {
+     "group": "Reccuring Tasks"
+    },
+    {
+     "status": "Monthly Task"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "monday user 78455682",
+     "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
+    },
+    {
+     "shift": "Date",
+     "amount": 1,
+     "unit": "months"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "436219443",
+   "board": "9384010310",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "Every time period notify someone",
+   "trigger": {
+    "kind": "schedule",
+    "every": "weekly",
+    "days": [
+     "monday"
+    ],
+    "time": "15:00"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "netanel@a-1chimney.com",
+     "message": "Please make sure to complete your weeekly tasks."
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "436219445",
+   "board": "9384010310",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "436219448",
+   "board": "9384010310",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "netanel@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "442886578",
+   "board": "9384010310",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When date arrives and only if item is in this group and if column is empty and only if status is something notify someone and push due date by some days",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date",
+    "days_before": 0,
+    "hour": 13.0
+   },
+   "conditions": [
+    {
+     "group": "Reccuring Tasks"
+    },
+    {
+     "status": "Monthly Task"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "netanel@a-1chimney.com",
+     "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
+    },
+    {
+     "shift": "Date",
+     "amount": 1,
+     "unit": "months"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "552951115",
+   "board": "18404695787",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "Every time period notify someone",
+   "trigger": {
+    "kind": "schedule",
+    "every": "weekly",
+    "days": [
+     "monday"
+    ],
+    "time": "15:00"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "manny@a-1chimney.com",
+     "message": "Please make sure to complete your weeekly tasks."
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "552951116",
+   "board": "18404695787",
+   "active": false,
+   "monday_state": "error",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "manny@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "552951117",
+   "board": "18404695787",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "552951118",
+   "board": "18404695787",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When date arrives and only if item is in this group and if column is empty and only if status is something notify someone and push due date by some days",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date",
+    "days_before": 0,
+    "hour": 13.0
+   },
+   "conditions": [
+    {
+     "group": "Reccuring Tasks"
+    },
+    {
+     "status": "Monthly Task"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "manny@a-1chimney.com",
+     "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
+    },
+    {
+     "shift": "Date",
+     "amount": 1,
+     "unit": "months"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "564897653",
+   "board": "18408491068",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "564897656",
+   "board": "18408491068",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "Every time period notify someone",
+   "trigger": {
+    "kind": "schedule",
+    "every": "weekly",
+    "days": [
+     "monday"
+    ],
+    "time": "15:00"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "manny@a-1chimney.com",
+     "message": "Please make sure to complete your weeekly tasks."
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "564897657",
+   "board": "18408491068",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When date arrives and only if item is in this group and if column is empty and only if status is something notify someone and push due date by some days",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date",
+    "days_before": 0,
+    "hour": 13.0
+   },
+   "conditions": [
+    {
+     "group": "Reccuring Tasks"
+    },
+    {
+     "status": "Monthly Task"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "manny@a-1chimney.com",
+     "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
+    },
+    {
+     "shift": "Date",
+     "amount": 1,
+     "unit": "months"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "442794589",
+   "board": "9516509549",
+   "active": false,
+   "monday_state": "auto_disabled_by_permission_settings",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "469605897",
+   "board": "9516509549",
+   "active": false,
+   "monday_state": "auto_disabled_by_permission_settings",
+   "sentence": "When an item is created and only if item is in this group create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [
+    {
+     "group": null
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9709588999",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "568021811",
+   "board": "18409425845",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "Every time period notify someone",
+   "trigger": {
+    "kind": "schedule",
+    "every": "weekly",
+    "days": [
+     "monday"
+    ],
+    "time": "15:00"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "notify": "ron@a-1chimney.com",
+     "message": "Please make sure to complete your weekly tasks."
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "568021814",
+   "board": "18409425845",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "568021816",
+   "board": "18409425845",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When date arrives and only if item is in this group and if column is empty and only if status is something notify someone and push due date by some days",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date",
+    "days_before": 0,
+    "hour": 13.0
+   },
+   "conditions": [
+    {
+     "group": "Reccuring Tasks"
+    },
+    {
+     "status": "Monthly Task"
+    }
+   ],
+   "actions": [
+    {
+     "notify": "ron@a-1chimney.com",
+     "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
+    },
+    {
+     "shift": "Date",
+     "amount": 1,
+     "unit": "months"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "637716033",
+   "board": "18431210057",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Hirings"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "496414885",
+   "board": "18379051971",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    }
+   ],
+   "by": "info@a-1chimney.com"
+  },
+  {
+   "monday_id": "513403601",
+   "board": "18393449992",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When an item is created assign someone as assignee",
+   "trigger": {
+    "kind": "created"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "assign": "jose@a-1chimney.com",
+     "add": true
+    }
+   ],
+   "by": "jose@a-1chimney.com"
+  },
+  {
+   "monday_id": "513403602",
+   "board": "18393449992",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something move item to group and notify someone",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Done"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Completed Tasks"
+    },
+    {
+     "notify": "baro@a-1chimney.com",
+     "message": "Hi the status for \"{{title}}\" changed to \"{{status}}\".\n"
+    }
+   ],
+   "by": "jose@a-1chimney.com"
+  },
+  {
+   "monday_id": "workflow:7925541335",
+   "board": "18432743116",
+   "active": true,
+   "monday_state": "active",
+   "sentence": "When Schedule Date arrives and only if item is in Scheduled, move item to In Progress",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Schedule Date",
+    "days_before": 0,
+    "hour": 9.0
+   },
+   "conditions": [
+    {
+     "group": "Scheduled"
+    }
+   ],
+   "actions": [
+    {
+     "move_group": "In Progress"
+    }
+   ],
+   "by": "chaim@a-1chimney.com"
+  }
+ ],
+ "skipped": [
+  {
+   "monday_id": "434067144",
+   "board": "8312752945",
+   "why": "webhook (errored on Monday)"
+  },
+  {
+   "monday_id": 502272171,
+   "board": "18390213000",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": "535269270",
+   "board": "18399940654",
+   "why": "dependency status (no dependencies on the Task Board)"
+  },
+  {
+   "monday_id": 509398230,
+   "board": "18392356461",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": "535268897",
+   "board": "18399940557",
+   "why": "dependency status (no dependencies on the Task Board)"
+  },
+  {
+   "monday_id": 509372732,
+   "board": "18392349013",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 436338084,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 436347511,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 436451444,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 436456679,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 439130836,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 439336796,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 439347991,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 439352617,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 439352700,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 443908457,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 444087972,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 446844012,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 446844445,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 446844560,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 449132787,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 449169357,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 449171160,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 453401819,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 453434747,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 453463135,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 453464212,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 453465300,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 453467112,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 454978114,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 454999925,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 455062092,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 455069472,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 455069877,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 455070038,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 455086560,
+   "board": "9342236072",
+   "why": "board not carried"
+  },
+  {
+   "monday_id": 463095217,
+   "board": "9342236072",
+   "why": "board not carried"
+  }
+ ]
+}

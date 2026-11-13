@@ -22,11 +22,22 @@ class SchedulerFailed extends Command
     public function handle(AuditLogger $audit, MailStatus $mail): int
     {
         $unit = (string) $this->argument('unit');
-        $audit->logError('scheduler.unit_failed', ['unit' => $unit]);
+        // The audit row needs MySQL, which is sometimes WHY the unit failed
+        // (06:37 UTC 2026-11-13: mysql restarted). Never let it stop the mail.
+        try {
+            $audit->logError('scheduler.unit_failed', ['unit' => $unit]);
+        } catch (\Throwable) {
+            // Mailed below regardless.
+        }
         $this->error("Scheduler unit failed: {$unit}");
 
         $to = config('ezbizi.backups.alert_to');
-        if (Cache::add('scheduler.failed.alerted.'.$unit, true, now()->addHour()) && $mail->delivers() && filled($to)) {
+        try {
+            $first = Cache::add('scheduler.failed.alerted.'.$unit, true, now()->addHour());
+        } catch (\Throwable) {
+            $first = true; // no cache without MySQL: mail rather than stay silent
+        }
+        if ($first && $mail->delivers() && filled($to)) {
             Mail::raw(
                 "The EzBizi scheduler unit {$unit} failed at ".now()->toDateTimeString()." UTC (usually: killed by its timeout).\n\n"
                 ."Commands it was running may have stopped mid-pass and left their locks held.\n"

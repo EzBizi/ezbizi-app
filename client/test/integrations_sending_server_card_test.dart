@@ -48,7 +48,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('integrations-section:available')),
+      find.byKey(const ValueKey('integrations-section:email')),
       findsOneWidget,
     );
   });

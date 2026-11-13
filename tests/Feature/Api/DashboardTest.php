@@ -995,6 +995,28 @@ class DashboardTest extends TestCase
         $this->assertFalse($glances->firstWhere('key', 'phone')['hidden']);
     }
 
+    /**
+     * HR's box counts what HR's own On the books tile counts. It counted
+     * erased accounts too: 150 against the HR page's 137 (UI/UX audit,
+     * 2026-11-13). A removed person is seeded so the two would differ.
+     */
+    public function test_hr_on_the_books_is_the_hr_pages_number(): void
+    {
+        $this->inTenant(fn () => User::create([
+            'organization_id' => $this->alpha['org']->id, 'role_id' => $this->alpha['admin']->role_id,
+            'name' => 'Removed', 'email' => 'removed-1@invalid',
+            'password' => 'a-real-password', 'is_active' => false,
+        ]));
+
+        $page = $this->as($this->alpha['admin'])->getJson('/api/v1/hr/dashboard/overview')->assertOk();
+        $total = $page->json('on_the_books.total') ?? $page->json('data.on_the_books.total');
+        $figure = collect(collect($this->glancesOf($this->alpha['admin']))->firstWhere('key', 'hr')['data']['figures'])
+            ->firstWhere('key', 'on_the_books');
+
+        $this->assertIsInt($total);
+        $this->assertSame($total, $figure['value']);
+    }
+
     // ── size (Jose, 2026-10-05: "change the widget sizes") ─────────────
 
     public function test_a_box_is_its_glances_default_size_until_somebody_picks_one(): void

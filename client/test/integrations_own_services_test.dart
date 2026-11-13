@@ -27,7 +27,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('integrations-section:connected')),
+      find.byKey(const ValueKey('integrations-section:phone')),
       findsOneWidget,
     );
 
@@ -64,7 +64,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('integrations-section:connected')),
+      find.byKey(const ValueKey('integrations-section:email')),
       findsOneWidget,
     );
 

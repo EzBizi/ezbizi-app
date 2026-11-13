@@ -218,7 +218,10 @@ class LeadsApiTest extends TestCase
         $this->assertNotNull($data['details']['account']);
         [$first, $reply, $reaction] = $data['conversations'];
         $this->assertSame($t['admin']->name, $reply['sent_by']);
+        // Their id too, for the photo on the bubble (Jose, 2026-11-13).
+        $this->assertSame($t['admin']->id, $reply['sent_by_id']);
         $this->assertNull($first['sent_by']);
+        $this->assertNull($first['sent_by_id']);
         $this->assertSame(['emoji' => "\u{1F44D}", 'quote' => 'We can come Saturday at 8'], $reaction['reaction']);
         $this->assertNull($first['reaction']);
     }

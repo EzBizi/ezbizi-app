@@ -566,55 +566,69 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     ('tasks', 'Tasks'),
   ];
 
-  String? _category;
+  /// One key per category section, so a chip scrolls to its heading.
+  final Map<String, GlobalKey> _sectionKeys = {};
 
-  /// Where a provider stands, for the three sections (UI queue 183): a row
-  /// that is not working needs attention; anything else connected is
-  /// connected; the rest is available.
-  String _standing(
+  /// Connected (working or not) before what is only offered.
+  bool _hasAny(
     String provider,
     Map<String, List<IntegrationConnection>> byProvider,
-  ) {
-    final rows = [
-      for (final p in [provider, ...?_folded[provider]]) ...?byProvider[p],
-    ];
-    if (rows.any((r) => !r.connected)) return 'attention';
-    if (rows.isNotEmpty) return 'connected';
-    if (_products(provider).any((p) => p['connected'] == true)) {
-      return 'connected';
-    }
-    return 'available';
-  }
+  ) =>
+      [
+        provider,
+        ...?_folded[provider],
+      ].any((p) => (byProvider[p] ?? const []).isNotEmpty) ||
+      _products(provider).any((p) => p['connected'] == true);
 
+  /// Sections by category, as before 0.0.0566 (Jose, 2026-11-13): chips on
+  /// top scroll to them, every card the same size, and what needs attention
+  /// is the LAST section, one plain line per cause.
   Widget _list(
     BuildContext context,
     Set<String> providers,
     Map<String, List<IntegrationConnection>> byProvider,
   ) {
     final theme = Theme.of(context);
-    final present = {for (final p in providers) _familyOf(p)};
-    final shown =
-        providers
-            .where((p) => _category == null || _familyOf(p) == _category)
-            .toList()
-          ..sort((a, b) => _label(a).compareTo(_label(b)));
     final by = <String, List<String>>{};
-    for (final p in shown) {
-      by.putIfAbsent(_standing(p, byProvider), () => []).add(p);
+    for (final p in providers) {
+      by.putIfAbsent(_familyOf(p), () => []).add(p);
     }
+    for (final list in by.values) {
+      list.sort((a, b) {
+        final c =
+            (_hasAny(a, byProvider) ? 0 : 1) - (_hasAny(b, byProvider) ? 0 : 1);
+        return c != 0 ? c : _label(a).compareTo(_label(b));
+      });
+    }
+    final sections = [
+      for (final (key, title) in _categories)
+        if (by.containsKey(key)) (key, title),
+      // A family this build has no heading for still draws, last.
+      for (final key in by.keys)
+        if (!_categories.any((c) => c.$1 == key)) (key, 'Other'),
+    ];
 
-    Widget section(String key, String title, Color? colour) {
-      final mine = by[key] ?? const <String>[];
-      if (mine.isEmpty) return const SizedBox.shrink();
+    Widget card(String provider) => _isFamily(provider)
+        ? _familyTile(provider, byProvider)
+        : _providerCard(
+            context,
+            provider: provider,
+            rows: byProvider[provider] ?? const [],
+            canName: _familyOf(provider) == 'reporting',
+          );
+
+    Widget section(String key, String title) {
+      final mine = by[key]!;
       return Padding(
-        key: ValueKey('integrations-section:$key'),
+        key: _sectionKeys.putIfAbsent(key, GlobalKey.new),
         padding: const EdgeInsets.only(bottom: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '$title · ${mine.length}',
-              style: theme.textTheme.labelLarge?.copyWith(color: colour),
+              title,
+              key: ValueKey('integrations-section:$key'),
+              style: theme.textTheme.titleSmall,
             ),
             const SizedBox(height: 8),
             if (_phone)
@@ -622,7 +636,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                 _isFamily(provider)
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: _familyCard(provider, byProvider),
+                        child: card(provider),
                       )
                     : _providerRow(
                         context,
@@ -633,17 +647,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               Wrap(
                 spacing: 12,
                 runSpacing: 12,
-                children: [
-                  for (final provider in mine)
-                    _isFamily(provider)
-                        ? _familyCard(provider, byProvider)
-                        : _providerCard(
-                            context,
-                            provider: provider,
-                            rows: byProvider[provider] ?? const [],
-                            canName: _familyOf(provider) == 'reporting',
-                          ),
-                ],
+                children: [for (final provider in mine) card(provider)],
               ),
           ],
         ),
@@ -675,24 +679,26 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              ChoiceChip(
-                key: const ValueKey('integrations-category:all'),
-                label: const Text('All'),
-                selected: _category == null,
-                onSelected: (_) => setState(() => _category = null),
-              ),
-              for (final (key, title) in _categories)
-                if (present.contains(key))
-                  ChoiceChip(
-                    key: ValueKey('integrations-category:$key'),
-                    label: Text(title),
-                    selected: _category == key,
-                    onSelected: (on) =>
-                        setState(() => _category = on ? key : null),
-                  ),
+              for (final (key, title) in sections)
+                ActionChip(
+                  key: ValueKey('integrations-category:$key'),
+                  label: Text(title),
+                  onPressed: () {
+                    final at = _sectionKeys[key]?.currentContext;
+                    if (at != null) {
+                      Scrollable.ensureVisible(
+                        at,
+                        duration: const Duration(milliseconds: 250),
+                      );
+                    }
+                  },
+                ),
             ],
           ),
         ),
+        for (final (key, title) in sections) section(key, title),
+        if (providers.isEmpty)
+          DashboardNote('No service matches in $_viewName.'),
         IntegrationsHealthNote(
           api: widget.api,
           me: widget.session.me,
@@ -711,14 +717,6 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               ),
             ),
           ),
-        section(
-          'attention',
-          'Needs attention',
-          StateColour.of(context).caution,
-        ),
-        section('connected', 'Connected', null),
-        section('available', 'Available', null),
-        if (shown.isEmpty) DashboardNote('No service matches in $_viewName.'),
       ],
     );
   }
@@ -1046,8 +1044,15 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// One sign-in and everything it brings (UI queue 182, reshaped by 183).
   Widget _familyCard(
     String head,
-    Map<String, List<IntegrationConnection>> byProvider,
-  ) {
+    Map<String, List<IntegrationConnection>> byProvider, {
+    VoidCallback? close,
+  }) {
+    // In the panel: close it first, so what the action opens is not under it.
+    VoidCallback then(VoidCallback f) => () {
+      close?.call();
+      f();
+    };
+
     final theme = Theme.of(context);
     final all = [head, ...?_folded[head]];
     final rows = [for (final p in all) ...?byProvider[p]];
@@ -1069,12 +1074,16 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       subtitle: rows.isEmpty
           ? (_purpose[head] ?? '')
           : (cardStatus(_overview, all)?.$1 ?? _lastChecked(rows)),
-      phone: _phone,
+      // The panel is phone-narrow whatever the window.
+      phone: _phone || close != null,
       mayAddAccess: usable,
-      onOpen: () => setState(() => _open = head),
-      onManage: products.isNotEmpty && usable ? () => _choose(head) : null,
+      onOpen: then(() => setState(() => _open = head)),
+      onManage: products.isNotEmpty && usable
+          ? then(() => _choose(head))
+          : null,
       onAddAccess: products.isNotEmpty
           ? (key) {
+              close?.call();
               final product = products.firstWhere(
                 (p) => p['key'] == key,
                 orElse: () => const {},
@@ -1085,7 +1094,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             }
           : null,
       onDisconnect: rows.isNotEmpty && may
-          ? () => _disconnectFamily(head)
+          ? then(() => _disconnectFamily(head))
           : null,
       products: products.isNotEmpty
           ? [
@@ -1115,6 +1124,34 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                   status: pill(p),
                 ),
             ],
+    );
+  }
+
+  /// A family as one tile the size of every other card (Jose, 2026-11-13:
+  /// never a giant card expanded in place). The tap opens the full family
+  /// card (products, Manage, Disconnect) in a SidePanel.
+  Widget _familyTile(
+    String head,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) {
+    final all = [head, ...?_folded[head]];
+    final rows = [for (final p in all) ...?byProvider[p]];
+    return _providerCard(
+      context,
+      provider: head,
+      rows: rows,
+      statusOf: all,
+      onTap: () => showSidePanel<void>(
+        context,
+        builder: (panel) => SidePanel(
+          title: _label(head),
+          child: _familyCard(
+            head,
+            byProvider,
+            close: () => Navigator.of(panel).pop(),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1311,6 +1348,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     required String provider,
     required List<IntegrationConnection> rows,
     bool canName = false,
+    List<String>? statusOf,
+    VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
     final broken = rows.where((r) => !r.connected).length;
@@ -1326,9 +1365,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         // Sets state; the body swaps. NOT a push — see [_open]. Everything
         // the pane needs is read there from the same maps this card read,
         // so the two cannot show different connections for one provider.
-        onTap: none && _catalogue[provider]?['usable'] == false
-            ? null
-            : () => setState(() => _open = provider),
+        onTap:
+            onTap ??
+            (none && _catalogue[provider]?['usable'] == false
+                ? null
+                : () => setState(() => _open = provider)),
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -1355,9 +1396,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                   // Flexible, because the pill is the only thing on this card
                   // that can grow; a fourth status word, or another language,
                   // would otherwise overflow at paint time with no warning.
-                  Flexible(
-                    child: _pill(theme, rows: rows, broken: broken),
-                  ),
+                  // Only a dot: what is wrong is said once, at the bottom.
+                  _dot(theme, rows: rows, broken: broken),
                 ],
               ),
               const SizedBox(height: 10),
@@ -1385,7 +1425,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               ),
               if (!none) ...[
                 const SizedBox(height: 2),
-                _statusOrChecked(theme, provider, [provider], rows),
+                _statusOrChecked(theme, provider, statusOf ?? [provider], rows),
               ],
               if (none) ...[const Spacer(), _offer(context, provider)],
             ],
@@ -1520,28 +1560,28 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
   static String _two(int n) => n.toString().padLeft(2, '0');
 
-  String _beneath(List<IntegrationConnection> rows) {
-    if (rows.isEmpty) return 'Nothing connected here yet.';
+  String _beneath(List<IntegrationConnection> rows) =>
+      integrationsBeneath(rows);
 
-    final broken = rows.where((r) => !r.connected).length;
-
-    final scopes = <String>{
-      for (final row in rows.where((r) => r.scopeType.isNotEmpty))
-        switch (row.scopeType) {
-          'organization' => 'the organization',
-          'company' => 'a company',
-          'franchise' => 'a branch',
-          _ => 'another place',
-        },
+  Widget _dot(
+    ThemeData theme, {
+    required List<IntegrationConnection> rows,
+    required int broken,
+  }) {
+    final (label, colour) = switch ((rows.isEmpty, broken > 0)) {
+      (true, _) => ('Not connected', theme.colorScheme.outlineVariant),
+      (false, true) => ('Needs attention', theme.colorScheme.error),
+      (false, false) => ('Connected', StateColour.of(context).on),
     };
-
-    final where = scopes.isEmpty ? '' : ' at ${scopes.join(', ')}';
-
-    // The broken count leads when there is one, because a connection that has
-    // stopped working is the whole reason somebody opens this screen.
-    return broken > 0
-        ? '$broken of ${rows.length} need attention$where'
-        : '${rows.length} connected$where';
+    return Tooltip(
+      message: label,
+      child: Container(
+        key: ValueKey('status-dot:$label'),
+        width: 9,
+        height: 9,
+        decoration: BoxDecoration(color: colour, shape: BoxShape.circle),
+      ),
+    );
   }
 
   Widget _pill(
@@ -1581,4 +1621,32 @@ List<String> _phoneProblems(Map<String, dynamic> n) {
       .whereType<String>()
       .toList();
   return problems.isEmpty ? const ['This line is not working.'] : problems;
+}
+
+/// The line under a product: "N connected at …" only when every account is
+/// connected; otherwise "N accounts (X connected) at …", where X counts only
+/// rows whose status is connected, the Dashboard's number. Counting revoked,
+/// paused and broken rows as connected showed Google Ads 89 here and 46 on
+/// the Dashboard (UI/UX audit, 2026-11-13).
+@visibleForTesting
+String integrationsBeneath(List<IntegrationConnection> rows) {
+  if (rows.isEmpty) return 'Nothing connected here yet.';
+
+  final connected = rows.where((r) => r.connected).length;
+
+  final scopes = <String>{
+    for (final row in rows.where((r) => r.scopeType.isNotEmpty))
+      switch (row.scopeType) {
+        'organization' => 'the organization',
+        'company' => 'a company',
+        'franchise' => 'a branch',
+        _ => 'another place',
+      },
+  };
+
+  final where = scopes.isEmpty ? '' : ' at ${scopes.join(', ')}';
+
+  return connected == rows.length
+      ? '${rows.length} connected$where'
+      : '${rows.length} accounts ($connected connected)$where';
 }

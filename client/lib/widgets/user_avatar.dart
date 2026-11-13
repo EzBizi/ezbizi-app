@@ -63,6 +63,12 @@ class UserAvatar extends StatefulWidget {
 }
 
 class _UserAvatarState extends State<UserAvatar> {
+  // One fetch per person and version for the whole app: a list of fifty
+  // people draws fifty of these (Jose, 2026-11-13: photos everywhere). A
+  // missing photo is cached too, as null, so it is not asked for again.
+  // ponytail: never evicted; one small entry per person seen this session.
+  static final Map<String, Future<Uint8List?>> _cache = {};
+
   Uint8List? _bytes;
 
   @override
@@ -93,11 +99,14 @@ class _UserAvatarState extends State<UserAvatar> {
         '/users/${widget.userId}/avatar'
         '${widget.version.isEmpty ? '' : '?v=${widget.version}'}';
 
-    final bytes = await widget.api.getBytes(path);
+    final bytes = await _cache.putIfAbsent(path, () async {
+      final raw = await widget.api.getBytes(path);
+      return raw == null ? null : Uint8List.fromList(raw);
+    });
 
     if (!mounted) return;
 
-    setState(() => _bytes = bytes == null ? null : Uint8List.fromList(bytes));
+    setState(() => _bytes = bytes);
   }
 
   @override
@@ -109,10 +118,18 @@ class _UserAvatarState extends State<UserAvatar> {
       radius: widget.radius,
       backgroundColor: scheme.primaryContainer,
       foregroundImage: shown == null ? null : MemoryImage(shown),
+      // Bytes that are not a picture draw the initials, not a blank circle.
+      onForegroundImageError: shown == null
+          ? null
+          : (_, _) {
+              if (mounted && widget.bytes == null) {
+                setState(() => _bytes = null);
+              }
+            },
       child: shown != null
           ? null
           : Text(
-              widget.name.isNotEmpty ? widget.name[0].toUpperCase() : '?',
+              userInitials(widget.name),
               style: TextStyle(
                 // Proportional, so one widget serves the 16px bar and the 44px
                 // card without either caller passing a font size that has to be
@@ -124,4 +141,16 @@ class _UserAvatarState extends State<UserAvatar> {
             ),
     );
   }
+}
+
+/// Up to two initials, "Jose Luis Demasi" -> "JL"; "?" for no name.
+String userInitials(String name) {
+  final letters = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .take(2)
+      .map((part) => part[0].toUpperCase())
+      .join();
+  return letters.isEmpty ? '?' : letters;
 }

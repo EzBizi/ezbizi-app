@@ -2,9 +2,13 @@
 
 namespace Tests\Feature\Integrations;
 
+use App\Http\Controllers\Api\IntegrationsOverviewController;
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\PhoneConnection;
+use App\Models\PhoneNumber;
 use App\Models\SocialConnection;
+use App\Support\Phone\LineHealth;
 use App\Support\Social\ConnectionChecks;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -59,14 +63,37 @@ class IntegrationsOverviewTest extends TestCase
         $this->assertSame(['broken', 'setup'], array_keys($data['summary']));
         $app = collect($data['apps'])->firstWhere('provider', 'airtable');
         $this->assertSame(['provider', 'label', 'counts', 'last_checked_at', 'connections'], array_keys($app));
-        $this->assertSame(['ok', 'setup', 'broken'], array_keys($app['counts']));
+        $this->assertSame(['ok', 'setup', 'broken', 'connected'], array_keys($app['counts']));
         $row = $this->find($data, $c->id);
         foreach (['id', 'provider', 'label', 'branch_id', 'branch_label', 'status', 'choices', 'used_by', 'last_checked_at', 'checks'] as $k) {
             $this->assertArrayHasKey($k, $row);
         }
-        $this->assertSame(['key', 'label', 'state', 'reason', 'fix', 'checked_at', 'next_retry_at'], array_keys($row['checks'][0]));
+        $this->assertSame(['key', 'label', 'state', 'reason', 'summary', 'fix', 'checked_at', 'next_retry_at'], array_keys($row['checks'][0]));
         $this->assertSame('ok', $row['status']);
         $this->assertSame([['id' => $t['franchise']->id, 'label' => $t['franchise']->name]], $data['branches']);
+    }
+
+    public function test_counts_connected_is_only_rows_whose_status_is_connected(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t, SocialProvider::GoogleAds->value, 'c1');
+        $this->connection($t, SocialProvider::GoogleAds->value, 'c2');
+        $this->connection($t, SocialProvider::GoogleAds->value, 'rev', ['status' => SocialConnection::STATUS_REVOKED]);
+        $this->connection($t, SocialProvider::GoogleAds->value, 'brk',
+            ['status' => SocialConnection::STATUS_BROKEN, 'status_reason' => 'Refused.']);
+        // Paused in Settings at the branch: shown off, but its stored status
+        // is still connected, and the Dashboard counts it, so this does too.
+        $this->inTenant($t['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)
+            ->set('leads.google_paused', $t['franchise'], true));
+        $paused = $this->connection($t, SocialProvider::GoogleAds->value, 'pau', [],
+            SocialConnection::SCOPE_FRANCHISE, $t['franchise']->id);
+
+        $data = $this->overview($t);
+
+        $this->assertSame('off', $this->find($data, $paused->id)['status']);
+        $app = collect($data['apps'])->firstWhere('provider', SocialProvider::GoogleAds->value);
+        $this->assertCount(5, $app['connections']);
+        $this->assertSame(3, $app['counts']['connected']);
     }
 
     public function test_summary_math_and_status_precedence(): void
@@ -91,7 +118,7 @@ class IntegrationsOverviewTest extends TestCase
         $this->assertSame('off', $this->find($data, $off->id)['status']);
         $this->assertSame(['broken' => 2, 'setup' => 1], $data['summary'], 'off is never attention');
         $ads = collect($data['apps'])->firstWhere('provider', 'google_ads');
-        $this->assertSame(['ok' => 0, 'setup' => 0, 'broken' => 1], $ads['counts']);
+        $this->assertSame(['ok' => 0, 'setup' => 0, 'broken' => 1, 'connected' => 0], $ads['counts']);
     }
 
     public function test_missing_branch_is_setup_with_choose_branch_and_a_set_one_is_ok(): void
@@ -162,16 +189,16 @@ class IntegrationsOverviewTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $line = $this->inTenant($t['org'], function () use ($t) {
-            $connection = \App\Models\PhoneConnection::factory()->create([
-                'scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
             ]);
 
             // No E911 address on file: the `e911` check fails.
-            return \App\Models\PhoneNumber::query()->create([
+            return PhoneNumber::query()->create([
                 'organization_id' => $t['org']->id,
                 'connection_id' => $connection->id,
-                'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_type' => PhoneNumber::SCOPE_ORGANIZATION,
                 'scope_id' => $t['org']->id,
                 'twilio_sid' => 'PN'.str_repeat('c', 32),
                 'e164' => '+15615550009',
@@ -184,7 +211,7 @@ class IntegrationsOverviewTest extends TestCase
 
         $this->assertSame('phone', $row['provider']);
         $this->assertSame('broken', $row['status']);
-        $this->assertSame(\App\Support\Phone\LineHealth::KEYS, array_column($row['checks'], 'key'));
+        $this->assertSame(LineHealth::KEYS, array_column($row['checks'], 'key'));
         $pointed = collect($row['checks'])->firstWhere('key', 'e911');
         $this->assertSame('fail', $pointed['state']);
         $this->assertSame('E911 address', $pointed['label']);
@@ -235,5 +262,19 @@ class IntegrationsOverviewTest extends TestCase
         $this->assertSame($row, $this->find($this->overview($t), $c->id), 'same shape as the overview');
 
         $this->signedInAs($t['admin'])->postJson("/api/v1/integrations/{$c->id}/recheck")->assertStatus(429);
+    }
+
+    public function test_plain_summary_hides_urls_ids_and_api_errors_and_groups_branches(): void
+    {
+        $plain = fn (string $r) => IntegrationsOverviewController::plain($r);
+
+        $a = $plain('Workiz has no API for this: in Workiz › Automation Center add a rule "post webhook" to https://app.ezbizi.com/api/v1/social/workiz/webhook/01a0a56c-34bc-705a-9b8d-a3c851df9a72.');
+        $b = $plain('Workiz has no API for this: in Workiz › Automation Center add a rule "post webhook" to https://app.ezbizi.com/api/v1/social/workiz/webhook/01a0a56c-40b8-7200-baa7-f0cc13a2e5f4.');
+        $this->assertSame($a, $b, 'nine branches, one line');
+        $this->assertSame('has no 911 address yet', $plain('E911: Twilio refused the address on file ([HTTP 404] Unable to update record: /2010-04-01/Accounts/AC1/IncomingPhoneNumbers/PN1.json was not found).'));
+
+        $scrubbed = $plain('Refused (see https://x.test/a/b) for 01a0a56c-34bc-705a-9b8d-a3c851df9a72 now');
+        $this->assertStringNotContainsString('http', $scrubbed);
+        $this->assertStringNotContainsString('01a0a56c', $scrubbed);
     }
 }

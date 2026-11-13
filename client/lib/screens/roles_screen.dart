@@ -1,3 +1,4 @@
+import '../widgets/user_avatar.dart';
 import '../widgets/list_search.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -531,6 +532,7 @@ class _RolesScreenState extends State<RolesScreen> {
 
   Widget _page(RoleSummary role, {required bool narrow}) => _RolePage(
     key: ValueKey('role-page:${role.id}:$_generation'),
+    api: widget.api,
     role: role,
     catalogue: _catalogue,
     inboxes: _inboxes,
@@ -665,6 +667,7 @@ class _RoleSection {
 class _RolePage extends StatefulWidget {
   const _RolePage({
     super.key,
+    this.api,
     required this.role,
     required this.catalogue,
     required this.inboxes,
@@ -686,6 +689,9 @@ class _RolePage extends StatefulWidget {
   /// Why Rename or Delete is greyed, or null when it may be used.
   final String? renameRefusal;
   final String? deleteRefusal;
+
+  /// For the holders' photos; null in tests that do not need them.
+  final ApiClient? api;
 
   final RoleSummary role;
 
@@ -2004,16 +2010,24 @@ class _RolePageState extends State<_RolePage> {
                   key: ValueKey('role-person:${person.id}'),
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircleAvatar(
-                      radius: 12,
-                      backgroundColor: scheme.primaryContainer,
-                      child: Text(
-                        initials(person.name),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: scheme.onPrimaryContainer,
+                    if (widget.api case final api?)
+                      UserAvatar(
+                        api: api,
+                        userId: person.id,
+                        name: person.name,
+                        radius: 12,
+                      )
+                    else
+                      CircleAvatar(
+                        radius: 12,
+                        backgroundColor: scheme.primaryContainer,
+                        child: Text(
+                          initials(person.name),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: scheme.onPrimaryContainer,
+                          ),
                         ),
                       ),
-                    ),
                     const SizedBox(width: 6),
                     Text(person.name, style: theme.textTheme.bodySmall),
                   ],

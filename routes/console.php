@@ -198,6 +198,8 @@ Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverl
 // minutes, every item nightly (a reply does not always move its item's updated_at). Read only.
 Schedule::command('ezbizi:monday-sync')->everyTenMinutes()->withoutOverlapping(20);
 Schedule::command('ezbizi:monday-sync --full')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
+// Task Board → Monday while both are in use (Jose, 11-13): the outbox, every minute.
+Schedule::command('ezbizi:monday-push')->everyMinute()->withoutOverlapping(10);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
 Schedule::command('ezbizi:sync-workiz-records --type=payment --days=35 --pages=200')->dailyAt('03:20')->withoutOverlapping(60);
@@ -495,6 +497,9 @@ Schedule::command('ezbizi:leads-reply-overdue')->everyMinute()->withoutOverlappi
 
 // Task Board: a task past its due date raises task.overdue, once per task.
 Schedule::command('ezbizi:tasks-overdue')->everyFifteenMinutes()->withoutOverlapping(10);
+// Task Board: a due date or date column that is today/tomorrow raises task.date_arrived, once per date
+// (Monday's "when Date arrives"; the rule's delay picks the hour).
+Schedule::command('ezbizi:tasks-dates-arrived')->hourlyAt(2)->withoutOverlapping(30);
 
 // A customer who went quiet after the automatic first reply raises
 // lead.follow_up_due once, so a rule can send the one follow-up.
@@ -518,7 +523,7 @@ Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlap
  */
 foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event) {
     $slow = (bool) preg_match(
-        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz)(\s|\'|$)/',
+        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog)(\s|\'|$)/',
         (string) $event->command,
     );
     $event->when(function () use ($slow) {

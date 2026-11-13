@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
+import '../widgets/user_avatar.dart';
 import '../core/device_key_store_io.dart'
     if (dart.library.js_interop) '../core/device_key_store_web.dart'
     as store;
@@ -71,7 +72,17 @@ String _initials(String name) {
   return parts.take(2).map((p) => p[0].toUpperCase()).join();
 }
 
-Widget _avatar(BuildContext context, String name) {
+/// The person's photo when [api] and [userId] are known (Jose, 2026-11-13:
+/// "the pictures do not display"), else their initials.
+Widget _avatar(
+  BuildContext context,
+  String name, {
+  ApiClient? api,
+  Object? userId,
+}) {
+  if (api != null && userId != null) {
+    return UserAvatar(api: api, userId: '$userId', name: name, radius: 11);
+  }
   final scheme = Theme.of(context).colorScheme;
   return CircleAvatar(
     radius: 11,
@@ -267,6 +278,13 @@ List<String> _ownerNames(_Json task) {
   if (owners.isNotEmpty) return owners;
   final one = (task['owner'] as Map?)?['name'];
   return one is String ? [one] : const [];
+}
+
+/// The first owner's user id, matching the first of [_ownerNames].
+Object? _ownerId(_Json task) {
+  final owners = task['owners'] as List? ?? const [];
+  if (owners.isNotEmpty) return (owners.first as Map?)?['id'];
+  return (task['owner'] as Map?)?['id'];
 }
 
 String _dayLabel(DateTime? day, DisplayFormats formats) {
@@ -1103,7 +1121,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// The first owner's face, with Monday's hover card on it.
   Widget _ownerFace(BuildContext context, _Json t, String owner) {
     final id = _ownerIds(t).firstOrNull;
-    final face = _avatar(context, owner);
+    final face = _avatar(context, owner, api: widget.api, userId: _ownerId(t));
     if (id == null || _board == null) return face;
     return PersonHoverCard(
       api: widget.api,
@@ -3395,7 +3413,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       child: Row(
         children: [
           if (madeBy['type'] == 'user') ...[
-            _avatar(context, label),
+            _avatar(context, label, api: widget.api, userId: madeBy['id']),
             const SizedBox(width: 6),
           ],
           Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
@@ -4547,7 +4565,12 @@ class _TaskPanelState extends State<_TaskPanel> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _avatar(context, '${(u['author'] as Map?)?['name'] ?? '?'}'),
+                  _avatar(
+                    context,
+                    '${(u['author'] as Map?)?['name'] ?? '?'}',
+                    api: widget.api,
+                    userId: (u['author'] as Map?)?['id'],
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(

@@ -1,5 +1,12 @@
 # Reviews
 
+> **Superseded 2026-11-13 — not blocked.** Measured on prod: reviews import
+> daily through EzBizi's own Business Profile connections (v4 `--reviews` sync,
+> every 6 h at :40) and `ezbizi:review-backlog` publishes AI replies (150 in the
+> 5 days to 11-13). State and history of the access: [BUSINESS-PROFILE.md](BUSINESS-PROFILE.md).
+> The zero-quota rows and §2 below are history; §4, §5 and §7's policy items
+> were not re-checked.
+
 **Blocked by the same zero quota as [Business Profile](BUSINESS-PROFILE.md), and
 carries policy obligations the other two do not.**
 
@@ -49,7 +56,10 @@ Two consequences worth holding on to:
 
 - v4 is **not a separately enabled API** in the Cloud console. Access rides on
   the `business.manage` scope, so its absence from the enabled list is correct
-  rather than a missing step.
+  rather than a missing step. *Wrong now: `gcloud services list --enabled
+  --project ezbizi-506117` lists `mybusiness.googleapis.com` (measured
+  2026-11-13); EZBIZI-TODO row 30 records enabling it was refused on 10-29
+  until Google released it. It is a separately enabled API.*
 - v4 wants an **account-qualified path** — `accounts/X/locations/Y` — where v1
   does not. Code that works against v1 will not simply be repointed.
 

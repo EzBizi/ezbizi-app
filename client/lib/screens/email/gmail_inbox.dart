@@ -180,6 +180,9 @@ class _GmailInboxState extends State<GmailInbox> {
 
   int _listRequest = 0;
   bool _loadingList = true;
+
+  /// A fresh list on its way with the old rows still up.
+  bool _refreshingList = false;
   String? _listError;
   List<InboxRow> _rows = const [];
   List<({String mailboxId, String message})> _errors = const [];
@@ -301,6 +304,7 @@ class _GmailInboxState extends State<GmailInbox> {
 
     setState(() {
       _loadingList = !append && (_rows.isEmpty || cursor != _cursor);
+      _refreshingList = !append && !_loadingList;
       _listError = null;
     });
 
@@ -322,6 +326,7 @@ class _GmailInboxState extends State<GmailInbox> {
 
     setState(() {
       _loadingList = false;
+      _refreshingList = false;
 
       // The server's sentence where the rows would have been, never an empty
       // list: "no mail" is the sentence nobody investigates.
@@ -1467,6 +1472,7 @@ class _GmailInboxState extends State<GmailInbox> {
       key: const ValueKey('tour-email-list'),
       child: AsyncBody(
         loading: _loadingList,
+        refreshing: _refreshingList,
         error: _listError,
         onRetry: () => _loadList(cursor: _cursor),
         child: _rows.isEmpty

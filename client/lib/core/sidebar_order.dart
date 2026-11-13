@@ -72,3 +72,97 @@ List<String> sidebarOrderOf<T>(
     if (divideAfter.contains(i)) sidebarDivider,
   ],
 ];
+
+/// The sidebar's fixed headings, in order, and the modules under each
+/// (Jose 11-13, Muse audit option 1A). A person's own order still decides the
+/// order INSIDE a group; the groups themselves do not move. A module not
+/// listed here (new, or unknown to this build) goes under the last heading
+/// rather than vanishing.
+const List<({String label, List<String> keys})> sidebarGroups = [
+  (
+    label: 'Work',
+    keys: [
+      'dashboard',
+      'jobs',
+      'project_board',
+      'scheduling',
+      'field',
+      'inspection',
+    ],
+  ),
+  (
+    label: 'Customers',
+    keys: [
+      'customers',
+      'leads',
+      'customer_experience',
+      'reviews',
+      'financials',
+    ],
+  ),
+  (
+    label: 'Communication',
+    keys: [
+      'phone',
+      'email',
+      'marketing',
+      'web_management',
+      'business_profile',
+      'ads_performance',
+      'ads_manager',
+    ],
+  ),
+  (
+    label: 'Operations',
+    keys: ['services', 'inventory', 'fleet_management', 'tasks', 'company'],
+  ),
+  (label: 'People', keys: ['hr', 'work_hours', 'training', 'guidelines']),
+  (
+    label: 'System',
+    keys: [
+      'reports',
+      'profit_loss',
+      'monitoring',
+      'automations',
+      'ai_assistance',
+    ],
+  ),
+];
+
+int _groupOf(String id) {
+  for (var g = 0; g < sidebarGroups.length; g++) {
+    if (sidebarGroups[g].keys.contains(id)) return g;
+  }
+  return sidebarGroups.length - 1;
+}
+
+/// [rows] moved under their headings, keeping their order inside each group
+/// and every rule that still sits between two rows of the same group.
+/// `headingAt` maps a position in the result to the heading drawn above it.
+({List<T> rows, Set<int> divideAfter, Map<int, String> headingAt})
+groupSidebar<T>(List<T> rows, Set<int> divideAfter, String Function(T) idOf) {
+  final indexed = [for (var i = 0; i < rows.length; i++) i];
+  // List.sort is not stable; sort by (group, original position).
+  indexed.sort((a, b) {
+    final g = _groupOf(idOf(rows[a])).compareTo(_groupOf(idOf(rows[b])));
+    return g != 0 ? g : a.compareTo(b);
+  });
+
+  final out = [for (final i in indexed) rows[i]];
+  final outDivide = <int>{};
+  final headingAt = <int, String>{};
+  for (var p = 0; p < indexed.length; p++) {
+    final g = _groupOf(idOf(out[p]));
+    if (p == 0 || _groupOf(idOf(out[p - 1])) != g) {
+      headingAt[p] = sidebarGroups[g].label;
+    }
+    final last = p == indexed.length - 1;
+    if (!last &&
+        divideAfter.contains(indexed[p]) &&
+        _groupOf(idOf(out[p + 1])) == g) {
+      outDivide.add(p);
+    }
+  }
+
+  return (rows: out, divideAfter: outDivide, headingAt: headingAt);
+}
