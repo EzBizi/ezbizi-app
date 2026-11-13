@@ -1017,6 +1017,16 @@ class ModuleServiceProvider extends ServiceProvider
                             .'and ended_by: person, schedule (the server closed it at the scheduled end) or automation.',
                         isRaised: true,
                     ),
+                    // Jose, 2026-11-13: a manual-clock-out role's finished
+                    // shift, for the branch managers (A-1's rule WhatsApps them).
+                    new TriggerDefinition(
+                        key: 'time_clock.technician_clocked_out',
+                        subjects: [\App\Models\User::class],
+                        label: 'Technician clocked out',
+                        description: 'Somebody whose role clocks out by hand (Settings › Shift timing) ended a shift. It carries who · branch, '
+                            .'clocked_in, clocked_out (against the schedule), total, and summary_lines: all of it, one a line, for a message.',
+                        isRaised: true,
+                    ),
                     // No separate "overdue" trigger: the server closes an overdue
                     // shift within a minute, so overdue is never a state a rule
                     // could observe. ended_by on clocked_out is the fact.

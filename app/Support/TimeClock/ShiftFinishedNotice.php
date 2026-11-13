@@ -4,32 +4,21 @@ namespace App\Support\TimeClock;
 
 use App\Models\TimeClockShift;
 use App\Models\User;
-use App\Models\WhatsAppNumber;
 use App\Support\Settings\SettingsResolver;
-use App\Support\Social\WhatsAppGroups;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
-use Throwable;
 
 /**
- * "Jose has finished his schedule" (Jose, 2026-11-13): for a role that clocks
- * out by hand (time_clock.manual_clock_out_roles), every finished shift goes
- * on WhatsApp, from the Reports number, to the managers of the person's
- * branch — whoever holds work_hours.approve at the same place.
- *
- * Inside the 24-hour window it is free text; outside it, the approved
- * template time_clock.shift_finished_template with four values, one a line.
- *
- * ponytail: sent here, not as an editable automation rule. A rule needs a
- * "managers of the person's branch" recipient in ActionRunner, which is the
- * Automations module's; add it there when somebody wants to edit the wording.
+ * "Jose has finished his schedule" (Jose, 2026-11-13): a role that clocks out
+ * by hand (time_clock.manual_clock_out_roles) is never closed by the schedule,
+ * and each finished shift raises time_clock.technician_clocked_out carrying
+ * the lines below. Who hears it is an Automations rule (A-1: WhatsApp to
+ * `branch_managers:` from the Reports number), so the wording is editable.
  */
 class ShiftFinishedNotice
 {
     public function __construct(
         private readonly TimeClock $clock,
         private readonly SettingsResolver $settings,
-        private readonly WhatsAppGroups $whatsApp,
     ) {}
 
     /** Does this person's role clock out by hand at their place? */
@@ -40,17 +29,13 @@ class ShiftFinishedNotice
         return $user->role_id !== null && in_array($user->role_id, $roles, true);
     }
 
-    /** @return Collection<int, User> who manages the person's branch */
-    public function managersOf(User $person): Collection
-    {
-        $place = $this->clock->placeOf($person);
-
-        return User::query()->where('is_active', true)->whereKeyNot($person->getKey())->get()
-            ->filter(fn (User $u) => $u->hasPermission('work_hours.approve') && $this->clock->placeOf($u)->is($place))
-            ->values();
-    }
-
-    /** @return array{0: string, 1: list<string>} the message, and the template's four values */
+    /**
+     * The shift in the branch's zone, one fact a field, and all of it as
+     * `summary_lines` for a message: "👷 Ana · Ohio", "🟢 In: 7:00 AM",
+     * "🔴 Out: 6:00 PM (1 h past schedule)", "⏱️ Total: 11 h".
+     *
+     * @return array{who: string, branch: ?string, clocked_in: string, clocked_out: string, total: string, summary_lines: string}
+     */
     public function compose(TimeClockShift $shift): array
     {
         $person = $shift->user;
@@ -60,7 +45,8 @@ class ShiftFinishedNotice
         $in = Carbon::parse($shift->clocked_in_at);
         $out = Carbon::parse($shift->clocked_out_at);
 
-        $who = $person->name.(($place->name ?? null) ? ' · '.$place->name : '');
+        $branch = $place->getAttribute('name');
+        $who = $person->name.($branch ? " · {$branch}" : '');
         $outLine = $this->clock->wallClock($out, $tz, $format);
         $window = WorkSchedule::windowFor($this->clock->scheduleFor($person), $in);
         if ($window !== null) {
@@ -69,33 +55,18 @@ class ShiftFinishedNotice
                 $outLine .= ' ('.self::length(abs($off)).($off > 0 ? ' past' : ' before').' schedule)';
             }
         }
-        $values = [$who, $this->clock->wallClock($in, $tz, $format), $outLine, self::length((int) $in->diffInMinutes($out, true))];
+        $inLine = $this->clock->wallClock($in, $tz, $format);
+        $total = self::length((int) $in->diffInMinutes($out, true));
 
-        $text = "🔔 *Shift finished*\n👷 {$values[0]}\n🟢 In: {$values[1]}\n🔴 Out: {$values[2]}\n⏱️ Total: {$values[3]}\n"
-            .'You can review, correct or approve this time in EzBizi.';
-
-        return [$text, $values];
-    }
-
-    /** @return int how many managers it went to */
-    public function send(TimeClockShift $shift): int
-    {
-        $number = WhatsAppNumber::forPurpose('reports');
-        if ($number === null || $shift->user === null || ! $this->isManual($shift->user)) {
-            return 0;
-        }
-        [$text, $values] = $this->compose($shift);
-        $template = (string) $this->settings->get('time_clock.shift_finished_template', $shift->user->organization);
-        $sent = 0;
-        foreach ($this->managersOf($shift->user) as $manager) {
-            try {
-                $sent += $this->whatsApp->messageToUser($number, $manager, $text, $template, $values) ? 1 : 0;
-            } catch (Throwable $e) {
-                report($e);   // one manager's refusal must not cost the others theirs
-            }
-        }
-
-        return $sent;
+        return [
+            'who' => $who,
+            'branch' => $branch,
+            'clocked_in' => $inLine,
+            'clocked_out' => $outLine,
+            'total' => $total,
+            'summary_lines' => "👷 {$who}\n🟢 In: {$inLine}\n🔴 Out: {$outLine}\n⏱️ Total: {$total}\n"
+                .'You can review, correct or approve this time in EzBizi.',
+        ];
     }
 
     /** 11 h, 1 h 5 m, 25 m */
