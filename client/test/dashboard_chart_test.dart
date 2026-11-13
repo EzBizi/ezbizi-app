@@ -27,7 +27,8 @@ void main() {
     await _pumpDashboard(tester, _comingSoon());
     expect(find.byType(DashboardChart), findsNothing);
     expect(find.byTooltip('Choose panels'), findsNothing);
-    expect(find.text('Coming soon'), findsOneWidget);
+    // Muse 10.5: a coming-soon box is not drawn at all.
+    expect(find.text('Coming soon'), findsNothing);
   });
 
   testWidgets('empty is a sentence, not a chart', (tester) async {

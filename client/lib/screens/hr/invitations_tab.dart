@@ -1,3 +1,4 @@
+import '../../core/mask.dart';
 import '../../widgets/list_search.dart';
 import 'dart:async';
 
@@ -131,12 +132,12 @@ class _InvitationsTabState extends State<InvitationsTab> {
         key: const ValueKey('tour-hr-invitations-search'),
         hint: 'Search by name or email',
         onChanged: (value) {
-            _searchDelay?.cancel();
-            _searchDelay = Timer(const Duration(milliseconds: 300), () {
-              _search = value.trim();
-              _load();
-            });
-          },
+          _searchDelay?.cancel();
+          _searchDelay = Timer(const Duration(milliseconds: 300), () {
+            _search = value.trim();
+            _load();
+          });
+        },
       ),
     ),
   );
@@ -417,7 +418,7 @@ class _InvitationsTabState extends State<InvitationsTab> {
     return [
       PersonCell(
         name: name.isEmpty ? email : name,
-        sub: name.isEmpty ? null : email,
+        sub: name.isEmpty ? null : maskEmail(email),
       ),
       Text(role?['name'] as String? ?? '—', overflow: TextOverflow.ellipsis),
       Text(scope?['name'] as String? ?? '—', overflow: TextOverflow.ellipsis),
