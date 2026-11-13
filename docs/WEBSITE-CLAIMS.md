@@ -3582,3 +3582,25 @@ on the service's behalf"; nothing added.
   real tenant setting a date inside EzBizi, the row inverts and a scheduling sentence can go on the homepage.
 - Ring groups 3; numbers with `override_on` 0. Still a group count, not the row's resolved fraction; held.
 - Publishers: still the same 7 connected providers; no 7th written. LSA external_id/timestamp: not measured.
+
+## 2026-11-12: 0.0.0563-0.0.0567 live, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0567 at `9b1056188`. No WP page modified since the 11-11 privacy edit
+(page 8, `post_modified_gmt` 2026-11-12 01:38). All 10 live pages match their post_content as text. www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+- **Monday connect (`a239b3037`, 0566): read only.** `MondayClient` refuses a mutation before sending; webhook
+  registration (a Monday write) is not built. An account the customer connects and EzBizi reads from, the
+  Workiz/Airtable precedent: no new processor, `/privacy/` unchanged. **Trigger:** the day EzBizi writes to Monday
+  (webhook registration or any mutation), re-read the "these are all of them" list.
+- Phone connect creates an "Everyone" ring group and a voicemail box (`876c25c3e`); every line gets a 911 address
+  from its branch, sent to Twilio (`14d746f80`). Ring groups stay on the do-not list; the business address going to
+  Twilio, which already carries the calls, adds no recipient. No page names E911.
+- Email HTML drawn by a real engine (`dbc02432c`), Sensitive tasks sealed behind an authenticator code
+  (`ff999a7c9`), Task Board Gallery, Integrations redesign and connect-finishes-setup, Workiz watchdog/clock,
+  Re-Scheduling GSM-7 texts, Reports spam marks, HR removed people, What's-been-built release bar: no page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502.
+Desk asked (11-12): 0563-0567 live status, Monday connection count, the 38 scheduled jobs by organization and
+origin (the scheduling row's open question), ring-group resolution, Training/LSA/7th publisher/Stripe.
