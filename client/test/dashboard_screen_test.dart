@@ -5,8 +5,6 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/dashboard_screen.dart';
-import 'package:ezbizi_client/widgets/dashboard_card.dart';
-import 'package:ezbizi_client/widgets/tag.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
