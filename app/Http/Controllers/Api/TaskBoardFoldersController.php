@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\TaskBoardFolder;
+use App\Models\Setting;
+use App\Support\Settings\SettingDefinition;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -48,6 +50,51 @@ class TaskBoardFoldersController extends Controller
         $folder->delete();
 
         return response()->json(null, 204);
+    }
+
+    /** The settings key: {"company:<name>" | "branch:<franchise id>": "#rrggbb"}. */
+    public const GROUP_COLOURS = 'tasks.board_group_colours';
+
+    /** The colours of the board list's automatic company and branch groups, the organization's. */
+    public function groupColours(Request $request): JsonResponse
+    {
+        return response()->json(['data' => (object) $this->readGroupColours($request)]);
+    }
+
+    /** Sets or clears (null) one group's colour; everyone in the organization sees it. */
+    public function updateGroupColours(Request $request): JsonResponse
+    {
+        $this->gate($request);
+        $data = $request->validate([
+            'group' => ['required', 'string', 'max:300', 'regex:/^(company|branch):/'],
+            'colour' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+        ]);
+        $colours = $this->readGroupColours($request);
+        if ($data['colour'] === null) {
+            unset($colours[$data['group']]);
+        } else {
+            $colours[$data['group']] = strtolower($data['colour']);
+        }
+        abort_if(count($colours) > 500, 422, 'Too many group colours.');
+        $org = (string) $request->user()->organization_id;
+        Setting::query()->updateOrCreate(
+            ['scope_type' => SettingDefinition::SCOPE_ORGANIZATION, 'scope_id' => $org, 'key' => self::GROUP_COLOURS],
+            ['organization_id' => $org, 'value' => $colours],
+        );
+
+        return response()->json(['data' => (object) $colours]);
+    }
+
+    /** @return array<string, string> */
+    private function readGroupColours(Request $request): array
+    {
+        $value = Setting::query()
+            ->where('scope_type', SettingDefinition::SCOPE_ORGANIZATION)
+            ->where('scope_id', (string) $request->user()->organization_id)
+            ->where('key', self::GROUP_COLOURS)
+            ->value('value');
+
+        return is_array($value) ? $value : [];
     }
 
     private function gate(Request $request): void

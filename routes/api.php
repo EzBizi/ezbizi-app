@@ -1049,6 +1049,9 @@ Route::prefix('v1')
         Route::post('task-board-folders', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'store']);
         Route::patch('task-board-folders/{folder}', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'update']);
         Route::delete('task-board-folders/{folder}', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'destroy']);
+        // The automatic company and branch groups' colours: one set per organization.
+        Route::get('task-board-group-colours', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'groupColours']);
+        Route::patch('task-board-group-colours', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'updateGroupColours']);
         Route::get('task-boards/{taskBoard}/attachments', [TaskBoardGalleryController::class, 'index']);
         Route::post('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'storeMember']);
         Route::patch('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'updateMember']);

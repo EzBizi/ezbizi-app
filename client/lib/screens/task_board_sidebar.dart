@@ -95,6 +95,11 @@ class _BoardTreeState extends State<BoardTree> {
   // ── Folders and colours (Jose 11-13, Monday parity) ───────────
 
   List<Map<String, dynamic>> _folders = const [];
+
+  /// The automatic company and branch groups' colours, the organization's:
+  /// keyed `company:` plus the company's name, or `branch:` plus its
+  /// franchise id.
+  Map<String, String> _groupColours = const {};
   String? _renamingFolder;
   final _folderName = TextEditingController();
 
@@ -108,6 +113,15 @@ class _BoardTreeState extends State<BoardTree> {
     final api = widget.api;
     if (api == null) return;
     final r = await api.get('/task-board-folders');
+    final g = await api.get('/task-board-group-colours');
+    if (mounted && g.ok && g.data is Map) {
+      setState(
+        () => _groupColours = {
+          for (final e in (g.data as Map).entries)
+            if (e.value is String) '${e.key}': e.value as String,
+        },
+      );
+    }
     if (!mounted || !r.ok) return;
     setState(
       () => _folders = [
@@ -142,6 +156,13 @@ class _BoardTreeState extends State<BoardTree> {
 
   Future<void> _patchBoard(String id, Map<String, dynamic> body) =>
       _call((api) => api.patch('/task-boards/$id', body));
+
+  Future<void> _setGroupColour(String group, String? colour) => _call(
+    (api) => api.patch('/task-board-group-colours', {
+      'group': group,
+      'colour': colour,
+    }),
+  );
 
   Future<void> _patchFolder(String id, Map<String, dynamic> body) =>
       _call((api) => api.patch('/task-board-folders/$id', body));
@@ -546,10 +567,27 @@ class _BoardTreeState extends State<BoardTree> {
       double indent,
       String? from,
     ) {
-      final colour = _colour(b['colour']);
+      // A branch's automatic board falls back to its branch's colour.
+      final branch = b['kind'] == 'franchise' && b['franchise_id'] != null
+          ? 'branch:${b['franchise_id']}'
+          : null;
+      final colour =
+          _colour(b['colour']) ??
+          (branch == null ? null : _colour(_groupColours[branch]));
       final id = '${b['id']}';
       return _contextMenu(
         [
+          if (branch != null)
+            SubmenuButton(
+              key: ValueKey('group-colour-$branch'),
+              leadingIcon: const Icon(Icons.storefront_outlined, size: 18),
+              menuChildren: _colourItems(
+                'group-colour-$branch',
+                _groupColours[branch],
+                (c) => _setGroupColour(branch, c),
+              ),
+              child: const Text('Branch colour'),
+            ),
           SubmenuButton(
             key: ValueKey('board-colour-$id'),
             leadingIcon: const Icon(Icons.palette_outlined, size: 18),
@@ -674,45 +712,71 @@ class _BoardTreeState extends State<BoardTree> {
       List<Widget> children, {
       double indent = 0,
       bool asHeader = false,
+      String? colourKey,
     }) {
       if (children.isEmpty) return const [];
       final open = searching || !_folded.contains(key);
-      return [
-        InkWell(
-          key: ValueKey('tasks-fold-$key'),
-          onTap: searching ? null : () => _fold(key),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              6 + indent,
-              asHeader ? 12 : 6,
-              10,
-              asHeader ? 4 : 6,
-            ),
-            child: Row(
-              children: [
+      final tint = colourKey == null ? null : _colour(_groupColours[colourKey]);
+      final row = InkWell(
+        key: ValueKey('tasks-fold-$key'),
+        onTap: searching ? null : () => _fold(key),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            6 + indent,
+            asHeader ? 12 : 6,
+            10,
+            asHeader ? 4 : 6,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                open ? Icons.arrow_drop_down : Icons.arrow_right,
+                size: 20,
+                color: tint ?? theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 2),
+              if (tint != null) ...[
                 Icon(
-                  open ? Icons.arrow_drop_down : Icons.arrow_right,
-                  size: 20,
-                  color: theme.colorScheme.onSurfaceVariant,
+                  Icons.circle,
+                  key: ValueKey('group-tint-$colourKey'),
+                  size: 10,
+                  color: tint,
                 ),
-                const SizedBox(width: 2),
-                Expanded(
-                  child: Text(
-                    asHeader ? label.toUpperCase() : label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: asHeader
-                        ? muted?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.6,
-                          )
-                        : theme.textTheme.labelLarge,
-                  ),
-                ),
+                const SizedBox(width: 6),
               ],
-            ),
+              Expanded(
+                child: Text(
+                  asHeader ? label.toUpperCase() : label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: asHeader
+                      ? muted?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                        )
+                      : theme.textTheme.labelLarge,
+                ),
+              ),
+            ],
           ),
         ),
+      );
+      return [
+        if (colourKey == null)
+          row
+        else
+          _contextMenu([
+            SubmenuButton(
+              key: ValueKey('group-colour-$colourKey'),
+              leadingIcon: const Icon(Icons.palette_outlined, size: 18),
+              menuChildren: _colourItems(
+                'group-colour-$colourKey',
+                _groupColours[colourKey],
+                (c) => _setGroupColour(colourKey, c),
+              ),
+              child: const Text('Change colour'),
+            ),
+          ], row),
         if (open) ...children,
       ];
     }
@@ -814,6 +878,7 @@ class _BoardTreeState extends State<BoardTree> {
             'company:$company',
             company.isEmpty ? 'Organization' : company,
             children,
+            colourKey: 'company:$company',
           );
         }(),
     ];

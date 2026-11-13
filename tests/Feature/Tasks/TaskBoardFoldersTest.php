@@ -57,4 +57,27 @@ class TaskBoardFoldersTest extends TestCase
         $this->signedInAs($b)->patchJson("/api/v1/task-board-folders/{$folder}", ['name' => 'Taken'])->assertNotFound();
         $this->assertSame([], $this->signedInAs($b)->getJson('/api/v1/task-board-folders')->json('data'));
     }
+
+    public function test_company_and_branch_group_colours_are_the_organizations_not_one_persons(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta');
+        $maker = $this->userWithRole($alpha, 'Maker', ['tasks.view', 'tasks.create_boards']);
+        $reader = $this->userWithRole($alpha, 'Reader', ['tasks.view']);
+        $other = $this->userWithRole($beta, 'Other', ['tasks.view', 'tasks.create_boards']);
+
+        $this->signedInAs($maker)->patchJson('/api/v1/task-board-group-colours', ['group' => 'company:A1 Chimney', 'colour' => '#00C875'])->assertOk();
+        $this->signedInAs($maker)->patchJson('/api/v1/task-board-group-colours', ['group' => 'branch:f-1', 'colour' => '#e2445c'])->assertOk();
+        $this->signedInAs($maker)->patchJson('/api/v1/task-board-group-colours', ['group' => 'company:A1 Chimney', 'colour' => 'purple'])->assertUnprocessable();
+        $this->signedInAs($reader)->patchJson('/api/v1/task-board-group-colours', ['group' => 'branch:f-1', 'colour' => null])->assertForbidden();
+
+        // A reader sees the colours the maker chose; another organization sees none.
+        $this->signedInAs($reader)->getJson('/api/v1/task-board-group-colours')->assertOk()
+            ->assertExactJson(['data' => ['company:A1 Chimney' => '#00c875', 'branch:f-1' => '#e2445c']]);
+        $this->signedInAs($other)->getJson('/api/v1/task-board-group-colours')->assertOk()->assertExactJson(['data' => []]);
+
+        $this->signedInAs($maker)->patchJson('/api/v1/task-board-group-colours', ['group' => 'branch:f-1', 'colour' => null])->assertOk();
+        $this->signedInAs($reader)->getJson('/api/v1/task-board-group-colours')
+            ->assertExactJson(['data' => ['company:A1 Chimney' => '#00c875']]);
+    }
 }
