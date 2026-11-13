@@ -50,6 +50,13 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
 
   /// Prefixes every key on the screen: `meta`, `google`.
   String get keyPrefix;
+
+  /// The keys a Marketing › Ads walkthrough points at, spelled out by each
+  /// source: tab_tours_test reads the source for `ValueKey('google-ads-range')`
+  /// as written, so a key built from [keyPrefix] would read as gone.
+  Key get rangeKey;
+  Key get searchKey;
+  Key get tableKey;
   String get accountsPath;
   String get campaignsPath;
 
@@ -316,7 +323,7 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
             ),
           ),
         PopupMenuButton<int>(
-          key: ValueKey('$keyPrefix-ads-range'),
+          key: rangeKey,
           initialValue: days,
           onSelected: (days) {
             setState(() => this.days = days);
@@ -332,7 +339,7 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
           ),
         ),
         ListSearch(
-          key: ValueKey('$keyPrefix-ads-search'),
+          key: searchKey,
           controller: search,
           hint: 'Search campaigns',
           width: 260,
@@ -455,7 +462,7 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
                     child: rows.isEmpty
                         ? Center(child: Text(_emptyText))
                         : ListView.separated(
-                            key: ValueKey('$keyPrefix-ads-table'),
+                            key: tableKey,
                             itemCount: rows.length,
                             separatorBuilder: (_, _) =>
                                 const Divider(height: 1),

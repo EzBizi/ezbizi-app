@@ -35,6 +35,12 @@ class _MetaCampaignsViewState
   @override
   String get keyPrefix => 'meta';
   @override
+  Key get rangeKey => const ValueKey('meta-ads-range');
+  @override
+  Key get searchKey => const ValueKey('meta-ads-search');
+  @override
+  Key get tableKey => const ValueKey('meta-ads-table');
+  @override
   String get accountsPath => '/meta-ads/accounts';
   @override
   String get campaignsPath => '/meta-ads/tree';

@@ -32,6 +32,12 @@ class _GoogleCampaignsViewState
   @override
   String get keyPrefix => 'google';
   @override
+  Key get rangeKey => const ValueKey('google-ads-range');
+  @override
+  Key get searchKey => const ValueKey('google-ads-search');
+  @override
+  Key get tableKey => const ValueKey('google-ads-table');
+  @override
   String get accountsPath => '/ads/accounts';
   @override
   String get campaignsPath => '/ads-manager/google/campaigns';
