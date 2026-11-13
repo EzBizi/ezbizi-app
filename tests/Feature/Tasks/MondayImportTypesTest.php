@@ -150,7 +150,7 @@ class MondayImportTypesTest extends TestCase
         $types = $this->inTenant($this->tenant['org'], fn () => TaskColumn::query()->orderBy('position')->pluck('type', 'name')->all());
         $this->assertSame([
             'Area' => 'status', 'Skills' => 'tags', 'Production job' => 'checkbox', 'Job Cost' => 'currency', 'Link' => 'url',
-            'Total Cost' => 'text', 'Helper' => 'person', 'Notes' => 'long_text',
+            'Total Cost' => 'text', 'Helper' => 'people', 'Notes' => 'long_text',
         ], $types, 'Monday order; no column for name, status, Person, Due Date, files or the creation log');
 
         $area = $this->column('Area');
@@ -166,7 +166,7 @@ class MondayImportTypesTest extends TestCase
             'Job Cost' => 1250.0,
             'Link' => 'https://example.com/q',
             'Total Cost' => '1375',
-            'Helper' => $this->jose->id,
+            'Helper' => [$this->jose->id],
             'Notes' => "Two lines\nof notes",
         ], array_intersect_key($this->values(), array_flip(['Area', 'Skills', 'Production job', 'Job Cost', 'Link', 'Total Cost', 'Helper', 'Notes'])));
 
@@ -206,7 +206,7 @@ class MondayImportTypesTest extends TestCase
         $this->assertSame('currency', $this->column('Job Cost')->type);
         $this->assertSame(999.0, $values['Job Cost'], 'a value already here is never overwritten');
         $this->assertTrue($values['Production job']);
-        $this->assertSame($this->jose->id, $values['Helper']);
+        $this->assertSame([$this->jose->id], $values['Helper']);
 
         // Twice is once.
         $this->artisan('ezbizi:monday-sync')->assertSuccessful();

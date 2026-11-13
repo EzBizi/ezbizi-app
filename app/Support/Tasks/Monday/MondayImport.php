@@ -915,7 +915,8 @@ final class MondayImport
         $candidate = match ($column->type) {
             'status', 'dropdown' => $this->option($column, is_array($value) ? (string) ($value[0] ?? '') : (string) $value),
             'tags' => array_values(array_unique(array_filter(array_map(fn ($l) => $this->option($column, (string) $l), (array) $value)))) ?: null,
-            'person' => $this->personFor($board, (array) $value),
+            'person' => $this->peopleFor($board, (array) $value)[0] ?? null,
+            'people' => $this->peopleFor($board, (array) $value) ?: null,
             'checkbox' => is_bool($value) ? $value : in_array(mb_strtolower((string) $value), ['true', 'yes', '1', 'v'], true),
             'number', 'currency' => is_numeric($value) ? (float) $value : (is_numeric($n = preg_replace('/[$,\s]/', '', $words($value))) ? (float) $n : null),
             'date' => is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}/', $value) ? substr($value, 0, 10) : null,
@@ -957,18 +958,29 @@ final class MondayImport
         return $o['id'];
     }
 
-    /** A person column holds one person here: the first Monday person this board can take. */
-    private function personFor(TaskBoard $board, array $emails): ?string
+    /**
+     * The Monday people this board can name, as user ids (a People column
+     * holds them all; an old single Person column the first). On a custom
+     * board somebody named on Monday's board joins it, as an assignee does.
+     *
+     * @return list<string>
+     */
+    private function peopleFor(TaskBoard $board, array $emails): array
     {
         $this->assignable[$board->id] ??= $this->boards->assignable($board)->pluck('id')->all();
+        $out = [];
         foreach ($emails as $email) {
             $user = $this->person((string) $email);
+            if ($user !== null && $user->is_active && $board->kind === TaskBoard::KIND_CUSTOM && ! in_array($user->id, $this->assignable[$board->id], true)) {
+                $this->members($board, [['email' => $user->email, 'role' => 'member']]);
+                $this->assignable[$board->id] = $this->boards->assignable($board)->pluck('id')->all();
+            }
             if ($user !== null && in_array($user->id, $this->assignable[$board->id], true)) {
-                return $user->id;
+                $out[] = $user->id;
             }
         }
 
-        return null;
+        return array_values(array_unique($out));
     }
 
     /**

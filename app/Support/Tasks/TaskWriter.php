@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\TasksController;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskAssignee;
@@ -20,6 +21,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Jobs\JobTechnicianSync;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -721,14 +723,19 @@ class TaskWriter
                 if ($announce) {
                     // Monday's "when Area changes to Connecticut" (parity audit 2026-11-13):
                     // one event per column that changed, its value as a person reads it.
-                    $this->events->emitAfterCommit('task.column_changed', $task, [
+                    $payload = [
                         'assignee_user_id' => $task->assignee_user_id,
                         'assignee_user_ids' => $this->ownerIds($task),
                         'board_id' => $task->board_id,
                         'board_name' => $task->board?->name,
                         'before' => ['value' => $from],
                         'after' => $this->snapshot($task) + ['column_id' => $columnId, 'column' => $columns[$columnId]->name, 'value' => $to],
-                    ]);
+                    ];
+                    // In the task's own organization: a command's outer transaction can commit after its tenant run ended.
+                    DB::afterCommit(fn () => app(TenantContext::class)->run(
+                        Organization::query()->withoutGlobalScopes()->findOrFail($task->organization_id),
+                        fn () => $this->events->emit('task.column_changed', $task, $payload),
+                    ));
                 }
             }
         }

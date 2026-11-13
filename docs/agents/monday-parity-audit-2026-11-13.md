@@ -40,7 +40,7 @@ Read-only on Monday. Sources, all measured 2026-11-13 as Jose (owner on every ta
 | other status | `status` column, options = Monday labels (id `monday-<index>`), colours, Monday's order | exists (was text) |
 | dropdown / tags | `tags`, options = Monday labels | exists (was text) |
 | people: the Person/Owner column | assignees (all of them) | exists |
-| people: other columns | `person` (first person this board can take) | exists; **multi-person: GAP, UI-UX building `people`** |
+| people: other columns | `people` (every person this board can name; on a custom board they join it) | exists (UI-UX `people`, badc09303) |
 | date (Due Date) | due date | exists |
 | date (others) | `date`; "with time" (Toula's Due Date only) → due date | exists |
 | timeline | `timeline` (the one called Timeline also sets the due date when there is none, as on 11-12) | exists |
@@ -122,6 +122,14 @@ Nehorai Maamari (CT), Moshe Hay Zion (IL, Wisconsin), Ron Paz (MA), deleted memb
 deleted member 76893540 ("David", Analorena), Monday user 78455682 (Liraz - DMV, not in the
 people list).
 
+Recreation: `ezbizi:monday-automations --spec=docs/agents/monday-automations-2026-11-13.json
+--org=<org>` writes one ordinary Automations rule per recipe (109; 37 not carried: All Calls,
+webhooks, dependency recipes on templates), on the board the import made, first condition
+`board_id eq <board>` (so it shows in the board's ⚡ Automate and in Automations), on/off as on
+Monday. A recipe naming something not here (a person with no account, a group Monday itself no
+longer has — Outgoing Calls' 7 Area rules point at NW's group id) is made **off** with what is
+missing in its description. Once each (`monday:<id>` in the description).
+
 ## 5. Boards → EzBizi target ("as we have it on Monday")
 
 Every board comes over as itself, same name, groups, columns, labels. Personal boards → that
@@ -130,7 +138,17 @@ branch. NW - Nationwide → its own board, as on Monday. Templates (3) skipped. 
 unreadable by the API, skipped. Sensitive items (logins, bank, card) imported and locked.
 The per-board appendix lists each board's columns, labels and automations.
 
-## 6. Open questions for Jose (only what cannot be mirrored as-is)
+## 6. Run order (the desk, after merging and deploying)
+
+1. `php artisan migrate` (monday_outbox) — part of the deploy.
+2. `ezbizi:monday-import-boards --map=docs/agents/monday-board-map-2026-11-13.json --dry-run`, then
+   without `--dry-run` (NW last if run per board: ~1 h of Monday reads).
+3. `ezbizi:monday-automations --spec=docs/agents/monday-automations-2026-11-13.json --org=019fd712-74fd-712c-b179-fd88052cc371`.
+4. `ezbizi:monday-webhooks` (registers 9 events per imported board; `--dry-run` lists them).
+5. The scheduler then runs `ezbizi:monday-sync` (10 min + nightly full), `ezbizi:monday-push`
+   (every minute) and `ezbizi:tasks-dates-arrived` (hourly).
+
+## 7. Open questions for Jose (only what cannot be mirrored as-is)
 
 1. **All Calls** (archived on Monday, 52,684 call rows, 31 disabled automations): mirror as an
    archived board, or leave it (EzBizi Phone already holds the calls)? Default: left out.

@@ -252,7 +252,7 @@ final class MondayPush
         return match ($type) {
             'status', 'color' => ['label' => is_string($value) ? ($label($value) ?? (string) ColumnConverter::words($column, $v)) : (string) ColumnConverter::words($column, $v)],
             'dropdown', 'tags' => ['labels' => array_values(array_filter(array_map($label, (array) $value))) ?: array_map('trim', explode(',', (string) ColumnConverter::words($column, $v)))],
-            'people', 'multiple-person' => ['personsAndTeams' => $this->people(array_filter([is_string($value) ? $value : null]))],
+            'people', 'multiple-person' => ['personsAndTeams' => $this->people(is_array($value) ? array_values($value) : array_filter([is_string($value) ? $value : null]))],
             'date' => ['date' => substr((string) $value, 0, 10)],
             'timeline', 'timerange' => is_array($value) && isset($value['from'], $value['to']) ? ['from' => $value['from'], 'to' => $value['to']] : '',
             'numbers', 'numeric', 'rating' => is_numeric($value) ? (string) $value : '',

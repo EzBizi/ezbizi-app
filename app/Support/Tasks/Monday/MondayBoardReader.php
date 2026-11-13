@@ -52,7 +52,7 @@ final class MondayBoardReader
      */
     public const TYPES = [
         'status' => 'status', 'color' => 'status', 'dropdown' => 'tags', 'tags' => 'tags',
-        'people' => 'person', 'multiple-person' => 'person', 'date' => 'date', 'timeline' => 'timeline', 'timerange' => 'timeline',
+        'people' => 'people', 'multiple-person' => 'people', 'date' => 'date', 'timeline' => 'timeline', 'timerange' => 'timeline',
         'numbers' => 'number', 'numeric' => 'number', 'rating' => 'number', 'checkbox' => 'checkbox', 'boolean' => 'checkbox',
         'link' => 'url', 'email' => 'email', 'phone' => 'phone', 'long_text' => 'long_text', 'long-text' => 'long_text', 'text' => 'text',
         'name' => null, 'subtasks' => null, 'file' => null, 'creation_log' => null, 'last_updated' => null, 'item_id' => null,
@@ -489,12 +489,12 @@ final class MondayBoardReader
             switch ($type) {
                 case null:
                     break;
-                case 'person':
+                case 'people':
                     $people = $emails($c);
                     if ($id === $assignee) {
                         array_push($out['people'], ...$people);
                     } elseif ($people !== []) {
-                        $out['columns'][$title] = $typed('person', $people);
+                        $out['columns'][$title] = $typed('people', $people);
                     }
                     break;
                 case 'date':
