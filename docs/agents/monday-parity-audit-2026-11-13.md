@@ -89,9 +89,9 @@ Read-only on Monday. Sources, all measured 2026-11-13 as Jose (owner on every ta
    Garage Doors (STUCK_RED), A1 Garage Doors (DARK_ORANGE), Crestline Home (DARK_RED, 6 empty "New
    Folder"), AngiSweep (SUNSET, 6 empty), Roofirst (BRIGHT_GREEN, 7 empty). Email marketing (empty).
    At workspace root: Shoval, Chaim, Bar, Merav - All Operations, Sharper - Rise-OFFICE, Users,
-   Job Roles, All Calls, Toula. **GAP: Task Board has no folders** (UI-UX adding folder/board
-   colours and user folders). The reader exposes `FOLDER_COLOURS` (name → hex) so the import can
-   place each board once the model exists.
+   Job Roles, All Calls, Toula. **Mapped** (`7d6d6bd93`, on UI-UX's task_board_folders 9b7362183): the
+   import makes the same folder chain by name with Monday's colours (FOLDER_COLOURS name → hex) and
+   puts each board in it; a board moved here stays where it was put.
 5. **Private-board locks**: every task board is `private` on Monday except Users / Job Roles /
    Analytics Dashboard (public). EzBizi custom boards are private-with-members; personal boards
    are private to their owner. Same.
