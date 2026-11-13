@@ -235,4 +235,35 @@ void main() {
     expect(asked.single, endsWith('/task-boards/b-1/people/u-2'));
     expect(find.byKey(const ValueKey('person-card-u-2')), findsOneWidget);
   });
+
+  testWidgets('a Dependency cell ticks tasks in a card under it, searched '
+      'by title', (tester) async {
+    final changes = <Object?>[];
+    await pump(
+      tester,
+      SizedBox(
+        width: 240,
+        child: ColumnCell(
+          column: column('dependency'),
+          value: const ['t2'],
+          people: const {},
+          formats: DisplayFormats.fallback,
+          tasks: const [('t2', 'Measure the flue'), ('t3', 'Place the order')],
+          onChanged: changes.add,
+        ),
+      ),
+    );
+    expect(find.text('1 task'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('column-cell-c1')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('task-pick-search-c1')),
+      'order',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-pick-c1-t2')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('task-pick-c1-t3')).first);
+    await tester.pumpAndSettle();
+    expect(changes.single, ['t2', 't3']);
+  });
 }

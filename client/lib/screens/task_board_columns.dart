@@ -569,6 +569,7 @@ class ColumnCell extends StatelessWidget {
     this.api,
     this.boardId,
     this.onFilter,
+    this.tasks,
   });
 
   /// Searches customers and jobs for a link column's card.
@@ -582,6 +583,9 @@ class ColumnCell extends StatelessWidget {
 
   /// "Filter by this value" on the cell's right-click menu.
   final VoidCallback? onFilter;
+
+  /// The tasks a Connect or Dependency cell can pick from, (id, title).
+  final List<(String, String)>? tasks;
 
   /// Whether the cell is edited in place, with its own right-click menu.
   static bool editsInPlace(BoardColumn c, {required bool editable}) =>
@@ -627,6 +631,17 @@ class ColumnCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = _display(context);
+    if ((column.type == 'connect' || column.type == 'dependency') &&
+        onChanged != null &&
+        tasks != null) {
+      return TaskPickCell(
+        column: column,
+        value: value,
+        tasks: tasks!,
+        onChanged: onChanged!,
+        child: shown,
+      );
+    }
     if (onChanged == null || _ownControl.contains(column.type)) return shown;
     return InlineCellEditor(
       api: api,
@@ -2693,6 +2708,103 @@ class PeopleAvatars extends StatelessWidget {
           fontSize: 10,
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+/// A Connect or Dependency cell: a click opens a small card under it to tick
+/// the tasks it points at, with a search on top (Monday's item picker).
+class TaskPickCell extends StatefulWidget {
+  const TaskPickCell({
+    super.key,
+    required this.column,
+    required this.value,
+    required this.tasks,
+    required this.onChanged,
+    required this.child,
+  });
+
+  final BoardColumn column;
+  final Object? value;
+  final List<(String, String)> tasks;
+  final ValueChanged<Object?> onChanged;
+  final Widget child;
+
+  @override
+  State<TaskPickCell> createState() => _TaskPickCellState();
+}
+
+class _TaskPickCellState extends State<TaskPickCell> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  List<String> get _ids => [
+    for (final id in (widget.value as List?) ?? const []) '$id',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _search.text.trim().toLowerCase();
+    final ids = _ids;
+    final shown = [
+      for (final (id, title) in widget.tasks)
+        if (q.isEmpty || title.toLowerCase().contains(q)) (id, title),
+    ].take(30);
+    return MenuAnchor(
+      menuChildren: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+          child: SizedBox(
+            width: 260,
+            child: TextField(
+              key: ValueKey('task-pick-search-${widget.column.id}'),
+              controller: _search,
+              autofocus: true,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Find a task',
+                prefixIcon: Icon(Icons.search, size: 18),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ),
+        for (final (id, title) in shown)
+          CheckboxMenuButton(
+            key: ValueKey('task-pick-${widget.column.id}-$id'),
+            value: ids.contains(id),
+            closeOnActivate: false,
+            onChanged: (on) {
+              final next = [
+                for (final x in ids)
+                  if (x != id) x,
+                if (on == true) id,
+              ];
+              widget.onChanged(next.isEmpty ? null : next);
+            },
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Text(title, overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        if (shown.isEmpty)
+          const MenuItemButton(onPressed: null, child: Text('No tasks match')),
+      ],
+      builder: (context, menu, _) => InkWell(
+        key: ValueKey('column-cell-${widget.column.id}'),
+        onTap: () {
+          if (menu.isOpen) return menu.close();
+          _search.clear();
+          menu.open();
+        },
+        child: Align(alignment: Alignment.centerLeft, child: widget.child),
       ),
     );
   }

@@ -3542,6 +3542,15 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                             api: widget.api,
                             boardId: '${_board!['id']}',
                             onFilter: () => _filterTo(c.id, _valueOf(c.id, t)),
+                            // Dependency: this board's other tasks; Connect
+                            // starts from them too.
+                            tasks: c.type == 'connect' || c.type == 'dependency'
+                                ? [
+                                    for (final o in _tasks)
+                                      if (o['id'] != t['id'])
+                                        ('${o['id']}', taskTitle(o)),
+                                  ]
+                                : null,
                             onAutoAssign: _canEdit && c.type == 'status'
                                 ? () => _suggestLabel(t, c.id)
                                 : null,
