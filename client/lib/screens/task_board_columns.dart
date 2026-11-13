@@ -570,6 +570,7 @@ class ColumnCell extends StatelessWidget {
     this.boardId,
     this.onFilter,
     this.tasks,
+    this.onAddFile,
   });
 
   /// Searches customers and jobs for a link column's card.
@@ -586,6 +587,9 @@ class ColumnCell extends StatelessWidget {
 
   /// The tasks a Connect or Dependency cell can pick from, (id, title).
   final List<(String, String)>? tasks;
+
+  /// A Files cell's "+": picks a file and adds it to the task.
+  final VoidCallback? onAddFile;
 
   /// Whether the cell is edited in place, with its own right-click menu.
   static bool editsInPlace(BoardColumn c, {required bool editable}) =>
@@ -640,6 +644,21 @@ class ColumnCell extends StatelessWidget {
         tasks: tasks!,
         onChanged: onChanged!,
         child: shown,
+      );
+    }
+    if (column.type == 'files' && onAddFile != null) {
+      return Row(
+        children: [
+          Expanded(child: shown),
+          IconButton(
+            key: ValueKey('column-file-add-${column.id}'),
+            tooltip: 'Add a file',
+            visualDensity: VisualDensity.compact,
+            iconSize: 18,
+            icon: const Icon(Icons.attach_file),
+            onPressed: onAddFile,
+          ),
+        ],
       );
     }
     if (onChanged == null || _ownControl.contains(column.type)) return shown;

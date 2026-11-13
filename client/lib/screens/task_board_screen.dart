@@ -3551,6 +3551,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                         ('${o['id']}', taskTitle(o)),
                                   ]
                                 : null,
+                            onAddFile: _canEdit && c.type == 'files'
+                                ? () => _addFileTo(t, c)
+                                : null,
                             onAutoAssign: _canEdit && c.type == 'status'
                                 ? () => _suggestLabel(t, c.id)
                                 : null,
@@ -3795,6 +3798,32 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         ),
       ),
     );
+  }
+
+  /// A Files cell's "+": the file goes up as an update on the task (the
+  /// same upload as the sidebar's), then joins the cell.
+  Future<void> _addFileTo(_Json t, BoardColumn c) async {
+    final picked = await pickTaskUpdateFile();
+    if (picked == null || !mounted) return;
+    final refused = taskUpdateFileRefusal(picked.name, picked.bytes.length, 0);
+    if (refused != null) return _say(refused);
+    final res = await widget.api.postFiles(
+      '/tasks/${t['id']}/updates',
+      'files',
+      [(name: picked.name, bytes: picked.bytes)],
+    );
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    final added = [
+      for (final a
+          in ((res.body['data'] as Map?)?['attachments'] as List?) ?? const [])
+        if (a is Map && a['id'] != null) '${a['id']}',
+    ];
+    if (added.isEmpty) return;
+    final had = [
+      for (final id in (columnValue(t, c) as List?) ?? const []) '$id',
+    ];
+    await _setValue(t, c.id, [...had, ...added]);
   }
 
   // ── Row drag: Esc cancels, the list scrolls near its edges ─────────

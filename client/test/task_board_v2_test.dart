@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/task_board_files.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +36,9 @@ void main() {
   var canEdit = true;
   var refuseBoardPatch = false;
 
+  /// Adds a Files column, c-files.
+  var withFiles = false;
+
   /// Top-level tasks added after the three every test has.
   var extra = <Map<String, dynamic>>[];
 
@@ -59,7 +64,12 @@ void main() {
         'updates_count': 0,
         'subtasks_count': 2,
         'subtasks_done': 1,
-        'values': {'c-type': 'o-masonry', 'c-hours': 3.5, 'c-ok': false},
+        'values': {
+          'c-type': 'o-masonry',
+          'c-hours': 3.5,
+          'c-ok': false,
+          if (withFiles) 'c-files': ['a-0'],
+        },
       },
       {
         'id': 't2',
@@ -99,7 +109,11 @@ void main() {
     return ApiClient(
       client: MockClient((request) async {
         final path = request.url.path.replaceFirst('/api/v1', '');
-        final body = request.body.isEmpty ? null : jsonDecode(request.body);
+        final multipart =
+            request.headers['content-type']?.startsWith('multipart') ?? false;
+        final body = request.body.isEmpty || multipart
+            ? null
+            : jsonDecode(request.body);
         if (request.method != 'GET') log.add((request.method, path, body));
         if (path.endsWith('/me')) {
           return json({
@@ -254,6 +268,15 @@ void main() {
                     'hidden': false,
                     'settings': <String, dynamic>{},
                   },
+                if (withFiles)
+                  {
+                    'id': 'c-files',
+                    'name': 'Files',
+                    'type': 'files',
+                    'position': 50,
+                    'hidden': false,
+                    'settings': <String, dynamic>{},
+                  },
                 {
                   'id': 'c-gone',
                   'name': 'Hidden one',
@@ -290,6 +313,16 @@ void main() {
               ...?(body as Map?)?.cast<String, dynamic>(),
             },
           });
+        }
+        if (path == '/tasks/t1/updates' && multipart) {
+          return json({
+            'data': {
+              'id': 'up-1',
+              'attachments': [
+                {'id': 'a-9', 'name': 'photo.jpg'},
+              ],
+            },
+          }, 201);
         }
         if (path == '/tasks' && request.method == 'POST') {
           final m = body as Map<String, dynamic>;
@@ -343,6 +376,7 @@ void main() {
 
   setUp(() {
     builtins = null;
+    withFiles = false;
     canEdit = true;
     refuseBoardPatch = false;
     extra = [];
@@ -975,5 +1009,26 @@ void main() {
     await g.up();
     await tester.pumpAndSettle();
     expect(after, greaterThan(before));
+  });
+
+  testWidgets("a Files cell's + uploads the file to the task and adds it to "
+      'the cell', (tester) async {
+    withFiles = true;
+    pickTaskUpdateFile = () async =>
+        PickedBytes('photo.jpg', utf8.encode('jpeg'));
+    addTearDown(() => pickTaskUpdateFile = () async => null);
+    await pump(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('column-file-add-c-files')).first,
+    );
+    await tester.pumpAndSettle();
+    final writes = [
+      for (final (m, p, b) in log)
+        if (m != 'GET') '$m $p ${b == null ? '' : jsonEncode(b)}',
+    ];
+    expect(writes, [
+      'POST /tasks/t1/updates ',
+      'PATCH /tasks/t1 {"values":{"c-files":["a-0","a-9"]}}',
+    ]);
   });
 }
