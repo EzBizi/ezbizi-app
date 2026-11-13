@@ -12,17 +12,53 @@ import 'package:http/testing.dart';
 /// Option A of docs/previews/integrations-cards.html (Jose, 2026-11-12):
 /// the old cards plus a note with one line per CAUSE, never one per account.
 void main() {
+  testWidgets('nine branches with one cause are one plain line at the bottom, '
+      'the URLs only behind Show steps', (tester) async {
+    await _pump(tester, overview: _overview(workiz: 9));
+
+    expect(
+      find.text('9 Workiz branches need a webhook rule in Workiz (one-time).'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('https://'), findsNothing);
+    expect(find.text('Try again'), findsNothing);
+    // The last thing on the page: below every category section.
+    final attention = tester.getTopLeft(
+      find.byKey(const ValueKey('integrations-section:attention')),
+    );
+    for (final e
+        in find
+            .byWidgetPredicate(
+              (w) =>
+                  w.key is ValueKey &&
+                  '${(w.key as ValueKey).value}'.startsWith('provider:'),
+            )
+            .evaluate()) {
+      expect(
+        tester.getTopLeft(find.byWidget(e.widget)).dy,
+        lessThan(attention.dy),
+      );
+    }
+
+    await tester.tap(
+      find.byKey(const ValueKey('integrations-details:workiz:workiz_webhook')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Show steps'), findsOneWidget);
+    expect(find.textContaining('webhook/uuid-3'), findsOneWidget);
+  });
+
   testWidgets('fourteen A2P failures are one blue waiting line, no button', (
     tester,
   ) async {
     await _pump(tester, overview: _overview(phoneLines: 14));
 
-    final causes = find.byKey(const ValueKey('integrations-cause:phone:texting'));
+    final causes = find.byKey(
+      const ValueKey('integrations-cause:phone:texting'),
+    );
     expect(causes, findsOneWidget);
     expect(
-      find.text(
-        "14 phone lines can't text yet: waiting on Twilio. Nothing to do.",
-      ),
+      find.text("14 phone lines can't text yet: waiting on Twilio."),
       findsOneWidget,
     );
     expect(
@@ -36,7 +72,9 @@ void main() {
     await _pump(tester, overview: _overview(bluesky: true));
 
     expect(
-      find.text('ezbizi.bsky.social: Bluesky no longer accepts this connection.'),
+      find.text(
+        'ezbizi.bsky.social: Bluesky no longer accepts this connection.',
+      ),
       findsOneWidget,
     );
     final fix = find.byKey(const ValueKey('integrations-fix:bluesky:sign_in'));
@@ -82,7 +120,10 @@ void main() {
 
     expect(find.byKey(const ValueKey('integrations-note')), findsNothing);
     expect(find.byKey(const ValueKey('provider:pinterest')), findsOneWidget);
-    expect(find.byKey(const ValueKey('last-checked:pinterest')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('last-checked:pinterest')),
+      findsOneWidget,
+    );
     expect(find.text('Try again'), findsNothing);
   });
 }
@@ -93,11 +134,13 @@ Map<String, dynamic> _check(
   String? reason,
   Map<String, dynamic>? fix,
   String? waitingOn,
+  String? summary,
 }) => {
   'key': key,
   'label': key,
   'state': state,
   'reason': reason,
+  'summary': summary,
   'fix': fix,
   'checked_at': null,
   'next_retry_at': DateTime.now().toUtc().toIso8601String(),
@@ -127,6 +170,7 @@ Map<String, dynamic> _overview({
   int phoneLines = 0,
   bool bluesky = false,
   int branchless = 0,
+  int workiz = 0,
 }) {
   final apps = <Map<String, dynamic>>[
     {
@@ -170,6 +214,26 @@ Map<String, dynamic> _overview({
             fix: {'action': 'reconnect', 'label': 'Reconnect'},
           ),
         ]),
+      ],
+    });
+  }
+  if (workiz > 0) {
+    apps.add({
+      'provider': 'workiz',
+      'label': 'Workiz',
+      'connections': [
+        for (var i = 0; i < workiz; i++)
+          _conn('wz-$i', 'workiz', 'Branch $i', 'broken', [
+            _check(
+              'workiz_webhook',
+              'fail',
+              reason:
+                  'Workiz has no API for this: add a rule "post webhook" to '
+                  'https://app.ezbizi.com/api/v1/social/workiz/webhook/uuid-$i.',
+              summary: 'needs a webhook rule in Workiz (one-time)',
+              fix: {'action': 'retry', 'label': 'Try again'},
+            ),
+          ]),
       ],
     });
   }
@@ -262,7 +326,9 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: IntegrationsScreen(api: api, session: session)),
+      home: Scaffold(
+        body: IntegrationsScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();

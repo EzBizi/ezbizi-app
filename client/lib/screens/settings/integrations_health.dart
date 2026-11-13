@@ -30,6 +30,7 @@ class HealthCause {
     required this.fix,
     required this.labels,
     required this.ids,
+    this.summary,
   });
 
   final String provider;
@@ -44,24 +45,47 @@ class HealthCause {
   final List<String> labels;
   final List<String> ids;
 
+  /// The server's plain words for the cause (no URLs, ids or API errors);
+  /// null from an older server, which falls back to [reason].
+  final String? summary;
+
+  /// The raw reason per account, for "Show steps" / "Details" only.
+  final List<String> details = [];
+
   int get count => ids.length;
 
   /// "14 phone lines", "3 Google Ads accounts", or the one account's name.
   String get subject {
     if (count == 1) return labels.first;
     if (provider == 'phone') return '$count phone lines';
+    if (provider == 'workiz') return '$count Workiz branches';
     return '$count $appLabel accounts';
+  }
+
+  /// "needs …" / "has …" for one, "need …" / "have …" for several.
+  String get _verb {
+    final s = summary!;
+    if (count == 1) return s;
+    if (s.startsWith('needs ')) return 'need ${s.substring(6)}';
+    if (s.startsWith('has ')) return 'have ${s.substring(4)}';
+    return s;
   }
 
   String get sentence {
     if (waitingOn != null) {
       final what = checkKey == 'texting'
           ? "can't text yet"
+          : summary != null
+          ? _verb
           : 'wait${count == 1 ? 's' : ''}';
-      return '$subject $what: waiting on $waitingOn. Nothing to do.';
+      return '$subject $what: waiting on $waitingOn.';
     }
+    if (summary != null) return '$subject $_verb.';
     return '$subject: $reason';
   }
+
+  /// Whether there is more to read than the sentence.
+  bool get hasDetails => details.any((d) => d.isNotEmpty && d != summary);
 }
 
 List<Map<String, dynamic>> _apps(Map<String, dynamic>? overview) => [
@@ -90,7 +114,8 @@ List<HealthCause> groupCauses(Map<String, dynamic>? overview) {
       for (final k in _checks(c)) {
         if (k['state'] != 'fail') continue;
         final reason = (k['reason'] as String?) ?? '${k['label']} failed.';
-        final id = '$provider|${k['key']}|$reason';
+        final summary = k['summary'] as String?;
+        final id = '$provider|${k['key']}|${summary ?? reason}';
         final cause = by.putIfAbsent(
           id,
           () => HealthCause(
@@ -102,8 +127,10 @@ List<HealthCause> groupCauses(Map<String, dynamic>? overview) {
             fix: k['fix'] as Map<String, dynamic>?,
             labels: [],
             ids: [],
+            summary: summary,
           ),
         );
+        cause.details.add(reason);
         cause.labels.add(c['label'] as String? ?? '');
         cause.ids.add(c['id'] as String? ?? '');
       }
@@ -122,9 +149,9 @@ List<Map<String, dynamic>> missingBranches(Map<String, dynamic>? overview) => [
   for (final app in _apps(overview))
     for (final c in _connections(app))
       if (c['status'] == 'setup' &&
-          _checks(c).any(
-            (k) => (k['fix'] as Map?)?['action'] == 'choose_branch',
-          ))
+          _checks(
+            c,
+          ).any((k) => (k['fix'] as Map?)?['action'] == 'choose_branch'))
         c,
 ];
 
@@ -146,9 +173,7 @@ enum StatusTone { ok, broken, waiting, none }
   bool failing(Map<String, dynamic> c, {required bool external}) =>
       c['status'] != 'off' &&
       _checks(c).any(
-        (k) =>
-            k['state'] == 'fail' &&
-            (k['waiting_on'] != null) == external,
+        (k) => k['state'] == 'fail' && (k['waiting_on'] != null) == external,
       );
 
   final broken = rows.where((c) => failing(c, external: false)).length;
@@ -160,9 +185,9 @@ enum StatusTone { ok, broken, waiting, none }
   }
   final waiting = rows.where((c) => failing(c, external: true)).toList();
   if (waiting.isNotEmpty) {
-    final who = _checks(waiting.first).firstWhere(
-      (k) => k['waiting_on'] != null,
-    )['waiting_on'];
+    final who = _checks(
+      waiting.first,
+    ).firstWhere((k) => k['waiting_on'] != null)['waiting_on'];
     return (
       '${rows.length} ${rows.length == 1 ? 'line' : 'lines'} · '
           'texting waits on $who',
@@ -195,7 +220,9 @@ Color statusColour(BuildContext context, StatusTone tone) {
   };
 }
 
-/// The note above the grid. Draws nothing when there is nothing to say.
+/// "Needs attention", the LAST section of the screen (Jose, 2026-11-13):
+/// one plain line per cause; raw detail only behind Show steps / Details.
+/// Draws nothing when there is nothing to say.
 class IntegrationsHealthNote extends StatelessWidget {
   const IntegrationsHealthNote({
     super.key,
@@ -226,7 +253,7 @@ class IntegrationsHealthNote extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       key: const ValueKey('integrations-note'),
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(top: 4, bottom: 16),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -236,6 +263,14 @@ class IntegrationsHealthNote extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 4),
+            child: Text(
+              'Needs attention · ${causes.length + (branchless.isEmpty ? 0 : 1)}',
+              key: const ValueKey('integrations-section:attention'),
+              style: theme.textTheme.titleSmall,
+            ),
+          ),
           for (final c in causes)
             Padding(
               key: ValueKey('integrations-cause:${c.provider}:${c.checkKey}'),
@@ -257,9 +292,53 @@ class IntegrationsHealthNote extends StatelessWidget {
                   Expanded(
                     child: Text(c.sentence, style: theme.textTheme.bodyMedium),
                   ),
+                  if (c.hasDetails)
+                    TextButton(
+                      key: ValueKey(
+                        'integrations-details:${c.provider}:${c.checkKey}',
+                      ),
+                      onPressed: () => showSidePanel<void>(
+                        context,
+                        builder: (_) => SidePanel(
+                          title: c.subject,
+                          subtitle: c.sentence,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (var i = 0; i < c.count; i++)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        c.labels[i],
+                                        style: theme.textTheme.titleSmall,
+                                      ),
+                                      SelectableText(
+                                        c.details[i],
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        c.checkKey.contains('webhook')
+                            ? 'Show steps'
+                            : 'Details',
+                      ),
+                    ),
+                  // "Try again" on a step only a person in Workiz can do was
+                  // nine dead buttons: retry stays in the account's own page.
                   if (c.waitingOn == null &&
                       c.fix != null &&
-                      c.fix!['action'] != 'choose_branch')
+                      c.fix!['action'] != 'choose_branch' &&
+                      c.fix!['action'] != 'retry')
                     TextButton(
                       key: ValueKey(
                         'integrations-fix:${c.provider}:${c.checkKey}',
@@ -379,9 +458,10 @@ class _BranchPanelState extends State<_BranchPanel> {
   String? _error;
 
   Future<void> _choose(String id, String branch) async {
-    final r = await widget.api.patch('/social/connections/$id/leads-franchise', {
-      'leads_franchise_id': branch,
-    });
+    final r = await widget.api.patch(
+      '/social/connections/$id/leads-franchise',
+      {'leads_franchise_id': branch},
+    );
     if (!mounted) return;
     setState(() {
       if (r.ok) {

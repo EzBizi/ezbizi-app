@@ -16,6 +16,7 @@ import 'report_dates.dart';
 import 'scoring_person_calls.dart';
 import '../../widgets/side_panel.dart';
 import 'scoring_weights_panel.dart';
+import '../../widgets/user_avatar.dart';
 
 /// Reports › Scoring (Jose, 2026-10-13: "the Scoring and Performance of each
 /// employee ... the employees as cards, and clicking on them shows me the
@@ -85,6 +86,7 @@ List<String> _strings(Object? v) => [
 class _Person {
   _Person(Map<String, dynamic> row)
     : name = '${row['person']}',
+      userId = row['user_id'] as String?,
       n = (row['calls_scored'] as num?)?.toInt() ?? 0,
       // The weighted score (conversion and the checks, Jose 2026-10-14);
       // AI's plain call average where the server sends no weighted one.
@@ -104,6 +106,9 @@ class _Person {
       weekly = (row['review_weekly'] as Map?)?.cast<String, dynamic>();
 
   final String name;
+
+  /// The EzBizi user this name is, when the server matched one; for the photo.
+  final String? userId;
   final int n;
   final double avg;
   final int? conversion;
@@ -132,6 +137,9 @@ class _Team {
 
   final List<_Person> people;
   final int minCalls;
+
+  /// For the people's photos; set once the screen has read the report.
+  ApiClient? api;
 
   /// What each metric counts for in the score, summing to 100.
   final Map<String, int> weights;
@@ -265,7 +273,7 @@ class _ScoringReportState extends State<ScoringReport> {
         }
         team.before = earlier.avg;
       }
-      _team = team;
+      _team = team..api = widget.api;
     });
   }
 
@@ -541,13 +549,17 @@ class _Rank extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar(this.person, {this.radius = 14});
+  const _Avatar(this.person, {this.radius = 14, this.api});
 
   final _Person person;
   final double radius;
+  final ApiClient? api;
 
   @override
   Widget build(BuildContext context) {
+    if ((api, person.userId) case (final api?, final id?)) {
+      return UserAvatar(api: api, userId: id, name: person.name, radius: radius);
+    }
     final scheme = Theme.of(context).colorScheme;
     return CircleAvatar(
       radius: radius,
@@ -815,7 +827,7 @@ class _Ranking extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          _Avatar(p, radius: 12),
+                          _Avatar(p, radius: 12, api: team.api),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -922,7 +934,7 @@ class _Card extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  _Avatar(p),
+                  _Avatar(p, api: team.api),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(

@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/ads_manager_screen.dart';
+import 'package:ezbizi_client/screens/google_campaigns_view.dart' show lsaWeekly;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -113,7 +114,7 @@ void main() {
                 campaign('11', 'Cleveland Search'),
                 campaign(
                   '12',
-                  'Cleveland LSA',
+                  'LocalServicesCampaign:SystemGenerated:0006204bfbf2',
                   type: 'LOCAL_SERVICES',
                   bidding: 'MANUAL_CPA',
                   kind: null,
@@ -161,11 +162,11 @@ void main() {
       'g1',
       reason: 'a manager account holds no campaigns',
     );
-    expect(find.text('Local Services'), findsOneWidget);
+    expect(find.textContaining('Local Services'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('google-on-12')));
     await tester.pumpAndSettle();
-    expect(find.text('Turn on Cleveland LSA?'), findsOneWidget);
+    expect(find.text('Turn on Local Services · A1 Chimney - Cleveland?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(posted('status'), isEmpty);
@@ -211,6 +212,43 @@ void main() {
       findsNothing,
       reason: 'Manual CPA has no target to set',
     );
+  });
+
+  // UI/UX audit 2026-11-13 §10.1: "$28,571.43/day" was Google's per-day
+  // reading of a $200,000 weekly Local Services budget.
+  test('a Local Services budget is its week, undoing Google\'s cents', () {
+    expect(lsaWeekly(28571.43), 200000);
+    expect(lsaWeekly(857.14), 6000);
+    expect(lsaWeekly(29.93), 209.51);
+  });
+
+  // UI/UX audit 2026-11-13 §9.11: no raw system id as a campaign's name.
+  testWidgets("a Local Services campaign is named for its account, Google's name behind it", (tester) async {
+    await open(tester, permissions: manage);
+
+    final name = find.byKey(const ValueKey('google-name-12'));
+    expect(tester.widget<Text>(name).data, 'Local Services · A1 Chimney - Cleveland');
+    expect(find.textContaining('SystemGenerated'), findsNothing);
+    expect(
+      find.ancestor(of: name, matching: find.byWidgetPredicate((w) => w is Tooltip && w.message!.contains('SystemGenerated'))),
+      findsOneWidget,
+    );
+    expect(tester.widget<Text>(find.byKey(const ValueKey('google-name-11'))).data, 'Cleveland Search');
+  });
+
+  testWidgets('a Local Services budget reads and saves per week', (tester) async {
+    await open(tester, permissions: manage);
+
+    final cell = find.byKey(const ValueKey('google-budget-12'));
+    expect(find.descendant(of: cell, matching: find.textContaining('/ week')), findsOneWidget);
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    expect(find.text('Per week'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('google-amount')), '700');
+    await tester.tap(find.byKey(const ValueKey('google-amount-save')));
+    await tester.pumpAndSettle();
+
+    expect(posted('budget').single['daily_budget'], 100.0, reason: 'Google takes a week as day x 7');
   });
 
   testWidgets('reading alone shows no switches and no edit links', (

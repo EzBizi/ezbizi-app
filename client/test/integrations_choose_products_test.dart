@@ -125,6 +125,15 @@ void main() {
 }
 
 Future<void> _tap(WidgetTester tester, String key) async {
+  // A family is a tile now; its card opens in a SidePanel (Jose, 2026-11-13).
+  final family = RegExp(r'^family-(manage|disconnect):(.+)$').firstMatch(key);
+  if (family != null &&
+      find.byKey(ValueKey('family:${family.group(2)}')).evaluate().isEmpty) {
+    final tile = find.byKey(ValueKey('provider:${family.group(2)}'));
+    await tester.ensureVisible(tile);
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+  }
   final target = find.byKey(ValueKey(key));
   await tester.ensureVisible(target);
   await tester.tap(target);

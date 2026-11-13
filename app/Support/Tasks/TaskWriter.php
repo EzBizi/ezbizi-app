@@ -3,6 +3,7 @@
 namespace App\Support\Tasks;
 
 use App\Http\Controllers\Api\TasksController;
+use App\Models\Attachment;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
@@ -832,6 +833,50 @@ class TaskWriter
                 $why = 'A range as {from, to}, YYYY-MM-DD, from no later than to.';
                 $row['value_date'] = $ok ? $value['from'] : null;
                 $row['value_text'] = $ok ? $value['to'] : null;
+                break;
+            case 'location':
+                // {address, lat|null, lng|null}
+                $lat = $value['lat'] ?? null;
+                $lng = $value['lng'] ?? null;
+                $ok = is_array($value) && is_string($value['address'] ?? null) && trim($value['address']) !== ''
+                    && mb_strlen($value['address']) <= 500
+                    && ($lat === null || (is_numeric($lat) && abs((float) $lat) <= 90))
+                    && ($lng === null || (is_numeric($lng) && abs((float) $lng) <= 180));
+                $why = 'A place as {address, lat, lng}; lat and lng may be empty.';
+                $row['value_text'] = $ok ? json_encode(['address' => trim($value['address']),
+                    'lat' => $lat === null ? null : (float) $lat, 'lng' => $lng === null ? null : (float) $lng]) : null;
+                break;
+            case 'rating':
+                $max = (int) ($column->settings['max'] ?? 5);
+                $ok = is_int($value) || (is_string($value) && ctype_digit($value));
+                $ok = $ok && (int) $value >= 0 && (int) $value <= $max;
+                $why = "A whole number from 0 to {$max}.";
+                $row['value_number'] = $ok ? (int) $value : null;
+                break;
+            case 'files':
+                // Files already on the task (its attachments), by id.
+                $ids = is_array($value) && array_is_list($value) ? array_values(array_unique(array_map('strval', $value))) : null;
+                $ok = $ids !== null && $ids !== [] && count($ids) <= 50
+                    && Attachment::query()->whereIn('id', $ids)->count() === count($ids);
+                $why = 'A list of files added to this task.';
+                $row['value_text'] = $ok ? json_encode($ids) : null;
+                break;
+            case 'connect':
+            case 'dependency':
+                // Other tasks: anywhere in the organization (connect) or on this board (dependency).
+                $ids = is_array($value) && array_is_list($value) ? array_values(array_unique(array_map('strval', $value))) : null;
+                $found = $ids === null ? 0 : Task::query()->whereIn('id', $ids)
+                    ->when($column->type === 'dependency', fn ($q) => $q->where('board_id', $board->id))->count();
+                $ok = $ids !== null && $ids !== [] && count($ids) <= 50 && $found === count($ids);
+                $why = $column->type === 'dependency' ? 'A list of tasks on this board.' : 'A list of tasks.';
+                $row['value_text'] = $ok ? json_encode($ids) : null;
+                break;
+            case 'last_updated':
+            case 'creation_log':
+            case 'mirror':
+                // Read from the task (or the tasks it is connected to); nothing to store.
+                $ok = false;
+                $why = 'This column fills itself in.';
                 break;
             case 'formula':
                 // Worked out from the other columns where it is shown; nothing to store.

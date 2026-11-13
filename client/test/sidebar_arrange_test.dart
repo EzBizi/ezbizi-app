@@ -55,19 +55,20 @@ void main() {
 
     await _pumpShell(
       tester,
-      modules: ['dashboard', 'customers', 'jobs'],
-      order: ['jobs', 'customers'],
+      modules: ['dashboard', 'jobs', 'scheduling'],
+      order: ['scheduling', 'jobs'],
     );
 
+    // All three sit under the Work heading, so their saved order rules.
     // Dashboard is not in the saved order at all. It goes last rather than
     // missing, which is what the day a module is added looks like to everybody
     // who has ever arranged their sidebar.
     expect(
-      tester.getTopLeft(_inSidebar('Jobs')).dy,
-      lessThan(tester.getTopLeft(_inSidebar('Customers')).dy),
+      tester.getTopLeft(_inSidebar('Scheduling')).dy,
+      lessThan(tester.getTopLeft(_inSidebar('Jobs')).dy),
     );
     expect(
-      tester.getTopLeft(_inSidebar('Customers')).dy,
+      tester.getTopLeft(_inSidebar('Jobs')).dy,
       lessThan(tester.getTopLeft(_inSidebar('Dashboard')).dy),
     );
   });

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -48,7 +51,7 @@ String _compile(String expr, Map<String, Map> byName, [int depth = 0]) =>
         final inner = '${(c['settings'] as Map?)?['expression'] ?? '0'}';
         return '(${_compile(inner, byName, depth + 1)})';
       }
-      return c['type'] == 'number' ? '{${c['id']}}' : '0';
+      return '{${c['id']}}';
     });
 
 /// The columns a board shows, in its order. Hidden ones are left out.
@@ -103,69 +106,225 @@ List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
 
 /// A task's value for one column; a formula's is worked out here.
 Object? columnValue(Map<String, dynamic> task, BoardColumn c) =>
-    c.formula != null
-    ? evalFormula(c.formula!, (task['values'] as Map?) ?? const {})
-    : (task['values'] as Map?)?[c.id];
+    switch (c.type) {
+      'last_updated' => {'at': task['updated_at'] ?? task['created_at']},
+      'creation_log' => {
+        'at': task['created_at'],
+        'by': (task['created_by'] as Map?)?['label'],
+      },
+      _ when c.formula != null => evalFormula(
+        c.formula!,
+        (task['values'] as Map?) ?? const {},
+      ),
+      _ => (task['values'] as Map?)?[c.id],
+    };
 
-/// Works out a compiled formula over a task's values: + - * / and brackets,
-/// an empty value counts 0. Null when it does not parse or divides by 0.
-num? evalFormula(String compiled, Map values) {
-  final src = compiled.replaceAllMapped(RegExp(r'\{([^}]+)\}'), (m) {
-    final v = values[m[1]];
-    final n = v is num ? v : num.tryParse('${v ?? ''}');
-    return '${n ?? 0}';
-  });
+/// Works out a compiled formula over a task's values, Monday's way:
+/// + - * / & and brackets; = <> < > <= >= ; "text", TRUE, FALSE; and
+/// IF, AND, OR, NOT, VALUE, CONCATENATE, FLOOR, CEILING, ROUND, MOD, ABS,
+/// MIN, MAX, SUM, AVERAGE, LEN, UPPER, LOWER, LEFT, RIGHT. An empty value
+/// counts 0 in sums and "" in text. Null when it does not parse, divides by
+/// 0 or names an unknown function.
+Object? evalFormula(String compiled, Map values) {
   final tokens = RegExp(
-    r'\d+(?:\.\d+)?|[-+*/()]',
-  ).allMatches(src).map((m) => m[0]!).toList();
-  if (tokens.isEmpty || tokens.join() != src.replaceAll(RegExp(r'\s+'), '')) {
+    r'\s+|\{[^}]+\}|"(?:[^"]|"")*"|\d+(?:\.\d+)?|[A-Za-z_][A-Za-z_0-9]*|<=|>=|<>|[-+*/()&=<>,]',
+  ).allMatches(compiled).map((m) => m[0]!).toList();
+  if (tokens.join() != compiled) return null;
+  tokens.removeWhere((t) => t.trim().isEmpty);
+  if (tokens.isEmpty) return null;
+  var i = 0;
+  var bad = false;
+
+  num n(Object? v) => switch (v) {
+    null => 0,
+    num x => x,
+    bool b => b ? 1 : 0,
+    _ => num.tryParse('$v'.replaceAll(RegExp(r'[,$\s]'), '')) ?? 0,
+  };
+  String text(Object? v) => switch (v) {
+    null => '',
+    double d when d == d.roundToDouble() => '${d.toInt()}',
+    _ => '$v',
+  };
+  bool truth(Object? v) => switch (v) {
+    null => false,
+    bool b => b,
+    num x => x != 0,
+    String t => t.isNotEmpty && t.toLowerCase() != 'false',
+    _ => true,
+  };
+  num tidy(num x) =>
+      x is double && x == x.roundToDouble() && x.abs() < 1e15 ? x.toInt() : x;
+
+  late Object? Function() compare;
+  List<Object?> args() {
+    final out = <Object?>[];
+    if (i < tokens.length && tokens[i] == ')') {
+      i++;
+      return out;
+    }
+    while (true) {
+      out.add(compare());
+      if (i >= tokens.length) {
+        bad = true;
+        return out;
+      }
+      final t = tokens[i++];
+      if (t == ')') return out;
+      if (t != ',') {
+        bad = true;
+        return out;
+      }
+    }
+  }
+
+  Object? call(String name, List<Object?> a) {
+    num at(int k) => n(k < a.length ? a[k] : null);
+    final nums = [for (final x in a) n(x)];
+    switch (name.toUpperCase()) {
+      case 'IF':
+        return truth(a.isNotEmpty ? a[0] : null)
+            ? (a.length > 1 ? a[1] : null)
+            : (a.length > 2 ? a[2] : null);
+      case 'AND':
+        return a.every(truth);
+      case 'OR':
+        return a.any(truth);
+      case 'NOT':
+        return !truth(a.isNotEmpty ? a[0] : null);
+      case 'VALUE':
+        return n(a.isNotEmpty ? a[0] : null);
+      case 'CONCATENATE':
+        return a.map(text).join();
+      case 'FLOOR':
+        return at(0).floor();
+      case 'CEILING':
+        return at(0).ceil();
+      case 'ROUND':
+        final f = math.pow(10, at(1).toInt());
+        return tidy((at(0) * f).round() / f);
+      case 'MOD':
+        if (at(1) == 0) {
+          bad = true;
+          return null;
+        }
+        return tidy(at(0) % at(1));
+      case 'ABS':
+        return at(0).abs();
+      case 'MIN':
+        return nums.isEmpty ? 0 : nums.reduce(math.min);
+      case 'MAX':
+        return nums.isEmpty ? 0 : nums.reduce(math.max);
+      case 'SUM':
+        return tidy(nums.fold<num>(0, (x, y) => x + y));
+      case 'AVERAGE':
+        return nums.isEmpty
+            ? 0
+            : tidy(nums.fold<num>(0, (x, y) => x + y) / nums.length);
+      case 'LEN':
+        return text(a.isNotEmpty ? a[0] : null).length;
+      case 'UPPER':
+        return text(a.isNotEmpty ? a[0] : null).toUpperCase();
+      case 'LOWER':
+        return text(a.isNotEmpty ? a[0] : null).toLowerCase();
+      case 'LEFT' || 'RIGHT':
+        final t = text(a.isNotEmpty ? a[0] : null);
+        final k = (a.length > 1 ? at(1).toInt() : 1).clamp(0, t.length);
+        return name.toUpperCase() == 'LEFT'
+            ? t.substring(0, k)
+            : t.substring(t.length - k);
+    }
+    bad = true;
     return null;
   }
-  var i = 0;
-  late num? Function() expr;
-  num? factor() {
-    if (i >= tokens.length) return null;
-    final t = tokens[i++];
-    if (t == '-') {
-      final f = factor();
-      return f == null ? null : -f;
+
+  Object? factor() {
+    if (i >= tokens.length) {
+      bad = true;
+      return null;
     }
+    final t = tokens[i++];
+    if (t == '-') return -n(factor());
+    if (t == '+') return n(factor());
     if (t == '(') {
-      final e = expr();
-      if (i >= tokens.length || tokens[i++] != ')') return null;
+      final e = compare();
+      if (i >= tokens.length || tokens[i++] != ')') bad = true;
       return e;
     }
-    return num.tryParse(t);
+    if (t.startsWith('{')) {
+      final v = values[t.substring(1, t.length - 1)];
+      return v is String ? (num.tryParse(v) ?? v) : v;
+    }
+    if (t.startsWith('"')) {
+      return t.substring(1, t.length - 1).replaceAll('""', '"');
+    }
+    final number = num.tryParse(t);
+    if (number != null) return number;
+    if (t.toUpperCase() == 'TRUE') return true;
+    if (t.toUpperCase() == 'FALSE') return false;
+    if (i < tokens.length && tokens[i] == '(') {
+      i++;
+      return call(t, args());
+    }
+    bad = true;
+    return null;
   }
 
-  num? term() {
+  Object? term() {
     var left = factor();
-    while (left != null &&
+    while (!bad &&
         i < tokens.length &&
         (tokens[i] == '*' || tokens[i] == '/')) {
       final op = tokens[i++];
-      final right = factor();
-      if (right == null || (op == '/' && right == 0)) return null;
-      left = op == '*' ? left * right : left / right;
+      final right = n(factor());
+      if (op == '/' && right == 0) {
+        bad = true;
+        return null;
+      }
+      left = tidy(op == '*' ? n(left) * right : n(left) / right);
     }
     return left;
   }
 
-  expr = () {
+  Object? sum() {
     var left = term();
-    while (left != null &&
+    while (!bad &&
         i < tokens.length &&
-        (tokens[i] == '+' || tokens[i] == '-')) {
+        const {'+', '-', '&'}.contains(tokens[i])) {
       final op = tokens[i++];
       final right = term();
-      if (right == null) return null;
-      left = op == '+' ? left + right : left - right;
+      left = op == '&'
+          ? text(left) + text(right)
+          : tidy(op == '+' ? n(left) + n(right) : n(left) - n(right));
     }
     return left;
+  }
+
+  compare = () {
+    final left = sum();
+    if (bad || i >= tokens.length) return left;
+    final op = tokens[i];
+    if (!const {'=', '<>', '<', '>', '<=', '>='}.contains(op)) return left;
+    i++;
+    final right = sum();
+    if (op == '=' || op == '<>') {
+      final same = (left is num || right is num)
+          ? n(left) == n(right)
+          : text(left) == text(right);
+      return op == '=' ? same : !same;
+    }
+    final c = n(left).compareTo(n(right));
+    return switch (op) {
+      '<' => c < 0,
+      '>' => c > 0,
+      '<=' => c <= 0,
+      _ => c >= 0,
+    };
   };
 
-  final out = expr();
-  return i == tokens.length ? out : null;
+  final out = compare();
+  if (bad || i != tokens.length) return null;
+  return out ?? 0;
 }
 
 /// A number as its column shows it: currency with two decimals, a
@@ -437,6 +596,13 @@ class ColumnCell extends StatelessWidget {
     'tags',
     'people',
     'formula',
+    'rating',
+    'files',
+    'connect',
+    'dependency',
+    'mirror',
+    'last_updated',
+    'creation_log',
   };
 
   /// A click edits the value where it is (Jose, 2026-11-12: the sidebar is
@@ -701,6 +867,65 @@ class ColumnCell extends StatelessWidget {
           day == null ? '—' : formats.formatDate(day),
           style: day == null ? muted : null,
         );
+      case 'rating':
+        // ponytail: five stars (more when a value is higher); the server
+        // holds settings.max.
+        final n = v is num ? v.toInt() : 0;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 1; i <= math.max(5, n); i++)
+              InkWell(
+                key: ValueKey('column-rating-${column.id}-$i'),
+                onTap: onChanged == null
+                    ? null
+                    : () => onChanged!(i == n ? i - 1 : i),
+                child: Icon(
+                  i <= n ? Icons.star : Icons.star_border,
+                  size: 16,
+                  color: i <= n
+                      ? theme.colorScheme.tertiary
+                      : theme.colorScheme.outline,
+                ),
+              ),
+          ],
+        );
+      case 'location':
+        final address = v is Map ? '${v['address'] ?? ''}' : '';
+        return Text(
+          address.isEmpty ? '—' : address,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: address.isEmpty ? muted : null,
+        );
+      case 'files' || 'connect' || 'dependency':
+        final count = v is List ? v.length : 0;
+        final noun = column.type == 'files' ? 'file' : 'task';
+        return Text(
+          count == 0 ? '—' : '$count $noun${count == 1 ? '' : 's'}',
+          style: count == 0 ? muted : null,
+        );
+      case 'mirror':
+        final items = v is List ? v.map((x) => '$x').join(', ') : '';
+        return Text(
+          items.isEmpty ? '—' : items,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: items.isEmpty ? muted : null,
+        );
+      case 'last_updated' || 'creation_log':
+        final at = v is Map ? DateTime.tryParse('${v['at']}')?.toLocal() : null;
+        return Text(
+          at == null
+              ? '—'
+              : [
+                  if (v is Map && v['by'] != null) '${v['by']}',
+                  formats.formatDate(at),
+                ].join(' · '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: at == null ? muted : null,
+        );
       case 'person':
         final name = people['$v'];
         return Text(
@@ -790,6 +1015,7 @@ class _ColumnEditorState extends State<ColumnEditor> {
     text: switch (widget.column.type) {
       'number' ||
       'currency' => widget.value == null ? '' : _number(widget.value, null),
+      'location' => '${(widget.value as Map?)?['address'] ?? ''}',
       _ => widget.value == null ? '' : '${widget.value}',
     },
   );
@@ -822,6 +1048,17 @@ class _ColumnEditorState extends State<ColumnEditor> {
       final n = typed.isEmpty ? null : num.tryParse(typed);
       if (typed.isNotEmpty && n == null) return;
       if (n != widget.value) widget.onChanged?.call(n);
+      widget.onDone?.call();
+      return;
+    }
+    if (widget.column.type == 'location') {
+      // Typed: an address; lat and lng come from an import or a map pick.
+      final was = (widget.value as Map?)?['address'];
+      if (typed != (was ?? '')) {
+        widget.onChanged?.call(
+          typed.isEmpty ? null : {'address': typed, 'lat': null, 'lng': null},
+        );
+      }
       widget.onDone?.call();
       return;
     }
@@ -1137,6 +1374,23 @@ const columnTypes = [
   ('link', 'Customer / job', Icons.handshake_outlined),
   ('timeline', 'Timeline', Icons.view_timeline_outlined),
   ('formula', 'Formula', Icons.functions),
+  ('location', 'Location', Icons.place_outlined),
+  ('rating', 'Rating', Icons.star_border),
+  ('files', 'Files', Icons.attach_file),
+  ('connect', 'Connect boards', Icons.device_hub),
+  ('mirror', 'Mirror', Icons.flip),
+  ('dependency', 'Dependency', Icons.account_tree_outlined),
+  ('last_updated', 'Last updated', Icons.update),
+  ('creation_log', 'Creation log', Icons.history),
+];
+
+/// The + popover's sections, as Monday has them; the rest is More.
+const columnTypeSections = [
+  ('Essentials', ['status', 'dropdown', 'text', 'date', 'people', 'number']),
+  (
+    'Super useful',
+    ['files', 'checkbox', 'long_text', 'formula', 'connect', 'timeline'],
+  ),
 ];
 
 String columnTypeLabel(String type) =>
@@ -1966,6 +2220,73 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
     ),
   );
 
+  /// What a copied cell carries: text as typed, anything else as JSON so a
+  /// paste into the same kind of column puts back the same value.
+  String _copyText(Object? v) => switch (v) {
+    null => '',
+    String s => s,
+    num n => '$n',
+    _ => jsonEncode(v),
+  };
+
+  Object? _pasteValue(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return null;
+    switch (widget.column.type) {
+      case 'number' || 'currency' || 'rating':
+        return num.tryParse(t.replaceAll(RegExp(r'[,$\s]'), ''));
+      case 'text' || 'long_text' || 'email' || 'phone' || 'url':
+        return t;
+    }
+    try {
+      return jsonDecode(t);
+    } on FormatException {
+      return t;
+    }
+  }
+
+  /// Right-click on a cell: Copy, Paste, Clear (Monday's cell menu).
+  Future<void> _menu(Offset at) async {
+    final box = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        at & const Size(1, 1),
+        Offset.zero & box.size,
+      ),
+      items: const [
+        PopupMenuItem(
+          key: Key('cell-rc-copy'),
+          value: 'copy',
+          height: 36,
+          child: Text('Copy'),
+        ),
+        PopupMenuItem(
+          key: Key('cell-rc-paste'),
+          value: 'paste',
+          height: 36,
+          child: Text('Paste'),
+        ),
+        PopupMenuItem(
+          key: Key('cell-rc-clear'),
+          value: 'clear',
+          height: 36,
+          child: Text('Clear'),
+        ),
+      ],
+    );
+    switch (choice) {
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: _copyText(widget.value)));
+      case 'paste':
+        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        final v = _pasteValue(data?.text ?? '');
+        if (v != null) widget.onChanged(v);
+      case 'clear':
+        widget.onChanged(null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final key = ValueKey('column-cell-edit-${widget.column.id}');
@@ -1995,6 +2316,7 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
         child: InkWell(
           key: key,
           onTap: _editing ? null : _start,
+          onSecondaryTapDown: _editing ? null : (d) => _menu(d.globalPosition),
           child: SizedBox.expand(
             child: Align(alignment: Alignment.centerLeft, child: widget.child),
           ),

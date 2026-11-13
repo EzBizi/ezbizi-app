@@ -27,6 +27,7 @@ class BoardTree extends StatefulWidget {
     required this.onOpen,
     required this.storeKey,
     this.onNewBoard,
+    this.onDropTask,
     this.docked = true,
   });
 
@@ -38,6 +39,10 @@ class BoardTree extends StatefulWidget {
 
   /// Null hides "New board" (no tasks.create_boards).
   final VoidCallback? onNewBoard;
+
+  /// A task dragged from the board dropped on board [index]: moved there.
+  /// Null: boards in the tree take no drops.
+  final void Function(int index, String taskId)? onDropTask;
 
   /// Prefix of the device-kept fold, collapse and width.
   final String storeKey;
@@ -219,10 +224,14 @@ class _BoardTreeState extends State<BoardTree> {
       ].any((s) => s.toLowerCase().contains(query));
     }
 
-    Widget board(int i, {double indent = 0, String? from, String? label}) {
-      final b = boards[i];
-      final on = i == widget.selected;
-      final text = label ?? _name(b);
+    Widget tile(
+      Map<String, dynamic> b,
+      int i,
+      bool on,
+      String text,
+      double indent,
+      String? from,
+    ) {
       return Material(
         color: on ? theme.colorScheme.primaryContainer : Colors.transparent,
         child: InkWell(
@@ -263,6 +272,28 @@ class _BoardTreeState extends State<BoardTree> {
           ),
         ),
       );
+    }
+
+    Widget board(int i, {double indent = 0, String? from, String? label}) {
+      final b = boards[i];
+      final on = i == widget.selected;
+      final text = label ?? _name(b);
+      final drop = widget.onDropTask;
+      if (drop != null && !on && b['deleted'] != true) {
+        return DragTarget<String>(
+          key: ValueKey('tasks-board-drop-${b['id']}'),
+          onAcceptWithDetails: (d) => drop(i, d.data),
+          builder: (context, hovering, _) => DecoratedBox(
+            decoration: BoxDecoration(
+              border: hovering.isEmpty
+                  ? null
+                  : Border.all(color: theme.colorScheme.primary, width: 2),
+            ),
+            child: tile(b, i, on, text, indent, from),
+          ),
+        );
+      }
+      return tile(b, i, on, text, indent, from);
     }
 
     Widget header(String text) => Padding(

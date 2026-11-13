@@ -315,11 +315,17 @@ void main() {
 
     expect(find.text('In Gmail now'), findsOneWidget);
     expect(find.text('Will be'), findsOneWidget);
-    expect(find.text('Pat\nSent from my phone', findRichText: true), findsOne);
-    expect(
-      find.text('Pat Lin\nTechnician', findRichText: true),
-      findsOneWidget,
-    );
+    // Drawn by the real HTML engine, as Gmail draws it (Jose 11-13).
+    String drawn(String key) => tester
+        .widget<MessageHtmlView>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(MessageHtmlView),
+          ),
+        )
+        .html;
+    expect(drawn('workspace-person-current'), contains('Sent from my phone'));
+    expect(drawn('workspace-person-preview'), contains('Technician'));
     expect(find.byKey(const ValueKey('workspace-own-field')), findsNothing);
 
     await _tap(tester, find.text('Give them their own'));
@@ -327,6 +333,14 @@ void main() {
       find.byKey(const ValueKey('workspace-own-field')),
       'Pat at {{company}}',
     );
+    // A moment after typing stops, the server fills it for Pat.
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+    expect(server.asked('POST', '/signatures/preview').last, {
+      'address': 'pat@brightside.example',
+      'html': 'Pat at {{company}}',
+    });
+    expect(find.byKey(const ValueKey('workspace-own-live')), findsOneWidget);
     await _tap(tester, find.byKey(const ValueKey('workspace-own-save')));
     expect(server.asked('PUT', '/people/pat@brightside.example/signature'), [
       {'html': 'Pat at {{company}}'},

@@ -364,7 +364,10 @@ void main() {
       ],
     );
 
-    expect(find.text('Needs attention'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('status-dot:Needs attention')),
+      findsOneWidget,
+    );
     await _open(tester, 'telegram');
     expect(find.text('Connect bot'), findsNothing);
     expect(find.textContaining('@a1_tech_bot'), findsOneWidget);

@@ -84,6 +84,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Timer? _searchDebounce;
 
   bool _loading = true;
+
+  /// A reload with leads already up (the source or a filter changed).
+  bool _refreshing = false;
   bool _syncing = false;
   String? _error;
   String? _notice;
@@ -443,6 +446,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       // "Nothing on screen yet", not "a request is in flight" — a refresh after
       // a status change keeps the list rendered rather than tearing it down.
       _loading = _leads.isEmpty;
+      _refreshing = _leads.isNotEmpty;
       _error = null;
     });
 
@@ -455,6 +459,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     setState(() {
       _loading = false;
+      _refreshing = false;
 
       if (!response.ok) {
         _error = response.message;
@@ -903,6 +908,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     required void Function(Map<String, dynamic> lead) onTap,
   }) => AsyncBody(
     loading: _loading,
+    refreshing: _refreshing,
     error: _error,
     onRetry: _load,
     child: _leads.isEmpty
