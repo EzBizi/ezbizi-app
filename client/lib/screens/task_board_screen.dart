@@ -613,14 +613,71 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   ).showSnackBar(SnackBar(content: Text(text), action: action));
 
   /// Drag and drop: [id] lands in [groupId] at [position] (null = the end).
+  /// A picked row carries every picked row with it, in board order.
   Future<void> _moveTo(String id, Object? groupId, int? position) async {
     if (groupId == null) return;
-    final res = await widget.api.patch('/tasks/$id/move', {
-      'group_id': groupId,
-      'position': ?position,
-    });
+    final ids = _picked.contains(id) && _picked.length > 1
+        ? _inBoardOrder(_picked)
+        : [id];
+    String? failed;
+    for (final (n, one) in ids.indexed) {
+      final res = await widget.api.patch('/tasks/$one/move', {
+        'group_id': groupId,
+        if (position != null) 'position': position + n,
+      });
+      if (!res.ok) failed ??= res.reason;
+    }
     if (!mounted) return;
-    res.ok ? await _load() : _say(res.reason);
+    if (ids.length > 1) setState(_picked.clear);
+    if (failed != null) _say(failed);
+    await _load();
+  }
+
+  /// A task dropped on another board in the tree: the end of its first
+  /// group, with its subtasks, updates, files and activity (they hang off
+  /// the task, so the server's move takes them along).
+  Future<void> _dropOnBoard(int index, String id) async {
+    final res = await widget.api.get('/task-boards/${_boards[index]['id']}');
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    final groups = ((res.body['data'] as Map?)?['groups'] as List?) ?? const [];
+    if (groups.isEmpty) return _say('That board has no group to put it in.');
+    await _moveTo(id, (groups.first as Map)['id'], null);
+    if (mounted) _say('Moved to ${_boards[index]['name'] ?? 'that board'}');
+  }
+
+  /// [ids] in the order the board lists them, group by group.
+  List<String> _inBoardOrder(Iterable<String> ids) {
+    final want = ids.toSet();
+    return [
+      for (final g in _groups(_board!))
+        for (final t in _tasksIn(g['id']).where(_matches))
+          if (want.contains(t['id'])) t['id'] as String,
+    ];
+  }
+
+  /// Shift-click picks every row between the last pick and this one.
+  String? _lastPick;
+
+  void _pick(String id) {
+    final shift = HardwareKeyboard.instance.isShiftPressed;
+    setState(() {
+      final last = _lastPick;
+      if (shift && last != null && last != id) {
+        final order = _inBoardOrder({
+          for (final t in _tasks)
+            if (t['parent_task_id'] == null) t['id'] as String,
+        });
+        final a = order.indexOf(last), b = order.indexOf(id);
+        if (a >= 0 && b >= 0) {
+          _picked.addAll(order.sublist(a < b ? a : b, (a < b ? b : a) + 1));
+          _lastPick = id;
+          return;
+        }
+      }
+      _picked.remove(id) ? null : _picked.add(id);
+      _lastPick = id;
+    });
   }
 
   Future<String?> _destination(String title, String action) =>
@@ -718,6 +775,105 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     await _load();
   }
 
+  /// Right-click on a row: Monday's fast actions at the pointer. On a picked
+  /// row with others picked, the bulk bar's actions, for them all.
+  Future<void> _rowRightClick(_Json t, Offset at) async {
+    final many = _picked.contains(t['id']) && _picked.length > 1;
+    final box = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final where = RelativeRect.fromRect(
+      at & const Size(1, 1),
+      Offset.zero & box.size,
+    );
+    PopupMenuItem<String> item(String value, String label, IconData icon) =>
+        PopupMenuItem(
+          key: ValueKey('task-rc-$value'),
+          value: value,
+          height: 36,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18),
+              const SizedBox(width: 10),
+              Flexible(child: Text(label, softWrap: false)),
+            ],
+          ),
+        );
+    final action = await showMenu<String>(
+      context: context,
+      position: where,
+      items: many
+          ? [
+              PopupMenuItem(
+                enabled: false,
+                height: 30,
+                child: Text('${_picked.length} tasks selected'),
+              ),
+              if (_canEdit) ...[
+                item('move', 'Move to…', Icons.drive_file_move_outline),
+                item('duplicate', 'Duplicate', Icons.copy_all_outlined),
+                item('status', 'Set status…', Icons.flag_outlined),
+                item('assign', 'Assign…', Icons.person_add_alt),
+                item('delete', 'Delete', Icons.delete_outline),
+              ],
+              item('clear', 'Clear selection', Icons.close),
+            ]
+          : [
+              item('open', 'Open task', Icons.open_in_new),
+              item('copy-name', 'Copy name', Icons.content_copy),
+              item('copy-link', 'Copy task link', Icons.link),
+              if (_canEdit) ...[
+                const PopupMenuDivider(),
+                item('move', 'Move to…', Icons.drive_file_move_outline),
+                item('duplicate', 'Duplicate', Icons.copy_all_outlined),
+                item('below', 'Create new task below', Icons.add),
+                item('subtask', 'Add subtask', Icons.subdirectory_arrow_right),
+                const PopupMenuDivider(),
+                item('delete', 'Delete', Icons.delete_outline),
+              ],
+            ],
+    );
+    if (action == null || !mounted) return;
+    if (many) {
+      if (action == 'clear') return setState(_picked.clear);
+      return _bulk(action);
+    }
+    final id = t['id'] as String;
+    switch (action) {
+      case 'copy-name':
+        await Clipboard.setData(ClipboardData(text: taskTitle(t)));
+        if (mounted) _say('Name copied');
+      case 'copy-link':
+        await Clipboard.setData(
+          ClipboardData(text: '${Uri.base.origin}/tasks/$id'),
+        );
+        if (mounted) _say('Link copied');
+      case 'below':
+      case 'subtask':
+        final res = await widget.api.post('/tasks', {
+          'board_id': _board!['id'],
+          'title': action == 'subtask' ? 'New subtask' : 'New task',
+          'group_id': ?t['group_id'],
+          if (action == 'subtask') 'parent_task_id': id,
+        });
+        if (!mounted) return;
+        if (!res.ok) return _say(res.reason);
+        final made = res.body['data'] as _Json;
+        if (action == 'below') {
+          final order = _tasksIn(t['group_id']).where(_matches).toList();
+          final at = order.indexWhere((x) => x['id'] == id);
+          await widget.api.patch('/tasks/${made['id']}/move', {
+            'group_id': t['group_id'],
+            'position': at + 1,
+          });
+          if (!mounted) return;
+        }
+        await _load();
+        if (mounted) await _openTask(made);
+      default:
+        await _rowAction(t, action);
+    }
+  }
+
   Widget _rowMenu(_Json t) => PopupMenuButton<String>(
     key: ValueKey('task-menu-${t['id']}'),
     tooltip: 'More',
@@ -750,6 +906,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     switch (op) {
       case 'delete':
         return _delete(ids);
+      case 'duplicate':
+        for (final id in ids) {
+          await widget.api.post('/tasks/$id/copy', const {});
+        }
+        if (!mounted) return;
+        setState(_picked.clear);
+        return _load();
       case 'move':
       case 'copy':
         final group = await _destination(
@@ -828,6 +991,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           for (final (op, label) in const [
             ('move', 'Move'),
             ('copy', 'Copy'),
+            ('duplicate', 'Duplicate'),
             ('status', 'Status'),
             ('assign', 'Assign'),
             ('delete', 'Delete'),
@@ -1665,6 +1829,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       setState(() => _choosing = false);
       if (i != _selected) _open(i);
     },
+    onDropTask: _canEdit ? _dropOnBoard : null,
     onNewBoard: (widget.session.me?.can('tasks.create_boards') ?? false)
         ? () {
             setState(() => _choosing = false);
@@ -2738,6 +2903,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       InkWell(
         key: ValueKey('task-${t['id']}'),
         onTap: () => _openTask(t),
+        onSecondaryTapDown: sub
+            ? null
+            : (d) => _rowRightClick(t, d.globalPosition),
         child: SizedBox(
           height: 38,
           child: Row(
@@ -2766,11 +2934,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                             isSelected: _picked.contains(t['id']),
                             icon: const Icon(Icons.check_box_outline_blank),
                             selectedIcon: const Icon(Icons.check_box),
-                            onPressed: () => setState(
-                              () => _picked.remove(t['id'])
-                                  ? null
-                                  : _picked.add(t['id'] as String),
-                            ),
+                            onPressed: () => _pick(t['id'] as String),
                           ),
                         ),
                       ],
@@ -3012,7 +3176,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         color: theme.colorScheme.surface,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Text(taskTitle(t)),
+          child: Text(
+            _picked.contains(t['id']) && _picked.length > 1
+                ? '${_picked.length} tasks'
+                : taskTitle(t),
+          ),
         ),
       ),
       child: MouseRegion(
