@@ -161,6 +161,18 @@ void main() {
     expect(lead['contact_name'], 'Jane Doe', reason: 'the lead is evidence');
   });
 
+  // The reply reader (Jose, 2026-11-13): when they said, over the date.
+  testWidgets("the customer's availability and deadline show over the date", (tester) async {
+    await _pump(
+      tester,
+      prefill: _fromLead(lead: {
+        ..._lead,
+        'reading': {'availability': 'Mon 2-5', 'deadline': 'before Fri 11/20', 'scope': 'blower'},
+      }),
+    );
+    expect(find.text('Customer: Mon 2-5 · before Fri 11/20'), findsOneWidget);
+  });
+
   testWidgets('a scheduled booking sends start, end and the repeat', (
     tester,
   ) async {

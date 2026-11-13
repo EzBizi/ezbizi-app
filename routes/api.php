@@ -1258,6 +1258,7 @@ Route::prefix('v1')
         Route::post('leads/{lead}/proofread', [LeadsController::class, 'proofread']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
         Route::post('leads/{lead}/follow-up-handled', [LeadsController::class, 'followUpHandled']);
+        Route::post('leads/{lead}/reading/use', [LeadsController::class, 'useReading']);
         Route::post('leads/{lead}/reclassify', [LeadsController::class, 'reclassify']);
         Route::get('leads/{lead}/timeline', [LeadsController::class, 'timeline']);
         Route::patch('leads/{lead}/conversations/{conversation}/caller-type', [LeadsController::class, 'callerType']);

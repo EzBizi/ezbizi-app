@@ -1769,6 +1769,36 @@ class LeadsController extends Controller
     }
 
     /**
+     * POST /api/v1/leads/{lead}/reading/use {field: phone|email|address}
+     *
+     * The reply reader's "Use (516) 404-1690?" (Jose, 2026-11-13): what the
+     * customer wrote replaces what the lead holds, as a person's choice (no AI
+     * mark), and the offer goes.
+     */
+    public function useReading(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        $field = $request->validate(['field' => ['required', Rule::in(['phone', 'email', 'address'])]])['field'];
+
+        $set = $lead->ai_set ?? [];
+        $value = $set['reading']['suggest'][$field] ?? null;
+        abort_if($value === null, Response::HTTP_UNPROCESSABLE_ENTITY, 'Nothing to use: the offer was already taken or replaced.');
+
+        unset($set['reading']['suggest'][$field], $set[$field]);
+        if (($set['reading']['suggest'] ?? []) === []) {
+            $set['reading']['suggest'] = null;
+        }
+        // Shown "(516) 404-1690"; stored as the reader fills a blank one.
+        $digits = substr((string) Lead::digits($value), -10);
+        $lead->forceFill([
+            ...($field === 'phone' ? ['phone' => '+1'.$digits, 'phone_digits' => Lead::digits('+1'.$digits)] : [$field => $value]),
+            'ai_set' => $set,
+        ])->save();
+
+        return response()->json(['data' => [$field => $lead->{$field}, 'reading' => $set['reading'] ?? null]]);
+    }
+
+    /**
      * POST /api/v1/leads/{lead}/follow-up-handled
      *
      * Off the Follow up list: somebody called back, or it needs nothing.
