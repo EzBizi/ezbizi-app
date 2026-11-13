@@ -13,6 +13,12 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0573', date: '13 Nov 2026', items: [
+      'Project Management: the sideways scrollbar and column headings stay on screen at every row',
+      'Task Board: Connect and Dependency cells open a card to search and tick tasks; Files cells upload from a paperclip; a Mirror column picks the Connect column it follows and the column it shows',
+      'Task Board: the + add-column menu has a search box',
+      'Task Board: company groups and branch boards in the board list take a colour from their right-click menu, for the whole organization',
+    ]),
     VersionRelease(version: '0.0.0572', date: '13 Nov 2026', items: [
       'Task Board: sort any column from its heading; saved views keep their layout; hover a face for the person’s card (role, local time, contact)',
       'Task Board: your own folders and subfolders in the board list, a colour per folder and board, right-click to colour or move, drag boards into folders',
