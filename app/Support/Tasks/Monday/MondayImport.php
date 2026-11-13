@@ -624,13 +624,23 @@ final class MondayImport
         if ($files === []) {
             return;
         }
-        $have = $existing ? $update->attachments()->pluck('original_name')->all() : [];
+        // How many of each name the update already holds, by the file's real name: a sensitive
+        // task's files read "Locked file" with the name sealed, and matching on that re-added
+        // them on every run (prod, 2026-11-13). Counted, not just present: Monday allows three
+        // "image.png" on one update.
+        $have = [];
+        foreach ($existing ? $update->attachments()->get(['original_name', 'sealed_name']) : [] as $a) {
+            $real = $a->sealed_name !== null ? (string) SensitiveTasks::open($a->sealed_name) : (string) $a->original_name;
+            $have[$real] = ($have[$real] ?? 0) + 1;
+        }
         $extensions = array_map('mb_strtolower', (array) config('ezbizi.attachments.extensions', []));
         $notes = [];
         $carried = [];
         foreach ($files as $f) {
             $name = (string) ($f['name'] ?? 'file');
-            if (in_array($name, $have, true)) {
+            if (($have[$name] ?? 0) > 0) {
+                $have[$name]--;
+
                 continue;
             }
             $ext = mb_strtolower(ltrim((string) ($f['ext'] ?? pathinfo($name, PATHINFO_EXTENSION)), '.'));
