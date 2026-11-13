@@ -3688,21 +3688,6 @@ class _CalendarsColumn extends StatefulWidget {
   final DisplayFormats formats;
   final void Function(_SentPost)? onOpen;
 
-  static const _monthNames = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   static DateTime mondayOf(DateTime d) {
@@ -3711,7 +3696,7 @@ class _CalendarsColumn extends StatefulWidget {
   }
 
   static String monthTitle(DateTime d) =>
-      '${_monthNames[d.month - 1]} ${d.year}';
+      '${longMonths[d.month - 1]} ${d.year}';
 
   static String weekRange(DateTime monday) {
     final sunday = monday.add(const Duration(days: 6));
@@ -5892,16 +5877,6 @@ String _postWord(_SentPost post) => switch (post.tone) {
   _ => 'posted',
 };
 
-const _weekdayNames = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
-
 /// Whole days from today to [day], counted on the calendar rather than in
 /// hours, so the night the clocks change is still one day.
 int _daysFromToday(DateTime day) {
@@ -5923,7 +5898,7 @@ String _shortDay(DateTime day) =>
 String _dayWord(DateTime day) => switch (_daysFromToday(day)) {
   0 => 'today',
   1 => 'tomorrow',
-  final n when n > 1 && n < 7 => _weekdayNames[day.weekday - 1],
+  final n when n > 1 && n < 7 => longWeekdays[day.weekday - 1],
   _ => _shortDay(day),
 };
 

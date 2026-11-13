@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import 'availability_calendar.dart';
 import '../../widgets/suggest_search.dart';
@@ -83,14 +84,6 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     with WidgetsBindingObserver {
   static const _unknown =
       'Information not available, please check availability on Workiz.';
-  static const _weekdays = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-    'Sunday', //
-  ];
-  static const _months = [
-    'January', 'February', 'March', 'April', 'May', 'June', 'July', //
-    'August', 'September', 'October', 'November', 'December',
-  ];
 
   final _search = TextEditingController();
 
@@ -977,14 +970,14 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
   /// "2026-10-05" → "Monday, October 5".
   static String _longDate(String ymd) {
     final d = DateTime.parse(ymd);
-    return '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
+    return '${longWeekdays[d.weekday - 1]}, ${longMonths[d.month - 1]} ${d.day}';
   }
 
   /// "2026-10-05" → "Mon, Oct 5".
   static String _shortDate(String ymd) {
     final d = DateTime.parse(ymd);
-    return '${_weekdays[d.weekday - 1].substring(0, 3)}, '
-        '${_months[d.month - 1].substring(0, 3)} ${d.day}';
+    return '${longWeekdays[d.weekday - 1].substring(0, 3)}, '
+        '${longMonths[d.month - 1].substring(0, 3)} ${d.day}';
   }
 
   /// "13:00" → "1 PM", "10:30" → "10:30 AM".

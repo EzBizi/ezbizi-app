@@ -35,15 +35,10 @@ List<String> _collides(String slot) => slot == 'full' ? _slots : ['full', slot];
 
 String _first(Object? name) => '${name ?? ''}'.trim().split(' ').first;
 
-const _monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June', //
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
 String _dayTitle(String ymd) {
   final d = DateTime.parse(ymd);
   return '${shortWeekdays[d.weekday - 1]} ${d.day} '
-      '${_monthNames[d.month - 1].substring(0, 3)}';
+      '${longMonths[d.month - 1].substring(0, 3)}';
 }
 
 /// Scheduling › Helpers: a branch's helpers booked to technicians for a whole
@@ -394,7 +389,7 @@ class _HelpersPaneState extends State<HelpersPane> {
                 onPressed: () => _shift(-1),
               ),
               Text(
-                '${wide ? _monthNames[_month.month - 1] : _monthNames[_month.month - 1].substring(0, 3)} '
+                '${wide ? longMonths[_month.month - 1] : longMonths[_month.month - 1].substring(0, 3)} '
                 '${_month.year}',
                 key: const Key('helpers-month'),
                 style: theme.textTheme.titleMedium,

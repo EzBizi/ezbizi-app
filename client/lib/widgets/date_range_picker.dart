@@ -121,21 +121,6 @@ class RangePreset {
   }
 }
 
-const _monthNames = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
-
 /// One day in words: "Mon, Oct 5", or "Mon, 5 Oct" where the day comes first.
 /// The year only when it is not this one.
 String dayWords(
@@ -790,7 +775,7 @@ class _MonthGrid extends StatelessWidget {
             ),
             Expanded(
               child: Text(
-                '${_monthNames[month.month - 1]} ${month.year}',
+                '${longMonths[month.month - 1]} ${month.year}',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.labelLarge?.copyWith(
                   fontWeight: FontWeight.w800,

@@ -2402,7 +2402,6 @@ class _LeadThreadState extends State<LeadThread> {
   Widget _bookingBlock(ThemeData theme) {
     final b = _booking!;
     final status = '${b['status']}';
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     final date = DateTime.tryParse('${b['date']}');
     String hm(Object? t) {
       final parts = '$t'.split(':');
@@ -2411,7 +2410,7 @@ class _LeadThreadState extends State<LeadThread> {
     }
 
     final when = [
-      if (date != null) '${days[date.weekday - 1]}, ${shortMonths[date.month - 1]} ${date.day}',
+      if (date != null) '${longWeekdays[date.weekday - 1]}, ${shortMonths[date.month - 1]} ${date.day}',
       '${hm(b['start_time'])} - ${hm(b['end_time'])}',
     ].join(' · ');
     final by = b['decided_by'] is String ? ' by ${b['decided_by']}' : '';
@@ -2433,7 +2432,7 @@ class _LeadThreadState extends State<LeadThread> {
       } else {
         final d = DateTime.tryParse('${fit['date']}');
         final at = [
-          if (d != null) '${days[d.weekday - 1]}, ${shortMonths[d.month - 1]} ${d.day}',
+          if (d != null) '${longWeekdays[d.weekday - 1]}, ${shortMonths[d.month - 1]} ${d.day}',
           '${hm(fit['start_time'])} - ${hm(fit['end_time'])}',
         ].join(' · ');
         fitLine = 'Better: $at ($jobs)';

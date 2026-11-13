@@ -1909,11 +1909,6 @@ class PtoEvent {
 
 abstract final class PtoMaths {
 
-  static const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June', //
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
-
   static String month(DateTime at) => shortMonths[at.month - 1];
 
   /// Today as a date with no time in it.
@@ -2562,7 +2557,7 @@ class _Calendar extends StatelessWidget {
               ),
               Expanded(
                 child: Text(
-                  '${PtoMaths.monthNames[month.month - 1]} ${month.year}',
+                  '${longMonths[month.month - 1]} ${month.year}',
                   key: const Key('pto-cal-month'),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleSmall,

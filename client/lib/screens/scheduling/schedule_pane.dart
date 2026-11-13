@@ -41,10 +41,6 @@ class SchedulePane extends StatefulWidget {
 }
 
 class _SchedulePaneState extends State<SchedulePane> {
-  static const _weekdays = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-    'Sunday', //
-  ];
 
   static const double _techColumn = 190;
   static const double _windowColumn = 250;
@@ -189,7 +185,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     final franchises = (board?['franchises'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
     final label =
-        '${_weekdays[_day.weekday - 1]}, ${shortMonths[_day.month - 1]} '
+        '${longWeekdays[_day.weekday - 1]}, ${shortMonths[_day.month - 1]} '
         '${_day.day}, ${_day.year}';
 
     return Padding(
@@ -792,7 +788,7 @@ class _SchedulePaneState extends State<SchedulePane> {
 
     final moveLabel = _moveDay == null
         ? 'Pick a day'
-        : '${_weekdays[_moveDay!.weekday - 1].substring(0, 3)}, '
+        : '${longWeekdays[_moveDay!.weekday - 1].substring(0, 3)}, '
               '${shortMonths[_moveDay!.month - 1]} ${_moveDay!.day}';
 
     final children = <Widget>[
