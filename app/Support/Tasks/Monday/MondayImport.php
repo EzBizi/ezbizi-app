@@ -8,6 +8,7 @@ use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
+use App\Models\TaskBoardView;
 use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
@@ -132,7 +133,8 @@ final class MondayImport
 
         DB::beginTransaction();
         try {
-            $this->tenant->run($org, function () use ($data, $as) {
+            // What Monday already has is never written back to it (MondayOutbox).
+            MondayOutbox::suppress(fn () => $this->tenant->run($org, function () use ($data, $as) {
                 $this->people = User::query()->get()->keyBy(fn (User $u) => mb_strtolower($u->email))->all();
                 $actor = $as instanceof User ? $as : ($this->person($as)
                     ?? throw new \RuntimeException('--as must be the email of a user in this organization.'));
@@ -146,7 +148,7 @@ final class MondayImport
                         }
                     }
                 }
-            });
+            }));
             $this->dry ? DB::rollBack() : DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -205,12 +207,66 @@ final class MondayImport
             $board->restore();
         }
         if ($board === null) {
-            $board = $this->boards->createCustom($as, $b['name'], TaskBoard::MAIN, null, null);
+            // "As we have it on Monday" (Jose, 11-13): a board of the same name, on the
+            // branch or company the map names (else the organization), main or private.
+            [$company, $franchise] = $this->place($b['scope'] ?? []);
+            $visibility = ($b['visibility'] ?? TaskBoard::MAIN) === TaskBoard::PRIVATE ? TaskBoard::PRIVATE : TaskBoard::MAIN;
+            $board = $this->boards->createCustom($as, mb_substr((string) $b['name'], 0, 255), $visibility, $company, $franchise);
             $board->forceFill(['external_ref' => $ref])->saveQuietly();
             $this->counts['boards made']++;
         }
+        if (! empty($b['archived']) && $board->archived_at === null) {
+            $board->forceFill(['archived_at' => now()])->saveQuietly(); // archived on Monday (Toula)
+        }
+        $this->members($board, $b['members'] ?? []);
 
         return $board;
+    }
+
+    /**
+     * The company/franchise a board lands on, by name as the map writes it
+     * ({company: "A-1 Chimney", franchise: "Illinois"}). A name that names
+     * nothing here stops the import: a board must not land on the wrong place.
+     *
+     * @return array{0: ?\App\Models\Company, 1: ?\App\Models\Franchise}
+     */
+    private function place(array $scope): array
+    {
+        $find = function (string $model, string $name, ?string $companyId = null) {
+            $rows = $model::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId))->get()
+                ->filter(fn ($r) => mb_strtolower(trim((string) $r->name)) === mb_strtolower(trim($name)));
+
+            return $rows->count() === 1 ? $rows->first()
+                : throw new \RuntimeException(sprintf('The map names %s "%s", which is %s here.', class_basename($model), $name, $rows->isEmpty() ? 'nothing' : 'more than one place'));
+        };
+        $company = ! empty($scope['company']) ? $find(\App\Models\Company::class, (string) $scope['company']) : null;
+        $franchise = ! empty($scope['franchise']) ? $find(\App\Models\Franchise::class, (string) $scope['franchise'], $company?->id) : null;
+
+        return [$company, $franchise];
+    }
+
+    /**
+     * Monday's owners and subscribers become the board's owners and members
+     * (a custom board only: a personal board is its person's). Added, never
+     * removed; somebody with no account here is counted, not invented.
+     */
+    private function members(TaskBoard $board, array $members): void
+    {
+        if ($board->kind !== TaskBoard::KIND_CUSTOM || $members === []) {
+            return;
+        }
+        $have = \App\Models\TaskBoardMember::query()->where('board_id', $board->id)->pluck('role', 'user_id')->all();
+        foreach ($members as $m) {
+            $user = $this->person($m['email'] ?? null);
+            if ($user === null || ! $user->is_active || isset($have[$user->id])) {
+                continue;
+            }
+            $role = ($m['role'] ?? '') === 'owner' ? \App\Models\TaskBoardMember::OWNER : \App\Models\TaskBoardMember::MEMBER;
+            \App\Models\TaskBoardMember::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'user_id' => $user->id, 'role' => $role]);
+            $have[$user->id] = $role;
+            $this->counts['members added'] = ($this->counts['members added'] ?? 0) + 1;
+        }
+        unset($this->assignable[$board->id]);
     }
 
     /**
@@ -442,6 +498,12 @@ final class MondayImport
         $this->asText = [];
         foreach ($emails as $email) {
             $user = $this->person($email);
+            if ($user !== null && $user->is_active && $board->kind === TaskBoard::KIND_CUSTOM
+                && ! in_array($user->id, $this->assignable[$board->id], true)) {
+                // Assigned on Monday's board, so on it here: a custom board takes them as a member.
+                $this->members($board, [['email' => $user->email, 'role' => 'member']]);
+                $this->assignable[$board->id] = $this->boards->assignable($board)->pluck('id')->all();
+            }
             if ($user !== null && in_array($user->id, $this->assignable[$board->id], true)) {
                 $out[] = $user->id;
 
@@ -668,6 +730,24 @@ final class MondayImport
             if ($column->position !== $i + 1) {
                 $column->forceFill(['position' => $i + 1])->save();
             }
+        }
+
+        // Monday's named views, shared with the board, once each (by Monday's view id).
+        $saved = TaskBoardView::query()->where('board_id', $board->id)->whereNull('user_id')->get();
+        foreach (array_values($b['views'] ?? []) as $i => $v) {
+            if ($saved->contains(fn (TaskBoardView $s) => ($s->config['monday_id'] ?? null) === $v['monday_id'])) {
+                continue;
+            }
+            $name = $v['name'];
+            for ($n = 2; $saved->contains(fn (TaskBoardView $s) => mb_strtolower($s->name) === mb_strtolower($name)); $n++) {
+                $name = mb_substr($v['name'], 0, 96).' '.$n;
+            }
+            $saved->push(TaskBoardView::query()->create([
+                'organization_id' => $board->organization_id, 'board_id' => $board->id, 'user_id' => null, 'name' => $name,
+                'config' => ['match' => 'all', 'filters' => [], 'sort' => [], 'layout' => $v['layout'], 'monday_id' => $v['monday_id']],
+                'position' => $i + 1,
+            ]));
+            $this->counts['views made'] = ($this->counts['views made'] ?? 0) + 1;
         }
     }
 

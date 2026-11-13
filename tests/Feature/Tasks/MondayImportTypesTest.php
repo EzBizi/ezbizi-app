@@ -86,6 +86,8 @@ class MondayImportTypesTest extends TestCase
             'labels_colors' => ['0' => ['color' => '#fdab3d'], '1' => ['color' => '#00c875'], '2' => ['color' => '#df2f4a'], '5' => ['color' => '#9d50dd']],
             'labels_positions_v2' => ['0' => 1, '1' => 3, '2' => 2, '5' => 0], 'done_colors' => [1],
         ]);
+        $board['views'] = [['id' => 'v1', 'name' => 'Table', 'type' => 'TableBoardView'], ['id' => 'v2', 'name' => 'Kanban', 'type' => null],
+            ['id' => 'v3', 'name' => 'Table', 'type' => 'TableBoardView']];
         array_push($board['columns'],
             ['id' => 'color_area', 'title' => 'Area', 'type' => 'status', 'settings_str' => json_encode([
                 'labels' => ['0' => 'Connecticut', '1' => 'Ohio'], 'labels_colors' => ['0' => ['color' => '#ff642e'], '1' => ['color' => '#00c875']],
@@ -175,6 +177,13 @@ class MondayImportTypesTest extends TestCase
         $groups = $this->inTenant($this->tenant['org'], fn () => $board->groups()->orderBy('position')->get()->map(fn ($g) => [$g->name, $g->colour])->all());
         $this->assertSame([['Open Tasks', '#579bfc'], ['Completed Tasks', '#037f4c']], $groups,
             'Monday\'s groups in Monday\'s order and colours; the empty starter groups Monday does not have are gone');
+
+        $views = fn () => $this->inTenant($this->tenant['org'], fn () => \App\Models\TaskBoardView::query()->where('board_id', $board->id)->whereNull('user_id')
+            ->orderBy('position')->get()->map(fn ($v) => [$v->name, $v->config['layout']])->all());
+        $this->assertSame([['Table', 'table'], ['Kanban', 'kanban'], ['Table 2', 'table']], $views(),
+            'Monday\'s named views, shared on the board, with their layout; a repeated name is numbered');
+        $this->artisan('ezbizi:monday-sync --full')->assertSuccessful();
+        $this->assertCount(3, $views(), 'once each');
     }
 
     public function test_the_rerun_turns_an_old_text_column_into_its_type_and_fills_blanks_without_overwriting(): void

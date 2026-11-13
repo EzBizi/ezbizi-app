@@ -81,7 +81,7 @@ final class MondayBoardReader
     /** @return array{monday_id: string, name: string, groups: list<array{monday_id: string, name: string, colour: ?string}>} */
     public function board(string $boardId): array
     {
-        $b = $this->api->query('query($b:[ID!]){ boards(ids:$b) { id name groups { id title color position } columns { id title type settings_str } } }', ['b' => [$boardId]])['boards'][0] ?? null;
+        $b = $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { id name groups { id title color position } columns { id title type settings_str } views { id name type } owners { id } subscribers { id } } }', ['b' => [$boardId]])['boards'][0] ?? null;
         if ($b === null) {
             throw new MondayRefused("Monday shows no board {$boardId} to this connection.");
         }
@@ -98,7 +98,27 @@ final class MondayBoardReader
             // The board status's labels, in Monday's order, with colour and done.
             'statuses' => $order === [] ? [] : self::labels($this->columns[$id][$order[0]]),
             'columns' => $this->columnsOf($id),
+            'views' => self::views($b['views'] ?? []),
+            // Who the board is shared with on Monday: owners, then subscribers (a custom board's owners and members).
+            'members' => $this->membersOf($b),
         ];
+    }
+
+    /** @return list<array{email: string, role: string}> */
+    private function membersOf(array $b): array
+    {
+        $this->loadUsers();
+        $out = [];
+        foreach ([['owners', 'owner'], ['subscribers', 'member']] as [$key, $role]) {
+            foreach ($b[$key] ?? [] as $u) {
+                $email = $this->users[(string) $u['id']]['email'] ?? null;
+                if ($email !== null && ! isset($out[$email])) {
+                    $out[$email] = ['email' => $email, 'role' => $role];
+                }
+            }
+        }
+
+        return array_values($out);
     }
 
     /**
@@ -185,11 +205,96 @@ final class MondayBoardReader
         ], $rows);
     }
 
+    /**
+     * The board's named views, as saved views with Monday's layout. Monday's
+     * API gives a view's name and kind only, never its filters (all 54 read
+     * 2026-11-13 had settings_str {}); a view Monday's API calls nothing (an
+     * app view: kanban, calendar, gantt, dashboard) is known by its name.
+     *
+     * @return list<array{monday_id: string, name: string, layout: string}>
+     */
+    public static function views(array $views): array
+    {
+        $out = [];
+        foreach ($views as $v) {
+            $name = trim((string) ($v['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $layout = match ((string) ($v['type'] ?? '')) {
+                'TableBoardView', 'SppBoardView', 'FeatureBoardView' => 'table',
+                'KanbanBoardView' => 'kanban',
+                'CalendarBoardView' => 'calendar',
+                default => match (true) {
+                    (bool) preg_match('/kanban/i', $name) => 'kanban',
+                    (bool) preg_match('/calendar/i', $name) => 'calendar',
+                    (bool) preg_match('/timeline|gantt/i', $name) => 'timeline',
+                    (bool) preg_match('/dashboard|chart/i', $name) => 'dashboard',
+                    default => 'table',
+                },
+            };
+            $out[] = ['monday_id' => (string) ($v['id'] ?? $name), 'name' => mb_substr($name, 0, 100), 'layout' => $layout];
+        }
+
+        return $out;
+    }
+
     /** The title a non-status column lands under: a second "Status" is "Status 2", as the export has always named it. */
     private static function title(array $m, array $order): string
     {
         return ($m['type'] === 'status' || $m['type'] === 'color') && mb_strtolower(trim($m['title'])) === 'status' && $order !== []
             ? 'Status 2' : (string) $m['title'];
+    }
+
+    /**
+     * What writing to a board needs (MondayPush): its columns as remembered
+     * here, which people column holds the assignees, which status column is
+     * the task's status, the Due Date column, and its groups by name.
+     *
+     * @return array{columns: array<string, array>, assignee: ?string, status: ?string, due: ?string, groups: array<string, string>}
+     */
+    public function writeMeta(string $boardId): array
+    {
+        $b = $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { id columns { id title type settings_str } groups { id title } } }', ['b' => [$boardId]])['boards'][0] ?? null;
+        if ($b === null) {
+            throw new MondayRefused("Monday shows no board {$boardId} to this connection.");
+        }
+        $this->remember($boardId, $b['columns']);
+        $meta = $this->columns[$boardId];
+        $due = array_key_first(array_filter($meta, fn ($m) => $m['type'] === 'date' && mb_strtolower(trim($m['title'])) === 'due date'));
+        $groups = [];
+        foreach ($b['groups'] as $g) {
+            $groups[mb_strtolower(trim((string) $g['title']))] ??= (string) $g['id'];
+        }
+
+        return ['columns' => $meta, 'assignee' => $this->assignee[$boardId] ?? null, 'status' => self::statusOrder($meta)[0] ?? null,
+            'due' => $due === null ? null : (string) $due, 'groups' => $groups];
+    }
+
+    /** @return array{updated_at: ?string, board: string, group: ?string}|null an item's clock, board and group */
+    public function itemState(string $itemId): ?array
+    {
+        $item = $this->api->query('query($i:[ID!]){ items(ids:$i) { id updated_at board { id } group { id } } }', ['i' => [$itemId]])['items'][0] ?? null;
+
+        return isset($item['board']['id'])
+            ? ['updated_at' => $item['updated_at'] ?? null, 'board' => (string) $item['board']['id'], 'group' => isset($item['group']['id']) ? (string) $item['group']['id'] : null]
+            : null;
+    }
+
+    /** The column a Task Board column of that name came from ("Status 2" is the second "Status"). */
+    public static function columnFor(array $meta, string $name): ?string
+    {
+        $order = self::statusOrder($meta['columns']);
+        foreach ($meta['columns'] as $id => $m) {
+            if ($order !== [] && $id === $order[0]) {
+                continue;
+            }
+            if (mb_strtolower(self::title($m, $order)) === mb_strtolower(trim($name))) {
+                return (string) $id;
+            }
+        }
+
+        return null;
     }
 
     /** The board an item is on, or null when this connection cannot see it. */
@@ -209,7 +314,7 @@ final class MondayBoardReader
     public function changedSince(string $boardId, ?CarbonImmutable $since): array
     {
         $fields = 'cursor items { id updated_at subitems { id updated_at } }';
-        $page = $this->api->query('query($b:[ID!]){ boards(ids:$b) { items_page(limit:500) { '.$fields.' } } }', ['b' => [$boardId]])['boards'][0]['items_page'] ?? ['items' => [], 'cursor' => null];
+        $page = $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { items_page(limit:500) { '.$fields.' } } }', ['b' => [$boardId]])['boards'][0]['items_page'] ?? ['items' => [], 'cursor' => null];
         $items = $page['items'];
         while (! empty($page['cursor'])) {
             $page = $this->api->query('query($c:String!){ next_items_page(limit:500, cursor:$c) { '.$fields.' } }', ['c' => $page['cursor']])['next_items_page'];
@@ -286,7 +391,7 @@ final class MondayBoardReader
         if ($missing === []) {
             return;
         }
-        foreach ($this->api->query('query($b:[ID!]){ boards(ids:$b) { id columns { id title type settings_str } } }', ['b' => $missing])['boards'] ?? [] as $b) {
+        foreach ($this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { id columns { id title type settings_str } } }', ['b' => $missing])['boards'] ?? [] as $b) {
             $this->remember((string) $b['id'], $b['columns']);
         }
     }

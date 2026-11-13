@@ -75,7 +75,7 @@ final class RetentionPolicy
      * silently matched nothing in exactly the table that grows fastest, which is
      * indistinguishable from a table that was already clean.
      *
-     * The 53 tables this governs today are `a1leads_review_events`
+     * The 54 tables this governs today are `a1leads_review_events`
      * (created_at), `a1leads_review_reply_receipts`
      * (created_at), `a1leads_reviews` (updated_at), `ai_eval_cases` (created_at), `ai_traces` (created_at),
      * `airtable_record_versions` (seen_at), `airtable_records`
@@ -88,7 +88,7 @@ final class RetentionPolicy
      * `email_verifications` (created_at), `field_alerts` (created_at),
      * `field_geocodes` (updated_at), `field_locations` (recorded_at),
      * `field_presences` (last_seen_at), `financial_adjustments` (date), `financial_bills` (period_to), `financial_charge_sheets` (period_to), `financial_parity_checks` (day), `financial_repair_weeks` (week_start), `financial_results` (date), `invitations` (created_at), `invoices` (issued_on),
-     * `monitoring_activity` (occurred_at),
+     * `monday_outbox` (created_at), `monitoring_activity` (occurred_at),
      * `notifications` (created_at), `password_resets` (created_at),
      * `phone_callbacks` (created_at), `phone_calls` (created_at), `phone_device_registrations` (last_seen_at),
      * `phone_messages` (created_at), `promotion_texts` (created_at), `promotions` (created_at), `qr_code_scans` (scanned_at), `report_batch_files` (created_at),
