@@ -338,8 +338,9 @@ void main() {
   testWidgets('back from an open mail finds the list where it was scrolled '
       '(Jose 11-11)', (tester) async {
     final server = _Server();
-    // Short enough that the fixture's rows scroll.
-    await _pump(tester, server, size: const Size(1500, 420));
+    // Short enough that the fixture's rows scroll (360 since the underlined
+    // module tabs, 2026-11-13, are shorter than the old pills).
+    await _pump(tester, server, size: const Size(1500, 360));
 
     ScrollPosition position() => tester
         .state<ScrollableState>(
