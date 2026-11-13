@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -20,6 +21,7 @@ import 'package:http/http.dart' as http;
 /// the wrong one is the exact failure this module was built to stop, and it is
 /// invisible in a screenshot.
 void main() {
+  _barHeights();
   // UI queue 103 (A1 takeover): the charge / IVR / dispatcher / date
   // filters, and editing a lead with its caller's history.
   testWidgets('a charge filter asks the server, and Edit saves the fields', (
@@ -2366,3 +2368,20 @@ const _me = {
     {'key': 'leads', 'label': 'Leads', 'available': true, 'reachable': true},
   ],
 };
+
+/// Jose, 2026-11-13: "The Filters button is not the same size as the status
+/// picker or the field". On a desktop, where the density is compact.
+void _barHeights() => testWidgets('search, status and Filters share one height and centre line', (tester) async {
+  debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+  addTearDown(() => debugDefaultTargetPlatformOverride = null);
+  await _pump(tester, leads: [_lead('lead-1', 'Marcus Bell')], connections: _connected);
+
+  Rect inside(String key, Finder what) =>
+      tester.getRect(find.descendant(of: find.byKey(ValueKey(key)), matching: what).first);
+  final button = tester.getRect(find.byKey(const ValueKey('leads-more-filters')));
+  expect(tester.getSize(find.byKey(const ValueKey('tour-leads-search'))).height, button.height);
+  expect(tester.getSize(find.byKey(const ValueKey('tour-leads-status'))).height, button.height);
+  expect(inside('tour-leads-search', find.byType(EditableText)).center.dy, button.center.dy);
+  expect(inside('tour-leads-status', find.byType(Text)).center.dy, button.center.dy);
+  debugDefaultTargetPlatformOverride = null;
+});

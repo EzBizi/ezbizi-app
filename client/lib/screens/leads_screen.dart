@@ -1081,7 +1081,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Search, status and Filters share one height (Jose, 2026-11-02: "these 3
   /// fields have different sizes"): the theme's 16 px padding, less 4.
   static const _barPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 12);
-  static const _barHeight = 44.0;
+  static const _barHeight = EzBiziTheme.controlHeight;
 
   Widget _searchField() => TextField(
     key: const ValueKey('tour-leads-search'),
@@ -1096,12 +1096,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
     },
     decoration: InputDecoration(
       isDense: true,
-      contentPadding: _barPadding,
+      // Its 24-high hint line: 10 + 24 + 10 fills the 44 slot exactly.
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       prefixIcon: const Icon(Icons.search, size: 20),
+      // Material's 48 floor on an icon outgrew the 44 slot (search_picker).
+      prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 24),
+      suffixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 24),
       // Both, because somebody has one or the other in front of them and
       // should not have to know which the box wants.
       hintText: 'Search name, phone or message',
-      border: const OutlineInputBorder(),
       suffixIcon: _search.text.isEmpty
           ? null
           : IconButton(
@@ -1141,7 +1144,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
       // Design 162 (option 1 + phone 4): over the list, never the title row.
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-        child: LayoutBuilder(
+        // Standard density: the desktop's compact one drew the field and the
+        // picker 36 high in their 44 slots, beside a 44 Filters button.
+        child: Theme(
+          data: theme.copyWith(visualDensity: VisualDensity.standard),
+          child: LayoutBuilder(
           builder: (context, box) => Row(
             children: [
               Expanded(
@@ -1163,6 +1170,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
               ),
             ],
           ),
+        ),
         ),
       ),
       _filterRow(theme, withStatus: false),
