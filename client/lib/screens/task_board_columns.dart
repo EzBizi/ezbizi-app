@@ -568,6 +568,7 @@ class ColumnCell extends StatelessWidget {
     this.onAutoAssign,
     this.api,
     this.boardId,
+    this.onFilter,
   });
 
   /// Searches customers and jobs for a link column's card.
@@ -578,6 +579,13 @@ class ColumnCell extends StatelessWidget {
 
   /// With [api], a People cell's faces open Monday's person card on hover.
   final String? boardId;
+
+  /// "Filter by this value" on the cell's right-click menu.
+  final VoidCallback? onFilter;
+
+  /// Whether the cell is edited in place, with its own right-click menu.
+  static bool editsInPlace(BoardColumn c, {required bool editable}) =>
+      editable && !_ownControl.contains(c.type);
 
   /// Told when a status column's menu opens and closes, to dim the board.
   final ValueChanged<bool>? onMenu;
@@ -627,6 +635,7 @@ class ColumnCell extends StatelessWidget {
       people: people,
       formats: formats,
       onChanged: onChanged!,
+      onFilter: onFilter,
       child: shown,
     );
   }
@@ -2169,7 +2178,11 @@ class InlineCellEditor extends StatefulWidget {
     required this.formats,
     required this.onChanged,
     required this.child,
+    this.onFilter,
   });
+
+  /// Adds "Filter by this value" to the right-click menu.
+  final VoidCallback? onFilter;
 
   final BoardColumn column;
   final Object? value;
@@ -2265,25 +2278,32 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
         at & const Size(1, 1),
         Offset.zero & box.size,
       ),
-      items: const [
-        PopupMenuItem(
+      items: [
+        const PopupMenuItem(
           key: Key('cell-rc-copy'),
           value: 'copy',
           height: 36,
           child: Text('Copy'),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           key: Key('cell-rc-paste'),
           value: 'paste',
           height: 36,
           child: Text('Paste'),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           key: Key('cell-rc-clear'),
           value: 'clear',
           height: 36,
           child: Text('Clear'),
         ),
+        if (widget.onFilter != null && widget.value != null)
+          const PopupMenuItem(
+            key: Key('cell-filter-value'),
+            value: 'filter',
+            height: 36,
+            child: Text('Filter by this value'),
+          ),
       ],
     );
     switch (choice) {
@@ -2295,6 +2315,8 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
         if (v != null) widget.onChanged(v);
       case 'clear':
         widget.onChanged(null);
+      case 'filter':
+        widget.onFilter?.call();
     }
   }
 
