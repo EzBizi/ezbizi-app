@@ -13,7 +13,7 @@ use Tests\TestCase;
 class SchedulerLanesTest extends TestCase
 {
     private const SLOW = ['ezbizi:sync-leads', 'ezbizi:sync-workiz', 'ezbizi:workiz-web-sales',
-        'ezbizi:workiz-web-estimate-links', 'ezbizi:project-workiz'];
+        'ezbizi:workiz-web-estimate-links', 'ezbizi:project-workiz', 'ezbizi:gbp-sync', 'ezbizi:review-backlog'];
 
     /** @return array<string, bool> command => would its filters pass */
     private function lane(?string $lane): array

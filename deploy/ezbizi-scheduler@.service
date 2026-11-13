@@ -33,7 +33,7 @@
 [Unit]
 Description=EzBizi scheduled tasks (slot %i)
 After=network.target mysql.service
-OnFailure=ezbizi-scheduler-failed@%n.service
+OnFailure=ezbizi-scheduler-failed@%N.service
 
 [Service]
 Type=oneshot
