@@ -80,6 +80,8 @@ class JobsController extends Controller
         'partial' => self::DUE.' > 0 AND '.self::DUE.' < '.self::TOTAL,
         'unpaid' => self::DUE.' > 0 AND '.self::DUE.' >= '.self::TOTAL,
         'overdue' => self::DUE.' > 0 AND '.self::DUE_ON.' < ?',
+        // The Due tile (Jobs filters option A, 2026-11-13): anything still owed.
+        'due' => self::DUE.' > 0',
     ];
 
     /**
@@ -359,7 +361,7 @@ class JobsController extends Controller
                     ->first();
                 $meta['money_counts'] = array_map(
                     fn (string $state) => (int) ($row->{$state} ?? 0),
-                    ['unpaid' => 'unpaid', 'partial' => 'partial', 'overdue' => 'overdue', 'paid' => 'paid', 'credit' => 'credit'],
+                    ['unpaid' => 'unpaid', 'partial' => 'partial', 'overdue' => 'overdue', 'paid' => 'paid', 'credit' => 'credit', 'due' => 'due'],
                 );
             }
         }

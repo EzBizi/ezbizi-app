@@ -509,6 +509,10 @@ void main() {
       );
 
       Future<void> pick(Key field, List<String> words) async {
+        if (find.byKey(field).evaluate().isEmpty) {
+          await tester.tap(find.byKey(const Key('jobs-filters')));
+          await tester.pumpAndSettle();
+        }
         await tester.tap(find.byKey(field));
         await tester.pumpAndSettle();
         for (final w in words) {

@@ -50,6 +50,8 @@ void main() {
         'areas — and says Connecticut once', (tester) async {
       await _pumpJobs(tester);
 
+      await tester.tap(find.byKey(const Key('jobs-filters')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('jobs-where')));
       await tester.pumpAndSettle();
 
@@ -67,6 +69,10 @@ void main() {
       await _pumpJobs(tester, onJobs: asked.add);
 
       Future<void> choose(String label) async {
+        if (find.byKey(const Key('jobs-where')).evaluate().isEmpty) {
+          await tester.tap(find.byKey(const Key('jobs-filters')));
+          await tester.pumpAndSettle();
+        }
         await tester.tap(find.byKey(const Key('jobs-where')));
         await tester.pumpAndSettle();
         await tester.tap(find.text(label).last);
@@ -88,6 +94,8 @@ void main() {
     testWidgets('an older server with no areas and one franchise offers no '
         'Where picker at all', (tester) async {
       await _pumpJobs(tester, areas: null, franchises: const [_il]);
+      await tester.tap(find.byKey(const Key('jobs-filters')));
+      await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('jobs-where')), findsNothing);
       // And calls nothing unplaced: it has not said there is anywhere to be.

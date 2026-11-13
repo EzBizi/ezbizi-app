@@ -62,12 +62,24 @@ void main() {
   ) async {
     await _open(tester, permissions: _money, meta: _moneyMeta);
 
+    // Option A (2026-11-13): the tiles carry paid and overdue; the panel
+    // the rest.
     expect(find.byKey(const ValueKey('money-chip-any')), findsOneWidget);
+    for (final (key, count) in [('overdue', '131'), ('paid', '2,593')]) {
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('money-chip-$key')),
+          matching: find.textContaining(count),
+        ),
+        findsOneWidget,
+        reason: '$key says how many',
+      );
+    }
+    await tester.tap(find.byKey(const Key('jobs-filters')));
+    await tester.pumpAndSettle();
     for (final (key, count) in [
       ('unpaid', '198'),
       ('partial', '227'),
-      ('overdue', '131'),
-      ('paid', '2,593'),
       ('credit', '102'),
     ]) {
       expect(
@@ -80,6 +92,14 @@ void main() {
       );
     }
 
+    await tester.tap(find.byKey(const ValueKey('money-chip-unpaid')));
+    await tester.pumpAndSettle();
+    expect(_lastList['money'], 'unpaid');
+    await tester.tap(find.byKey(const Key('jobs-filters-done')));
+    await tester.pumpAndSettle();
+    expect(find.text('Filters · 1'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, 'Unpaid'), findsOneWidget);
+
     await tester.tap(find.byKey(const ValueKey('money-chip-overdue')));
     await tester.pumpAndSettle();
     expect(_lastList['money'], 'overdue');
@@ -91,12 +111,11 @@ void main() {
 
     String total(String what) => tester
         .widget<Text>(find.byKey(ValueKey('money-total-$what-USD')))
-        .textSpan!
-        .toPlainText();
-    expect(total('billed'), r'Billed $5,089,246');
-    expect(total('paid'), r'Paid $4,370,740');
-    expect(total('due'), r'Due $718,506');
-    expect(total('overdue'), r'Overdue $212,380');
+        .data!;
+    expect(total('billed'), r'$5,089,246');
+    expect(total('paid'), r'$4,370,740');
+    expect(total('due'), r'$718,506');
+    expect(total('overdue'), r'$212,380');
   });
 
   testWidgets('a row says its money, red once it is late', (tester) async {
