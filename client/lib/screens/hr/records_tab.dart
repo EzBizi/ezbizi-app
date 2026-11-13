@@ -532,7 +532,14 @@ class _RecordsTabState extends State<RecordsTab> {
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: Row(
             children: [
-              _Initials(person['name'] as String? ?? ''),
+              UserAvatar(
+                api: widget.api,
+                userId: id ?? '',
+                name: person['name'] as String? ?? '',
+                radius: 17,
+                hasAvatar: id != null && person['has_avatar'] == true,
+                version: person['avatar_version']?.toString() ?? '',
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -660,28 +667,6 @@ class _RecordsTabState extends State<RecordsTab> {
           .map((assignment) => assignment['name'] as String? ?? '')
           .where((name) => name.isNotEmpty)
           .join(' · ');
-}
-
-class _Initials extends StatelessWidget {
-  const _Initials(this.name);
-
-  final String name;
-  static const double size = 34;
-
-  @override
-  Widget build(BuildContext context) {
-    final letters = name
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .take(2)
-        .map((part) => part[0].toUpperCase())
-        .join();
-
-    return CircleAvatar(
-      radius: size / 2,
-      child: Text(letters, style: TextStyle(fontSize: size * 0.36)),
-    );
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
