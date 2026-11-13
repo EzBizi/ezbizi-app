@@ -30,7 +30,7 @@ void main() {
         for (var i = 0; i < 200; i++) {..._call, 'id': 'ca-p$i'},
       ],
     );
-    final pages = () => [
+    List<String> pages() => [
       for (final r in seen)
         if (r.url.path.endsWith('/phone/calls') ||
             r.url.path.endsWith('/phone/messages'))
