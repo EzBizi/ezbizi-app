@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:url_launcher/url_launcher.dart';
 
@@ -398,7 +399,11 @@ class ColumnCell extends StatelessWidget {
     this.onChanged,
     this.onAddOption,
     this.onEditOptions,
+    this.onMenu,
   });
+
+  /// Told when a status column's menu opens and closes, to dim the board.
+  final ValueChanged<bool>? onMenu;
 
   /// Adds a label or tag to the column and returns its id (null: refused).
   final Future<String?> Function(String label)? onAddOption;
@@ -414,8 +419,34 @@ class ColumnCell extends StatelessWidget {
   /// Null where the board is view-only.
   final ValueChanged<Object?>? onChanged;
 
+  /// Types with their own control in the cell (a tick, a label menu), and
+  /// those a cell cannot edit (a link searches; a formula is worked out).
+  static const _ownControl = {
+    'checkbox',
+    'status',
+    'dropdown',
+    'tags',
+    'link',
+    'formula',
+  };
+
+  /// A click edits the value where it is (Jose, 2026-11-12: the sidebar is
+  /// for Updates and the task, not for typing one field).
   @override
   Widget build(BuildContext context) {
+    final shown = _display(context);
+    if (onChanged == null || _ownControl.contains(column.type)) return shown;
+    return InlineCellEditor(
+      column: column,
+      value: value,
+      people: people,
+      formats: formats,
+      onChanged: onChanged!,
+      child: shown,
+    );
+  }
+
+  Widget _display(BuildContext context) {
     final theme = Theme.of(context);
     final muted = TextStyle(color: theme.colorScheme.onSurfaceVariant);
     final v = value;
@@ -462,6 +493,8 @@ class ColumnCell extends StatelessWidget {
               ),
             ..._optionTools(theme, (id) => onChanged?.call(id)),
           ],
+          onOpen: column.type == 'status' ? () => onMenu?.call(true) : null,
+          onClose: column.type == 'status' ? () => onMenu?.call(false) : null,
           builder: (context, menu, _) => Material(
             color: column.type == 'status'
                 ? (fill ?? theme.colorScheme.surfaceContainerHighest)
@@ -663,10 +696,16 @@ class ColumnEditor extends StatefulWidget {
     required this.formats,
     this.onChanged,
     this.api,
+    this.onDone,
+    this.autofocus = false,
   });
 
   /// For a customer / job column's search; without it the field is read-only.
   final ApiClient? api;
+
+  /// A typed value was accepted (Enter or leaving the box), changed or not.
+  final VoidCallback? onDone;
+  final bool autofocus;
 
   final BoardColumn column;
   final Object? value;
@@ -715,10 +754,12 @@ class _ColumnEditorState extends State<ColumnEditor> {
       final n = typed.isEmpty ? null : num.tryParse(typed);
       if (typed.isNotEmpty && n == null) return;
       if (n != widget.value) widget.onChanged?.call(n);
+      widget.onDone?.call();
       return;
     }
     final next = typed.isEmpty ? null : typed;
     if (next != widget.value) widget.onChanged?.call(next);
+    widget.onDone?.call();
   }
 
   @override
@@ -896,6 +937,7 @@ class _ColumnEditorState extends State<ColumnEditor> {
           key: key,
           controller: _text,
           enabled: editable,
+          autofocus: widget.autofocus,
           maxLines: c.type == 'long_text' ? 6 : 1,
           minLines: 1,
           keyboardType: switch (c.type) {
@@ -1748,6 +1790,115 @@ class _StatusesPanelState extends State<StatusesPanel> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// A table cell that turns into its editor when clicked: typed types in the
+/// cell itself, a day, a timeline or a person in a small card under it.
+/// Enter or clicking away saves; Esc puts it back as it was.
+class InlineCellEditor extends StatefulWidget {
+  const InlineCellEditor({
+    super.key,
+    required this.column,
+    required this.value,
+    required this.people,
+    required this.formats,
+    required this.onChanged,
+    required this.child,
+  });
+
+  final BoardColumn column;
+  final Object? value;
+  final Map<String, String> people;
+  final DisplayFormats formats;
+  final ValueChanged<Object?> onChanged;
+  final Widget child;
+
+  @override
+  State<InlineCellEditor> createState() => _InlineCellEditorState();
+}
+
+class _InlineCellEditorState extends State<InlineCellEditor> {
+  bool _editing = false;
+  final _link = LayerLink();
+  final _card = OverlayPortalController();
+
+  /// Typed in the cell; everything else in a card, which has the room for a
+  /// calendar, a picker or a validation message.
+  bool get _inPlace =>
+      const {'text', 'number', 'currency'}.contains(widget.column.type);
+
+  void _start() {
+    setState(() => _editing = true);
+    if (!_inPlace) _card.show();
+  }
+
+  void _stop() {
+    if (!mounted || !_editing) return;
+    if (_card.isShowing) _card.hide();
+    setState(() => _editing = false);
+  }
+
+  Widget _editor() => CallbackShortcuts(
+    bindings: {const SingleActivator(LogicalKeyboardKey.escape): _stop},
+    child: TapRegion(
+      groupId: this,
+      onTapOutside: (_) => Future.microtask(_stop),
+      child: ColumnEditor(
+        column: widget.column,
+        value: widget.value,
+        people: widget.people,
+        formats: widget.formats,
+        autofocus: true,
+        onDone: () => Future.microtask(_stop),
+        onChanged: (v) {
+          widget.onChanged(v);
+          // A timeline is two days: stay open for the second.
+          if (widget.column.type != 'timeline' &&
+              widget.column.type != 'datetime' &&
+              !_inPlace) {
+            _stop();
+          }
+        },
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final key = ValueKey('column-cell-edit-${widget.column.id}');
+    if (_editing && _inPlace) {
+      return KeyedSubtree(key: key, child: _editor());
+    }
+    return CompositedTransformTarget(
+      link: _link,
+      child: OverlayPortal(
+        controller: _card,
+        overlayChildBuilder: (context) => CompositedTransformFollower(
+          link: _link,
+          targetAnchor: Alignment.bottomLeft,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              elevation: 4,
+              borderRadius: BorderRadius.circular(8),
+              color: Theme.of(context).colorScheme.surface,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: SizedBox(width: 300, child: _editor()),
+              ),
+            ),
+          ),
+        ),
+        child: InkWell(
+          key: key,
+          onTap: _editing ? null : _start,
+          child: SizedBox.expand(
+            child: Align(alignment: Alignment.centerLeft, child: widget.child),
+          ),
+        ),
       ),
     );
   }

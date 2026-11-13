@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/task_board_columns.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -154,5 +155,40 @@ void main() {
     expect(validColumnText('url', 'https://example.com'), isTrue);
     expect(validColumnText('url', 'example'), isFalse);
     expect(contactUri('phone', '(305) 724-2199').toString(), 'tel:3057242199');
+  });
+
+  testWidgets('a text cell edits in place: Enter saves, Esc cancels', (
+    tester,
+  ) async {
+    final changes = <Object?>[];
+    await pump(
+      tester,
+      SizedBox(
+        width: 200,
+        height: 38,
+        child: ColumnCell(
+          column: column('text'),
+          value: 'old',
+          people: const {},
+          formats: DisplayFormats.fallback,
+          onChanged: changes.add,
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('column-cell-edit-c1')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'new');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(changes, ['new']);
+    expect(find.byType(TextField), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('column-cell-edit-c1')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'typo');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(changes, ['new']);
+    expect(find.byType(TextField), findsNothing);
   });
 }
