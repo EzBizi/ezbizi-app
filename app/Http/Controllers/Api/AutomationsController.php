@@ -1414,7 +1414,7 @@ class AutomationsController extends Controller
             $this->audit->logChange('automation.updated', $automation);
             $automation->save();
 
-            if (isset($input['actions'])) {
+            if (array_key_exists('actions', $input)) {
                 $this->addVersion($automation, $input, $request);
             }
         });
@@ -1925,8 +1925,31 @@ class AutomationsController extends Controller
             $this->assertConditionsUsable($input['conditions']);
         }
 
+        // A PATCH carrying only one half of a version keeps the other half from
+        // the active one; a missing key is "unchanged", never "empty" (desk 11-12:
+        // an actions-only edit dropped four rules' conditions for 18 hours).
+        $active = $existing?->activeVersion;
+        if ($active !== null && (array_key_exists('actions', $input) || array_key_exists('conditions', $input))) {
+            $input += ['actions' => $active->actions, 'conditions' => $active->conditions];
+        }
+
+        // A customer-messaging rule with no conditions on a busy trigger texts
+        // everyone; saving one has to be said out loud.
+        if (array_key_exists('actions', $input) && empty($input['conditions'])
+            && in_array($trigger, self::HIGH_VOLUME_TRIGGERS, true)
+            && collect($input['actions'])->contains(fn ($a) => in_array($a['type'] ?? null, self::CUSTOMER_MESSAGES, true))
+            && ! $request->boolean('confirm_no_conditions')) {
+            throw ValidationException::withMessages([
+                'conditions' => 'This rule would message every customer on this trigger. Add a condition, or send confirm_no_conditions=true.',
+            ]);
+        }
+
         return $input;
     }
+
+    private const HIGH_VOLUME_TRIGGERS = ['lead.received', 'lead.customer_replied', 'lead.call_not_booked', 'lead.follow_up_due'];
+
+    private const CUSTOMER_MESSAGES = ['sms.send', 'whatsapp.send', 'email.send', 'message.reply'];
 
     /**
      * An empty condition row would save and then throw on every run.
