@@ -856,6 +856,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     }
   }
 
+  /// A section title inside a menu.
+  Widget _menuHeading(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+    child: Text(
+      text.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
+      ),
+    ),
+  );
+
   Widget _rowMenu(_Json t) => PopupMenuButton<String>(
     key: ValueKey('task-menu-${t['id']}'),
     tooltip: 'More',
@@ -2847,13 +2860,34 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 width: _widths.add,
                 child: MenuAnchor(
                   menuChildren: [
-                    for (final (type, label, icon) in columnTypes)
-                      MenuItemButton(
-                        key: ValueKey('column-add-$type'),
-                        leadingIcon: Icon(icon, size: 18),
-                        onPressed: () => _addColumn(type),
-                        child: Text(label),
-                      ),
+                    for (final (title, types) in columnTypeSections) ...[
+                      _menuHeading(context, title),
+                      for (final (type, label, icon) in columnTypes)
+                        if (types.contains(type))
+                          MenuItemButton(
+                            key: ValueKey('column-add-$type'),
+                            leadingIcon: Icon(icon, size: 18),
+                            onPressed: () => _addColumn(type),
+                            child: Text(label),
+                          ),
+                    ],
+                    SubmenuButton(
+                      key: const Key('column-add-more'),
+                      leadingIcon: const Icon(Icons.more_horiz, size: 18),
+                      menuChildren: [
+                        for (final (type, label, icon) in columnTypes)
+                          if (!columnTypeSections.any(
+                            (s) => s.$2.contains(type),
+                          ))
+                            MenuItemButton(
+                              key: ValueKey('column-add-$type'),
+                              leadingIcon: Icon(icon, size: 18),
+                              onPressed: () => _addColumn(type),
+                              child: Text(label),
+                            ),
+                      ],
+                      child: const Text('More columns'),
+                    ),
                   ],
                   builder: (context, menu, _) => IconButton(
                     key: const Key('column-add'),

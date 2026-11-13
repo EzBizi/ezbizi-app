@@ -292,6 +292,10 @@ class TaskBoardSettingsController extends Controller
      * with a stable id generated for any option that has none; other types
      * carry no options.
      */
+    /** The words a formula may use: its functions (the client's evalFormula) and TRUE/FALSE. */
+    private const FORMULA_WORDS = ['IF', 'AND', 'OR', 'NOT', 'VALUE', 'CONCATENATE', 'FLOOR', 'CEILING', 'ROUND', 'MOD', 'ABS',
+        'MIN', 'MAX', 'SUM', 'AVERAGE', 'LEN', 'UPPER', 'LOWER', 'LEFT', 'RIGHT', 'TRUE', 'FALSE'];
+
     private function settings(string $type, ?array $settings): ?array
     {
         $out = [];
@@ -315,13 +319,32 @@ class TaskBoardSettingsController extends Controller
             }
         }
         if ($type === 'formula') {
-            // Column names in brackets, numbers and + - * / ( ): the client works it out.
+            // Monday's formula language with columns as [Name]; the client works it out.
+            // Checked here only for size and balanced brackets and quotes.
             $expr = $settings['expression'] ?? null;
-            $bare = is_string($expr) ? preg_replace('/\[[^\[\]]{1,255}\]/u', '1', $expr) : null;
-            if ($bare === null || mb_strlen($expr) > 500 || ! preg_match('/^[\d\s.+\-*\/()]+$/', $bare)) {
-                throw ValidationException::withMessages(['settings.expression' => 'Columns in [brackets], numbers and + - × ÷ ( ).']);
+            $bare = is_string($expr) ? preg_replace(['/"(?:[^"]|"")*"/u', '/\[[^\[\]]{1,255}\]/u'], ['""', '1'], $expr) : null;
+            if ($bare === null || mb_strlen($expr) > 2000 || substr_count($bare, '(') !== substr_count($bare, ')')
+                || trim($expr) === '' || preg_match('/[\[\]{};`$]/', $bare) || str_contains($bare, chr(92))
+                || collect(preg_match_all('/[A-Za-z_]\w*/', $bare, $m) ? $m[0] : [])->contains(fn ($w) => ! in_array(strtoupper($w), self::FORMULA_WORDS, true))) {
+                throw ValidationException::withMessages(['settings.expression' => 'Columns in [brackets], numbers, "text", + - × ÷ & and functions like IF, CONCATENATE, FLOOR, MOD.']);
             }
             $out['expression'] = $expr;
+        }
+        if ($type === 'rating') {
+            $max = $settings['max'] ?? 5;
+            is_int($max) && $max >= 1 && $max <= 10
+                ?: throw ValidationException::withMessages(['settings.max' => 'A top rating from 1 to 10.']);
+            $out['max'] = $max;
+        }
+        if ($type === 'mirror') {
+            // Which connect column to follow, and which column of the tasks it names to show.
+            foreach (['connect_column_id', 'column_id'] as $k) {
+                $id = $settings[$k] ?? null;
+                if ($id !== null && (! is_string($id) || ! TaskColumn::query()->whereKey($id)->exists())) {
+                    throw ValidationException::withMessages(["settings.$k" => 'That column does not exist.']);
+                }
+                $out[$k] = $id;
+            }
         }
 
         return $out === [] ? null : $out;

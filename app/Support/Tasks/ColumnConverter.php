@@ -68,7 +68,8 @@ class ColumnConverter
             'checkbox' => $value ? 'Yes' : 'No',
             'timeline' => is_array($value) ? $value['from'] : null,
             'link' => is_array($value) ? $value['label'] : null,
-            'number', 'currency' => $value === null ? null : rtrim(rtrim(number_format((float) $value, 4, '.', ''), '0'), '.'),
+            'location' => is_array($value) ? ($value['address'] ?? null) : null,
+            'number', 'currency', 'rating' => $value === null ? null : rtrim(rtrim(number_format((float) $value, 4, '.', ''), '0'), '.'),
             default => is_scalar($value) ? (string) $value : null,
         };
 
@@ -108,7 +109,9 @@ class ColumnConverter
             'timeline' => $time === false ? null : ['from' => date('Y-m-d', $time), 'to' => date('Y-m-d', $time)],
             'person' => User::query()->where('name', $words)->value('id'),
             'people' => User::query()->whereIn('name', array_map('trim', explode(',', $words)))->pluck('id')->all() ?: null,
-            'formula', 'link' => null,
+            'location' => ['address' => $words, 'lat' => null, 'lng' => null],
+            'rating' => ctype_digit($n = (string) round((float) preg_replace('/[^\d.]/', '', $words))) ? $n : null,
+            'formula', 'link', 'files', 'connect', 'dependency', 'last_updated', 'creation_log', 'mirror' => null,
             default => $words,
         };
     }
