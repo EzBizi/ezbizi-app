@@ -1621,6 +1621,10 @@ class ActionRunner
         $template = trim((string) ($action['template'] ?? ''));
         $field = trim((string) ($action['to_field'] ?? ''));
 
+        if ($fanned = $this->toBranchManagers($action, $event, $subject, $type, fn (array $one) => $this->sendWhatsApp($one, $event, $subject))) {
+            return $fanned;
+        }
+
         if ($template === '' || $field === '') {
             return [
                 'type' => $type, 'ok' => false,
@@ -1779,6 +1783,10 @@ class ActionRunner
         $field = trim((string) ($action['to_field'] ?? ''));
         $subject = trim((string) ($action['subject'] ?? ''));
 
+        if ($fanned = $this->toBranchManagers($action, $event, $record, $type, fn (array $one) => $this->sendEmail($one, $event, $automation, $record))) {
+            return $fanned;
+        }
+
         if ($field === '' || $subject === '' || trim((string) ($action['body'] ?? '')) === '') {
             return [
                 'type' => $type, 'ok' => false,
@@ -1861,6 +1869,40 @@ class ActionRunner
 
     /** Whoever a task is given to, read when the rule runs (Jose, 2026-10-13). */
     private const RECIPIENT_ASSIGNEE = 'assignee:';
+
+    /** Whoever holds work_hours.approve at the subject person's branch, read when the rule runs (Clock In, 2026-11-13). */
+    private const RECIPIENT_BRANCH_MANAGERS = 'branch_managers:';
+
+    /**
+     * A branch-managers step, sent once per manager as a step to that person.
+     * Null when the step names anybody else, so the caller carries on.
+     */
+    private function toBranchManagers(array $action, AutomationEvent $event, ?Model $subject, string $type, callable $send): ?array
+    {
+        if (trim((string) ($action['to_field'] ?? '')) !== self::RECIPIENT_BRANCH_MANAGERS) {
+            return null;
+        }
+        $id = $subject instanceof User ? $subject->getKey() : data_get($event->payload, 'user_id');
+        $person = is_string($id) ? User::query()->find($id) : null;
+        if ($person === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This event is not about a person, so there is no branch to send to.'];
+        }
+        $clock = app(\App\Support\TimeClock\TimeClock::class);
+        $place = $clock->placeOf($person);
+        // ponytail: loads every active user of the tenant; a permission query if tenants grow large.
+        $managers = User::query()->where('is_active', true)->whereKeyNot($person->getKey())->get()
+            ->filter(fn (User $u) => $u->hasPermission('work_hours.approve') && $clock->placeOf($u)->is($place));
+        if ($managers->isEmpty()) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => "Nobody approves hours at {$person->name}'s branch, so nothing was sent."];
+        }
+        $results = $managers->map(fn (User $m) => $send(['to_field' => self::RECIPIENT_USER.$m->getKey()] + $action))->values();
+
+        return [
+            'type' => $type,
+            'ok' => $results->every(fn ($r) => $r['ok']),
+            'detail' => $results->pluck('detail')->join(' '),
+        ];
+    }
 
     /**
      * The customer the rule is about — the job's, the report's, or the
