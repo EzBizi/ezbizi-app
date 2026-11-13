@@ -347,6 +347,8 @@ class SocialAuthController extends Controller
                     $connection->forceFill([
                         'display_name' => $account->displayName,
                         'handle' => $account->handle,
+                        // Signed and short-lived (TikTok): replaced on every connect.
+                        'avatar_url' => $account->avatarUrl,
                         // Google Ads: the manager this account is read through,
                         // null when the grant reaches it directly. Written on
                         // every connect so a row that gained a direct route
