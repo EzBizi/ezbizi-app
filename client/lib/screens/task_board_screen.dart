@@ -3,11 +3,13 @@ import '../widgets/list_search.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
 import '../core/device_key_store_io.dart'
     if (dart.library.js_interop) '../core/device_key_store_web.dart'
     as store;
+import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
@@ -339,11 +341,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   @override
   void initState() {
     super.initState();
+    DeepLinks.pending.addListener(_takeLink);
     _load();
   }
 
   @override
   void dispose() {
+    DeepLinks.pending.removeListener(_takeLink);
     _newTitle.dispose();
     _groupName.dispose();
     _columnName.dispose();
@@ -386,6 +390,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       return;
     }
     await _open(_startIndex());
+    await _takeLink();
+  }
+
+  /// /tasks/{id} (the panel's Copy link): its board, then the task.
+  Future<void> _takeLink() async {
+    if (!mounted || DeepLinks.pending.value?.module != 'tasks') return;
+    if (_boards.isEmpty) return; // _load takes it once the boards are here.
+    final link = DeepLinks.take('tasks')!;
+    final res = await widget.api.get('/tasks/${link.id}');
+    if (!mounted || !res.ok) return;
+    final boardId = (res.body['data'] as Map?)?['board_id'];
+    final at = _boards.indexWhere((b) => b['id'] == boardId);
+    if (at >= 0 && _board?['id'] != boardId) await _open(at);
+    if (mounted) _openTaskById(link.id);
   }
 
   /// Where the last board opened is kept: per person, per place in view.
@@ -1523,6 +1541,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         where: '${group['name']}',
         people: people,
         unreadNotes: (task['unread_notes'] as num? ?? 0).toInt(),
+        subtasks: _subtasksOf(task),
       ),
     );
     if (mounted) await _load();
@@ -3418,7 +3437,11 @@ class _TaskPanel extends StatefulWidget {
     required this.where,
     required this.people,
     this.unreadNotes = 0,
+    this.subtasks = const [],
   });
+
+  /// Its subtasks as the board has them, for the panel's checklist.
+  final List<_Json> subtasks;
 
   final ApiClient api;
   final DisplayFormats formats;
@@ -3702,6 +3725,21 @@ class _TaskPanelState extends State<_TaskPanel> {
           '${widget.board['kind'] == 'user' ? 'My board' : widget.board['name']}',
       subtitle: widget.where,
       actions: [
+        TextButton.icon(
+          key: const Key('task-copy-link'),
+          onPressed: () async {
+            await Clipboard.setData(
+              ClipboardData(text: '${Uri.base.origin}/tasks/${widget.taskId}'),
+            );
+            if (context.mounted) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Link copied')));
+            }
+          },
+          icon: const Icon(Icons.link, size: 18),
+          label: const Text('Copy link'),
+        ),
         if (_canEdit && _task != null)
           if (_confirmDelete) ...[
             TextButton(
@@ -3734,6 +3772,39 @@ class _TaskPanelState extends State<_TaskPanel> {
         error: _error,
         onRetry: _load,
         child: _task == null ? const SizedBox.shrink() : _body(context),
+      ),
+    );
+  }
+
+  /// The status as one chip; it opens the same menu as the table's cell.
+  Widget _statusChip(BuildContext context, _Json task) {
+    final colours = _statusColours(
+      context,
+      _statusFor(widget.board, _statusOf(task)),
+    );
+    return MenuAnchor(
+      menuChildren: [
+        for (final s in _statuses(widget.board))
+          MenuItemButton(
+            key: ValueKey('task-panel-status-${s.id}'),
+            leadingIcon: _statusDot(context, s),
+            onPressed: _statusOf(task) == s.id
+                ? null
+                : () => _patch(_statusBody(widget.board, s.id, task)),
+            child: Text(s.name),
+          ),
+      ],
+      builder: (context, menu, _) => ActionChip(
+        key: const Key('task-panel-status'),
+        backgroundColor: colours.fill,
+        side: BorderSide.none,
+        label: Text(
+          '${_statusLabel(widget.board, _statusOf(task))} ▾',
+          style: TextStyle(color: colours.ink, fontWeight: FontWeight.w700),
+        ),
+        onPressed: _canEdit
+            ? () => menu.isOpen ? menu.close() : menu.open()
+            : null,
       ),
     );
   }
@@ -3809,100 +3880,61 @@ class _TaskPanelState extends State<_TaskPanel> {
           const SizedBox(height: 8),
         ],
         const SizedBox(height: 8),
-        fact(
-          _builtinLabel(widget.board, 'status'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final s in _statuses(widget.board))
-                ChoiceChip(
-                  key: ValueKey('task-panel-status-${s.id}'),
-                  showCheckmark: false,
-                  avatar: _statusDot(context, s),
-                  label: Text(s.name),
-                  selected: _statusOf(task) == s.id,
-                  // Never null on the chosen one: a disabled chip greys out
-                  // the very status it is showing.
-                  onSelected: _canEdit
-                      ? (_) {
-                          if (_statusOf(task) != s.id) {
-                            _patch(_statusBody(widget.board, s.id, task));
-                          }
+        // Option A (Jose, 2026-11-12): one row with the status, the people
+        // and the due day, then the board's fields in its order.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _statusChip(context, task),
+            SizedBox(
+              width: 220,
+              child: SearchPickerField<String>(
+                key: const Key('task-panel-owner'),
+                value: owner?['id'] as String?,
+                isDense: true,
+                hint: _builtinLabel(widget.board, 'owner'),
+                options: [
+                  const SearchOption(value: null, label: 'Nobody'),
+                  for (final p in people.entries)
+                    SearchOption(value: p.key, label: p.value),
+                ],
+                onChanged: _canEdit
+                    ? (id) {
+                        if (id != owner?['id']) {
+                          _patch({'assignee_user_id': id});
                         }
-                      : null,
-                ),
-            ],
-          ),
-        ),
-        fact(
-          _builtinLabel(widget.board, 'owner'),
-          SearchPickerField<String>(
-            key: const Key('task-panel-owner'),
-            value: owner?['id'] as String?,
-            isDense: true,
-            hint: 'Nobody',
-            options: [
-              const SearchOption(value: null, label: 'Nobody'),
-              for (final p in people.entries)
-                SearchOption(value: p.key, label: p.value),
-            ],
-            onChanged: _canEdit
-                ? (id) {
-                    if (id != owner?['id']) _patch({'assignee_user_id': id});
+                      }
+                    : null,
+              ),
+            ),
+            SizedBox(
+              width: 210,
+              child: CalendarDayField(
+                key: const Key('task-panel-due'),
+                controller: _due,
+                formats: widget.formats,
+                label: _builtinLabel(widget.board, 'due'),
+                dense: true,
+                enabled: _canEdit,
+                onChanged: (v) {
+                  final day = v.isEmpty ? null : v;
+                  if (day != task['due_on'] &&
+                      (day == null ||
+                          RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(day))) {
+                    _patch({'due_on': day});
                   }
-                : null,
-          ),
+                },
+              ),
+            ),
+            if (_late(task, widget.board))
+              const StatusPill('Late', tone: Tone.bad),
+          ],
         ),
+        const SizedBox(height: 10),
         if (owner != null && task['owners'] is List)
           fact('', _moreOwnersEditor(task, people)),
-        fact(
-          _builtinLabel(widget.board, 'due'),
-          // The day boxes need the whole width, so Late sits under the label.
-          under: _late(task, widget.board)
-              ? const StatusPill('Late', tone: Tone.bad)
-              : null,
-          CalendarDayField(
-            key: const Key('task-panel-due'),
-            controller: _due,
-            formats: widget.formats,
-            dense: true,
-            enabled: _canEdit,
-            onChanged: (v) {
-              final day = v.isEmpty ? null : v;
-              if (day != task['due_on'] &&
-                  (day == null ||
-                      RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(day))) {
-                _patch({'due_on': day});
-              }
-            },
-          ),
-        ),
-        fact(
-          _builtinLabel(widget.board, 'about'),
-          Text(
-            (task['about'] as Map?)?['label'] as String? ?? '—',
-            style: TextStyle(
-              color: task['about'] == null
-                  ? theme.colorScheme.onSurfaceVariant
-                  : theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        if (madeBy != null)
-          fact(
-            (widget.board['builtin_columns'] as Map?)?['creator'] is Map
-                ? _builtinLabel(widget.board, 'creator')
-                : 'Made by',
-            Text(
-              madeBy['type'] == 'automation'
-                  ? 'Automation "${madeBy['label']}"'
-                  : '${madeBy['label']}',
-              key: const Key('task-panel-made-by'),
-              style: muted,
-            ),
-          ),
         if (taskIsLocked(task)) ...[
           const SizedBox(height: 8),
           SensitiveLockedNotice(onUnlock: _unlock),
@@ -3934,57 +3966,45 @@ class _TaskPanelState extends State<_TaskPanel> {
                     : null,
               ),
             ),
-          // Activity log (Jose, 2026-11-09, monday's): loaded when opened.
-          ExpansionTile(
-            key: const Key('task-activity'),
-            tilePadding: EdgeInsets.zero,
-            childrenPadding: EdgeInsets.zero,
-            title: Text(
-              'Activity',
+          if ((task['about'] as Map?)?['label'] case final String about)
+            fact(
+              'Linked to',
+              Text(
+                about,
+                key: const Key('task-panel-about'),
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          if (widget.subtasks.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Subtasks · ${widget.subtasks.where((x) => _isDone(widget.board, x)).length} of ${widget.subtasks.length}',
+              key: const Key('task-panel-subtasks'),
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
-            onExpansionChanged: (open) {
-              if (open && _activity == null) _loadActivity();
-            },
-            children: [
-              if (_activity == null)
-                const LinearProgressIndicator()
-              else if (_activity!.isEmpty)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('No changes yet.', style: muted),
-                )
-              else
-                for (final a in _activity!)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: '${a['who'] ?? 'An automation'}  ',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          TextSpan(
-                            text:
-                                '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
-                          ),
-                          TextSpan(
-                            text: formatStamp(
-                              a['at'],
-                              '',
-                              formats: widget.formats,
-                            ),
-                            style: muted,
-                          ),
-                        ],
-                      ),
+            for (final sub in widget.subtasks)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    Icon(
+                      _isDone(widget.board, sub)
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
+                      size: 18,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  ),
-            ],
-          ),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(taskTitle(sub))),
+                  ],
+                ),
+              ),
+          ],
           const Divider(height: 24),
           Text(
             updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',
@@ -4114,6 +4134,78 @@ class _TaskPanelState extends State<_TaskPanel> {
               ],
             ),
           ],
+          const Divider(height: 24),
+          // Activity log (Jose, 2026-11-09, monday's): loaded when opened.
+          ExpansionTile(
+            key: const Key('task-activity'),
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: EdgeInsets.zero,
+            title: Text(
+              'Activity',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            onExpansionChanged: (open) {
+              if (open && _activity == null) _loadActivity();
+            },
+            children: [
+              if (_activity == null)
+                const LinearProgressIndicator()
+              else if (_activity!.isEmpty)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('No changes yet.', style: muted),
+                )
+              else
+                for (final a in _activity!)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '${a['who'] ?? 'An automation'}  ',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          TextSpan(
+                            text:
+                                '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
+                          ),
+                          TextSpan(
+                            text: formatStamp(
+                              a['at'],
+                              '',
+                              formats: widget.formats,
+                            ),
+                            style: muted,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+          if (madeBy != null || task['created_at'] != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                [
+                  if (madeBy != null)
+                    madeBy['type'] == 'automation'
+                        ? 'Automation "${madeBy['label']}"'
+                        : 'Made by ${madeBy['label']}',
+                  if (task['created_at'] != null)
+                    formatStamp(
+                      task['created_at'],
+                      '',
+                      formats: widget.formats,
+                    ),
+                ].join(' · '),
+                key: const Key('task-panel-made-by'),
+                style: muted,
+              ),
+            ),
         ],
       ],
     );

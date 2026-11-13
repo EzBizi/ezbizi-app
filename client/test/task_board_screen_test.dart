@@ -410,6 +410,9 @@ void main() {
     await tester.tap(find.byKey(const Key('task-activity')));
     await tester.pumpAndSettle();
 
+    // One status chip opens the statuses (sidebar option A, 11-12).
+    await tester.tap(find.byKey(const Key('task-panel-status')));
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('task-panel-status-working_on_it')),
     );
