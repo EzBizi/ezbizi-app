@@ -13,6 +13,11 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0574', date: '13 Nov 2026', items: [
+      'Task Board: dragging a column edge moves the edge with your pointer',
+      'Monday sync keeps working when Monday renews its access, and each board picks up where it left off',
+      'Behind the scenes: about 3,400 lines of unused code removed',
+    ]),
     VersionRelease(version: '0.0.0573', date: '13 Nov 2026', items: [
       'Project Management: the sideways scrollbar and column headings stay on screen at every row',
       'Task Board: Connect and Dependency cells open a card to search and tick tasks; Files cells upload from a paperclip; a Mirror column picks the Connect column it follows and the column it shows',
