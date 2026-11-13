@@ -15,6 +15,7 @@ use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Files\AttachmentUploader;
+use App\Support\Tasks\ColumnConverter;
 use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
@@ -137,9 +138,7 @@ final class MondayImport
                     ?? throw new \RuntimeException('--as must be the email of a user in this organization.'));
                 foreach ($data['boards'] as $b) {
                     $board = $this->board($b, $actor);
-                    foreach ($b['groups'] ?? [] as $g) {
-                        $this->group($board, $g['name'], $g['colour'] ?? null);
-                    }
+                    $this->layout($board, $b);
                     foreach ($b['items'] as $item) {
                         $parent = $this->task($board, $item, null, $actor);
                         foreach ($item['subitems'] ?? [] as $sub) {
@@ -176,7 +175,7 @@ final class MondayImport
             'restored (deleted earlier)' => 0, 'skipped (already imported)' => 0, 'refreshed from monday' => 0,
             'kept (changed here later)' => 0, 'updates' => 0, 'updates already there' => 0, 'files' => 0,
             'files MB' => 0.0, 'files not carried' => 0, 'statuses made' => 0, 'groups made' => 0, 'columns made' => 0,
-            'assignees kept as text' => 0,
+            'assignees kept as text' => 0, 'columns retyped' => 0, 'values filled' => 0, 'values not carried' => 0,
         ];
         $this->unmatched = $this->ownersDropped = $this->notCarried = $this->assignable = $this->map = $this->mondayNames = [];
         foreach ($data['people'] ?? [] as $from => $to) {
@@ -238,6 +237,7 @@ final class MondayImport
         $existing = Task::query()->withTrashed()->where('external_ref', $ref)->first();
         if ($existing !== null && ! $existing->trashed()) {
             $this->refreshed($existing, $board, $item, $parent, $as);
+            $this->fillBlanks($existing->refresh(), $board, $item, $as);
             $this->owners($board, $item['people'] ?? []);
             $this->assignedInMonday($existing, $as);
             $this->updates($existing, $item, $as);
@@ -367,7 +367,7 @@ final class MondayImport
         // Ohio's board has no Status column; its Job Status is the status.
         $columns = $item['columns'] ?? [];
         if (empty($item['status']) && ! empty($columns['Job Status'])) {
-            $item['status'] = $columns['Job Status'];
+            $item['status'] = is_array($columns['Job Status']) ? ($columns['Job Status']['value'] ?? null) : $columns['Job Status'];
             unset($columns['Job Status']);
         }
         $done = (bool) ($item['done'] ?? false)
@@ -375,15 +375,19 @@ final class MondayImport
 
         $values = [];
         foreach ($columns as $title => $value) {
-            [$type, $value] = is_array($value) ? [$value['type'] ?? 'text', $value['value'] ?? null] : ['text', $value];
-            if ($value !== null && $value !== '') {
-                $values[$this->column($board, $title, $type)->name] = $this->valueFor($board, $title, $value);
+            [$type, $value, $settings] = is_array($value) && array_key_exists('value', $value)
+                ? [$value['type'] ?? 'text', $value['value'], (array) ($value['settings'] ?? [])]
+                : ['text', $value, []];
+            if ($value !== null && $value !== '' && $value !== []) {
+                $column = $this->column($board, (string) $title, $type, $settings);
+                $values[$column->id] = $this->valueFor($board, $column, $value);
             }
         }
         $due = $item['due_on'] ?? null;
         if (! empty($item['timeline']['from']) && ! empty($item['timeline']['to'])) {
             $due ??= $item['timeline']['to'];
-            $values[$this->column($board, 'Timeline', 'timeline')->name] = $this->valueFor($board, 'Timeline', ['from' => $item['timeline']['from'], 'to' => $item['timeline']['to']]);
+            $column = $this->column($board, 'Timeline', 'timeline');
+            $values[$column->id] = $this->valueFor($board, $column, ['from' => $item['timeline']['from'], 'to' => $item['timeline']['to']]);
         }
 
         return [
@@ -625,6 +629,67 @@ final class MondayImport
         return null;
     }
 
+    /**
+     * The board as Monday has it (Jose, 2026-11-13: "as we have it on
+     * Monday"): its groups in Monday's order and colours, its status labels
+     * with their colours and done, and its columns in Monday's order with the
+     * Monday type's Task Board type and label colours. A column an earlier
+     * run made as text for a typed Monday column becomes that type, its values
+     * carried (ColumnConverter, the rule a person's type change meets). Empty
+     * starter groups Monday does not have go, so the board shows Monday's groups.
+     */
+    private function layout(TaskBoard $board, array $b): void
+    {
+        $groups = $b['groups'] ?? [];
+        foreach (array_values($groups) as $i => $g) {
+            $group = $this->group($board, $g['name'], $g['colour'] ?? null);
+            $group->forceFill(array_filter(['colour' => $g['colour'] ?? null, 'position' => $i + 1], fn ($v) => $v !== null))->save();
+        }
+        if ($groups !== []) {
+            $names = array_map(fn ($g) => mb_strtolower(trim($g['name'])), $groups);
+            foreach ($board->groups()->get() as $i => $group) {
+                if (! in_array(mb_strtolower($group->name), $names, true)) {
+                    if (in_array($group->name, array_column(TaskBoards::DEFAULT_GROUPS, 0), true) && ! Task::query()->withTrashed()->where('group_id', $group->id)->exists()) {
+                        $group->delete();
+                        $this->counts['starter groups removed'] = ($this->counts['starter groups removed'] ?? 0) + 1;
+                    } else {
+                        $group->forceFill(['position' => count($groups) + 1 + $i])->save();
+                    }
+                }
+            }
+        }
+
+        foreach ($b['statuses'] ?? [] as $s) {
+            $this->status($board, $s['label'], (bool) ($s['done'] ?? false), $s['colour'] ?? null);
+        }
+
+        foreach (array_values($b['columns'] ?? []) as $i => $c) {
+            $column = $this->column($board, $c['title'], $c['type'], (array) ($c['settings'] ?? []));
+            if ($column->position !== $i + 1) {
+                $column->forceFill(['position' => $i + 1])->save();
+            }
+        }
+    }
+
+    /**
+     * Columns an existing task has no value in, filled from Monday — the
+     * re-run on boards imported before a type was carried (desk, 2026-11-13:
+     * "it must update existing tasks' values, not skip them"). A value
+     * somebody set here is never overwritten.
+     */
+    private function fillBlanks(Task $task, TaskBoard $board, array $item, User $as): void
+    {
+        $values = $this->input($board, $item)['values'];
+        $have = TaskColumnValue::query()->where('task_id', $task->id)->pluck('column_id')->all();
+        $blank = array_diff_key($values, array_flip($have));
+        if ($blank === []) {
+            return;
+        }
+        $this->writer->update($task->load('board'), ['values' => $blank], $as);
+        $this->quietly($task->refresh(), ['external_synced_at' => now(), 'updated_at' => now()]);
+        $this->counts['values filled'] += count($blank);
+    }
+
     private function group(TaskBoard $board, ?string $name, ?string $colour = null): TaskGroup
     {
         $name = trim((string) $name) ?: 'Open Tasks';
@@ -642,55 +707,188 @@ final class MondayImport
 
     /**
      * The board's status of that name, made if missing (done when the item is
-     * done); a done item with no label takes the board's first done status.
-     * Null keeps the board's default.
+     * done, or when Monday counts the label as done), with Monday's colour
+     * where it has none; a done item with no label takes the board's first
+     * done status. Null keeps the board's default.
      */
-    private function status(TaskBoard $board, ?string $label, bool $done): ?string
+    private function status(TaskBoard $board, ?string $label, bool $done, ?string $colour = null): ?string
     {
         $label = trim((string) $label);
         $statuses = $board->statuses()->orderBy('position')->get();
         if ($label === '') {
             return $done ? $statuses->firstWhere('is_done', true)?->name : null;
         }
-        if (! $statuses->contains(fn (TaskStatus $s) => mb_strtolower($s->name) === mb_strtolower($label))) {
+        $found = $statuses->first(fn (TaskStatus $s) => mb_strtolower($s->name) === mb_strtolower($label));
+        if ($found === null) {
             TaskStatus::query()->create([
                 'organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => $label,
-                'is_done' => $done, 'position' => (int) $statuses->max('position') + 1,
+                'is_done' => $done, 'colour' => $colour, 'position' => (int) $statuses->max('position') + 1,
             ]);
             $this->counts['statuses made']++;
+        } elseif ($colour !== null && $found->colour === null) {
+            $found->forceFill(['colour' => $colour])->save();
         }
 
         return $label;
     }
 
-    private function column(TaskBoard $board, string $title, string $type = 'text'): TaskColumn
+    /**
+     * The board's column of that title, made with Monday's type and labels
+     * when missing. An existing text column for a typed Monday column (an
+     * earlier run wrote everything as text) becomes that type, its values
+     * carried; a column somebody here gave another type keeps it. Monday's
+     * labels are added to a status/tags column's options, and an option
+     * without a colour takes Monday's.
+     */
+    private function column(TaskBoard $board, string $title, string $type = 'text', array $settings = []): TaskColumn
     {
+        $type = in_array($type, TaskColumn::TYPES, true) ? $type : 'text';
         $found = $board->columns()->get()->first(fn (TaskColumn $c) => mb_strtolower($c->name) === mb_strtolower($title));
-        if ($found) {
-            return $found;
-        }
-        $this->counts['columns made']++;
+        if ($found === null) {
+            $this->counts['columns made']++;
 
-        return TaskColumn::query()->create([
-            'organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => $title,
-            'type' => in_array($type, TaskColumn::TYPES, true) ? $type : 'text', 'hidden' => false,
-            'position' => (int) $board->columns()->max('position') + 1,
-        ]);
+            return TaskColumn::query()->create([
+                'organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => $title,
+                'type' => $type, 'settings' => $settings ?: null, 'hidden' => false,
+                'position' => (int) $board->columns()->max('position') + 1,
+            ]);
+        }
+        if ($found->type === 'text' && $type !== 'text') {
+            $this->retype($found, $type, $settings);
+        }
+        if (in_array($found->type, TaskColumn::WITH_OPTIONS, true) && ! empty($settings['options'])) {
+            $options = $found->options();
+            $changed = false;
+            foreach ($settings['options'] as $o) {
+                $i = $this->optionIndex($options, $o['label']);
+                if ($i === null) {
+                    $options[] = $o;
+                    $changed = true;
+                } elseif (($options[$i]['colour'] ?? null) === null && ($o['colour'] ?? null) !== null) {
+                    $options[$i]['colour'] = $o['colour'];
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                $found->forceFill(['settings' => ['options' => $options] + ($found->settings ?? [])])->save();
+            }
+        }
+        foreach (['unit', 'monday_formula', 'monday_type'] as $key) {
+            if (isset($settings[$key]) && ! isset($found->settings[$key])) {
+                $found->forceFill(['settings' => [$key => $settings[$key]] + ($found->settings ?? [])])->save();
+            }
+        }
+
+        return $found;
     }
 
-    /** The value as that column takes it; an existing column of another type gets the text. */
-    private function valueFor(TaskBoard $board, string $title, mixed $value): mixed
+    /** A text column an earlier run made, as the Monday type it always was; values carried where they read as it. */
+    private function retype(TaskColumn $column, string $type, array $settings): void
     {
-        $column = $this->column($board, $title);
-        $text = is_array($value) ? trim(($value['from'] ?? '').' – '.($value['to'] ?? ''), ' –') : (string) $value;
+        $target = $column->replicate();
+        $target->type = $type;
+        $target->settings = $settings ?: null;
+        $plan = app(ColumnConverter::class)->plan($column, $target);
+        $options = $plan['options'];
+        foreach ($settings['options'] ?? [] as $o) { // Monday's colour for a label the plan made
+            $i = $this->optionIndex($options, $o['label']);
+            if ($i !== null && ($options[$i]['colour'] ?? null) === null) {
+                $options[$i]['colour'] = $o['colour'] ?? null;
+            }
+        }
+        foreach ($plan['rows'] as $id => $row) {
+            $row === null
+                ? TaskColumnValue::query()->whereKey($id)->delete()
+                : TaskColumnValue::query()->whereKey($id)->update($row);
+        }
+        $column->forceFill([
+            'type' => $type,
+            'settings' => in_array($type, TaskColumn::WITH_OPTIONS, true) ? ['options' => $options] + array_diff_key($settings, ['options' => 1]) : ($settings ?: null),
+        ])->save();
+        $this->counts['columns retyped']++;
+    }
 
-        return match ($column->type) {
-            'timeline' => is_array($value) ? $value : null,
-            'number', 'currency' => is_numeric($value) ? (float) $value : null,
-            'date' => is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value : null,
-            'text', 'long_text' => mb_substr($text, 0, 5000),
-            default => null,
+    /** @param  list<array{id: string, label: string, colour: ?string}>  $options */
+    private function optionIndex(array $options, string $label): ?int
+    {
+        foreach ($options as $i => $o) {
+            if (mb_strtolower(trim((string) $o['label'])) === mb_strtolower(trim($label))) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The value as the column takes it (TaskWriter::encode decides), or null
+     * when it cannot be carried: a label becomes the option of that label
+     * (made if new), a person the first one this board can take. A column
+     * somebody here kept as text gets Monday's words.
+     */
+    private function valueFor(TaskBoard $board, TaskColumn $column, mixed $value): mixed
+    {
+        $words = fn (mixed $v): string => is_array($v)
+            ? (array_is_list($v) ? implode(', ', array_map('strval', $v)) : trim(($v['from'] ?? '').' – '.($v['to'] ?? ''), ' –'))
+            : (is_bool($v) ? ($v ? 'Yes' : 'No') : (string) $v);
+
+        $candidate = match ($column->type) {
+            'status', 'dropdown' => $this->option($column, is_array($value) ? (string) ($value[0] ?? '') : (string) $value),
+            'tags' => array_values(array_unique(array_filter(array_map(fn ($l) => $this->option($column, (string) $l), (array) $value)))) ?: null,
+            'person' => $this->personFor($board, (array) $value),
+            'checkbox' => is_bool($value) ? $value : in_array(mb_strtolower((string) $value), ['true', 'yes', '1', 'v'], true),
+            'number', 'currency' => is_numeric($value) ? (float) $value : (is_numeric($n = preg_replace('/[$,\s]/', '', $words($value))) ? (float) $n : null),
+            'date' => is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}/', $value) ? substr($value, 0, 10) : null,
+            'datetime' => is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value.' 00:00' : $value,
+            'timeline' => is_array($value) && isset($value['from'], $value['to']) ? $value : null,
+            'text' => mb_substr($words($value), 0, 5000),
+            'long_text' => mb_substr($words($value), 0, 20000),
+            'formula' => null,
+            default => is_string($value) ? trim($value) : null,
         };
+        if ($candidate === null || $candidate === '') {
+            return null;
+        }
+        $assignable = $this->assignable[$board->id] ?? null;
+        if ($this->writer->encode($column, $candidate, $board, $assignable)[0] === null) {
+            $this->counts['values not carried']++;
+
+            return null;
+        }
+
+        return $candidate;
+    }
+
+    /** The column's option for a Monday label: matched by name, else added (no colour: Monday's arrives with the column). */
+    private function option(TaskColumn $column, string $label): ?string
+    {
+        $label = trim($label);
+        if ($label === '') {
+            return null;
+        }
+        $options = $column->options();
+        $i = $this->optionIndex($options, $label);
+        if ($i !== null) {
+            return (string) $options[$i]['id'];
+        }
+        $options[] = $o = ['id' => 'monday-'.substr(md5(mb_strtolower($label)), 0, 10), 'label' => mb_substr($label, 0, 100), 'colour' => null];
+        $column->forceFill(['settings' => ['options' => $options] + ($column->settings ?? [])])->save();
+
+        return $o['id'];
+    }
+
+    /** A person column holds one person here: the first Monday person this board can take. */
+    private function personFor(TaskBoard $board, array $emails): ?string
+    {
+        $this->assignable[$board->id] ??= $this->boards->assignable($board)->pluck('id')->all();
+        foreach ($emails as $email) {
+            $user = $this->person((string) $email);
+            if ($user !== null && in_array($user->id, $this->assignable[$board->id], true)) {
+                return $user->id;
+            }
+        }
+
+        return null;
     }
 
     /**
