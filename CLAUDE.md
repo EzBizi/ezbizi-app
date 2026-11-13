@@ -1,6 +1,7 @@
 # EzBizi
 
-Read `AGENTS.md`, then `StartUp.md` section 2, before doing anything.
+Read `AGENTS.md`, then `StartUp.md`, before doing anything. (StartUp has no
+numbered sections since 2026-09-08; the old long one is `docs/history/2026-09-08-startup.md`.)
 
 Many Claude sessions work in this folder at once, one role each. Before you
 message another session, read `docs/SESSIONS.md`: it holds the one address

@@ -1,5 +1,7 @@
 # Release notes
 
+> **Not maintained since 2026-09-18.** What each version shipped is `client/lib/core/version_history.dart` (the deploy desk writes it); what is live is `ssh app 'cat /var/www/ezbizi-current/.ezbizi-release-sha /var/www/ezbizi-current/client/VERSION'`. The entries below are history.
+
 This file distinguishes reviewed implementation from deployment. Current production measurements remain in [STATUS](EZBIZI-STATUS.md); the application version is sourced from `client/VERSION`. Earlier implementation history remains in [BUILD-LOG](EZBIZI-BUILD-LOG.md).
 
 ## 2026-09-18 — where production actually is, and the gap in this file
