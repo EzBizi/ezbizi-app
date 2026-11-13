@@ -276,251 +276,236 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
         _kind != null &&
         (_companyId != null || _atOrganization);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return formPane(
+      context,
+      'New vehicle',
+      showBack: widget.showBack,
+      busy: _busy,
+      onCancel: widget.onCancel,
+      onSave: canSave ? _save : null,
       children: [
-        paneHeader(
-          context,
-          'New vehicle',
-          showBack: widget.showBack,
-          onBack: _busy ? null : widget.onCancel,
-        ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (_showCompanyField) ...[
-                  SearchPickerField<String>(
-                    value: _companyId ?? fleetOrgValue,
-                    label: 'Company',
-                    helperText: _companyId == null && _atOrganization
-                          ? '$fleetGeneralLabel — the whole group can see it.'
-                          : null,
-                    helperMaxLines: 3,
-                    options: [
-                      if (_atOrganization)
-                        SearchOption(value: fleetOrgValue, label: _me.organization.name),
-                      for (final c in _me.companiesInView)
-                        SearchOption(value: c.id, label: c.name),
-                    ],
-                    onChanged: _busy
-                        ? null
-                        : (v) => setState(() {
-                            _companyId = v == fleetOrgValue ? null : v;
-                            _franchiseId = null;
-                          }),
+        if (_showCompanyField) ...[
+          SearchPickerField<String>(
+            value: _companyId ?? fleetOrgValue,
+            label: 'Company',
+            helperText: _companyId == null && _atOrganization
+                  ? '$fleetGeneralLabel — the whole group can see it.'
+                  : null,
+            helperMaxLines: 3,
+            options: [
+              if (_atOrganization)
+                SearchOption(value: fleetOrgValue, label: _me.organization.name),
+              for (final c in _me.companiesInView)
+                SearchOption(value: c.id, label: c.name),
+            ],
+            onChanged: _busy
+                ? null
+                : (v) => setState(() {
+                    _companyId = v == fleetOrgValue ? null : v;
+                    _franchiseId = null;
+                  }),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (_showFranchiseField)
+          SearchPickerField<String>(
+            key: ValueKey(_companyId),
+            value: _franchiseId ?? fleetGeneralValue,
+            label: _me.organization.franchiseLabel,
+            helperText: '$fleetGeneralLabel is visible to everyone who can see this company.',
+            helperMaxLines: 3,
+            options: [
+              const SearchOption(value: fleetGeneralValue, label: fleetGeneralLabel),
+              for (final f in branchOptions(_places, _me.companies, activeOnly: false))
+                SearchOption(value: f.id, label: f.label),
+            ],
+            onChanged: _busy
+                ? null
+                : (v) => setState(
+                    () => _franchiseId =
+                        v == fleetGeneralValue ? null : v,
                   ),
-                  const SizedBox(height: 12),
+          ),
+        const SizedBox(height: 16),
+        FleetSectionCard(
+          title: 'Identity',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Will be listed as $_preview',
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 12),
+              _field(_year, 'Year', keyboard: TextInputType.number),
+              _field(_make, 'Make'),
+              _field(_model, 'Model'),
+              _field(_plate, 'Plate'),
+              _field(_vin, 'VIN'),
+              _field(_colour, 'Colour'),
+              const SizedBox(height: 12),
+              SearchPickerField<String>(
+                value: _bodyType,
+                label: 'Body type',
+                options: [
+                  for (final t in fleetBodyTypes)
+                    SearchOption(value: t.$1, label: t.$2),
                 ],
-                if (_showFranchiseField)
-                  SearchPickerField<String>(
-                    key: ValueKey(_companyId),
-                    value: _franchiseId ?? fleetGeneralValue,
-                    label: _me.organization.franchiseLabel,
-                    helperText: '$fleetGeneralLabel is visible to everyone who can see this company.',
-                    helperMaxLines: 3,
-                    options: [
-                      const SearchOption(value: fleetGeneralValue, label: fleetGeneralLabel),
-                      for (final f in branchOptions(_places, _me.companies, activeOnly: false))
-                        SearchOption(value: f.id, label: f.label),
-                    ],
-                    onChanged: _busy
-                        ? null
-                        : (v) => setState(
-                            () => _franchiseId =
-                                v == fleetGeneralValue ? null : v,
-                          ),
-                  ),
-                const SizedBox(height: 16),
-                FleetSectionCard(
-                  title: 'Identity',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Will be listed as $_preview',
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      _field(_year, 'Year', keyboard: TextInputType.number),
-                      _field(_make, 'Make'),
-                      _field(_model, 'Model'),
-                      _field(_plate, 'Plate'),
-                      _field(_vin, 'VIN'),
-                      _field(_colour, 'Colour'),
-                      const SizedBox(height: 12),
-                      SearchPickerField<String>(
-                        value: _bodyType,
-                        label: 'Body type',
-                        options: [
-                          for (final t in fleetBodyTypes)
-                            SearchOption(value: t.$1, label: t.$2),
-                        ],
-                        onChanged: _busy
-                            ? null
-                            : (v) => setState(() => _bodyType = v ?? _bodyType),
-                      ),
-                      const SizedBox(height: 12),
-                      SearchPickerField<String>(
-                        value: _fuelType,
-                        label: 'Fuel type',
-                        options: [
-                          for (final t in fleetFuelTypes)
-                            SearchOption(value: t.$1, label: t.$2),
-                        ],
-                        onChanged: _busy
-                            ? null
-                            : (v) => setState(() => _fuelType = v ?? _fuelType),
-                      ),
-                      const SizedBox(height: 12),
-                      _field(
-                        _odometer,
-                        'Odometer (miles)',
-                        keyboard: TextInputType.number,
-                      ),
-                      _day(_nextServiceOn, 'Next service on'),
-                      _field(
-                        _nextServiceMiles,
-                        'Next service miles',
-                        keyboard: TextInputType.number,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                FleetSectionCard(
-                  title: 'How do we hold it?',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ChoiceChip(
-                            label: const Text('Owned'),
-                            selected: _kind == 'owned',
-                            onSelected: _busy
-                                ? null
-                                : (_) => setState(() => _kind = 'owned'),
-                          ),
-                          ChoiceChip(
-                            label: const Text('Rented'),
-                            selected: _kind == 'rented',
-                            onSelected: _busy
-                                ? null
-                                : (_) => setState(() => _kind = 'rented'),
-                          ),
-                        ],
-                      ),
-                      if (_kind != null) ...[
-                        const SizedBox(height: 12),
-                        _field(
-                          _counterparty,
-                          _kind == 'rented' ? 'Rented from' : 'Bought from',
-                        ),
-                        _day(_startedOn, 'Started on'),
-                      ],
-                      if (_financials && _kind == 'owned') ...[
-                        _field(
-                          _purchasePrice,
-                          'Purchase price',
-                          helper:
-                              'In dollars — 25000.00. Stored as whole cents.',
-                          keyboard: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                        ),
-                        _field(_lienholder, 'Lienholder'),
-                        _field(_loanAccount, 'Loan account'),
-                        _field(
-                          _loanPayment,
-                          'Monthly payment',
-                          keyboard: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                        ),
-                        _day(_loanPayoff, 'Payoff date'),
-                        _field(
-                          _transport,
-                          'Transport cost',
-                          keyboard: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                        ),
-                      ],
-                      if (_financials && _kind == 'rented') ...[
-                        _field(
-                          _rentalRate,
-                          'Rental rate',
-                          helper: 'In dollars. Stored as whole cents.',
-                          keyboard: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SearchPickerField<String>(
-                          value: _rentalPeriod,
-                          label: 'Rate period',
-                          options: [
-                            for (final t in fleetRatePeriods)
-                              SearchOption(value: t.$1, label: t.$2),
-                          ],
-                          onChanged: _busy
-                              ? null
-                              : (v) => setState(() => _rentalPeriod = v),
-                        ),
-                        const SizedBox(height: 12),
-                        _field(
-                          _rentalDeposit,
-                          'Deposit',
-                          keyboard: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                        ),
-                        _field(_rentalAccount, 'Account number'),
-                        const SizedBox(height: 12),
-                        SearchPickerField<String>(
-                          value: _rentalTerms,
-                          label: 'Payment terms',
-                          options: [
-                            for (final t in fleetRentalTerms)
-                              SearchOption(value: t.$1, label: t.$2),
-                          ],
-                          onChanged: _busy
-                              ? null
-                              : (v) => setState(() => _rentalTerms = v),
-                        ),
-                        const SizedBox(height: 12),
-                        SearchPickerField<String>(
-                          value: _rentalMethod,
-                          label: 'Payment method',
-                          options: [
-                            for (final t in fleetPaymentMethods)
-                              SearchOption(value: t.$1, label: t.$2),
-                          ],
-                          onChanged: _busy
-                              ? null
-                              : (v) => setState(() => _rentalMethod = v),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  ErrorNote(_error!),
+                onChanged: _busy
+                    ? null
+                    : (v) => setState(() => _bodyType = v ?? _bodyType),
+              ),
+              const SizedBox(height: 12),
+              SearchPickerField<String>(
+                value: _fuelType,
+                label: 'Fuel type',
+                options: [
+                  for (final t in fleetFuelTypes)
+                    SearchOption(value: t.$1, label: t.$2),
                 ],
-              ],
-            ),
+                onChanged: _busy
+                    ? null
+                    : (v) => setState(() => _fuelType = v ?? _fuelType),
+              ),
+              const SizedBox(height: 12),
+              _field(
+                _odometer,
+                'Odometer (miles)',
+                keyboard: TextInputType.number,
+              ),
+              _day(_nextServiceOn, 'Next service on'),
+              _field(
+                _nextServiceMiles,
+                'Next service miles',
+                keyboard: TextInputType.number,
+              ),
+            ],
           ),
         ),
-        paneFooter(
-          onCancel: _busy ? null : widget.onCancel,
-          onSave: canSave ? _save : null,
+        const SizedBox(height: 16),
+        FleetSectionCard(
+          title: 'How do we hold it?',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Owned'),
+                    selected: _kind == 'owned',
+                    onSelected: _busy
+                        ? null
+                        : (_) => setState(() => _kind = 'owned'),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Rented'),
+                    selected: _kind == 'rented',
+                    onSelected: _busy
+                        ? null
+                        : (_) => setState(() => _kind = 'rented'),
+                  ),
+                ],
+              ),
+              if (_kind != null) ...[
+                const SizedBox(height: 12),
+                _field(
+                  _counterparty,
+                  _kind == 'rented' ? 'Rented from' : 'Bought from',
+                ),
+                _day(_startedOn, 'Started on'),
+              ],
+              if (_financials && _kind == 'owned') ...[
+                _field(
+                  _purchasePrice,
+                  'Purchase price',
+                  helper:
+                      'In dollars — 25000.00. Stored as whole cents.',
+                  keyboard: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+                _field(_lienholder, 'Lienholder'),
+                _field(_loanAccount, 'Loan account'),
+                _field(
+                  _loanPayment,
+                  'Monthly payment',
+                  keyboard: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+                _day(_loanPayoff, 'Payoff date'),
+                _field(
+                  _transport,
+                  'Transport cost',
+                  keyboard: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+              ],
+              if (_financials && _kind == 'rented') ...[
+                _field(
+                  _rentalRate,
+                  'Rental rate',
+                  helper: 'In dollars. Stored as whole cents.',
+                  keyboard: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SearchPickerField<String>(
+                  value: _rentalPeriod,
+                  label: 'Rate period',
+                  options: [
+                    for (final t in fleetRatePeriods)
+                      SearchOption(value: t.$1, label: t.$2),
+                  ],
+                  onChanged: _busy
+                      ? null
+                      : (v) => setState(() => _rentalPeriod = v),
+                ),
+                const SizedBox(height: 12),
+                _field(
+                  _rentalDeposit,
+                  'Deposit',
+                  keyboard: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+                _field(_rentalAccount, 'Account number'),
+                const SizedBox(height: 12),
+                SearchPickerField<String>(
+                  value: _rentalTerms,
+                  label: 'Payment terms',
+                  options: [
+                    for (final t in fleetRentalTerms)
+                      SearchOption(value: t.$1, label: t.$2),
+                  ],
+                  onChanged: _busy
+                      ? null
+                      : (v) => setState(() => _rentalTerms = v),
+                ),
+                const SizedBox(height: 12),
+                SearchPickerField<String>(
+                  value: _rentalMethod,
+                  label: 'Payment method',
+                  options: [
+                    for (final t in fleetPaymentMethods)
+                      SearchOption(value: t.$1, label: t.$2),
+                  ],
+                  onChanged: _busy
+                      ? null
+                      : (v) => setState(() => _rentalMethod = v),
+                ),
+              ],
+            ],
+          ),
         ),
+        if (_error != null) ...[
+          const SizedBox(height: 14),
+          ErrorNote(_error!),
+        ],
       ],
     );
   }

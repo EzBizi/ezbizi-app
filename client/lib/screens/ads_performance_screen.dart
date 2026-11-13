@@ -261,7 +261,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   }
 
   String _reportKey(String id, DateTime from, DateTime to) =>
-      '$id|${_d(from)}|${_d(to)}|${_selectedIsManager ? 'rollup' : 'account'}';
+      '$id|${formatCalendarDay(from)}|${formatCalendarDay(to)}|${_selectedIsManager ? 'rollup' : 'account'}';
 
   @override
   void initState() {
@@ -315,11 +315,6 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     final days = _ranges[_range].days ?? 30;
     return (to.subtract(Duration(days: days - 1)), to);
   }
-
-  static String _d(DateTime x) =>
-      '${x.year.toString().padLeft(4, '0')}-'
-      '${x.month.toString().padLeft(2, '0')}-'
-      '${x.day.toString().padLeft(2, '0')}';
 
   Future<void> _loadAccounts() async {
     // Remembered accounts stay on screen while the list is asked again; only a
@@ -400,7 +395,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       }
     });
 
-    final query = {'connection_id': id, 'from': _d(from), 'to': _d(to)};
+    final query = {'connection_id': id, 'from': formatCalendarDay(from), 'to': formatCalendarDay(to)};
 
     // A manager holds no spend of its own — every figure on it would be zero —
     // so asking it for a campaign report answers a question nobody meant. The
@@ -859,7 +854,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: ReportDates(
-              key: ValueKey('ads-dates-${_d(from)}-${_d(to)}'),
+              key: ValueKey('ads-dates-${formatCalendarDay(from)}-${formatCalendarDay(to)}'),
               initial: DateSpan(from, to),
               today: DateSpan.single(DateTime.now()).from,
               formats: widget.session.me?.display ?? DisplayFormats.fallback,

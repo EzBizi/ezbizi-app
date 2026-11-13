@@ -24,11 +24,10 @@ Future<void> showVersionHistory(BuildContext context, {ApiClient? api}) {
 /// something landed. Add a row in [VersionHistory] in the same commit that
 /// bumps `client/VERSION`.
 class VersionHistoryPanel extends StatefulWidget {
-  const VersionHistoryPanel({super.key, this.api, this.every = _every});
+  const VersionHistoryPanel({super.key, this.api});
 
   /// Signed in: asks for the release on its way. Null shows the list only.
   final ApiClient? api;
-  final Duration every;
 
   static const _every = Duration(seconds: 10);
 
@@ -47,7 +46,7 @@ class _VersionHistoryPanelState extends State<VersionHistoryPanel> {
     super.initState();
     if (widget.api == null) return;
     _load();
-    _timer = Timer.periodic(widget.every, (_) => _load());
+    _timer = Timer.periodic(VersionHistoryPanel._every, (_) => _load());
   }
 
   @override

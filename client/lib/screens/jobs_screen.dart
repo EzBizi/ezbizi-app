@@ -14,8 +14,8 @@ import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/book_job_panel.dart';
 import '../widgets/data_transfer.dart';
-import '../widgets/error_note.dart';
 import '../widgets/grouped_rows.dart';
+import '../widgets/load_more.dart';
 import '../widgets/refused.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
@@ -997,70 +997,37 @@ class _JobsScreenState extends State<JobsScreen> {
       );
     }
 
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 4, 24, 24),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
+    return DockedListDetail(
+      list: GroupedList<Map<String, dynamic>>(
+        groups: groups,
+        idOf: _id,
+        tile: _tile,
+        onOpen: _dock,
+        selectedId: _openId,
+        footer: footer,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 380,
-            child: GroupedList<Map<String, dynamic>>(
-              groups: groups,
-              idOf: _id,
-              tile: _tile,
-              onOpen: _dock,
-              selectedId: _openId,
-              footer: footer,
-            ),
-          ),
-          VerticalDivider(width: 1, color: scheme.outlineVariant),
-          Expanded(
-            child: JobDetailPanel(
-              // A new job is a new panel: its fields, its load, its dirt.
-              key: ValueKey('open-$_openId'),
-              api: widget.api,
-              session: widget.session,
-              id: _openId!,
-              labels: _labels,
-              onDone: _undock,
-              dirty: _openDirty,
-            ),
-          ),
-        ],
+      detail: JobDetailPanel(
+        // A new job is a new panel: its fields, its load, its dirt.
+        key: ValueKey('open-$_openId'),
+        api: widget.api,
+        session: widget.session,
+        id: _openId!,
+        labels: _labels,
+        onDone: _undock,
+        dirty: _openDirty,
       ),
     );
   }
 
   Widget _loadMore() => Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_pageError != null) ...[
-            ErrorNote(_pageError!),
-            const SizedBox(height: 8),
-          ],
-          TextButton(
-            onPressed: _fetching ? null : () => _load(page: _page + 1),
-            child: Text(
-              _fetching
-                  ? 'Loading…'
-                  : _pageError != null
-                  ? 'Try again'
-                  : 'Load more (${formatCount(_total - _jobs.length)} left)',
-            ),
-          ),
-        ],
-      ),
+    child: LoadMore(
+      shown: _jobs.length,
+      total: _total,
+      busy: _fetching,
+      error: _pageError,
+      onMore: () => _load(page: _page + 1),
+      groupDigits: true,
     ),
   );
 

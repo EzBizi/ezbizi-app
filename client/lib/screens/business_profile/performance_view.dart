@@ -581,7 +581,7 @@ class _BusinessProfilePerformanceState
       !d.isAfter(last);
       d = DateTime(d.year, d.month, d.day + 1)
     ) {
-      bars.add((d, _tileValue(byDate[dayKey(d)], _metric)));
+      bars.add((d, _tileValue(byDate[formatCalendarDay(d)], _metric)));
     }
     final label = _tiles.firstWhere((t) => t.$1 == _metric).$2;
 

@@ -3,17 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import 'financial_cells.dart';
 
 String _money(int cents) =>
     formatCell(const {'type': 'currency', 'options': {}}, cents / 100);
-
-String _ymd(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-'
-    '${d.month.toString().padLeft(2, '0')}-'
-    '${d.day.toString().padLeft(2, '0')}';
 
 const _kinds = {
   'refund': 'Refund',
@@ -69,7 +65,7 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
     final now = widget.now ?? DateTime.now();
     final first = DateTime(now.year, now.month - _period);
     final last = DateTime(first.year, first.month + 1, 0);
-    return (_ymd(first), _ymd(last));
+    return (formatCalendarDay(first), formatCalendarDay(last));
   }
 
   @override

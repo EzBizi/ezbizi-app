@@ -503,3 +503,36 @@ List<_Entry> _entries<T>(List<RowGroup<T>> groups) => [
     for (final row in group.rows) (group: null, row: row),
   ],
 ];
+
+/// An open record docked beside its list: the [GroupedList] [list] 380 wide,
+/// a divider, and the [detail] filling the rest, in one bordered card. Jobs,
+/// Customers and Estimates open a row this way.
+class DockedListDetail extends StatelessWidget {
+  const DockedListDetail({super.key, required this.list, required this.detail});
+
+  final Widget list;
+  final Widget detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(width: 380, child: list),
+          VerticalDivider(width: 1, color: scheme.outlineVariant),
+          Expanded(child: detail),
+        ],
+      ),
+    );
+  }
+}

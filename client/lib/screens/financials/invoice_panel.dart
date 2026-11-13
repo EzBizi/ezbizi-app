@@ -74,7 +74,9 @@ class _InvoicePanelState extends State<InvoicePanel> {
   final _newPhone = TextEditingController();
 
   // Payment.
-  late final _paidOn = TextEditingController(text: isoDay(DateTime.now()));
+  late final _paidOn = TextEditingController(
+    text: formatCalendarDay(DateTime.now()),
+  );
   final _amount = TextEditingController();
   final _reference = TextEditingController();
   String _method = 'check';

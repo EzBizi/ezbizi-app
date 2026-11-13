@@ -1,3 +1,4 @@
+import '../../core/timestamps.dart';
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -352,14 +353,6 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     );
   }
 
-  static String _ago(DateTime at) {
-    final d = DateTime.now().difference(at.toLocal());
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inHours < 1) return '${d.inMinutes} min ago';
-    if (d.inDays < 1) return '${d.inHours} h ago';
-    return '${d.inDays} d ago';
-  }
-
   /// "Open Marketing" beside a sentence naming it, or null when there is
   /// nowhere to open (outside the shell, or a provider that connects here).
   Widget? _openModule(BuildContext context) {
@@ -401,9 +394,11 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
           if (row.beneath != null) row.beneath!,
           if ((row.detail ?? '').isNotEmpty) row.detail!,
           // When it last synced (UI queue 109).
-          if (row.lastSyncedAt != null) 'synced ${_ago(row.lastSyncedAt!)}',
+          if (row.lastSyncedAt != null)
+            'synced ${formatAgo(row.lastSyncedAt!)}',
           // The daily token check (Jose, 2026-11-03).
-          if (row.lastCheckedAt != null) 'checked ${_ago(row.lastCheckedAt!)}',
+          if (row.lastCheckedAt != null)
+            'checked ${formatAgo(row.lastCheckedAt!)}',
           // Connect's pass/fail check: can it post, how long the token lasts.
           if (row.connected && row.connectCheck != null) row.connectCheck!,
           if (!row.connected) row.statusReason ?? 'Not working',

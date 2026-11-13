@@ -219,18 +219,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
 
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
+      return ErrorRetry(_error!, onRetry: _load);
     }
 
     final narrow = MediaQuery.sizeOf(context).width < 600;

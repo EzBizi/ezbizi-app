@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/list_search.dart';
 
 /// Posts to approve (design 176, Jose picked layout 1 + phone 4): the weekly
@@ -277,9 +278,8 @@ class _PostQueueViewState extends State<PostQueueView> {
   String _drafted(Map<String, dynamic> r) {
     final at = DateTime.tryParse('${r['created_at'] ?? ''}')?.toLocal();
     if (at == null) return 'Drafted';
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final h = at.hour % 12 == 0 ? 12 : at.hour % 12;
-    return 'Drafted ${days[at.weekday - 1]} $h:${at.minute.toString().padLeft(2, '0')} ${at.hour < 12 ? 'AM' : 'PM'}';
+    return 'Drafted ${shortWeekdays[at.weekday - 1]} $h:${at.minute.toString().padLeft(2, '0')} ${at.hour < 12 ? 'AM' : 'PM'}';
   }
 
   /// The listing header with its switch, the post as Google shows it, and the three buttons.
