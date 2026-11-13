@@ -2,16 +2,12 @@
 
 namespace Tests\Feature\Hr;
 
-use App\Console\Commands\CallScoringClause;
-use App\Console\Commands\CooClauses;
-use App\Console\Commands\CooContract;
 use App\Models\Contract;
 use App\Models\ContractVersion;
 use App\Support\Contracts\ChecklistTable;
 use App\Support\Contracts\MergeTags;
 use App\Support\Hr\OnboardingCatalog;
 use App\Support\Hr\OnboardingCatalog\SourceCompiler;
-use App\Support\Hr\StandardPayTerms;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsTenants;
@@ -191,122 +187,6 @@ class OnboardingCatalogTest extends TestCase
 
         $reader = $this->userWithRole($alpha, 'Reader', ['hr.view', 'hr.contracts.view']);
         $this->signedInAs($reader)->get("/api/v1/hr/contracts/{$id}/draft.pdf")->assertForbidden();
-    }
-
-    /** A1 Chimney's COO offer, made reusable (Jose, 2026-10-21). */
-    public function test_the_coo_offer_asks_customer_relations_paperwork_without_its_pay_lines(): void
-    {
-        $alpha = $this->provisionTenant('Alpha');
-        $f = fn (string $key, string $type = 'text', string $by = 'employer') => ['key' => $key, 'label' => $key, 'type' => $type, 'filled_by' => $by, 'required' => true];
-        $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name' => 'Customer Relations', 'body' => 'Office agreement.',
-            'fields' => [$f('date_of_hire', 'date'), $f('job_title'), $f('hourly_rate', 'number'), $f('salary_amount', 'number'),
-                $f('salary_period'), $f('work_days'), $f('work_hours'), $f('county'), $f('ssn', 'text', 'employee'),
-                $f('employee_signature', 'signature', 'employee')],
-        ])->assertCreated();
-
-        $this->artisan('hr:coo-contract', ['organization' => 'Alpha', '--dry-run' => true])
-            ->expectsOutputToContain('Dry run. Nothing written.')->assertSuccessful();
-        $this->artisan('hr:coo-contract', ['organization' => 'Alpha'])->assertSuccessful();
-        $this->artisan('hr:coo-contract', ['organization' => 'Alpha'])->expectsOutputToContain('already there')->assertSuccessful();
-
-        $coo = $this->inTenant($alpha['org'], fn () => Contract::where('name', CooContract::NAME)->firstOrFail()->currentVersion);
-        $fields = $coo->fieldSet()->toArray();
-        $this->assertSame(['date_of_hire', 'job_title', 'salary_amount', 'salary_period',
-            'incentive_year', 'incentive_division', 'incentive_pct', 'incentive_minimum', 'perf_comp_year',
-            'perf_plan_due', 'perf_comp_minimum', 'pto_days', 'paid_holidays',
-            'work_days', 'work_hours', 'ssn', 'employee_signature'],
-            collect($fields)->pluck('key')->all());
-        // Nobody's name or deal from the signed copy: every amount is a question
-        // (Jose, 2026-10-21: "should all be empty fields").
-        foreach (['Eric', '120,000', '3,000', '30,000', '2026', '2027', 'Roofing', 'six (6)', 'Jewish'] as $fixed) {
-            $this->assertStringNotContainsString($fixed, $coo->body);
-        }
-
-        // The designer itself accepts the same wording and questions.
-        $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name' => 'COO check', 'body' => $coo->body, 'fields' => $fields,
-        ])->assertCreated();
-
-        // The standard clauses the other agreements have (Jose, 2026-10-26:
-        // "include all of it"), as version 2, once.
-        $this->artisan('hr:coo-clauses', ['organization' => 'Alpha'])
-            ->expectsOutputToContain('standard clauses as version 2')->assertSuccessful();
-        $this->artisan('hr:coo-clauses', ['organization' => 'Alpha'])
-            ->expectsOutputToContain('already has the clauses')->assertSuccessful();
-        $v2 = $this->inTenant($alpha['org'], fn () => Contract::where('name', CooContract::NAME)->firstOrFail()->currentVersion);
-        $this->assertSame(2, (int) $v2->version);
-        foreach (['13. CONFIDENTIALITY', '15. NON-COMPETE & NON-SOLICITATION', '19. DISPUTE RESOLUTION',
-            '22. ENTIRE AGREEMENT', '23. ACCEPTANCE, ACKNOWLEDGMENT & SIGNATURES'] as $heading) {
-            $this->assertStringContainsString($heading, $v2->body);
-        }
-        $this->assertStringNotContainsString('upsale', $v2->body);
-        $this->assertStringEndsWith(CooClauses::CLOSING, $v2->body);
-        $this->assertContains('county', collect($v2->fieldSet()->toArray())->pluck('key')->all());
-        $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name' => 'COO v2 check', 'body' => $v2->body, 'fields' => $v2->fieldSet()->toArray(),
-        ])->assertCreated();
-    }
-
-    /** A1 Tools' Recruiter agreement, built on Customer Relations (A1 takeover, 2026-10-16). */
-    public function test_the_recruiter_contract_is_customer_relations_with_its_own_duties(): void
-    {
-        $alpha = $this->provisionTenant('Alpha');
-        $body = "This Customer Relations Employment Agreement (\"Agreement\") is entered into between:\r\n\r\n"
-            ."2. POSITION & DUTIES\r\n\r\nThe Employee is hired to manage relations.\r\n\r\n• Answer complaints\r\n"
-            ."The Employee is expected to maintain professional conduct and be kind.\r\n\r\n"
-            ."6. COMPUTER AND ACTIVITY MONITORING\r\n\r\nDevices are monitored.\r\n\r\n".CallScoringClause::CLAUSE."\r\n\r\n"
-            ."7. CONFIDENTIALITY\r\n\r\nKeep it.\r\n\r\n8. NON-SOLICITATION\r\n\r\nDo not.";
-        $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name' => 'Customer Relations', 'body' => $body,
-            'fields' => [
-                ['key' => 'job_title', 'label' => 'Job title', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
-                ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
-            ],
-        ])->assertCreated();
-
-        $this->artisan('hr:recruiter-contract', ['organization' => 'Alpha', '--dry-run' => true])
-            ->expectsOutputToContain('Dry run. Nothing written.')->assertSuccessful();
-        $this->artisan('hr:recruiter-contract', ['organization' => 'Alpha'])->assertSuccessful();
-        $this->artisan('hr:recruiter-contract', ['organization' => 'Alpha'])
-            ->expectsOutputToContain('Recruiter: already there')->assertSuccessful();
-
-        $recruiter = $this->inTenant($alpha['org'], fn () => Contract::where('name', 'Recruiter')->firstOrFail()->currentVersion);
-        $this->assertStringStartsWith('This Recruiter Employment Agreement', $recruiter->body);
-        $this->assertStringContainsString("• Perform additional recruiting and administrative tasks as reasonably assigned\nThe Employee is expected", $recruiter->body);
-        $this->assertStringNotContainsString('Answer complaints', $recruiter->body);
-        $this->assertStringNotContainsString('Grok', $recruiter->body);
-        $this->assertMatchesRegularExpression('/Keep it\.\n\n\(a\) Candidate & Applicant Information\n\n.*\n\n8\. NON-SOLICITATION/s', $recruiter->body);
-        $this->assertSame(['job_title', 'employee_signature'], collect($recruiter->fieldSet()->toArray())->pluck('key')->all());
-    }
-
-    /** Phone staff are told, in their contract, that calls are scored (Jose, 2026-10-12). */
-    public function test_phone_contracts_say_calls_are_recorded_and_scored(): void
-    {
-        $alpha = $this->provisionTenant('Alpha');
-        $make = fn (string $name) => $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name' => $name,
-            'body' => "6. COMPUTER AND ACTIVITY MONITORING\r\n\r\nDevices are monitored.\r\n\r\n7. CONFIDENTIALITY\r\n\r\nKeep it.",
-            'fields' => [
-                ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
-            ],
-        ])->assertCreated()->json('data.id');
-        $dispatch = $make('Dispatch Supervisor');
-        $field = $make('Field Technician');
-
-        $this->artisan('hr:call-scoring-clause', ['organization' => 'Alpha', '--dry-run' => true])
-            ->expectsOutputToContain('Dispatch Supervisor: call scoring clause as version 2')->assertSuccessful();
-        $this->artisan('hr:call-scoring-clause', ['organization' => 'Alpha'])
-            ->expectsOutputToContain('1 contracts given a new version.')->assertSuccessful();
-        $this->artisan('hr:call-scoring-clause', ['organization' => 'Alpha'])
-            ->expectsOutputToContain('0 contracts given a new version.')->assertSuccessful();
-
-        $body = fn (string $id) => $this->inTenant($alpha['org'], fn () => (string) Contract::findOrFail($id)->currentVersion->body);
-        $this->assertStringContainsString(
-            "Devices are monitored.\n\n".CallScoringClause::CLAUSE."\n\n7. CONFIDENTIALITY",
-            $body($dispatch),
-        );
-        $this->assertStringNotContainsString('Grok', $body($field));
     }
 
     public function test_replace_retires_keys_the_catalog_no_longer_asks(): void

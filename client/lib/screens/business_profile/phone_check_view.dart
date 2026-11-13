@@ -1,3 +1,4 @@
+import '../../core/timestamps.dart';
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -26,15 +27,6 @@ class PhoneCheckView extends StatefulWidget {
 
   @override
   State<PhoneCheckView> createState() => _PhoneCheckViewState();
-}
-
-/// "just now", "5 min ago", "3 h ago", "2 d ago".
-String checkedAgo(DateTime at, {DateTime? now}) {
-  final ago = (now ?? DateTime.now()).difference(at.toLocal());
-  if (ago.isNegative || ago.inMinutes < 1) return 'just now';
-  if (ago.inMinutes < 60) return '${ago.inMinutes} min ago';
-  if (ago.inHours < 24) return '${ago.inHours} h ago';
-  return '${ago.inDays} d ago';
 }
 
 const _statusWords = {
@@ -112,7 +104,7 @@ class _PhoneCheckViewState extends State<PhoneCheckView> {
               ),
               if (_checkedAt case final at?)
                 Text(
-                  'Checked ${checkedAgo(at)}',
+                  'Checked ${formatAgo(at)}',
                   key: const ValueKey('cx-phone-checked'),
                   style: theme.textTheme.bodySmall,
                 ),

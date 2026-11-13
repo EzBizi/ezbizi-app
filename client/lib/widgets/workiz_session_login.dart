@@ -7,6 +7,7 @@ import '../core/api_client.dart';
 import '../core/branch_options.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import 'search_picker.dart';
 import 'status_pill.dart';
 import 'disconnect_panel.dart';
@@ -509,14 +510,6 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
     );
   }
 
-  static String _ago(DateTime at) {
-    final d = DateTime.now().difference(at.toLocal());
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inHours < 1) return '${d.inMinutes} min ago';
-    if (d.inDays < 1) return '${d.inHours} h ago';
-    return '${d.inDays} d ago';
-  }
-
   Widget _status(ThemeData theme, TextStyle? small) {
     final reason = _row?['status_reason'] as String?;
 
@@ -540,7 +533,7 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
           const SizedBox(height: 4),
           Text(
             'Reads payments · last reached '
-            '${_ago(DateTime.parse('${_row!['last_reached_at']}'))}',
+            '${formatAgo(DateTime.parse('${_row!['last_reached_at']}'))}',
             key: const ValueKey('workiz-session-reached'),
             style: small,
           ),

@@ -1,9 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../core/field_recorder.dart';
 import '../../core/field_tracker.dart';
+import 'recording_control.dart';
 
 /// Field › Dashboard: the safety recording control (UI queue 102, design 1:
 /// a card under the SOS banner; no answer in 10 minutes, so the
@@ -12,64 +11,26 @@ import '../../core/field_tracker.dart';
 /// Binds to [FieldTracker.current]'s recorder and `/field/me`, which exist
 /// only on a phone, so on a desk this draws nothing. Leaving the job and the
 /// four-hour limit stop the recorder by themselves; this only shows it.
-class RecordCard extends StatefulWidget {
-  const RecordCard({super.key, this.recorder, this.me});
-
-  /// For tests; the app's own tracker's otherwise.
-  final FieldRecorder? recorder;
-  final ValueNotifier<Map<String, dynamic>?>? me;
+class RecordCard extends RecordingControlWidget {
+  const RecordCard({super.key, super.recorder, super.me});
 
   @override
   State<RecordCard> createState() => _RecordCardState();
 }
 
-class _RecordCardState extends State<RecordCard> {
-  Timer? _tick;
+class _RecordCardState extends State<RecordCard>
+    with RecordingControl<RecordCard> {
   bool _asking = false;
-  bool _busy = false;
 
   /// Start was pressed: the disclosure (and the notice, where it is owed)
   /// is on screen, waiting for a yes. Asked every time, as the server asks.
   bool _confirming = false;
   bool _told = false;
 
-  FieldRecorder? get _recorder =>
-      widget.recorder ?? FieldTracker.current?.recorder;
-  ValueNotifier<Map<String, dynamic>?>? get _me =>
-      widget.me ?? FieldTracker.current?.me;
-
-  @override
-  void initState() {
-    super.initState();
-    // The elapsed time is drawn here; the recorder only knows when it began.
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && (_recorder?.active ?? false)) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _tick?.cancel();
-    super.dispose();
-  }
-
-  static String _clock(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return h > 0 ? '$h:$m:$s' : '$m:$s';
-  }
-
-  Future<void> _run(Future<void> Function() act) async {
-    setState(() => _busy = true);
-    await act();
-    if (mounted) setState(() => _busy = false);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final recorder = _recorder;
-    final meNotifier = _me;
+    final recorder = fieldRecorder;
+    final meNotifier = fieldMe;
     if (recorder == null || meNotifier == null) return const SizedBox.shrink();
 
     return ValueListenableBuilder<Map<String, dynamic>?>(
@@ -131,7 +92,7 @@ class _RecordCardState extends State<RecordCard> {
       title = number == null ? 'Safety recording' : 'At JOB-$number';
       line = number == null ? 'Start when you arrive at a job.' : null;
     } else {
-      title = '${paused ? 'Paused' : 'Recording'} · ${_clock(elapsed)}';
+      title = '${paused ? 'Paused' : 'Recording'} · ${recordingClock(elapsed)}';
       line = state.unsent > 0
           ? '${state.unsent} ${state.unsent == 1 ? 'minute' : 'minutes'} '
                 'still to send'
@@ -178,7 +139,7 @@ class _RecordCardState extends State<RecordCard> {
                       backgroundColor: theme.colorScheme.error,
                       foregroundColor: theme.colorScheme.onError,
                     ),
-                    onPressed: _busy || _confirming
+                    onPressed: busy || _confirming
                         ? null
                         : () => setState(() {
                             _confirming = true;
@@ -190,15 +151,15 @@ class _RecordCardState extends State<RecordCard> {
                 else ...[
                   OutlinedButton(
                     key: const ValueKey('field-record-pause'),
-                    onPressed: _busy
+                    onPressed: busy
                         ? null
-                        : () => _run(paused ? recorder.resume : recorder.pause),
+                        : () => run(paused ? recorder.resume : recorder.pause),
                     child: Text(paused ? 'Resume' : 'Pause'),
                   ),
                   const SizedBox(width: 6),
                   OutlinedButton(
                     key: const ValueKey('field-record-stop'),
-                    onPressed: _busy
+                    onPressed: busy
                         ? null
                         : () => setState(() => _asking = !_asking),
                     child: const Text('Stop'),
@@ -241,11 +202,11 @@ class _RecordCardState extends State<RecordCard> {
                   const Spacer(),
                   FilledButton(
                     key: const ValueKey('field-record-confirm'),
-                    onPressed: _busy || (rules['announce'] == true && !_told)
+                    onPressed: busy || (rules['announce'] == true && !_told)
                         ? null
                         : () {
                             setState(() => _confirming = false);
-                            _run(
+                            run(
                               () => recorder.start(
                                 jobId: job?['id'] as String?,
                                 customerTold:
@@ -283,11 +244,11 @@ class _RecordCardState extends State<RecordCard> {
                     ])
                       FilledButton.tonal(
                         key: ValueKey('field-record-stop-$reason'),
-                        onPressed: _busy
+                        onPressed: busy
                             ? null
                             : () {
                                 setState(() => _asking = false);
-                                _run(() => recorder.stop(reason));
+                                run(() => recorder.stop(reason));
                               },
                         child: Text(label),
                       ),

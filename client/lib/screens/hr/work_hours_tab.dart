@@ -1455,9 +1455,7 @@ class _Week {
     if (at == null) return null;
     final moved = at.add(Duration(days: days));
 
-    return '${moved.year.toString().padLeft(4, '0')}-'
-        '${moved.month.toString().padLeft(2, '0')}-'
-        '${moved.day.toString().padLeft(2, '0')}';
+    return formatCalendarDay(moved);
   }
 
   static _Week? from(Map<String, dynamic>? json) {
@@ -1881,12 +1879,7 @@ DateTime? _parseLocal(String? value) {
   return DateTime.tryParse(value.replaceFirst(' ', 'T'));
 }
 
-String _formatLocal(DateTime at) =>
-    '${at.year.toString().padLeft(4, '0')}-'
-    '${at.month.toString().padLeft(2, '0')}-'
-    '${at.day.toString().padLeft(2, '0')} '
-    '${at.hour.toString().padLeft(2, '0')}:'
-    '${at.minute.toString().padLeft(2, '0')}';
+String _formatLocal(DateTime at) => formatWallDateTime(at, at.hour, at.minute);
 
 /// The edit dialog. Returns the PATCH body, or null when cancelled.
 Future<Map<String, dynamic>?> _editTimes(

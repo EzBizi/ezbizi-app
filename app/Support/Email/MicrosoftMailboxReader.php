@@ -3,10 +3,7 @@
 namespace App\Support\Email;
 
 use App\Models\Mailbox;
-use Illuminate\Contracts\Encryption\DecryptException;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -16,6 +13,8 @@ use Illuminate\Support\Facades\Http;
  */
 final class MicrosoftMailboxReader implements MailboxReader
 {
+    use CallsMailApi;
+
     private const GRAPH = 'https://graph.microsoft.com/v1.0';
 
     private const INBOX = self::GRAPH.'/me/mailFolders/inbox/messages';
@@ -465,17 +464,6 @@ final class MicrosoftMailboxReader implements MailboxReader
     }
 
     /**
-     * @param  array<string, mixed>  $payload
-     * @return array<string, mixed>
-     */
-    private function post(Mailbox $mailbox, string $url, array $payload): array
-    {
-        return $this->json($mailbox, fn (string $token) => Http::withToken($token)
-            ->timeout(self::TIMEOUT)
-            ->post($url, $payload));
-    }
-
-    /**
      * Whether this mailbox could send, without sending: a token, and the
      * permissions written into it (`scp`). Null when it can.
      */
@@ -501,39 +489,7 @@ final class MicrosoftMailboxReader implements MailboxReader
     {
         $this->assertUsable($mailbox);
 
-        if (($cached = $this->cachedAccessToken($mailbox)) !== null) {
-            return $cached;
-        }
-
-        try {
-            $response = Http::asForm()
-                ->timeout(self::TIMEOUT)
-                ->post(self::TOKEN_ENDPOINT, [
-                    'client_id'     => config('services.microsoft_mail.client_id'),
-                    'client_secret' => config('services.microsoft_mail.client_secret'),
-                    'refresh_token' => $mailbox->credential(),
-                    'grant_type'    => 'refresh_token',
-                ]);
-        } catch (ConnectionException $e) {
-            throw CannotReadMailbox::hostNotAnswering($mailbox, $e->getMessage());
-        }
-
-        if ($response->failed()) {
-            throw $this->tokenFailure($mailbox, $response);
-        }
-
-        if (! is_string($response->json('access_token'))) {
-            throw CannotReadMailbox::providerFaulty(
-                $mailbox,
-                'the sign-in service answered '.$response->status().' with no sign-in in it',
-            );
-        }
-
-        $token = (string) $response->json('access_token');
-
-        $this->cacheAccessToken($mailbox, $token, $response->json('expires_in'));
-
-        return $token;
+        return $this->refreshedAccessToken($mailbox, self::TOKEN_ENDPOINT, 'microsoft_mail');
     }
 
     private function cacheKey(Mailbox $mailbox): string
@@ -541,110 +497,9 @@ final class MicrosoftMailboxReader implements MailboxReader
         return 'email.microsoft.access-token.'.$mailbox->getKey();
     }
 
-    private function cachedAccessToken(Mailbox $mailbox): ?string
-    {
-        $stored = Cache::get($this->cacheKey($mailbox));
-
-        if (! is_string($stored) || $stored === '') {
-            return null;
-        }
-
-        try {
-            $token = Crypt::decryptString($stored);
-        } catch (DecryptException) {
-            return null;
-        }
-
-        return $token === '' ? null : $token;
-    }
-
-    private function cacheAccessToken(Mailbox $mailbox, string $token, mixed $expiresIn): void
-    {
-        $seconds = is_numeric($expiresIn) ? (int) floor(((int) $expiresIn) * 0.75) : 0;
-
-        if ($seconds < 30) {
-            return;
-        }
-
-        Cache::put($this->cacheKey($mailbox), Crypt::encryptString($token), $seconds);
-    }
-
     private function forgetAccessToken(Mailbox $mailbox): void
     {
         Cache::forget($this->cacheKey($mailbox));
-    }
-
-    private function tokenFailure(Mailbox $mailbox, \Illuminate\Http\Client\Response $response): CannotReadMailbox
-    {
-        $error  = strtolower((string) ($response->json('error') ?? ''));
-        $detail = (string) ($response->json('error_description') ?? $response->json('error') ?? '');
-
-        if ($error === 'invalid_client' || $error === 'unauthorized_client') {
-            return CannotReadMailbox::platformRejected($mailbox, $detail);
-        }
-
-        if ($error === 'invalid_grant') {
-            return CannotReadMailbox::credentialRejected($mailbox, $detail);
-        }
-
-        return match (true) {
-            $response->status() === 429 => CannotReadMailbox::tooManyRequests($mailbox, $detail),
-            $response->serverError()    => CannotReadMailbox::providerFaulty(
-                $mailbox,
-                'the sign-in service answered '.$response->status(),
-            ),
-            $response->status() === 401 => CannotReadMailbox::platformRejected($mailbox, $detail),
-            default => CannotReadMailbox::providerRefused($mailbox, $detail),
-        };
-    }
-
-    /**
-     * @param  callable(string): \Illuminate\Http\Client\Response  $call
-     * @return array<string, mixed>
-     */
-    private function json(Mailbox $mailbox, callable $call): array
-    {
-        return $this->body($mailbox, $this->sendRaw($mailbox, $call));
-    }
-
-    /**
-     * @param  callable(string): \Illuminate\Http\Client\Response  $call
-     */
-    private function sendRaw(Mailbox $mailbox, callable $call): \Illuminate\Http\Client\Response
-    {
-        $response = $this->attempt($mailbox, $call, $this->accessToken($mailbox));
-
-        if ($response->status() === 401) {
-            $this->forgetAccessToken($mailbox);
-
-            $response = $this->attempt($mailbox, $call, $this->accessToken($mailbox));
-        }
-
-        return $response;
-    }
-
-    /**
-     * @param  callable(string): \Illuminate\Http\Client\Response  $call
-     */
-    private function attempt(Mailbox $mailbox, callable $call, string $token): \Illuminate\Http\Client\Response
-    {
-        try {
-            return $call($token);
-        } catch (ConnectionException $e) {
-            throw CannotReadMailbox::hostNotAnswering($mailbox, $e->getMessage());
-        }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function body(Mailbox $mailbox, \Illuminate\Http\Client\Response $response): array
-    {
-        if ($response->failed()) {
-            throw $this->apiFailure($mailbox, $response);
-        }
-
-        return (array) $response->json();
     }
 
     private function apiFailure(Mailbox $mailbox, \Illuminate\Http\Client\Response $response): CannotReadMailbox

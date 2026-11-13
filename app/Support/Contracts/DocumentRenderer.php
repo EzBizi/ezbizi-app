@@ -321,7 +321,7 @@ final class DocumentRenderer
         $out = [];
         $out[] = '<!doctype html>';
         $out[] = '<html lang="en"><head><meta charset="utf-8">';
-        $out[] = '<title>'.$this->e($contractName).'</title>';
+        $out[] = '<title>'.e($contractName).'</title>';
         /*
          * Inline, minimal, and no external anything — see point 3 above.
          *
@@ -380,8 +380,8 @@ final class DocumentRenderer
          * template. It is only the document it leaves.
          */
         $out[] = '<header>';
-        $out[] = '<p class="org">'.$this->e($organizationName).'</p>';
-        $out[] = '<h1>'.$this->e($contractName).'</h1>';
+        $out[] = '<p class="org">'.e($organizationName).'</p>';
+        $out[] = '<h1>'.e($contractName).'</h1>';
         $out[] = '</header>';
 
         // Retired fields are out of both paths for the same reason they are out
@@ -429,8 +429,8 @@ final class DocumentRenderer
             // this is what is fingerprinted; the PDF copy fills each block
             // from its signature record (PdfRenderer).
             foreach ($signatureFields as $field) {
-                $key = $this->e($field->key);
-                $out[] = '<div class="sig"><h3>'.$this->e($field->label).'</h3>'
+                $key = e($field->key);
+                $out[] = '<div class="sig"><h3>'.e($field->label).'</h3>'
                     .'<div class="sig-box" data-field="'.$key.'"></div>'
                     .'<div class="sig-rule">Signature</div>'
                     .'<p class="sig-line"><b>Print Name:</b> <span class="fill" data-field="'.$key.'" data-part="name"></span></p>'
@@ -489,11 +489,11 @@ final class DocumentRenderer
         $out[] = '<section class="cover">';
         $out[] = '<img class="cover-mark" src="data:image/png;base64,'
             .base64_encode($png).'" alt="">';
-        $out[] = '<p class="cover-org">'.$this->e($organizationName).'</p>';
+        $out[] = '<p class="cover-org">'.e($organizationName).'</p>';
         // A paragraph rather than a second <h1>: the header below carries the
         // document's one heading, and an outline with two top-level headings is
         // a document a screen reader cannot summarise.
-        $out[] = '<p class="cover-title">'.$this->e($contractName).'</p>';
+        $out[] = '<p class="cover-title">'.e($contractName).'</p>';
         $out[] = '</section>';
     }
 
@@ -648,13 +648,9 @@ final class DocumentRenderer
         };
     }
 
-    private function row(string $label, string $value): string
-    {
-        return '<dt>'.$this->e($label).'</dt><dd>'.$this->e($value).'</dd>';
-    }
-
     /**
-     * Everything is escaped, and everything means everything.
+     * Everything is escaped (Laravel's e(): ENT_QUOTES | ENT_SUBSTITUTE, UTF-8),
+     * and everything means everything.
      *
      * Labels and answers are both tenant input. A label of `<script>` in a
      * document served from this application's own origin is stored XSS with a
@@ -662,9 +658,9 @@ final class DocumentRenderer
      * `nosniff` precisely because belt and braces is the right number of
      * fastenings for a file whose contents somebody else wrote.
      */
-    private function e(string $value): string
+    private function row(string $label, string $value): string
     {
-        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        return '<dt>'.e($label).'</dt><dd>'.e($value).'</dd>';
     }
 
     private const STYLE = <<<'CSS'

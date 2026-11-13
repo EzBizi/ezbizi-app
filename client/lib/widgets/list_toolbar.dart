@@ -18,13 +18,11 @@ class ListToolbar extends StatelessWidget {
     required this.query,
     required this.onChanged,
     this.onSearch,
-    this.searchHint = 'Search',
     this.views,
     this.onSaveView,
     this.onDeleteView,
     this.groupBy,
     this.onGroupBy,
-    this.hideable = true,
   });
 
   final List<FilterField> fields;
@@ -33,7 +31,6 @@ class ListToolbar extends StatelessWidget {
 
   /// Null hides the search field.
   final ValueChanged<String>? onSearch;
-  final String searchHint;
 
   /// Null hides Views; empty shows it with only "Save as new view".
   final List<SavedView>? views;
@@ -43,7 +40,6 @@ class ListToolbar extends StatelessWidget {
   /// The field key grouped by, or null. [onGroupBy] null hides Group by.
   final String? groupBy;
   final ValueChanged<String?>? onGroupBy;
-  final bool hideable;
 
   FilterField? get _people =>
       fields.where((f) => f.kind == 'people').firstOrNull;
@@ -102,7 +98,7 @@ class ListToolbar extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 prefixIcon: const Icon(Icons.search, size: 18),
-                hintText: searchHint,
+                hintText: 'Search',
               ),
             ),
           ),
@@ -136,36 +132,35 @@ class ListToolbar extends StatelessWidget {
           ),
         ),
         button('sort', Icons.swap_vert, 'Sort', query.sort.length, filterPanel),
-        if (hideable)
-          button(
-            'hide',
-            Icons.visibility_off_outlined,
-            'Hide',
-            query.hidden.length,
-            () async {
-              final shown = await showSidePanel<List<String>>(
-                context,
-                builder: (_) => _Ticks(
-                  title: 'Columns shown',
-                  options: [for (final f in fields) (f.key, f.label)],
-                  picked: [
+        button(
+          'hide',
+          Icons.visibility_off_outlined,
+          'Hide',
+          query.hidden.length,
+          () async {
+            final shown = await showSidePanel<List<String>>(
+              context,
+              builder: (_) => _Ticks(
+                title: 'Columns shown',
+                options: [for (final f in fields) (f.key, f.label)],
+                picked: [
+                  for (final f in fields)
+                    if (!query.hidden.contains(f.key)) f.key,
+                ],
+              ),
+            );
+            if (shown != null) {
+              onChanged(
+                query.copyWith(
+                  hidden: [
                     for (final f in fields)
-                      if (!query.hidden.contains(f.key)) f.key,
+                      if (!shown.contains(f.key)) f.key,
                   ],
                 ),
               );
-              if (shown != null) {
-                onChanged(
-                  query.copyWith(
-                    hidden: [
-                      for (final f in fields)
-                        if (!shown.contains(f.key)) f.key,
-                    ],
-                  ),
-                );
-              }
-            },
-          ),
+            }
+          },
+        ),
         if (onGroupBy != null && groupable.isNotEmpty)
           button(
             'group',

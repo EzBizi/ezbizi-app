@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 
@@ -496,13 +497,8 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
     final parsed = DateTime.tryParse(iso?.toString() ?? '');
     if (parsed == null) return 'an unknown date';
 
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
-    ];
-
     final local = parsed.toLocal();
-    return '${local.day} ${months[local.month - 1]} ${local.year}';
+    return '${local.day} ${longMonths[local.month - 1]} ${local.year}';
   }
 }
 

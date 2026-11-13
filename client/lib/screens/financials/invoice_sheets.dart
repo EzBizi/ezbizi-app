@@ -26,7 +26,6 @@ class ChargeSheetsTab extends StatefulWidget {
     required this.me,
     required this.onMade,
     required this.onOpenInvoice,
-    this.saveDelay = const Duration(milliseconds: 700),
   });
 
   final ApiClient api;
@@ -39,7 +38,7 @@ class ChargeSheetsTab extends StatefulWidget {
   final ValueChanged<String> onOpenInvoice;
 
   /// How long after the last keystroke a cell is saved.
-  final Duration saveDelay;
+  static const saveDelay = Duration(milliseconds: 700);
 
   @override
   State<ChargeSheetsTab> createState() => _ChargeSheetsTabState();
@@ -236,7 +235,7 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
 
   void _schedule() {
     _debounce?.cancel();
-    _debounce = Timer(widget.saveDelay, _flush);
+    _debounce = Timer(ChargeSheetsTab.saveDelay, _flush);
   }
 
   Future<void> _flush() async {
@@ -828,10 +827,10 @@ class _NewSheetPanel extends StatefulWidget {
 class _NewSheetPanelState extends State<_NewSheetPanel> {
   static DateTime get _now => DateTime.now();
   final _from = TextEditingController(
-    text: isoDay(DateTime(_now.year, _now.month - 1, 1)),
+    text: formatCalendarDay(DateTime(_now.year, _now.month - 1, 1)),
   );
   final _to = TextEditingController(
-    text: isoDay(DateTime(_now.year, _now.month, 0)),
+    text: formatCalendarDay(DateTime(_now.year, _now.month, 0)),
   );
   final _title = TextEditingController();
   String? _error;

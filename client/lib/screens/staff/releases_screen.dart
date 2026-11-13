@@ -17,13 +17,12 @@ class ReleasesScreen extends StatefulWidget {
   const ReleasesScreen({
     super.key,
     required this.staff,
-    this.every = const Duration(seconds: 10),
   });
 
   final StaffSession staff;
 
   /// How often to ask again.
-  final Duration every;
+  static const every = Duration(seconds: 10);
 
   @override
   State<ReleasesScreen> createState() => _ReleasesScreenState();
@@ -40,7 +39,7 @@ class _ReleasesScreenState extends State<ReleasesScreen> {
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(widget.every, (_) => _load());
+    _timer = Timer.periodic(ReleasesScreen.every, (_) => _load());
   }
 
   @override
@@ -99,7 +98,7 @@ class _ReleasesScreenState extends State<ReleasesScreen> {
           const SizedBox(height: 4),
           Text(
             'What release.sh and deploy.sh report as they go. Updates every '
-            '${widget.every.inSeconds} seconds while this tab is open.',
+            '${ReleasesScreen.every.inSeconds} seconds while this tab is open.',
             style: text.bodyMedium,
           ),
           const SizedBox(height: 20),

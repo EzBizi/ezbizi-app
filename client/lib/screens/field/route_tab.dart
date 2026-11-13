@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
 import 'map_overlays.dart' show fieldLongDay;
@@ -46,8 +47,7 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
     );
   }
 
-  String get _date =>
-      '${_day.year}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
+  String get _date => formatCalendarDay(_day);
 
   Future<void> _load() async {
     setState(() => _error = null);

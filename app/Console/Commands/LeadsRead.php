@@ -26,8 +26,8 @@ class LeadsRead extends Command
 
     public function handle(LeadInsights $insights, TenantContext $tenant, EventEmitter $events): int
     {
-        if ($insights->inline() || ! $insights->enabled()) {
-            return self::SUCCESS;   // Bedrock sorts inline; nothing configured, nothing to do
+        if (! $insights->enabled()) {
+            return self::SUCCESS;   // nothing configured, nothing to do
         }
 
         $leads = Lead::query()->withoutGlobalScopes()->whereNull('hidden_at')   // AI never reads a hidden lead

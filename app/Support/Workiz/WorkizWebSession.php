@@ -4,8 +4,11 @@ namespace App\Support\Workiz;
 
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Support\Social\MetaAdInsights;
+use App\Support\Social\SocialProvider;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -33,6 +36,31 @@ final class WorkizWebSession
     public const BUSY = 'Another Workiz read was using this login; it is read next time.';
 
     public const EXPIRED = 'Workiz signed this session out. Sign in to Workiz and send the session to EzBizi again.';
+
+    /**
+     * Run $read inside the organization of every connected Workiz web login,
+     * and add up what each returns. $read is handed the login and the total so
+     * far (the job-companies read spends one limit across all of them).
+     *
+     * @param  callable(SocialConnection, int): int  $read
+     */
+    public static function eachConnection(TenantContext $tenant, callable $read): int
+    {
+        $total = 0;
+
+        $connections = SocialConnection::query()->withoutGlobalScopes()
+            ->where('provider', SocialProvider::WorkizWeb->value)->where('status', 'connected')->get();
+
+        foreach ($connections as $connection) {
+            $organization = Organization::query()->withoutGlobalScopes()->find($connection->organization_id);
+
+            if ($organization !== null) {
+                $total += $tenant->run($organization, fn () => $read($connection, $total));
+            }
+        }
+
+        return $total;
+    }
 
     /**
      * Keep the cookies a person sent, after one call proves them. Answers the
@@ -206,7 +234,7 @@ final class WorkizWebSession
      */
     public static function removeJobTags(string $franchiseId, string $uuid, array $names): array
     {
-        $login = SocialConnection::query()->where('provider', \App\Support\Social\SocialProvider::WorkizWeb->value)->where('status', 'connected')->first();
+        $login = SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)->where('status', 'connected')->first();
         $account = $login === null ? null : self::accountFor($login, $franchiseId);
 
         if ($account === null) {

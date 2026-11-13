@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../widgets/list_table.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
+import 'phone_refs.dart';
 import 'phone_search.dart';
 import 'settings_pane.dart';
 
@@ -48,7 +49,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   String? _error;
 
   List<_Box> _boxes = const [];
-  List<_Conn> _connections = const [];
+  List<PhoneConnectionRef> _connections = const [];
 
   /// The box being edited. Empty id means a new one.
   _Box? _editing;
@@ -158,7 +159,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
     setState(() {
       _loading = false;
       _boxes = results[0].ok ? _Box.listFrom(results[0].body) : const [];
-      _connections = results[1].ok ? _Conn.listFrom(results[1].body) : const [];
+      _connections = results[1].ok ? PhoneConnectionRef.listFrom(results[1].body) : const [];
       final people = results[2].ok ? results[2].body['data'] : null;
       _people = [
         for (final row in (people is Map ? people['people'] as List? : null) ??
@@ -172,7 +173,7 @@ class _VoicemailPaneState extends State<VoicemailPane> {
       ];
       _defaults = {
         for (final c in _connections)
-          if (c.defaultBoxId != null) c.defaultBoxId!,
+          if (c.defaultVoicemailBoxId != null) c.defaultVoicemailBoxId!,
       };
       _error = results[0].ok ? null : results[0].reason;
       _connectionId ??= _connections.isEmpty ? null : _connections.first.id;
@@ -782,28 +783,6 @@ class _VoicemailPaneState extends State<VoicemailPane> {
       _emails = [..._emails, value];
       _email.clear();
     });
-  }
-}
-
-class _Conn {
-  const _Conn(this.id, this.label, [this.defaultBoxId]);
-
-  final String id;
-  final String label;
-  final String? defaultBoxId;
-
-  static List<_Conn> listFrom(Map<String, dynamic> body) {
-    final rows = body['data'];
-    if (rows is! List) return const [];
-
-    return [
-      for (final row in rows.whereType<Map<String, dynamic>>())
-        _Conn(
-          row['id'].toString(),
-          (row['label'] ?? row['account_sid'] ?? 'Phone account').toString(),
-          row['default_voicemail_box_id'] as String?,
-        ),
-    ];
   }
 }
 
