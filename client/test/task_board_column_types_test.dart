@@ -266,4 +266,68 @@ void main() {
     await tester.pumpAndSettle();
     expect(changes.single, ['t2', 't3']);
   });
+
+  testWidgets('a Mirror column picks the connect column it follows and the '
+      'column it shows', (tester) async {
+    final bodies = <Map>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        bodies.add(jsonDecode(request.body) as Map);
+        return http.Response(
+          jsonEncode({'data': {}}),
+          200,
+          headers: const {'content-type': 'application/json'},
+        );
+      }),
+    );
+    BoardColumn other(String id, String name, String type) => (
+      id: id,
+      name: name,
+      type: type,
+      unit: null,
+      max: null,
+      options: const <ColumnOption>[],
+      format: 'plain',
+      footer: 'none',
+      formula: null,
+    );
+    await pump(
+      tester,
+      Builder(
+        builder: (context) => FilledButton(
+          onPressed: () => showSidePanel<bool>(
+            context,
+            builder: (_) => ColumnPanel(
+              api: api,
+              boardId: 'b1',
+              type: 'mirror',
+              column: column('mirror'),
+              raw: const {'id': 'c1', 'settings': null},
+              others: [
+                other('c-link', 'Linked jobs', 'connect'),
+                other('c-hours', 'Est. hours', 'number'),
+              ],
+            ),
+          ),
+          child: const Text('open'),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('column-mirror-connect')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Linked jobs').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('column-mirror-column')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Est. hours').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('column-save')));
+    await tester.pumpAndSettle();
+    expect(bodies.single['settings'], {
+      'connect_column_id': 'c-link',
+      'column_id': 'c-hours',
+    });
+  });
 }
