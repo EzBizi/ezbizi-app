@@ -11,7 +11,7 @@ import 'item_pane.dart';
 /// friends are null without Orders, `last_cost_minor` absent without
 /// financials. UI queue 43, Jose's 1 and 4.
 class StockJoin {
-  StockJoin(this.rows, {this.openOrders});
+  StockJoin(this.rows, {this.openOrders, this.valueMinor});
 
   /// One per item, held anywhere or nowhere.
   final List<Map<String, dynamic>> rows;
@@ -19,6 +19,12 @@ class StockJoin {
   /// Open purchase orders in view (`meta.tiles.open_orders`); null without
   /// Orders.
   final int? openOrders;
+
+  /// The inventory value the server computed (`meta.tiles.value_minor`), the
+  /// same figure General and Locations show; null without financials or when
+  /// nothing held is priced. Never re-added here: a client sum drifted a
+  /// dollar from the other tabs (UI/UX audit, 2026-11-13).
+  final int? valueMinor;
 
   late final List<Map<String, dynamic>> items = [
     for (final row in rows) ?inventoryMap(row['item']),
@@ -99,7 +105,15 @@ Future<(StockJoin?, String?)> loadStockItems(ApiClient api) async {
     if (page >= inventoryLastPage(response.body)) break;
   }
   final open = tiles?['open_orders'];
-  return (StockJoin(rows, openOrders: open is num ? open.toInt() : null), null);
+  final value = tiles?['value_minor'];
+  return (
+    StockJoin(
+      rows,
+      openOrders: open is num ? open.toInt() : null,
+      valueMinor: value is num ? value.toInt() : null,
+    ),
+    null,
+  );
 }
 
 /// Cents as "$5,057.00": a table of values reads by its thousands.
