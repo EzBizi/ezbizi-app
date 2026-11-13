@@ -40,6 +40,12 @@ class OAuthTokenRequestShapeTest extends TestCase
         ]);
     }
 
+    /** The first three fields of providers(), for tests that take only class, url and network. */
+    public static function networks(): array
+    {
+        return array_map(fn (array $row) => array_slice($row, 0, 3), self::providers());
+    }
+
     /** @return array<string, array{class-string<SocialOAuth>, string, string, ?string, string, string}> */
     public static function providers(): array
     {
@@ -114,7 +120,7 @@ class OAuthTokenRequestShapeTest extends TestCase
         $this->assertEquals(new SocialOAuthGrant('new-access', 'new-refresh', ['a:read', 'b:write'], 3600), $grant);
     }
 
-    #[DataProvider('providers')]
+    #[DataProvider('networks')]
     public function test_a_refused_or_tokenless_exchange(string $class, string $url, string $network): void
     {
         $failed = SocialOAuthRefused::exchangeFailed($network);
@@ -134,7 +140,7 @@ class OAuthTokenRequestShapeTest extends TestCase
         $this->assertSame([], $answers);
     }
 
-    #[DataProvider('providers')]
+    #[DataProvider('networks')]
     public function test_an_exchange_without_a_refresh_token(string $class, string $url, string $network): void
     {
         Http::fake([$url => Http::response(['access_token' => 'a', 'expires_in' => 60])]);
@@ -206,7 +212,7 @@ class OAuthTokenRequestShapeTest extends TestCase
         );
     }
 
-    #[DataProvider('providers')]
+    #[DataProvider('networks')]
     public function test_a_refresh_that_reaches_nobody(string $class, string $url, string $network): void
     {
         Http::fake([$url => fn () => throw new ConnectionException('down')]);
