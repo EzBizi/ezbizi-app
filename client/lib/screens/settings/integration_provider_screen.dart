@@ -894,13 +894,6 @@ class IntegrationConnection {
     _ => 'social',
   };
 
-  String get scopeWord => switch (scopeType) {
-    'organization' => 'the whole organization',
-    'company' => 'this company',
-    'franchise' => 'this branch',
-    _ => scopeType,
-  };
-
   /// What to put in front of a person, and what to put under it.
   String get title => (label ?? '').isNotEmpty ? label! : displayName;
   String? get beneath => (label ?? '').isNotEmpty ? displayName : null;

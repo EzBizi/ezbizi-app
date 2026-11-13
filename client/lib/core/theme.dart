@@ -738,13 +738,6 @@ class ToneColours {
   /// Both tables, for the contrast test.
   static Map<Tone, ToneColours> table(Brightness brightness) =>
       brightness == Brightness.dark ? _dark : _light;
-
-  /// A mid grey for a bar's share that has no category ("No reason"): plainly
-  /// darker (light) or lighter (dark) than [Tone.neutral]'s fill, the track.
-  static Color midGrey(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark
-      ? const Color(0xFF7D8A95)
-      : const Color(0xFF8C98A3);
 }
 
 /// A person's colour, for the avatar beside what they wrote (Leads' replies,
