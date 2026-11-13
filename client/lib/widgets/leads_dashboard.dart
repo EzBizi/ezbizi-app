@@ -7,6 +7,7 @@ import '../core/timestamps.dart';
 import '../screens/leads_screen.dart' show sourceColours;
 import 'calendar_day_field.dart';
 import 'search_picker.dart';
+import 'user_avatar.dart';
 
 /// Leads › Manage › Dashboard: UI queue 38, Jose's 7 and 10 (2026-09-30,
 /// "a new tab called Dashboard which gathers info, reply rates from each
@@ -808,6 +809,10 @@ class _LeadsDashboardState extends State<LeadsDashboard> {
   }
 
   Widget _avatar(BuildContext context, String seed, String name) {
+    // A real user: their photo, initials when none (Jose, 2026-11-13).
+    if (seed != name) {
+      return UserAvatar(api: widget.api, userId: seed, name: name, radius: 13);
+    }
     final colours = PersonColours.forSeed(seed, Theme.of(context).brightness);
     final initials = [
       for (final w in name.trim().split(RegExp(r'\s+')).take(2))
