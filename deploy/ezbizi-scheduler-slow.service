@@ -15,7 +15,7 @@
 [Unit]
 Description=EzBizi scheduled tasks (slow lane)
 After=network.target mysql.service
-OnFailure=ezbizi-scheduler-failed@%n.service
+OnFailure=ezbizi-scheduler-failed@%N.service
 
 [Service]
 Type=oneshot

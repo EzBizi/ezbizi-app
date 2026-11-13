@@ -3,11 +3,14 @@ import '../widgets/list_search.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
+import '../widgets/user_avatar.dart';
 import '../core/device_key_store_io.dart'
     if (dart.library.js_interop) '../core/device_key_store_web.dart'
     as store;
+import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
@@ -68,7 +71,17 @@ String _initials(String name) {
   return parts.take(2).map((p) => p[0].toUpperCase()).join();
 }
 
-Widget _avatar(BuildContext context, String name) {
+/// The person's photo when [api] and [userId] are known (Jose, 2026-11-13:
+/// "the pictures do not display"), else their initials.
+Widget _avatar(
+  BuildContext context,
+  String name, {
+  ApiClient? api,
+  Object? userId,
+}) {
+  if (api != null && userId != null) {
+    return UserAvatar(api: api, userId: '$userId', name: name, radius: 11);
+  }
   final scheme = Theme.of(context).colorScheme;
   return CircleAvatar(
     radius: 11,
@@ -266,6 +279,13 @@ List<String> _ownerNames(_Json task) {
   return one is String ? [one] : const [];
 }
 
+/// The first owner's user id, matching the first of [_ownerNames].
+Object? _ownerId(_Json task) {
+  final owners = task['owners'] as List? ?? const [];
+  if (owners.isNotEmpty) return (owners.first as Map?)?['id'];
+  return (task['owner'] as Map?)?['id'];
+}
+
 String _dayLabel(DateTime? day, DisplayFormats formats) {
   if (day == null) return '';
   final now = DateTime.now();
@@ -339,11 +359,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   @override
   void initState() {
     super.initState();
+    DeepLinks.pending.addListener(_takeLink);
     _load();
   }
 
   @override
   void dispose() {
+    DeepLinks.pending.removeListener(_takeLink);
     _newTitle.dispose();
     _groupName.dispose();
     _columnName.dispose();
@@ -386,6 +408,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       return;
     }
     await _open(_startIndex());
+    await _takeLink();
+  }
+
+  /// /tasks/{id} (the panel's Copy link): its board, then the task.
+  Future<void> _takeLink() async {
+    if (!mounted || DeepLinks.pending.value?.module != 'tasks') return;
+    if (_boards.isEmpty) return; // _load takes it once the boards are here.
+    final link = DeepLinks.take('tasks')!;
+    final res = await widget.api.get('/tasks/${link.id}');
+    if (!mounted || !res.ok) return;
+    final boardId = (res.body['data'] as Map?)?['board_id'];
+    final at = _boards.indexWhere((b) => b['id'] == boardId);
+    if (at >= 0 && _board?['id'] != boardId) await _open(at);
+    if (mounted) _openTaskById(link.id);
   }
 
   /// Where the last board opened is kept: per person, per place in view.
@@ -879,11 +915,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             'number' || 'currency' || 'formula' => 'number',
             'date' || 'datetime' || 'timeline' => 'date',
             'status' || 'dropdown' || 'tags' => 'options',
-            'person' => 'people',
+            'person' || 'people' => 'people',
             'checkbox' => 'checkbox',
             _ => 'text',
           },
-          options: c.type == 'person'
+          options: c.type == 'person' || c.type == 'people'
               ? people
               : [for (final o in c.options) (o.id, o.label)],
           read: (t) {
@@ -1523,6 +1559,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         where: '${group['name']}',
         people: people,
         unreadNotes: (task['unread_notes'] as num? ?? 0).toInt(),
+        subtasks: _subtasksOf(task),
       ),
     );
     if (mounted) await _load();
@@ -2466,7 +2503,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// as its settings say (design 178). Null when no column asks for one.
   Widget? _footer(BuildContext context, List<_Json> tasks) {
     final columns = boardColumns(_board);
-    if (tasks.isEmpty || columns.every((c) => c.footer == 'none')) return null;
+    if (tasks.isEmpty) return null;
     final theme = Theme.of(context);
     final style = theme.textTheme.bodySmall?.copyWith(
       fontWeight: FontWeight.w700,
@@ -2475,6 +2512,21 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
     bool shown(String key) => _builtinShown(_board, key);
     Widget blank(double w) => SizedBox(width: w);
+    Widget text(double w, String? s, {Key? key, bool right = false}) =>
+        SizedBox(
+          width: w,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              s ?? '',
+              key: key,
+              textAlign: right ? TextAlign.right : TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: style,
+            ),
+          ),
+        );
     String? total(BoardColumn c) {
       if (c.footer == 'none' || (c.type != 'number' && c.type != 'formula')) {
         return null;
@@ -2490,6 +2542,70 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           : formatColumnNumber(sum, c);
     }
 
+    // Monday's group summary: each label column's spread as a stacked bar,
+    // and the span of dates under a date or timeline (Jose, 2026-11-13).
+    Widget statusBar() {
+      final counts = <String?, int>{};
+      for (final t in tasks) {
+        counts.update(_statusOf(t), (n) => n + 1, ifAbsent: () => 1);
+      }
+      return LabelBar(
+        key: const Key('status-footer'),
+        counts: [
+          for (final e in counts.entries)
+            (
+              _statusFor(_board, e.key) == null
+                  ? null
+                  : _statusColours(context, _statusFor(_board, e.key)).fill,
+              e.value,
+            ),
+        ],
+      );
+    }
+
+    Widget columnFooter(BoardColumn c) {
+      final w = _w('c:${c.id}');
+      if (c.type == 'status') {
+        final counts = <String?, int>{};
+        for (final t in tasks) {
+          counts.update(
+            columnValue(t, c)?.toString(),
+            (n) => n + 1,
+            ifAbsent: () => 1,
+          );
+        }
+        return SizedBox(
+          width: w,
+          height: 30,
+          child: LabelBar(
+            key: ValueKey('column-footer-${c.id}'),
+            counts: [
+              for (final e in counts.entries)
+                (
+                  c.options.where((o) => o.id == e.key).firstOrNull?.colour,
+                  e.value,
+                ),
+            ],
+          ),
+        );
+      }
+      if (c.type == 'date' || c.type == 'timeline') {
+        return text(
+          w,
+          dateRangeLabel([
+            for (final t in tasks) ...daysOf(columnValue(t, c)),
+          ], _formats),
+          key: ValueKey('column-footer-${c.id}'),
+        );
+      }
+      return text(
+        w,
+        total(c),
+        key: ValueKey('column-footer-${c.id}'),
+        right: true,
+      );
+    }
+
     return _cellBorder(
       context,
       SizedBox(
@@ -2500,29 +2616,25 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text('Total', style: style),
+                child: columns.any((c) => total(c) != null)
+                    ? Text('Total', style: style)
+                    : const SizedBox.shrink(),
               ),
             ),
             if (shown('creator')) blank(_w('creator')),
             if (shown('owner')) blank(_w('owner')),
-            if (shown('status')) blank(_w('status')),
+            if (shown('status'))
+              SizedBox(width: _w('status'), height: 30, child: statusBar()),
             if (shown('created')) blank(_w('created')),
-            if (shown('due')) blank(_w('due')),
-            for (final c in columns)
-              SizedBox(
-                width: _w('c:${c.id}'),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(
-                    total(c) ?? '',
-                    key: ValueKey('column-footer-${c.id}'),
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: style,
-                  ),
-                ),
+            if (shown('due'))
+              text(
+                _w('due'),
+                dateRangeLabel([
+                  for (final t in tasks) ...daysOf(t['due_on']),
+                ], _formats),
+                key: const Key('due-footer'),
               ),
+            for (final c in columns) columnFooter(c),
             if (shown('about')) blank(_w('about')),
             if (shown('updates')) blank(_w('updates')),
             if (_canEdit) blank(_widths.add),
@@ -2696,11 +2808,36 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 _cell(
                   context,
                   _w('owner'),
-                  owner == null
+                  _canEdit
+                      ? _ownerMenu(
+                          t,
+                          owner == null
+                              ? _automationOwner(t)
+                              : Row(
+                                  children: [
+                                    _avatar(context, owner),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        owner.split(' ').first,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (owners.length > 1)
+                                      _moreOwners(t, owners),
+                                  ],
+                                ),
+                        )
+                      : owner == null
                       ? _automationOwner(t)
                       : Row(
                           children: [
-                            _avatar(context, owner),
+                            _avatar(
+                              context,
+                              owner,
+                              api: widget.api,
+                              userId: _ownerId(t),
+                            ),
                             const SizedBox(width: 6),
                             Flexible(
                               child: Text(
@@ -2759,6 +2896,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               : null,
                           onEditOptions: _canEdit ? () => _editColumn(c) : null,
                           onMenu: _statusMenu,
+                          api: widget.api,
+                          onAutoAssign: _canEdit && c.type == 'status'
+                              ? () => _suggestLabel(t, c.id)
+                              : null,
                         ),
                       )
                     : _cell(
@@ -2777,22 +2918,35 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               : null,
                           onEditOptions: _canEdit ? () => _editColumn(c) : null,
                           onMenu: _statusMenu,
+                          api: widget.api,
+                          onAutoAssign: _canEdit && c.type == 'status'
+                              ? () => _suggestLabel(t, c.id)
+                              : null,
                         ),
                       ),
               if (shown('about'))
                 _cell(
                   context,
                   _w('about'),
-                  Text(
-                    about ?? '—',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: about == null
-                        ? TextStyle(color: theme.colorScheme.onSurfaceVariant)
-                        : TextStyle(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w700,
-                          ),
+                  InkWell(
+                    key: ValueKey('task-about-${t['id']}'),
+                    onTap: _canEdit ? () => _editAbout(t) : null,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        about ?? '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: about == null
+                            ? TextStyle(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              )
+                            : TextStyle(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                      ),
+                    ),
                   ),
                 ),
               if (shown('updates'))
@@ -2909,7 +3063,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       child: Row(
         children: [
           if (madeBy['type'] == 'user') ...[
-            _avatar(context, label),
+            _avatar(context, label, api: widget.api, userId: madeBy['id']),
             const SizedBox(width: 6),
           ],
           Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
@@ -3012,32 +3166,48 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-        color: colours.ink,
+        color: labelInk(colours.fill),
         fontWeight: FontWeight.w700,
         fontSize: 12,
       ),
     );
 
+    final editable = (_board?['statuses'] as List? ?? const []).any(
+      (s) => s is Map && s.containsKey('id'),
+    );
     return MenuAnchor(
       menuChildren: [
-        for (final s in _statuses(_board))
-          MenuItemButton(
-            key: ValueKey('task-status-${t['id']}-${s.id}'),
-            leadingIcon: _statusDot(context, s),
-            onPressed: () => _setStatus(t, s.id),
-            child: Text(s.name),
+        Builder(
+          builder: (context) => LabelBlocks(
+            keyPrefix: 'task-status-${t['id']}',
+            labels: [
+              for (final s in _statuses(_board))
+                (
+                  id: s.id,
+                  label: s.name,
+                  colour: _statusColours(context, s).fill,
+                ),
+            ],
+            current: _statusOf(t),
+            onPick: (id) {
+              MenuController.maybeOf(context)?.close();
+              if (id != null) _setStatus(t, id);
+            },
+            onEdit: editable
+                ? () {
+                    MenuController.maybeOf(context)?.close();
+                    _editStatuses();
+                  }
+                : null,
+            onAutoAssign: editable
+                ? () async {
+                    MenuController.maybeOf(context)?.close();
+                    final id = await _suggestLabel(t, null);
+                    if (id != null) _setStatus(t, id);
+                  }
+                : null,
           ),
-        if ((_board?['statuses'] as List? ?? const []).any(
-          (s) => s is Map && s.containsKey('id'),
-        )) ...[
-          const Divider(height: 8),
-          MenuItemButton(
-            key: ValueKey('task-status-edit-${t['id']}'),
-            leadingIcon: const Icon(Icons.edit_outlined, size: 18),
-            onPressed: _editStatuses,
-            child: const Text('Edit labels…'),
-          ),
-        ],
+        ),
       ],
       onOpen: () => _statusMenu(true),
       onClose: () => _statusMenu(false),
@@ -3052,6 +3222,50 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         ),
       ),
     );
+  }
+
+  /// Owner edits where it is: a list of the board's people (Jose 11-13:
+  /// only the name opens the task).
+  Widget _ownerMenu(_Json t, Widget shown) => MenuAnchor(
+    menuChildren: [
+      MenuItemButton(
+        onPressed: () => _patchTask(t, {'assignee_user_id': null}),
+        child: const Text('Nobody'),
+      ),
+      for (final p in _people.entries)
+        MenuItemButton(
+          key: ValueKey('task-owner-${t['id']}-${p.key}'),
+          onPressed: () => _patchTask(t, {'assignee_user_id': p.key}),
+          child: Text(p.value),
+        ),
+    ],
+    builder: (context, menu, _) => InkWell(
+      key: ValueKey('task-owner-${t['id']}'),
+      onTap: () => menu.isOpen ? menu.close() : menu.open(),
+      child: Align(alignment: Alignment.centerLeft, child: shown),
+    ),
+  );
+
+  /// About: straight to the link search, not the whole task.
+  Future<void> _editAbout(_Json t) async {
+    await showSidePanel<void>(
+      context,
+      builder: (_) => TaskLinkPanel(api: widget.api, task: t),
+    );
+    if (mounted) await _load();
+  }
+
+  /// Monday's "Auto-assign labels": the AI's pick for [t] in a status
+  /// column (or the board's own status when [columnId] is null).
+  Future<String?> _suggestLabel(_Json t, String? columnId) async {
+    final res = await widget.api.post('/tasks/${t['id']}/suggest-label', {
+      'column_id': ?columnId,
+    });
+    final id = res.ok ? ((res.data as Map?)?['id'] as String?) : null;
+    if (mounted && id == null) {
+      _say(res.ok ? 'No label clearly fits this task.' : res.reason);
+    }
+    return id;
   }
 
   Widget _card(BuildContext context, _Json t, {bool sub = false}) {
@@ -3134,7 +3348,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                 ),
                               ),
                             if (owner != null && shown('owner')) ...[
-                              _avatar(context, owner),
+                              _avatar(
+                                context,
+                                owner,
+                                api: widget.api,
+                                userId: _ownerId(t),
+                              ),
                               if (owners.length > 1) _moreOwners(t, owners),
                             ],
                             if (!sub) ...[
@@ -3418,7 +3637,11 @@ class _TaskPanel extends StatefulWidget {
     required this.where,
     required this.people,
     this.unreadNotes = 0,
+    this.subtasks = const [],
   });
+
+  /// Its subtasks as the board has them, for the panel's checklist.
+  final List<_Json> subtasks;
 
   final ApiClient api;
   final DisplayFormats formats;
@@ -3702,6 +3925,21 @@ class _TaskPanelState extends State<_TaskPanel> {
           '${widget.board['kind'] == 'user' ? 'My board' : widget.board['name']}',
       subtitle: widget.where,
       actions: [
+        TextButton.icon(
+          key: const Key('task-copy-link'),
+          onPressed: () async {
+            await Clipboard.setData(
+              ClipboardData(text: '${Uri.base.origin}/tasks/${widget.taskId}'),
+            );
+            if (context.mounted) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Link copied')));
+            }
+          },
+          icon: const Icon(Icons.link, size: 18),
+          label: const Text('Copy link'),
+        ),
         if (_canEdit && _task != null)
           if (_confirmDelete) ...[
             TextButton(
@@ -3734,6 +3972,39 @@ class _TaskPanelState extends State<_TaskPanel> {
         error: _error,
         onRetry: _load,
         child: _task == null ? const SizedBox.shrink() : _body(context),
+      ),
+    );
+  }
+
+  /// The status as one chip; it opens the same menu as the table's cell.
+  Widget _statusChip(BuildContext context, _Json task) {
+    final colours = _statusColours(
+      context,
+      _statusFor(widget.board, _statusOf(task)),
+    );
+    return MenuAnchor(
+      menuChildren: [
+        for (final s in _statuses(widget.board))
+          MenuItemButton(
+            key: ValueKey('task-panel-status-${s.id}'),
+            leadingIcon: _statusDot(context, s),
+            onPressed: _statusOf(task) == s.id
+                ? null
+                : () => _patch(_statusBody(widget.board, s.id, task)),
+            child: Text(s.name),
+          ),
+      ],
+      builder: (context, menu, _) => ActionChip(
+        key: const Key('task-panel-status'),
+        backgroundColor: colours.fill,
+        side: BorderSide.none,
+        label: Text(
+          '${_statusLabel(widget.board, _statusOf(task))} ▾',
+          style: TextStyle(color: colours.ink, fontWeight: FontWeight.w700),
+        ),
+        onPressed: _canEdit
+            ? () => menu.isOpen ? menu.close() : menu.open()
+            : null,
       ),
     );
   }
@@ -3809,100 +4080,61 @@ class _TaskPanelState extends State<_TaskPanel> {
           const SizedBox(height: 8),
         ],
         const SizedBox(height: 8),
-        fact(
-          _builtinLabel(widget.board, 'status'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final s in _statuses(widget.board))
-                ChoiceChip(
-                  key: ValueKey('task-panel-status-${s.id}'),
-                  showCheckmark: false,
-                  avatar: _statusDot(context, s),
-                  label: Text(s.name),
-                  selected: _statusOf(task) == s.id,
-                  // Never null on the chosen one: a disabled chip greys out
-                  // the very status it is showing.
-                  onSelected: _canEdit
-                      ? (_) {
-                          if (_statusOf(task) != s.id) {
-                            _patch(_statusBody(widget.board, s.id, task));
-                          }
+        // Option A (Jose, 2026-11-12): one row with the status, the people
+        // and the due day, then the board's fields in its order.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _statusChip(context, task),
+            SizedBox(
+              width: 220,
+              child: SearchPickerField<String>(
+                key: const Key('task-panel-owner'),
+                value: owner?['id'] as String?,
+                isDense: true,
+                hint: _builtinLabel(widget.board, 'owner'),
+                options: [
+                  const SearchOption(value: null, label: 'Nobody'),
+                  for (final p in people.entries)
+                    SearchOption(value: p.key, label: p.value),
+                ],
+                onChanged: _canEdit
+                    ? (id) {
+                        if (id != owner?['id']) {
+                          _patch({'assignee_user_id': id});
                         }
-                      : null,
-                ),
-            ],
-          ),
-        ),
-        fact(
-          _builtinLabel(widget.board, 'owner'),
-          SearchPickerField<String>(
-            key: const Key('task-panel-owner'),
-            value: owner?['id'] as String?,
-            isDense: true,
-            hint: 'Nobody',
-            options: [
-              const SearchOption(value: null, label: 'Nobody'),
-              for (final p in people.entries)
-                SearchOption(value: p.key, label: p.value),
-            ],
-            onChanged: _canEdit
-                ? (id) {
-                    if (id != owner?['id']) _patch({'assignee_user_id': id});
+                      }
+                    : null,
+              ),
+            ),
+            SizedBox(
+              width: 210,
+              child: CalendarDayField(
+                key: const Key('task-panel-due'),
+                controller: _due,
+                formats: widget.formats,
+                label: _builtinLabel(widget.board, 'due'),
+                dense: true,
+                enabled: _canEdit,
+                onChanged: (v) {
+                  final day = v.isEmpty ? null : v;
+                  if (day != task['due_on'] &&
+                      (day == null ||
+                          RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(day))) {
+                    _patch({'due_on': day});
                   }
-                : null,
-          ),
+                },
+              ),
+            ),
+            if (_late(task, widget.board))
+              const StatusPill('Late', tone: Tone.bad),
+          ],
         ),
+        const SizedBox(height: 10),
         if (owner != null && task['owners'] is List)
           fact('', _moreOwnersEditor(task, people)),
-        fact(
-          _builtinLabel(widget.board, 'due'),
-          // The day boxes need the whole width, so Late sits under the label.
-          under: _late(task, widget.board)
-              ? const StatusPill('Late', tone: Tone.bad)
-              : null,
-          CalendarDayField(
-            key: const Key('task-panel-due'),
-            controller: _due,
-            formats: widget.formats,
-            dense: true,
-            enabled: _canEdit,
-            onChanged: (v) {
-              final day = v.isEmpty ? null : v;
-              if (day != task['due_on'] &&
-                  (day == null ||
-                      RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(day))) {
-                _patch({'due_on': day});
-              }
-            },
-          ),
-        ),
-        fact(
-          _builtinLabel(widget.board, 'about'),
-          Text(
-            (task['about'] as Map?)?['label'] as String? ?? '—',
-            style: TextStyle(
-              color: task['about'] == null
-                  ? theme.colorScheme.onSurfaceVariant
-                  : theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        if (madeBy != null)
-          fact(
-            (widget.board['builtin_columns'] as Map?)?['creator'] is Map
-                ? _builtinLabel(widget.board, 'creator')
-                : 'Made by',
-            Text(
-              madeBy['type'] == 'automation'
-                  ? 'Automation "${madeBy['label']}"'
-                  : '${madeBy['label']}',
-              key: const Key('task-panel-made-by'),
-              style: muted,
-            ),
-          ),
         if (taskIsLocked(task)) ...[
           const SizedBox(height: 8),
           SensitiveLockedNotice(onUnlock: _unlock),
@@ -3934,57 +4166,45 @@ class _TaskPanelState extends State<_TaskPanel> {
                     : null,
               ),
             ),
-          // Activity log (Jose, 2026-11-09, monday's): loaded when opened.
-          ExpansionTile(
-            key: const Key('task-activity'),
-            tilePadding: EdgeInsets.zero,
-            childrenPadding: EdgeInsets.zero,
-            title: Text(
-              'Activity',
+          if ((task['about'] as Map?)?['label'] case final String about)
+            fact(
+              'Linked to',
+              Text(
+                about,
+                key: const Key('task-panel-about'),
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          if (widget.subtasks.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Subtasks · ${widget.subtasks.where((x) => _isDone(widget.board, x)).length} of ${widget.subtasks.length}',
+              key: const Key('task-panel-subtasks'),
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
-            onExpansionChanged: (open) {
-              if (open && _activity == null) _loadActivity();
-            },
-            children: [
-              if (_activity == null)
-                const LinearProgressIndicator()
-              else if (_activity!.isEmpty)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('No changes yet.', style: muted),
-                )
-              else
-                for (final a in _activity!)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: '${a['who'] ?? 'An automation'}  ',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          TextSpan(
-                            text:
-                                '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
-                          ),
-                          TextSpan(
-                            text: formatStamp(
-                              a['at'],
-                              '',
-                              formats: widget.formats,
-                            ),
-                            style: muted,
-                          ),
-                        ],
-                      ),
+            for (final sub in widget.subtasks)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    Icon(
+                      _isDone(widget.board, sub)
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
+                      size: 18,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  ),
-            ],
-          ),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(taskTitle(sub))),
+                  ],
+                ),
+              ),
+          ],
           const Divider(height: 24),
           Text(
             updates.isEmpty ? 'Updates' : 'Updates · ${updates.length}',
@@ -4000,7 +4220,12 @@ class _TaskPanelState extends State<_TaskPanel> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _avatar(context, '${(u['author'] as Map?)?['name'] ?? '?'}'),
+                  _avatar(
+                    context,
+                    '${(u['author'] as Map?)?['name'] ?? '?'}',
+                    api: widget.api,
+                    userId: (u['author'] as Map?)?['id'],
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
@@ -4114,6 +4339,78 @@ class _TaskPanelState extends State<_TaskPanel> {
               ],
             ),
           ],
+          const Divider(height: 24),
+          // Activity log (Jose, 2026-11-09, monday's): loaded when opened.
+          ExpansionTile(
+            key: const Key('task-activity'),
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: EdgeInsets.zero,
+            title: Text(
+              'Activity',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            onExpansionChanged: (open) {
+              if (open && _activity == null) _loadActivity();
+            },
+            children: [
+              if (_activity == null)
+                const LinearProgressIndicator()
+              else if (_activity!.isEmpty)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('No changes yet.', style: muted),
+                )
+              else
+                for (final a in _activity!)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '${a['who'] ?? 'An automation'}  ',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          TextSpan(
+                            text:
+                                '${a['label']}: ${a['from'] ?? '—'} → ${a['to'] ?? '—'}  ',
+                          ),
+                          TextSpan(
+                            text: formatStamp(
+                              a['at'],
+                              '',
+                              formats: widget.formats,
+                            ),
+                            style: muted,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+          if (madeBy != null || task['created_at'] != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                [
+                  if (madeBy != null)
+                    madeBy['type'] == 'automation'
+                        ? 'Automation "${madeBy['label']}"'
+                        : 'Made by ${madeBy['label']}',
+                  if (task['created_at'] != null)
+                    formatStamp(
+                      task['created_at'],
+                      '',
+                      formats: widget.formats,
+                    ),
+                ].join(' · '),
+                key: const Key('task-panel-made-by'),
+                style: muted,
+              ),
+            ),
         ],
       ],
     );

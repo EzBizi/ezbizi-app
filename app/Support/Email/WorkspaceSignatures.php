@@ -2,13 +2,16 @@
 
 namespace App\Support\Email;
 
+use App\Models\Company;
 use App\Models\GoogleWorkspaceConnection;
 use App\Models\GoogleWorkspacePerson;
 use App\Models\GoogleWorkspaceSignatureTemplate;
 use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
+use App\Support\Files\FileStore;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Google Workspace management (Jose, 2026-10-22): the people on a connected
@@ -86,8 +89,9 @@ final class WorkspaceSignatures
             ->keyBy(fn (User $u) => mb_strtolower((string) $u->email));
 
         $templates = $this->templates($connection)->keyBy('id');
+        $logo      = $this->companyLogoUrl($connection);
 
-        return array_map(function (array $person) use ($links, $byEmail, $connection, $templates) {
+        return array_map(function (array $person) use ($links, $byEmail, $connection, $templates, $logo) {
             $row  = $links->get($person['address']);
             $user = $row?->user;
             $how  = $user !== null ? 'linked' : null;
@@ -100,7 +104,7 @@ final class WorkspaceSignatures
 
             $person['fields'] = $row?->fields ?? [];   // the client reads either shape
             [$source, $using] = $this->resolve($connection, $row, $templates);
-            $rendered = $source === null ? null : $this->render($source, $person, $user, $this->companyName($connection));
+            $rendered = $source === null ? null : $this->render($source, $person, $user, $this->companyName($connection), $logo);
 
             return [
                 ...$person,
@@ -210,6 +214,37 @@ final class WorkspaceSignatures
         $row->forceFill(['fields' => $kept === [] ? null : $kept])->save();
     }
 
+    /**
+     * The company's logo at a public address Gmail can fetch for ever, or null
+     * when it has none. Copied beside the uploaded signature photos under a
+     * keyed hash of its path: public, but not a guessable address that would
+     * list every organization's logo (the reason logos are served privately).
+     * A new logo is a new path, so a new address.
+     */
+    public function companyLogoUrl(GoogleWorkspaceConnection $connection): ?string
+    {
+        $company = $connection->scope_type === 'company' ? Company::find($connection->scope_id) : null;
+        $path    = $company?->logo_path ?? $connection->organization?->logo_path;
+
+        if ($path === null) {
+            return null;
+        }
+
+        $name = hash_hmac('sha1', $path, (string) config('app.key')).'.png';
+
+        if (! Storage::disk('local')->exists('signature-photos/'.$name)) {
+            $bytes = app(FileStore::class)->contents($path);
+
+            if ($bytes === null) {
+                return null;
+            }
+
+            Storage::disk('local')->put('signature-photos/'.$name, $bytes);
+        }
+
+        return url('/api/v1/signature-photos/'.$name);
+    }
+
     public function companyName(GoogleWorkspaceConnection $connection): string
     {
         return $this->workspace->scopeLabel($connection);
@@ -242,7 +277,7 @@ final class WorkspaceSignatures
      *
      * @param  array<string, mixed>  $person  a row from {@see people()}
      */
-    public function render(string $template, array $person, ?User $user, string $company): string
+    public function render(string $template, array $person, ?User $user, string $company, ?string $logoUrl = null): string
     {
         $values = $this->values($person, $user, $company);
         $fill   = fn (string $html) => preg_replace_callback(
@@ -259,14 +294,25 @@ final class WorkspaceSignatures
         // and then only if its pictures exist. A stock-photo address per person
         // (/photos/{{email}}.jpg) is missing for most people, and Gmail would
         // show each of them a broken picture (79 of 96 at A-1, 2026-11-10).
+        // A missing one becomes the company logo in the same slot, never a
+        // dropped column: dropping it narrowed the whole signature, tagline bar
+        // and all (Jose 11-13, Eric's).
         $template = preg_replace_callback(
             '/\{\{([#^])\s*([a-z_]+)\s*\}\}(.*?)\{\{\/\s*\2\s*\}\}/s',
-            function (array $m) use ($values, $fill) {
+            function (array $m) use ($values, $fill, $logoUrl) {
                 if ((trim($values[$m[2]] ?? '') === '') !== ($m[1] === '^')) {
                     return '';
                 }
 
-                return $m[1] === '^' && ! $this->picturesExist($fill($m[3])) ? '' : $m[3];
+                if ($m[1] !== '^' || $this->picturesExist($fill($m[3]))) {
+                    return $m[3];
+                }
+
+                return $logoUrl === null ? '' : (preg_replace(
+                    '/(<img[^>]+src=")[^"]*(")/i',
+                    '${1}'.htmlspecialchars($logoUrl, ENT_QUOTES | ENT_HTML5, 'UTF-8').'${2}',
+                    $m[3],
+                ) ?? '');
             },
             $template,
         ) ?? $template;

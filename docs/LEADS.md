@@ -8,10 +8,10 @@
 | Where it is drawn | **A row of its own in the sidebar**, since 2026-09-03 — it left Marketing when Thumbtack became a second source. This line said "inside Marketing" until 2026-09-23 and was wrong for three weeks; the registry comment recorded the move and this table did not. |
 | Google product | Google Ads API |
 | Host | `googleads.googleapis.com` |
-| Access | **Basic Access — APPROVED 3 September 2026.** Standard Access **applied twice**: case 3-8972000040872 on 2026-09-08, **DENIED 2026-09-09** (reserved for integrations regularly exceeding 15,000/day with RESOURCE_EXHAUSTED errors — which the box then did, for four hours on 2026-09-16); reapplied, **case 9-3038000041842 OPEN**. Our RMF correction of 14 September stood as the last word for eight days; **followed up 2026-09-22 on Jose's word** with the usage evidence their first refusal asked for — 11 Sept: 14,889 requests in a day on Google's counter at ~60 accounts, 99.3% of the ceiling, no refusals; 16 Sept: 2,033 quota refusals (HTTP 429 / RESOURCE_EXHAUSTED) 09:25–12:35, unbroken, ~690/hour at ~10.2 calls a minute across 51 accounts. **Two qualifications were stated in the message rather than left for a reviewer to find in the metrics**: it is one day of exceedance and not yet a pattern (the cadence was reverted the same day), and the connected account count is temporarily far below 51 because 49 were disconnected on 16 Sept while filming the OAuth demo video — so today's metrics understate the load. A reviewer who finds a gap we did not declare reads it as a misrepresentation; one we declare is a fact about our roadmap. The thread lives in `development@ezbizi.com`, not Jose's inbox — it is why this looked unapplied-for once |
+| Access | **Basic Access — APPROVED 3 September 2026.** Standard Access **applied twice**: case 3-8972000040872 on 2026-09-08, **DENIED 2026-09-09** (reserved for integrations regularly exceeding 15,000/day with RESOURCE_EXHAUSTED errors — which the box then did, for four hours on 2026-09-16); reapplied, **case 9-3038000041842 OPEN**. *Superseded: **Standard Access approved 2026-09-26** (`routes/console.php`, the `ezbizi:sync-leads` comment) — no daily ceiling; sync runs every minute. The quota history below is history.* Our RMF correction of 14 September stood as the last word for eight days; **followed up 2026-09-22 on Jose's word** with the usage evidence their first refusal asked for — 11 Sept: 14,889 requests in a day on Google's counter at ~60 accounts, 99.3% of the ceiling, no refusals; 16 Sept: 2,033 quota refusals (HTTP 429 / RESOURCE_EXHAUSTED) 09:25–12:35, unbroken, ~690/hour at ~10.2 calls a minute across 51 accounts. **Two qualifications were stated in the message rather than left for a reviewer to find in the metrics**: it is one day of exceedance and not yet a pattern (the cadence was reverted the same day), and the connected account count is temporarily far below 51 because 49 were disconnected on 16 Sept while filming the OAuth demo video — so today's metrics understate the load. A reviewer who finds a gap we did not declare reads it as a misrepresentation; one we declare is a fact about our roadmap. The thread lives in `development@ezbizi.com`, not Jose's inbox — it is why this looked unapplied-for once |
 | OAuth scope verification | **`.../auth/adwords` APPROVED 18 September 2026** by Google's Third Party Data Safety team, on project `ezbizi-506117`. Filed 2026-09-16 with the second demo video. Read off the Console the same day: OAuth Overview says *"Your app has been verified by Google"*, Audience says **In production / External**, and the 100-user cap no longer applies to this scope (it is still displayed, 4/100, which is what makes it look live — it binds only a NEW unapproved sensitive scope). Two conditions ride with it: a change to the OAuth consent screen configuration requires a NEW request, and the verification is not inheritable by a new sensitive scope. Separate from the Standard Access track below — this one is about the consent screen, that one about the developer token's quota |
 | API contact email | google-ads-api@ezbizi.com, an alias of development@ezbizi.com, set in the API Center 2026-09-09 at Google's request for a role-based address |
-| Quota | 15,000 operations/day |
+| Quota | 15,000 operations/day under Basic Access; **none daily since Standard Access (2026-09-26)**, per-second limits only |
 | Permissible use | Reporting; one write, a person's reply to a text enquiry (see §7) |
 | Manager account | 706-109-4046 |
 | Cloud project | `ezbizi-506117` (247590132639) |
@@ -30,7 +30,8 @@ Leads is **before** the job. [Reviews](REVIEWS.md) is after it.
 
 Leads is the only one of the three on the **Google Ads** connection. The other
 two share a **Business Profile** connection and are blocked on a different
-approval — see those files. Connecting Google Ads does nothing for them.
+approval — see those files (*no longer blocked: Business Profile works since
+2026-10-29, see BUSINESS-PROFILE.md*). Connecting Google Ads does nothing for them.
 
 ## 2 · State: working
 
@@ -171,6 +172,13 @@ so **if Jose says "tabs", only the strip changes.**
   panel with it.
 
 ## 4b · What a model can say: classification and a draft reply
+
+> **Superseded on production:** `BEDROCK_MODEL` is not set on the box
+> (2026-11-13); `LeadInsights::enabled()` is true through Grok (`LEADS_AI_GROK`
+> + `GrokCli`, Jose 2026-10-09), and the sorting/name/ZIP read runs as
+> `ezbizi:leads-read` every two minutes. The Bedrock path below still exists in
+> code but is unused. First-turn auto-replies now exist as Automations rules
+> (see REPLACING-A1-LEADS-AI.md), so "Not built: auto-reply" is history.
 
 Item 5 of the a1tools list, Jose's "as you recommend" (2026-09-08). Amazon
 Bedrock, Claude, through the AWS SDK the app already carries for SES.
@@ -412,7 +420,9 @@ exactly that.
 ## 7 · Compliance
 
 `www/google-ads-api/` is written for Google's reviewers and must stay true to
-this file. The rule enforced by `deploy-www.sh`: **the site may not claim EzBizi
+this file. *Since 2026-11-02 www.ezbizi.com is WordPress on the websites box:
+editing `www/` publishes nothing — change the WordPress page `/google-ads-api/`
+via wp-cli and fetch the live URL (memory `ezbizi-site-is-wordpress`).* The rule enforced by `deploy-www.sh`: **the site may not claim EzBizi
 handles billing or invoicing.** It does not.
 
 The application declared **Reporting** permissible use and **no write path**.

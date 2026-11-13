@@ -78,6 +78,7 @@ class DeepLinks {
     'jobs': 'job',
     'leads': 'lead',
     'customers': 'customer',
+    'tasks': 'task',
   };
 
   static DeepLink? fromUri(Uri uri) {
