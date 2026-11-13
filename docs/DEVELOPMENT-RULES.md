@@ -6,7 +6,7 @@ These are current operating rules. Detailed incident evidence remains in the [ar
 
 - Read STATUS, active constraints, the work board and module ownership before work. Track starting, completed, waiting and parked work in the same turn; STATUS/TODO remain the repo of record.
 - Isolate concurrent implementation in worktrees and agree file ownership. Preserve unrelated edits. A worktree does not prevent a later merge from dropping content.
-- Commit intended paths only. Inspect `scripts/index-landmines.sh` immediately before a shared-tree commit, then full paths and hunks. Private-index commits need one pinned base for tree, parent and compare-and-swap, plus shared-index reconciliation afterward; consult the archived recipe before using plumbing commands.
+- Commit intended paths only. Inspect `scripts/index-landmines.sh` immediately before a shared-tree commit, then full paths and hunks. Private-index commits need one pinned base for tree, parent and compare-and-swap, plus shared-index reconciliation afterward; consult the archived recipe before using plumbing commands. Two ways this check gives a green that proves nothing (an exported `GIT_INDEX_FILE`, and a snapshot taken before a peer staged lines): `SESSIONS.md`, "Two ways a commit check lies". Never `git stash` or amend in the shared tree.
 - Verify content at the final commit after merges. An ancestor check proves history, not preservation. Do not infer session authorship from shared Git names.
 - A1 Tools is read-only reference. Secrets stay outside repo, board and chat. Diagnose production read-only; ship using release scripts. Never test against production or copy its environment into a sandbox.
 - Handing a peer a SHA, say MERGED or NOT MERGED. A commit id names work; it does not say whether the other session can call it. Four sessions exchanged branch SHAs in one evening and every recipient had to run `git merge-base --is-ancestor` to find out — one of them concluded a shipped fix did not exist, correctly for the tree they measured and wrongly about the work. State it in the same sentence as the id, and scope any grep-based claim to the tree it was taken on ("on main", not "nowhere").
@@ -52,7 +52,7 @@ These are current operating rules. Detailed incident evidence remains in the [ar
   that is actually there, rather than to a blank pane; and **one getter feeds
   both the bar and the stack, so the two cannot disagree** — which is precisely
   the bug its comment describes, and precisely what the other defences leave
-  open. `work_hours_screen.dart:75` (`_active`, 2026-09-24) is the same getter
+  open. `work_hours_screen.dart`'s `_active` getter (2026-09-24; line number dropped 2026-11-13, it moves) is the same getter
   with the names shortened; `reports_screen`'s resolve-by-name is the same idea
   in a third shape.
 

@@ -235,6 +235,11 @@ present-and-empty, plus leftover `MAIL_HOST=127.0.0.1` and `MAIL_PORT=2525`.
 Those two host/port lines do nothing under `ses` and will mislead the next
 person who reads `.env`. Leave them out once SMTP is set.
 
+**Done — measured on the box 2026-11-13:** `MAIL_MAILER=smtp`,
+`MAIL_HOST=email-smtp.us-east-1.amazonaws.com`, `MAIL_PORT=587`. SES production
+access was granted 2026-09-14 (50,000/day; sandbox gone — memory
+`ses-production-access-appeal`), so the sandbox request is history.
+
 SES home (us-east-1):
 https://us-east-1.console.aws.amazon.com/ses/home?region=us-east-1#/homepage
 
@@ -251,6 +256,10 @@ for character. Delegated scopes `Mail.Read` `Mail.Send` `offline_access`
 `User.Read`. Env: `MICROSOFT_MAIL_CLIENT_ID`, `MICROSOFT_MAIL_CLIENT_SECRET`,
 optional `MICROSOFT_MAIL_REDIRECT_URI`. Until those exist, Email refuses to
 start a sign-in and says so. Shared team inboxes only.
+*State 2026-11-13: no `MICROSOFT_MAIL_*` key is in the production `.env`, so
+Microsoft 365 is still not set up. Google (`GOOGLE_MAIL_CLIENT_ID`/`_SECRET`)
+and the Workspace service account (`GOOGLE_MAIL_WORKSPACE_*`) are set;
+`GOOGLE_MAIL_MARKETPLACE_URL` is not.*
 
 **Every value above was checked against the code on 2026-09-09** —
 `MicrosoftOAuth::CALLBACK_PATH` and the four `SCOPE_` constants — rather than

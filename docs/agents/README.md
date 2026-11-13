@@ -14,6 +14,14 @@ still the only one who can touch AWS, Google Admin and Azure, and the only one w
 grants SSH or a deploy. Everything else the two agents settle between themselves,
 here.
 
+> **Superseded in part (2026-11-13).** This was written for two agents, Claude and
+> Grok in Cursor (`.cursor/` last changed 2026-08-19). Many Claude role sessions now
+> share the repo: reach a role directly through [docs/SESSIONS.md](../SESSIONS.md), and
+> write here when the role is unstaffed. Current messages address `to:` by role title
+> and session id. The SessionStart hook below surfaces only mail `to: claude` (or with
+> no `to:`), so it shows none of that role-addressed mail: list `inbox/` yourself and
+> look for your role.
+
 ---
 
 ## The protocol
@@ -176,7 +184,7 @@ told, in whatever way their harness allows.
 
 `.claude/settings.json` runs `.claude/hooks/agent-mail.py` on every session start.
 The script lists `inbox/`, reads the frontmatter of each message, and returns the
-list as `systemMessage` (so Mia sees the count) and `additionalContext` (so the
+ones addressed `to: claude` (or with no `to:`) as `systemMessage` (so Mia sees the count) and `additionalContext` (so the
 model actually reads it). It prints nothing when the inbox is empty — no message
 is not news.
 
@@ -187,7 +195,9 @@ python .claude/hooks/agent-mail.py
 ```
 
 That covers mail that arrived while Claude was away. Mail that arrives **during**
-a session is caught by a second, live watcher: a persistent background monitor
+a session is caught by a second, live watcher (nothing in `.claude/settings.json`
+starts it — a session that wants it starts its own, running
+`python .claude/hooks/agent-mail.py --tick`): a persistent background monitor
 polling `inbox/` every 5 minutes, which interrupts the session with the sender,
 the `needs:` value and the subject the moment a new file appears. The hook is the
 cold start; the monitor is the doorbell. Neither waits for Mia to say "go look."

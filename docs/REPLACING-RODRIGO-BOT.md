@@ -23,17 +23,19 @@ Rodrigo's system: `H:\Development\Leads\a1leads` (Node, builds reports) + `H:\De
 
 ## Data — what EzBizi can and cannot read
 
-- Jobs per ad source / per area, tech completed / canceled / sales, deposits: Rodrigo **scrapes the Workiz web app** in a logged-in Chrome (`lib/workiz-area-scraper.js`, `scripts/scrape-area-sources.js`, Payments report). EzBizi is official-APIs-only, so these depend on what **Workiz v2** exposes — Workiz session to answer.
+- Jobs per ad source / per area, tech completed / canceled / sales, deposits: Rodrigo **scrapes the Workiz web app** in a logged-in Chrome (`lib/workiz-area-scraper.js`, `scripts/scrape-area-sources.js`, Payments report). EzBizi is official-APIs-only, so these depend on what **Workiz v2** exposes — Workiz session to answer. *Update: since 2026-10-20 (`f6f224d33`) EzBizi also reads Workiz's own web reports (Payments, Sales, job companies, lists) through each tenant's signed-in Workiz web session — the `ezbizi:workiz-web-*` schedules in `routes/console.php`.*
 - Google reviews: GBP API — EzBizi has it (Google session).
 - LSA: EzBizi has Local Services (Google session).
 - Weekly P&L: Airtable tables + RingCentral — EzBizi has Airtable connections and RingCentral call reports (Reports session).
-- "Ask me": Jose declined paid AI (2026-09) — ours answers fixed questions from the report's own figures (the Library assistant), not an LLM.
+- "Ask me": Jose declined paid AI (2026-09) — ours answers fixed questions from the report's own figures (the Library assistant), not an LLM. *Superseded 2026-10-26 (`d11eb3f11`): staff questions on WhatsApp, Telegram and the AI tab go through `App\Support\Ai\StaffAnswer` — Tech Assistant, then the Library, then `AppAsk` (AI over the app's data as the asker) — via `GrokCli`.*
 
 ## Delivery — Groups API
 
 - Official WhatsApp Cloud API cannot post into the existing groups (Rodrigo uses WhatsApp Web / Baileys). Jose chose new EzBizi groups.
 - Groups API: **Official Business Account required**, **max 8 participants**, join by **invite link only**, text/media/templates allowed (no interactive). OBA can be requested from ~**2026-10-15** (30-day clock, memory `whatsapp-oba-30-day-clock`), and needs an approved display name ("EzBizi - A1 Report" pending since 2026-10-01).
 - Until OBA is approved: each report is sent **1:1 to the group's members** (a utility template, then the report inside the 24 h window).
+- **Update 2026-11-10 (memory `whatsapp-oba-30-day-clock`):** OBA is not a clock any more — Meta (case 29480413778312084) said it is only available through a Meta account rep, and Jose: "I don't believe we do" have one. **Groups are shelved.** `App\Support\Social\WhatsAppGroups` sends each member ONE message: the report's PDF with its text as the caption (Jose, 2026-11-10).
+- **Built:** A and B = `ezbizi:whatsapp-same-day-reports` (21:05 and 21:35 ET); C = `ezbizi:whatsapp-period-reports week|month` (Wed 08:00/12:00, the 2nd 09:00/13:00 ET), sent to the approver first (`WhatsAppPeriodReports`).
 
 ## Who builds what
 

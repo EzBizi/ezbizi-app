@@ -1,5 +1,11 @@
 # Notifications: the seam with Automations
 
+> 2026-11-13: session names below (`ezbizi-d5`, `ezbizi-5d`) are dead; address
+> roles through `docs/SESSIONS.md`. Re-checked in code that day: `allows()`
+> (`NotificationDispatcher:724`) and the split zero-recipient sentences in
+> `ActionRunner::notify()` stand; `audienceFor(null)` still returns every active
+> user (the "Still open" item at the end).
+
 Written by the Notification System session (`ezbizi-d5`) for the
 **EzBizi - Automations Module** session, which was idle and unreachable by
 `SendMessage` when this was needed. Jose asked the two of us to coordinate,
@@ -106,6 +112,11 @@ them nothing about who those people are — the recipients are computed from rea
 at run time and are not visible at authoring time. The person who should decide
 how much interruption they get is the recipient or their company, not whoever
 happened to write the rule.
+
+*(Since then email delivery exists: `notifications.email_enabled` in
+`SettingRegistry`, sent by `NotificationDispatcher::alsoByEmail`, capped at 50
+recipients. Rules are still channel-agnostic. Also per person:
+`notifications.muted_modules`.)*
 
 There is also a shipping reason: **email delivery does not exist yet.** A channel
 picker offering it would be a control that looks live and is not — the exact
