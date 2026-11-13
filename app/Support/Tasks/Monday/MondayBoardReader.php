@@ -84,7 +84,7 @@ final class MondayBoardReader
     /** @return array{monday_id: string, name: string, groups: list<array{monday_id: string, name: string, colour: ?string}>} */
     public function board(string $boardId): array
     {
-        $b = $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { id name groups { id title color position } columns { id title type settings_str } views { id name type } owners { id } subscribers { id } } }', ['b' => [$boardId]])['boards'][0] ?? null;
+        $b = $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { id name groups { id title color position } columns { id title type settings_str } views { id name type } owners { id } subscribers { id } board_folder_id } }', ['b' => [$boardId]])['boards'][0] ?? null;
         if ($b === null) {
             throw new MondayRefused("Monday shows no board {$boardId} to this connection.");
         }
@@ -104,10 +104,43 @@ final class MondayBoardReader
             'views' => self::views($b['views'] ?? []),
             // Who the board is shared with on Monday: owners, then subscribers (a custom board's owners and members).
             'members' => $this->membersOf($b),
+            // Monday's workspace folder, root first, each with its colour (the Task Board list's folders).
+            'folder' => $this->folderPath(isset($b['board_folder_id']) ? (string) $b['board_folder_id'] : null),
         ];
     }
 
     /** @return list<array{email: string, role: string}> */
+    /** @var array<string, array{name: string, colour: ?string, parent: ?string}>|null monday folder id => folder */
+    private ?array $folders = null;
+
+    /**
+     * A Monday folder and its parents, root first, as [{name, colour}]
+     * (colour as hex, FOLDER_COLOURS). Empty for a board at a workspace's root.
+     *
+     * @return list<array{name: string, colour: ?string}>
+     */
+    public function folderPath(?string $folderId): array
+    {
+        if ($folderId === null || $folderId === '') {
+            return [];
+        }
+        if ($this->folders === null) {
+            $this->folders = [];
+            $workspaces = array_column($this->api->query('{ workspaces(limit:100) { id } }')['workspaces'] ?? [], 'id');
+            $rows = $workspaces === [] ? [] : ($this->api->query('query($w:[ID]){ folders(workspace_ids:$w, limit:100) { id name color parent { id } } }', ['w' => $workspaces])['folders'] ?? []);
+            foreach ($rows as $f) {
+                $this->folders[(string) $f['id']] = ['name' => (string) $f['name'], 'colour' => self::FOLDER_COLOURS[(string) ($f['color'] ?? '')] ?? null,
+                    'parent' => isset($f['parent']['id']) ? (string) $f['parent']['id'] : null];
+            }
+        }
+        $path = [];
+        for ($id = $folderId; $id !== null && isset($this->folders[$id]) && count($path) < 10; $id = $this->folders[$id]['parent']) {
+            array_unshift($path, ['name' => $this->folders[$id]['name'], 'colour' => $this->folders[$id]['colour']]);
+        }
+
+        return $path;
+    }
+
     private function membersOf(array $b): array
     {
         $this->loadUsers();

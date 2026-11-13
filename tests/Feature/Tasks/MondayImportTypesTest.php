@@ -226,4 +226,36 @@ class MondayImportTypesTest extends TestCase
         $this->artisan('ezbizi:monday-sync')->assertSuccessful();
         $this->assertSame($values, $this->values());
     }
+
+    /** Jose 11-13 (via desk): each board in the same folder, with Monday's folder colours. */
+    public function test_the_board_lands_in_mondays_folder_with_its_colours_and_a_move_here_stays(): void
+    {
+        $this->importOld([]);
+        $this->connect();
+        $this->monday['folders'] = [
+            ['id' => 'f1', 'name' => 'A1 Chimney', 'color' => 'DARK_ORANGE', 'parent' => null],
+            ['id' => 'f2', 'name' => 'Marketing', 'color' => null, 'parent' => ['id' => 'f1']],
+        ];
+        $this->monday['boards'] = ['100' => ['folder' => 'f2'] + $this->board('2026-11-13T10:30:00Z')];
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+        $this->artisan('ezbizi:monday-sync --full')->assertSuccessful();
+
+        $this->inTenant($this->tenant['org'], function () {
+            $folders = \App\Models\TaskBoardFolder::query()->get();
+            $this->assertCount(2, $folders, 'made once');
+            $root = $folders->firstWhere('name', 'A1 Chimney');
+            $leaf = $folders->firstWhere('name', 'Marketing');
+            $this->assertSame([null, '#ff6d3b'], [$root->parent_id, $root->colour]);
+            $this->assertSame([$root->id, null], [$leaf->parent_id, $leaf->colour]);
+            $board = TaskBoard::query()->where('external_ref', 'monday:100')->sole();
+            $this->assertSame($leaf->id, $board->folder_id);
+
+            // Somebody moves it here: the next sync leaves it where they put it.
+            $board->forceFill(['folder_id' => $root->id])->save();
+        });
+        $this->artisan('ezbizi:monday-sync --full')->assertSuccessful();
+        $this->inTenant($this->tenant['org'], fn () => $this->assertSame(
+            \App\Models\TaskBoardFolder::query()->where('name', 'A1 Chimney')->value('id'),
+            TaskBoard::query()->where('external_ref', 'monday:100')->value('folder_id')));
+    }
 }
