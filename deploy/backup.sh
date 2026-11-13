@@ -410,7 +410,13 @@ install -d -m 0700 /var/backups/ezbizi
 
 DEST=/var/backups/ezbizi
 KEEP_LOCAL_DAYS=14
-KEEP_REMOTE_DAYS=45
+# 10, not 45 (2026-11-13): nightly archives reached 16-32 GB and 45 of them
+# filled the websites box to 95%, starving its own Plesk backups. Month-firsts
+# are still kept beyond it. storage/app/private travels only in the
+# private-files archive (it was in the app archive too, so twice a night).
+KEEP_REMOTE_DAYS=10
+# Above this, the websites box (which hosts the offsite copy) is too full.
+REMOTE_DISK_ALERT_PCT=85
 STAMP=$(date +%F)
 RUN_ID=${EZBIZI_BACKUP_RUN_ID:-$(date -u +%FT%H%M%SZ)-$$-${RANDOM}}
 STATUS=/var/www/ezbizi/storage/app/backup-status.json
@@ -508,7 +514,7 @@ done
 # lost every commit that had not been pushed anywhere else.
 tar -czf - \
     -C /var/repos ezbizi.git \
-    -C /var/www/ezbizi .env storage \
+    -C /var/www/ezbizi --exclude=storage/app/private .env storage \
     2>/dev/null | encrypt_to "$RUN_WORK/app-${RUN_ID}.tar.gz.gpg"
 app_rc=("${PIPESTATUS[@]}")
 
@@ -659,6 +665,16 @@ if [[ ${#errors[@]} -eq 0 ]]; then
       ! -name '*-01.*' ! -name '*-01T*' -delete 2>/dev/null
 else
   note "retention skipped — tonight's run had errors"
+fi
+
+# A full destination is a failing backup that has not failed yet. Checked
+# after retention, so the warning never stops tonight's pruning.
+if [[ -r "$REMOTE_KEY" ]]; then
+  remote_pct=$(ssh -i "$REMOTE_KEY" -o BatchMode=yes "$REMOTE_HOST" \
+      "df --output=pcent / | tail -1 | tr -dc 0-9" 2>/dev/null)
+  if [[ -n "$remote_pct" && "$remote_pct" -ge $REMOTE_DISK_ALERT_PCT ]]; then
+    errors+=("offsite-disk-${remote_pct}pct")
+  fi
 fi
 
 # ── 7. the verdict ───────────────────────────────────────────────
