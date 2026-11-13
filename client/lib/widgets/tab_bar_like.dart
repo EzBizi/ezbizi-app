@@ -37,10 +37,9 @@ class TabBarLike extends StatefulWidget {
   /// (the hours review, 2026-09-29: a website that changes, green).
   final List<Tone?>? tones;
 
-  /// Which row of tabs this is (UI queue 69). A module's own tabs are pills,
-  /// the tabs inside one of them are underlined words, and a third row is a
-  /// small switch. When every level was a pill, Marketing stacked three rows
-  /// nobody could tell apart.
+  /// Which row of tabs this is. Jose, 2026-11-13 (tab-style.html, option A):
+  /// a module's own tabs are underlined words, and every row inside one is
+  /// small pills, the way Google, Microsoft and Stripe draw pages vs filters.
   final TabLevel level;
 
   @override
@@ -115,7 +114,6 @@ class _TabBarLikeState extends State<TabBarLike> {
     final labels = widget.labels;
     final selected = widget.selected;
     final missing = widget.missing;
-    final tones = widget.tones;
     final onSelected = widget.onSelected;
     // SIX CALLERS INVENTED SIX ANSWERS TO THE SAME QUESTION.
     //
@@ -172,55 +170,7 @@ class _TabBarLikeState extends State<TabBarLike> {
           },
           onTap: () => onSelected(i),
           excludeSemantics: true,
-          child: widget.level != TabLevel.primary
-              ? _plain(context, i)
-              : ChoiceChip(
-                  avatar: Icon(
-                    labels[i].$2,
-                    size: 16,
-                    color: switch (tones?[i]) {
-                      final tone? => ToneColours.of(context, tone).ink,
-                      null => null,
-                    },
-                  ),
-                  label: switch (missing?[i] ?? 0) {
-                    0 => Text(labels[i].$1),
-                    final count => Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(labels[i].$1),
-                        const SizedBox(width: 6),
-                        MissingCount(
-                          count,
-                          tooltip:
-                              '$count ${count == 1 ? 'field' : 'fields'} '
-                              'not filled in',
-                        ),
-                      ],
-                    ),
-                  },
-                  selected: i == selected,
-                  // No checkmark, because it is not drawn BESIDE the icon — it
-                  // is drawn ON it.
-                  //
-                  // A Material chip that has both an avatar and a checkmark
-                  // paints the tick over the avatar, and darkens the avatar
-                  // first so the tick can be read against it — Flutter's own
-                  // `_kSelectScrimColor`, a 37% black filled through
-                  // `avatarBorder`, which is a circle. So the selected tab's own
-                  // icon disappeared under a grey disc, and because it follows
-                  // the SELECTION rather than
-                  // the pointer it appeared on a tab nobody was hovering — which
-                  // is exactly how it was reported: "regardless if I'm hovering
-                  // over that tab or any tab".
-                  //
-                  // Nothing is lost by removing it. A selected chip already
-                  // carries a filled background, and the icon is the thing that
-                  // tells the tabs apart — covering it to say "this one" is
-                  // spending the identifier to state what the fill has said.
-                  showCheckmark: false,
-                  onSelected: (_) => onSelected(i),
-                ),
+          child: _plain(context, i),
         ),
     ];
 
@@ -231,39 +181,13 @@ class _TabBarLikeState extends State<TabBarLike> {
     //
     // Underlined words sit apart on one line; a switch's segments share one
     // box, split by a line.
-    final gap = widget.level == TabLevel.secondary ? 14.0 : 8.0;
+    final gap = widget.level == TabLevel.primary ? 14.0 : 6.0;
     final edge = EzBiziTheme.edge(context);
-    const round = BorderRadius.all(Radius.circular(EzBiziTheme.controlRadius));
-    List<Widget> laid(List<Widget> items) => widget.level != TabLevel.tertiary
-        ? items
-        : [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                border: Border.all(color: edge),
-                borderRadius: round,
-              ),
-              child: ClipRRect(
-                borderRadius: round,
-                child: IntrinsicHeight(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < items.length; i++) ...[
-                        if (i > 0)
-                          VerticalDivider(width: 1, thickness: 1, color: edge),
-                        items[i],
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ];
-    final padding = widget.level == TabLevel.secondary
+    List<Widget> laid(List<Widget> items) => items;
+    final padding = widget.level == TabLevel.primary
         ? const EdgeInsets.symmetric(horizontal: 16)
         : const EdgeInsets.symmetric(horizontal: 16, vertical: 8);
-    Widget rule(Widget row) => widget.level != TabLevel.secondary
+    Widget rule(Widget row) => widget.level != TabLevel.primary
         ? row
         : DecoratedBox(
             decoration: BoxDecoration(
@@ -318,7 +242,12 @@ class _TabBarLikeState extends State<TabBarLike> {
     // Always the Stack, chevron or not: the same shape keeps the scroll.
     return Stack(
       children: [
-        strip,
+        // The chevron sits beside the strip, never over a tab: a tab under it
+        // could not be tapped (underlined tabs are narrower than the old pills).
+        Padding(
+          padding: EdgeInsetsDirectional.only(end: _more ? 48 : 0),
+          child: strip,
+        ),
         if (_more)
           PositionedDirectional(
             end: 0,
@@ -342,71 +271,84 @@ class _TabBarLikeState extends State<TabBarLike> {
     );
   }
 
-  /// A second-row tab (a word, underlined when chosen) or a third-row one (a
-  /// segment of a small switch). No icon: the icon is what makes the row
-  /// above read as the module's own tabs. Still a ChoiceChip, so it hovers,
-  /// focuses and is found the way every other tab is.
+  /// A module's own tab (a word, underlined when chosen; its icon only when it
+  /// carries a status tone) or an inner one (a small pill, filled when chosen).
+  /// Still a ChoiceChip, so it hovers, focuses and is found the way every other tab is.
   Widget _plain(BuildContext context, int i) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final on = i == widget.selected;
     final count = widget.missing?[i] ?? 0;
-    final third = widget.level == TabLevel.tertiary;
-    final text = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          widget.labels[i].$1,
-          style: theme.textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: third
-                ? (on ? scheme.onPrimaryContainer : scheme.onSurface)
-                : (on ? scheme.primary : scheme.onSurfaceVariant),
-          ),
-        ),
-        if (count > 0) ...[
-          const SizedBox(width: 6),
-          MissingCount(
-            count,
-            tooltip: '$count ${count == 1 ? 'field' : 'fields'} not filled in',
-          ),
-        ],
-      ],
+    final pill = widget.level != TabLevel.primary;
+    final tone = widget.tones?[i];
+    final word = Text(
+      widget.labels[i].$1,
+      style: theme.textTheme.labelLarge?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: pill
+            ? (on ? scheme.onPrimaryContainer : scheme.onSurface)
+            : (on ? scheme.primary : scheme.onSurfaceVariant),
+      ),
     );
+    final icon = !pill && tone != null;
+    // A bare word stays a Text label, so finders read a tab by its words.
+    final text = count == 0 && !icon
+        ? word
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon) ...[
+                Icon(
+                  widget.labels[i].$2,
+                  size: 16,
+                  color: ToneColours.of(context, tone).ink,
+                ),
+                const SizedBox(width: 6),
+              ],
+              word,
+              if (count > 0) ...[
+                const SizedBox(width: 6),
+                MissingCount(
+                  count,
+                  tooltip:
+                      '$count ${count == 1 ? 'field' : 'fields'} not filled in',
+                ),
+              ],
+            ],
+          );
     // A chip lays itself on the theme's canvas colour, which drew a white box
     // round every word on a tinted strip.
-    return Theme(
+    final chip = Theme(
       data: theme.copyWith(canvasColor: Colors.transparent),
       child: ChoiceChip(
-        label: third
-            ? text
-            : Container(
-                padding: const EdgeInsets.only(bottom: 6),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: on ? scheme.primary : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                child: text,
-              ),
+        label: text,
         selected: on,
         showCheckmark: false,
         color: WidgetStatePropertyAll(
-          third && on ? scheme.primaryContainer : Colors.transparent,
+          pill && on ? scheme.primaryContainer : Colors.transparent,
         ),
         side: BorderSide.none,
-        shape: const RoundedRectangleBorder(),
-        padding: third
-            ? const EdgeInsets.symmetric(horizontal: 6)
-            : const EdgeInsets.only(top: 6),
+        shape: pill ? const StadiumBorder() : const RoundedRectangleBorder(),
+        padding: pill
+            ? const EdgeInsets.symmetric(horizontal: 8)
+            : const EdgeInsets.symmetric(vertical: 4),
         labelPadding: const EdgeInsets.symmetric(horizontal: 4),
         visualDensity: VisualDensity.compact,
-        materialTapTargetSize: third ? MaterialTapTargetSize.shrinkWrap : null,
+        materialTapTargetSize: pill ? MaterialTapTargetSize.shrinkWrap : null,
         onSelected: (_) => widget.onSelected(i),
       ),
+    );
+    if (pill) return chip;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: on ? scheme.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+      ),
+      child: chip,
     );
   }
 }
