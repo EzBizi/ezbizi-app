@@ -14,15 +14,15 @@ use App\Models\User;
 use App\Models\WhatsAppNumber;
 use App\Support\Access\Refusal;
 use App\Support\Mail\SendingState;
-use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\LineHealth;
+use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Scoping\ViewScope;
-use App\Support\Tenancy\TenantContext;
 use App\Support\Social\ConnectionChecks;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\Liveness\ConnectionLiveness;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -257,7 +257,9 @@ final class IntegrationsOverviewController extends Controller
                     $problems->get($key), null, now()->toIso8601String());
                 // A2P registration is decided by Twilio's review: nobody here can
                 // act on it, so the screen shows it as waiting, not as a fault.
-                if ($key === 'texting' && $problems->has($key)) {
+                // Twilio refusing the 911 address on file is theirs to fix (toll-free in
+                // review); no address at all is ours, so it stays red.
+                if (($key === 'texting' && $problems->has($key)) || str_contains((string) $problems->get($key), 'Twilio refused')) {
                     $check['waiting_on'] = 'Twilio';
                 }
 
@@ -365,10 +367,37 @@ final class IntegrationsOverviewController extends Controller
             'label' => self::CHECK_LABELS[$key] ?? ucfirst(str_replace('_', ' ', $key)),
             'state' => $state,
             'reason' => $reason,
+            // The words the screen groups and shows; [reason] keeps the raw
+            // detail (URLs, ids, API errors) for "Show steps" only.
+            'summary' => self::plain($reason),
             'fix' => $fix,
             'checked_at' => $checkedAt,
             'next_retry_at' => $nextRetryAt,
         ];
+    }
+
+    /**
+     * A failure in plain words, the same for every account it hits, so nine
+     * branches with one cause read as one line (Jose, 2026-11-13). Never a
+     * URL, an id or an API error: those stay in `reason`.
+     */
+    public static function plain(?string $reason): ?string
+    {
+        if ($reason === null || $reason === '') {
+            return $reason;
+        }
+        if (str_contains($reason, 'post webhook')) {
+            return 'needs a webhook rule in Workiz (one-time)';
+        }
+        if (str_contains($reason, 'E911')) {
+            return 'has no 911 address yet';
+        }
+        // ponytail: generic scrub; add a case above when a new raw reason shows up on screen.
+        $s = (string) preg_replace('~\s*\([^)]*(https?://|\[HTTP|/)[^)]*\)\.?~', '.', $reason);
+        $s = (string) preg_replace('~https?://\S+~', '', $s);
+        $s = (string) preg_replace('~\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b~i', '', $s);
+
+        return trim((string) preg_replace('~\s+~', ' ', $s));
     }
 
     /** A check as ConnectionChecks recorded it, with the fix its state calls for. */
@@ -404,7 +433,6 @@ final class IntegrationsOverviewController extends Controller
     {
         return new SocialConnection(['scope_type' => $type, 'scope_id' => $id]);
     }
-
 
     private static function appLabel(string $provider): string
     {
