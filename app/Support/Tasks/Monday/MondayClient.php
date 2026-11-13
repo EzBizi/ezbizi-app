@@ -18,13 +18,38 @@ final class MondayClient
 {
     public const API = 'https://api.monday.com/v2';
 
-    public function __construct(private readonly string $token) {}
+    /** @var \Closure(): string|null asks for the token anew (a connection's client) */
+    private ?\Closure $fresh = null;
 
-    /** A client on the connection's token, refreshed first when it is about to run out (MondayToken). */
+    public function __construct(private string $token) {}
+
+    /**
+     * A client on the connection's token, asked of MondayToken before every
+     * request: a run longer than the token's life (the 11-13 import, ~2 h)
+     * otherwise kept the first token after the 10-minute sync had rotated it,
+     * and Monday refused every board after that.
+     */
     public static function for(SocialConnection $connection): self
     {
-        return new self(app(MondayToken::class)->for($connection));
+        $client = new self(app(MondayToken::class)->for($connection));
+        // Re-read without the tenant scope: a command may run with no tenant in context.
+        $client->fresh = fn (): string => app(MondayToken::class)->for(
+            SocialConnection::query()->withoutGlobalScopes()->findOrFail($connection->getKey()));
+
+        return $client;
     }
+
+    private function token(bool $renew = false): string
+    {
+        if ($this->fresh !== null && ($renew || $this->askedAt === null || $this->askedAt < time() - 60)) {
+            $this->token = ($this->fresh)();
+            $this->askedAt = time();
+        }
+
+        return $this->token;
+    }
+
+    private ?int $askedAt = null;
 
     /** @return array<string, mixed> the `data` of the answer */
     public function query(string $query, array $variables = []): array
@@ -34,13 +59,21 @@ final class MondayClient
         }
         // Monday's budget (complexity per minute, requests per minute) answers "wait N seconds":
         // a whole-board read (NW: ~1,000 queries) waits and goes on rather than failing midway.
+        $renewed = 0;
         for ($attempt = 1; ; $attempt++) {
-            $response = Http::withHeaders(['Authorization' => $this->token])
+            $response = Http::withHeaders(['Authorization' => $this->token(renew: $renewed === 1)])
                 ->acceptJson()->timeout(60)
                 ->post(self::API, ['query' => $query, 'variables' => (object) $variables]);
             $wait = $response->status() === 429 ? (int) ($response->header('Retry-After') ?: 30)
                 : (int) collect((array) $response->json('errors'))->map(fn ($e) => in_array($e['extensions']['code'] ?? null, ['COMPLEXITY_BUDGET_EXHAUSTED', 'RATE_LIMIT_EXCEEDED', 'ComplexityException'], true)
                     ? (int) ($e['extensions']['retry_in_seconds'] ?? 30) : 0)->max();
+            // Refused once: the token may have been rotated under us; ask for it again, once.
+            if (in_array($response->status(), [401, 403], true) && $this->fresh !== null && $renewed === 0) {
+                $renewed = 1;
+
+                continue;
+            }
+            $renewed = $renewed === 1 ? 2 : $renewed;
             if ($wait <= 0 || $attempt >= 5) {
                 break;
             }

@@ -60,7 +60,8 @@ final class MondaySync
 
             // Not an archived board: its Monday board is archived too and does not change, and
             // re-reading All Calls (52,684 items) every ten minutes would spend the Monday budget.
-            return TaskBoard::query()->where('external_ref', 'like', 'monday:%')->whereNull('archived_at')->get();
+            // Smallest first: the big board (NW) last, so a run the lane stops still reached the others.
+            return TaskBoard::query()->where('external_ref', 'like', 'monday:%')->whereNull('archived_at')->withCount('tasks')->orderBy('tasks_count')->get();
         });
 
         $reports = [];
@@ -78,24 +79,47 @@ final class MondaySync
             }
             if ($ids !== []) {
                 $meta = $reader->board($mondayId);
-                $reports[$mondayId] = $this->import->run($org, [
-                    'people' => (array) ($state['people'] ?? []),
-                    'users' => $reader->users(),
-                    'boards' => [$meta + ['target_board_id' => $board->id, 'items' => $reader->items($mondayId, $ids)]],
-                ], $as, refresh: true);
+                // In chunks: a whole board (NW, 24,659 items) read and written in one go outlasts
+                // the scheduler lane and holds one transaction for an hour (prod, 2026-11-13).
+                foreach (array_chunk($ids, 200) as $chunk) {
+                    $report = $this->import->run($org, [
+                        'people' => (array) ($state['people'] ?? []),
+                        'users' => $reader->users(),
+                        'boards' => [$meta + ['target_board_id' => $board->id, 'items' => $reader->items($mondayId, $chunk)]],
+                    ], $as, refresh: true);
+                    foreach ($report['counts'] as $k => $v) {
+                        $reports[$mondayId]['counts'][$k] = ($reports[$mondayId]['counts'][$k] ?? 0) + $v;
+                    }
+                    $reports[$mondayId] += $report;
+                }
             }
             if ($latest !== null) {
                 $state['cursors'][$mondayId] = $latest;
             }
+            // Each board's cursor is kept as soon as it is read: a run stopped part way (the lane's
+            // limit, a deploy) resumes from there instead of reading every board again.
+            $this->save($org, $connection, $state);
         }
 
         $state['last'] = ['at' => now()->toIso8601String(), 'boards' => array_map(fn ($r) => $r['counts'], $reports)];
-        $this->tenant->run($org, function () use ($connection, $state) {
-            $connection->refresh();
-            $connection->forceFill(['setup' => ['monday' => $state] + (array) ($connection->setup ?? [])])->save();
-        });
+        $this->save($org, $connection, $state);
 
         return $reports;
+    }
+
+    private function save(Organization $org, SocialConnection $connection, array $state): void
+    {
+        $this->tenant->run($org, function () use ($connection, $state) {
+            $connection->refresh();
+            $setup = (array) ($connection->setup ?? []);
+            // Cursors another writer moved on (the import, a parallel run) are not moved back.
+            foreach ((array) ($setup['monday']['cursors'] ?? []) as $id => $at) {
+                if (! isset($state['cursors'][$id]) || (string) $at > (string) $state['cursors'][$id]) {
+                    $state['cursors'][$id] = $at;
+                }
+            }
+            $connection->forceFill(['setup' => ['monday' => $state] + $setup])->save();
+        });
     }
 
     /**
