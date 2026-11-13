@@ -425,6 +425,27 @@ class GoogleWorkspaceManagementTest extends TestCase
             ->assertJsonPath('data.html', 'P<td><img src="https://cdn.test/example-photos/ana@'.self::DOMAIN.'.jpg" width="84"></td>');
     }
 
+    /** Their EzBizi photo is their signature photo, at a public address Gmail can fetch (Jose 11-13). */
+    public function test_a_persons_ezbizi_photo_is_their_signature_photo(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $t = $this->provisionTenant('A1-Group');
+        $c = $this->connect($t);
+        $this->fakeGoogle();
+        $avatar = app(\App\Support\Files\FileStore::class)->putContents('JPEGBYTES', 'avatars', 'jpg', 'local');
+        $office = $this->userWithRole($t, 'Office', ['jobs.view'], 'office@nj.'.self::DOMAIN);
+        $this->inTenant($t['org'], fn () => $office->forceFill(['avatar_path' => $avatar])->save());
+        $html = '{{#photo_url}}<img src="{{photo_url}}">{{/photo_url}}{{^photo_url}}none{{/photo_url}}';
+
+        $out = $this->signedInAs($t['admin'])->postJson($this->base($t, $c).'/signatures/preview', ['address' => 'office@nj.'.self::DOMAIN, 'html' => $html])
+            ->assertOk()->json('data.html');
+
+        $this->assertMatchesRegularExpression('#^<img src="[^"]*/api/v1/signature-photos/[0-9a-f]{40}\.jpg">$#', $out);
+        preg_match('#/api/v1/signature-photos/[0-9a-f]{40}\.jpg#', $out, $url);
+        $this->app['auth']->forgetGuards();
+        $this->assertSame('JPEGBYTES', $this->get($url[0])->assertOk()->streamedContent());
+    }
+
     public function test_managing_needs_email_edit_and_an_address_on_the_domain(): void
     {
         $t = $this->provisionTenant('A1-Group');
