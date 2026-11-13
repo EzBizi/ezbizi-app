@@ -2,6 +2,7 @@
 
 namespace App\Support\TimeClock;
 
+use App\Jobs\TellManagersShiftFinished;
 use App\Models\Assignment;
 use App\Models\AuditEvent;
 use App\Models\AutomationEvent;
@@ -216,6 +217,10 @@ final class TimeClock
                      * refuses a row with no scheduled end.
                      */
                     'scheduled_end_at' => match (true) {
+                        // A role that clocks out by hand (Jose, 2026-11-13:
+                        // "disable auto clock out for Technicians"): the
+                        // schedule never closes it; the cap is the backstop.
+                        app(ShiftFinishedNotice::class)->isManual($user) => $now->copy()->addHours($this->maxHours($user)),
                         // No schedule today at all — a day off, or nobody set
                         // one. The cap is the only end there is.
                         $window === null => $now->copy()->addHours($this->maxHours($user)),
@@ -371,6 +376,10 @@ final class TimeClock
             $open->save();
 
             $this->audit->log('time_clock.clocked_out', $open);
+            // Their branch's managers hear on WhatsApp, after the commit (Jose, 2026-11-13).
+            if (app(ShiftFinishedNotice::class)->isManual($user)) {
+                TellManagersShiftFinished::dispatch($open->id, $open->organization_id)->afterCommit();
+            }
             $this->events->emit(
                 'time_clock.clocked_out',
                 $user,

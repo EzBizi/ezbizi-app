@@ -179,6 +179,22 @@ final class WhatsAppGroups
      * whose values cannot hold a line break, so the lines run on and a long
      * one goes in several messages, in order.
      */
+    /** One person a message with its line breaks: free text in the 24-hour window, else $template with $values. */
+    public function messageToUser(WhatsAppNumber $number, User $user, string $text, string $template, array $values): bool
+    {
+        $e164 = ThumbtackAssociatePhoneNumbers::e164((string) $user->phone);
+        if ($e164 === null) {
+            return false;
+        }
+        $to = ltrim($e164, '+');
+
+        app(TenantContext::class)->run(Organization::findOrFail($number->organization_id), fn () => $this->windowOpen($number, $to)
+            ? $this->cloud->replyFreeForm($number, $to, ['type' => 'text', 'text' => ['body' => $text]], $text)
+            : $this->cloud->send($template, $e164, $values, from: (string) $number->display_number));
+
+        return true;
+    }
+
     private function textTo(WhatsAppNumber $number, string $e164, string $title, string $body): void
     {
         $to = ltrim($e164, '+');
