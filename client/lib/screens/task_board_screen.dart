@@ -371,6 +371,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     DeepLinks.pending.removeListener(_takeLink);
     _rangeFocus.dispose();
     _tableScroll.dispose();
+    _columnSearch.dispose();
     HardwareKeyboard.instance.removeHandler(_dragKey);
     _newTitle.dispose();
     _groupName.dispose();
@@ -3294,42 +3295,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               SizedBox(
                 width: _widths.add,
                 child: MenuAnchor(
-                  menuChildren: [
-                    for (final (title, types) in columnTypeSections) ...[
-                      _menuHeading(context, title),
-                      for (final (type, label, icon) in columnTypes)
-                        if (types.contains(type))
-                          MenuItemButton(
-                            key: ValueKey('column-add-$type'),
-                            leadingIcon: Icon(icon, size: 18),
-                            onPressed: () => _addColumn(type),
-                            child: Text(label),
-                          ),
-                    ],
-                    SubmenuButton(
-                      key: const Key('column-add-more'),
-                      leadingIcon: const Icon(Icons.more_horiz, size: 18),
-                      menuChildren: [
-                        for (final (type, label, icon) in columnTypes)
-                          if (!columnTypeSections.any(
-                            (s) => s.$2.contains(type),
-                          ))
-                            MenuItemButton(
-                              key: ValueKey('column-add-$type'),
-                              leadingIcon: Icon(icon, size: 18),
-                              onPressed: () => _addColumn(type),
-                              child: Text(label),
-                            ),
-                      ],
-                      child: const Text('More columns'),
-                    ),
-                  ],
+                  menuChildren: _addColumnItems(),
                   builder: (context, menu, _) => IconButton(
                     key: const Key('column-add'),
                     tooltip: 'Add a column',
                     iconSize: 18,
                     padding: EdgeInsets.zero,
-                    onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+                    onPressed: () {
+                      if (menu.isOpen) return menu.close();
+                      _columnSearch.clear();
+                      setState(() {});
+                      menu.open();
+                    },
                     icon: const Icon(Icons.add),
                   ),
                 ),
@@ -3824,6 +3801,68 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       for (final id in (columnValue(t, c) as List?) ?? const []) '$id',
     ];
     await _setValue(t, c.id, [...had, ...added]);
+  }
+
+  /// The "+" menu's search box (Monday's add-column search).
+  final _columnSearch = TextEditingController();
+
+  /// The "+" menu: a search on top; with nothing typed, Monday's sections
+  /// and More; with a word typed, every type whose name has it.
+  List<Widget> _addColumnItems() {
+    final q = _columnSearch.text.trim().toLowerCase();
+    MenuItemButton item(String type, String label, IconData icon) =>
+        MenuItemButton(
+          key: ValueKey('column-add-$type'),
+          leadingIcon: Icon(icon, size: 18),
+          onPressed: () => _addColumn(type),
+          child: Text(label),
+        );
+    final found = [
+      for (final (type, label, icon) in columnTypes)
+        if (label.toLowerCase().contains(q) || type.contains(q))
+          item(type, label, icon),
+    ];
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+        child: SizedBox(
+          width: 220,
+          child: TextField(
+            key: const Key('column-add-search'),
+            controller: _columnSearch,
+            autofocus: true,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              isDense: true,
+              hintText: 'Find a column type',
+              prefixIcon: Icon(Icons.search, size: 18),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+      ),
+      if (q.isNotEmpty) ...[
+        ...found,
+        if (found.isEmpty)
+          const MenuItemButton(onPressed: null, child: Text('No column type')),
+      ] else ...[
+        for (final (title, types) in columnTypeSections) ...[
+          _menuHeading(context, title),
+          for (final (type, label, icon) in columnTypes)
+            if (types.contains(type)) item(type, label, icon),
+        ],
+        SubmenuButton(
+          key: const Key('column-add-more'),
+          leadingIcon: const Icon(Icons.more_horiz, size: 18),
+          menuChildren: [
+            for (final (type, label, icon) in columnTypes)
+              if (!columnTypeSections.any((s) => s.$2.contains(type)))
+                item(type, label, icon),
+          ],
+          child: const Text('More columns'),
+        ),
+      ],
+    ];
   }
 
   // ── Row drag: Esc cancels, the list scrolls near its edges ─────────

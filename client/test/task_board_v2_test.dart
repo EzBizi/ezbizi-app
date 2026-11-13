@@ -1031,4 +1031,18 @@ void main() {
       'PATCH /tasks/t1 {"values":{"c-files":["a-0","a-9"]}}',
     ]);
   });
+
+  testWidgets("the + menu's search finds a type from More, and hides the "
+      'rest', (tester) async {
+    await pump(tester);
+    await tester.tap(find.byKey(const Key('column-add')).first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('column-add-rating')), findsNothing);
+    await tester.enterText(find.byKey(const Key('column-add-search')), 'rat');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('column-add-number')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('column-add-rating')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('column-save')), findsOneWidget);
+  });
 }
