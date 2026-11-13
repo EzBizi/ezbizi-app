@@ -59,7 +59,7 @@ class IntegrationsOverviewTest extends TestCase
         $this->assertSame(['broken', 'setup'], array_keys($data['summary']));
         $app = collect($data['apps'])->firstWhere('provider', 'airtable');
         $this->assertSame(['provider', 'label', 'counts', 'last_checked_at', 'connections'], array_keys($app));
-        $this->assertSame(['ok', 'setup', 'broken'], array_keys($app['counts']));
+        $this->assertSame(['ok', 'setup', 'broken', 'connected'], array_keys($app['counts']));
         $row = $this->find($data, $c->id);
         foreach (['id', 'provider', 'label', 'branch_id', 'branch_label', 'status', 'choices', 'used_by', 'last_checked_at', 'checks'] as $k) {
             $this->assertArrayHasKey($k, $row);
@@ -67,6 +67,29 @@ class IntegrationsOverviewTest extends TestCase
         $this->assertSame(['key', 'label', 'state', 'reason', 'fix', 'checked_at', 'next_retry_at'], array_keys($row['checks'][0]));
         $this->assertSame('ok', $row['status']);
         $this->assertSame([['id' => $t['franchise']->id, 'label' => $t['franchise']->name]], $data['branches']);
+    }
+
+    public function test_counts_connected_is_only_rows_whose_status_is_connected(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connection($t, SocialProvider::GoogleAds->value, 'c1');
+        $this->connection($t, SocialProvider::GoogleAds->value, 'c2');
+        $this->connection($t, SocialProvider::GoogleAds->value, 'rev', ['status' => SocialConnection::STATUS_REVOKED]);
+        $this->connection($t, SocialProvider::GoogleAds->value, 'brk',
+            ['status' => SocialConnection::STATUS_BROKEN, 'status_reason' => 'Refused.']);
+        // Paused in Settings at the branch: shown off, but its stored status
+        // is still connected, and the Dashboard counts it, so this does too.
+        $this->inTenant($t['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)
+            ->set('leads.google_paused', $t['franchise'], true));
+        $paused = $this->connection($t, SocialProvider::GoogleAds->value, 'pau', [],
+            SocialConnection::SCOPE_FRANCHISE, $t['franchise']->id);
+
+        $data = $this->overview($t);
+
+        $this->assertSame('off', $this->find($data, $paused->id)['status']);
+        $app = collect($data['apps'])->firstWhere('provider', SocialProvider::GoogleAds->value);
+        $this->assertCount(5, $app['connections']);
+        $this->assertSame(3, $app['counts']['connected']);
     }
 
     public function test_summary_math_and_status_precedence(): void
@@ -91,7 +114,7 @@ class IntegrationsOverviewTest extends TestCase
         $this->assertSame('off', $this->find($data, $off->id)['status']);
         $this->assertSame(['broken' => 2, 'setup' => 1], $data['summary'], 'off is never attention');
         $ads = collect($data['apps'])->firstWhere('provider', 'google_ads');
-        $this->assertSame(['ok' => 0, 'setup' => 0, 'broken' => 1], $ads['counts']);
+        $this->assertSame(['ok' => 0, 'setup' => 0, 'broken' => 1, 'connected' => 0], $ads['counts']);
     }
 
     public function test_missing_branch_is_setup_with_choose_branch_and_a_set_one_is_ok(): void

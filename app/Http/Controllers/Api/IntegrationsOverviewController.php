@@ -92,6 +92,12 @@ final class IntegrationsOverviewController extends Controller
             ->concat($this->sendingServers($user))
             ->concat($this->workspaces($user));
 
+        // counts.connected is the Dashboard's number: accounts whose stored
+        // status is connected (revoked and broken rows are not). Phone lines,
+        // sending servers and workspaces have no such column: not off counts.
+        $connectedBy = $rows->where('status', SocialConnection::STATUS_CONNECTED)->countBy('provider');
+        $social = $rows->pluck('provider')->unique()->flip();
+
         $apps = $connections->groupBy('provider')->map(fn (Collection $group, string $provider) => [
             'provider' => $provider,
             'label' => self::appLabel($provider),
@@ -99,6 +105,9 @@ final class IntegrationsOverviewController extends Controller
                 'ok' => $group->where('status', 'ok')->count(),
                 'setup' => $group->where('status', 'setup')->count(),
                 'broken' => $group->where('status', 'broken')->count(),
+                'connected' => $social->has($provider)
+                    ? (int) $connectedBy->get($provider, 0)
+                    : $group->where('status', '!=', 'off')->count(),
             ],
             'last_checked_at' => $group->pluck('last_checked_at')->filter()->max(),
             'connections' => $group->values()->all(),
