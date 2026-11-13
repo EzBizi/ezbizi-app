@@ -370,6 +370,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   void dispose() {
     DeepLinks.pending.removeListener(_takeLink);
     _rangeFocus.dispose();
+    _tableScroll.dispose();
+    HardwareKeyboard.instance.removeHandler(_dragKey);
     _newTitle.dispose();
     _groupName.dispose();
     _columnName.dispose();
@@ -2759,6 +2761,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Widget _tableList(BuildContext context, {required bool cards}) {
     Widget box(Widget w) => SliverToBoxAdapter(child: w);
     return CustomScrollView(
+      key: _tableKey,
+      controller: _tableScroll,
       slivers: [
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
@@ -3784,11 +3788,56 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
   }
 
+  // ── Row drag: Esc cancels, the list scrolls near its edges ─────────
+
+  final _tableScroll = ScrollController();
+  final _tableKey = GlobalKey(debugLabel: 'task-table');
+
+  /// Esc was pressed during this drag: nothing it is dropped on moves.
+  bool _dragCancelled = false;
+
+  bool _dragKey(KeyEvent e) {
+    if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.escape) {
+      return false;
+    }
+    setState(() => _dragCancelled = true);
+    return true;
+  }
+
+  /// Within [_edge] of the list's top or bottom, the list scrolls towards
+  /// it, faster the closer the pointer is.
+  static const _edge = 56.0;
+  void _autoScroll(Offset at) {
+    final box = _tableKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !_tableScroll.hasClients || _dragCancelled) return;
+    final y = box.globalToLocal(at).dy;
+    final h = box.size.height;
+    final step = y < _edge
+        ? -(_edge - y)
+        : y > h - _edge
+        ? y - (h - _edge)
+        : 0.0;
+    if (step == 0) return;
+    final p = _tableScroll.position;
+    _tableScroll.jumpTo(
+      (p.pixels + step / 3).clamp(p.minScrollExtent, p.maxScrollExtent),
+    );
+  }
+
   Widget _dragHandle(BuildContext context, _Json t) {
     final theme = Theme.of(context);
     return Draggable<String>(
       key: ValueKey('task-drag-${t['id']}'),
       data: t['id'] as String,
+      onDragStarted: () {
+        _dragCancelled = false;
+        HardwareKeyboard.instance.addHandler(_dragKey);
+      },
+      onDragUpdate: (d) => _autoScroll(d.globalPosition),
+      onDragEnd: (_) {
+        HardwareKeyboard.instance.removeHandler(_dragKey);
+        if (_dragCancelled) setState(() {});
+      },
       feedback: Material(
         elevation: 4,
         borderRadius: BorderRadius.circular(8),
@@ -3818,8 +3867,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Widget _dropOn(String? groupId, int? position, Widget child) {
     if (!_canEdit || groupId == null) return child;
     return DragTarget<String>(
-      onWillAcceptWithDetails: (d) => true,
-      onAcceptWithDetails: (d) => _moveTo(d.data, groupId, position),
+      onWillAcceptWithDetails: (d) => !_dragCancelled,
+      onAcceptWithDetails: (d) {
+        if (!_dragCancelled) _moveTo(d.data, groupId, position);
+      },
       builder: (context, hovering, _) => hovering.isEmpty
           ? child
           : DecoratedBox(

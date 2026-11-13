@@ -909,4 +909,71 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Sweep the Elm St chimney'), findsNothing);
   });
+
+  Future<List<String>> dragT9OntoT1(
+    WidgetTester tester, {
+    required bool esc,
+  }) async {
+    extra = [doneTask()];
+    await pump(tester);
+    final from = tester.getCenter(find.byKey(const ValueKey('task-drag-t9')));
+    final to = tester.getCenter(find.byKey(const ValueKey('task-t1')));
+    final g = await tester.startGesture(from);
+    await tester.pump(const Duration(milliseconds: 50));
+    await g.moveTo(Offset(from.dx, (from.dy + to.dy) / 2));
+    await tester.pump();
+    if (esc) await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await g.moveTo(to);
+    await tester.pump();
+    await g.up();
+    await tester.pumpAndSettle();
+    return [
+      for (final (m, p, _) in log)
+        if (m != 'GET') '$m $p',
+    ];
+  }
+
+  testWidgets('a row dropped on another moves it', (tester) async {
+    expect(await dragT9OntoT1(tester, esc: false), isNotEmpty);
+  });
+
+  testWidgets('Esc during a row drag cancels it: the drop moves nothing', (
+    tester,
+  ) async {
+    expect(await dragT9OntoT1(tester, esc: true), isEmpty);
+  });
+
+  testWidgets('a row dragged to the bottom edge scrolls the list', (
+    tester,
+  ) async {
+    extra = [
+      for (var i = 0; i < 40; i++)
+        {...doneTask(), 'id': 'x$i', 'title': 'Filler task $i'},
+    ];
+    await pump(tester);
+    final list = find.byType(CustomScrollView).first;
+    final before = tester
+        .state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first,
+        )
+        .position
+        .pixels;
+    final from = tester.getCenter(find.byKey(const ValueKey('task-drag-x0')));
+    final bottom = tester.getBottomLeft(list).dy - 10;
+    final g = await tester.startGesture(from);
+    await tester.pump(const Duration(milliseconds: 50));
+    for (var i = 0; i < 10; i++) {
+      await g.moveTo(Offset(from.dx, bottom - (i.isEven ? 0 : 1)));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final after = tester
+        .state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first,
+        )
+        .position
+        .pixels;
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(after, greaterThan(before));
+  });
 }
