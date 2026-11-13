@@ -41,6 +41,11 @@ class VersionHistory {
       'Field: Open alerts is the sum of its tiles',
       'Inventory: total stock value is the same on every tab',
       'HR Invitations hide personal emails until opened; inspection reports show readable answers',
+      'Phone: each list loads once per visit; calls and texts load 200 at a time with Load older',
+      'Settings › Activity and Phone alerts mask personal emails and phone numbers until you open the row',
+      'Memberships › Promotions opens on last month’s customers with the count and composer ready',
+      'Leads: older lead dates read Nov 5 instead of being cut off',
+      'Task Board: Monday boards come over with their columns, labels, colours and automations, and changes sync back to Monday while both are in use',
     ]),
     VersionRelease(version: '0.0.0570', date: '13 Nov 2026', items: [
       'Texting: a customer who replied STOP is remembered, and automations skip them instead of failing',
