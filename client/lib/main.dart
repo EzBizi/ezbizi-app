@@ -2952,47 +2952,66 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                       // window: without it the lower group just stopped
                       // mid-row with no hint there was more (deep dive
                       // 2026-11-02).
-                      builder: (context, constraints) => Scrollbar(
-                        controller: _railScroll,
-                        thumbVisibility: true,
-                        child: SingleChildScrollView(
-                          controller: _railScroll,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              minHeight: constraints.maxHeight,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                for (var g = 0; g < segments.length; g++) ...[
-                                  if (g > 0)
-                                    Divider(
-                                      height: 17,
-                                      thickness: 1,
-                                      indent: width * 0.15,
-                                      endIndent: width * 0.15,
-                                      color: scheme.outlineVariant,
-                                    ),
-                                  IntrinsicHeight(
-                                    child: _rail(
-                                      context,
-                                      expanded: expanded,
-                                      width: width,
-                                      destinations: [
-                                        for (final i in segments[g])
-                                          widget.destinations[i],
-                                      ],
-                                      selectedIndex: within(segments[g]),
-                                      onSelected: (i) =>
-                                          widget.onSelected(segments[g][i]),
-                                      query: query,
-                                    ),
-                                  ),
-                                ],
-                              ],
+                      builder: (context, constraints) => Stack(
+                        children: [
+                          Scrollbar(
+                            controller: _railScroll,
+                            thumbVisibility: true,
+                            child: SingleChildScrollView(
+                              controller: _railScroll,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minHeight: constraints.maxHeight,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    for (
+                                      var g = 0;
+                                      g < segments.length;
+                                      g++
+                                    ) ...[
+                                      if (g > 0)
+                                        Divider(
+                                          height: 17,
+                                          thickness: 1,
+                                          indent: width * 0.15,
+                                          endIndent: width * 0.15,
+                                          color: scheme.outlineVariant,
+                                        ),
+                                      IntrinsicHeight(
+                                        child: _rail(
+                                          context,
+                                          expanded: expanded,
+                                          width: width,
+                                          destinations: [
+                                            for (final i in segments[g])
+                                              widget.destinations[i],
+                                          ],
+                                          selectedIndex: within(segments[g]),
+                                          onSelected: (i) =>
+                                              widget.onSelected(segments[g][i]),
+                                          query: query,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                          // "More below" over the list's bottom edge while
+                          // rows remain under the fold. Jose read the cut-off
+                          // list on a short web window as modules MISSING
+                          // (11-13): the thin thumb alone was not enough.
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: _MoreBelow(controller: _railScroll),
+                          ),
+                        ],
                       ),
                     ),
             ),
@@ -3420,4 +3439,56 @@ class Destination {
   final String label;
   final IconData icon;
   final Widget screen;
+}
+
+/// A fade and a "More" chevron over the bottom of a scrolling list, shown only
+/// while there is still something below the fold. Tapping it scrolls down.
+class _MoreBelow extends StatelessWidget {
+  const _MoreBelow({required this.controller});
+
+  final ScrollController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final more =
+            controller.hasClients &&
+            controller.position.hasContentDimensions &&
+            controller.position.extentAfter > 8;
+        if (!more) return const SizedBox.shrink();
+
+        // The sidebar panel's own fill (see `color: scheme.surfaceContainerLow` above).
+        final bg = scheme.surfaceContainerLow;
+
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [bg.withValues(alpha: 0), bg],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Center(
+              child: TextButton.icon(
+                key: const Key('sidebar-more-below'),
+                onPressed: () => controller.animateTo(
+                  controller.position.maxScrollExtent,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOut,
+                ),
+                icon: Icon(Icons.expand_more, size: 18, color: scheme.primary),
+                label: const Text('More'),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
