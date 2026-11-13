@@ -55,8 +55,16 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
   /// source: tab_tours_test reads the source for `ValueKey('google-ads-range')`
   /// as written, so a key built from [keyPrefix] would read as gone.
   Key get rangeKey;
-  Key get searchKey;
   Key get tableKey;
+
+  /// The search field's key, spelled out here rather than by each source:
+  /// list_search_guard_test wants the file that draws the list to hold its
+  /// search Key, and tab_tours_test wants `ValueKey('google-ads-search')` as
+  /// written.
+  static const _searchKeys = {
+    'meta': ValueKey('meta-ads-search'),
+    'google': ValueKey('google-ads-search'),
+  };
   String get accountsPath;
   String get campaignsPath;
 
@@ -339,7 +347,7 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
           ),
         ),
         ListSearch(
-          key: searchKey,
+          key: _searchKeys[keyPrefix],
           controller: search,
           hint: 'Search campaigns',
           width: 260,
