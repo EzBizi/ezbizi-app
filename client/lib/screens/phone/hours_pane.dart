@@ -177,18 +177,7 @@ class _HoursPaneState extends State<HoursPane> {
     }
 
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
+      return ErrorRetry(_error!, onRetry: _load);
     }
 
     if (_connections.isEmpty) {

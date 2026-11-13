@@ -202,18 +202,7 @@ class _CallFlowPaneState extends State<CallFlowPane> {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
     if (_error != null && _companies.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
+      return ErrorRetry(_error!, onRetry: _load);
     }
 
     final open = _openLine == null
