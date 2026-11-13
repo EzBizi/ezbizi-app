@@ -92,6 +92,9 @@ class TaskBoardsController extends Controller
                 'company_id' => ($b->company ?? $b->franchise?->company)?->id,
                 'company_name' => ($b->company ?? $b->franchise?->company)?->name,
                 'franchise_id' => $b->franchise_id,
+                'folder_id' => $b->folder_id,
+                'colour' => $b->colour,
+                'position' => $b->position,
                 'open_for_me' => (int) $b->open_for_me,
                 'can_edit' => $this->boards->canEdit($user, $b),
                 'my_role' => $role,
@@ -285,6 +288,11 @@ class TaskBoardsController extends Controller
     {
         if ($request->hasAny(['name', 'visibility'])) {
             $this->authorizeManage($request->user(), $taskBoard);
+        } elseif ($request->hasAny(['folder_id', 'colour', 'position'])) {
+            // Arranging the list (folders, colours, order) is shared for the
+            // organization: the right to make boards, on a board you can see.
+            $this->authorize('view', $taskBoard);
+            abort_unless($request->user()->hasPermission('tasks.create_boards'), 403, 'Only somebody who may make boards can arrange the board list.');
         } elseif ($request->has('edit_mode')) {
             // Automatic boards too: A-1's busiest place board is the one that needs it.
             $this->authorize('view', $taskBoard);
@@ -302,6 +310,9 @@ class TaskBoardsController extends Controller
             'builtin_columns.*' => ['array:label,visible'],
             'builtin_columns.*.label' => ['sometimes', 'string', 'min:1', 'max:60'],
             'builtin_columns.*.visible' => ['sometimes', 'boolean:strict'],
+            'folder_id' => ['sometimes', 'nullable', 'uuid', fn ($a, $v, $fail) => $v === null || \App\Models\TaskBoardFolder::query()->whereKey($v)->exists() ?: $fail('That folder is not in this organization.')],
+            'colour' => ['sometimes', 'nullable', TaskBoardFoldersController::COLOUR],
+            'position' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000'],
         ]);
         if (array_key_exists('builtin_columns', $input)) {
             $input['builtin_columns'] = self::mergeBuiltinColumns($taskBoard, $input['builtin_columns']);
@@ -368,6 +379,35 @@ class TaskBoardsController extends Controller
         return response()->json(['data' => [
             'members' => $members->all(),
             'candidates' => $candidates,
+        ]]);
+    }
+
+    /**
+     * GET task-boards/{id}/people/{user}: the hover card for somebody this
+     * board can name (Jose 11-13, Monday parity). Only people the board can
+     * assign are answered, so the card is no wider than the person picker.
+     * Email and phone come back for the "Contact details" fold; the client
+     * keeps them hidden until it is opened.
+     */
+    public function person(Request $request, TaskBoard $taskBoard, User $user): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+        abort_unless($this->boards->assignable($taskBoard)->contains('id', $user->id), 404);
+
+        $user->loadMissing('role:id,name');
+        $state = \App\Models\PhonePresence::query()->where('user_id', $user->id)->value('state');
+
+        return response()->json(['data' => [
+            'id' => $user->id,
+            'name' => $user->name,
+            'has_avatar' => $user->avatar_path !== null,
+            'role_name' => $user->role?->name,
+            'timezone' => $tz = \App\Support\Time\ViewTimezone::forUser($user),
+            // Worked out here: the client has no zone database.
+            'local_time' => now($tz)->format('g:i A T'),
+            'presence' => $state,
+            'email' => $user->email,
+            'phone' => $user->phone,
         ]]);
     }
 
