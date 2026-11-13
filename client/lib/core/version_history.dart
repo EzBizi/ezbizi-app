@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0569', date: '13 Nov 2026', items: [
+      'Jobs: each job shows who booked it (Booked by), on the list and in the job panel',
+    ]),
     VersionRelease(version: '0.0.0568', date: '12 Nov 2026', items: [
       'Settings › Integrations: each card says in one line whether it works; a short note above lists only what needs you, grouped (14 phone lines waiting on Twilio are one line), and branches to pick wait under Choose later',
       'Monday: the connection renews itself, so the boards keep syncing; imported videos play in the Gallery',
