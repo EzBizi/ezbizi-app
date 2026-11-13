@@ -462,7 +462,8 @@ void main() {
   ) async {
     await pump(tester);
 
-    await tester.tap(find.byKey(const ValueKey('task-t1')));
+    // The name opens the task; a cell edits in place (Jose, 2026-11-12).
+    await tester.tap(find.text('Order liner parts for the Oak Park job').first);
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -709,7 +710,8 @@ void main() {
       '+2',
     );
 
-    await tester.tap(find.byKey(const ValueKey('task-t1')));
+    // The name opens the task; a cell edits in place (Jose, 2026-11-12).
+    await tester.tap(find.text('Order liner parts for the Oak Park job').first);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('task-panel-owner-u-2')), findsOneWidget);
     expect(find.byKey(const ValueKey('task-panel-owner-u-3')), findsOneWidget);

@@ -225,6 +225,18 @@ const _builtinDefaults = {
   'updates': 'Updates',
 };
 
+/// What each built-in column is for, at the top of its heading's menu.
+const _builtinHelp = {
+  'creator': 'Built in: who made the task.',
+  'owner': 'Built in: who the task is assigned to.',
+  'status': 'Built in: where the task stands. Its labels are edited here.',
+  'created': 'Built in: the day the task was made.',
+  'due': 'Built in: the day it is due. Late tasks show in red.',
+  'about':
+      'Built in: the customer, job or lead the task is about. Set it in the task.',
+  'updates': 'Built in: how many notes and replies the task has.',
+};
+
 /// A built-in column's name on this board: its own, or today's.
 String _builtinLabel(_Json? board, String key) {
   final row = (board?['builtin_columns'] as Map?)?[key];
@@ -1099,6 +1111,17 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     if (!_canEdit) return label;
     return MenuAnchor(
       menuChildren: [
+        // What a built-in column is for (Jose, 2026-11-12: "not sure where
+        // those are managed").
+        MenuItemButton(
+          key: ValueKey('builtin-about-$key'),
+          onPressed: null,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 240),
+            child: Text(_builtinHelp[key]!, softWrap: true),
+          ),
+        ),
+        const Divider(height: 8),
         MenuItemButton(
           key: ValueKey('builtin-rename-$key'),
           leadingIcon: const Icon(Icons.edit_outlined, size: 18),
@@ -1109,6 +1132,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           }),
           child: const Text('Rename'),
         ),
+        if (key == 'status')
+          MenuItemButton(
+            key: const Key('builtin-status-labels'),
+            leadingIcon: const Icon(Icons.label_outline, size: 18),
+            onPressed: _editStatuses,
+            child: const Text('Edit labels…'),
+          ),
         MenuItemButton(
           key: ValueKey('builtin-hide-$key'),
           leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
@@ -1169,6 +1199,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 (_board?['builtin_columns'] as Map?)?['creator'] is Map))
           key,
     ];
+    final hiddenOwn = [
+      for (final c
+          in (_board?['columns'] as List? ?? const []).whereType<Map>())
+        if (c['hidden'] == true) c,
+    ];
+    final count = hidden.length + hiddenOwn.length;
     return MenuAnchor(
       menuChildren: [
         for (final key in hidden)
@@ -1178,7 +1214,26 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             onPressed: () => _showBuiltin(key, true),
             child: Text('Show ${_builtinLabel(_board, key)}'),
           ),
-        if (hidden.isEmpty)
+        for (final c in hiddenOwn)
+          MenuItemButton(
+            key: ValueKey('column-show-${c['id']}'),
+            leadingIcon: const Icon(Icons.visibility_outlined, size: 18),
+            onPressed: () async {
+              final r = await widget.api.patch(
+                columnsPath('${_board!['id']}', '${c['id']}'),
+                {'hidden': false},
+              );
+              if (!mounted) return;
+              if (!r.ok) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(r.reason)));
+              }
+              await _load();
+            },
+            child: Text('Show ${c['name'] ?? 'column'}'),
+          ),
+        if (count == 0)
           const MenuItemButton(
             onPressed: null,
             child: Text('Every column is showing'),
@@ -1188,9 +1243,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         key: const Key('tasks-columns'),
         onPressed: () => menu.isOpen ? menu.close() : menu.open(),
         icon: const Icon(Icons.view_column_outlined, size: 18),
-        label: Text(
-          hidden.isEmpty ? 'Columns' : 'Columns · ${hidden.length} hidden',
-        ),
+        label: Text(count == 0 ? 'Columns' : 'Columns · $count hidden'),
       ),
     );
   }
@@ -1274,9 +1327,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           child: const Text('Hide'),
         ),
         MenuItemButton(
+          key: ValueKey('column-menu-remove-${c.id}'),
           leadingIcon: const Icon(Icons.delete_outline, size: 18),
           onPressed: () => _editColumn(c),
-          child: const Text('Delete…'),
+          child: const Text('Remove column…'),
         ),
       ],
       builder: (context, menu, _) => InkWell(
@@ -1476,6 +1530,37 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // A status menu is open: dim the board so the menu stands apart
+    // (Jose, 2026-11-12). The menu itself sits in the overlay, above this.
+    return Stack(
+      children: [
+        _screen(context),
+        if (_statusMenuOpen)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ColoredBox(
+                key: const Key('tasks-status-scrim'),
+                color: Theme.of(
+                  context,
+                ).colorScheme.scrim.withValues(alpha: 0.18),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  bool _statusMenuOpen = false;
+  void _statusMenu(bool open) {
+    // Later, not now: a menu closes while its cell is rebuilt or disposed.
+    Future.microtask(() {
+      if (mounted && open != _statusMenuOpen) {
+        setState(() => _statusMenuOpen = open);
+      }
+    });
+  }
+
+  Widget _screen(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final cards = constraints.maxWidth < TaskBoardScreen.tableAbove;
@@ -2276,16 +2361,72 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
   }
 
-  static const _widths = (
-    creator: 130.0,
-    owner: 130.0,
-    status: 130.0,
-    due: 104.0,
-    created: 104.0,
-    about: 170.0,
-    updates: 84.0,
-    custom: 120.0,
-    add: 40.0,
+  static const _widths = (add: 40.0);
+  static const _baseWidths = {
+    'creator': 130.0,
+    'owner': 130.0,
+    'status': 130.0,
+    'due': 104.0,
+    'created': 104.0,
+    'about': 170.0,
+    'updates': 84.0,
+  };
+
+  /// A width being dragged, before it is saved.
+  final Map<String, double> _dragWidths = {};
+
+  /// This board's slot in `lists.column_widths`: built-ins 0–6, the board's
+  /// own columns 10 and up.
+  // ponytail: custom slots follow column order, so a moved column takes the
+  // slot's width; key by column id if that bothers anyone.
+  String get _widthList => 'task-board-${_board?['id'] ?? ''}'
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9_.-]'), '');
+
+  int _widthSlot(String key) => key.startsWith('c:')
+      ? 10 + boardColumns(_board).indexWhere((c) => 'c:${c.id}' == key)
+      : _builtinDefaults.keys.toList().indexOf(key);
+
+  /// A column's width: being dragged, saved by this person, or the default.
+  double _w(String key) =>
+      _dragWidths[key] ??
+      widget.session.me?.listColumnWidths(_widthList)[_widthSlot(key)] ??
+      _baseWidths[key] ??
+      120.0;
+
+  /// A heading with a drag handle on its right edge (Jose, 2026-11-12).
+  Widget _resizable(String key, Widget heading) => Stack(
+    children: [
+      heading,
+      Positioned(
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: 6,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.resizeColumn,
+          child: GestureDetector(
+            key: ValueKey('column-resize-$key'),
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragUpdate: (d) => setState(
+              () => _dragWidths[key] = (_w(key) + d.delta.dx).clamp(60, 600),
+            ),
+            onHorizontalDragEnd: (_) {
+              final width = _dragWidths.remove(key);
+              final slot = _widthSlot(key);
+              if (width == null || slot < 0 || slot > 99) return;
+              widget.session.setPreference('lists.column_widths', {
+                if (widget.session.me?.preferences['lists.column_widths']
+                    case final Map saved)
+                  ...saved,
+                '$_widthList:$slot': width.roundToDouble(),
+              });
+              setState(() {});
+            },
+          ),
+        ),
+      ),
+    ],
   );
 
   /// Everything but the task's own column, so a board with many columns
@@ -2294,15 +2435,15 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       6 +
       // The row's ⋯ menu, and its drag handle and tick where it can change.
       (_canEdit ? 82 : 32) +
-      (_builtinShown(_board, 'creator') ? _widths.creator : 0) +
-      (_builtinShown(_board, 'owner') ? _widths.owner : 0) +
-      (_builtinShown(_board, 'status') ? _widths.status : 0) +
-      (_builtinShown(_board, 'due') ? _widths.due : 0) +
-      (_builtinShown(_board, 'created') ? _widths.created : 0) +
-      (_builtinShown(_board, 'about') ? _widths.about : 0) +
-      (_builtinShown(_board, 'updates') ? _widths.updates : 0) +
+      (_builtinShown(_board, 'creator') ? _w('creator') : 0) +
+      (_builtinShown(_board, 'owner') ? _w('owner') : 0) +
+      (_builtinShown(_board, 'status') ? _w('status') : 0) +
+      (_builtinShown(_board, 'due') ? _w('due') : 0) +
+      (_builtinShown(_board, 'created') ? _w('created') : 0) +
+      (_builtinShown(_board, 'about') ? _w('about') : 0) +
+      (_builtinShown(_board, 'updates') ? _w('updates') : 0) +
       _widths.add +
-      _widths.custom * boardColumns(_board).length;
+      boardColumns(_board).fold(0.0, (sum, c) => sum + _w('c:${c.id}'));
 
   Widget _cellBorder(BuildContext context, Widget child) => DecoratedBox(
     decoration: BoxDecoration(
@@ -2362,14 +2503,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 child: Text('Total', style: style),
               ),
             ),
-            if (shown('creator')) blank(_widths.creator),
-            if (shown('owner')) blank(_widths.owner),
-            if (shown('status')) blank(_widths.status),
-            if (shown('created')) blank(_widths.created),
-            if (shown('due')) blank(_widths.due),
+            if (shown('creator')) blank(_w('creator')),
+            if (shown('owner')) blank(_w('owner')),
+            if (shown('status')) blank(_w('status')),
+            if (shown('created')) blank(_w('created')),
+            if (shown('due')) blank(_w('due')),
             for (final c in columns)
               SizedBox(
-                width: _widths.custom,
+                width: _w('c:${c.id}'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Text(
@@ -2382,8 +2523,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   ),
                 ),
               ),
-            if (shown('about')) blank(_widths.about),
-            if (shown('updates')) blank(_widths.updates),
+            if (shown('about')) blank(_w('about')),
+            if (shown('updates')) blank(_w('updates')),
             if (_canEdit) blank(_widths.add),
           ],
         ),
@@ -2400,15 +2541,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       color: theme.colorScheme.onSurfaceVariant,
     );
     Text h(String s) => Text(s.toUpperCase(), style: style, maxLines: 1);
-    Widget b(String key, double width) => _cell(
-      context,
-      width,
-      _builtinHead(
-        key,
-        group,
-        Tooltip(
-          message: _builtinLabel(_board, key),
-          child: h(_builtinLabel(_board, key)),
+    Widget b(String key, double width) => _resizable(
+      key,
+      _cell(
+        context,
+        width,
+        _builtinHead(
+          key,
+          group,
+          Tooltip(
+            message: _builtinLabel(_board, key),
+            child: h(_builtinLabel(_board, key)),
+          ),
         ),
       ),
     );
@@ -2427,15 +2571,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 child: Align(alignment: Alignment.centerLeft, child: h('Task')),
               ),
             ),
-            if (shown('creator')) b('creator', _widths.creator),
-            if (shown('owner')) b('owner', _widths.owner),
-            if (shown('status')) b('status', _widths.status),
-            if (shown('created')) b('created', _widths.created),
-            if (shown('due')) b('due', _widths.due),
+            if (shown('creator')) b('creator', _w('creator')),
+            if (shown('owner')) b('owner', _w('owner')),
+            if (shown('status')) b('status', _w('status')),
+            if (shown('created')) b('created', _w('created')),
+            if (shown('due')) b('due', _w('due')),
             for (final c in boardColumns(_board))
-              _cell(context, _widths.custom, _columnHeader(c, h(c.name))),
-            if (shown('about')) b('about', _widths.about),
-            if (shown('updates')) b('updates', _widths.updates),
+              _resizable(
+                'c:${c.id}',
+                _cell(context, _w('c:${c.id}'), _columnHeader(c, h(c.name))),
+              ),
+            if (shown('about')) b('about', _w('about')),
+            if (shown('updates')) b('updates', _w('updates')),
             if (_canEdit)
               SizedBox(
                 width: _widths.add,
@@ -2544,11 +2691,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 ),
               ),
               if (shown('creator'))
-                _cell(context, _widths.creator, _creatorCell(context, t)),
+                _cell(context, _w('creator'), _creatorCell(context, t)),
               if (shown('owner'))
                 _cell(
                   context,
-                  _widths.owner,
+                  _w('owner'),
                   owner == null
                       ? _automationOwner(t)
                       : Row(
@@ -2566,11 +2713,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                         ),
                 ),
               if (shown('status'))
-                SizedBox(width: _widths.status, child: _statusCell(context, t)),
+                SizedBox(width: _w('status'), child: _statusCell(context, t)),
               if (shown('created'))
                 _cell(
                   context,
-                  _widths.created,
+                  _w('created'),
                   Text(
                     _createdLabel(t['created_at'], _formats),
                     key: ValueKey('task-created-${t['id']}'),
@@ -2580,22 +2727,25 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               if (shown('due'))
                 _cell(
                   context,
-                  _widths.due,
-                  Text(
-                    _dueLabel(t['due_on'], _formats),
-                    maxLines: 1,
-                    style: late
-                        ? TextStyle(
-                            color: theme.colorScheme.error,
-                            fontWeight: FontWeight.w700,
-                          )
-                        : null,
+                  _w('due'),
+                  _dueCell(
+                    t,
+                    Text(
+                      _dueLabel(t['due_on'], _formats),
+                      maxLines: 1,
+                      style: late
+                          ? TextStyle(
+                              color: theme.colorScheme.error,
+                              fontWeight: FontWeight.w700,
+                            )
+                          : null,
+                    ),
                   ),
                 ),
               for (final c in boardColumns(_board))
                 c.type == 'status'
                     ? SizedBox(
-                        width: _widths.custom,
+                        width: _w('c:${c.id}'),
                         child: ColumnCell(
                           column: c,
                           value: columnValue(t, c),
@@ -2608,11 +2758,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               ? (label) => _addOption(c, label)
                               : null,
                           onEditOptions: _canEdit ? () => _editColumn(c) : null,
+                          onMenu: _statusMenu,
                         ),
                       )
                     : _cell(
                         context,
-                        _widths.custom,
+                        _w('c:${c.id}'),
                         ColumnCell(
                           column: c,
                           value: columnValue(t, c),
@@ -2625,12 +2776,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               ? (label) => _addOption(c, label)
                               : null,
                           onEditOptions: _canEdit ? () => _editColumn(c) : null,
+                          onMenu: _statusMenu,
                         ),
                       ),
               if (shown('about'))
                 _cell(
                   context,
-                  _widths.about,
+                  _w('about'),
                   Text(
                     about ?? '—',
                     maxLines: 1,
@@ -2646,7 +2798,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               if (shown('updates'))
                 _cell(
                   context,
-                  _widths.updates,
+                  _w('updates'),
                   updates == 0
                       ? const SizedBox.shrink()
                       : Row(
@@ -2673,6 +2825,27 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       ),
     );
   }
+
+  /// Due, edited where it is like any date column.
+  Widget _dueCell(_Json t, Widget label) => !_canEdit
+      ? label
+      : InlineCellEditor(
+          column: (
+            id: 'due-${t['id']}',
+            name: _builtinLabel(_board, 'due'),
+            type: 'date',
+            unit: null,
+            options: const [],
+            format: 'plain',
+            footer: 'none',
+            formula: null,
+          ),
+          value: t['due_on'],
+          people: _people,
+          formats: _formats,
+          onChanged: (v) => _patchTask(t, {'due_on': v}),
+          child: label,
+        );
 
   Widget _dragHandle(BuildContext context, _Json t) {
     final theme = Theme.of(context);
@@ -2854,7 +3027,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             onPressed: () => _setStatus(t, s.id),
             child: Text(s.name),
           ),
+        if ((_board?['statuses'] as List? ?? const []).any(
+          (s) => s is Map && s.containsKey('id'),
+        )) ...[
+          const Divider(height: 8),
+          MenuItemButton(
+            key: ValueKey('task-status-edit-${t['id']}'),
+            leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+            onPressed: _editStatuses,
+            child: const Text('Edit labels…'),
+          ),
+        ],
       ],
+      onOpen: () => _statusMenu(true),
+      onClose: () => _statusMenu(false),
       builder: (context, menu, _) => Material(
         color: colours.fill,
         child: InkWell(
