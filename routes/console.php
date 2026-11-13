@@ -518,7 +518,7 @@ Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlap
  */
 foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event) {
     $slow = (bool) preg_match(
-        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz)(\s|\'|$)/',
+        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog)(\s|\'|$)/',
         (string) $event->command,
     );
     $event->when(function () use ($slow) {
