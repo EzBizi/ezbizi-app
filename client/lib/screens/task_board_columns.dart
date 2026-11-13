@@ -28,6 +28,9 @@ typedef BoardColumn = ({
   String name,
   String type,
   String? unit,
+
+  /// Rating: how many stars (settings.max, default 5).
+  int? max,
   List<ColumnOption> options,
 
   /// Number and formula (design 178): plain, currency or percent.
@@ -77,6 +80,7 @@ List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
         name: '${c['name'] ?? ''}',
         type: '${c['type'] ?? 'text'}',
         unit: (c['settings'] as Map?)?['unit'] as String?,
+        max: ((c['settings'] as Map?)?['max'] as num?)?.toInt(),
         format: c['type'] == 'currency'
             ? 'currency'
             : '${(c['settings'] as Map?)?['format'] ?? 'plain'}',
@@ -868,13 +872,12 @@ class ColumnCell extends StatelessWidget {
           style: day == null ? muted : null,
         );
       case 'rating':
-        // ponytail: five stars (more when a value is higher); the server
-        // holds settings.max.
+        // settings.max stars (default 5), more if a value is higher.
         final n = v is num ? v.toInt() : 0;
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (var i = 1; i <= math.max(5, n); i++)
+            for (var i = 1; i <= math.max(column.max ?? 5, n); i++)
               InkWell(
                 key: ValueKey('column-rating-${column.id}-$i'),
                 onTap: onChanged == null
