@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/ads_manager_screen.dart';
+import 'package:ezbizi_client/screens/google_campaigns_view.dart' show lsaWeekly;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -211,6 +212,29 @@ void main() {
       findsNothing,
       reason: 'Manual CPA has no target to set',
     );
+  });
+
+  // UI/UX audit 2026-11-13 §10.1: "$28,571.43/day" was Google's per-day
+  // reading of a $200,000 weekly Local Services budget.
+  test('a Local Services budget is its week, undoing Google\'s cents', () {
+    expect(lsaWeekly(28571.43), 200000);
+    expect(lsaWeekly(857.14), 6000);
+    expect(lsaWeekly(29.93), 209.51);
+  });
+
+  testWidgets('a Local Services budget reads and saves per week', (tester) async {
+    await open(tester, permissions: manage);
+
+    final cell = find.byKey(const ValueKey('google-budget-12'));
+    expect(find.descendant(of: cell, matching: find.textContaining('/ week')), findsOneWidget);
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    expect(find.text('Per week'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('google-amount')), '700');
+    await tester.tap(find.byKey(const ValueKey('google-amount-save')));
+    await tester.pumpAndSettle();
+
+    expect(posted('budget').single['daily_budget'], 100.0, reason: 'Google takes a week as day x 7');
   });
 
   testWidgets('reading alone shows no switches and no edit links', (
