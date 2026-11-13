@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
+import '../../widgets/user_avatar.dart';
 
 /// Human Resources at a glance, option 1 (desktop) and 4 (phone) of
 /// `docs/previews/hr-dashboard-layouts.html`, UI queue 42 (Jose, 2026-10-01:
@@ -42,13 +43,23 @@ class _List {
 }
 
 class _Row {
-  const _Row(this.name, this.detail, {this.pill, this.tone, this.when});
+  const _Row(
+    this.name,
+    this.detail, {
+    this.pill,
+    this.tone,
+    this.when,
+    this.userId,
+  });
 
   final String name;
   final String detail;
   final String? pill;
   final Tone? tone;
   final String? when;
+
+  /// For their photo; null for an invitation nobody has accepted yet.
+  final String? userId;
 }
 
 class _HrOverviewState extends State<HrOverview> {
@@ -107,6 +118,7 @@ class _HrOverviewState extends State<HrOverview> {
             },
             tone: o['state'] == 'filling_in' ? Tone.info : Tone.caution,
             when: _age(o['since']),
+            userId: o['user_id'] as String?,
           ),
         ),
       for (final i in _rows(_map('invitations_stalled')['items']))
@@ -134,6 +146,7 @@ class _HrOverviewState extends State<HrOverview> {
             .where((v) => v != null && '$v'.isNotEmpty)
             .join(' · '),
         when: _date(p[dateKey]),
+        userId: p['user_id'] as String?,
       ),
   ];
 
@@ -148,6 +161,7 @@ class _HrOverviewState extends State<HrOverview> {
             ? 'Expiring'
             : 'in ${_untilDays(c['date'])}',
         tone: c['state'] == 'lapsed' ? Tone.bad : Tone.caution,
+        userId: c['user_id'] as String?,
         when: _date(c['date']),
       ),
   ];
@@ -799,17 +813,25 @@ class _HrOverviewState extends State<HrOverview> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 14,
-            backgroundColor: theme.colorScheme.primaryContainer,
-            child: Text(
-              initials,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w800,
+          if (row.userId case final id?)
+            UserAvatar(
+              api: widget.session.api,
+              userId: id,
+              name: row.name,
+              radius: 14,
+            )
+          else
+            CircleAvatar(
+              radius: 14,
+              backgroundColor: theme.colorScheme.primaryContainer,
+              child: Text(
+                initials,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
-          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

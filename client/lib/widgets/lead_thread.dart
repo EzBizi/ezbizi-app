@@ -32,6 +32,7 @@ import 'proofread_hint.dart';
 import 'side_panel.dart';
 import 'search_picker.dart';
 import 'status_pill.dart';
+import 'user_avatar.dart';
 
 /// The reply box's one-line height, which Send, Suggest and the emoji
 /// button share.
@@ -2269,7 +2270,11 @@ class _LeadThreadState extends State<LeadThread> {
       final sender = c['automatic'] == true
           ? _sender(theme, null, automatic: true)
           : mine && c['sent_by'] is String
-          ? _sender(theme, c['sent_by'] as String)
+          ? _sender(
+              theme,
+              c['sent_by'] as String,
+              userId: c['sent_by_id'] as String?,
+            )
           : null;
 
       return Align(
@@ -2337,7 +2342,25 @@ class _LeadThreadState extends State<LeadThread> {
   );
 
   /// Initials in the person's own colour; a bot for a rule.
-  Widget _sender(ThemeData theme, String? name, {bool automatic = false}) {
+  Widget _sender(
+    ThemeData theme,
+    String? name, {
+    bool automatic = false,
+    String? userId,
+  }) {
+    // Their photo when the server names the user (Jose, 2026-11-13).
+    if (!automatic && userId != null) {
+      return Tooltip(
+        message: '$name · via EzBizi',
+        child: UserAvatar(
+          key: ValueKey('sender-$userId'),
+          api: widget.api,
+          userId: userId,
+          name: name!,
+          radius: 10,
+        ),
+      );
+    }
     // Each person keeps one colour (the theme's person palette, AA in light
     // and dark); a rule is neutral.
     final colours = automatic
