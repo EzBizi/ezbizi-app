@@ -13,6 +13,17 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0571', date: '13 Nov 2026', items: [
+      'Task Board: click a cell to edit it in place; the status menu dims the board and has Edit labels; columns resize, hide or remove; the task panel is simpler (status, owner, due on top, then fields, subtasks and updates)',
+      'Leads: every customer reply is read for phone, email, address, the job, deadline and availability; blanks fill in, differences show as a one-click Use suggestion, and the booking panel shows when the customer is free',
+      'Leads: customer emails fold the mail-app signature, show links short and rejoin broken lines; the search, status and Filters controls line up',
+      'Jobs: money totals are tiles you click to filter, one toolbar, the other filters in a Filters panel with removable chips',
+      'Work Hours: technicians clock out by hand, and their area managers get a WhatsApp with the shift times',
+      'Notifications: the panel shows just notifications; the gear opens settings with alerts per module',
+      'Reports › Calls: existing-customer calls the AI heard as booked wait in Needs Attention until confirmed',
+      'Marketing: connected accounts show their profile picture',
+      'Automations: saving only a reply’s text keeps its conditions; a customer-messaging rule cannot be saved with none by accident',
+    ]),
     VersionRelease(version: '0.0.0570', date: '13 Nov 2026', items: [
       'Texting: a customer who replied STOP is remembered, and automations skip them instead of failing',
     ]),
