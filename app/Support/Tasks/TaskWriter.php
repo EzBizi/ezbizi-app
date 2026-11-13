@@ -770,6 +770,14 @@ class TaskWriter
                 $why = 'That person cannot be named on this board.';
                 $row['value_user_id'] = $value;
                 break;
+            case 'people':
+                // Several people (Monday's People column): a list of user ids.
+                $assignable ??= app(TaskBoards::class)->assignable($board)->pluck('id')->all();
+                $ids = is_array($value) && array_is_list($value) ? array_values(array_unique($value)) : null;
+                $ok = $ids !== null && $ids !== [] && count($ids) <= 50 && array_diff($ids, $assignable) === [];
+                $why = 'A list of people who can be named on this board.';
+                $row['value_text'] = $ok ? json_encode($ids) : null;
+                break;
             case 'timeline':
                 $day = fn ($d) => is_string($d) && \DateTime::createFromFormat('!Y-m-d', $d)?->format('Y-m-d') === $d;
                 $ok = is_array($value) && $day($value['from'] ?? null) && $day($value['to'] ?? null) && $value['from'] <= $value['to'];

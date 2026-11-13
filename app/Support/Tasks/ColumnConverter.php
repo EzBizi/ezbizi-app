@@ -64,6 +64,7 @@ class ColumnConverter
             'status', 'dropdown' => is_string($value) ? $label($value) : null,
             'tags' => implode(', ', array_filter(array_map($label, (array) $value))),
             'person' => User::query()->find($value)?->name,
+            'people' => implode(', ', User::query()->whereIn('id', (array) $value)->pluck('name')->all()),
             'checkbox' => $value ? 'Yes' : 'No',
             'timeline' => is_array($value) ? $value['from'] : null,
             'link' => is_array($value) ? $value['label'] : null,
@@ -106,6 +107,7 @@ class ColumnConverter
             'datetime' => $time === false ? null : date('Y-m-d H:i', $time),
             'timeline' => $time === false ? null : ['from' => date('Y-m-d', $time), 'to' => date('Y-m-d', $time)],
             'person' => User::query()->where('name', $words)->value('id'),
+            'people' => User::query()->whereIn('name', array_map('trim', explode(',', $words)))->pluck('id')->all() ?: null,
             'formula', 'link' => null,
             default => $words,
         };

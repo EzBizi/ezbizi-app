@@ -402,7 +402,11 @@ class ColumnCell extends StatelessWidget {
     this.onEditOptions,
     this.onMenu,
     this.onAutoAssign,
+    this.api,
   });
+
+  /// Searches customers and jobs for a link column's card.
+  final ApiClient? api;
 
   /// Asks the AI for this task's label in this column (null: none fits).
   final Future<String?> Function()? onAutoAssign;
@@ -431,7 +435,7 @@ class ColumnCell extends StatelessWidget {
     'status',
     'dropdown',
     'tags',
-    'link',
+    'people',
     'formula',
   };
 
@@ -442,6 +446,7 @@ class ColumnCell extends StatelessWidget {
     final shown = _display(context);
     if (onChanged == null || _ownControl.contains(column.type)) return shown;
     return InlineCellEditor(
+      api: api,
       column: column,
       value: value,
       people: people,
@@ -564,6 +569,38 @@ class ColumnCell extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+              ),
+            ),
+          ),
+        );
+      case 'people':
+        final ids = [for (final id in (v as List?) ?? const []) '$id'];
+        return MenuAnchor(
+          menuChildren: [
+            for (final p in people.entries)
+              CheckboxMenuButton(
+                key: ValueKey('column-person-${column.id}-${p.key}'),
+                value: ids.contains(p.key),
+                closeOnActivate: false,
+                onChanged: (on) {
+                  final next = [
+                    for (final id in ids)
+                      if (id != p.key) id,
+                    if (on == true) p.key,
+                  ];
+                  onChanged?.call(next.isEmpty ? null : next);
+                },
+                child: Text(p.value),
+              ),
+          ],
+          builder: (context, menu, _) => InkWell(
+            key: ValueKey('column-cell-${column.id}'),
+            onTap: onChanged == null
+                ? null
+                : () => menu.isOpen ? menu.close() : menu.open(),
+            child: Center(
+              child: PeopleAvatars(
+                names: [for (final id in ids) people[id] ?? '?'],
               ),
             ),
           ),
@@ -831,6 +868,33 @@ class _ColumnEditorState extends State<ColumnEditor> {
           options: options,
           onChanged: editable ? (v) => widget.onChanged!(v) : null,
         );
+      case 'people':
+        final ids = [
+          for (final id in (widget.value as List?) ?? const []) '$id',
+        ];
+        return Wrap(
+          key: key,
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final p in widget.people.entries)
+              FilterChip(
+                key: ValueKey('column-editor-${c.id}-${p.key}'),
+                label: Text(p.value),
+                selected: ids.contains(p.key),
+                onSelected: editable
+                    ? (on) {
+                        final next = [
+                          for (final id in ids)
+                            if (id != p.key) id,
+                          if (on) p.key,
+                        ];
+                        widget.onChanged!(next.isEmpty ? null : next);
+                      }
+                    : null,
+              ),
+          ],
+        );
       case 'tags':
         final ids = [
           for (final id in (widget.value as List?) ?? const []) '$id',
@@ -1066,6 +1130,7 @@ const columnTypes = [
   ('datetime', 'Date + time', Icons.schedule),
   ('checkbox', 'Checkbox', Icons.check_box_outlined),
   ('person', 'Person', Icons.person_outline),
+  ('people', 'People', Icons.group_outlined),
   ('status', 'Status', Icons.label_outline),
   ('dropdown', 'Label', Icons.arrow_drop_down_circle_outlined),
   ('tags', 'Tags', Icons.sell_outlined),
@@ -1832,6 +1897,7 @@ class _StatusesPanelState extends State<StatusesPanel> {
 class InlineCellEditor extends StatefulWidget {
   const InlineCellEditor({
     super.key,
+    this.api,
     required this.column,
     required this.value,
     required this.people,
@@ -1846,6 +1912,8 @@ class InlineCellEditor extends StatefulWidget {
   final DisplayFormats formats;
   final ValueChanged<Object?> onChanged;
   final Widget child;
+
+  final ApiClient? api;
 
   @override
   State<InlineCellEditor> createState() => _InlineCellEditorState();
@@ -1878,6 +1946,7 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
       groupId: this,
       onTapOutside: (_) => Future.microtask(_stop),
       child: ColumnEditor(
+        api: widget.api,
         column: widget.column,
         value: widget.value,
         people: widget.people,
@@ -2170,5 +2239,78 @@ Iterable<DateTime> daysOf(Object? v) sync* {
   } else if (v is Map) {
     if (DateTime.tryParse('${v['from']}') case final d?) yield d;
     if (DateTime.tryParse('${v['to']}') case final d?) yield d;
+  }
+}
+
+/// Monday's People cell: up to three overlapping initials and "+N";
+/// "—" when nobody.
+class PeopleAvatars extends StatelessWidget {
+  const PeopleAvatars({super.key, required this.names});
+
+  final List<String> names;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (names.isEmpty) {
+      return Text(
+        '—',
+        style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+      );
+    }
+    final shown = names.take(3).toList();
+    final more = names.length - shown.length;
+    return Tooltip(
+      message: names.join(', '),
+      child: SizedBox(
+        height: 26,
+        width: 26.0 + (shown.length - 1) * 16 + (more > 0 ? 22 : 0),
+        child: Stack(
+          children: [
+            for (final (i, n) in shown.indexed)
+              Positioned(left: i * 16.0, child: _initials(theme, n)),
+            if (more > 0)
+              Positioned(
+                left: shown.length * 16.0 + 6,
+                top: 5,
+                child: Text(
+                  '+$more',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _initials(ThemeData theme, String name) {
+    final words = name.trim().split(RegExp(r'\s+'));
+    final letters = [
+      for (final w in words.take(2))
+        if (w.isNotEmpty) w[0].toUpperCase(),
+    ].join();
+    final fill = EzBiziTheme
+        .avatarPalette[name.hashCode.abs() % EzBiziTheme.avatarPalette.length];
+    return Container(
+      width: 26,
+      height: 26,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: fill,
+        shape: BoxShape.circle,
+        border: Border.all(color: theme.colorScheme.surface, width: 2),
+      ),
+      child: Text(
+        letters,
+        style: TextStyle(
+          color: labelInk(fill),
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
   }
 }

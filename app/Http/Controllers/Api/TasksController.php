@@ -459,7 +459,7 @@ class TasksController extends Controller
 
         return match ($v->column?->type) {
             'number', 'currency' => $v->value_number,
-            'tags' => json_decode((string) $text, true) ?: [],
+            'tags', 'people' => json_decode((string) $text, true) ?: [],
             'link' => TaskWriter::linkOf($text),
             'date' => $v->value_date?->toDateString(),
             // Stored as its start (value_date) and end (value_text).
