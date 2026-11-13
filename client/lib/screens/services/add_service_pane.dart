@@ -141,107 +141,91 @@ class _AddServicePaneState extends State<AddServicePane> {
         _name.text.trim().isNotEmpty &&
         (_companyId != null || _atOrganization);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return formPane(
+      context,
+      'New service',
+      showBack: widget.showBack,
+      busy: _busy,
+      onCancel: widget.onCancel,
+      onSave: canSave ? _save : null,
+      loading: _loading,
       children: [
-        paneHeader(
-          context,
-          'New service',
-          showBack: widget.showBack,
-          onBack: _busy ? null : widget.onCancel,
+        InventoryPlaceFields(
+          me: _me,
+          companyId: _companyId,
+          franchiseId: _franchiseId,
+          enabled: !_busy,
+          onCompanyChanged: (v) => setState(() {
+            _companyId = v;
+            _franchiseId = null;
+            _groupId = null;
+            _labelId = null;
+          }),
+          onFranchiseChanged: (v) => setState(() {
+            _franchiseId = v;
+            _groupId = null;
+            _labelId = null;
+          }),
         ),
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      InventoryPlaceFields(
-                        me: _me,
-                        companyId: _companyId,
-                        franchiseId: _franchiseId,
-                        enabled: !_busy,
-                        onCompanyChanged: (v) => setState(() {
-                          _companyId = v;
-                          _franchiseId = null;
-                          _groupId = null;
-                          _labelId = null;
-                        }),
-                        onFranchiseChanged: (v) => setState(() {
-                          _franchiseId = v;
-                          _groupId = null;
-                          _labelId = null;
-                        }),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _name,
-                        enabled: !_busy,
-                        decoration: const InputDecoration(
-                          labelText: 'Name of service',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _description,
-                        enabled: !_busy,
-                        maxLines: 4,
-                        decoration: const InputDecoration(
-                          labelText: 'Description',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _price,
-                        enabled: !_busy,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Price',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SearchPickerField<String?>(
-                        value: _groupId,
-                        label: 'Group',
-                        options: [
-                          const SearchOption(value: null, label: 'No group'),
-                          for (final row in _groups)
-                            SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
-                        ],
-                        onChanged: _busy
-                            ? null
-                            : (v) => setState(() => _groupId = v),
-                      ),
-                      const SizedBox(height: 12),
-                      SearchPickerField<String?>(
-                        value: _labelId,
-                        label: 'Label',
-                        options: [
-                          const SearchOption(value: null, label: 'No label'),
-                          for (final row in _labels)
-                            SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
-                        ],
-                        onChanged: _busy
-                            ? null
-                            : (v) => setState(() => _labelId = v),
-                      ),
-                      if (_error != null) ...[
-                        const SizedBox(height: 8),
-                        ErrorNote(_error!),
-                      ],
-                    ],
-                  ),
-                ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _name,
+          enabled: !_busy,
+          decoration: const InputDecoration(
+            labelText: 'Name of service',
+          ),
+          onChanged: (_) => setState(() {}),
         ),
-        paneFooter(
-          onCancel: _busy ? null : widget.onCancel,
-          onSave: canSave ? _save : null,
+        const SizedBox(height: 12),
+        TextField(
+          controller: _description,
+          enabled: !_busy,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            labelText: 'Description',
+          ),
         ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _price,
+          enabled: !_busy,
+          keyboardType: const TextInputType.numberWithOptions(
+            decimal: true,
+          ),
+          decoration: const InputDecoration(
+            labelText: 'Price',
+          ),
+        ),
+        const SizedBox(height: 12),
+        SearchPickerField<String?>(
+          value: _groupId,
+          label: 'Group',
+          options: [
+            const SearchOption(value: null, label: 'No group'),
+            for (final row in _groups)
+              SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
+          ],
+          onChanged: _busy
+              ? null
+              : (v) => setState(() => _groupId = v),
+        ),
+        const SizedBox(height: 12),
+        SearchPickerField<String?>(
+          value: _labelId,
+          label: 'Label',
+          options: [
+            const SearchOption(value: null, label: 'No label'),
+            for (final row in _labels)
+              SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
+          ],
+          onChanged: _busy
+              ? null
+              : (v) => setState(() => _labelId = v),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          ErrorNote(_error!),
+        ],
       ],
     );
   }
