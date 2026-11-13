@@ -64,7 +64,7 @@ class MondayImportBoards extends Command
                 if (($target['target'] ?? '') !== 'personal') {
                     unset($meta['owner_email']);
                 }
-                $ids = $reader->changedSince($boardId, null)['ids'];
+                ['ids' => $ids, 'latest' => $latest] = $reader->changedSince($boardId, null);
                 if ($this->option('limit') !== null) {
                     $ids = array_slice($ids, 0, (int) $this->option('limit'));
                 }
@@ -89,6 +89,18 @@ class MondayImportBoards extends Command
                 }
                 $this->line("== {$meta['name']} ({$boardId}): ".count($ids).' items'.($dry ? ' — DRY RUN, rolled back' : ''));
                 TasksImportMonday::print($this, $total);
+                if (! $dry && $latest !== null && $this->option('limit') === null) {
+                    // The 10-minute sync starts from what the import read, not from nothing: a new
+                    // board with no cursor is read whole on every run (NW outlasted the lane, 11-13).
+                    $tenant->run($org, function () use ($connection, $boardId, $latest) {
+                        $connection->refresh();
+                        $setup = (array) ($connection->setup ?? []);
+                        if ((string) ($setup['monday']['cursors'][$boardId] ?? '') < $latest) {
+                            $setup['monday']['cursors'][$boardId] = $latest;
+                            $connection->forceFill(['setup' => $setup])->save();
+                        }
+                    });
+                }
             } catch (\Throwable $e) {
                 $failed = true;
                 $this->error("== monday board {$boardId}: ".$e->getMessage());
