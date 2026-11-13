@@ -19,9 +19,13 @@ void main() {
       final server = _Server();
       await _pump(tester, server);
 
+      // The page opens on last month (one preview), so it is never empty.
+      expect(server.previews, 1);
+      expect(_count(tester), isNotEmpty);
+
       await tester.tap(find.text('Last 12 months'));
       await tester.pumpAndSettle();
-      expect(server.previews, 1);
+      expect(server.previews, 2);
       expect(_count(tester), startsWith('3 customers'));
       expect(find.text('Sends from +18559553322'), findsOneWidget);
 
