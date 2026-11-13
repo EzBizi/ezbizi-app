@@ -773,4 +773,65 @@ void main() {
     expect(find.byKey(const ValueKey('task-owner-ezbizi-t1')), findsNothing);
     expect(find.text('Omar'), findsWidgets);
   });
+
+  Map<String, dynamic> doneTask() => {
+    'id': 't9',
+    'board_id': 'b-1',
+    'group_id': 'g1',
+    'parent_task_id': null,
+    'title': 'Sweep the Elm St chimney',
+    'status_id': 's-done',
+    'owner': null,
+    'due_on': null,
+    'about': null,
+    'updates_count': 0,
+    'values': <String, dynamic>{},
+  };
+
+  testWidgets("a heading's Filter… keeps only the value picked, and Clear "
+      'filter brings the rest back', (tester) async {
+    builtins = customised();
+    extra = [doneTask()];
+    await pump(tester);
+    expect(find.text('Order liner parts for the Oak Park job'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-head-status')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-status')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-status-s-done')));
+    await tester.pumpAndSettle();
+    expect(find.text('Order liner parts for the Oak Park job'), findsNothing);
+    expect(find.text('Sweep the Elm St chimney'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-head-status')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-status')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-clear-status')));
+    await tester.pumpAndSettle();
+    expect(find.text('Order liner parts for the Oak Park job'), findsOneWidget);
+  });
+
+  testWidgets('Group by Status draws one group per status, and Board groups '
+      'goes back', (tester) async {
+    extra = [doneTask()];
+    await pump(tester);
+
+    await tester.tap(find.byKey(const Key('tasks-group-by')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('group-by-status')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-group-by:s-stuck')), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-group-by:s-done')), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-group-g1')), findsNothing);
+    // A Group by group takes no new tasks: it is not a group on the board.
+    expect(find.byKey(const ValueKey('group-menu-by:s-done')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('tasks-group-by')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('group-by-none')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-group-g1')), findsOneWidget);
+  });
 }
