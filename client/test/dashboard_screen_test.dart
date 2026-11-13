@@ -89,24 +89,15 @@ void main() {
     }
   });
 
-  testWidgets('an empty glance is the sentence, coming soon is tagged', (
+  testWidgets('an empty glance is the sentence, coming soon is not drawn', (
     tester,
   ) async {
     await _pump(tester, _handler());
 
     expect(find.text('No new customers this month.'), findsOneWidget);
-    expect(find.text('Coming soon'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byType(DashboardCard),
-        matching: find.byType(Tag),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('The register is not here yet'),
-      findsOneWidget,
-    );
+    // Muse 10.5: a box for a module that has not shipped is hidden.
+    expect(find.text('Coming soon'), findsNothing);
+    expect(find.textContaining('The register is not here yet'), findsNothing);
   });
 
   testWidgets('tapping a card does not push another route', (tester) async {

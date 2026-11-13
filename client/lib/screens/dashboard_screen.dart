@@ -424,7 +424,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     };
     final sections = dashboardSections([
       for (final glance in _glances)
-        if (glance['hidden'] != true) glance['key'] as String,
+        // Muse audit 10.5: a "Coming soon" box points at a tab that does not
+        // exist yet, so it is not drawn until the module ships.
+        if (glance['hidden'] != true && glance['coming_soon'] != true)
+          glance['key'] as String,
     ], widget.session.me?.navigationOrder ?? const []);
 
     return AsyncBody(

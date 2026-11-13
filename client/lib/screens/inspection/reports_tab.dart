@@ -68,7 +68,10 @@ class _ReportsTabState extends State<ReportsTab> {
 
     final bytes = response.bytes;
     if (bytes == null) {
-      setState(() => _error = response.message ?? 'The report could not be downloaded.');
+      setState(
+        () =>
+            _error = response.message ?? 'The report could not be downloaded.',
+      );
       return;
     }
 
@@ -142,7 +145,10 @@ class _ReportsTabState extends State<ReportsTab> {
         if (row is Map) Map<String, dynamic>.from(row),
     ];
     final message = list.body['message'] as String?;
-    final keep = openId ?? _selectedId ?? (hits.isNotEmpty ? hits.first['id']?.toString() : null);
+    final keep =
+        openId ??
+        _selectedId ??
+        (hits.isNotEmpty ? hits.first['id']?.toString() : null);
 
     setState(() {
       _loading = false;
@@ -150,8 +156,8 @@ class _ReportsTabState extends State<ReportsTab> {
       _empty = (message != null && message.isNotEmpty)
           ? message
           : (hits.isEmpty
-              ? 'Finished inspections show here. None have been submitted yet.'
-              : null);
+                ? 'Finished inspections show here. None have been submitted yet.'
+                : null);
       _selectedId = keep;
     });
 
@@ -211,6 +217,16 @@ class _ReportsTabState extends State<ReportsTab> {
       return Text(formatStamp(text, text, formats: _formats));
     }
 
+    // A choice answer is stored as its slug ("not-applicable"); the reader
+    // gets words ("Not applicable"), never the stored value (Muse 10.3).
+    if (type != 'text' &&
+        RegExp(r'^[a-z0-9]+([_-][a-z0-9]+)*$').hasMatch(text)) {
+      final words = text.replaceAll(RegExp(r'[_-]'), ' ');
+      return Text(
+        words == 'ok' ? 'OK' : words[0].toUpperCase() + words.substring(1),
+      );
+    }
+
     return Text(text);
   }
 
@@ -243,7 +259,9 @@ class _ReportsTabState extends State<ReportsTab> {
               borderRadius: BorderRadius.circular(8),
               child: _photos[id] == null
                   ? ColoredBox(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       child: const Center(
                         child: SizedBox(
                           width: 18,
@@ -254,8 +272,10 @@ class _ReportsTabState extends State<ReportsTab> {
                     )
                   // contain, not cover, for a signature: cropping somebody's
                   // name to fill a square is not a rendering choice to make.
-                  : Image.memory(_photos[id]!,
-                      fit: signature ? BoxFit.contain : BoxFit.cover),
+                  : Image.memory(
+                      _photos[id]!,
+                      fit: signature ? BoxFit.contain : BoxFit.cover,
+                    ),
             ),
           ),
       ],
@@ -367,11 +387,14 @@ class _ReportsTabState extends State<ReportsTab> {
                   title: Text('${row['definition_name'] ?? ''}'),
                   subtitle: Text(
                     [
-                      if (row['customer_name'] != null) '${row['customer_name']}',
+                      if (row['customer_name'] != null)
+                        '${row['customer_name']}',
                       if (row['job_number'] != null) '${row['job_number']}',
                     ].join(' · '),
                   ),
-                  trailing: row['archived'] == true ? const Tag('Archived') : null,
+                  trailing: row['archived'] == true
+                      ? const Tag('Archived')
+                      : null,
                   onTap: () => _openReport('${row['id']}'),
                 );
               },
