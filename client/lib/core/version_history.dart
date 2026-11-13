@@ -24,6 +24,8 @@ class VersionHistory {
       'Marketing: connected accounts show their profile picture',
       'Automations: saving only a reply’s text keeps its conditions; a customer-messaging rule cannot be saved with none by accident',
       'Every platform uses the same Inter font; the sidebar shows More when modules are below the fold',
+      'Task Board: People columns hold several people, shown as faces; staff photos show in HR Records, Roles, the Task Board and the Leads dashboard',
+      'Email signatures: a missing photo shows the company logo in the same round slot, so every signature has the same shape',
       'Task Board: status cells are solid colour with a colour-block picker (Edit labels, Auto-assign); group footers show a label bar and date range; timelines are pills filled to today',
     ]),
     VersionRelease(version: '0.0.0570', date: '13 Nov 2026', items: [
