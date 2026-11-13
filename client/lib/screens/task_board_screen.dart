@@ -3335,6 +3335,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             name: _builtinLabel(_board, 'due'),
             type: 'date',
             unit: null,
+            max: null,
             options: const [],
             format: 'plain',
             footer: 'none',

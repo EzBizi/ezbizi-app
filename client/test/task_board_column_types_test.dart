@@ -19,6 +19,7 @@ void main() {
     name: 'Description',
     type: type,
     unit: null,
+    max: null,
     options: options,
     format: 'plain',
     footer: 'none',
