@@ -1554,6 +1554,12 @@ class _ColumnPanelState extends State<ColumnPanel> {
 
   bool get _numeric => _type == 'number' || _type == 'formula';
 
+  /// Mirror: the connect column it follows, and the column of the tasks
+  /// that one names which it shows.
+  late String? _mirrorConnect =
+      widget.raw?['settings']?['connect_column_id'] as String?;
+  late String? _mirrorColumn = widget.raw?['settings']?['column_id'] as String?;
+
   /// Puts [text] where the cursor is in the formula.
   void _insert(String text) {
     final sel = _expression.selection;
@@ -1603,6 +1609,10 @@ class _ColumnPanelState extends State<ColumnPanel> {
     if (_numeric && _format != 'plain') 'format': _format,
     if (_numeric && _footer != 'none') 'footer': _footer,
     if (_type == 'formula') 'expression': _expression.text.trim(),
+    if (_type == 'mirror') ...{
+      'connect_column_id': ?_mirrorConnect,
+      'column_id': ?_mirrorColumn,
+    },
     if (_hasOptions)
       'options': [
         for (final o in _options)
@@ -1615,6 +1625,61 @@ class _ColumnPanelState extends State<ColumnPanel> {
             },
       ],
   };
+
+  List<Widget> _mirrorFields() {
+    final connects = [
+      for (final c in widget.others)
+        if (c.type == 'connect' && c.id != widget.column?.id) c,
+    ];
+    final shown = [
+      for (final c in widget.others)
+        if (c.type != 'mirror' &&
+            c.type != 'connect' &&
+            c.id != widget.column?.id)
+          c,
+    ];
+    return [
+      const SizedBox(height: 12),
+      if (connects.isEmpty)
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'Add a Connect column first: a mirror shows a column of the tasks '
+            'it connects to.',
+          ),
+        ),
+      Text(
+        'Connect column to follow',
+        style: Theme.of(context).textTheme.labelMedium,
+      ),
+      const SizedBox(height: 4),
+      SearchPickerField<String>(
+        key: const Key('column-mirror-connect'),
+        value: connects.any((c) => c.id == _mirrorConnect)
+            ? _mirrorConnect
+            : null,
+        hint: 'Pick a Connect column',
+        options: [
+          for (final c in connects)
+            SearchOption<String>(value: c.id, label: c.name),
+        ],
+        onChanged: (v) => setState(() => _mirrorConnect = v),
+      ),
+      const SizedBox(height: 12),
+      Text('Column to show', style: Theme.of(context).textTheme.labelMedium),
+      const SizedBox(height: 4),
+      SearchPickerField<String>(
+        key: const Key('column-mirror-column'),
+        value: shown.any((c) => c.id == _mirrorColumn) ? _mirrorColumn : null,
+        hint: 'Pick a column',
+        options: [
+          for (final c in shown)
+            SearchOption<String>(value: c.id, label: c.name),
+        ],
+        onChanged: (v) => setState(() => _mirrorColumn = v),
+      ),
+    ];
+  }
 
   Future<void> _send(Future<ApiResponse> Function() call) async {
     setState(() {
@@ -1759,6 +1824,7 @@ class _ColumnPanelState extends State<ColumnPanel> {
                 ),
               ),
           ],
+          if (_type == 'mirror') ..._mirrorFields(),
           if (_type == 'formula') ...[
             const SizedBox(height: 12),
             TextField(
