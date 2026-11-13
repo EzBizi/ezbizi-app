@@ -1488,7 +1488,11 @@ class _PostsDashboard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SocialNetworkMark(network: page.provider, size: 20),
+                  SocialAccountAvatar(
+                    network: page.provider,
+                    avatarUrl: page.avatarUrl,
+                    size: 20,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -4257,7 +4261,10 @@ class _AccountsPane extends StatelessWidget {
                 for (final page in connections)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: SocialNetworkMark(network: page.provider),
+                    leading: SocialAccountAvatar(
+                      network: page.provider,
+                      avatarUrl: page.avatarUrl,
+                    ),
                     title: Text(
                       page.displayName,
                       maxLines: 1,
@@ -4402,6 +4409,7 @@ class _SocialConnection {
     required this.provider,
     required this.providerLabel,
     this.handle,
+    this.avatarUrl,
     this.canPublish = false,
     this.cannotPublishBecause,
     this.postingNote,
@@ -4420,6 +4428,9 @@ class _SocialConnection {
   final String provider;
   final String providerLabel;
   final String? handle;
+
+  /// The account's own picture, when the provider sends one (TikTok).
+  final String? avatarUrl;
 
   /// Connected is not the same as postable — four of the nine networks have no
   /// publisher yet. The server decides which, and says why; this screen must
@@ -4465,6 +4476,7 @@ class _SocialConnection {
       provider: json['provider'] as String? ?? '',
       providerLabel: json['provider_label'] as String? ?? '',
       handle: json['handle'] as String?,
+      avatarUrl: json['avatar_url'] as String?,
       canPublish: json['can_publish'] as bool? ?? false,
       cannotPublishBecause: json['cannot_publish_because'] as String?,
       postingNote: json['posting_note'] as String?,

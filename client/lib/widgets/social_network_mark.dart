@@ -102,3 +102,37 @@ class SocialNetworkMark extends StatelessWidget {
     );
   }
 }
+
+/// A connected account's own picture in a small circle, for any provider that
+/// sends `avatar_url`; the network mark when it sends none or the image fails
+/// (TikTok's URL is signed and expires until the next refresh).
+class SocialAccountAvatar extends StatelessWidget {
+  const SocialAccountAvatar({
+    super.key,
+    required this.network,
+    this.avatarUrl,
+    this.size = 32,
+  });
+
+  final String network;
+  final String? avatarUrl;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final mark = SocialNetworkMark(network: network, size: size);
+    final url = avatarUrl;
+    if (url == null || url.isEmpty) return mark;
+    return ClipOval(
+      child: Image.network(
+        url,
+        key: const ValueKey('social-account-avatar'),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        semanticLabel: network,
+        errorBuilder: (context, error, stack) => mark,
+      ),
+    );
+  }
+}

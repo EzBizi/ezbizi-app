@@ -112,6 +112,8 @@ class SocialConnectionsController extends Controller
                 'label' => $c->label,
 
                 'handle' => $c->handle,
+                // The provider's profile picture URL; null = show the network icon.
+                'avatar_url' => $c->avatar_url,
                 // The Google login it was signed in with; null = unknown, reconnect to see (Jose, 2026-11-02).
                 'account_email' => $c->account_email,
                 'scope_type' => $c->scope_type,

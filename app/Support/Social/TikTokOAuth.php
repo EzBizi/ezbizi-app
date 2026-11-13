@@ -178,7 +178,7 @@ final class TikTokOAuth implements SocialOAuth
                 // cost us display_name too, and every connection was named
                 // after its own open_id.
                 ->get('https://open.tiktokapis.com/v2/user/info/', [
-                    'fields' => 'open_id,display_name',
+                    'fields' => 'open_id,display_name,avatar_url',
                 ]);
         } catch (ConnectionException) {
             throw SocialOAuthRefused::unidentified('TikTok');
@@ -188,11 +188,17 @@ final class TikTokOAuth implements SocialOAuth
         $id = trim((string) ($user['open_id'] ?? $grant->extra['open_id'] ?? ''));
         $name = trim((string) ($user['display_name'] ?? ''));
         $username = trim((string) ($user['username'] ?? ''));
+        $avatar = trim((string) ($user['avatar_url'] ?? ''));
 
         if ($id === '') {
             throw SocialOAuthRefused::unidentified('TikTok');
         }
 
-        return [new SocialAccount($id, $name !== '' ? $name : ($username !== '' ? $username : $id), $username !== '' ? $username : null)];
+        return [new SocialAccount(
+            $id,
+            $name !== '' ? $name : ($username !== '' ? $username : $id),
+            $username !== '' ? $username : null,
+            avatarUrl: $avatar !== '' ? $avatar : null,
+        )];
     }
 }
