@@ -8,7 +8,9 @@ use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Models\Task;
+use App\Models\TaskActivity;
 use App\Models\TaskBoard;
+use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
@@ -17,6 +19,8 @@ use App\Models\Vehicle;
 use App\Support\Ai\GrokCli;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Files\UploadLimits;
+use App\Support\Notes\NoteActivity;
+use App\Support\Tasks\ColumnConverter;
 use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskLinks;
@@ -378,7 +382,7 @@ class TasksController extends Controller
 
         $update = DB::transaction(function () use ($task, $request, $body, $files, $input) {
             // A mention on a sensitive task says only that there is something to read.
-            $mentions = app(\App\Support\Notes\NoteActivity::class)->mention($task, $input['mentions'] ?? [],
+            $mentions = app(NoteActivity::class)->mention($task, $input['mentions'] ?? [],
                 $request->user(), $task->sensitive ? SensitiveTasks::NOTICE : $body);
             $update = $this->writer->comment($task, $request->user(), $body, $mentions);
             foreach ($files as $file) {
@@ -412,7 +416,8 @@ class TasksController extends Controller
             'status_id' => $task->status_id,
             // A roll-up shows a branch's task on its company board, whose statuses differ: matched by name.
             'status_name' => $task->statusRow?->name,
-            'values' => $locked ? (object) [] : (object) $task->values->mapWithKeys(fn (TaskColumnValue $v) => [$v->column_id => self::valueOf($v)])->all(),
+            'values' => $locked ? (object) [] : (object) ($task->values->mapWithKeys(fn (TaskColumnValue $v) => [$v->column_id => self::valueOf($v)])->all()
+                + self::mirrored($task)),
             'subtasks_count' => (int) ($task->subtasks_count ?? 0),
             'subtasks_done' => (int) ($task->subtasks_done ?? 0),
             'owner' => $task->assignee ? ['id' => $task->assignee->id, 'name' => $task->assignee->name] : null,
@@ -420,6 +425,8 @@ class TasksController extends Controller
             'owners' => $task->owners->filter(fn ($o) => $o->user !== null)
                 ->map(fn ($o) => ['id' => $o->user->id, 'name' => $o->user->name])->values()->all(),
             'created_at' => $task->created_at?->toIso8601String(),
+            // Monday's Last updated column reads it.
+            'updated_at' => $task->updated_at?->toIso8601String(),
             'due_on' => $task->due_on?->toDateString(),
             'completed_at' => $task->completed_at?->toIso8601String(),
             'about' => $about ? ['type' => $task->about_type, 'id' => $task->about_id, 'label' => self::aboutLabel($about)] : null,
@@ -443,12 +450,43 @@ class TasksController extends Controller
         $locked = ! $this->sensitive->reveal($request, $task, 'activity');
         $hide = fn ($a) => $locked && $a->field !== 'sensitive';
 
-        return response()->json(['data' => \App\Models\TaskActivity::query()->where('task_id', $task->id)
+        return response()->json(['data' => TaskActivity::query()->where('task_id', $task->id)
             ->with('user:id,name')->latest('created_at')->limit(200)->get()
             ->map(fn ($a) => ['id' => $a->id, 'at' => $a->created_at?->toIso8601String(), 'who' => $a->user?->name,
                 'field' => $a->field, 'label' => $a->label, 'locked' => $hide($a),
                 'from' => $hide($a) ? null : SensitiveTasks::open($a->from),
                 'to' => $hide($a) ? null : SensitiveTasks::open($a->to)])->values()]);
+    }
+
+    /**
+     * Mirror columns (Monday's): the values of [column_id] on the tasks this task's
+     * [connect_column_id] names, as a list. ponytail: a query per mirror column per
+     * task; batch per board if boards with mirrors grow large.
+     *
+     * @return array<string, list<mixed>>
+     */
+    private static function mirrored(Task $task): array
+    {
+        // Looked up once per board per request: a board's list presents every task.
+        $memo = request()->attributes;
+        $key = 'task-mirrors:'.$task->board_id;
+        if (! $memo->has($key)) {
+            $memo->set($key, TaskColumn::query()->where('board_id', $task->board_id)->where('type', 'mirror')->get());
+        }
+        $columns = $memo->get($key);
+        $out = [];
+        foreach ($columns as $c) {
+            $through = $c->settings['connect_column_id'] ?? null;
+            $target = $c->settings['column_id'] ?? null;
+            $link = $through ? $task->values->firstWhere('column_id', $through) : null;
+            $ids = $link ? (json_decode((string) SensitiveTasks::open($link->value_text), true) ?: []) : [];
+            $out[$c->id] = ! $target || $ids === [] ? [] : TaskColumnValue::query()->with('column')
+                ->whereIn('task_id', $ids)->where('column_id', $target)
+                ->whereHas('task', fn ($q) => $q->where('sensitive', false))->get()
+                ->map(fn ($v) => ColumnConverter::words($v->column, $v))->filter()->values()->all();
+        }
+
+        return $out;
     }
 
     /** A stored value as the client reads it, by its column's type. */
@@ -459,7 +497,9 @@ class TasksController extends Controller
 
         return match ($v->column?->type) {
             'number', 'currency' => $v->value_number,
-            'tags', 'people' => json_decode((string) $text, true) ?: [],
+            'rating' => $v->value_number === null ? null : (int) $v->value_number,
+            'tags', 'people', 'files', 'connect', 'dependency' => json_decode((string) $text, true) ?: [],
+            'location' => json_decode((string) $text, true) ?: null,
             'link' => TaskWriter::linkOf($text),
             'date' => $v->value_date?->toDateString(),
             // Stored as its start (value_date) and end (value_text).
