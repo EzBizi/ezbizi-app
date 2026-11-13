@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0570', date: '13 Nov 2026', items: [
+      'Texting: a customer who replied STOP is remembered, and automations skip them instead of failing',
+    ]),
     VersionRelease(version: '0.0.0569', date: '13 Nov 2026', items: [
       'Jobs: each job shows who booked it (Booked by), on the list and in the job panel',
     ]),
