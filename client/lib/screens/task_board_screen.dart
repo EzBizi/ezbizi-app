@@ -2748,7 +2748,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     if (cards) return list;
     return LayoutBuilder(
       builder: (context, box) {
-        final need = 32 + 240 + _fixedWidth;
+        // 32: page padding; 2: the group box's border.
+        final need = 34 + _fixedWidth;
         if (box.maxWidth >= need) return list;
         return SingleChildScrollView(
           key: const Key('tasks-table-scroll'),
@@ -2996,6 +2997,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   static const _widths = (add: 40.0);
   static const _baseWidths = {
+    'task': 320.0,
     'creator': 130.0,
     'owner': 130.0,
     'status': 130.0,
@@ -3016,7 +3018,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       .toLowerCase()
       .replaceAll(RegExp(r'[^a-z0-9_.-]'), '');
 
-  int _widthSlot(String key) => key.startsWith('c:')
+  int _widthSlot(String key) => key == 'task'
+      ? 7
+      : key.startsWith('c:')
       ? 10 + boardColumns(_board).indexWhere((c) => 'c:${c.id}' == key)
       : _builtinDefaults.keys.toList().indexOf(key);
 
@@ -3042,7 +3046,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             key: ValueKey('column-resize-$key'),
             behavior: HitTestBehavior.opaque,
             onHorizontalDragUpdate: (d) => setState(
-              () => _dragWidths[key] = (_w(key) + d.delta.dx).clamp(60, 600),
+              () => _dragWidths[key] = (_w(key) + d.delta.dx).clamp(
+                key == 'task' ? 200 : 60,
+                900,
+              ),
             ),
             onHorizontalDragEnd: (_) {
               final width = _dragWidths.remove(key);
@@ -3066,8 +3073,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// scrolls sideways instead of squeezing the task to nothing.
   double get _fixedWidth =>
       6 +
-      // The row's ⋯ menu, and its drag handle and tick where it can change.
-      (_canEdit ? 82 : 32) +
+      // The task column holds its drag handle, tick and ⋯ menu.
+      _w('task') +
       (_builtinShown(_board, 'creator') ? _w('creator') : 0) +
       (_builtinShown(_board, 'owner') ? _w('owner') : 0) +
       (_builtinShown(_board, 'status') ? _w('status') : 0) +
@@ -3209,7 +3216,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         child: Row(
           children: [
             const SizedBox(width: 6),
-            Expanded(
+            SizedBox(
+              width: _w('task'),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: columns.any((c) => total(c) != null)
@@ -3234,6 +3242,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             if (shown('about')) blank(_w('about')),
             if (shown('updates')) blank(_w('updates')),
             if (_canEdit) blank(_widths.add),
+            const Spacer(),
           ],
         ),
       ),
@@ -3273,10 +3282,17 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(width: 6),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Align(alignment: Alignment.centerLeft, child: h('Task')),
+            _resizable(
+              'task',
+              SizedBox(
+                width: _w('task'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: h('Task'),
+                  ),
+                ),
               ),
             ),
             if (shown('creator')) b('creator', _w('creator')),
@@ -3311,6 +3327,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   ),
                 ),
               ),
+            const Spacer(),
           ],
         ),
       ),
@@ -3343,7 +3360,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 width: 6,
                 color: sub ? colour.withValues(alpha: 0.4) : colour,
               ),
-              Expanded(
+              SizedBox(
+                width: _w('task'),
                 child: Padding(
                   padding: EdgeInsets.only(left: sub ? 34 : 2, right: 10),
                   child: Row(
@@ -3586,6 +3604,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 ),
               // Under the headings' +, so every column lines up.
               if (_canEdit) SizedBox(width: _widths.add),
+              const Spacer(),
             ],
           ),
         ),
