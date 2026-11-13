@@ -125,6 +125,8 @@ class AutomationsController extends Controller
         'task.create',
         'task.assign',
         'task.move_group',
+        'task.shift_date',
+        'task.set_value',
         'report.text',
         'alert.send',
         'lead.text',
@@ -1737,7 +1739,7 @@ class AutomationsController extends Controller
     // ── shared ───────────────────────────────────────────────────
 
     /** Task Board recipes may only use these (inbox 0120). */
-    private const BOARD_OWNER_STEPS = ['task.assign', 'notify', 'alert.send', 'change_status', 'task.move_group'];
+    private const BOARD_OWNER_STEPS = ['task.assign', 'notify', 'alert.send', 'change_status', 'task.move_group', 'task.shift_date', 'task.set_value'];
 
     /**
      * BOARD OWNERS AUTOMATE THEIR OWN BOARD (Jose, 2026-10-13, asked whether an
@@ -1751,7 +1753,7 @@ class AutomationsController extends Controller
      */
     private function managedBoardOf(User $user, string $trigger, ?array $conditions, array $actions, ?string $scopeType, ?string $scopeId): ?TaskBoard
     {
-        if (! in_array($trigger, ['task.created', 'task.status_changed', 'task.overdue'], true) || $actions === []) {
+        if (! in_array($trigger, ['task.created', 'task.status_changed', 'task.overdue', 'task.column_changed', 'task.date_arrived'], true) || $actions === []) {
             return null;
         }
         foreach ($actions as $action) {
@@ -2178,6 +2180,8 @@ class AutomationsController extends Controller
         'job.set' => [\App\Models\Job::class],
         'task.assign' => [\App\Models\Task::class],
         'task.move_group' => [\App\Models\Task::class],
+        'task.shift_date' => [\App\Models\Task::class],
+        'task.set_value' => [\App\Models\Task::class],
         'resend' => [\App\Models\Invitation::class],
         'revoke' => [\App\Models\Invitation::class],
         'onboarding.start' => [\App\Models\Invitation::class],
@@ -2508,6 +2512,18 @@ class AutomationsController extends Controller
             $type('task.move_group', 'Move the task to a group', true, [
                 // A group id on the task's own board; Task Board's recipes fill it.
                 $parameter('group_id', 'Group', 'text'),
+            ]),
+            // Monday parity (2026-11-13): Recurring Tasks push their date on.
+            $type('task.shift_date', 'Push a date', true, [
+                // "due", or a date column's id on the task's own board.
+                $parameter('column_id', 'Date', 'text'),
+                $parameter('amount', 'By', 'text'),
+                $parameter('unit', 'Days, weeks or months', 'text'),
+            ]),
+            $type('task.set_value', 'Set a column', true, [
+                // "due", or a column's id on the task's own board; a label by name, or "today".
+                $parameter('column_id', 'Column', 'text'),
+                $parameter('value', 'To', 'text'),
             ]),
             $type('assign_to_user', 'Assign to a person', true, [
                 // A PERSON OR A FIELD. It was field-only, which meant a rule

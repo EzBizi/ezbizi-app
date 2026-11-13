@@ -58,6 +58,7 @@ trait FakesMonday
             ))],
             str_contains($query, '{ id name groups') => ['boards' => array_map(fn ($id) => [
                 'id' => $id, 'name' => $boards[$id]['name'], 'groups' => $boards[$id]['groups'], 'columns' => $boards[$id]['columns'],
+                'views' => $boards[$id]['views'] ?? [],
             ], array_values(array_filter(array_map('strval', $vars['b']), fn ($id) => isset($boards[$id]))))],
             str_contains($query, '{ id columns') => ['boards' => array_map(fn ($id) => ['id' => $id, 'columns' => $this->monday['subitem_columns'] ?? []], array_map('strval', $vars['b']))],
             default => [],

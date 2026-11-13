@@ -7,6 +7,7 @@ use App\Models\Attachment;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskAssignee;
@@ -19,7 +20,9 @@ use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Jobs\JobTechnicianSync;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -113,6 +116,9 @@ class TaskWriter
             }
 
             $this->audit->log('task.created', $task, actor: $actor);
+            if ($task->external_ref === null) {
+                app(MondayOutbox::class)->record($task, ['create']);
+            }
             $this->events->emitAfterCommit('task.created', $task, [
                 'assignee_user_id' => $task->assignee_user_id,
                 'assignee_user_ids' => $this->ownerIds($task),
@@ -129,6 +135,7 @@ class TaskWriter
     public function update(Task $task, array $input, ?User $actor): Task
     {
         return DB::transaction(function () use ($task, $input, $actor) {
+            app(MondayOutbox::class)->record($task, self::mondayKinds($input));
             $seen = $this->readable($task);
             $owners = $this->ownersFrom($task->board, $input, $this->ownerIds($task));
             if (empty($input['group_id']) && isset($input['group'])) {
@@ -159,7 +166,7 @@ class TaskWriter
             }
 
             if (! empty($input['values']) && is_array($input['values'])) {
-                $this->writeValues($task, $input['values'], $actor);
+                $this->writeValues($task, $input['values'], $actor, announce: true);
             }
 
             $ownersChanged = $owners !== null && $owners !== $this->ownerIds($task);
@@ -204,6 +211,28 @@ class TaskWriter
 
             return $task;
         });
+    }
+
+    /**
+     * The fields an update names, as the Monday outbox counts them; it reads
+     * the values from the task when it sends.
+     *
+     * @return list<string>
+     */
+    private static function mondayKinds(array $input): array
+    {
+        $kinds = [];
+        foreach (['title' => 'title', 'status' => 'status', 'status_id' => 'status', 'due_on' => 'due', 'assignee_user_id' => 'owners',
+            'assignee_user_ids' => 'owners', 'group' => 'group', 'group_id' => 'group'] as $key => $kind) {
+            if (array_key_exists($key, $input)) {
+                $kinds[] = $kind;
+            }
+        }
+        foreach (array_keys((array) ($input['values'] ?? [])) as $column) {
+            $kinds[] = 'values:'.$column;
+        }
+
+        return array_values(array_unique($kinds));
     }
 
     /**
@@ -382,6 +411,7 @@ class TaskWriter
             foreach ($ids as $i => $id) {
                 Task::query()->whereKey($id)->update(['position' => $i]);
             }
+            app(MondayOutbox::class)->record($task, ['group']);
 
             return $task->refresh();
         });
@@ -451,6 +481,7 @@ class TaskWriter
                 'mentions' => $mentions ?: null,
             ]);
             $this->audit->log('task.update_posted', $task, actor: $author);
+            app(MondayOutbox::class)->record($task, [], $update);
 
             return $update;
         });
@@ -634,7 +665,7 @@ class TaskWriter
      *
      * @param  array<string, mixed>  $values
      */
-    private function writeValues(Task $task, array $values, ?User $actor): void
+    private function writeValues(Task $task, array $values, ?User $actor, bool $announce = false): void
     {
         $columns = TaskColumn::query()->where('board_id', $task->board_id)->get()->keyBy('id');
         $assignable = null;
@@ -690,6 +721,25 @@ class TaskWriter
             $to = $now->has($columnId) ? ColumnConverter::words($columns[$columnId], $now[$columnId]) : null;
             if ($from !== $to) {
                 $this->activity($task, $columnId, $columns[$columnId]->name, $from, $to, $actor);
+                if ($announce) {
+                    // Monday's "when Area changes to Connecticut" (parity audit 2026-11-13):
+                    // one event per column that changed, its value as a person reads it.
+                    $payload = [
+                        'assignee_user_id' => $task->assignee_user_id,
+                        'assignee_user_ids' => $this->ownerIds($task),
+                        'board_id' => $task->board_id,
+                        'board_name' => $task->board?->name,
+                        'before' => ['value' => $from],
+                        'after' => $this->snapshot($task) + ['column_id' => $columnId, 'column' => $columns[$columnId]->name, 'value' => $to],
+                    ];
+                    // In the task's own organization: a command's outer transaction can commit after its tenant run ended.
+                    DB::afterCommit(fn () => app(TenantContext::class)->run(
+                        Organization::query()->withoutGlobalScopes()->findOrFail($task->organization_id),
+                        // emitAfterCommit, not emit: with no transaction open it emits now, and an
+                        // import's silenced emitter (MondayImport) still silences it.
+                        fn () => $this->events->emitAfterCommit('task.column_changed', $task, $payload),
+                    ));
+                }
             }
         }
     }
@@ -879,6 +929,8 @@ class TaskWriter
             ...$this->statusOf($task),
             'assignee_user_id' => $task->assignee_user_id,
             'assignee_user_ids' => $this->ownerIds($task),
+            'created_by_user_id' => $task->created_by_user_id,
+            'group_id' => $task->group_id,
             'due_on' => $task->due_on?->toDateString(),
             'about_type' => $task->about_type,
             'about_id' => $task->about_id,
