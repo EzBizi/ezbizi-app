@@ -116,6 +116,29 @@ class TikTokDirectPostTest extends TestCase
         $this->assertTrue(now()->addHours(23)->lt($saved->credentials['expires_at']));
     }
 
+    public function test_a_renewed_token_rereads_the_expiring_avatar_url(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->tiktok($t, expiresAt: now()->subDay()->toIso8601String());
+        $this->inTenant($t['org'], fn () => $row->forceFill(['avatar_url' => 'https://p16.tiktokcdn.test/old.jpeg'])->save());
+
+        Http::fake([
+            'open.tiktokapis.com/v2/oauth/token/' => Http::response([
+                'access_token' => 'act.new', 'refresh_token' => 'rft.new', 'expires_in' => 86400,
+            ]),
+            'open.tiktokapis.com/v2/user/info/*' => Http::response(['data' => ['user' => [
+                'open_id' => 'open-1', 'display_name' => 'EzBizi US', 'avatar_url' => 'https://p16.tiktokcdn.test/new.jpeg',
+            ]]]),
+        ]);
+
+        $this->inTenant($t['org'], fn () => (new TikTokPublisher)->token($row));
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/user/info/')
+            && $r->header('Authorization')[0] === 'Bearer act.new');
+        $saved = $this->inTenant($t['org'], fn () => SocialConnection::query()->find($row->getKey()));
+        $this->assertSame('https://p16.tiktokcdn.test/new.jpeg', $saved->avatar_url);
+    }
+
     public function test_a_live_token_is_not_renewed(): void
     {
         $t = $this->provisionTenant('A1-Group');

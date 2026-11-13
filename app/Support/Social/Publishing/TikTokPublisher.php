@@ -4,6 +4,7 @@ namespace App\Support\Social\Publishing;
 
 use App\Models\SocialConnection;
 use App\Support\Social\SocialMediaKind;
+use App\Support\Social\SocialOAuthGrant;
 use App\Support\Social\SocialOAuthRefused;
 use App\Support\Social\TikTokOAuth;
 use Illuminate\Http\Client\ConnectionException;
@@ -294,10 +295,24 @@ final class TikTokPublisher implements SocialPublisher
             $credentials['refresh_token'] = $grant->refreshToken;
             $credentials['expires_at'] = now()->addSeconds($grant->expiresIn ?? 86400)->toIso8601String();
             $connection->setAttribute('credentials', $credentials);
+            $connection->setAttribute('avatar_url', $this->freshAvatar($grant, $connection));
             $connection->save();
 
             return $grant->accessToken;
         });
+    }
+
+    /**
+     * TikTok's avatar URL is signed and expires, so a renewed token re-reads it.
+     * Best effort: a refused read keeps the stored one rather than failing the post.
+     */
+    private function freshAvatar(SocialOAuthGrant $grant, SocialConnection $connection): ?string
+    {
+        try {
+            return app(TikTokOAuth::class)->identify($grant)[0]->avatarUrl ?? $connection->avatar_url;
+        } catch (SocialOAuthRefused) {
+            return $connection->avatar_url;
+        }
     }
 
     /** @param  array<string, mixed>  $credentials */

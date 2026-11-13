@@ -253,6 +253,53 @@ void main() {
       );
     });
 
+    testWidgets('a TikTok account shows its own avatar on both cards; a '
+        'provider with none keeps its network mark', (tester) async {
+      const avatar = 'https://p16.tiktokcdn.test/ezbizi.jpeg?x-expires=1';
+      await _pumpScreen(
+        tester,
+        _handler(
+          connections: const [
+            {..._tiktokDirect, 'avatar_url': avatar},
+            _facebookPage,
+          ],
+        ),
+      );
+
+      String? urlOf(Finder card) {
+        final images = find.descendant(
+          of: card,
+          matching: find.byKey(const ValueKey('social-account-avatar')),
+        );
+        if (images.evaluate().isEmpty) return null;
+        return (tester.widget<Image>(images.first).image as NetworkImage).url;
+      }
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
+      await tester.pumpAndSettle();
+      expect(
+        urlOf(find.byKey(const ValueKey('tour-marketing-social-accounts-card'))),
+        avatar,
+      );
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Accounts'));
+      await tester.pumpAndSettle();
+      final card = find.widgetWithText(DashboardCard, 'Accounts in Everdoors');
+      expect(urlOf(card), avatar);
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.byKey(const ValueKey('social-account-avatar')),
+        ),
+        findsOneWidget,
+        reason: 'Facebook sends no avatar_url, so it keeps the network mark.',
+      );
+      expect(
+        find.descendant(of: card, matching: find.byType(SocialNetworkMark)),
+        findsWidgets,
+      );
+    });
+
     /*
      * The reason a network cannot be connected is shown WHOLE on a phone.
      *
