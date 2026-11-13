@@ -13,6 +13,7 @@ import '../widgets/calendar_day_field.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import 'task_board_person_card.dart';
 
 /// A board's own columns (UI queue 84; Jose: "i should be able to make custom
 /// columns ... with options wether they are text based, numerical, status,
@@ -566,6 +567,7 @@ class ColumnCell extends StatelessWidget {
     this.onMenu,
     this.onAutoAssign,
     this.api,
+    this.boardId,
   });
 
   /// Searches customers and jobs for a link column's card.
@@ -573,6 +575,9 @@ class ColumnCell extends StatelessWidget {
 
   /// Asks the AI for this task's label in this column (null: none fits).
   final Future<String?> Function()? onAutoAssign;
+
+  /// With [api], a People cell's faces open Monday's person card on hover.
+  final String? boardId;
 
   /// Told when a status column's menu opens and closes, to dim the board.
   final ValueChanged<bool>? onMenu;
@@ -771,6 +776,9 @@ class ColumnCell extends StatelessWidget {
             child: Center(
               child: PeopleAvatars(
                 names: [for (final id in ids) people[id] ?? '?'],
+                ids: ids,
+                api: api,
+                boardId: boardId,
               ),
             ),
           ),
@@ -2570,9 +2578,27 @@ Iterable<DateTime> daysOf(Object? v) sync* {
 /// Monday's People cell: up to three overlapping initials and "+N";
 /// "—" when nobody.
 class PeopleAvatars extends StatelessWidget {
-  const PeopleAvatars({super.key, required this.names});
+  const PeopleAvatars({
+    super.key,
+    required this.names,
+    this.ids,
+    this.api,
+    this.boardId,
+  });
 
   final List<String> names;
+
+  /// Each name's user id, in order; with [api] and [boardId] every face
+  /// carries the person hover card.
+  final List<String>? ids;
+  final ApiClient? api;
+  final String? boardId;
+
+  bool get _cards =>
+      api != null &&
+      boardId != null &&
+      ids != null &&
+      ids!.length == names.length;
 
   @override
   Widget build(BuildContext context) {
@@ -2585,15 +2611,25 @@ class PeopleAvatars extends StatelessWidget {
     }
     final shown = names.take(3).toList();
     final more = names.length - shown.length;
+    Widget face(int i, String n) => !_cards
+        ? _initials(theme, n)
+        : PersonHoverCard(
+            key: ValueKey('people-face-${ids![i]}'),
+            api: api!,
+            boardId: boardId!,
+            userId: ids![i],
+            child: _initials(theme, n),
+          );
     return Tooltip(
-      message: names.join(', '),
+      // The card says who; a tooltip on top of it would cover it.
+      message: _cards ? '' : names.join(', '),
       child: SizedBox(
         height: 26,
         width: 26.0 + (shown.length - 1) * 16 + (more > 0 ? 22 : 0),
         child: Stack(
           children: [
             for (final (i, n) in shown.indexed)
-              Positioned(left: i * 16.0, child: _initials(theme, n)),
+              Positioned(left: i * 16.0, child: face(i, n)),
             if (more > 0)
               Positioned(
                 left: shown.length * 16.0 + 6,

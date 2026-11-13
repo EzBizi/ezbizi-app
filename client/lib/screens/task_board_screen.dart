@@ -3522,6 +3522,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           onEditOptions: _canEdit ? () => _editColumn(c) : null,
                           onMenu: _statusMenu,
                           api: widget.api,
+                          boardId: '${_board!['id']}',
                           onAutoAssign: _canEdit && c.type == 'status'
                               ? () => _suggestLabel(t, c.id)
                               : null,
