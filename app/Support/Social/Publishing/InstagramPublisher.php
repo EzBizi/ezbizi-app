@@ -45,9 +45,13 @@ use Illuminate\Support\Facades\Http;
  */
 final class InstagramPublisher implements LinksToPosts, SocialPublisher
 {
+    use PostsThroughMetaGraph;
+
     private const API = 'https://graph.instagram.com/v21.0';
 
     private const TIMEOUT = 30;
+
+    private const NETWORK = 'Instagram';
 
     /** Instagram truncates past this; better to cut it ourselves than be surprised. */
     private const CAPTION = 2200;
@@ -234,30 +238,6 @@ final class InstagramPublisher implements LinksToPosts, SocialPublisher
         ];
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     * @return array<string, mixed>
-     */
-    private function call(string $path, string $token, array $payload): array
-    {
-        try {
-            $response = Http::timeout(self::TIMEOUT)
-                ->asForm()
-                ->post(self::API.$path, $payload + ['access_token' => $token]);
-        } catch (ConnectionException) {
-            throw SocialPublishFailed::network('Instagram', 'EzBizi could not reach it.');
-        }
-
-        if ($response->failed()) {
-            throw SocialPublishFailed::network(
-                'Instagram',
-                (string) ($response->json('error.message') ?? 'HTTP '.$response->status()),
-            );
-        }
-
-        return (array) $response->json();
-    }
-
     private function token(SocialConnection $connection): string
     {
         $credentials = $connection->getAttribute('credentials');
@@ -271,20 +251,5 @@ final class InstagramPublisher implements LinksToPosts, SocialPublisher
         }
 
         return $token;
-    }
-
-    /**
-     * Read back from the network rather than built from the id: a Page post's
-     * address is not derivable from its id, and a guessed link that 404s is
-     * worse than none.
-     */
-    public function permalink(SocialConnection $connection, string $remoteId): ?string
-    {
-        $url = Http::timeout(10)->get(self::API.'/'.$remoteId, [
-            'fields' => 'permalink',
-            'access_token' => $this->token($connection),
-        ])->json('permalink');
-
-        return is_string($url) && str_starts_with($url, 'https://') ? $url : null;
     }
 }
