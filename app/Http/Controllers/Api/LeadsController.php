@@ -509,7 +509,12 @@ class LeadsController extends Controller
         $senders = AuditEvent::query()
             ->whereIn('action', ['lead.replied', 'lead.texted'])
             ->where('target_id', $lead->getKey())
-            ->get(['changes', 'actor_label'])
+            ->get(['changes', 'actor_label', 'actor_type', 'actor_id']);
+        // Their user id beside the name, for the photo on the bubble (Jose, 2026-11-13).
+        $senderIds = $senders->mapWithKeys(fn (AuditEvent $e) => [
+            (string) ($e->changes['conversation_id'] ?? '') => $e->actor_type === AuditEvent::ACTOR_USER ? $e->actor_id : null,
+        ]);
+        $senders = $senders
             ->mapWithKeys(fn (AuditEvent $e) => [
                 (string) ($e->changes['conversation_id'] ?? '') => trim((string) preg_replace('/\s*<[^>]*>$/', '', (string) $e->actor_label)),
             ]);
@@ -523,7 +528,7 @@ class LeadsController extends Controller
         // A website visitor typing right now, shown under the thread (Jose, 2026-10-01).
         $data['visitor_typing'] = ChatPeople::isVisitorTyping((string) $lead->getKey());
         $data['conversations'] = $conversations
-            ->map(fn (LeadConversation $c) => $this->presentConversation($c, $senders[$c->id] ?? null))
+            ->map(fn (LeadConversation $c) => $this->presentConversation($c, $senders[$c->id] ?? null) + ['sent_by_id' => $senderIds[$c->id] ?? null])
             ->values()
             ->all();
 
