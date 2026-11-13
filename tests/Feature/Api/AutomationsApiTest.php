@@ -836,6 +836,35 @@ class AutomationsApiTest extends TestCase
         $this->assertSame('second', $updated->json('data.actions.0.message'));
     }
 
+    public function test_a_patch_of_only_the_actions_keeps_the_conditions(): void
+    {
+        $conditions = ['all' => [['field' => 'status', 'op' => 'eq', 'value' => 'completed']]];
+        $id = $this->as()->postJson('/api/v1/automations', [
+            'name' => 'Rule', 'trigger_key' => 'job.status_changed', 'conditions' => $conditions,
+            'actions' => [['type' => 'notify', 'message' => 'first']],
+        ])->assertCreated()->json('data.id');
+
+        $updated = $this->as()->patchJson("/api/v1/automations/{$id}", [
+            'actions' => [['type' => 'notify', 'message' => 'second']],
+        ])->assertOk();
+
+        $this->assertEquals($conditions, $updated->json('data.conditions'));
+        $this->assertSame('second', $updated->json('data.actions.0.message'));
+
+        // And the other half: conditions alone keep the actions.
+        $updated = $this->as()->patchJson("/api/v1/automations/{$id}", ['conditions' => null])->assertOk();
+        $this->assertNull($updated->json('data.conditions'));
+        $this->assertSame('second', $updated->json('data.actions.0.message'));
+    }
+
+    public function test_texting_every_new_lead_needs_saying_out_loud(): void
+    {
+        $rule = ['name' => 'Text all', 'trigger_key' => 'lead.received', 'actions' => [['type' => 'sms.send']]];
+
+        $this->as()->postJson('/api/v1/automations', $rule)->assertStatus(422)->assertJsonValidationErrors('conditions');
+        $this->as()->postJson('/api/v1/automations', $rule + ['confirm_no_conditions' => true])->assertCreated();
+    }
+
     public function test_an_earlier_version_can_be_reactivated(): void
     {
         $created = $this->as()->postJson('/api/v1/automations', [
