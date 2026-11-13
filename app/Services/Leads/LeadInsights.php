@@ -4,6 +4,7 @@ namespace App\Services\Leads;
 
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Support\Ai\AppAsk;
 use App\Support\Ai\GrokCli;
 use App\Support\Ai\NameDecision;
 use Aws\BedrockRuntime\BedrockRuntimeClient;
@@ -117,7 +118,7 @@ class LeadInsights
         $asked = array_filter($threads, fn ($t) => $t !== '');
         $answers = $asked === [] ? [] : array_combine(array_keys($asked),
             GrokCli::about(array_values(array_intersect_key($leads, $asked)), fn () => GrokCli::askMany(
-                array_values(array_map(fn ($t, $i) => strtr(self::READ_PROMPT, ['{trades}' => GrokCli::trades($leads[$i]->organization_id), '{org}' => (string) $leads[$i]->organization?->name]).$t, $asked, array_keys($asked))), self::READ_SCHEMA)));
+                array_values(array_map(fn ($t, $i) => strtr(self::READ_PROMPT, ['{today}' => now()->format('D Y-m-d'), '{trades}' => GrokCli::trades($leads[$i]->organization_id), '{org}' => (string) $leads[$i]->organization?->name]).$t, $asked, array_keys($asked))), self::READ_SCHEMA)));
 
         return array_map(fn ($i) => match (true) {
             ! isset($answers[$i]) => null,
@@ -157,7 +158,15 @@ class LeadInsights
         .'- google_credit: whether Google should refund this lead: SPAM (a bot, a silent or dead call, '
         .'a robocall, a scam), SOLICITATION (someone selling to the business), JOB_TYPE_MISMATCH (asks '
         .'only for a service a chimney/fireplace/garage-door company does not do), or null. A real '
-        .'customer who simply did not book is null.'
+        .'customer who simply did not book is null.'."\n"
+        // The reply reader (Jose, 2026-11-13: Rose Wyka's email gave her cell,
+        // address and hours, and the lead picked up none of them).
+        ."- phones / emails: every phone number and email the CUSTOMER gives as their own contact, as written; [] if none.\n"
+        ."- address: the service address the customer gives (street, town, state, ZIP), else null.\n"
+        .'- scope: the work asked for in one short phrase, keeping their corrections ("not a gas insert; '
+        ."blower repaired or replaced, plus a cleaning\"), else null.\n"
+        ."- deadline: a date the work must happen by, short (\"before Fri 11/20\"), else null. Today is {today}.\n"
+        ."- availability: when they can be reached or visited, short (\"Mon/Wed/Fri 2-5, Thu 11:30-5; not Tue\"), else null."
         ."\n\n";
 
     /** Google's own SurveyDissatisfiedReason values AI may suggest for a credit. */
@@ -201,8 +210,14 @@ class LeadInsights
             'booked' => ['type' => 'boolean'],
             'reason' => ['type' => 'string'],
             'google_credit' => ['type' => ['string', 'null'], 'enum' => [...self::CREDIT_REASONS, null]],
+            'phones' => ['type' => 'array', 'items' => ['type' => 'string']],
+            'emails' => ['type' => 'array', 'items' => ['type' => 'string']],
+            'address' => ['type' => ['string', 'null']],
+            'scope' => ['type' => ['string', 'null']],
+            'deadline' => ['type' => ['string', 'null']],
+            'availability' => ['type' => ['string', 'null']],
         ],
-        'required' => ['classification', 'summary', 'name', 'name_basis', 'zip', 'not_a_lead', 'lost', 'job_applicant', 'booked', 'reason', 'google_credit'],
+        'required' => ['classification', 'summary', 'name', 'name_basis', 'zip', 'not_a_lead', 'lost', 'job_applicant', 'booked', 'reason', 'google_credit', 'phones', 'emails', 'address', 'scope', 'deadline', 'availability'],
         'additionalProperties' => false,
     ];
 
@@ -226,7 +241,24 @@ class LeadInsights
             'booked' => ($json['booked'] ?? false) === true,
             'reason' => mb_substr(trim((string) ($json['reason'] ?? '')), 0, 255),
             'google_credit' => in_array($json['google_credit'] ?? null, self::CREDIT_REASONS, true) ? $json['google_credit'] : null,
+            // Ten digits, a leading US 1 dropped.
+            'phones' => array_values(array_unique(array_filter(array_map(
+                fn ($p) => substr((string) preg_replace('/^1(?=\d{10}$)/', '', (string) preg_replace('/\D/', '', (string) $p)), 0, 10),
+                (array) ($json['phones'] ?? [])), fn ($d) => strlen($d) === 10))),
+            'emails' => array_values(array_unique(array_filter(array_map(fn ($e) => mb_strtolower(trim((string) $e)), (array) ($json['emails'] ?? [])),
+                fn ($e) => filter_var($e, FILTER_VALIDATE_EMAIL) !== false))),
+            'address' => self::short($json['address'] ?? null, 255),
+            'scope' => self::short($json['scope'] ?? null, 200),
+            'deadline' => self::short($json['deadline'] ?? null, 60),
+            'availability' => self::short($json['availability'] ?? null, 160),
         ];
+    }
+
+    private static function short(mixed $value, int $max): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' || strcasecmp($value, 'null') === 0 ? null : mb_substr($value, 0, $max);
     }
 
     /**
@@ -383,7 +415,8 @@ class LeadInsights
             if ($row->is_ad_question) {
                 $who = 'Customer tapped a suggested question from the ad';
             }
-            $lines[] = "{$who}: ".trim((string) preg_replace('/\s+/', ' ', $said));
+            // Jose, 2026-10-13: signed links never reach xAI.
+            $lines[] = "{$who}: ".trim((string) preg_replace('/\s+/', ' ', AppAsk::withoutSignedLinks($said)));
             $saidSomething = $saidSomething || $row->participant === LeadConversation::FROM_CONSUMER;
         }
 

@@ -2152,7 +2152,7 @@ class LeadsController extends Controller
     {
         $set = $lead->ai_set ?? [];
 
-        return array_values(array_filter(['status', 'contact_name', 'postal_code'],
+        return array_values(array_filter(['status', 'contact_name', 'postal_code', 'phone', 'email', 'address'],
             fn ($f) => isset($set[$f]) && (string) $lead->{$f} === (string) $set[$f]));
     }
 
@@ -2212,6 +2212,12 @@ class LeadsController extends Controller
             'ai' => self::aiHeld($lead),
             // A different name the customer gave, kept for a person to decide.
             'name_conflict' => $lead->ai_set['name_conflict'] ?? null,
+            // The reply reader (Jose, 2026-11-13): what the customer's own words
+            // gave. suggest: {phone|email|address: value} differing from what the
+            // lead holds, each a one-tap "Use ...?" (a PATCH of that field);
+            // availability and deadline for the booking panel; source is the
+            // message it was read from, for the activity.
+            'reading' => $lead->ai_set['reading'] ?? null,
             // Why AI set the status, while the status is still AI's.
             'ai_reason' => in_array('status', self::aiHeld($lead), true) ? ($lead->ai_set['reason'] ?? null) : null,
             // Google Local Services credit: AI's suggested reason, then what
