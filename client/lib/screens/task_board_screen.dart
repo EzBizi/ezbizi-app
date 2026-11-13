@@ -2317,6 +2317,75 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
   }
 
+  /// Import: tasks pasted one per line (a spreadsheet's first column comes
+  /// across the same way), each added to the board's first group.
+  Future<void> _import(Object? groupId) async {
+    final box = TextEditingController();
+    final lines = await showSidePanel<List<String>>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Import tasks',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(panel).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('tasks-import-go'),
+            onPressed: () => Navigator.of(panel).pop(
+              box.text
+                  .split('\n')
+                  .map((l) => l.split('\t').first.split(',').first.trim())
+                  .where((t) => t.isNotEmpty)
+                  .toList(),
+            ),
+            child: const Text('Import'),
+          ),
+        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Paste one task per line, or copy a column from a spreadsheet. '
+              'Each line becomes a task in the first group.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('tasks-import-text'),
+              controller: box,
+              autofocus: true,
+              minLines: 8,
+              maxLines: 20,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (lines == null || lines.isEmpty || !mounted) return;
+    var made = 0;
+    String? why;
+    for (final title in lines) {
+      final r = await widget.api.post('/tasks', {
+        'board_id': _board!['id'],
+        'title': title,
+        'group_id': ?groupId,
+      });
+      if (!r.ok) {
+        why = r.reason;
+        break;
+      }
+      made++;
+    }
+    if (!mounted) return;
+    _say(
+      why == null
+          ? (made == 1 ? '1 task imported.' : '$made tasks imported.')
+          : '$made imported, then: $why',
+    );
+    await _open(_selected);
+  }
+
   /// Folded away on a phone until asked for.
   bool _toolsOpen = false;
 
@@ -2356,6 +2425,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               }),
               child: const Text('New group'),
             ),
+            if (first != null)
+              MenuItemButton(
+                key: const Key('tasks-import'),
+                leadingIcon: const Icon(Icons.upload_file_outlined, size: 18),
+                onPressed: () => _import(first['id']),
+                child: const Text('Import'),
+              ),
           ],
           builder: (context, menu, _) => FilledButton(
             key: const Key('tasks-new-more'),
@@ -2620,19 +2696,31 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         key: const Key('tasks-people'),
         onPressed: _editPeople,
         icon: const Icon(Icons.group_outlined, size: 18),
-        label: Text('People · ${_board!['members_count'] ?? 0}'),
+        label: Text('Invite · ${_board!['members_count'] ?? 0}'),
       ),
       if (custom)
         StatusPill(
           boardVisibilityLabel(_board!['visibility']),
           tone: private ? Tone.caution : Tone.neutral,
         ),
+      // Monday's Integrate: EzBizi boards connect to jobs, leads and
+      // messages through task rules, so it opens the same panel.
+      if (automate && !phone)
+        OutlinedButton.icon(
+          key: const Key('tasks-integrate'),
+          onPressed: _automate,
+          icon: const Icon(Icons.hub_outlined, size: 18),
+          label: const Text('Integrate'),
+        ),
       if (automate && !phone)
         OutlinedButton.icon(
           key: const Key('tasks-automate'),
           onPressed: _automate,
           icon: const Icon(Icons.bolt, size: 18),
-          label: const Text('Automate'),
+          label: Text(switch (_board!['automations_count']) {
+            final num n when n > 0 => 'Automate · $n',
+            _ => 'Automate',
+          }),
         ),
       if (automate && phone)
         PopupMenuButton<String>(

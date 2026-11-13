@@ -221,6 +221,8 @@ class TaskBoardsController extends Controller
             'members_preview' => collect($people)->take(4)
                 ->map(fn (array $m) => ['id' => $m['user_id'], 'name' => $m['name']])->values()->all(),
             'can_manage' => $this->boards->canManageMembers($user, $taskBoard),
+            // The top bar's Automate count: task rules whose live version names this board.
+            'automations_count' => $this->automationsOn($taskBoard),
             // Rename and delete: custom boards, their owners and Administrators.
             'can_rename' => ! $taskBoard->isAutomatic() && $this->boards->canManage($user, $taskBoard),
             'company_id' => $taskBoard->company_id,
@@ -480,6 +482,19 @@ class TaskBoardsController extends Controller
      *
      * @return list<array<string, mixed>>
      */
+    /** Task rules (on or off) whose current version is conditioned on `board_id eq` this board. */
+    private function automationsOn(TaskBoard $board): int
+    {
+        return \App\Models\Automation::query()
+            ->where('trigger_key', 'like', 'task.%')
+            ->with('activeVersion:id,conditions')
+            ->get(['id', 'active_version_id'])
+            ->filter(fn ($a) => collect($a->activeVersion?->conditions['all'] ?? [])->contains(
+                fn ($c) => is_array($c) && ($c['field'] ?? null) === 'board_id'
+                    && ($c['op'] ?? null) === 'eq' && (string) ($c['value'] ?? '') === (string) $board->id
+            ))->count();
+    }
+
     private function effectiveMembers(TaskBoard $board): array
     {
         $manual = $board->members()->with('user:id,name')->get()
