@@ -18,6 +18,11 @@ void main() {
   test('a bare module path or a third segment is not a record', () {
     expect(DeepLinks.fromUri(Uri.parse('https://app.test/jobs')), isNull);
     expect(DeepLinks.fromUri(Uri.parse('https://app.test/jobs/1/x')), isNull);
-    expect(DeepLinks.fromUri(Uri.parse('https://app.test/tasks/1')), isNull);
+    expect(DeepLinks.fromUri(Uri.parse('https://app.test/notes/1')), isNull);
+  });
+
+  test('a task link, from the task panel Copy link, is a record', () {
+    final link = DeepLinks.fromUri(Uri.parse('https://app.test/tasks/t1'))!;
+    expect((link.module, link.type, link.id), ('tasks', 'task', 't1'));
   });
 }
