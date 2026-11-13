@@ -43,7 +43,7 @@
   "18390213000": {"target": "skip", "why": "template (Jose: templates are skipped)"},
   "18392349013": {"target": "skip", "why": "template"},
   "18392356461": {"target": "skip", "why": "template"},
-  "9342236072": {"target": "skip", "why": "All Calls: archived on Monday, 52,684 call rows the Phone module already holds (question to Jose)"},
+  "9342236072": {"target": "custom", "scope": {"company": "A-1 Chimney"}, "visibility": "private", "archived": true, "why": "All Calls: archived on Monday; Jose (via desk 11-13): import everything, placed in the archive, a read-only mirror never written back"},
   "18280738661": {"target": "skip", "why": "Users: Monday's resource directory, not tasks"},
   "18280738648": {"target": "skip", "why": "Job Roles: Monday's role list"},
   "18426918714": {"target": "skip", "why": "Analytics Dashboard: an app's data"},

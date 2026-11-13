@@ -34,7 +34,7 @@ class MondayAutomationsTest extends TestCase
                     'settings' => ['options' => [['id' => 'ct', 'label' => 'Connecticut', 'colour' => null]]]]),
                 TaskColumn::create(['organization_id' => $t['org']->id, 'board_id' => $board->id, 'name' => 'Date', 'type' => 'date', 'position' => 2])];
         });
-        $recipe = fn (string $id, array $trigger, array $conditions, array $actions, bool $active = true) => [
+        $recipe = fn (string $id, ?array $trigger, array $conditions, array $actions, bool $active = true) => [
             'monday_id' => $id, 'board' => '500', 'active' => $active, 'monday_state' => $active ? 'active' : 'deactivated', 'sentence' => 'recipe '.$id,
             'trigger' => $trigger, 'conditions' => $conditions, 'actions' => $actions, 'by' => ''];
         $spec = ['automations' => [
@@ -45,6 +45,8 @@ class MondayAutomationsTest extends TestCase
             $recipe('4', ['kind' => 'schedule', 'every' => 'weekly', 'days' => ['monday'], 'time' => '15:00'], [], [['notify' => 'nehorai@a1.test', 'message' => 'Weekly tasks']]),
             $recipe('5', ['kind' => 'created'], [], [['assign' => 'ron@nobody.test', 'add' => true]]),
             $recipe('6', ['kind' => 'created'], [], [['set' => 'Date', 'value' => 'today']], active: false),
+            $recipe('7', ['kind' => 'column_changed', 'column' => 'Area', 'to' => null], [], [['move_group' => 'Done']], active: false),
+            $recipe('8', null, [], [['move_group' => 'Done']]),
         ], 'skipped' => []];
         $file = tempnam(sys_get_temp_dir(), 'auto');
         file_put_contents($file, json_encode($spec));
@@ -55,7 +57,7 @@ class MondayAutomationsTest extends TestCase
 
         $this->inTenant($t['org'], function () use ($board, $done, $recurring, $area, $date, $nehorai, $t) {
             $rules = Automation::query()->with('activeVersion')->get()->keyBy(fn ($r) => explode(' ', $r->description)[0]);
-            $this->assertCount(6, $rules, 'once each');
+            $this->assertCount(7, $rules, 'once each; a recipe with no trigger read is not made');
             $on = fn ($k) => $rules["monday:$k"]->is_active;
             $all = fn ($k) => $rules["monday:$k"]->activeVersion->conditions['all'] ?? [];
             $acts = fn ($k) => $rules["monday:$k"]->activeVersion->actions;
@@ -84,6 +86,7 @@ class MondayAutomationsTest extends TestCase
             $this->assertFalse($on(5), 'a person with no account here: made off');
             $this->assertStringContainsString('not here: person ron@nobody.test', $rules['monday:5']->description);
             $this->assertFalse($on(6), 'off on Monday, off here');
+            $this->assertTrue(in_array(['field' => 'value', 'op' => 'changed'], $all(7)), 'Monday\'s bare "when column changes"');
         });
     }
 }

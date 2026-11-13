@@ -106,7 +106,12 @@ class MondayAutomations extends Command
             return $id;
         };
 
-        $t = $a['trigger'];
+        $t = $a['trigger'] ?? null;
+        if (! is_array($t) || ! isset($t['kind'])) {
+            $this->line("not recreated (no trigger read): {$a['monday_id']} on board {$a['board']} ({$a['sentence']})");
+
+            return;
+        }
         $all = [['field' => 'board_id', 'op' => 'eq', 'value' => $board->id]];
         $delay = null;
         $schedule = null;
@@ -122,7 +127,10 @@ class MondayAutomations extends Command
             $status === null ? $missing[] = 'status '.$t['to'] : $all[] = ['field' => 'status_id', 'op' => 'eq', 'value' => $status->id];
         } elseif ($t['kind'] === 'column_changed') {
             $all[] = ['field' => 'column_id', 'op' => 'eq', 'value' => $column($t['column'])];
-            $all[] = ['field' => 'value', 'op' => 'changed_to', 'value' => $t['to']];
+            // "When Area changes to X", or Monday's bare "when column changes".
+            $all[] = ($t['to'] ?? null) === null
+                ? ['field' => 'value', 'op' => 'changed']
+                : ['field' => 'value', 'op' => 'changed_to', 'value' => $t['to']];
         } elseif ($t['kind'] === 'date_arrived') {
             $all[] = ['field' => 'column_id', 'op' => 'eq', 'value' => $column($t['column'])];
             $all[] = ['field' => 'days_until', 'op' => 'eq', 'value' => (int) ($t['days_before'] ?? 0)];

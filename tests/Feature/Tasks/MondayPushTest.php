@@ -170,6 +170,22 @@ class MondayPushTest extends TestCase
         $this->assertSame('monday:901', $this->inTenant($this->tenant['org'], fn () => TaskUpdate::query()->where('task_id', $this->task->id)->value('external_ref')));
     }
 
+    /** All Calls and Toula: archived on Monday, archived here, a read-only mirror (Jose via desk, 11-13). */
+    public function test_an_archived_board_is_never_written_back_nor_polled(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            $this->board->forceFill(['archived_at' => now()])->save();
+            app(TaskWriter::class)->update($this->task->fresh(), ['status' => 'Done'], $this->jose);
+            app(TaskWriter::class)->comment($this->task->fresh(), $this->jose, 'Seen');
+            $this->assertSame(0, MondayOutboxEntry::query()->count());
+        });
+
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+        $this->assertSame([], $this->mutations);
+        $this->assertSame([], array_values(array_filter(Http::recorded()->all(), fn ($r) => str_contains((string) $r[0]->data()['query'], 'items_page'))),
+            'the 10-minute poll does not re-read an archived board');
+    }
+
     public function test_what_the_monday_sync_writes_is_never_sent_back(): void
     {
         $this->inTenant($this->tenant['org'], fn () => \App\Support\Tasks\Monday\MondayOutbox::suppress(

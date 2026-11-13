@@ -2357,6 +2357,592 @@
    "by": "jose@a-1chimney.com"
   },
   {
+   "monday_id": "436338084",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When date arrives and only if status is something move item to group",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date & Time",
+    "days_before": -1,
+    "hour": 9.0
+   },
+   "conditions": [
+    {
+     "column": "Client Status",
+     "is": "EXISTING CUSTOMER"
+    }
+   ],
+   "actions": [
+    {
+     "move_group": "Existing Client History"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "436347511",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When date arrives and only if status is something move item to group",
+   "trigger": {
+    "kind": "date_arrived",
+    "column": "Date & Time",
+    "days_before": -1,
+    "hour": 9.0
+   },
+   "conditions": [
+    {
+     "column": "Client Status",
+     "is": "NEW CUSTOMER"
+    }
+   ],
+   "actions": [
+    {
+     "move_group": "New Client History"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "436451444",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Client Status",
+    "to": "NEW CUSTOMER"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "New Client"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "436456679",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Client Status",
+    "to": "EXISTING CUSTOMER"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Existing Client"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "439130836",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something and only if status is something create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "NOT BOOKED"
+   },
+   "conditions": [
+    {
+     "column": "Client Status",
+     "is": "NEW CUSTOMER"
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9443577106",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "439336796",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "COMPLAINT"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "create_on": "8312747552",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "439352700",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something set status to something",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Match Status",
+    "to": "Match"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "set": "Client Status",
+     "value": "EXISTING CUSTOMER"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "446844012",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something set status to something",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call Status",
+    "to": "Call connected"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "set": "Call Status",
+     "value": "Accepted"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "446844445",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something set status to something",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call Status",
+    "to": "Hang Up"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "set": "Call Status",
+     "value": "Call Failed"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "446844560",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something set status to something",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call Status",
+    "to": "No Answer"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "set": "Call Status",
+     "value": "Missed"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "449169357",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When status changes to something and only if dropdown contains all these labels create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call Status",
+    "to": "Missed"
+   },
+   "conditions": [
+    {
+     "column": "Area Code",
+     "is": "one of 8 labels"
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9444567803",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "449171160",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When column changes and only if dropdown contains all these labels create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call  Summary",
+    "to": null
+   },
+   "conditions": [
+    {
+     "column": "Area Code",
+     "is": "one of 8 labels"
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9444567803",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "453401819",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When column changes and only if dropdown contains all these labels create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call  Summary",
+    "to": null
+   },
+   "conditions": [
+    {
+     "column": "Area Code",
+     "is": "one of 4 labels"
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9715577771",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "453434747",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When column changes and only if dropdown contains all these labels create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call  Summary",
+    "to": null
+   },
+   "conditions": [
+    {
+     "column": "Area Code",
+     "is": "one of 9 labels"
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9716178811",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "453463135",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When column changes and only if dropdown contains all these labels create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call  Summary",
+    "to": null
+   },
+   "conditions": [
+    {
+     "column": "Area Code",
+     "is": "one of 16 labels"
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9716572347",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "453464212",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When column changes and only if dropdown contains all these labels create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call  Summary",
+    "to": null
+   },
+   "conditions": [
+    {
+     "column": "Area Code",
+     "is": "one of 12 labels"
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9716574163",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "453465300",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When column changes and only if dropdown contains all these labels create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call  Summary",
+    "to": null
+   },
+   "conditions": [
+    {
+     "column": "Area Code",
+     "is": "one of 13 labels"
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9716577155",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "453467112",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When column changes and only if dropdown contains all these labels create an item in board and connect boards with column",
+   "trigger": {
+    "kind": "column_changed",
+    "column": "Call  Summary",
+    "to": null
+   },
+   "conditions": [
+    {
+     "column": "Area Code",
+     "is": "one of 17 labels"
+    }
+   ],
+   "actions": [
+    {
+     "create_on": "9716579436",
+     "group": null
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "454978114",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes from something to something and only if status is something set status to something",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "UNCLEAR"
+   },
+   "conditions": [
+    {
+     "status": "Outbound"
+    }
+   ],
+   "actions": [
+    {
+     "set": "Call Status",
+     "value": "Voicemail"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "454999925",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes from something to something and only if status is something and only if number is greater than some amount set status to something",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "UNCLEAR"
+   },
+   "conditions": [
+    {
+     "status": "Inbound"
+    }
+   ],
+   "actions": [
+    {
+     "set": "Call Status",
+     "value": "Call Failed"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "455062092",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something and only if status is something and only if status is something and only if number is greater than some amount set status to something",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "BLANK"
+   },
+   "conditions": [
+    {
+     "status": "BLANK"
+    },
+    {
+     "status": "Inbound"
+    }
+   ],
+   "actions": [
+    {
+     "set": "Call Status",
+     "value": "Missed"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "455069472",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something and only if status is something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "ESTIMATE"
+   },
+   "conditions": [
+    {
+     "status": "BOOKED"
+    }
+   ],
+   "actions": [
+    {
+     "move_group": "Existing Client"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "455069877",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "RESCHEDULED"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Existing Client"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "455070038",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something move item to group",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "COMPLAINT"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "move_group": "Existing Client"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "455086560",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "deactivated",
+   "sentence": "When status changes from something to something and only if number is greater than some amount and if column is empty set status to something",
+   "trigger": {
+    "kind": "status_changed",
+    "to": "Inbound"
+   },
+   "conditions": [],
+   "actions": [
+    {
+     "set": "Call Status",
+     "value": "Missed"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
+   "monday_id": "463095217",
+   "board": "9342236072",
+   "active": false,
+   "monday_state": "auto_disabled_by_board",
+   "sentence": "When status changes to something and only if status is something and only if status is something and only if number is greater than some amount set status to something",
+   "trigger": {
+    "kind": "status_changed",
+    "to": null
+   },
+   "conditions": [
+    {
+     "status": "BLANK"
+    },
+    {
+     "status": "Outbound"
+    }
+   ],
+   "actions": [
+    {
+     "set": "Call Status",
+     "value": "Call Failed"
+    }
+   ],
+   "by": "baro@a-1chimney.com"
+  },
+  {
    "monday_id": "workflow:7925541335",
    "board": "18432743116",
    "active": true,
@@ -2395,7 +2981,7 @@
   {
    "monday_id": "535269270",
    "board": "18399940654",
-   "why": "dependency status (no dependencies on the Task Board)"
+   "why": "dependency status: a status rule on a dependency (GAP)"
   },
   {
    "monday_id": 509398230,
@@ -2405,7 +2991,7 @@
   {
    "monday_id": "535268897",
    "board": "18399940557",
-   "why": "dependency status (no dependencies on the Task Board)"
+   "why": "dependency status: a status rule on a dependency (GAP)"
   },
   {
    "monday_id": 509372732,
@@ -2413,159 +2999,29 @@
    "why": "board not carried"
   },
   {
-   "monday_id": 436338084,
+   "monday_id": "439347991",
    "board": "9342236072",
-   "why": "board not carried"
+   "why": "webhook (not connected on Monday)"
   },
   {
-   "monday_id": 436347511,
+   "monday_id": "439352617",
    "board": "9342236072",
-   "why": "board not carried"
+   "why": "copy a phone to a connected item (off on Monday; GAP)"
   },
   {
-   "monday_id": 436451444,
+   "monday_id": "443908457",
    "board": "9342236072",
-   "why": "board not carried"
+   "why": "webhook (not connected on Monday)"
   },
   {
-   "monday_id": 436456679,
+   "monday_id": "444087972",
    "board": "9342236072",
-   "why": "board not carried"
+   "why": "webhook (not connected on Monday)"
   },
   {
-   "monday_id": 439130836,
+   "monday_id": "449132787",
    "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 439336796,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 439347991,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 439352617,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 439352700,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 443908457,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 444087972,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 446844012,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 446844445,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 446844560,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 449132787,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 449169357,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 449171160,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 453401819,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 453434747,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 453463135,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 453464212,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 453465300,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 453467112,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 454978114,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 454999925,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 455062092,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 455069472,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 455069877,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 455070038,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 455086560,
-   "board": "9342236072",
-   "why": "board not carried"
-  },
-  {
-   "monday_id": 463095217,
-   "board": "9342236072",
-   "why": "board not carried"
+   "why": "webhook (not connected on Monday)"
   }
  ]
 }

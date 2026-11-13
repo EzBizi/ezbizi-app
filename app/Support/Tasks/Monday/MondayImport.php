@@ -8,6 +8,7 @@ use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
+use App\Models\TaskBoardFolder;
 use App\Models\TaskBoardView;
 use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
@@ -141,6 +142,7 @@ final class MondayImport
                 foreach ($data['boards'] as $b) {
                     $board = $this->board($b, $actor);
                     $this->layout($board, $b);
+                    $this->folder($board, $b['folder'] ?? null);
                     foreach ($b['items'] as $item) {
                         $parent = $this->task($board, $item, null, $actor);
                         foreach ($item['subitems'] ?? [] as $sub) {
@@ -775,6 +777,38 @@ final class MondayImport
             ]));
             $this->counts['views made'] = ($this->counts['views made'] ?? 0) + 1;
         }
+    }
+
+    /**
+     * The board in Monday's folder (Jose 11-13: each board in the same folder
+     * with the same colour): the folder chain is found by name under its
+     * parent, or made with Monday's colour; a folder without a colour takes
+     * Monday's. A board somebody here already put in a folder stays there.
+     *
+     * @param  list<array{name: string, colour: ?string}>|null  $path  root first; null: the export does not say
+     */
+    private function folder(TaskBoard $board, ?array $path): void
+    {
+        if ($path === null || $path === [] || $board->folder_id !== null) {
+            return;
+        }
+        $parent = null;
+        foreach ($path as $i => $f) {
+            $name = mb_substr(trim((string) $f['name']), 0, 255);
+            $found = TaskBoardFolder::query()->where('parent_id', $parent?->id)->get()
+                ->first(fn (TaskBoardFolder $x) => mb_strtolower($x->name) === mb_strtolower($name));
+            if ($found === null) {
+                $found = TaskBoardFolder::query()->create([
+                    'organization_id' => $board->organization_id, 'parent_id' => $parent?->id, 'name' => $name,
+                    'colour' => $f['colour'] ?? null, 'position' => (int) TaskBoardFolder::query()->where('parent_id', $parent?->id)->max('position') + 1,
+                ]);
+                $this->counts['folders made'] = ($this->counts['folders made'] ?? 0) + 1;
+            } elseif ($found->colour === null && ! empty($f['colour'])) {
+                $found->forceFill(['colour' => $f['colour']])->save();
+            }
+            $parent = $found;
+        }
+        $board->forceFill(['folder_id' => $parent->id])->saveQuietly();
     }
 
     /**
