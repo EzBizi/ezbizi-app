@@ -88,6 +88,9 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
   void initState() {
     super.initState();
     _loadSent();
+    // Open on a range, so the audience count and the composer are there at
+    // once; an empty page until a preset was tapped read as unbuilt (UI audit).
+    _choosePreset(_Preset.lastMonth);
   }
 
   @override

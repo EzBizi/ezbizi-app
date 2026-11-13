@@ -18,6 +18,35 @@ void main() {
   _blockingTests();
   _tileTests();
 
+  // Desk 11-13: every open pulled the whole history (2.27 MB of texts).
+  testWidgets('Records asks a page at a time and Load older asks the next', (
+    tester,
+  ) async {
+    final seen = <http.Request>[];
+    await _pump(
+      tester,
+      seen: seen,
+      calls: [
+        for (var i = 0; i < 200; i++) {..._call, 'id': 'ca-p$i'},
+      ],
+    );
+    List<String> pages() => [
+      for (final r in seen)
+        if (r.url.path.endsWith('/phone/calls') ||
+            r.url.path.endsWith('/phone/messages'))
+          '${r.url.path.split('/').last}:${r.url.queryParameters['per_page']}:${r.url.queryParameters['page']}',
+    ];
+    expect(pages(), ['calls:200:1', 'messages:200:1']);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('records-load-older')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await _tap(tester, find.byKey(const Key('records-load-older')));
+    expect(pages().skip(2), ['calls:200:2', 'messages:200:2']);
+  });
+
   testWidgets('Records is not Coming soon', (tester) async {
     await _pump(tester, calls: const [], messages: const []);
 
@@ -96,12 +125,7 @@ void main() {
     final seen = <http.Request>[];
     addTearDown(player.dispose);
 
-    await _pump(
-      tester,
-      size: const Size(900, 800),
-      player: player,
-      seen: seen,
-    );
+    await _pump(tester, size: const Size(900, 800), player: player, seen: seen);
 
     await _tap(tester, find.byKey(const Key('phone-record-ca-1')));
 
@@ -225,7 +249,6 @@ void main() {
   });
 }
 
-
 /// The tiles count the whole list and filter it (layout A, Mia 2026-10-02).
 void _tileTests() {
   testWidgets('a Records tile counts its calls and lists only those', (
@@ -310,7 +333,11 @@ void _tileTests() {
     await _pump(
       tester,
       calls: [
-        {..._call, 'customer_name': 'Dana Whitfield', 'answered_by_name': 'Andy'},
+        {
+          ..._call,
+          'customer_name': 'Dana Whitfield',
+          'answered_by_name': 'Andy',
+        },
       ],
     );
 
@@ -434,7 +461,11 @@ void _blockingTests() {
     await _tap(tester, find.byKey(const Key('block-caller-ca-1')));
 
     final posted = seen
-        .where((r) => r.method == 'POST' && r.url.path.endsWith('/phone/blocked-numbers'))
+        .where(
+          (r) =>
+              r.method == 'POST' &&
+              r.url.path.endsWith('/phone/blocked-numbers'),
+        )
         .toList();
 
     expect(posted, hasLength(1), reason: 'nothing was sent');
@@ -456,9 +487,12 @@ void _blockingTests() {
   /// Blocking the number you dialled OUT to blocks a customer from ever
   /// reaching you, from a button that reads as being about this one call.
   testWidgets('an outbound call offers no such thing', (tester) async {
-    await _pump(tester, calls: [
-      {..._call, 'id': 'ca-2', 'direction': 'outbound'},
-    ]);
+    await _pump(
+      tester,
+      calls: [
+        {..._call, 'id': 'ca-2', 'direction': 'outbound'},
+      ],
+    );
 
     await _tap(tester, find.byKey(const Key('phone-record-ca-2')));
 
@@ -539,7 +573,9 @@ MockClientHandler _handler({
     }
 
     if (path.endsWith('/phone/blocked-numbers') && request.method == 'POST') {
-      return _json({'data': {'id': 'bn-1'}}, 201);
+      return _json({
+        'data': {'id': 'bn-1'},
+      }, 201);
     }
 
     if (path.endsWith('/phone/messages') && request.method == 'GET') {

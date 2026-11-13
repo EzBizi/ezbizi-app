@@ -6,7 +6,9 @@ import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -772,5 +774,139 @@ void main() {
 
     expect(find.byKey(const ValueKey('task-owner-ezbizi-t1')), findsNothing);
     expect(find.text('Omar'), findsWidgets);
+  });
+
+  Map<String, dynamic> doneTask() => {
+    'id': 't9',
+    'board_id': 'b-1',
+    'group_id': 'g1',
+    'parent_task_id': null,
+    'title': 'Sweep the Elm St chimney',
+    'status_id': 's-done',
+    'owner': null,
+    'due_on': null,
+    'about': null,
+    'updates_count': 0,
+    'values': <String, dynamic>{},
+  };
+
+  testWidgets("a heading's Filter… keeps only the value picked, and Clear "
+      'filter brings the rest back', (tester) async {
+    builtins = customised();
+    extra = [doneTask()];
+    await pump(tester);
+    expect(find.text('Order liner parts for the Oak Park job'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-head-status')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-status')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-status-s-done')));
+    await tester.pumpAndSettle();
+    expect(find.text('Order liner parts for the Oak Park job'), findsNothing);
+    expect(find.text('Sweep the Elm St chimney'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-head-status')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-status')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-clear-status')));
+    await tester.pumpAndSettle();
+    expect(find.text('Order liner parts for the Oak Park job'), findsOneWidget);
+  });
+
+  testWidgets('Group by Status draws one group per status, and Board groups '
+      'goes back', (tester) async {
+    extra = [doneTask()];
+    await pump(tester);
+
+    await tester.tap(find.byKey(const Key('tasks-group-by')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('group-by-status')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-group-by:s-stuck')), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-group-by:s-done')), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-group-g1')), findsNothing);
+    // A Group by group takes no new tasks: it is not a group on the board.
+    expect(find.byKey(const ValueKey('group-menu-by:s-done')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('tasks-group-by')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('group-by-none')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-group-g1')), findsOneWidget);
+  });
+
+  testWidgets('right-click a cell and Filter by this value keeps the tasks '
+      'with it', (tester) async {
+    extra = [doneTask()];
+    await pump(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('range-cell-c-hours-t1')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cell-filter-value')));
+    await tester.pumpAndSettle();
+    expect(find.text('Order liner parts for the Oak Park job'), findsOneWidget);
+    expect(find.text('Sweep the Elm St chimney'), findsNothing);
+  });
+
+  testWidgets('Ctrl-click picks cells in one column and Ctrl+V pastes over '
+      'every one', (tester) async {
+    extra = [doneTask()];
+    await pump(tester);
+    String? clip = '7';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.getData') return {'text': clip};
+        if (call.method == 'Clipboard.setData') {
+          clip = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    for (final id in ['t1', 't9']) {
+      await tester.tap(find.byKey(ValueKey('range-cell-c-hours-$id')));
+      await tester.pump();
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.pump();
+    expect(clip, '3.5');
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    final patches = [
+      for (final (m, p, b) in log)
+        if (m == 'PATCH') '$p ${jsonEncode(b)}',
+    ];
+    expect(patches, [
+      '/tasks/t1 {"values":{"c-hours":3.5}}',
+      '/tasks/t9 {"values":{"c-hours":3.5}}',
+    ]);
+  });
+
+  testWidgets('a label cell has Filter by this value on right-click too', (
+    tester,
+  ) async {
+    extra = [doneTask()];
+    await pump(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('range-cell-c-type-t1')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cell-filter-value')));
+    await tester.pumpAndSettle();
+    expect(find.text('Sweep the Elm St chimney'), findsNothing);
   });
 }

@@ -58,7 +58,9 @@ final class MondaySync
         $boards = $this->tenant->run($org, function () use ($reader) {
             $this->adopt($reader);
 
-            return TaskBoard::query()->where('external_ref', 'like', 'monday:%')->get();
+            // Not an archived board: its Monday board is archived too and does not change, and
+            // re-reading All Calls (52,684 items) every ten minutes would spend the Monday budget.
+            return TaskBoard::query()->where('external_ref', 'like', 'monday:%')->whereNull('archived_at')->get();
         });
 
         $reports = [];

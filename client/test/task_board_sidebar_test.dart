@@ -102,6 +102,7 @@ void main() {
   );
 
   late List<String> opened;
+  List<Map<String, Object?>> folders = [];
 
   setUp(() {
     store.debugStoreDirOverride = Directory.systemTemp.createTempSync('tbtree');
@@ -143,6 +144,9 @@ void main() {
         }
         if (path == '/task-boards') {
           return json({'data': boards ?? fixture});
+        }
+        if (path == '/task-board-folders') {
+          return json({'data': folders});
         }
         if (path.startsWith('/task-boards/')) {
           final id = path.split('/').last;
@@ -369,5 +373,57 @@ void main() {
       expect(formatCellNumber(-1200, r'$'), r'-$1,200');
       expect(formatCellNumber(-5000.75, 'ft'), '-5,000.75 ft');
     });
+  });
+
+  testWidgets('a board in a folder shows under Folders, in its colour, and '
+      'nowhere else (Jose 11-13, Monday parity)', (tester) async {
+    folders = [
+      {
+        'id': 'fo-1',
+        'parent_id': null,
+        'name': 'Partners',
+        'colour': '#e2445c',
+        'position': 0,
+      },
+    ];
+    addTearDown(() => folders = []);
+    await pumpBoard(
+      tester,
+      boards: [
+        {
+          ...board(
+            'b-a1',
+            'company',
+            'A-1 Chimney',
+            section: 'place',
+            companyId: 'c-1',
+            companyName: 'A-1 Chimney',
+          ),
+        },
+        {
+          ...board(
+            'b-cu',
+            'custom',
+            'Estimates follow-up',
+            section: 'place',
+            companyId: 'c-1',
+            companyName: 'A-1 Chimney',
+          ),
+          'folder_id': 'fo-1',
+          'colour': '#00c875',
+        },
+      ],
+    );
+    expect(inTree('FOLDERS'), findsOneWidget);
+    expect(inTree('Partners'), findsOneWidget);
+    expect(inTree('Estimates follow-up'), findsOneWidget);
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    // Under its folder, above the companies.
+    expect(y(inTree('Partners')), lessThan(y(row('b-cu'))));
+    expect(y(row('b-cu')), lessThan(y(row('b-a1'))));
+    final icon = tester.widget<Icon>(
+      find.descendant(of: row('b-cu'), matching: find.byType(Icon)).first,
+    );
+    expect(icon.color, EzBiziTheme.boardPalette[4]);
   });
 }

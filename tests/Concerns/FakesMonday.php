@@ -43,6 +43,8 @@ trait FakesMonday
         return match (true) {
             str_contains($query, '{ me ') => ['me' => $this->monday['me'] ?? ['id' => '1', 'name' => 'Jose Demasi', 'email' => 'jose@a-1chimney.com', 'account' => ['id' => 'acc1', 'name' => 'A-1 Group', 'slug' => 'a-1group']]],
             str_contains($query, 'users(') => ['users' => $this->monday['users']],
+            str_contains($query, 'workspaces(') => ['workspaces' => [['id' => '1']]],
+            str_contains($query, 'folders(') => ['folders' => $this->monday['folders'] ?? []],
             str_contains($query, 'next_items_page') => ['next_items_page' => ['cursor' => null, 'items' => []]],
             str_contains($query, 'items_page') => ['boards' => [['items_page' => ['cursor' => null, 'items' => array_map(
                 fn ($i) => ['id' => $i['id'], 'updated_at' => $i['updated_at'], 'subitems' => array_map(fn ($s) => ['id' => $s['id'], 'updated_at' => $s['updated_at']], $i['subitems'] ?? [])],
@@ -58,6 +60,7 @@ trait FakesMonday
             ))],
             str_contains($query, '{ id name groups') => ['boards' => array_map(fn ($id) => [
                 'id' => $id, 'name' => $boards[$id]['name'], 'groups' => $boards[$id]['groups'], 'columns' => $boards[$id]['columns'],
+                'views' => $boards[$id]['views'] ?? [], 'board_folder_id' => $boards[$id]['folder'] ?? null,
             ], array_values(array_filter(array_map('strval', $vars['b']), fn ($id) => isset($boards[$id]))))],
             str_contains($query, '{ id columns') => ['boards' => array_map(fn ($id) => ['id' => $id, 'columns' => $this->monday['subitem_columns'] ?? []], array_map('strval', $vars['b']))],
             default => [],

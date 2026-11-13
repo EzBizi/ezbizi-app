@@ -30,6 +30,7 @@ class ListQuery {
     this.sort = const [],
     this.people = const [],
     this.hidden = const [],
+    this.layout,
   });
 
   final bool any;
@@ -37,6 +38,10 @@ class ListQuery {
   final List<SortRule> sort;
   final List<String> people;
   final List<String> hidden;
+
+  /// A board view's layout (table, kanban, calendar, timeline); null leaves
+  /// the screen's own. Monday's saved views each have one.
+  final String? layout;
 
   bool get isEmpty =>
       filters.isEmpty && sort.isEmpty && people.isEmpty && hidden.isEmpty;
@@ -47,12 +52,14 @@ class ListQuery {
     List<SortRule>? sort,
     List<String>? people,
     List<String>? hidden,
+    String? layout,
   }) => ListQuery(
     any: any ?? this.any,
     filters: filters ?? this.filters,
     sort: sort ?? this.sort,
     people: people ?? this.people,
     hidden: hidden ?? this.hidden,
+    layout: layout ?? this.layout,
   );
 
   factory ListQuery.fromJson(Map? c) => ListQuery(
@@ -67,6 +74,7 @@ class ListQuery {
     ],
     people: [for (final p in (c?['people'] as List? ?? const [])) '$p'],
     hidden: [for (final h in (c?['hidden'] as List? ?? const [])) '$h'],
+    layout: c?['layout'] is String ? c!['layout'] as String : null,
   );
 
   Map<String, dynamic> toJson() => {
@@ -79,6 +87,7 @@ class ListQuery {
     ],
     'people': people,
     'hidden': hidden,
+    if (layout != null) 'layout': layout,
   };
 
   /// Whether [task] passes, with [owners] its people for the person filter.

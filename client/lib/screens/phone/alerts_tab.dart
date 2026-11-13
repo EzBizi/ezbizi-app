@@ -1,3 +1,4 @@
+import '../../core/mask.dart';
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -191,7 +192,9 @@ class _AlertsTabState extends State<AlertsTab> {
               children: [
                 Expanded(
                   child: Text(
-                    '${alert['message'] ?? ''}',
+                    open
+                        ? '${alert['message'] ?? ''}'
+                        : maskContacts('${alert['message'] ?? ''}'),
                     maxLines: open ? null : 2,
                     overflow: open ? null : TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(

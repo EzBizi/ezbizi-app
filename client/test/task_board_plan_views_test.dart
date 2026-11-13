@@ -204,6 +204,33 @@ void main() {
     },
   );
 
+  test(
+    'a formula speaks Monday: IF, VALUE, CONCATENATE, FLOOR, MOD, & and =',
+    () {
+      // Ohio PM's Total Cost (Monday audit 11-13).
+      const total = 'IF({paid}, (VALUE({price}) * 0.1) + {cost}, {cost})';
+      expect(
+        evalFormula(total, {'paid': true, 'price': '200', 'cost': 50}),
+        70,
+      );
+      expect(
+        evalFormula(total, {'paid': false, 'price': '200', 'cost': 50}),
+        50,
+      );
+      expect(
+        evalFormula('CONCATENATE(FLOOR({m} / 60), "h ", MOD({m}, 60), "m")', {
+          'm': 135,
+        }),
+        '2h 15m',
+      );
+      expect(evalFormula('{a} & "-" & {b}', {'a': 'OH', 'b': 7}), 'OH-7');
+      expect(evalFormula('{a} = "Done"', {'a': 'Done'}), true);
+      expect(evalFormula('ROUND({a}, 1)', {'a': 2.345}), 2.3);
+      expect(evalFormula('MOD({a}, 0)', {'a': 1}), isNull);
+      expect(evalFormula('EVAL(1)', const {}), isNull);
+    },
+  );
+
   testWidgets('the table shows currency, a formula and a group footer sum', (
     tester,
   ) async {

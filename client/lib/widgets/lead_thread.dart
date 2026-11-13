@@ -3590,7 +3590,12 @@ String leadWhen(String? iso) {
   if (ago.inHours < 24) return '${ago.inHours}h ago';
   if (ago.inDays < 7) return '${ago.inDays}d ago';
 
-  return formatCalendarDay(at);
+  // "Nov 5", with "'25" in an earlier year: a full 2026-11-05 did not fit
+  // the 62px list column and read as "2026-11-0" (Muse audit 9.12).
+  final day = '${shortMonths[at.month - 1]} ${at.day}';
+  return at.year == DateTime.now().year
+      ? day
+      : "$day '${(at.year % 100).toString().padLeft(2, '0')}";
 }
 
 /// A message's time of day, and how long ago while that is still today's

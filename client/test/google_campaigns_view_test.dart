@@ -114,7 +114,7 @@ void main() {
                 campaign('11', 'Cleveland Search'),
                 campaign(
                   '12',
-                  'Cleveland LSA',
+                  'LocalServicesCampaign:SystemGenerated:0006204bfbf2',
                   type: 'LOCAL_SERVICES',
                   bidding: 'MANUAL_CPA',
                   kind: null,
@@ -162,11 +162,11 @@ void main() {
       'g1',
       reason: 'a manager account holds no campaigns',
     );
-    expect(find.text('Local Services'), findsOneWidget);
+    expect(find.textContaining('Local Services'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('google-on-12')));
     await tester.pumpAndSettle();
-    expect(find.text('Turn on Cleveland LSA?'), findsOneWidget);
+    expect(find.text('Turn on Local Services · A1 Chimney - Cleveland?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(posted('status'), isEmpty);
@@ -220,6 +220,20 @@ void main() {
     expect(lsaWeekly(28571.43), 200000);
     expect(lsaWeekly(857.14), 6000);
     expect(lsaWeekly(29.93), 209.51);
+  });
+
+  // UI/UX audit 2026-11-13 §9.11: no raw system id as a campaign's name.
+  testWidgets("a Local Services campaign is named for its account, Google's name behind it", (tester) async {
+    await open(tester, permissions: manage);
+
+    final name = find.byKey(const ValueKey('google-name-12'));
+    expect(tester.widget<Text>(name).data, 'Local Services · A1 Chimney - Cleveland');
+    expect(find.textContaining('SystemGenerated'), findsNothing);
+    expect(
+      find.ancestor(of: name, matching: find.byWidgetPredicate((w) => w is Tooltip && w.message!.contains('SystemGenerated'))),
+      findsOneWidget,
+    );
+    expect(tester.widget<Text>(find.byKey(const ValueKey('google-name-11'))).data, 'Cleveland Search');
   });
 
   testWidgets('a Local Services budget reads and saves per week', (tester) async {

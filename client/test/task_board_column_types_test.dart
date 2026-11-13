@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/task_board_columns.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +20,7 @@ void main() {
     name: 'Description',
     type: type,
     unit: null,
+    max: null,
     options: options,
     format: 'plain',
     footer: 'none',
@@ -190,5 +192,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(changes, ['new']);
     expect(find.byType(TextField), findsNothing);
+  });
+
+  testWidgets("hovering a People cell's face opens that person's card", (
+    tester,
+  ) async {
+    final asked = <String>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        asked.add(request.url.path);
+        return http.Response(
+          jsonEncode({
+            'data': {'id': 'u-2', 'name': 'Tobin Marsh', 'title': 'Tech'},
+          }),
+          200,
+          headers: const {'content-type': 'application/json'},
+        );
+      }),
+    );
+    await pump(
+      tester,
+      SizedBox(
+        width: 240,
+        child: ColumnCell(
+          column: column('people'),
+          value: const ['u-2'],
+          people: const {'u-2': 'Tobin Marsh'},
+          formats: DisplayFormats.fallback,
+          api: api,
+          boardId: 'b-1',
+        ),
+      ),
+    );
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(
+      tester.getCenter(find.byKey(const ValueKey('people-face-u-2'))),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(asked.single, endsWith('/task-boards/b-1/people/u-2'));
+    expect(find.byKey(const ValueKey('person-card-u-2')), findsOneWidget);
   });
 }

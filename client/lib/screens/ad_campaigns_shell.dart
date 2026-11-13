@@ -198,13 +198,16 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
     );
   }
 
+  /// The name a campaign is shown under; a source may rename system names.
+  String titleOf(Map<String, dynamic> c) => '${c['name']}';
+
   Future<void> _editSchedule(Map<String, dynamic> c) async {
     final changed = await editAdSchedule(
       context,
       api: widget.api,
       connectionId: account!,
       objectId: '${c['id']}',
-      objectName: '${c['name']}',
+      objectName: titleOf(c),
       schedule: schedules['${c['id']}'],
       canManage: canManage,
     );
