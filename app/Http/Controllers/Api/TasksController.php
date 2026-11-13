@@ -14,6 +14,7 @@ use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Support\Ai\GrokCli;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Files\UploadLimits;
 use App\Support\Tasks\SensitiveTasks;
@@ -195,6 +196,43 @@ class TasksController extends Controller
         $copy = $this->writer->copy($task, $group, $request->user());
 
         return response()->json(['data' => self::present($copy->fresh(self::WITH)->loadCount(self::counts()))], 201);
+    }
+
+    /**
+     * POST tasks/{task}/suggest-label {column_id?}: the AI picks the label that
+     * fits the task's name and latest updates (Monday's "Auto-assign labels").
+     * Without column_id it picks a board status. Answers {id: null} when the AI
+     * is off, the task is sensitive, or nothing fits; it never writes.
+     */
+    public function suggestLabel(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('update', $task);
+        $input = $request->validate(['column_id' => ['sometimes', 'nullable', 'uuid']]);
+        $board = $task->board;
+        if (($input['column_id'] ?? null) !== null) {
+            $column = $board->columns()->whereKey($input['column_id'])->whereIn('type', ['status', 'dropdown'])->firstOrFail();
+            $labels = collect($column->settings['options'] ?? [])
+                ->reject(fn ($o) => ($o['retired'] ?? false) === true)
+                ->mapWithKeys(fn ($o) => [(string) $o['id'] => (string) ($o['label'] ?? '')]);
+        } else {
+            $labels = $board->statuses()->get()->mapWithKeys(fn ($s) => [(string) $s->id => (string) $s->name]);
+        }
+        if ($task->sensitive || $labels->isEmpty() || ! GrokCli::configured()) {
+            return response()->json(['data' => ['id' => null]]);
+        }
+
+        $updates = $task->updates()->limit(5)->pluck('body')->map(fn ($b) => '- '.mb_substr(strip_tags((string) $b), 0, 400))->implode("\n");
+        $prompt = "Pick the one label that best fits this task, or null if none clearly fits.\n"
+            ."Labels (id: name):\n".$labels->map(fn ($n, $id) => "$id: $n")->implode("\n")
+            ."\n\nTask: ".$task->title."\nLatest updates:\n".($updates !== '' ? $updates : '(none)');
+        try {
+            $answer = GrokCli::ask($prompt, ['type' => 'object', 'properties' => ['id' => ['type' => ['string', 'null']]], 'required' => ['id']], 60);
+        } catch (\RuntimeException) {
+            return response()->json(['data' => ['id' => null]]);
+        }
+        $id = isset($answer['id']) && $labels->has((string) $answer['id']) ? (string) $answer['id'] : null;
+
+        return response()->json(['data' => ['id' => $id]]);
     }
 
     /** POST tasks/{id}/restore: undo a delete. */
