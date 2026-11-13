@@ -493,6 +493,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // Jose 11-13: dragging left made the column grow rightwards in place,
+  // because the stretchy Task column ate every change. The edge must follow
+  // the pointer, as in Monday.
+  for (final dx in [-20.0, 50.0]) {
+    testWidgets('a column edge follows the pointer ($dx)', (tester) async {
+      await pump(tester, width: 2400, columns: 3);
+      final handles = find.byWidgetPredicate(
+        (w) =>
+            w.key is ValueKey &&
+            '${(w.key as ValueKey).value}'.startsWith('column-resize-'),
+      );
+      // The status column and the last column on the row, in the first
+      // group's headings.
+      for (final handle in [
+        find.byKey(const ValueKey('column-resize-status')).first,
+        handles.last,
+      ]) {
+        final before = tester.getRect(handle);
+        final g = await tester.startGesture(
+          before.center,
+          kind: PointerDeviceKind.mouse,
+        );
+        for (var i = 0; i < 10; i++) {
+          await g.moveBy(Offset(dx / 10, 0));
+          await tester.pump();
+        }
+        expect(
+          tester.getRect(handle).center.dx,
+          closeTo(before.center.dx + dx, 2),
+        );
+        await g.up();
+        await tester.pumpAndSettle();
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('a column is edited in the task\'s panel by its type', (
     tester,
   ) async {
