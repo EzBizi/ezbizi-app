@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -1966,6 +1968,73 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
     ),
   );
 
+  /// What a copied cell carries: text as typed, anything else as JSON so a
+  /// paste into the same kind of column puts back the same value.
+  String _copyText(Object? v) => switch (v) {
+    null => '',
+    String s => s,
+    num n => '$n',
+    _ => jsonEncode(v),
+  };
+
+  Object? _pasteValue(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return null;
+    switch (widget.column.type) {
+      case 'number' || 'currency' || 'rating':
+        return num.tryParse(t.replaceAll(RegExp(r'[,$\s]'), ''));
+      case 'text' || 'long_text' || 'email' || 'phone' || 'url':
+        return t;
+    }
+    try {
+      return jsonDecode(t);
+    } on FormatException {
+      return t;
+    }
+  }
+
+  /// Right-click on a cell: Copy, Paste, Clear (Monday's cell menu).
+  Future<void> _menu(Offset at) async {
+    final box = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        at & const Size(1, 1),
+        Offset.zero & box.size,
+      ),
+      items: const [
+        PopupMenuItem(
+          key: Key('cell-rc-copy'),
+          value: 'copy',
+          height: 36,
+          child: Text('Copy'),
+        ),
+        PopupMenuItem(
+          key: Key('cell-rc-paste'),
+          value: 'paste',
+          height: 36,
+          child: Text('Paste'),
+        ),
+        PopupMenuItem(
+          key: Key('cell-rc-clear'),
+          value: 'clear',
+          height: 36,
+          child: Text('Clear'),
+        ),
+      ],
+    );
+    switch (choice) {
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: _copyText(widget.value)));
+      case 'paste':
+        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        final v = _pasteValue(data?.text ?? '');
+        if (v != null) widget.onChanged(v);
+      case 'clear':
+        widget.onChanged(null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final key = ValueKey('column-cell-edit-${widget.column.id}');
@@ -1995,6 +2064,7 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
         child: InkWell(
           key: key,
           onTap: _editing ? null : _start,
+          onSecondaryTapDown: _editing ? null : (d) => _menu(d.globalPosition),
           child: SizedBox.expand(
             child: Align(alignment: Alignment.centerLeft, child: widget.child),
           ),
