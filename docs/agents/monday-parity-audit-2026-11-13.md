@@ -44,18 +44,18 @@ Read-only on Monday. Sources, all measured 2026-11-13 as Jose (owner on every ta
 | date (Due Date) | due date | exists |
 | date (others) | `date`; "with time" (Toula's Due Date only) → due date | exists |
 | timeline | `timeline` (the one called Timeline also sets the due date when there is none, as on 11-12) | exists |
-| numbers ($ unit) / numbers / rating | `currency` / `number` (+ unit) / `number` | exists; **rating: GAP, UI-UX building** |
+| numbers ($ unit) / numbers / rating | `currency` / `number` (+ unit) / `rating` (max from Monday) | exists (rating: 4d849c594) |
 | checkbox | `checkbox` | exists (was NULL) |
 | link | `url` (Monday's link text dropped) | exists |
 | email / phone | `email` / `phone` | exists |
 | long_text | `long_text` | exists |
 | text | `text` | exists |
-| formula | text snapshot of Monday's `display_value`; formula kept in `settings.monday_formula` | **GAP: formula engine/syntax (UI-UX)**. Ohio PM `IF({Production job}, VALUE({Job Amount})*0.1 + {Job Cost}, {Job Cost})`; All Calls `CONCATENATE(FLOOR(dur/60)…)` |
-| mirror (Adeline "Subitems Link") | text snapshot | **GAP: mirror** |
-| board_relation (All Calls ×10, Users, Bar's board ×3 via automations) | text snapshot | **GAP: connect boards** |
-| dependency (Everdoors Brand/MA, 3 templates) | text snapshot of the names | **GAP: dependency** (+ its automation, §4 J) |
-| file (Bar "Item Locations", All Calls, Ohio PM subitems) | files on one update "Files from Monday" | **GAP: files column (UI-UX building)** |
-| creation_log / last_updated / item_id | the task's own created / updated (no column) | exists (UI-UX adding the columns) |
+| formula | `formula`, `settings.expression` = Monday's formula with each {column id} as [column name] (Monday's text kept in `monday_formula`) | exists (4d849c594, ships 0.0.0572). Ohio PM `IF([Production job], (VALUE([Job Amount]) * 0.1) + [Job Cost], [Job Cost])` |
+| mirror (Adeline "Subitems Link") | text snapshot: it mirrors through subitems, which a Mirror column here cannot name | partial (the `mirror` type exists for connect columns) |
+| board_relation (All Calls ×10, Users, Bar's board ×3 via automations) | `connect`: the tasks carrying the linked Monday items (filled on a later run when the other board arrives) | exists (4d849c594) |
+| dependency (Everdoors Brand/MA, 3 templates) | `dependency`: the tasks on the same board | exists (4d849c594); its automation (§4 J) is a GAP |
+| file (Bar "Item Locations", All Calls, Ohio PM subitems) | `files`: the attachments carried on the item's "Files from Monday" update | exists (4d849c594) |
+| creation_log / last_updated / item_id | `creation_log` / `last_updated` columns (read from the task); item id skipped | exists (4d849c594) |
 | subtasks | subtasks; subitem-only columns become board columns | exists |
 | Item description | — | **GAP (UI-UX)**: none of the probed items had one |
 | Update replies | flattened "↳" updates | **GAP: threaded replies (UI-UX)** |
@@ -137,6 +137,53 @@ person's board; a board whose owner has no account → a custom board of the sam
 branch. NW - Nationwide → its own board, as on Monday. Templates (3) skipped. Archived items:
 unreadable by the API, skipped. Sensitive items (logins, bank, card) imported and locked.
 The per-board appendix lists each board's columns, labels and automations.
+
+### Dry run on prod, 2026-11-13 (branch code, every chunk rolled back)
+
+Read live through the Monday connection; nothing kept. 32,076 Monday items on 39 boards: 2,192 open + 29,630 done tasks new here, 3,313 subtasks, 78,141 updates, 4,619 files (7.6 GB), 110 items marked Sensitive, 119 rows of the 11-03 run restored. Assignees with no account (deleted Monday users, Nehorai, Moshe, Ron, Jeanette, Melissa…) are kept as "Assigned in Monday: <name>" on the task (12,864, of which NW 12,484). NW took 65 minutes. Structural counts per board (statuses/groups/columns made) are omitted: each rolled-back chunk made them again.
+
+| Board | Monday items | Tasks | Subtasks | Updates | Files | Sensitive |
+|---|---|---|---|---|---|---|
+| Jose Demasi | 102 | already here (226 skipped, blanks filled 0) | 0 | 0 | 0 / 0 MB | 0 |
+| Rodrigo Mena | 62 | already here (137 skipped, blanks filled 0) | 0 | 0 | 0 / 0 MB | 0 |
+| Analorena - Business Relations | 47 | already here (117 skipped, blanks filled 38) | 0 | 0 | 0 / 0 MB | 0 |
+| Adeline - Customer Relations | 2 | 2 open / 0 done | 0 | 0 | 0 / 0 MB | 0 |
+| Brian Scheets - Recruiting | 40 | already here (43 skipped, blanks filled 0) | 0 | 0 | 0 / 0 MB | 0 |
+| Jonathan - Recruiting | 3 | already here (6 skipped, blanks filled 0) | 0 | 0 | 0 / 0 MB | 0 |
+| Shoval - All Operations | 177 | 47 open / 130 done | 448 | 456 | 174 / 211 MB | 25 |
+| Chaim - All Operations | 106 | 51 open / 55 done | 701 | 573 | 208 / 520 MB | 0 |
+| Bar - All Operations | 116 | 12 open / 104 done | 109 | 262 | 170 / 711 MB | 5 |
+| Merav - All Operation | 199 | 94 open / 105 done | 339 | 618 | 858 / 998 MB | 8 |
+| Eve Sarfaty - HR | 238 | 62 open / 176 done | 381 | 898 | 438 / 538 MB | 6 |
+| Netanel - Georgia | 32 | 20 open / 12 done | 64 | 96 | 101 / 62 MB | 2 |
+| Rotem - Texas | 52 | 17 open / 35 done | 117 | 227 | 204 / 507 MB | 3 |
+| Meni - New Jersey | 46 | 20 open / 26 done | 124 | 172 | 158 / 508 MB | 0 |
+| 18393449992 | — | dry run read nothing: Monday answers an archived board only with state:all (fixed after the run) |||||
+| Liraz - DMV | 32 | 19 open / 13 done | 33 | 74 | 92 / 56 MB | 1 |
+| Nehorai - Connecticut | 44 | 20 open / 24 done | 72 | 215 | 108 / 63 MB | 1 |
+| Illinois | 48 | 20 open / 28 done | 74 | 120 | 110 / 92 MB | 2 |
+| Ohio | 42 | 16 open / 26 done | 61 | 194 | 202 / 158 MB | 1 |
+| Ron - Massachusetts | 22 | 22 open / 0 done | 8 | 20 | 18 / 27 MB | 1 |
+| Yosef | 29 | 19 open / 10 done | 98 | 77 | 348 / 996 MB | 5 |
+| NW - Nationwide | 24662 | 833 open / 23829 done | 22 | 57175 | 299 / 215 MB | 9 |
+| IL - Illinois | 1447 | 71 open / 1376 done | 42 | 4826 | 95 / 75 MB | 0 |
+| OH - Ohio | 791 | 77 open / 714 done | 12 | 2356 | 43 / 10 MB | 0 |
+| NJ - New Jersey | 947 | 27 open / 920 done | 5 | 2780 | 31 / 16 MB | 1 |
+| CT - Connecticut | 615 | 30 open / 585 done | 10 | 1783 | 33 / 8 MB | 1 |
+| DMV | 307 | 18 open / 289 done | 1 | 895 | 14 / 2 MB | 0 |
+| TX- Texas | 325 | 19 open / 306 done | 0 | 961 | 15 / 8 MB | 5 |
+| GA - Georgia | 326 | 21 open / 305 done | 1 | 1095 | 13 / 6 MB | 3 |
+| MA - Massachusetts | 134 | 10 open / 124 done | 0 | 320 | 2 / 3 MB | 0 |
+| Outgoing Calls | 428 | 207 open / 221 done | 0 | 624 | 2 / 0 MB | 0 |
+| Ohio Project Management | 167 | 152 open / 15 done | 0 | 107 | 0 / 0 MB | 0 |
+| Illinois Project Management | 116 | 84 open / 32 done | 0 | 265 | 0 / 0 MB | 0 |
+| Washingtom | 28 | 18 open / 10 done | 19 | 52 | 50 / 38 MB | 1 |
+| A1 - Operatrion | 137 | 44 open / 93 done | 319 | 507 | 230 / 478 MB | 10 |
+| Everdoors - Operation | 92 | 44 open / 48 done | 161 | 188 | 512 / 1203 MB | 4 |
+| Everdoors - Brand | 16 | 5 open / 11 done | 0 | 19 | 1 / 0 MB | 2 |
+| Everdoors - MA Franchise | 24 | 19 open / 5 done | 0 | 19 | 0 / 0 MB | 2 |
+| Triplex Group - Files | 27 | 27 open / 0 done | 81 | 113 | 83 / 111 MB | 12 |
+| Sharper - Rise-OFFICE | 48 | 45 open / 3 done | 11 | 54 | 7 / 8 MB | 0 |
 
 ## 6. Run order (the desk, after merging and deploying)
 

@@ -28,7 +28,8 @@ final class MondayBoardReader
      */
     private const CV = 'column_values { id type text value ... on StatusValue { index label } ... on TimelineValue { from to } ... on DateValue { date time } ... on PeopleValue { persons_and_teams { id kind } }'
         .' ... on DropdownValue { values { id label } } ... on TagsValue { tags { id name } } ... on CheckboxValue { checked }'
-        .' ... on MirrorValue { display_value } ... on BoardRelationValue { display_value } ... on DependencyValue { display_value }'
+        .' ... on MirrorValue { display_value } ... on BoardRelationValue { display_value linked_item_ids } ... on DependencyValue { display_value linked_item_ids }'
+        .' ... on LocationValue { address lat lng }'
         .' ... on FormulaValue { display_value } ... on EmailValue { email } ... on PhoneValue { phone } ... on LinkValue { url url_text }'
         .' ... on FileValue { files { ... on FileAssetValue { asset { id name file_extension file_size public_url } } ... on FileLinkValue { name url } } } }';
 
@@ -53,10 +54,12 @@ final class MondayBoardReader
     public const TYPES = [
         'status' => 'status', 'color' => 'status', 'dropdown' => 'tags', 'tags' => 'tags',
         'people' => 'people', 'multiple-person' => 'people', 'date' => 'date', 'timeline' => 'timeline', 'timerange' => 'timeline',
-        'numbers' => 'number', 'numeric' => 'number', 'rating' => 'number', 'checkbox' => 'checkbox', 'boolean' => 'checkbox',
+        'numbers' => 'number', 'numeric' => 'number', 'rating' => 'rating', 'checkbox' => 'checkbox', 'boolean' => 'checkbox',
         'link' => 'url', 'email' => 'email', 'phone' => 'phone', 'long_text' => 'long_text', 'long-text' => 'long_text', 'text' => 'text',
-        'name' => null, 'subtasks' => null, 'file' => null, 'creation_log' => null, 'last_updated' => null, 'item_id' => null,
-        'pulse-id' => null, 'button' => null,
+        // Monday's remaining types (UI-UX, 4d849c594 / 0.0.0572).
+        'location' => 'location', 'file' => 'files', 'formula' => 'formula', 'board_relation' => 'connect', 'dependency' => 'dependency',
+        'creation_log' => 'creation_log', 'last_updated' => 'last_updated',
+        'name' => null, 'subtasks' => null, 'item_id' => null, 'pulse-id' => null, 'button' => null,
     ];
 
     /** @var array<string, string> board id => the people column whose people are the task's assignees */
@@ -158,8 +161,14 @@ final class MondayBoardReader
                 }
             }
             if ($m['type'] === 'formula') {
-                // Kept for the Task Board's own formula, when it reads Monday's syntax; shown as Monday's words until then.
-                $settings['monday_formula'] = (string) ($m['settings']['formula'] ?? '');
+                // Monday's syntax, each {column id} as [the column's name here] (UI-UX's formula, 4d849c594).
+                $formula = (string) ($m['settings']['formula'] ?? '');
+                $settings['monday_formula'] = $formula;
+                $settings['expression'] = mb_substr((string) preg_replace_callback('/\{([a-z0-9_]+)\}/i',
+                    fn ($x) => isset($meta[$x[1]]) ? '['.self::title($meta[$x[1]], $order).']' : $x[0], $formula), 0, 2000);
+            }
+            if ($m['type'] === 'rating') {
+                $settings['max'] = max(1, min(10, (int) ($m['settings']['limit'] ?? $m['settings']['max'] ?? 5)));
             }
             if ($type === 'text' && ! in_array($m['type'], ['text'], true)) {
                 $settings['monday_type'] = $m['type'];
@@ -475,12 +484,18 @@ final class MondayBoardReader
             $options = fn () => ['options' => array_map(fn ($l) => ['id' => $l['id'], 'label' => $l['label'], 'colour' => $l['colour']], self::labels($m))];
 
             if ($m['type'] === 'file') {
+                $names = [];
                 foreach ($c['files'] ?? [] as $f) {
                     if (isset($f['asset']['id'])) {
                         $files[] = ['monday_id' => (string) $f['asset']['id'], 'name' => (string) $f['asset']['name'],
                             'ext' => mb_strtolower((string) ($f['asset']['file_extension'] ?? '')), 'size' => (int) ($f['asset']['file_size'] ?? 0),
                             'url' => $f['asset']['public_url'] ?? null];
+                        $names[] = (string) $f['asset']['name'];
                     }
+                }
+                if ($names !== []) {
+                    // The files come on the "Files from Monday" update; the column names them (MondayImport::fileColumns).
+                    $out['columns'][$title] = $typed('files', $names);
                 }
 
                 continue;
@@ -488,6 +503,30 @@ final class MondayBoardReader
 
             switch ($type) {
                 case null:
+                case 'formula': // worked out here from the other columns
+                case 'creation_log':
+                case 'last_updated':
+                    break;
+                case 'rating':
+                    $n = json_decode((string) ($c['value'] ?? ''), true)['rating'] ?? null;
+                    if (is_numeric($n)) {
+                        $out['columns'][$title] = $typed('rating', (int) $n);
+                    }
+                    break;
+                case 'location':
+                    $address = trim((string) ($c['address'] ?? $text));
+                    if ($address !== '') {
+                        $out['columns'][$title] = $typed('location', ['address' => $address,
+                            'lat' => is_numeric($c['lat'] ?? null) ? (float) $c['lat'] : null, 'lng' => is_numeric($c['lng'] ?? null) ? (float) $c['lng'] : null]);
+                    }
+                    break;
+                case 'connect':
+                case 'dependency':
+                    // Monday item ids; the import names the tasks that carry them (monday:<id>).
+                    $linked = array_values(array_map('strval', (array) ($c['linked_item_ids'] ?? [])));
+                    if ($linked !== []) {
+                        $out['columns'][$title] = $typed($type, $linked);
+                    }
                     break;
                 case 'people':
                     $people = $emails($c);
@@ -570,7 +609,7 @@ final class MondayBoardReader
         }
 
         if ($files !== []) {
-            // A file column has no column here (yet): its files arrive on one update, "Files from Monday".
+            // A file column's files arrive on one update, "Files from Monday"; the Files column then names them.
             $out['updates'][] = ['monday_id' => 'files.'.$item['id'], 'author_email' => $out['creator_email'], 'author_name' => null,
                 'created_at' => $item['created_at'] ?? null, 'body' => 'Files from Monday', 'files' => $files, 'replies' => []];
         }

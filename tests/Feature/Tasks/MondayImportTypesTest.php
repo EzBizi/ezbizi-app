@@ -101,6 +101,10 @@ class MondayImportTypesTest extends TestCase
             ['id' => 'long1', 'title' => 'Notes', 'type' => 'long_text', 'settings_str' => '{}'],
             ['id' => 'file1', 'title' => 'Files', 'type' => 'file', 'settings_str' => '{}'],
             ['id' => 'creation1', 'title' => 'Creation log', 'type' => 'creation_log', 'settings_str' => '{}'],
+            ['id' => 'location1', 'title' => 'Place', 'type' => 'location', 'settings_str' => '{}'],
+            ['id' => 'rating1', 'title' => 'Stars', 'type' => 'rating', 'settings_str' => '{"limit":5}'],
+            ['id' => 'connect1', 'title' => 'Related', 'type' => 'board_relation', 'settings_str' => '{}'],
+            ['id' => 'item1', 'title' => 'Item ID', 'type' => 'item_id', 'settings_str' => '{}'],
         );
         $item = $this->mondayItem('11', 'Order the liner', $updatedAt);
         array_push($item['column_values'],
@@ -114,6 +118,10 @@ class MondayImportTypesTest extends TestCase
             ['id' => 'long1', 'type' => 'long_text', 'text' => "Two lines\nof notes", 'value' => null],
             ['id' => 'file1', 'type' => 'file', 'text' => '', 'value' => null, 'files' => []],
             ['id' => 'creation1', 'type' => 'creation_log', 'text' => '2026-11-01', 'value' => null],
+            ['id' => 'location1', 'type' => 'location', 'text' => '1 Main St, Columbus', 'value' => null, 'address' => '1 Main St, Columbus', 'lat' => '39.96', 'lng' => '-83.1'],
+            ['id' => 'rating1', 'type' => 'rating', 'text' => '4', 'value' => '{"rating":4}'],
+            ['id' => 'connect1', 'type' => 'board_relation', 'text' => null, 'value' => null, 'display_value' => 'Order the liner', 'linked_item_ids' => ['11']],
+            ['id' => 'item1', 'type' => 'item_id', 'text' => '11', 'value' => null],
         );
         $board['items'] = [$item + ['_board' => '100']];
 
@@ -150,8 +158,11 @@ class MondayImportTypesTest extends TestCase
         $types = $this->inTenant($this->tenant['org'], fn () => TaskColumn::query()->orderBy('position')->pluck('type', 'name')->all());
         $this->assertSame([
             'Area' => 'status', 'Skills' => 'tags', 'Production job' => 'checkbox', 'Job Cost' => 'currency', 'Link' => 'url',
-            'Total Cost' => 'text', 'Helper' => 'people', 'Notes' => 'long_text',
-        ], $types, 'Monday order; no column for name, status, Person, Due Date, files or the creation log');
+            'Total Cost' => 'formula', 'Helper' => 'people', 'Notes' => 'long_text', 'Files' => 'files', 'Creation log' => 'creation_log',
+            'Place' => 'location', 'Stars' => 'rating', 'Related' => 'connect',
+        ], $types, 'Monday order; no column for name, status, Person, Due Date or item id');
+        $this->assertSame('[Job Cost] * 1.1', $this->column('Total Cost')->settings['expression'], 'Monday\'s formula, its column ids as names here');
+        $this->assertSame(5, $this->column('Stars')->settings['max']);
 
         $area = $this->column('Area');
         $this->assertSame([['monday-0', 'Connecticut', '#ff642e'], ['monday-1', 'Ohio', '#00c875']],
@@ -165,10 +176,13 @@ class MondayImportTypesTest extends TestCase
             'Production job' => true,
             'Job Cost' => 1250.0,
             'Link' => 'https://example.com/q',
-            'Total Cost' => '1375',
             'Helper' => [$this->jose->id],
             'Notes' => "Two lines\nof notes",
-        ], array_intersect_key($this->values(), array_flip(['Area', 'Skills', 'Production job', 'Job Cost', 'Link', 'Total Cost', 'Helper', 'Notes'])));
+            'Place' => ['address' => '1 Main St, Columbus', 'lat' => 39.96, 'lng' => -83.1],
+            'Stars' => 4,
+            'Related' => [$this->inTenant($this->tenant['org'], fn () => Task::query()->where('external_ref', 'monday:11')->value('id'))],
+        ], array_intersect_key($this->values(), array_flip(['Area', 'Skills', 'Production job', 'Job Cost', 'Link', 'Helper', 'Notes', 'Place', 'Stars', 'Related'])));
+        $this->assertArrayNotHasKey('Total Cost', $this->values(), 'a formula works itself out; nothing stored');
 
         $board = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
         $statuses = $this->inTenant($this->tenant['org'], fn () => TaskStatus::query()->where('board_id', $board->id)->get()->keyBy('name'));

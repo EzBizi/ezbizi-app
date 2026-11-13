@@ -297,6 +297,7 @@ final class MondayImport
             $this->owners($board, $item['people'] ?? []);
             $this->assignedInMonday($existing, $as);
             $this->updates($existing, $item, $as);
+            $this->fileColumns($existing, $board, $item, $as);
             $this->markSensitive($existing, $item, $parent, $as);
 
             return $existing;
@@ -318,6 +319,7 @@ final class MondayImport
         $this->assignedInMonday($task, $as);
 
         $this->updates($task, $item, $as);
+        $this->fileColumns($task, $board, $item, $as);
         $this->markSensitive($task, $item, $parent, $as);
 
         return $task;
@@ -533,6 +535,30 @@ final class MondayImport
             }
         }
         $this->asText = [];
+    }
+
+    /**
+     * A Monday file column: its files came on the task's "Files from Monday"
+     * update (they must be attachments before a Files value can name them);
+     * the column then lists them, by name. A value set here stays.
+     */
+    private function fileColumns(Task $task, TaskBoard $board, array $item, User $as): void
+    {
+        foreach ($item['columns'] ?? [] as $title => $value) {
+            if (! is_array($value) || ($value['type'] ?? null) !== 'files' || $this->dry) {
+                continue;
+            }
+            $column = $this->column($board, (string) $title, 'files');
+            if ($column->type !== 'files' || TaskColumnValue::query()->where('task_id', $task->id)->where('column_id', $column->id)->exists()) {
+                continue;
+            }
+            $update = TaskUpdate::query()->where('external_ref', 'monday:files.'.$item['monday_id'])->first();
+            $ids = $update ? $update->attachments()->whereIn('original_name', (array) $value['value'])->pluck('id')->map(fn ($id) => (string) $id)->all() : [];
+            if ($ids !== []) {
+                $this->writer->update($task->load('board'), ['values' => [$column->id => $ids]], $as);
+                $this->quietly($task->refresh(), ['external_synced_at' => now(), 'updated_at' => now()]);
+            }
+        }
     }
 
     private function updates(Task $task, array $item, User $as): void
@@ -924,7 +950,12 @@ final class MondayImport
             'timeline' => is_array($value) && isset($value['from'], $value['to']) ? $value : null,
             'text' => mb_substr($words($value), 0, 5000),
             'long_text' => mb_substr($words($value), 0, 20000),
-            'formula' => null,
+            'rating' => is_numeric($value) ? (int) $value : null,
+            'location' => is_array($value) && ! empty($value['address']) ? $value : (is_string($value) && trim($value) !== '' ? ['address' => trim($value), 'lat' => null, 'lng' => null] : null),
+            // Monday item ids → the tasks carrying them; one not imported yet is filled on a later run.
+            'connect', 'dependency' => Task::query()->whereIn('external_ref', array_map(fn ($id) => 'monday:'.$id, array_map('strval', (array) $value)))
+                ->when($column->type === 'dependency', fn ($q) => $q->where('board_id', $board->id))->pluck('id')->all() ?: null,
+            'formula', 'mirror', 'creation_log', 'last_updated', 'files' => null, // computed, or written after the files arrive (fileColumns)
             default => is_string($value) ? trim($value) : null,
         };
         if ($candidate === null || $candidate === '') {

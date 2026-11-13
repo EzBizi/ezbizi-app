@@ -735,7 +735,9 @@ class TaskWriter
                     // In the task's own organization: a command's outer transaction can commit after its tenant run ended.
                     DB::afterCommit(fn () => app(TenantContext::class)->run(
                         Organization::query()->withoutGlobalScopes()->findOrFail($task->organization_id),
-                        fn () => $this->events->emit('task.column_changed', $task, $payload),
+                        // emitAfterCommit, not emit: with no transaction open it emits now, and an
+                        // import's silenced emitter (MondayImport) still silences it.
+                        fn () => $this->events->emitAfterCommit('task.column_changed', $task, $payload),
                     ));
                 }
             }
