@@ -528,7 +528,64 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     return groups;
   }
 
+  // ── Group by (Monday parity, Jose 11-13) ─────────────────────────
+
+  /// The field the table is grouped by instead of the board's groups; null
+  /// shows the board's own groups.
+  String? _groupBy;
+
+  /// One value of [_groupBy] for [t]: its first id, or its text or day.
+  String _groupValue(_Json t) => _valueOf(_groupBy, t);
+
+  /// One value of field [key] for [t], as Group by and Filter… read it.
+  String _valueOf(String? key, _Json t) {
+    final f = _filterFields[key];
+    if (f == null) return '';
+    final v = f.read(t);
+    if (v is List) return v.isEmpty ? '' : '${v.first}';
+    if (v is bool) return v ? 'true' : '';
+    if (v == null) return '';
+    final text = '$v'.trim();
+    return f.kind == 'date' && text.length > 10 ? text.substring(0, 10) : text;
+  }
+
+  /// The groups the table draws: the board's own, or one per value of
+  /// [_groupBy] (ids `by:<value>`, which nothing can write to).
+  List<_Json> _shownGroups() {
+    final f = _filterFields[_groupBy];
+    if (f == null) return _groups(_board!);
+    final names = {for (final (id, label) in f.options) id: label};
+    final values = <String>{
+      for (final t in _tasks)
+        if (t['parent_task_id'] == null) _groupValue(t),
+    };
+    final ordered = [
+      for (final (id, _) in f.options)
+        if (values.contains(id)) id,
+      ...(values.where((v) => v.isNotEmpty && !names.containsKey(v)).toList()
+        ..sort()),
+    ];
+    return [
+      for (final v in ordered)
+        {
+          'id': 'by:$v',
+          'name': f.kind == 'checkbox' ? 'Ticked' : (names[v] ?? v),
+          'colour': null,
+          'virtual': true,
+        },
+      if (values.contains(''))
+        {'id': 'by:', 'name': 'No ${f.label}', 'colour': null, 'virtual': true},
+    ];
+  }
+
   List<_Json> _tasksIn(Object? groupId) {
+    if (groupId is String && groupId.startsWith('by:')) {
+      final v = groupId.substring(3);
+      return _filter.sorted([
+        for (final t in _tasks)
+          if (t['parent_task_id'] == null && _groupValue(t) == v) t,
+      ], _filterFields);
+    }
     final ids = (_board?['groups'] as List? ?? const [])
         .map((g) => (g as Map)['id'])
         .toSet();
@@ -1375,8 +1432,85 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
   }
 
+  /// The values [field] holds on this board, with their labels, for the
+  /// header's Filter… menu.
+  List<(String, String)> _valuesIn(String field) {
+    final f = _filterFields[field];
+    if (f == null) return const [];
+    final names = {for (final (id, label) in f.options) id: label};
+    final seen = <String>{
+      for (final t in _tasks)
+        if (t['parent_task_id'] == null) _valueOf(field, t),
+    }..remove('');
+    return [
+      for (final (id, label) in f.options)
+        if (seen.contains(id)) (id, label),
+      for (final v
+          in (seen.where((v) => !names.containsKey(v)).toList()..sort()))
+        (v, f.kind == 'checkbox' ? 'Ticked' : v),
+    ].take(30).toList();
+  }
+
+  /// The rule on [field] made from the header or a cell, in place of any
+  /// earlier one on it.
+  void _filterTo(String field, String value) => setState(
+    () => _filter = _filter.copyWith(
+      filters: [
+        for (final r in _filter.filters)
+          if (r.field != field) r,
+        (
+          field: field,
+          op: 'is',
+          value: switch (_filterFields[field]?.kind) {
+            'options' || 'people' => [value],
+            'checkbox' => value == 'true',
+            _ => value,
+          },
+        ),
+      ],
+    ),
+  );
+
+  bool _filteredOn(String field) =>
+      _filter.filters.any((r) => r.field == field);
+
+  void _clearFilterOn(String field) => setState(
+    () => _filter = _filter.copyWith(
+      filters: [
+        for (final r in _filter.filters)
+          if (r.field != field) r,
+      ],
+    ),
+  );
+
   List<Widget> _sortItems(String field) => [
     if (_filterFields.containsKey(field)) ...[
+      SubmenuButton(
+        key: ValueKey('header-filter-$field'),
+        leadingIcon: const Icon(Icons.filter_list, size: 18),
+        menuChildren: [
+          for (final (v, label) in _valuesIn(field))
+            MenuItemButton(
+              key: ValueKey('header-filter-$field-$v'),
+              onPressed: () => _filterTo(field, v),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 240),
+                child: Text(label, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          if (_valuesIn(field).isEmpty)
+            const MenuItemButton(onPressed: null, child: Text('No values yet')),
+          if (_filteredOn(field)) ...[
+            const Divider(height: 8),
+            MenuItemButton(
+              key: ValueKey('header-filter-clear-$field'),
+              onPressed: () => _clearFilterOn(field),
+              child: const Text('Clear filter'),
+            ),
+          ],
+        ],
+        child: const Text('Filter…'),
+      ),
       MenuItemButton(
         key: ValueKey('sort-asc-$field'),
         leadingIcon: const Icon(Icons.arrow_upward, size: 18),
@@ -2115,6 +2249,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             }),
           ),
           if (_canEdit && _view == 'table') _newTaskButton(),
+          if (_view == 'table' && _board != null) _groupByButton(),
           SizedBox(
             width: phone ? 200 : 240,
             child: ListSearch(
@@ -2147,6 +2282,37 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  /// Monday's "Group by": the board's groups, or one group per value of a
+  /// column.
+  Widget _groupByButton() {
+    final fields = _filterFields.values.where((f) => f.key != 'title').toList();
+    final on = _filterFields[_groupBy];
+    return MenuAnchor(
+      menuChildren: [
+        MenuItemButton(
+          key: const Key('group-by-none'),
+          leadingIcon: Icon(on == null ? Icons.check : null, size: 18),
+          onPressed: () => setState(() => _groupBy = null),
+          child: const Text('Board groups'),
+        ),
+        const Divider(height: 8),
+        for (final f in fields)
+          MenuItemButton(
+            key: ValueKey('group-by-${f.key}'),
+            leadingIcon: Icon(_groupBy == f.key ? Icons.check : null, size: 18),
+            onPressed: () => setState(() => _groupBy = f.key),
+            child: Text(f.label),
+          ),
+      ],
+      builder: (context, menu, _) => OutlinedButton.icon(
+        key: const Key('tasks-group-by'),
+        onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+        icon: const Icon(Icons.view_agenda_outlined, size: 18),
+        label: Text(on == null ? 'Group by' : 'Group by: ${on.label}'),
       ),
     );
   }
@@ -2508,7 +2674,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           sliver: SliverMainAxisGroup(
             slivers: [
               if (_picked.isNotEmpty && !cards) box(_bulkBar(context)),
-              for (final (i, g) in _groups(_board!).indexed)
+              for (final (i, g) in _shownGroups().indexed)
                 // The walkthrough's last step points at the first group.
                 i == 0
                     ? KeyedSubtree(
@@ -2546,15 +2712,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final all = _tasksIn(group['id']);
     final shown = all.where(_matches).toList();
     final folded = _folded.contains(group['id']);
-    final id = group['id'] as String?;
+    // A Group by group draws its tasks but takes no adds, moves or renames.
+    final virtual = group['virtual'] == true;
+    final id = virtual ? null : group['id'] as String?;
+    final fold = group['id'] as String?;
 
     final header = _dropOn(
       id,
       null,
       InkWell(
-        key: ValueKey('task-group-$id'),
+        key: ValueKey('task-group-$fold'),
         onTap: () =>
-            setState(() => folded ? _folded.remove(id) : _folded.add(id)),
+            setState(() => folded ? _folded.remove(fold) : _folded.add(fold)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
@@ -2640,7 +2809,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         slivers: [
           PinnedHeaderSliver(
             child: Container(
-              key: ValueKey('task-group-top-$id'),
+              key: ValueKey('task-group-top-$fold'),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 border: folded
