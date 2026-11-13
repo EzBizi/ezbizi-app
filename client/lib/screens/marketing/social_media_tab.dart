@@ -3534,9 +3534,6 @@ class _AttachedVideo extends StatelessWidget {
   final bool failed;
   final Widget placeholder;
 
-  static String _clock(Duration d) =>
-      '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -3617,7 +3614,7 @@ class _AttachedVideo extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      _clock(value.duration),
+                      formatClock(value.duration),
                       key: const ValueKey('social-video-length'),
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.onInverseSurface,

@@ -237,6 +237,22 @@ DateTime? parseCalendarDay(String? raw) {
   return (day: day, hour: hour, minute: minute);
 }
 
+/// How long ago [at] was: "just now", "5 min ago", "3 h ago", "2 d ago".
+///
+/// A time ahead of [now] (a server clock ahead of this one) reads "just now":
+/// [Duration.inMinutes] truncates towards zero, so it is never a negative
+/// count.
+String formatAgo(DateTime at, {DateTime? now}) {
+  final ago = (now ?? DateTime.now()).difference(at.toLocal());
+  if (ago.inMinutes < 1) return 'just now';
+  if (ago.inHours < 1) return '${ago.inMinutes} min ago';
+  if (ago.inDays < 1) return '${ago.inHours} h ago';
+  return '${ago.inDays} d ago';
+}
+
+/// A playing time as `m:ss`; the minutes keep counting past an hour (`75:04`).
+String formatClock(Duration d) => '${d.inMinutes}:${_two(d.inSeconds % 60)}';
+
 String formatCalendarDay(DateTime at) =>
     '${at.year}-${_two(at.month)}-${_two(at.day)}';
 
