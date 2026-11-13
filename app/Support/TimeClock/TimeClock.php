@@ -14,6 +14,7 @@ use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Dashboard\Widgets\Hr\ScopesToPlaces;
+use App\Support\Field\FieldMaps;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
@@ -1029,7 +1030,7 @@ final class TimeClock
             ]);
         }
 
-        $distance = self::metresBetween((float) $lat, (float) $lng, $zone['lat'], $zone['lng']);
+        $distance = FieldMaps::metres((float) $lat, (float) $lng, $zone['lat'], $zone['lng']);
         if ($distance - max(0.0, (float) ($position['accuracy'] ?? 0)) > $zone['radius']) {
             $this->audit->log('time_clock.geofence_blocked', $user, metadata: [
                 'action' => $verb, 'reason' => 'outside', 'distance_m' => (int) round($distance), 'radius_m' => $zone['radius'],
@@ -1038,17 +1039,6 @@ final class TimeClock
                 'location' => sprintf('You need to be at %s to %s. You are about %d m away (allowed %d m).', $zone['place'], $verb, round($distance), $zone['radius']),
             ]);
         }
-    }
-
-    /** Great-circle distance in metres (haversine). */
-    public static function metresBetween(float $lat1, float $lng1, float $lat2, float $lng2): float
-    {
-        $r = 6371000.0;
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLng = deg2rad($lng2 - $lng1);
-        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
-
-        return 2 * $r * asin(min(1.0, sqrt($a)));
     }
 
     public function scheduleFor(User $user): ?array
