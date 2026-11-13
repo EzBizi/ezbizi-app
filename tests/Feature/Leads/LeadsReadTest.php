@@ -323,4 +323,65 @@ class LeadsReadTest extends TestCase
             ->postJson("/api/v1/leads/{$call->id}/google-credit", ['reason' => 'SPAM'])
             ->assertStatus(409);
     }
+    /** Jose, 2026-11-13: Rose Wyka's email reply gave her cell, address and hours; the lead took none. */
+    public function test_a_new_reply_is_read_again_and_fills_blanks_and_offers_the_rest(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'BOOK', 'summary' => 'Insert cleaning and blower repair.', 'name' => null, 'zip' => null,
+            'not_a_lead' => false, 'lost' => false, 'job_applicant' => false,
+            'phones' => ['(516)404-1690'], 'emails' => ['RoseWyka@yahoo.com'], 'address' => '176 Little Neck Road, Centerport NY 11721',
+            'scope' => 'not a gas insert; blower repaired or replaced, plus a cleaning', 'deadline' => 'before Fri 11/20',
+            'availability' => 'Mon/Wed/Fri 2-5, Thu 11:30-5; not Tue',
+        ]]))]);
+        $lead = $this->callLead('Rose Wyka', 'I need my insert cleaned');
+        $this->inTenant($this->t['org'], function () use ($lead) {
+            $lead->forceFill(['classification' => 'BOOK', 'classified_at' => now()->subHour(), 'email' => 'old@example.com'])->save();
+            LeadConversation::create([
+                'organization_id' => $lead->organization_id, 'lead_id' => $lead->id, 'remote_id' => uniqid(),
+                'channel' => 'EMAIL', 'participant' => LeadConversation::FROM_CONSUMER,
+                'occurred_at' => now(), 'text' => 'My cell is (516)404-1690, rosewyka@yahoo.com. Off Tuesdays.',
+            ]);
+        });
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $this->inTenant($this->t['org'], function () use ($lead) {
+            $lead->refresh();
+            $this->assertSame(['+15164041690', '5164041690'], [$lead->phone, substr($lead->phone_digits, -10)], 'a blank phone is filled');
+            $this->assertSame('old@example.com', $lead->email, 'never overwritten');
+            $this->assertSame(['email' => 'rosewyka@yahoo.com'], $lead->ai_set['reading']['suggest']);
+            $this->assertSame('176 Little Neck Road, Centerport NY 11721', $lead->address);
+            $this->assertSame('Insert cleaning and blower repair. · Mon/Wed/Fri 2-5, Thu 11:30-5; not Tue; before Fri 11/20', $lead->summary);
+            $this->assertStringContainsString('Off Tuesdays', $lead->ai_set['reading']['source']);
+            $this->assertContains('phone', \App\Http\Controllers\Api\LeadsController::aiHeld($lead));
+        });
+    }
+    /** Jose, 2026-11-13: Charlotte Owens' booking widget message left the lead unnamed, and "available tomorrow" sat in the address. */
+    public function test_our_booking_message_is_read_by_its_labels(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'BOOK', 'summary' => 'Wants a sweep.', 'name' => null, 'zip' => null,
+            'not_a_lead' => false, 'lost' => false, 'job_applicant' => false, 'phones' => [], 'emails' => [],
+            'address' => '5234 Bowman Springs Trail Flowery Branch I am available tomorrow', 'scope' => null, 'deadline' => null,
+            'availability' => 'tomorrow, any day next week',
+        ]]))]);
+        $lead = $this->callLead(null, 'I need a sweep');
+        $this->inTenant($this->t['org'], function () use ($lead) {
+            $lead->forceFill(['address' => '5234 Bowman Springs Trail Flowery Branch I am available tomorrow any day next week'])->save();
+            LeadConversation::create([
+                'organization_id' => $lead->organization_id, 'lead_id' => $lead->id, 'remote_id' => uniqid(),
+                'channel' => 'FORM', 'participant' => LeadConversation::FROM_CONSUMER, 'occurred_at' => now(),
+                'text' => "Requested: Monday, November 16, 11:00 AM - 2:00 PM\nName: Charlotte Owens\nPhone: +17705034521\nAddress: 5234 Bowman Springs Trail Flowery Branch\nZIP: 30542",
+            ]);
+        });
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $this->inTenant($this->t['org'], function () use ($lead) {
+            $lead->refresh();
+            $this->assertSame(['Charlotte Owens', '+17705034521', '30542'], [$lead->contact_name, $lead->phone, $lead->postal_code]);
+            $this->assertSame(['address' => '5234 Bowman Springs Trail Flowery Branch'], $lead->ai_set['reading']['suggest']);
+            $this->assertSame('tomorrow, any day next week', $lead->ai_set['reading']['availability']);
+        });
+    }
 }
