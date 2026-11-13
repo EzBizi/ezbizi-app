@@ -2,6 +2,7 @@
 
 namespace App\Support\Notifications;
 
+use App\Http\Controllers\Api\NotificationsController;
 use App\Models\Assignment;
 use App\Models\AutomationEvent;
 use App\Models\DeviceToken;
@@ -13,6 +14,7 @@ use App\Models\User;
 use App\Notifications\NotificationNotice;
 use App\Support\Access\ScopeReach;
 use App\Support\Automations\CarriesAutomationScope;
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
@@ -203,8 +205,13 @@ class NotificationDispatcher
          * Read as "anything but an explicit false", so everybody who has never
          * touched it — every user that exists today — keeps their alerts.
          */
+        // And per module (Jose, 2026-11-13: "choose notifications from specific
+        // modules"): a muted module still lands in the list, it just does not
+        // pop up, push or email.
+        $module = $this->moduleOf($subject, $automationId, $eventId);
         $alertable = $told->filter(
             fn (User $user) => ($user->preferences['notifications.alerts'] ?? true) !== false
+                && ($module === null || ! in_array($module, $user->preferences['notifications.muted_modules'] ?? [], true))
         )->values();
 
         $emailed = $this->mayEmail($source, $inAppOnly) ? $this->alsoByEmail($alertable, $title, $body, $scope, $this->pushHeader($scope, $subject)) : 0;
@@ -553,6 +560,18 @@ class NotificationDispatcher
         }
 
         return $chain;
+    }
+
+    /** The module a notification belongs to — the same reading the bell list uses. */
+    private function moduleOf(?Model $subject, ?string $automationId, ?string $eventId): ?string
+    {
+        $eventKey = $eventId === null ? null : AutomationEvent::query()->whereKey($eventId)->value('event_key');
+
+        return match (true) {
+            $eventKey !== null => app(ModuleRegistry::class)->moduleKeyOfTrigger($eventKey),
+            $automationId !== null => NotificationsController::AUTOMATIONS_MODULE,
+            default => NotificationsController::SUBJECT_MODULES[$subject === null ? '' : $subject::class] ?? null,
+        };
     }
 
     private function withoutFlooded(Collection $recipients, ?string $automationId): Collection

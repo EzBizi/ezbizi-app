@@ -906,6 +906,10 @@ class Me {
 
   /// The companies this person hears from; empty means all of them. Each
   /// covers its sub companies and branches (Bar, 2026-10-22).
+  /// Modules whose notifications collect in the bell without alerting.
+  List<String> get notificationMutedModules =>
+      (preferences['notifications.muted_modules'] as List? ?? const []).whereType<String>().toList();
+
   List<String> get notificationCompanies =>
       (preferences['notifications.companies'] as List? ?? const [])
           .whereType<String>()

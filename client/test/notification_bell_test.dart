@@ -457,6 +457,8 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.notifications_none));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('notification-settings')));
+    await tester.pumpAndSettle();
 
     final alertMe = find.widgetWithText(SwitchListTile, 'Alert me');
     expect(tester.widget<SwitchListTile>(alertMe).value, isTrue,
@@ -480,6 +482,8 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.notifications_none));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('notification-settings')));
+    await tester.pumpAndSettle();
     expect(find.text('All companies'), findsOneWidget, reason: 'nobody has chosen: all');
 
     await tester.tap(find.text('Notify me about'));
@@ -491,6 +495,34 @@ void main() {
       {
         'preferences': {
           'notifications.companies': ['c-ever'],
+        },
+      },
+    ]);
+  });
+
+  // Jose, 2026-11-13: the panel shows only notifications; the gear opens the
+  // settings, which include an on/off per module.
+  testWidgets('the panel holds only notifications; the gear opens per-module settings', (
+    tester,
+  ) async {
+    final patches = <Object?>[];
+    await _pumpWithSession(tester, preferences: {}, items: () => [], patches: patches);
+
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+    expect(find.text('Alert me'), findsNothing, reason: 'settings are behind the gear');
+
+    await tester.tap(find.byKey(const Key('notification-settings')));
+    await tester.pumpAndSettle();
+    expect(find.text('Notification settings'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('notification-module-leads')));
+    await tester.pumpAndSettle();
+
+    expect(patches, [
+      {
+        'preferences': {
+          'notifications.muted_modules': ['leads'],
         },
       },
     ]);
@@ -565,7 +597,9 @@ Future<void> _pumpWithSession(
             'has_avatar': false,
             'role': {'id': 'role-1', 'name': 'Administrator'},
             'permissions': <String>[],
-            'modules': <Map<String, Object?>>[],
+            'modules': [
+              {'key': 'leads', 'label': 'Leads', 'available': true, 'reachable': true},
+            ],
             'preferences': preferences,
             'organization': {
               'id': 'org-1',

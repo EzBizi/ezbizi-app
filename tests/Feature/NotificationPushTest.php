@@ -160,6 +160,40 @@ class NotificationPushTest extends TestCase
     }
 
     /**
+     * Jose, 2026-11-13: per-module on/off. A muted module still collects in
+     * the bell but does not push; a colleague who did not mute it is pushed.
+     */
+    public function test_a_muted_module_collects_in_the_bell_without_pushing(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+        ]);
+
+        $this->configureFcm();
+        $tenant = $this->provisionTenant('Omicron');
+        $colleague = $this->userWithRole($tenant, 'Dispatcher');
+        $this->device($tenant, $tenant['admin']->id, 'token-muted-phone');
+        $this->device($tenant, $colleague->id, 'token-colleague-phone');
+
+        $this->inTenant($tenant['org'], fn () => $tenant['admin']
+            ->forceFill(['preferences' => ['notifications.muted_modules' => ['automations']]])->save());
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'Automation switched off',
+            subject: $tenant['org'],
+            source: 'automation',
+            automationId: (string) Str::uuid7(),
+        ));
+
+        $this->assertSame(2, $told, 'both still get the bell row');
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'messages:send')
+            && $request['message']['token'] === 'token-colleague-phone');
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'messages:send')
+            && $request['message']['token'] === 'token-muted-phone');
+    }
+
+    /**
      * Alerts, new leads and missed calls interrupt; everything else does not.
      *
      * Jose, 2026-10-08: HIGH importance for alerts, calls and new leads,

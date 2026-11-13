@@ -46,7 +46,7 @@ use Illuminate\Validation\Rule;
 class NotificationsController extends Controller
 {
     /** Verified to name a real module by NotificationsTest. */
-    private const AUTOMATIONS_MODULE = 'automations';
+    public const AUTOMATIONS_MODULE = 'automations';
 
     /**
      * Module key => the payload field it opens narrowed by. See [filterFor].
@@ -333,7 +333,7 @@ class NotificationsController extends Controller
      *
      * @var array<class-string, string>
      */
-    private const SUBJECT_MODULES = [
+    public const SUBJECT_MODULES = [
         Suggestion::class => 'suggestions',
         Lead::class => 'leads',
         \App\Models\Job::class => 'jobs',

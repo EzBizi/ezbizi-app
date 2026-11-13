@@ -488,6 +488,9 @@ class _NotificationBellState extends State<NotificationBell>
     return rows;
   }
 
+  /// Whether the open panel shows its settings instead of the list.
+  bool _settingsOpen = false;
+
   Future<void> _open() async {
     // The user gesture the permission prompt has to come from. Its answer is
     // deliberately not checked: a refusal is a perfectly good outcome that
@@ -499,6 +502,7 @@ class _NotificationBellState extends State<NotificationBell>
 
     if (!mounted) return;
 
+    _settingsOpen = false;
     await showSidePanel<void>(
       context,
       // StatefulBuilder, because a panel's page is built ONCE by the route and
@@ -506,9 +510,33 @@ class _NotificationBellState extends State<NotificationBell>
       // leaves the open list showing exactly what it showed before. Marking one
       // read did nothing visible until the panel was closed and reopened.
       builder: (context) => StatefulBuilder(
-        builder: (context, repaint) => SidePanel(
+        builder: (context, repaint) => _settingsOpen && widget.session != null
+            ? SidePanel(
+                // Jose, 2026-11-13: the panel shows only notifications; the
+                // gear swaps it for the settings, with a back arrow.
+                title: 'Notification settings',
+                width: 460,
+                onBack: () => repaint(() => _settingsOpen = false),
+                actions: [
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close'),
+                  ),
+                ],
+                child: NotificationSettings(api: widget.api, session: widget.session!),
+              )
+            : SidePanel(
           title: 'Notifications',
           width: 460,
+          headerActions: [
+            if (widget.session != null)
+              IconButton(
+                key: const Key('notification-settings'),
+                tooltip: 'Notification settings',
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () => repaint(() => _settingsOpen = true),
+              ),
+          ],
           // "Mark all read" sat beside the title and moves to the footer with
           // Close, because the panel has one place for the things you press.
           actions: [
@@ -528,29 +556,6 @@ class _NotificationBellState extends State<NotificationBell>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Each person's own on/off, where they are already looking at
-              // what it governs. Off mutes pop-ups, pushes and emails; this
-              // list keeps filling either way, which the subtitle says so
-              // nobody turns it off expecting the list to stop too.
-              if (widget.session case final session?) ...[
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  value: session.me?.notificationAlerts ?? true,
-                  title: const Text('Alert me'),
-                  subtitle: const Text(
-                    'Pop-ups, phone and email. Notifications still collect here.',
-                  ),
-                  onChanged: (on) async {
-                    final saving = session.setPreference('notifications.alerts', on);
-                    repaint(() {});
-                    await saving;
-                    if (context.mounted) repaint(() {});
-                  },
-                ),
-                CompanyFocus(api: widget.api, session: session),
-                const Divider(height: 1),
-              ],
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Wrap(
@@ -867,6 +872,74 @@ class _CompanyFocusState extends State<CompanyFocus> {
             value: chosen.contains(id),
             title: Text(name),
             onChanged: (on) => _toggle(id, on ?? false),
+          ),
+      ],
+    );
+  }
+}
+
+/// The bell panel's settings page: Alert me, which companies, which modules.
+///
+/// Jose, 2026-11-13: "the settings should be with an icon ... we should also
+/// add the ability to choose notifications from specific modules". A module
+/// switched off still collects in the bell; it just stops popping up, pushing
+/// and emailing (NotificationDispatcher reads notifications.muted_modules).
+class NotificationSettings extends StatefulWidget {
+  const NotificationSettings({super.key, required this.api, required this.session});
+
+  final ApiClient api;
+  final Session session;
+
+  @override
+  State<NotificationSettings> createState() => _NotificationSettingsState();
+}
+
+class _NotificationSettingsState extends State<NotificationSettings> {
+  Future<void> _save(String key, Object value) async {
+    final saving = widget.session.setPreference(key, value);
+    setState(() {});
+    await saving;
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final me = widget.session.me;
+    final muted = me?.notificationMutedModules ?? const <String>[];
+    final modules = me?.reachableModules ?? const [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          value: me?.notificationAlerts ?? true,
+          title: const Text('Alert me'),
+          subtitle: const Text('Pop-ups, phone and email. Notifications still collect in the bell.'),
+          onChanged: (on) => _save('notifications.alerts', on),
+        ),
+        CompanyFocus(api: widget.api, session: widget.session),
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 4),
+          child: Text('Alert me about', style: Theme.of(context).textTheme.titleSmall),
+        ),
+        Text(
+          'Off still collects in the bell, without pop-ups, phone or email.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        for (final m in modules)
+          SwitchListTile(
+            key: ValueKey('notification-module-${m.key}'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: !muted.contains(m.key),
+            title: Text(m.label),
+            onChanged: (on) => _save(
+              'notifications.muted_modules',
+              on ? muted.where((k) => k != m.key).toList() : [...muted, m.key],
+            ),
           ),
       ],
     );

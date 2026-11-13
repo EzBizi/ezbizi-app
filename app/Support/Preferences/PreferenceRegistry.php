@@ -140,6 +140,18 @@ class PreferenceRegistry
             ],
 
             /*
+             * Modules this person does not want to be interrupted by (Jose,
+             * 2026-11-13). Their notifications still collect in the bell; they
+             * just do not pop up, push or email. Empty = every module alerts.
+             */
+            'notifications.muted_modules' => [
+                'label' => 'Muted modules',
+                'type' => 'order',
+                'default' => [],
+                'help' => 'These modules collect in the bell without alerting you.',
+            ],
+
+            /*
              * How wide the expanded sidebar is, in logical pixels.
              *
              * A number rather than small/medium/large: it is set by dragging the
