@@ -12,6 +12,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
+import 'message_html.dart';
 import 'signature_builder.dart';
 import '../../widgets/tag.dart';
 
@@ -1508,6 +1509,29 @@ class _PersonPaneState extends State<PersonPane> {
   String? _preview;
   bool _ownChosen = false;
   final _editor = TextEditingController();
+
+  /// Their own signature as it is being typed, with their values filled in
+  /// (Jose 11-13: "i should be able to see it"). Asked of the server, which
+  /// owns the filling, a moment after the typing stops.
+  String? _livePreview;
+  Timer? _liveTimer;
+
+  void _editorChanged() {
+    _liveTimer?.cancel();
+    _liveTimer = Timer(const Duration(milliseconds: 500), () async {
+      final html = _editor.text;
+      final response = await widget.api.post(
+        '${widget.base}/signatures/preview',
+        {'address': _address, 'html': html},
+      );
+      if (!mounted || _editor.text != html) return;
+      final data = response.ok ? response.data : null;
+      setState(
+        () => _livePreview = data is Map ? data['html'] as String? : null,
+      );
+    });
+  }
+
   bool _busy = false;
   String? _note;
 
@@ -1540,10 +1564,13 @@ class _PersonPaneState extends State<PersonPane> {
   void initState() {
     super.initState();
     _load();
+    _editor.addListener(_editorChanged);
   }
 
   @override
   void dispose() {
+    _liveTimer?.cancel();
+    _editor.removeListener(_editorChanged);
     _editor.dispose();
     for (final c in _fields.values) {
       c.dispose();
@@ -1717,7 +1744,7 @@ class _PersonPaneState extends State<PersonPane> {
           ),
           child: html == null || html.trim().isEmpty
               ? Text(empty, style: theme.textTheme.bodySmall)
-              : SignatureText(html),
+              : SignatureView(html),
         ),
       ],
     );
@@ -1813,6 +1840,15 @@ class _PersonPaneState extends State<PersonPane> {
               controller: _editor,
               keyPrefix: 'workspace-own-chip',
             ),
+            if ((_livePreview ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('As they will see it', style: theme.textTheme.labelMedium),
+              const SizedBox(height: 4),
+              KeyedSubtree(
+                key: const ValueKey('workspace-own-live'),
+                child: SignatureView(_livePreview!),
+              ),
+            ],
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,
@@ -1995,6 +2031,24 @@ void insertAtCursor(TextEditingController controller, String token) {
 
 /// A signature's HTML as readable text: tags become line breaks, bold and
 /// italic are kept, everything else is dropped. No web view.
+/// A signature as Gmail draws it: the real HTML engine on a white page
+/// (Jose 11-13: "i still dont have a way to see how the signature looks").
+/// A sandboxed iframe on the web, WebView2 on Windows -- the mail view's.
+class SignatureView extends StatelessWidget {
+  const SignatureView(this.html, {super.key});
+
+  final String html;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 320,
+    child: MessageHtmlView(
+      html: signaturePreviewPage(html, dark: false),
+      ownHtml: true,
+    ),
+  );
+}
+
 class SignatureText extends StatelessWidget {
   const SignatureText(this.html, {super.key});
 

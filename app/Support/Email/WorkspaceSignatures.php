@@ -79,13 +79,13 @@ final class WorkspaceSignatures
     {
         $links = GoogleWorkspacePerson::query()
             ->where('google_workspace_connection_id', $connection->getKey())
-            ->with('user:id,name,email,first_name,last_name,phone')
+            ->with('user:id,name,email,first_name,last_name,phone,avatar_path')
             ->get()
             ->keyBy('address');
 
         $byEmail = User::query()
             ->where('is_active', true)
-            ->get(['id', 'name', 'email', 'first_name', 'last_name', 'phone'])
+            ->get(['id', 'name', 'email', 'first_name', 'last_name', 'phone', 'avatar_path'])
             ->keyBy(fn (User $u) => mb_strtolower((string) $u->email));
 
         $templates = $this->templates($connection)->keyBy('id');
@@ -224,13 +224,24 @@ final class WorkspaceSignatures
     public function companyLogoUrl(GoogleWorkspaceConnection $connection): ?string
     {
         $company = $connection->scope_type === 'company' ? Company::find($connection->scope_id) : null;
-        $path    = $company?->logo_path ?? $connection->organization?->logo_path;
 
-        if ($path === null) {
+        return $this->publicCopy($company?->logo_path ?? $connection->organization?->logo_path);
+    }
+
+    /**
+     * A stored picture (logo or EzBizi photo) at a permanent public address,
+     * copied beside the uploaded signature photos under a keyed hash of its
+     * path. Null when there is none or it cannot be read.
+     */
+    public function publicCopy(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
             return null;
         }
 
-        $name = hash_hmac('sha1', $path, (string) config('app.key')).'.png';
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $name      = hash_hmac('sha1', $path, (string) config('app.key'))
+            .'.'.(in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true) ? $extension : 'png');
 
         if (! Storage::disk('local')->exists('signature-photos/'.$name)) {
             $bytes = app(FileStore::class)->contents($path);
@@ -374,6 +385,12 @@ final class WorkspaceSignatures
 
         foreach (self::PERSON_FIELDS as $key) {
             $values[$key] ??= (string) ($own[$key] ?? '');
+        }
+
+        // Their EzBizi photo when none was set for the signature (Jose 11-13:
+        // Eric has one and his signature showed none).
+        if (($values['photo_url'] ?? '') === '' && $user?->avatar_path !== null) {
+            $values['photo_url'] = (string) $this->publicCopy($user->avatar_path);
         }
 
         return $values;
