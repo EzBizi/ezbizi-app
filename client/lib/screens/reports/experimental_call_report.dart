@@ -2491,15 +2491,18 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         : c['answered_by'] == null
         ? 'missed'
         : 'not_answered';
+    // An existing client's too (Trey, 2026-11-13).
     String? bookingOf(Map<String, dynamic> c) =>
-        c['answered_by'] != name || c['queue'] != _newQueue || c['mark'] != null
+        c['answered_by'] != name || c['mark'] != null
+        ? null
+        : c['needs_attention'] == true
+        ? 'needs_attention'
+        : c['queue'] != _newQueue
         ? null
         : c['booked'] == true
         ? 'booked'
         : c['existing_job'] is Map
         ? 'existing_job'
-        : c['needs_attention'] == true
-        ? 'needs_attention'
         : 'not_booked';
     final mine = all
         .where((c) => _answerFilter == null || answerOf(c) == _answerFilter)
@@ -2685,6 +2688,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   .$2,
             ),
           )
+        // An existing client's too (Trey, 2026-11-13): before the line check.
+        : call['needs_attention'] == true
+        ? const Tooltip(
+            message: 'AI heard a booking, no job yet',
+            child: StatusPill('Needs Attention', tone: Tone.review),
+          )
         : call['booked'] == true
         ? _setMark(
             setBy['booking'],
@@ -2706,11 +2715,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ? 'Rescheduled'
                   : 'Existing job',
             ),
-          )
-        : call['needs_attention'] == true
-        ? const Tooltip(
-            message: 'AI heard a booking, no job yet',
-            child: StatusPill('Needs Attention', tone: Tone.review),
           )
         : _setMark(
             setBy['booking'],

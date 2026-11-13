@@ -632,6 +632,37 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->assertSame(1, $person($done)['booked_new']);
     }
 
+    /**
+     * Trey, 2026-11-13 ("jobs that are existing, booked and show ai heard a
+     * booking no job yet are also jobs i manually have to double check"): an
+     * existing client's job for the number is the one they already had, so it
+     * cannot show the call booked. Needs Attention until somebody sets it.
+     */
+    public function test_an_existing_client_the_ai_heard_book_needs_attention_even_with_a_job_for_the_number(): void
+    {
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->connected($tenant);
+        $day = fn () => $this->signedInAs($tenant['admin'])->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->assertOk()->json();
+        $this->inTenant($tenant['org'], fn () => CallReportLabel::query()->create(['call_id' => '1', 'provider' => 'grok', 'label' => 'booked']));
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'client', 'value' => 'existing'])->assertOk();
+        $nationwide = $this->inTenant($tenant['org'], fn () => (string) SocialConnection::query()->where('display_name', 'Nationwide')->value('id'));
+        $this->syncedJob($tenant, $nationwide, '7579553189', 'Trey Brannan', '2026-09-14 10:00:00');
+
+        $open = $day();
+        $person = fn (array $report) => collect($report['people'])->firstWhere('person', $open['calls'][0]['answered_by']);
+        $this->assertTrue($open['calls'][0]['needs_attention']);
+        $this->assertFalse($open['calls'][0]['booked']);
+        // Existing clients were never in the booking rate, so its base is untouched.
+        $this->assertSame(0, $open['totals']['needs_attention']);
+        $this->assertSame(0, $person($open)['needs_attention']);
+        $this->assertSame(0, $person($open)['new_client']);
+
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/calls/1/override', ['field' => 'booking', 'value' => 'booked'])->assertOk();
+        $checked = $day();
+        $this->assertFalse($checked['calls'][0]['needs_attention']);
+        $this->assertTrue($checked['calls'][0]['booked']);
+    }
+
     /** Both writes sit behind the pane's own gate. */
     public function test_tag_and_convert_need_the_experimental_tab(): void
     {

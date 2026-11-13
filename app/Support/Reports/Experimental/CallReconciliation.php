@@ -179,12 +179,22 @@ final class CallReconciliation
          * matches yet: neither booked nor not booked until it is chased, so it
          * stays out of Not booked and out of the booking rate. A matching job
          * makes it Booked, and it leaves on its own. A tenant's labels: none outside one.
+         *
+         * An EXISTING client too (Trey, 2026-11-13: "jobs that are existing,
+         * booked and show ai heard a booking no job yet are also jobs i
+         * manually have to double check"): the job for their number is the one
+         * they already had (Leads moves most of them for "a job booked before
+         * the call"), so it cannot show this call booked. It leaves when
+         * somebody sets the booking by hand.
          */
         $aiBooked = ! app(TenantContext::class)->has() ? [] : CallReportLabel::query()->where('provider', 'grok')->where('label', 'booked')
             ->whereIn('call_id', array_filter(array_column($calls, 'id')))->pluck('call_id')->flip()->all();
         $needsAttention = fn (array $call) => isset($aiBooked[(string) ($call['id'] ?? '')]) && ($call['answered_by'] ?? null) !== null
-            && $this->markOf($call) === null && RingCentralCallLog::clientOf($call['queue'] ?? null) === 'new'
-            && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null;
+            && $this->markOf($call) === null && match (RingCentralCallLog::clientOf($call['queue'] ?? null)) {
+                'new' => ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null,
+                'existing' => ($this->overrides[(string) ($call['id'] ?? '')]['booking'] ?? null) === null && ! isset($converted[(string) ($call['id'] ?? '')]),
+                default => false,
+            };
         $notBooked = 0;
 
         $rang = [];
@@ -243,7 +253,10 @@ final class CallReconciliation
             }
 
             if ($needsAttention($call)) {
-                $attention[$who] = ($attention[$who] ?? 0) + 1;
+                // The booking rate's base: existing clients were never in it.
+                if ($client === 'new') {
+                    $attention[$who] = ($attention[$who] ?? 0) + 1;
+                }
             } elseif ($client === 'new' && ! $this->isBooked($call, $bookedPhones, $converted) && $existingJob($call) === null) {
                 $notBooked++;
             }
@@ -412,7 +425,8 @@ final class CallReconciliation
                 'reclassified' => $call['reclassified'] ?? null,
                 'result' => $call['result'] ?? null,
                 'outcome' => $this->outcome($call),
-                'booked' => $this->isBooked($call, $bookedPhones, $converted),
+                // Needs Attention is neither, so it is not listed under Booked too.
+                'booked' => $this->isBooked($call, $bookedPhones, $converted) && ! $needsAttention($call),
                 'existing_job' => $this->isBooked($call, $bookedPhones, $converted) ? null : $existingJob($call),
                 'converted' => isset($converted[(string) ($call['id'] ?? '')]),
                 'mark' => $this->markOf($call),
