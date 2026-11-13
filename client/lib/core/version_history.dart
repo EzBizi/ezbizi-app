@@ -13,6 +13,17 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0572', date: '13 Nov 2026', items: [
+      'Task Board: sort any column from its heading; saved views keep their layout; hover a face for the person’s card (role, local time, contact)',
+      'Task Board: your own folders and subfolders in the board list, a colour per folder and board, right-click to colour or move, drag boards into folders',
+      'Task Board: filter by a column’s values from its heading or by right-clicking a cell, and Group by any column from the top bar',
+      'Task Board: the top bar has Integrate, Automate with the number of rules, Invite with the members, and Import (paste one task per line)',
+      'Task Board: Shift- or Ctrl-click picks a range of cells in a column to copy and paste; while dragging a row, Esc cancels and the table scrolls at the edges',
+      'Task Board › Automate: when a column changes to…, when a date arrives; push a date, set a column, add a person',
+      'Task Board: rating columns show the number of stars set for the column',
+      'Monday boards keep their folders and colours; archived boards come over read-only',
+      'Tabs look the same everywhere: a module’s own tabs are underlined and tabs inside a tab are small pills; on phones the more-tabs arrow no longer covers a tab',
+    ]),
     VersionRelease(version: '0.0.0571', date: '13 Nov 2026', items: [
       'Task Board: click a cell to edit it in place; the status menu dims the board and has Edit labels; columns resize, hide or remove; the task panel is simpler (status, owner, due on top, then fields, subtasks and updates)',
       'Leads: every customer reply is read for phone, email, address, the job, deadline and availability; blanks fill in, differences show as a one-click Use suggestion, and the booking panel shows when the customer is free',
