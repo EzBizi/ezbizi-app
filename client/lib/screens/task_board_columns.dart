@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
+import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/calendar_day_field.dart';
 import '../widgets/colour_field.dart';
@@ -400,7 +401,11 @@ class ColumnCell extends StatelessWidget {
     this.onAddOption,
     this.onEditOptions,
     this.onMenu,
+    this.onAutoAssign,
   });
+
+  /// Asks the AI for this task's label in this column (null: none fits).
+  final Future<String?> Function()? onAutoAssign;
 
   /// Told when a status column's menu opens and closes, to dim the board.
   final ValueChanged<bool>? onMenu;
@@ -459,23 +464,67 @@ class ColumnCell extends StatelessWidget {
           onChanged: onChanged == null ? null : (b) => onChanged!(b ?? false),
         );
       case 'status':
+        final picked = _option(column, v);
+        final fill = picked?.colour ?? blankLabel(theme);
+        return MenuAnchor(
+          menuChildren: [
+            Builder(
+              builder: (context) => LabelBlocks(
+                keyPrefix: 'column-option-${column.id}',
+                labels: [
+                  for (final o in column.options)
+                    if (!o.retired || o.id == v)
+                      (id: o.id, label: o.label, colour: o.colour),
+                  (id: null, label: '', colour: null),
+                ],
+                current: picked?.id,
+                onPick: (id) {
+                  MenuController.maybeOf(context)?.close();
+                  onChanged?.call(id);
+                },
+                onEdit: onEditOptions == null
+                    ? null
+                    : () {
+                        MenuController.maybeOf(context)?.close();
+                        onEditOptions!();
+                      },
+                onAutoAssign: onAutoAssign == null
+                    ? null
+                    : () async {
+                        MenuController.maybeOf(context)?.close();
+                        final id = await onAutoAssign!();
+                        if (id != null) onChanged?.call(id);
+                      },
+              ),
+            ),
+          ],
+          onOpen: () => onMenu?.call(true),
+          onClose: () => onMenu?.call(false),
+          builder: (context, menu, _) => Material(
+            color: fill,
+            child: InkWell(
+              key: ValueKey('column-cell-${column.id}'),
+              onTap: onChanged == null
+                  ? null
+                  : () => menu.isOpen ? menu.close() : menu.open(),
+              child: Center(
+                child: Text(
+                  picked?.label ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    color: labelInk(fill),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
       case 'dropdown':
         final picked = _option(column, v);
         final fill = picked?.colour;
-        final label = Text(
-          picked?.label ?? '—',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 12,
-            color: fill == null
-                ? theme.colorScheme.onSurfaceVariant
-                : (ThemeData.estimateBrightnessForColor(fill) == Brightness.dark
-                      ? theme.colorScheme.surface
-                      : theme.colorScheme.onSurface),
-          ),
-        );
         return MenuAnchor(
           menuChildren: [
             for (final o in column.options)
@@ -493,40 +542,28 @@ class ColumnCell extends StatelessWidget {
               ),
             ..._optionTools(theme, (id) => onChanged?.call(id)),
           ],
-          onOpen: column.type == 'status' ? () => onMenu?.call(true) : null,
-          onClose: column.type == 'status' ? () => onMenu?.call(false) : null,
-          builder: (context, menu, _) => Material(
-            color: column.type == 'status'
-                ? (fill ?? theme.colorScheme.surfaceContainerHighest)
-                : Colors.transparent,
-            child: InkWell(
-              key: ValueKey('column-cell-${column.id}'),
-              onTap: onChanged == null
-                  ? null
-                  : () => menu.isOpen ? menu.close() : menu.open(),
-              child: Center(
-                child: column.type == 'status'
-                    ? label
-                    : Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: (fill ?? theme.colorScheme.outline).withValues(
-                            alpha: 0.18,
-                          ),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          picked?.label ?? '—',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
+          builder: (context, menu, _) => InkWell(
+            key: ValueKey('column-cell-${column.id}'),
+            onTap: onChanged == null
+                ? null
+                : () => menu.isOpen ? menu.close() : menu.open(),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (fill ?? theme.colorScheme.outline).withValues(
+                    alpha: 0.18,
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  picked?.label ?? '—',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
           ),
@@ -605,13 +642,7 @@ class ColumnCell extends StatelessWidget {
           style: text == null || text.isEmpty ? muted : null,
         );
       case 'timeline':
-        final label = timelineLabel(v, formats);
-        return Text(
-          label ?? '—',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: label == null ? muted : null,
-        );
+        return TimelinePill(value: v, formats: formats);
       case 'number':
       case 'currency':
       case 'formula':
@@ -1901,5 +1932,243 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
         ),
       ),
     );
+  }
+}
+
+/// One label in a [LabelBlocks] menu: its id (null: the blank label),
+/// name and colour.
+typedef LabelBlock = ({String? id, String label, Color? colour});
+
+/// Text that reads on a label's solid colour, the same in light and dark:
+/// white on a dark fill, ink on a light one (Monday's cells, Jose 11-13).
+Color labelInk(Color fill) =>
+    ThemeData.estimateBrightnessForColor(fill) == Brightness.dark
+    ? EzBiziTheme.fieldInkLight
+    : EzBiziTheme.fieldInkDark;
+
+/// The grey a blank label wears.
+Color blankLabel(ThemeData theme) => theme.colorScheme.outline;
+
+/// Monday's label picker: solid colour blocks in one to three columns
+/// (more labels, more columns), the current one outlined, then the tools.
+class LabelBlocks extends StatelessWidget {
+  const LabelBlocks({
+    super.key,
+    required this.keyPrefix,
+    required this.labels,
+    required this.current,
+    required this.onPick,
+    this.onEdit,
+    this.onAutoAssign,
+  });
+
+  final String keyPrefix;
+  final List<LabelBlock> labels;
+  final String? current;
+  final ValueChanged<String?> onPick;
+  final VoidCallback? onEdit;
+  final VoidCallback? onAutoAssign;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final columns = labels.length > 12 ? 3 : (labels.length > 6 ? 2 : 1);
+    const width = 150.0;
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: columns * width + (columns - 1) * 6,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final l in labels)
+                  _block(theme, l, width, l.id == current),
+              ],
+            ),
+          ),
+          if (onEdit != null || onAutoAssign != null) const SizedBox(height: 8),
+          if (onEdit != null)
+            TextButton.icon(
+              key: ValueKey('$keyPrefix-edit'),
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Edit labels'),
+            ),
+          if (onAutoAssign != null)
+            TextButton.icon(
+              key: ValueKey('$keyPrefix-auto'),
+              onPressed: onAutoAssign,
+              icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+              label: const Text('Auto-assign label'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _block(ThemeData theme, LabelBlock l, double width, bool on) {
+    final fill = l.colour ?? blankLabel(theme);
+    return SizedBox(
+      width: width,
+      height: 32,
+      child: Material(
+        color: fill,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(4),
+          side: on
+              ? BorderSide(color: theme.colorScheme.onSurface, width: 2)
+              : BorderSide.none,
+        ),
+        child: InkWell(
+          key: ValueKey('$keyPrefix-${l.id ?? 'blank'}'),
+          onTap: () => onPick(l.id),
+          child: Center(
+            child: Text(
+              l.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: labelInk(fill),
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Monday's timeline cell: a pill with the elapsed part filled; "-" empty.
+class TimelinePill extends StatelessWidget {
+  const TimelinePill({
+    super.key,
+    required this.value,
+    required this.formats,
+    this.now,
+  });
+
+  final Object? value;
+  final DisplayFormats formats;
+  final DateTime? now;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = timelineLabel(value, formats);
+    if (label == null) {
+      return Center(
+        child: Text(
+          '-',
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      );
+    }
+    final v = value as Map;
+    final from = DateTime.parse('${v['from']}');
+    final to = DateTime.parse('${v['to']}').add(const Duration(days: 1));
+    final at = now ?? DateTime.now();
+    final total = to.difference(from).inMinutes;
+    final done = total <= 0
+        ? 1.0
+        : (at.difference(from).inMinutes / total).clamp(0.0, 1.0);
+    final back = theme.colorScheme.onSurfaceVariant;
+    return Center(
+      child: Container(
+        height: 22,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: back,
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Stack(
+          children: [
+            FractionallySizedBox(
+              key: const Key('timeline-elapsed'),
+              widthFactor: done,
+              heightFactor: 1,
+              child: Container(color: theme.colorScheme.primary),
+            ),
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: labelInk(back),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A group footer's stacked bar: each label's share of the group's tasks,
+/// in its colour; blank labels grey.
+class LabelBar extends StatelessWidget {
+  const LabelBar({super.key, required this.counts});
+
+  /// Colour (null: blank) and how many tasks wear it.
+  final List<(Color?, int)> counts;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final shown = [
+      for (final c in counts)
+        if (c.$2 > 0) c,
+    ];
+    if (shown.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (colour, n) in shown)
+              Expanded(
+                flex: n,
+                child: ColoredBox(color: colour ?? blankLabel(theme)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A group footer's date range: the earliest to the latest day in [days];
+/// null when there are none.
+String? dateRangeLabel(Iterable<DateTime> days, DisplayFormats formats) {
+  final list = days.toList()..sort();
+  if (list.isEmpty) return null;
+  return list.first == list.last
+      ? formats.formatDate(list.first)
+      : '${formats.formatDate(list.first)} – ${formats.formatDate(list.last)}';
+}
+
+/// Every day a value covers, for a footer's range: a date, or a timeline's
+/// two ends.
+Iterable<DateTime> daysOf(Object? v) sync* {
+  if (v is String) {
+    if (DateTime.tryParse(v) case final d?) yield d;
+  } else if (v is Map) {
+    if (DateTime.tryParse('${v['from']}') case final d?) yield d;
+    if (DateTime.tryParse('${v['to']}') case final d?) yield d;
   }
 }

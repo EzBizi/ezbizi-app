@@ -2485,7 +2485,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// as its settings say (design 178). Null when no column asks for one.
   Widget? _footer(BuildContext context, List<_Json> tasks) {
     final columns = boardColumns(_board);
-    if (tasks.isEmpty || columns.every((c) => c.footer == 'none')) return null;
+    if (tasks.isEmpty) return null;
     final theme = Theme.of(context);
     final style = theme.textTheme.bodySmall?.copyWith(
       fontWeight: FontWeight.w700,
@@ -2494,6 +2494,21 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
     bool shown(String key) => _builtinShown(_board, key);
     Widget blank(double w) => SizedBox(width: w);
+    Widget text(double w, String? s, {Key? key, bool right = false}) =>
+        SizedBox(
+          width: w,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              s ?? '',
+              key: key,
+              textAlign: right ? TextAlign.right : TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: style,
+            ),
+          ),
+        );
     String? total(BoardColumn c) {
       if (c.footer == 'none' || (c.type != 'number' && c.type != 'formula')) {
         return null;
@@ -2509,6 +2524,70 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           : formatColumnNumber(sum, c);
     }
 
+    // Monday's group summary: each label column's spread as a stacked bar,
+    // and the span of dates under a date or timeline (Jose, 2026-11-13).
+    Widget statusBar() {
+      final counts = <String?, int>{};
+      for (final t in tasks) {
+        counts.update(_statusOf(t), (n) => n + 1, ifAbsent: () => 1);
+      }
+      return LabelBar(
+        key: const Key('status-footer'),
+        counts: [
+          for (final e in counts.entries)
+            (
+              _statusFor(_board, e.key) == null
+                  ? null
+                  : _statusColours(context, _statusFor(_board, e.key)).fill,
+              e.value,
+            ),
+        ],
+      );
+    }
+
+    Widget columnFooter(BoardColumn c) {
+      final w = _w('c:${c.id}');
+      if (c.type == 'status') {
+        final counts = <String?, int>{};
+        for (final t in tasks) {
+          counts.update(
+            columnValue(t, c)?.toString(),
+            (n) => n + 1,
+            ifAbsent: () => 1,
+          );
+        }
+        return SizedBox(
+          width: w,
+          height: 30,
+          child: LabelBar(
+            key: ValueKey('column-footer-${c.id}'),
+            counts: [
+              for (final e in counts.entries)
+                (
+                  c.options.where((o) => o.id == e.key).firstOrNull?.colour,
+                  e.value,
+                ),
+            ],
+          ),
+        );
+      }
+      if (c.type == 'date' || c.type == 'timeline') {
+        return text(
+          w,
+          dateRangeLabel([
+            for (final t in tasks) ...daysOf(columnValue(t, c)),
+          ], _formats),
+          key: ValueKey('column-footer-${c.id}'),
+        );
+      }
+      return text(
+        w,
+        total(c),
+        key: ValueKey('column-footer-${c.id}'),
+        right: true,
+      );
+    }
+
     return _cellBorder(
       context,
       SizedBox(
@@ -2519,29 +2598,25 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text('Total', style: style),
+                child: columns.any((c) => total(c) != null)
+                    ? Text('Total', style: style)
+                    : const SizedBox.shrink(),
               ),
             ),
             if (shown('creator')) blank(_w('creator')),
             if (shown('owner')) blank(_w('owner')),
-            if (shown('status')) blank(_w('status')),
+            if (shown('status'))
+              SizedBox(width: _w('status'), height: 30, child: statusBar()),
             if (shown('created')) blank(_w('created')),
-            if (shown('due')) blank(_w('due')),
-            for (final c in columns)
-              SizedBox(
-                width: _w('c:${c.id}'),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(
-                    total(c) ?? '',
-                    key: ValueKey('column-footer-${c.id}'),
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: style,
-                  ),
-                ),
+            if (shown('due'))
+              text(
+                _w('due'),
+                dateRangeLabel([
+                  for (final t in tasks) ...daysOf(t['due_on']),
+                ], _formats),
+                key: const Key('due-footer'),
               ),
+            for (final c in columns) columnFooter(c),
             if (shown('about')) blank(_w('about')),
             if (shown('updates')) blank(_w('updates')),
             if (_canEdit) blank(_widths.add),
@@ -2778,6 +2853,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               : null,
                           onEditOptions: _canEdit ? () => _editColumn(c) : null,
                           onMenu: _statusMenu,
+                          onAutoAssign: _canEdit && c.type == 'status'
+                              ? () => _suggestLabel(t, c.id)
+                              : null,
                         ),
                       )
                     : _cell(
@@ -2796,6 +2874,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               : null,
                           onEditOptions: _canEdit ? () => _editColumn(c) : null,
                           onMenu: _statusMenu,
+                          onAutoAssign: _canEdit && c.type == 'status'
+                              ? () => _suggestLabel(t, c.id)
+                              : null,
                         ),
                       ),
               if (shown('about'))
@@ -3031,32 +3112,48 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-        color: colours.ink,
+        color: labelInk(colours.fill),
         fontWeight: FontWeight.w700,
         fontSize: 12,
       ),
     );
 
+    final editable = (_board?['statuses'] as List? ?? const []).any(
+      (s) => s is Map && s.containsKey('id'),
+    );
     return MenuAnchor(
       menuChildren: [
-        for (final s in _statuses(_board))
-          MenuItemButton(
-            key: ValueKey('task-status-${t['id']}-${s.id}'),
-            leadingIcon: _statusDot(context, s),
-            onPressed: () => _setStatus(t, s.id),
-            child: Text(s.name),
+        Builder(
+          builder: (context) => LabelBlocks(
+            keyPrefix: 'task-status-${t['id']}',
+            labels: [
+              for (final s in _statuses(_board))
+                (
+                  id: s.id,
+                  label: s.name,
+                  colour: _statusColours(context, s).fill,
+                ),
+            ],
+            current: _statusOf(t),
+            onPick: (id) {
+              MenuController.maybeOf(context)?.close();
+              if (id != null) _setStatus(t, id);
+            },
+            onEdit: editable
+                ? () {
+                    MenuController.maybeOf(context)?.close();
+                    _editStatuses();
+                  }
+                : null,
+            onAutoAssign: editable
+                ? () async {
+                    MenuController.maybeOf(context)?.close();
+                    final id = await _suggestLabel(t, null);
+                    if (id != null) _setStatus(t, id);
+                  }
+                : null,
           ),
-        if ((_board?['statuses'] as List? ?? const []).any(
-          (s) => s is Map && s.containsKey('id'),
-        )) ...[
-          const Divider(height: 8),
-          MenuItemButton(
-            key: ValueKey('task-status-edit-${t['id']}'),
-            leadingIcon: const Icon(Icons.edit_outlined, size: 18),
-            onPressed: _editStatuses,
-            child: const Text('Edit labels…'),
-          ),
-        ],
+        ),
       ],
       onOpen: () => _statusMenu(true),
       onClose: () => _statusMenu(false),
@@ -3071,6 +3168,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         ),
       ),
     );
+  }
+
+  /// Monday's "Auto-assign labels": the AI's pick for [t] in a status
+  /// column (or the board's own status when [columnId] is null).
+  Future<String?> _suggestLabel(_Json t, String? columnId) async {
+    final res = await widget.api.post('/tasks/${t['id']}/suggest-label', {
+      'column_id': ?columnId,
+    });
+    final id = res.ok ? ((res.data as Map?)?['id'] as String?) : null;
+    if (mounted && id == null) {
+      _say(res.ok ? 'No label clearly fits this task.' : res.reason);
+    }
+    return id;
   }
 
   Widget _card(BuildContext context, _Json t, {bool sub = false}) {
