@@ -54,6 +54,7 @@
    "actions": [
     {
      "assign": "dispatcher1@a-1chimney.com",
+     "name": "Adeline Pierrelouis-Aghaji",
      "add": false
     }
    ],
@@ -78,6 +79,7 @@
    "actions": [
     {
      "assign": "mike@a-1chimney.com",
+     "name": "Nehorai Maamari",
      "add": true
     }
    ],
@@ -102,6 +104,7 @@
    "actions": [
     {
      "assign": "manny@a-1chimney.com",
+     "name": "Menahem Maamari",
      "add": true
     }
    ],
@@ -126,6 +129,7 @@
    "actions": [
     {
      "assign": "moses@a-1chimney.com",
+     "name": "Moshe Hay Zion",
      "add": true
     }
    ],
@@ -150,6 +154,7 @@
    "actions": [
     {
      "assign": "ben@a-1chimney.com",
+     "name": "Rotem Hadad",
      "add": true
     }
    ],
@@ -174,6 +179,7 @@
    "actions": [
     {
      "assign": "monday user 71550800",
+     "name": "",
      "add": true
     }
    ],
@@ -198,6 +204,7 @@
    "actions": [
     {
      "assign": "netanel@a-1chimney.com",
+     "name": "Netanel mullakand",
      "add": true
     }
    ],
@@ -222,6 +229,7 @@
    "actions": [
     {
      "assign": "moses@a-1chimney.com",
+     "name": "Moshe Hay Zion",
      "add": true
     }
    ],
@@ -354,6 +362,7 @@
    "actions": [
     {
      "assign": "moses@a-1chimney.com",
+     "name": "Moshe Hay Zion",
      "add": true
     }
    ],
@@ -378,6 +387,7 @@
    "actions": [
     {
      "assign": "mike@a-1chimney.com",
+     "name": "Nehorai Maamari",
      "add": true
     }
    ],
@@ -402,6 +412,7 @@
    "actions": [
     {
      "assign": "moses@a-1chimney.com",
+     "name": "Moshe Hay Zion",
      "add": true
     }
    ],
@@ -426,6 +437,7 @@
    "actions": [
     {
      "assign": "monday user 71550800",
+     "name": "",
      "add": true
     }
    ],
@@ -450,6 +462,7 @@
    "actions": [
     {
      "assign": "netanel@a-1chimney.com",
+     "name": "Netanel mullakand",
      "add": true
     }
    ],
@@ -474,6 +487,7 @@
    "actions": [
     {
      "assign": "manny@a-1chimney.com",
+     "name": "Menahem Maamari",
      "add": true
     }
    ],
@@ -498,6 +512,7 @@
    "actions": [
     {
      "assign": "ben@a-1chimney.com",
+     "name": "Rotem Hadad",
      "add": true
     }
    ],
@@ -520,6 +535,7 @@
    "actions": [
     {
      "assign": "dispatcher1@a-1chimney.com",
+     "name": "Adeline Pierrelouis-Aghaji",
      "add": false
     }
    ],
@@ -610,6 +626,7 @@
    "actions": [
     {
      "assign": "dismanager@a-1chimney.com",
+     "name": "Eve Sarfaty",
      "add": true
     }
    ],
@@ -628,6 +645,7 @@
    "actions": [
     {
      "assign": "merav@a-1chimney.com",
+     "name": "Merav Peretz",
      "add": true
     }
    ],
@@ -800,6 +818,7 @@
    "actions": [
     {
      "notify": "assignees",
+     "name": "",
      "message": "Hi there,\nThis is a friendly reminder that your task is due tomorrow.\nPlease ensure the following task is completed by {{due_on}}:\n{{title}}\nThank you, and let me know if you have any questions or need assistance!\n\nBest regards,\nA1 Chimney"
     }
    ],
@@ -840,6 +859,7 @@
    "actions": [
     {
      "assign": "baro@a-1chimney.com",
+     "name": "Bar Ohayon",
      "add": true
     }
    ],
@@ -862,6 +882,7 @@
    "actions": [
     {
      "assign": "chaim@a-1chimney.com",
+     "name": "Chaim Perez",
      "add": true
     }
    ],
@@ -884,6 +905,7 @@
    "actions": [
     {
      "assign": "info@a-1chimney.com",
+     "name": "Shoval Ohayon",
      "add": true
     }
    ],
@@ -981,6 +1003,7 @@
    "actions": [
     {
      "notify": "assignees",
+     "name": "",
      "message": "Hi there,\nThis is a friendly reminder that your task is due tomorrow.\nPlease ensure the following task is completed by {{due_on}}:\n{{title}}\nThank you, and let me know if you have any questions or need assistance!\n\nBest regards,\nA1 Chimney"
     }
    ],
@@ -1003,6 +1026,7 @@
     },
     {
      "notify": "baro@a-1chimney.com",
+     "name": "Bar Ohayon",
      "message": "Hi the status for \"{{title}}\" changed to \"{{status}}\".\n"
     }
    ],
@@ -1044,6 +1068,7 @@
    "actions": [
     {
      "assign": "jose@a-1chimney.com",
+     "name": "Jose Demasi",
      "add": true
     }
    ],
@@ -1120,6 +1145,7 @@
    "actions": [
     {
      "assign": "rodrigo@a-1chimney.com",
+     "name": "Rodrigo Mena",
      "add": true
     }
    ],
@@ -1159,6 +1185,7 @@
    "actions": [
     {
      "notify": "assignees",
+     "name": "",
      "message": "Hi there,\nThis is a friendly reminder that your task is due tomorrow.\nPlease ensure the following task is completed by {{due_on}}:\n{{title}}\nThank you, and let me know if you have any questions or need assistance!\n\nBest regards,\nA1 Chimney"
     }
    ],
@@ -1200,6 +1227,7 @@
    "actions": [
     {
      "assign": "ben@a-1chimney.com",
+     "name": "Rotem Hadad",
      "add": true
     }
    ],
@@ -1223,6 +1251,7 @@
    "actions": [
     {
      "notify": "ben@a-1chimney.com",
+     "name": "Rotem Hadad",
      "message": "Please make sure to complete your weeekly tasks."
     }
    ],
@@ -1251,6 +1280,7 @@
    "actions": [
     {
      "notify": "ben@a-1chimney.com",
+     "name": "Rotem Hadad",
      "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
     },
     {
@@ -1295,6 +1325,7 @@
    "actions": [
     {
      "notify": "assignees",
+     "name": "",
      "message": "Hi there,\nThis is a friendly reminder that your task is due tomorrow.\nPlease ensure the following task is completed by {{due_on}}:\n{{title}}\nThank you, and let me know if you have any questions or need assistance!\n\nBest regards,\nA1 Chimney"
     }
    ],
@@ -1336,6 +1367,7 @@
    "actions": [
     {
      "assign": "moses@a-1chimney.com",
+     "name": "Moshe Hay Zion",
      "add": true
     }
    ],
@@ -1359,6 +1391,7 @@
    "actions": [
     {
      "notify": "moses@a-1chimney.com",
+     "name": "Moshe Hay Zion",
      "message": "Please make sure to complete your weeekly tasks."
     }
    ],
@@ -1387,6 +1420,7 @@
    "actions": [
     {
      "notify": "moses@a-1chimney.com",
+     "name": "Moshe Hay Zion",
      "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
     },
     {
@@ -1414,6 +1448,7 @@
     },
     {
      "notify": "baro@a-1chimney.com",
+     "name": "Bar Ohayon",
      "message": "Hi the following task is done.\n{{title}}"
     }
    ],
@@ -1432,6 +1467,7 @@
    "actions": [
     {
      "assign": "monday user 76893540",
+     "name": "",
      "add": true
     }
    ],
@@ -1461,6 +1497,7 @@
    "actions": [
     {
      "notify": "monday user 76893540",
+     "name": "",
      "message": "Hi David,\nPlease make sure to check the following tasks:\n{{title}}\nThank you."
     },
     {
@@ -1505,6 +1542,7 @@
    "actions": [
     {
      "assign": "manny@a-1chimney.com",
+     "name": "Menahem Maamari",
      "add": true
     }
    ],
@@ -1528,6 +1566,7 @@
    "actions": [
     {
      "notify": "manny@a-1chimney.com",
+     "name": "Menahem Maamari",
      "message": "Please make sure to complete your weeekly tasks."
     }
    ],
@@ -1556,6 +1595,7 @@
    "actions": [
     {
      "notify": "manny@a-1chimney.com",
+     "name": "Menahem Maamari",
      "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
     },
     {
@@ -1597,6 +1637,7 @@
    "actions": [
     {
      "assign": "mike@a-1chimney.com",
+     "name": "Nehorai Maamari",
      "add": true
     }
    ],
@@ -1620,6 +1661,7 @@
    "actions": [
     {
      "notify": "mike@a-1chimney.com",
+     "name": "Nehorai Maamari",
      "message": "Please make sure to complete your weekly tasks."
     }
    ],
@@ -1648,6 +1690,7 @@
    "actions": [
     {
      "notify": "mike@a-1chimney.com",
+     "name": "Nehorai Maamari",
      "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
     },
     {
@@ -1674,6 +1717,7 @@
    "actions": [
     {
      "notify": "assignees",
+     "name": "",
      "message": "Hi there,\nThis is a friendly reminder that your task is due tomorrow.\nPlease ensure the following task is completed by {{due_on}}:\n{{title}}\nThank you, and let me know if you have any questions or need assistance!\n\nBest regards,\nA1 Chimney"
     }
    ],
@@ -1733,6 +1777,7 @@
    "actions": [
     {
      "assign": "monday user 71550800",
+     "name": "",
      "add": true
     }
    ],
@@ -1756,6 +1801,7 @@
    "actions": [
     {
      "notify": "monday user 71550800",
+     "name": "",
      "message": "Please make sure to complete your weeekly tasks."
     }
    ],
@@ -1784,6 +1830,7 @@
    "actions": [
     {
      "notify": "monday user 71550800",
+     "name": "",
      "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
     },
     {
@@ -1830,6 +1877,7 @@
    "actions": [
     {
      "notify": "monday user 78455682",
+     "name": "",
      "message": "Please make sure to complete your weeekly tasks."
     }
    ],
@@ -1848,10 +1896,12 @@
    "actions": [
     {
      "assign": "monday user 78455682",
+     "name": "",
      "add": true
     },
     {
      "assign": "monday user 78455682",
+     "name": "",
      "add": true
     }
    ],
@@ -1898,6 +1948,7 @@
    "actions": [
     {
      "notify": "monday user 78455682",
+     "name": "",
      "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
     },
     {
@@ -1926,6 +1977,7 @@
    "actions": [
     {
      "notify": "netanel@a-1chimney.com",
+     "name": "Netanel mullakand",
      "message": "Please make sure to complete your weeekly tasks."
     }
    ],
@@ -1962,6 +2014,7 @@
    "actions": [
     {
      "assign": "netanel@a-1chimney.com",
+     "name": "Netanel mullakand",
      "add": true
     }
    ],
@@ -1990,6 +2043,7 @@
    "actions": [
     {
      "notify": "netanel@a-1chimney.com",
+     "name": "Netanel mullakand",
      "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
     },
     {
@@ -2018,6 +2072,7 @@
    "actions": [
     {
      "notify": "manny@a-1chimney.com",
+     "name": "Menahem Maamari",
      "message": "Please make sure to complete your weeekly tasks."
     }
    ],
@@ -2036,6 +2091,7 @@
    "actions": [
     {
      "assign": "manny@a-1chimney.com",
+     "name": "Menahem Maamari",
      "add": true
     }
    ],
@@ -2082,6 +2138,7 @@
    "actions": [
     {
      "notify": "manny@a-1chimney.com",
+     "name": "Menahem Maamari",
      "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
     },
     {
@@ -2128,6 +2185,7 @@
    "actions": [
     {
      "notify": "manny@a-1chimney.com",
+     "name": "Menahem Maamari",
      "message": "Please make sure to complete your weeekly tasks."
     }
    ],
@@ -2156,6 +2214,7 @@
    "actions": [
     {
      "notify": "manny@a-1chimney.com",
+     "name": "Menahem Maamari",
      "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
     },
     {
@@ -2224,6 +2283,7 @@
    "actions": [
     {
      "notify": "ron@a-1chimney.com",
+     "name": "Ron Paz",
      "message": "Please make sure to complete your weekly tasks."
     }
    ],
@@ -2270,6 +2330,7 @@
    "actions": [
     {
      "notify": "ron@a-1chimney.com",
+     "name": "Ron Paz",
      "message": "Please make sure to maintain your vehicle:\nGet an oil change sticker proof, invoice and upload to vehicle list on Monaday.com."
     },
     {
@@ -2329,6 +2390,7 @@
    "actions": [
     {
      "assign": "jose@a-1chimney.com",
+     "name": "Jose Demasi",
      "add": true
     }
    ],
@@ -2351,6 +2413,7 @@
     },
     {
      "notify": "baro@a-1chimney.com",
+     "name": "Bar Ohayon",
      "message": "Hi the status for \"{{title}}\" changed to \"{{status}}\".\n"
     }
    ],
