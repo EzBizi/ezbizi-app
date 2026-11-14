@@ -3619,3 +3619,28 @@ live web + natives; 0568 cutting (Integrations status lines, Monday token refres
 - Publishers on prod: bluesky, facebook_page, google_business_profile, instagram_professional, pinterest, tiktok, x,
   youtube connected; no new publisher; LinkedIn 0 rows. `payment_accounts` 0, no Stripe secret. Training, LSA: not measured.
 No sentence moves.
+
+## 2026-11-13: 0.0.0568-0.0.0574 live, and `/privacy/` said EzBizi only reads the business accounts you connect
+
+Production `/download/windows.json` 0.0.0574 at `36fce1c42`. Before the edit all 10 live pages matched their WP
+post_content as text; no page modified since the 11-11 privacy edit. www `/ezbizi-api.json` byte-identical to the
+app's `/api/v1/openapi.json`.
+
+- **Edited WP page 8** (backup `~/ezb-wp-bak-20261113/page8.html` on the websites box). The 11-12 Monday trigger
+  tripped: `a4ea775fb` (ancestor of `36fce1c42`) schedules `ezbizi:monday-push` every minute (creates/changes items,
+  groups, updates on the customer's Monday boards) and adds `ezbizi:monday-webhooks`. "The accounts you connect" said
+  "any business account EzBizi reads from at your instruction" — already narrower than `MirrorToWorkiz` (jobs written
+  to the customer's Workiz), and false for Monday the first time the outbox sends. Now "reads from **or updates** at
+  your instruction, such as Google Ads". Neither Workiz nor Monday named (Workiz stays deliberately unpublished; a
+  customer's own account is not EzBizi's processor, so no new line in the list). True with zero writes too.
+  Measured: `monday_outbox` 0 rows on prod at ~00:10 UTC 11-14. Live, with and without a cache-buster, bare and www.
+- Backups: 10 days offsite instead of 45 (`6ba2da82d`). `/privacy/` gives no backup period ("a limited period …
+  as backups require"; the erasure page is the place for a number). Unchanged.
+- Automation steps to branch managers, clock-in shifts to managers on WhatsApp, STOP opt-outs recorded, TikTok
+  avatar on the card, Task Board/Monday parity, tab style, Integrations, ponytail shrink: staff-side, or covered by
+  existing Meta/Twilio lines. No page names them.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502 (iOS card stays unlinked).
+Desk asked (11-13): 0568-0574 live status, Monday writes, the 72 scheduled jobs by `created_by` and website-booking
+lead, Training/ring groups/LSA/7th publisher/`payment_accounts`. No answer within the run; next run asks again.
