@@ -883,14 +883,17 @@ final class MondayImport
      * The board's status of that name, made if missing (done when the item is
      * done, or when Monday counts the label as done), with Monday's colour
      * where it has none; a done item with no label takes the board's first
-     * done status. Null keeps the board's default.
+     * done status. A blank label (Monday's empty status) is "Not started", so a
+     * label emptied on Monday — or taken from the wrong column earlier (the PM
+     * boards' Area, 2026-11-13) — is emptied here too.
      */
     private function status(TaskBoard $board, ?string $label, bool $done, ?string $colour = null): ?string
     {
         $label = trim((string) $label);
         $statuses = $board->statuses()->orderBy('position')->get();
         if ($label === '') {
-            return $done ? $statuses->firstWhere('is_done', true)?->name : null;
+            return $done ? $statuses->firstWhere('is_done', true)?->name
+                : $statuses->firstWhere('key', Task::STATUS_NOT_STARTED)?->name;
         }
         $found = $statuses->first(fn (TaskStatus $s) => mb_strtolower($s->name) === mb_strtolower($label));
         if ($found === null) {
