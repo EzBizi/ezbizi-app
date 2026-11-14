@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0575', date: '14 Nov 2026', items: [
+      'Monday import: Project Management boards take their status from Job Status; re-runs never add a file twice; Monday automations find their people the same way the import does',
+    ]),
     VersionRelease(version: '0.0.0574', date: '13 Nov 2026', items: [
       'Task Board: dragging a column edge moves the edge with your pointer',
       'Monday sync keeps working when Monday renews its access, and each board picks up where it left off',
