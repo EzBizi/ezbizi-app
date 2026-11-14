@@ -24,6 +24,7 @@ class MondayAutomationsTest extends TestCase
     {
         $t = $this->provisionTenant('Alpha');
         $nehorai = $this->userWithRole($t, 'Manager', ['tasks.view', 'tasks.edit'], 'nehorai@a1.test');
+        $this->inTenant($t['org'], fn () => $nehorai->forceFill(['name' => 'Nehorai Maamari'])->save());
         [$board, $done, $recurring, $area, $date] = $this->inTenant($t['org'], function () use ($t) {
             $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->firstOrFail();
             $board->forceFill(['external_ref' => 'monday:500'])->save();
@@ -47,6 +48,8 @@ class MondayAutomationsTest extends TestCase
             $recipe('6', ['kind' => 'created'], [], [['set' => 'Date', 'value' => 'today']], active: false),
             $recipe('7', ['kind' => 'column_changed', 'column' => 'Area', 'to' => null], [], [['move_group' => 'Done']], active: false),
             $recipe('8', null, [], [['move_group' => 'Done']]),
+            // Monday's email is not his EzBizi one: found by his Monday name, as the import finds people.
+            $recipe('9', ['kind' => 'created'], [], [['assign' => 'mike@monday.test', 'name' => 'Nehorai Maamari', 'add' => true]]),
         ], 'skipped' => []];
         $file = tempnam(sys_get_temp_dir(), 'auto');
         file_put_contents($file, json_encode($spec));
@@ -57,8 +60,10 @@ class MondayAutomationsTest extends TestCase
 
         $this->inTenant($t['org'], function () use ($board, $done, $recurring, $area, $date, $nehorai, $t) {
             $rules = Automation::query()->with('activeVersion')->get()->keyBy(fn ($r) => explode(' ', $r->description)[0]);
-            $this->assertCount(7, $rules, 'once each; a recipe with no trigger read is not made');
+            $this->assertCount(8, $rules, 'once each; a recipe with no trigger read is not made');
             $on = fn ($k) => $rules["monday:$k"]->is_active;
+            $this->assertTrue($on(9), 'his rule is on');
+            $this->assertEquals([['type' => 'task.assign', 'user_field' => 'user:'.$nehorai->id, 'add' => true]], $rules['monday:9']->activeVersion->actions);
             $all = fn ($k) => $rules["monday:$k"]->activeVersion->conditions['all'] ?? [];
             $acts = fn ($k) => $rules["monday:$k"]->activeVersion->actions;
 
@@ -84,7 +89,7 @@ class MondayAutomationsTest extends TestCase
 
             $this->assertTrue($on(1) && $on(2) && $on(3) && $on(4));
             $this->assertFalse($on(5), 'a person with no account here: made off');
-            $this->assertStringContainsString('not here: person ron@nobody.test', $rules['monday:5']->description);
+            $this->assertStringContainsString('not here: person (ron@nobody.test)', $rules['monday:5']->description);
             $this->assertFalse($on(6), 'off on Monday, off here');
             $this->assertTrue(in_array(['field' => 'value', 'op' => 'changed'], $all(7)), 'Monday\'s bare "when column changes"');
         });

@@ -104,6 +104,9 @@ final class MondayImport
 
     private bool $refresh = false;
 
+    /** Take Monday's fields even where Monday has not changed since we took them (a mapping fixed later). */
+    private bool $reapply = false;
+
     private ?string $filesDir = null;
 
     private TaskWriter $writer;
@@ -117,9 +120,10 @@ final class MondayImport
      * @param  string|User  $as  the person the import acts as: a user, or an email the people map resolves
      * @return array{counts: array<string, int|float>, unmatched: list<string>, owners_dropped: array<string, int>, not_carried: list<string>}
      */
-    public function run(Organization $org, array $data, string|User $as, bool $dry = false, ?string $filesDir = null, bool $refresh = false, array $sensitiveItems = []): array
+    public function run(Organization $org, array $data, string|User $as, bool $dry = false, ?string $filesDir = null, bool $refresh = false, array $sensitiveItems = [], bool $reapply = false): array
     {
         $this->reset($data, $dry, $filesDir, $refresh);
+        $this->reapply = $reapply;
         $this->sensitiveItems = array_map('strval', $sensitiveItems);
 
         // Imports are history, not events: no rule texts anyone about them.
@@ -370,9 +374,9 @@ final class MondayImport
             return;
         }
 
-        $mondayChanged = $task->external_updated_at === null
+        $mondayChanged = $this->reapply || ($task->external_updated_at === null
             ? $mondayAt->greaterThan($task->updated_at)
-            : $mondayAt->greaterThan($task->external_updated_at);
+            : $mondayAt->greaterThan($task->external_updated_at));
         if (! $mondayChanged) {
             $this->counts['skipped (already imported)']++;
 
@@ -624,13 +628,23 @@ final class MondayImport
         if ($files === []) {
             return;
         }
-        $have = $existing ? $update->attachments()->pluck('original_name')->all() : [];
+        // How many of each name the update already holds, by the file's real name: a sensitive
+        // task's files read "Locked file" with the name sealed, and matching on that re-added
+        // them on every run (prod, 2026-11-13). Counted, not just present: Monday allows three
+        // "image.png" on one update.
+        $have = [];
+        foreach ($existing ? $update->attachments()->get(['original_name', 'sealed_name']) : [] as $a) {
+            $real = $a->sealed_name !== null ? (string) SensitiveTasks::open($a->sealed_name) : (string) $a->original_name;
+            $have[$real] = ($have[$real] ?? 0) + 1;
+        }
         $extensions = array_map('mb_strtolower', (array) config('ezbizi.attachments.extensions', []));
         $notes = [];
         $carried = [];
         foreach ($files as $f) {
             $name = (string) ($f['name'] ?? 'file');
-            if (in_array($name, $have, true)) {
+            if (($have[$name] ?? 0) > 0) {
+                $have[$name]--;
+
                 continue;
             }
             $ext = mb_strtolower(ltrim((string) ($f['ext'] ?? pathinfo($name, PATHINFO_EXTENSION)), '.'));
@@ -751,6 +765,26 @@ final class MondayImport
 
         foreach ($b['statuses'] ?? [] as $s) {
             $this->status($board, $s['label'], (bool) ($s['done'] ?? false), $s['colour'] ?? null);
+        }
+        // A board whose status came from the wrong column (the PM boards' Area, before
+        // 2026-11-13) keeps those labels as statuses nobody is on: they go once unused, and only
+        // when they are another Monday column's labels and not the status column's own.
+        if (! empty($b['statuses'])) {
+            $own = array_map(fn ($s) => mb_strtolower($s['label']), $b['statuses']);
+            $others = [];
+            foreach ($b['columns'] ?? [] as $c) {
+                foreach ($c['settings']['options'] ?? [] as $o) {
+                    $others[] = mb_strtolower((string) $o['label']);
+                }
+            }
+            foreach ($board->statuses()->whereNull('key')->get() as $s) {
+                $name = mb_strtolower($s->name);
+                if (! in_array($name, $own, true) && in_array($name, $others, true)
+                    && ! Task::query()->withTrashed()->where('status_id', $s->id)->exists()) {
+                    $s->delete();
+                    $this->counts['stray statuses removed'] = ($this->counts['stray statuses removed'] ?? 0) + 1;
+                }
+            }
         }
 
         foreach (array_values($b['columns'] ?? []) as $i => $c) {

@@ -218,4 +218,31 @@ class TasksImportMondayEverythingTest extends TestCase
             $this->assertSame(1, TaskStatus::query()->where('board_id', $task->board_id)->where('name', 'Done')->count());
         });
     }
+
+    /**
+     * Prod, 2026-11-13: a sensitive task's files read "Locked file" (the name
+     * sealed), so each run added them again; and Monday allows two files of
+     * one name on an update. A re-run adds neither twice.
+     */
+    public function test_a_rerun_adds_no_file_twice_on_a_sensitive_task_or_with_a_repeated_name(): void
+    {
+        file_put_contents($this->dir.DIRECTORY_SEPARATOR.'b1.png', 'png one');
+        file_put_contents($this->dir.DIRECTORY_SEPARATOR.'b2.png', 'png two');
+        $update = fn (string $id) => [['monday_id' => 'u'.$id, 'author_email' => 'jose@a-1chimney.com', 'created_at' => '2026-10-02T09:00:00Z', 'body' => 'Shots',
+            'files' => [['monday_id' => 'b1', 'name' => 'image.png', 'ext' => '.png', 'size' => 7, 'url' => null],
+                ['monday_id' => 'b2', 'name' => 'image.png', 'ext' => '.png', 'size' => 7, 'url' => null]], 'replies' => []]];
+        $items = [$this->item('31', 'Bank logins', ['updates' => $update('31')]), $this->item('32', 'Screenshots', ['updates' => $update('32')])];
+
+        $this->import($items);
+        $this->import($items);
+
+        $this->inTenant($this->tenant['org'], function () {
+            foreach (['31', '32'] as $id) {
+                $task = Task::query()->where('external_ref', 'monday:'.$id)->firstOrFail();
+                $this->assertSame(2, Attachment::query()->where('attachable_type', 'task_updates')
+                    ->whereIn('attachable_id', TaskUpdate::query()->where('task_id', $task->id)->select('id'))->count(), "task {$id}: two files, once");
+            }
+            $this->assertTrue((bool) Task::query()->where('external_ref', 'monday:31')->value('sensitive'), 'the fixture is a sensitive task');
+        });
+    }
 }

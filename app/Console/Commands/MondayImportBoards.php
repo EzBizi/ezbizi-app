@@ -28,7 +28,8 @@ class MondayImportBoards extends Command
 {
     protected $signature = 'ezbizi:monday-import-boards {--map= : JSON file, monday board id => target} {--board=* : only these monday board ids}
         {--connection= : the Monday connection} {--as= : EzBizi email of the person the import acts as (default: who connected)}
-        {--dry-run : roll every chunk back} {--chunk=100 : items read and imported at a time} {--limit= : at most this many items per board (a sample)}';
+        {--dry-run : roll every chunk back} {--chunk=100 : items read and imported at a time} {--limit= : at most this many items per board (a sample)}
+        {--reapply : take the Monday fields again on tasks already here (after a mapping fix), unless changed here since}';
 
     protected $description = 'Import Monday boards onto the Task Board, as they are on Monday';
 
@@ -73,7 +74,7 @@ class MondayImportBoards extends Command
                     $report = $import->run($org, [
                         'people' => (array) ($state['people'] ?? []), 'users' => $users,
                         'boards' => [$meta + ['items' => $chunk === [] ? [] : $reader->items($boardId, $chunk)]],
-                    ], $as, dry: $dry);
+                    ], $as, dry: $dry, refresh: (bool) $this->option('reapply'), reapply: (bool) $this->option('reapply'));
                     foreach ($report['counts'] as $k => $v) {
                         $total['counts'][$k] = ($total['counts'][$k] ?? 0) + $v;
                     }

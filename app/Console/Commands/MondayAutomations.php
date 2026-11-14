@@ -34,12 +34,21 @@ class MondayAutomations extends Command
 
     protected $description = 'Recreate Monday board automations as Task Board rules';
 
+    /** @var array<string, string> monday email => EzBizi email */
+    private array $people = [];
+
     public function handle(TenantContext $tenant): int
     {
         $spec = json_decode((string) file_get_contents((string) $this->option('spec')), true, flags: JSON_THROW_ON_ERROR);
         $org = Organization::query()->withoutGlobalScopes()->findOrFail($this->option('org'));
         $counts = ['made on' => 0, 'made off' => 0, 'made off (something missing)' => 0, 'already there' => 0, 'board not imported' => 0];
 
+        // monday email => EzBizi email, the people map the import used (on the Monday connection).
+        $connection = \App\Models\SocialConnection::query()->withoutGlobalScopes()->where('organization_id', $org->id)
+            ->where('provider', 'monday')->first();
+        foreach ((array) ($connection?->setup['monday']['people'] ?? []) as $from => $to) {
+            $this->people[mb_strtolower(trim((string) $from))] = mb_strtolower(trim((string) $to));
+        }
         $tenant->run($org, function () use ($spec, &$counts) {
             DB::beginTransaction();
             try {
@@ -97,10 +106,25 @@ class MondayAutomations extends Command
 
             return $id;
         };
-        $person = function (?string $email) use (&$missing): ?string {
-            $id = $email ? User::query()->where('email', $email)->where('is_active', true)->value('id') : null;
+        // The person behind a Monday email, as the import finds them: the same email, the
+        // connection's people map, then a name that names one active person only (Monday's
+        // "Jose Demasi" is "Jose Luis Demasi"; baro@ is Bar Ohayon at bar@ezbizi.com).
+        $person = function (?string $email, ?string $name = null) use (&$missing): ?string {
+            $active = User::query()->where('is_active', true);
+            $key = mb_strtolower(trim((string) $email));
+            $id = $key === '' ? null : ((clone $active)->where('email', $key)->value('id')
+                ?? (isset($this->people[$key]) ? (clone $active)->where('email', $this->people[$key])->value('id') : null));
+            if ($id === null && trim((string) $name) !== '') {
+                $words = fn (string $n) => array_values(array_filter(preg_split('/\s+/u', mb_strtolower(trim($n))) ?: []));
+                $want = $words((string) $name);
+                $same = (clone $active)->get(['id', 'name'])->filter(fn ($u) => $words((string) $u->name) === $want);
+                if ($same->isEmpty() && count($want) > 1) {
+                    $same = (clone $active)->get(['id', 'name'])->filter(fn ($u) => array_diff($want, $words((string) $u->name)) === []);
+                }
+                $id = $same->count() === 1 ? $same->first()->id : null;
+            }
             if ($id === null) {
-                $missing[] = 'person '.($email ?: '?');
+                $missing[] = 'person '.($name ? $name.' ' : '').'('.($email ?: '?').')';
             }
 
             return $id;
@@ -157,11 +181,11 @@ class MondayAutomations extends Command
             } elseif (isset($x['assign'])) {
                 $actions[] = $x['assign'] === 'creator'
                     ? ['type' => 'task.assign', 'user_field' => 'created_by_user_id']
-                    : ['type' => 'task.assign', 'user_field' => 'user:'.$person($x['assign']), 'add' => (bool) $x['add']];
+                    : ['type' => 'task.assign', 'user_field' => 'user:'.$person($x['assign'], $x['name'] ?? null), 'add' => (bool) $x['add']];
             } elseif (isset($x['notify'])) {
                 $actions[] = $x['notify'] === 'assignees'
                     ? ['type' => 'notify', 'message' => $x['message'], 'to_assignee' => true]
-                    : ['type' => 'notify', 'message' => $x['message'], 'user_ids' => array_values(array_filter([$person($x['notify'])]))];
+                    : ['type' => 'notify', 'message' => $x['message'], 'user_ids' => array_values(array_filter([$person($x['notify'], $x['name'] ?? null)]))];
             } elseif (array_key_exists('shift', $x)) {
                 $actions[] = ['type' => 'task.shift_date', 'column_id' => $column($x['shift']), 'amount' => $x['amount'], 'unit' => $x['unit']];
             } elseif (array_key_exists('set', $x)) {

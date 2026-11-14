@@ -464,7 +464,17 @@ final class MondayBoardReader
     /** The status columns in the order they decide: "Status" by title, then the main `status`. */
     private static function statusOrder(array $meta): array
     {
-        $titled = array_keys(array_filter($meta, fn ($m) => $m['type'] === 'status' && mb_strtolower(trim($m['title'])) === 'status'));
+        $named = fn (string $title) => array_keys(array_filter($meta, fn ($m) => in_array($m['type'], ['status', 'color'], true) && mb_strtolower(trim($m['title'])) === $title));
+        $titled = $named('status');
+        if ($titled === []) {
+            // The Project Management boards' first status column (id `status`) is Area, whose
+            // index 1 (Cincinnati, Wisconsin) Monday lists as "done": the task's status there is
+            // Job Status, and Area is a column like any other (prod import, 2026-11-13).
+            $job = $named('job status');
+            if ($job !== []) {
+                return [$job[0]];
+            }
+        }
 
         return array_values(array_unique([...$titled, ...(isset($meta['status']) ? ['status'] : [])]));
     }
