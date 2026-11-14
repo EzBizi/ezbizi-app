@@ -3643,4 +3643,25 @@ app's `/api/v1/openapi.json`.
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502 (iOS card stays unlinked).
 Desk asked (11-13): 0568-0574 live status, Monday writes, the 72 scheduled jobs by `created_by` and website-booking
-lead, Training/ring groups/LSA/7th publisher/`payment_accounts`. No answer within the run; next run asks again.
+lead, Training/ring groups/LSA/7th publisher/`payment_accounts`. Answer below.
+
+- **Second edit to WP page 8** (pre-edit copy `~/ezb-wp-bak-20261113/page8-b.html`). `fe918296a` (in 0571): where an
+  organization manages Google Workspace signatures, a person's EzBizi profile photo is copied to the public
+  `/api/v1/signature-photos/{hmac}` address when their signature has no photo. "A photo added to an email signature is
+  kept at an unguessable web address" no longer covered it; now "A photo added to an email signature — and, where an
+  organization manages its email signatures in EzBizi, the profile photo of anyone whose signature has none — is kept
+  at an unguessable web address". Live, with and without a cache-buster; forbidden-terms over the live page ok - 4.
+
+**Desk (11-13, ~00:20 UTC 11-14), recorded as given:** 0568-0574 all live web + natives (0571 `6079e0937` after two
+cuts that never deployed; 0572 `e58f6f65e`, 0573 `248d93150`, 0574 `36fce1c42`); Apple "delivered, not yet
+accepted"; nothing rolled back. Monday push writes back every minute; webhook registration not yet run. Grok reply
+reader reads customer replies (xAI line already names a lead's messages). `aws/aws-sdk-php` removed; mail is SMTP to
+SES, processor unchanged. No new processor.
+- **Scheduling: 74 jobs, all Triplex Group (the A-1 org renamed). `created_by_user_id`: 10 staff, 64 null;
+  `created_by_label`: 28 across 10 staff names, 46 null; website-booking leads pointing at them: 0.** Ten jobs
+  created by a staff user inside EzBizi with a date is what the 11-12 note said inverts the row, so **the row has
+  inverted**: a scheduling sentence is now allowed. None was written, as with Training on 11-11: one organization,
+  nobody asked, and a count is not wording. If one is written, keep it to "set a job's date and time" (no calendar,
+  dispatch board or crew assignment is measured).
+- Training, ring groups, LSA enquiry, publishers, `payment_accounts`: no behaviour change (code shrink only;
+  RetentionPolicy gained 2 Monday lines). No sentence moves.
