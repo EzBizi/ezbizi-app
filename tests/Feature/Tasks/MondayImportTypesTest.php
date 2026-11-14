@@ -307,5 +307,20 @@ class MondayImportTypesTest extends TestCase
         $this->artisan('ezbizi:monday-import-boards', ['--map' => $map, '--reapply' => true])->assertSuccessful();
         @unlink($map);
         $this->assertSame('Working on it', $status(), 'reapplied from Monday');
+
+        // Prod, 2026-11-13: PM jobs whose Job Status is blank on Monday kept the Area label they
+        // were given ("Cleveland"). A blank status on Monday is "Not started" here.
+        $board = $this->board('2026-11-12T10:00:00Z');
+        foreach ($board['items'][0]['column_values'] as $i => $c) {
+            if ($c['id'] === 'status') {
+                $board['items'][0]['column_values'][$i] = ['id' => 'status', 'type' => 'status', 'text' => '', 'label' => null, 'index' => null, 'value' => null];
+            }
+        }
+        $this->monday['boards'] = ['100' => $board];
+        $map = tempnam(sys_get_temp_dir(), 'map');
+        file_put_contents($map, json_encode(['100' => ['target' => 'personal', 'owner_email' => 'jose@ezbizi.test']]));
+        $this->artisan('ezbizi:monday-import-boards', ['--map' => $map, '--reapply' => true])->assertSuccessful();
+        @unlink($map);
+        $this->assertSame('Not started', $status(), 'blank on Monday, blank here');
     }
 }
