@@ -258,4 +258,54 @@ class MondayImportTypesTest extends TestCase
             \App\Models\TaskBoardFolder::query()->where('name', 'A1 Chimney')->value('id'),
             TaskBoard::query()->where('external_ref', 'monday:100')->value('folder_id')));
     }
+
+    /**
+     * Prod import, 2026-11-13: on the Project Management boards Monday's first
+     * status column (id `status`) is Area, and Area's index 1 (Cincinnati) is
+     * in its done_colors: Cincinnati jobs landed done. The status is Job Status.
+     */
+    public function test_a_board_without_a_status_column_takes_job_status_not_its_first_label_column(): void
+    {
+        $this->importOld([]);
+        $this->connect();
+        $board = $this->board('2026-11-13T10:30:00Z');
+        $board['columns'] = [
+            ['id' => 'name', 'title' => 'Name', 'type' => 'name', 'settings_str' => '{}'],
+            ['id' => 'status', 'title' => 'Area', 'type' => 'status', 'settings_str' => json_encode(['labels' => ['0' => 'Cleveland', '1' => 'Cincinnati'], 'done_colors' => [1]])],
+            ['id' => 'color_job', 'title' => 'Job Status', 'type' => 'status', 'settings_str' => json_encode(['labels' => ['1' => 'Done & Paid', '9' => 'Scheduled'], 'done_colors' => [1]])],
+        ];
+        $item = $board['items'][0];
+        $item['column_values'] = [
+            ['id' => 'status', 'type' => 'status', 'text' => 'Cincinnati', 'label' => 'Cincinnati', 'index' => 1, 'value' => '{"index":1}'],
+            ['id' => 'color_job', 'type' => 'status', 'text' => 'Scheduled', 'label' => 'Scheduled', 'index' => 9, 'value' => '{"index":9}'],
+        ];
+        $board['items'] = [$item];
+        $this->monday['boards'] = ['100' => $board];
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+
+        $task = $this->inTenant($this->tenant['org'], fn () => Task::query()->with('statusRow')->where('external_ref', 'monday:11')->sole());
+        $this->assertSame('Scheduled', $task->statusRow->name);
+        $this->assertFalse($task->statusRow->is_done, 'Cincinnati is a place, not done');
+        $this->assertSame('monday-1', $this->values()['Area'], 'Area is a label column');
+        $this->assertTrue($this->inTenant($this->tenant['org'], fn () => TaskStatus::query()->where('board_id', $task->board_id)->where('name', 'Done & Paid')->value('is_done')));
+    }
+
+    /** A mapping fixed after the import: --reapply takes Monday's fields again though Monday has not changed. */
+    public function test_reapply_takes_mondays_fields_again_on_tasks_already_here(): void
+    {
+        $this->importOld([]);
+        $this->connect();
+        $this->monday['boards'] = ['100' => $this->board('2026-11-12T10:00:00Z')];
+        $this->inTenant($this->tenant['org'], fn () => \App\Models\Task::query()->where('external_ref', 'monday:11')
+            ->update(['status_id' => TaskStatus::query()->where('name', 'Stuck')->value('id')]));
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+        $status = fn () => $this->inTenant($this->tenant['org'], fn () => Task::query()->with('statusRow')->where('external_ref', 'monday:11')->sole()->statusRow->name);
+        $this->assertSame('Stuck', $status(), 'Monday unchanged: the sync leaves it');
+
+        $map = tempnam(sys_get_temp_dir(), 'map');
+        file_put_contents($map, json_encode(['100' => ['target' => 'personal', 'owner_email' => 'jose@ezbizi.test']]));
+        $this->artisan('ezbizi:monday-import-boards', ['--map' => $map, '--reapply' => true])->assertSuccessful();
+        @unlink($map);
+        $this->assertSame('Working on it', $status(), 'reapplied from Monday');
+    }
 }
