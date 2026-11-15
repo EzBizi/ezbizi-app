@@ -3665,3 +3665,17 @@ SES, processor unchanged. No new processor.
   dispatch board or crew assignment is measured).
 - Training, ring groups, LSA enquiry, publishers, `payment_accounts`: no behaviour change (code shrink only;
   RetentionPolicy gained 2 Monday lines). No sentence moves.
+
+## 2026-11-14: 0.0.0575 live, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0575 at `441470f79`. 36fce1c42..441470f79 is Monday import/automation work
+only (Job Status as PM status, sealed files not re-uploaded, recipients matched like the import): staff-side, and
+already covered by the 11-13 "reads from or updates" line. No WP page modified since the 11-13 privacy edit (page 8,
+`post_modified_gmt` 2026-11-14 00:07). All 10 live pages contain their WP post_content as text. www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, now 0.0.0559 (was 0.0.0502);
+`/download/` links id6805979795.
+Desk not asked: this run is unattended and `SendMessage` reached no `ezbizi-99`. No do-not row re-measured today;
+the 11-13 answers stand as recorded (scheduling row inverted, unwritten). No sentence moves.
