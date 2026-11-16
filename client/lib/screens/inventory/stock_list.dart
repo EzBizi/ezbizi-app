@@ -3,6 +3,7 @@ import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
@@ -63,7 +64,16 @@ class _StockListState extends State<StockList> {
     super.initState();
     _tile = widget.tileRequest?.tile;
     _load();
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'inventory'},
+      (_) {
+        if (_join != null) return _load();
+      },
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void didUpdateWidget(covariant StockList oldWidget) {
@@ -77,6 +87,7 @@ class _StockListState extends State<StockList> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }

@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -429,25 +430,37 @@ class _LeadsScreenState extends State<LeadsScreen> {
     _movedFor = null;
 
     _load();
-    _poll = Timer.periodic(_pollEvery, (_) => _load());
+    // The slow poll still carries counts no record write moves (who read
+    // what); the change feed brings a synced or webhooked lead within ~10 s.
+    _poll = Timer.periodic(_pollEvery, (_) => _load(quiet: true));
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'leads'},
+      (_) => _load(quiet: true),
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _poll?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a background re-read. No dimming (it rebuilds the list and
+  /// loses its scroll) and a failure keeps the rows.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
     setState(() {
       // "Nothing on screen yet", not "a request is in flight" — a refresh after
       // a status change keeps the list rendered rather than tearing it down.
       _loading = _leads.isEmpty;
-      _refreshing = _leads.isNotEmpty;
+      _refreshing = !quiet && _leads.isNotEmpty;
       _error = null;
     });
 
@@ -463,7 +476,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       _refreshing = false;
 
       if (!response.ok) {
-        _error = response.message;
+        if (!quiet || _leads.isEmpty) _error = response.message;
         return;
       }
 
