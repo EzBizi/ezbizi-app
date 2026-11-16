@@ -9,7 +9,9 @@ import '../core/push_registration.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import 'alert_popup.dart';
+import 'list_search.dart';
 import 'side_panel.dart';
+import 'tab_bar_like.dart';
 import 'tag.dart';
 
 /// The bell (plan §12).
@@ -74,7 +76,8 @@ class NotificationBell extends StatefulWidget {
   /// destination that can open one does: Jose, 2026-09-28, a lead
   /// notification "always [opens] the newest lead, instead of the one it was
   /// spawned for".
-  final void Function(String moduleKey, String? filter, String? recordId)? onOpenModule;
+  final void Function(String moduleKey, String? filter, String? recordId)?
+  onOpenModule;
 
   /// The glyph the sidebar draws for a module, so a notification wears the
   /// icon of what it is about (Jose, 2026-09-30).
@@ -98,6 +101,9 @@ class _NotificationBellState extends State<NotificationBell>
   /// not the panel, so reopening it shows what was last chosen.
   String _show = 'all';
   bool _unreadOnly = false;
+  static const _shows = ['all', 'mentioned', 'assigned'];
+  final _search = TextEditingController();
+  String _query = '';
 
   // A failed fetch used to render as "Nothing yet.", so an outage and an empty
   // inbox were indistinguishable — and the one that needs action looked like
@@ -170,8 +176,11 @@ class _NotificationBellState extends State<NotificationBell>
   @override
   void dispose() {
     // Only our own hook: a newer bell (a re-sign-in) may already have set its.
-    if (OsNotifications.onClick == _openFromToast) OsNotifications.onClick = null;
+    if (OsNotifications.onClick == _openFromToast) {
+      OsNotifications.onClick = null;
+    }
     _poll?.cancel();
+    _search.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -234,14 +243,10 @@ class _NotificationBellState extends State<NotificationBell>
 
   void _raiseAlerts(Object? open) {
     if (!mounted || open is! List) return;
-    _popups.show(
-      context,
-      [
-        for (final alert in open)
-          if (alert is Map) Map<String, dynamic>.from(alert),
-      ],
-      formats: widget.session?.me?.display ?? DisplayFormats.fallback,
-    );
+    _popups.show(context, [
+      for (final alert in open)
+        if (alert is Map) Map<String, dynamic>.from(alert),
+    ], formats: widget.session?.me?.display ?? DisplayFormats.fallback);
   }
 
   /// The unread ones this widget has not already accounted for.
@@ -337,7 +342,8 @@ class _NotificationBellState extends State<NotificationBell>
       await OsNotifications.show(
         id: _osId++,
         // Header / what happened / content, like the push.
-        title: item['header'] as String? ?? item['title'] as String? ?? 'EzBizi',
+        title:
+            item['header'] as String? ?? item['title'] as String? ?? 'EzBizi',
         body: item['header'] == null
             ? item['body'] as String?
             : [item['title'], item['body']].whereType<String>().join('\n'),
@@ -398,9 +404,8 @@ class _NotificationBellState extends State<NotificationBell>
   /// Read after a refresh deliberately — the refresh re-reads the governed
   /// feed, and a notification that has since stopped being visible must not
   /// still navigate on a stale copy.
-  ({String module, String? filter, String? record, DeepLink? link})? _destinationOf(
-    String id,
-  ) {
+  ({String module, String? filter, String? record, DeepLink? link})?
+  _destinationOf(String id) {
     final current = _items
         .where((item) => item['id']?.toString() == id)
         .firstOrNull;
@@ -436,10 +441,15 @@ class _NotificationBellState extends State<NotificationBell>
   /// then switch to that module. The row tap, the desktop toast and a phone
   /// push all arrive here.
   void _go(
-    ({String module, String? filter, String? record, DeepLink? link}) destination,
+    ({String module, String? filter, String? record, DeepLink? link})
+    destination,
   ) {
     if (destination.link case final link?) DeepLinks.open(link);
-    widget.onOpenModule!(destination.module, destination.filter, destination.record);
+    widget.onOpenModule!(
+      destination.module,
+      destination.filter,
+      destination.record,
+    );
   }
 
   Future<void> _markAllRead() async {
@@ -479,6 +489,12 @@ class _NotificationBellState extends State<NotificationBell>
     for (final n in _items) {
       if (_unreadOnly && n['read_at'] != null) continue;
       if (_show != 'all' && n['kind'] != _show) continue;
+      if (_query.isNotEmpty &&
+          !'${n['header'] ?? ''} ${n['title'] ?? ''} ${n['body'] ?? ''}'
+              .toLowerCase()
+              .contains(_query)) {
+        continue;
+      }
       final b = bucket(n['created_at']);
       if (b != last) {
         rows.add(last = b);
@@ -523,226 +539,253 @@ class _NotificationBellState extends State<NotificationBell>
                     child: const Text('Close'),
                   ),
                 ],
-                child: NotificationSettings(api: widget.api, session: widget.session!),
+                child: NotificationSettings(
+                  api: widget.api,
+                  session: widget.session!,
+                ),
               )
             : SidePanel(
-          title: 'Notifications',
-          width: 460,
-          headerActions: [
-            if (widget.session != null)
-              IconButton(
-                key: const Key('notification-settings'),
-                tooltip: 'Notification settings',
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: () => repaint(() => _settingsOpen = true),
-              ),
-          ],
-          // "Mark all read" sat beside the title and moves to the footer with
-          // Close, because the panel has one place for the things you press.
-          actions: [
-            if (_unread > 0)
-              TextButton(
-                onPressed: () async {
-                  await _markAllRead();
-                  if (context.mounted) repaint(() {});
-                },
-                child: const Text('Mark all read'),
-              ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                title: 'Notifications',
+                width: 460,
+                headerActions: [
+                  if (widget.session != null)
+                    IconButton(
+                      key: const Key('notification-settings'),
+                      tooltip: 'Notification settings',
+                      icon: const Icon(Icons.settings_outlined),
+                      onPressed: () => repaint(() => _settingsOpen = true),
+                    ),
+                ],
+                // "Mark all read" sat beside the title and moves to the footer with
+                // Close, because the panel has one place for the things you press.
+                actions: [
+                  if (_unread > 0)
+                    TextButton(
+                      onPressed: () async {
+                        await _markAllRead();
+                        if (context.mounted) repaint(() {});
+                      },
+                      child: const Text('Mark all read'),
+                    ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close'),
+                  ),
+                ],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    SegmentedButton<String>(
-                      // The colour marks the pick; no tick (Jose, 2026-11-16).
-                      showSelectedIcon: false,
+                    // Tabs, then search and Unread only on one row; unread rows
+                    // tinted as well as dotted (Jose, 2026-11-16, Monday's panel).
+                    TabBarLike(
                       key: const Key('notifications-show'),
-                      segments: const [
-                        ButtonSegment(value: 'all', label: Text('All')),
-                        ButtonSegment(
-                          value: 'mentioned',
-                          label: Text('Mentioned'),
-                        ),
-                        ButtonSegment(
-                          value: 'assigned',
-                          label: Text('Assigned to me'),
-                        ),
+                      labels: const [
+                        ('All', Icons.inbox_outlined),
+                        ('Mentioned', Icons.alternate_email),
+                        ('Assigned to me', Icons.assignment_ind_outlined),
                       ],
-                      selected: {_show},
-                      onSelectionChanged: (v) {
-                        _show = v.first;
+                      selected: _shows.indexOf(_show),
+                      onSelected: (i) {
+                        _show = _shows[i];
                         repaint(() {});
                       },
                     ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('Unread only'),
-                        Switch(
-                          key: const Key('notifications-unread-only'),
-                          value: _unreadOnly,
-                          onChanged: (on) {
-                            _unreadOnly = on;
-                            repaint(() {});
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (_inboxRows().isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 48),
-                  child: Center(
-                    child: Text(
-                      _error ??
-                          (_items.isEmpty ? 'Nothing yet.' : 'Nothing here.'),
-                    ),
-                  ),
-                )
-              else
-                ListView.separated(
-                  // The panel scrolls the body already, so the list lays itself
-                  // out at full height inside it. Two nested scrollers would
-                  // fight over the same drag.
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  itemCount: _inboxRows().length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, i) {
-                    final row = _inboxRows()[i];
-                    if (row is String) {
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 12, bottom: 4),
-                        child: Text(
-                          row,
-                          style: Theme.of(context).textTheme.labelMedium
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      );
-                    }
-                    final n = row as Map<String, dynamic>;
-                    final unread = n['read_at'] == null;
-                    final scheme = Theme.of(context).colorScheme;
-                    final module =
-                        (n['meta'] as Map<String, dynamic>?)?['module']
-                            as String?;
-                    final icon = module == null
-                        ? null
-                        : widget.iconOf?.call(module);
-                    final when = formatListStamp(
-                      n['created_at'],
-                      '',
-                      formats: widget.formats ?? DisplayFormats.fallback,
-                    );
-
-                    return ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      // The module it is about, with a dot while unread: every
-                      // row was the same circle, and "A new lead..." twenty
-                      // times over said nothing about when (Jose, 2026-09-30).
-                      leading: Badge(
-                        key: ValueKey('notification-icon-${n['id']}'),
-                        isLabelVisible: unread,
-                        smallSize: 8,
-                        backgroundColor: scheme.primary,
-                        child: Icon(
-                          icon ?? Icons.info_outline,
-                          size: 20,
-                          // A rule's "Mark as urgent (red)".
-                          color: n['urgent'] == true
-                              ? scheme.error
-                              : unread
-                                  ? scheme.primary
-                                  : scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      // Header / what happened / content — the same three
-                      // lines as the push (Jose, 2026-10-22).
-                      title: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
                         children: [
-                          if (n['header'] case final String header)
-                            Text(
-                              header,
-                              key: ValueKey('notification-header-${n['id']}'),
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                          Expanded(
+                            child: ListSearch(
+                              key: const Key('notifications-search'),
+                              controller: _search,
+                              hint: 'Search notifications',
+                              width: double.infinity,
+                              onChanged: (v) {
+                                _query = v.trim().toLowerCase();
+                                repaint(() {});
+                              },
                             ),
-                          Text(
-                            n['title'] as String,
-                            style: unread
-                                ? const TextStyle(fontWeight: FontWeight.w600)
-                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('Unread only'),
+                          Switch(
+                            key: const Key('notifications-unread-only'),
+                            value: _unreadOnly,
+                            onChanged: (on) {
+                              _unreadOnly = on;
+                              repaint(() {});
+                            },
                           ),
                         ],
                       ),
-                      subtitle: n['body'] != null
-                          ? Text(n['body'] as String)
-                          : null,
-                      trailing: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          if (when.isNotEmpty)
-                            Text(
-                              when,
-                              key: ValueKey('notification-when-${n['id']}'),
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: scheme.onSurfaceVariant),
-                            ),
-                          if (n['source'] == 'automation') ...[
-                            const SizedBox(height: 4),
-                            const Tag('Rule'),
-                          ],
-                        ],
-                      ),
-                      onTap: () async {
-                        if (unread) {
-                          final r = await widget.api.post(
-                            '/notifications/${n['id']}/read',
-                            {},
+                    ),
+                    if (_inboxRows().isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 48),
+                        child: Center(
+                          child: Text(
+                            _error ??
+                                (_items.isEmpty
+                                    ? 'Nothing yet.'
+                                    : 'Nothing here.'),
+                          ),
+                        ),
+                      )
+                    else
+                      ListView.separated(
+                        // The panel scrolls the body already, so the list lays itself
+                        // out at full height inside it. Two nested scrollers would
+                        // fight over the same drag.
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        itemCount: _inboxRows().length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final row = _inboxRows()[i];
+                          if (row is String) {
+                            return Padding(
+                              padding: const EdgeInsets.only(
+                                top: 12,
+                                bottom: 4,
+                              ),
+                              child: Text(
+                                row,
+                                style: Theme.of(context).textTheme.labelMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            );
+                          }
+                          final n = row as Map<String, dynamic>;
+                          final unread = n['read_at'] == null;
+                          final scheme = Theme.of(context).colorScheme;
+                          final module =
+                              (n['meta'] as Map<String, dynamic>?)?['module']
+                                  as String?;
+                          final icon = module == null
+                              ? null
+                              : widget.iconOf?.call(module);
+                          final when = formatListStamp(
+                            n['created_at'],
+                            '',
+                            formats: widget.formats ?? DisplayFormats.fallback,
                           );
 
-                          if (!context.mounted) return;
+                          return ListTile(
+                            key: ValueKey('notification-row-${n['id']}'),
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                            ),
+                            tileColor: unread
+                                ? scheme.primaryContainer.withValues(
+                                    alpha: 0.45,
+                                  )
+                                : null,
+                            // The module it is about, with a dot while unread: every
+                            // row was the same circle, and "A new lead..." twenty
+                            // times over said nothing about when (Jose, 2026-09-30).
+                            leading: Badge(
+                              key: ValueKey('notification-icon-${n['id']}'),
+                              isLabelVisible: unread,
+                              smallSize: 8,
+                              backgroundColor: scheme.primary,
+                              child: Icon(
+                                icon ?? Icons.info_outline,
+                                size: 20,
+                                // A rule's "Mark as urgent (red)".
+                                color: n['urgent'] == true
+                                    ? scheme.error
+                                    : unread
+                                    ? scheme.primary
+                                    : scheme.onSurfaceVariant,
+                              ),
+                            ),
+                            // Header / what happened / content — the same three
+                            // lines as the push (Jose, 2026-10-22).
+                            title: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (n['header'] case final String header)
+                                  Text(
+                                    header,
+                                    key: ValueKey(
+                                      'notification-header-${n['id']}',
+                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                  ),
+                                Text(
+                                  n['title'] as String,
+                                  style: unread
+                                      ? const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        )
+                                      : null,
+                                ),
+                              ],
+                            ),
+                            subtitle: n['body'] != null
+                                ? Text(n['body'] as String)
+                                : null,
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (when.isNotEmpty)
+                                  Text(
+                                    when,
+                                    key: ValueKey(
+                                      'notification-when-${n['id']}',
+                                    ),
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                  ),
+                                if (n['source'] == 'automation') ...[
+                                  const SizedBox(height: 4),
+                                  const Tag('Rule'),
+                                ],
+                              ],
+                            ),
+                            onTap: () async {
+                              if (unread) {
+                                final r = await widget.api.post(
+                                  '/notifications/${n['id']}/read',
+                                  {},
+                                );
 
-                          if (!r.ok) {
-                            // Access can disappear after the list was fetched.
-                            // Re-read the governed feed before repainting so a
-                            // filtered notification leaves neither a stale
-                            // title nor a stale unread count behind.
-                            await _refresh();
-                            if (!context.mounted) return;
-                            repaint(() {});
-                            ScaffoldMessenger.of(
-                              context,
-                            ).showSnackBar(SnackBar(content: Text(r.message)));
-                            return;
-                          }
-                        }
+                                if (!context.mounted) return;
 
-                        await _refresh();
-                        if (!context.mounted) return;
+                                if (!r.ok) {
+                                  // Access can disappear after the list was fetched.
+                                  // Re-read the governed feed before repainting so a
+                                  // filtered notification leaves neither a stale
+                                  // title nor a stale unread count behind.
+                                  await _refresh();
+                                  if (!context.mounted) return;
+                                  repaint(() {});
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(r.message)),
+                                  );
+                                  return;
+                                }
+                              }
 
-                        /*
+                              await _refresh();
+                              if (!context.mounted) return;
+
+                              /*
                          * GO TO WHAT IT IS ABOUT, if there is anywhere to go.
                          *
                          * Read from the REFRESHED list rather than from the row
@@ -755,28 +798,31 @@ class _NotificationBellState extends State<NotificationBell>
                          * "New Live Chat Lead" meant being told about a lead and
                          * given no way to open it.
                          */
-                        // With the filter (Jose asked for the Leads tab AND
-                        // its chat filter) and the record, so Leads opens
-                        // THAT lead rather than the newest.
-                        final destination = _destinationOf(n['id'].toString());
+                              // With the filter (Jose asked for the Leads tab AND
+                              // its chat filter) and the record, so Leads opens
+                              // THAT lead rather than the newest.
+                              final destination = _destinationOf(
+                                n['id'].toString(),
+                              );
 
-                        if (destination != null && widget.onOpenModule != null) {
-                          Navigator.of(context).pop();
-                          _go(destination);
-                          return;
-                        }
+                              if (destination != null &&
+                                  widget.onOpenModule != null) {
+                                Navigator.of(context).pop();
+                                _go(destination);
+                                return;
+                              }
 
-                        // repaint, not setState: setState rebuilds the
-                        // bell behind the panel, and the panel's own
-                        // page is cached by the route.
-                        repaint(() {});
-                      },
-                    );
-                  },
+                              // repaint, not setState: setState rebuilds the
+                              // bell behind the panel, and the panel's own
+                              // page is cached by the route.
+                              repaint(() {});
+                            },
+                          );
+                        },
+                      ),
+                  ],
                 ),
-            ],
-          ),
-        ),
+              ),
       ),
     );
 
@@ -844,7 +890,10 @@ class _CompanyFocusState extends State<CompanyFocus> {
   Future<void> _toggle(String id, bool on) async {
     final chosen = widget.session.me?.notificationCompanies ?? const <String>[];
     final next = on ? [...chosen, id] : chosen.where((c) => c != id).toList();
-    final saving = widget.session.setPreference('notifications.companies', next);
+    final saving = widget.session.setPreference(
+      'notifications.companies',
+      next,
+    );
     setState(() {});
     await saving;
     if (mounted) setState(() {});
@@ -863,7 +912,10 @@ class _CompanyFocusState extends State<CompanyFocus> {
       subtitle: Text(
         chosen.isEmpty
             ? 'All companies'
-            : _companies.where((c) => chosen.contains(c.$1)).map((c) => c.$2).join(', '),
+            : _companies
+                  .where((c) => chosen.contains(c.$1))
+                  .map((c) => c.$2)
+                  .join(', '),
       ),
       children: [
         for (final (id, name, depth) in _companies)
@@ -887,7 +939,11 @@ class _CompanyFocusState extends State<CompanyFocus> {
 /// switched off still collects in the bell; it just stops popping up, pushing
 /// and emailing (NotificationDispatcher reads notifications.muted_modules).
 class NotificationSettings extends StatefulWidget {
-  const NotificationSettings({super.key, required this.api, required this.session});
+  const NotificationSettings({
+    super.key,
+    required this.api,
+    required this.session,
+  });
 
   final ApiClient api;
   final Session session;
@@ -918,14 +974,19 @@ class _NotificationSettingsState extends State<NotificationSettings> {
           dense: true,
           value: me?.notificationAlerts ?? true,
           title: const Text('Alert me'),
-          subtitle: const Text('Pop-ups, phone and email. Notifications still collect in the bell.'),
+          subtitle: const Text(
+            'Pop-ups, phone and email. Notifications still collect in the bell.',
+          ),
           onChanged: (on) => _save('notifications.alerts', on),
         ),
         CompanyFocus(api: widget.api, session: widget.session),
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.only(top: 12, bottom: 4),
-          child: Text('Alert me about', style: Theme.of(context).textTheme.titleSmall),
+          child: Text(
+            'Alert me about',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
         ),
         Text(
           'Off still collects in the bell, without pop-ups, phone or email.',
