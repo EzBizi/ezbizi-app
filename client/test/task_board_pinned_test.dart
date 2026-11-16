@@ -146,6 +146,51 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('#26: scrolled sideways, the Task column and its heading stay '
+      'put while the other cells move under them', (tester) async {
+    await pumpBoard(tester);
+    final title = find.text('Sweep the Oak Park flue');
+    final heading = find.text('TASK');
+    final far = find.text('far right').first;
+    expect(title, findsOneWidget);
+    final titleAt = tester.getTopLeft(title);
+    final headingAt = tester.getTopLeft(heading);
+    final farAt = tester.getTopLeft(far);
+
+    await tester.drag(
+      find.byKey(const Key('tasks-table-scroll')),
+      const Offset(-500, 0),
+    );
+    await tester.pumpAndSettle();
+
+    // The far cell came in from the right; the task did not leave.
+    expect(tester.getTopLeft(far).dx, lessThan(farAt.dx - 200));
+    expect(tester.getTopLeft(title), titleAt);
+    expect(tester.getTopLeft(heading), headingAt);
+    // Built once, not a pinned copy and a scrolled one.
+    expect(title, findsOneWidget);
+    // The pinned cell is the one a click reaches, not a cell under it.
+    expect(title.hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('#26: a cell scrolled under the pinned Task column cannot be '
+      'clicked through it', (tester) async {
+    await pumpBoard(tester);
+    final first = find.text('far right').first;
+    await tester.drag(
+      find.byKey(const Key('tasks-table-scroll')),
+      const Offset(-2000, 0),
+    );
+    await tester.pumpAndSettle();
+    // The leftmost scrolling cell (the Status column's) slid under the pin.
+    final status = find.text('Not started').first;
+    final pin = tester.getRect(find.text('Sweep the Oak Park flue'));
+    expect(tester.getTopLeft(status).dx, lessThan(pin.right));
+    expect(status.hitTestable(), findsNothing);
+    expect(first.hitTestable(), findsOneWidget);
+  });
+
   testWidgets('#27: an 80 px person heading ends in an ellipsis and names '
       'itself on hover', (tester) async {
     await pumpBoard(tester, width: 1400);

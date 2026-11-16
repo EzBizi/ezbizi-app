@@ -35,6 +35,7 @@ import '../widgets/list_toolbar.dart';
 import '../widgets/mention_field.dart';
 import 'task_board_move.dart';
 import 'task_board_people.dart';
+import 'task_board_pinned.dart';
 import 'task_board_person_card.dart';
 import 'task_board_plan_views.dart';
 import 'task_board_sidebar.dart';
@@ -443,6 +444,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     DeepLinks.pending.removeListener(_takeLink);
     _rangeFocus.dispose();
     _tableScroll.dispose();
+    _sideways.dispose();
     _columnSearch.dispose();
     HardwareKeyboard.instance.removeHandler(_dragKey);
     _newTitle.dispose();
@@ -3241,17 +3243,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     return Stack(
       fit: StackFit.expand,
       children: [
-        LayoutBuilder(
-          builder: (context, box) {
-            // 32: page padding; 2: the group box's border.
-            final need = 34 + _fixedWidth;
-            if (box.maxWidth >= need) return list;
-            return SingleChildScrollView(
-              key: const Key('tasks-table-scroll'),
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(width: need, height: box.maxHeight, child: list),
-            );
-          },
+        SidewaysScroll(
+          key: const Key('tasks-table-scroll'),
+          controller: _sideways,
+          // 32: page padding; 2: the group box's border.
+          contentWidth: 34 + _fixedWidth,
+          child: list,
         ),
         if (_picked.isNotEmpty)
           Positioned(
@@ -3838,7 +3835,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       context,
       SizedBox(
         height: 30,
-        child: Row(
+        child: PinnedRow(
+          sideways: _sideways,
+          stretch: false,
+          edge: theme.dividerColor,
           children: [
             const SizedBox(width: 6),
             SizedBox(
@@ -3863,7 +3863,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             if (shown('about')) blank(_w('about')),
             if (shown('updates')) blank(_w('updates')),
             if (_canEdit) blank(_widths.add),
-            const Spacer(),
           ],
         ),
       ),
@@ -3906,8 +3905,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       context,
       SizedBox(
         height: 28,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: PinnedRow(
+          sideways: _sideways,
+          edge: theme.dividerColor,
           children: [
             const SizedBox(width: 6),
             _resizable(
@@ -3955,7 +3955,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                   ),
                 ),
               ),
-            const Spacer(),
           ],
         ),
       ),
@@ -3980,8 +3979,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             : (d) => _rowRightClick(t, d.globalPosition),
         child: SizedBox(
           height: 38,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          // The colour strip and the Task cell stay put when the row
+          // scrolls sideways (QA 11-16, #26).
+          child: PinnedRow(
+            sideways: _sideways,
+            edge: theme.dividerColor,
             children: [
               Container(
                 width: 6,
@@ -4201,7 +4203,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 ),
               // Under the headings' +, so every column lines up.
               if (_canEdit) SizedBox(width: _widths.add),
-              const Spacer(),
             ],
           ),
         ),
@@ -4504,6 +4505,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   // ── Row drag: Esc cancels, the list scrolls near its edges ─────────
 
   final _tableScroll = ScrollController();
+
+  /// The table's sideways scroll, read by every row's [PinnedRow].
+  final _sideways = ScrollController();
   final _tableKey = GlobalKey(debugLabel: 'task-table');
 
   /// Esc was pressed during this drag: nothing it is dropped on moves.
