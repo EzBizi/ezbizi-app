@@ -257,6 +257,52 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     _load(quiet: true);
   }
 
+  /// Settings scrolls as a page; a board is a column whose table takes
+  /// the rest of the window. Short windows keep the page scroll.
+  Widget _page_(BuildContext context, List<Widget> kids) {
+    const pad = EdgeInsets.fromLTRB(16, 16, 16, 16);
+    if (_tab == 'settings' || !_fills(context)) {
+      return ListView(padding: pad, children: kids);
+    }
+    return Padding(
+      padding: pad,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: kids,
+      ),
+    );
+  }
+
+  bool _fills(BuildContext context) => MediaQuery.sizeOf(context).height >= 600;
+
+  Widget _fill(Widget Function(double height) table) => _fills(context)
+      ? Expanded(
+          child: LayoutBuilder(builder: (context, box) => table(box.maxHeight)),
+        )
+      : table(MediaQuery.sizeOf(context).height - 120);
+
+  /// Always the same height, so the table's bottom edge (and its
+  /// sideways bar) does not move when the last page arrives.
+  Widget _more() => SizedBox(
+    height: 44,
+    child: Center(
+      child: _page < _lastPage
+          ? TextButton(
+              key: const Key('project-board-more'),
+              onPressed: _fetching ? null : () => _load(page: _page + 1),
+              child: Text(
+                _fetching
+                    ? 'Loading…'
+                    : 'Load more (${_total - _rows.length} left)',
+              ),
+            )
+          : Text(
+              'All $_total jobs shown',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+    ),
+  );
+
   /// Three tinted tiles, a fourth for Overpaid when there is any (design: docs/previews/pm-totals-strip.html, option 1,
   /// Jose 2026-11-12). Remaining is caution, not red: an open balance is
   /// normal. Under 600 px they stack as label-left, figure-right rows.
@@ -273,14 +319,15 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
             final value = Text(
               formatMoney((t[key] as num?)?.toInt() ?? 0, currency: currency),
               key: Key('project-board-total-$key'),
-              style: (narrow
-                      ? theme.textTheme.titleMedium
-                      : theme.textTheme.headlineSmall)
-                  ?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: ink,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+              style:
+                  (narrow
+                          ? theme.textTheme.titleMedium
+                          : theme.textTheme.headlineSmall)
+                      ?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: ink,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
             );
             final caption = Text(
               label,
@@ -321,7 +368,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
               scheme.primaryContainer,
               scheme.onPrimaryContainer,
             ),
-                      // Paid - Overpaid + Remaining = Total (Jobs 208341af3). Not a
+            // Paid - Overpaid + Remaining = Total (Jobs 208341af3). Not a
             // problem, so neutral, never red.
             if (((t['over'] as num?) ?? 0) > 0)
               Tooltip(
@@ -542,16 +589,34 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         // Line by line, a small gap between items so a long one reads as
         // one (Jose, 2026-11-10).
         if (value == null) return const Text('—');
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (i, item) in '$value'.split(_newline).indexed)
-              Padding(
-                padding: EdgeInsets.only(top: i == 0 ? 0 : 5),
-                child: Text(item),
-              ),
-          ],
+        // Two items, then "+N more" with all of them on hover, so one job
+        // does not make its row five times taller (Jose, 2026-11-16).
+        final items = '$value'.split(_newline);
+        return Tooltip(
+          message: items.length > 2 ? items.join(String.fromCharCode(10)) : '',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final (i, item) in items.take(2).indexed)
+                Padding(
+                  padding: EdgeInsets.only(top: i == 0 ? 0 : 5),
+                  child: Text(
+                    item,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              if (items.length > 2)
+                Text(
+                  '+${items.length - 2} more',
+                  key: ValueKey('project-board-required-more:${row['id']}'),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+            ],
+          ),
         );
     }
     return null;
@@ -849,135 +914,132 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
             loading: _loading && !_loaded,
             error: _error,
             onRetry: _load,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-              children: [
-                if (_tab == 'settings')
-                  _BoardSettings(
-                    api: widget.api,
-                    scope: _scope,
-                    columns: _columns,
-                    labels: _labels,
-                    onSaved: _load,
+            child: _page_(context, [
+              if (_tab == 'settings')
+                _BoardSettings(
+                  api: widget.api,
+                  scope: _scope,
+                  columns: _columns,
+                  labels: _labels,
+                  onSaved: _load,
+                )
+              else ...[
+                // The search takes what is left of the row (Jose,
+                // 2026-11-10); on a narrow window it wraps below.
+                LayoutBuilder(
+                  builder: (context, box) {
+                    final search = ListSearch(
+                      key: const Key('project-board-search'),
+                      controller: _search,
+                      hint:
+                          'Customer, job number, phone, address or technician',
+                      width: box.maxWidth >= 900 ? double.infinity : 280,
+                      onChanged: _searched,
+                    );
+                    final items = <Widget>[
+                      Text(
+                        '${shown[selected].$2} · $_total jobs',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      if (_updated case final at?)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Updated ${TimeOfDay.fromDateTime(at).format(context)}',
+                              key: const Key('project-board-updated'),
+                              style: theme.textTheme.bodySmall,
+                            ),
+                            IconButton(
+                              key: const Key('project-board-refresh'),
+                              tooltip: 'Refresh now',
+                              icon: const Icon(Icons.refresh, size: 18),
+                              onPressed: _fetching
+                                  ? null
+                                  : () => _load(quiet: true),
+                            ),
+                          ],
+                        ),
+                      DropdownMenu<String>(
+                        enableFilter: true,
+                        requestFocusOnTap: true,
+                        key: const Key('project-board-franchise'),
+                        // The same size as the search beside it, and a
+                        // list that scrolls past the screen's height
+                        // (Jose, 2026-11-10).
+                        width: 280,
+                        menuHeight: 420,
+                        hintText: 'Franchise',
+                        leadingIcon: const Icon(Icons.store_outlined, size: 18),
+                        inputDecorationTheme: InputDecorationTheme(
+                          isDense: true,
+                          constraints: BoxConstraints.tightFor(
+                            height: ListSearch.height,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        initialSelection: _franchise ?? '',
+                        onSelected: (v) =>
+                            _pick(v == null || v.isEmpty ? null : v),
+                        dropdownMenuEntries: [
+                          const DropdownMenuEntry(value: '', label: 'All'),
+                          // Hierarchy order from the server, indented by level.
+                          for (final f in _franchises)
+                            DropdownMenuEntry(
+                              value: '${f['value']}',
+                              label: '${f['label']}',
+                              labelWidget: Padding(
+                                padding: EdgeInsets.only(
+                                  left: 16.0 * ((f['depth'] as int?) ?? 0),
+                                ),
+                                child: Text('${f['label']}'),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ];
+                    if (box.maxWidth < 900) {
+                      return Wrap(
+                        spacing: 16,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [...items, search],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        for (final w in items) ...[
+                          w,
+                          const SizedBox(width: 16),
+                        ],
+                        Expanded(child: search),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                if (rows.isEmpty && _fetching)
+                  const LinearProgressIndicator()
+                else if (rows.isEmpty)
+                  Text(
+                    _q.isNotEmpty
+                        ? 'No job matches "$_q".'
+                        : 'No jobs in ${shown[selected].$2}.',
                   )
                 else ...[
-                  // The search takes what is left of the row (Jose,
-                  // 2026-11-10); on a narrow window it wraps below.
-                  LayoutBuilder(
-                    builder: (context, box) {
-                      final search = ListSearch(
-                        key: const Key('project-board-search'),
-                        controller: _search,
-                        hint:
-                            'Customer, job number, phone, address or technician',
-                        width: box.maxWidth >= 900 ? double.infinity : 280,
-                        onChanged: _searched,
-                      );
-                      final items = <Widget>[
-                        Text(
-                          '${shown[selected].$2} · $_total jobs',
-                          style: theme.textTheme.titleMedium,
-                        ),
-                        if (_updated case final at?)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Updated ${TimeOfDay.fromDateTime(at).format(context)}',
-                                key: const Key('project-board-updated'),
-                                style: theme.textTheme.bodySmall,
-                              ),
-                              IconButton(
-                                key: const Key('project-board-refresh'),
-                                tooltip: 'Refresh now',
-                                icon: const Icon(Icons.refresh, size: 18),
-                                onPressed: _fetching
-                                    ? null
-                                    : () => _load(quiet: true),
-                              ),
-                            ],
-                          ),
-                        DropdownMenu<String>(
-                          enableFilter: true,
-                          requestFocusOnTap: true,
-                          key: const Key('project-board-franchise'),
-                          // The same size as the search beside it, and a
-                          // list that scrolls past the screen's height
-                          // (Jose, 2026-11-10).
-                          width: 280,
-                          menuHeight: 420,
-                          hintText: 'Franchise',
-                          leadingIcon: const Icon(
-                            Icons.store_outlined,
-                            size: 18,
-                          ),
-                          inputDecorationTheme: InputDecorationTheme(
-                            isDense: true,
-                            constraints: BoxConstraints.tightFor(
-                              height: ListSearch.height,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          initialSelection: _franchise ?? '',
-                          onSelected: (v) =>
-                              _pick(v == null || v.isEmpty ? null : v),
-                          dropdownMenuEntries: [
-                            const DropdownMenuEntry(value: '', label: 'All'),
-                            // Hierarchy order from the server, indented by level.
-                            for (final f in _franchises)
-                              DropdownMenuEntry(
-                                value: '${f['value']}',
-                                label: '${f['label']}',
-                                labelWidget: Padding(
-                                  padding: EdgeInsets.only(
-                                    left: 16.0 * ((f['depth'] as int?) ?? 0),
-                                  ),
-                                  child: Text('${f['label']}'),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ];
-                      if (box.maxWidth < 900) {
-                        return Wrap(
-                          spacing: 16,
-                          runSpacing: 8,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [...items, search],
-                        );
-                      }
-                      return Row(
-                        children: [
-                          for (final w in items) ...[
-                            w,
-                            const SizedBox(width: 16),
-                          ],
-                          Expanded(child: search),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  if (rows.isEmpty && _fetching)
-                    const LinearProgressIndicator()
-                  else if (rows.isEmpty)
-                    Text(
-                      _q.isNotEmpty
-                          ? 'No job matches "$_q".'
-                          : 'No jobs in ${shown[selected].$2}.',
-                    )
-                  else ...[
-                    if (_totals case final t?) _totalsStrip(t),
-                    ListTable(
-                      // Own height: rows scroll inside, so the header and the
-                      // sideways bar stay on screen (Jose, 2026-11-13).
-                      height: (MediaQuery.sizeOf(context).height - 160)
-                          .clamp(360.0, double.infinity),
+                  if (_totals case final t?) _totalsStrip(t),
+                  _fill(
+                    (height) => ListTable(
+                      // Fills the window down to its bottom edge: rows scroll
+                      // inside, so the headings and the sideways bar never
+                      // move, also as more rows load (Jose, 2026-11-16).
+                      height: height,
+                      footer: _more(),
                       // Dragged widths, per person on every device (Jose,
                       // 2026-11-10). ponytail: by column position; a
                       // reordered column keeps the slot's width.
@@ -991,6 +1053,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                           ValueKey('project-board-job:${rows[i]['id']}'),
                       onTap: (i) => _open(rows[i]),
                       columns: [
+                        // First, so the button is on screen before any
+                        // sideways scroll (Jose, 2026-11-16: "Ready to sch").
+                        if (_tab == 'unscheduled')
+                          const ListColumn('Action', flex: 4),
                         for (final c in columns)
                           ListColumn(
                             '${c['label'] ?? c['key']}',
@@ -1003,38 +1069,22 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                                 : null,
                             sorted: _sortKey == c['key'] ? _sortDesc : null,
                           ),
-                        if (_tab == 'unscheduled')
-                          const ListColumn('', flex: 4),
                         if (_tab == 'ready_to_schedule')
                           const ListColumn('Schedule', flex: 3),
                       ],
                       rows: [
                         for (final row in rows)
                           [
-                            for (final c in columns) _cell(row, c),
                             if (_tab == 'unscheduled') _readyButton(row),
+                            for (final c in columns) _cell(row, c),
                             if (_tab == 'ready_to_schedule') _proposalCell(row),
                           ],
                       ],
                     ),
-                  ],
-                  if (_page < _lastPage)
-                    Center(
-                      child: TextButton(
-                        key: const Key('project-board-more'),
-                        onPressed: _fetching
-                            ? null
-                            : () => _load(page: _page + 1),
-                        child: Text(
-                          _fetching
-                              ? 'Loading…'
-                              : 'Load more (${_total - rows.length} left)',
-                        ),
-                      ),
-                    ),
+                  ),
                 ],
               ],
-            ),
+            ]),
           ),
         ),
       ],
