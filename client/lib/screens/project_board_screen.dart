@@ -95,7 +95,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       'project_board.sort',
       '$key:${_sortDesc ? 'desc' : 'asc'}',
     );
-    if (_rows.length < _total) _load(quiet: true);
+    // The server's order is the answer (Jose, 2026-11-10); the local sort
+    // only fills the wait.
+    _load(quiet: true);
   }
 
   /// Blanks last either way, numbers as numbers, text without case.
