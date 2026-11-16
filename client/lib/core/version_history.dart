@@ -14,6 +14,9 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0577', date: '16 Nov 2026', items: [
+      'Task Board: big boards open and switch instantly, no more freezing or Not Responding on click, smoother scrolling; My Board is first in the boards list',
+      'Jobs and the open job update by themselves within about 10 seconds when Workiz, an automation or a colleague changes them',
+      'Report, Ads roll-up, Monitoring and Training tables become stacked cards on a phone',
       'Search bars are one width across modules; empty screens in Field Route, Re-Scheduling, AI Parts and Fleet show a proper empty state',
       'Project Management: the Technician picker shows only Technician and Local Manager roles (set the roles in PM Settings); each sub-tab has its own box in Settings; column resizing and the fixed scroll bar work on every sub-tab',
       'Collapsing or expanding the sidebar no longer turns it grey',
