@@ -353,7 +353,6 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
           key: _searchKeys[keyPrefix],
           controller: search,
           hint: 'Search campaigns',
-          width: 260,
           onClear: search.clear,
         ),
       ],

@@ -3,6 +3,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../widgets/empty_state.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
@@ -419,20 +421,13 @@ class _OrderListState extends State<OrderList> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: TextField(
-            key: const Key('inventory-orders-search'),
-            controller: _search,
-            onChanged: _searched,
-            // bodyMedium for the text and the hint, as the dense pickers draw:
-            // 53 points tall, as they are; the theme's 16-point hint makes 56.
-            style: Theme.of(context).textTheme.bodyMedium,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: 'Number, vendor, customer or item',
-              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-              ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ListSearch(
+              key: const Key('inventory-orders-search'),
+              controller: _search,
+              onChanged: _searched,
+              hint: 'Number, vendor, customer or item',
             ),
           ),
         ),
