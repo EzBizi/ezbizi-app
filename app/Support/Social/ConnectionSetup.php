@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\WhatsAppNumber;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Workiz\WorkizHealth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -112,7 +113,7 @@ final class ConnectionSetup
     }
 
     /**
-     * WhatsAppHealth's five lines (it repairs subscribe/register itself) as
+     * WhatsAppHealth's lines (it repairs subscribe/register itself) as
      * persisted checks: ok -> pass, else fail; detail -> reason; action -> fix.
      * A display name Meta is still reviewing ("Nothing to do") is pending, so
      * unknown rather than fail.
@@ -124,7 +125,7 @@ final class ConnectionSetup
      */
     private static function workiz(SocialConnection $c): bool
     {
-        foreach (\App\Support\Workiz\WorkizHealth::check($c) as $line) {
+        foreach (WorkizHealth::check($c) as $line) {
             ConnectionChecks::record($c, 'workiz_'.$line['key'],
                 $line['ok'] ? ConnectionChecks::PASS : ConnectionChecks::FAIL,
                 (string) $line['detail'],
@@ -148,7 +149,7 @@ final class ConnectionSetup
             $fix = $line['ok'] || $pending || ! is_string($action) ? null
                 : (str_contains($action, 'connect it again')
                     ? ['action' => 'reconnect', 'label' => 'Reconnect']
-                    : ['action' => 'open_url', 'label' => $action, 'url' => 'https://business.facebook.com/wa/manage/phone-numbers/']);
+                    : ['action' => 'open_url', 'label' => $action, 'url' => $line['url'] ?? 'https://business.facebook.com/wa/manage/phone-numbers/']);
 
             ConnectionChecks::record($c, $line['key'],
                 $line['ok'] ? ConnectionChecks::PASS : ($pending ? ConnectionChecks::UNKNOWN : ConnectionChecks::FAIL),

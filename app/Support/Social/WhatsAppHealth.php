@@ -3,6 +3,7 @@
 namespace App\Support\Social;
 
 use App\Models\SocialConnection;
+use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
 use Illuminate\Support\Facades\Http;
 
@@ -21,7 +22,7 @@ final class WhatsAppHealth
 
     private const SCOPES = ['whatsapp_business_management', 'whatsapp_business_messaging'];
 
-    /** @return array<int, array{key: string, label: string, ok: bool, detail: string, action: ?string}> */
+    /** @return array<int, array{key: string, label: string, ok: bool, detail: string, action: ?string, url?: string}> */
     public static function check(SocialConnection $connection, WhatsAppNumber $number): array
     {
         $token = WhatsAppCloud::tokenFor($number->phone_number_id);
@@ -69,6 +70,22 @@ final class WhatsAppHealth
             ...($entity['additional_info'] ?? []),
         ])->filter()->unique()->values();
         $sending = (string) ($health['can_send_message'] ?? 'UNKNOWN');
+
+        // Billing is the tenant's own, in the Meta business that owns the WABA
+        // (Jose, 2026-11-16): EzBizi never pays for a tenant's conversations.
+        // Meta says so two ways: a health error on the account, or a send that
+        // came back failed (131042 "Business eligibility payment issue").
+        // ponytail: matched on the word "payment"; Meta documents no stable code list for billing.
+        $unpaid = collect($health['entities'] ?? [])->flatMap(fn ($e) => $e['errors'] ?? [])
+            ->first(fn ($e) => str_contains(strtolower((string) ($e['error_description'] ?? '')), 'payment'));
+        $lastSend = WhatsAppMessage::query()->withoutGlobalScopes()->where('phone_number_id', $number->phone_number_id)
+            ->where('direction', WhatsAppMessage::DIRECTION_OUT)->latest()->first(['status', 'status_reason']);
+        $failedSend = $lastSend?->status === WhatsAppMessage::STATUS_FAILED
+            && str_contains(strtolower((string) $lastSend->status_reason), 'payment');
+        $owner = $meta()->get($graph.$number->waba_id, ['fields' => 'owner_business_info'])->json('owner_business_info') ?? [];
+        $billingUrl = 'https://business.facebook.com/billing_hub/payment_settings/?asset_id='.$number->waba_id
+            .(isset($owner['id']) ? '&business_id='.$owner['id'] : '').'&placement=whatsapp';
+        $billingOk = $unpaid === null && ! $failedSend;
         $nameStatus = (string) ($p['name_status'] ?? 'UNKNOWN');
         $reconnect = 'Disconnect it and connect it again from Settings › Integrations.';
 
@@ -116,6 +133,18 @@ final class WhatsAppHealth
                 'detail' => 'Quality '.($p['quality_rating'] ?? 'UNKNOWN').', limit '.($p['messaging_limit_tier'] ?? 'not set yet')
                     .', sending '.$sending,
                 'action' => $problems->implode(' ') ?: null,
+            ],
+            [
+                'key' => 'billing',
+                'label' => 'Payment method',
+                'ok' => $billingOk,
+                'detail' => match (true) {
+                    $unpaid !== null => (string) $unpaid['error_description'],
+                    $failedSend => 'The last message failed: '.$lastSend->status_reason.'.',
+                    default => 'Meta reports no payment problem. Billing is in '.($owner['name'] ?? 'your').' Meta business, not EzBizi.',
+                },
+                'action' => $billingOk ? null : 'Add a payment method in your Meta Business Manager › Billing.',
+                'url' => $billingUrl,
             ],
         ];
     }
