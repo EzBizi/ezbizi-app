@@ -14,6 +14,7 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0577', date: '16 Nov 2026', items: [
+      'Search bars are one width across modules; empty screens in Field Route, Re-Scheduling, AI Parts and Fleet show a proper empty state',
       'Project Management: the Technician picker shows only Technician and Local Manager roles (set the roles in PM Settings); each sub-tab has its own box in Settings; column resizing and the fixed scroll bar work on every sub-tab',
       'Collapsing or expanding the sidebar no longer turns it grey',
       'Long tab rows scroll sideways instead of wrapping; Jobs columns keep a minimum width; phone fixes for Integrations, Google listings, Fleet and Re-Scheduling filters',
