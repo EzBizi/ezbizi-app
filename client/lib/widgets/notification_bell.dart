@@ -564,6 +564,8 @@ class _NotificationBellState extends State<NotificationBell>
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     SegmentedButton<String>(
+                      // The colour marks the pick; no tick (Jose, 2026-11-16).
+                      showSelectedIcon: false,
                       key: const Key('notifications-show'),
                       segments: const [
                         ButtonSegment(value: 'all', label: Text('All')),
