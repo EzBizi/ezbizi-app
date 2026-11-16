@@ -182,6 +182,7 @@ class TaskWriter
                 // task anyway, so an open board's changes feed sees it.
                 if ($ownersChanged || ! empty($input['values'])) {
                     Task::query()->whereKey($task->id)->update(['updated_at' => now()]);
+                    \App\Support\Live\ChangeFeed::record($task, 'tasks');
                 }
                 if ($ownersChanged) {
                     $this->syncLinked($task, [], false, true, $actor);
