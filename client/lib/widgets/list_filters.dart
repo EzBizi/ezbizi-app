@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../core/numbers.dart';
+import '../core/theme.dart';
 import 'side_panel.dart';
+import 'status_pill.dart';
+import 'tab_bar_like.dart' show pillHitHeight;
 
 /// Filter, sort and person filter for any list (first: Task Board), and the saved views that
 /// keep them (Jose, 2026-11-09, monday's Filter / Sort / Person and "Save as
@@ -467,6 +471,168 @@ class _FilterPanelState extends State<FilterPanel> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// One choice in a [FilterPills] row.
+class FilterPill<T> {
+  const FilterPill(this.value, this.label, {this.count, this.tone, this.key});
+
+  final T value;
+  final String label;
+  final int? count;
+  final Tone? tone;
+  final Key? key;
+}
+
+/// The one sideways filter strip (mobile review 2026-11-13, P5; option A of
+/// mobile-review-fixes.html §2). Jobs had chips, a segmented control and a
+/// picker in two rows; HR and Reports used segmented controls that squeezed
+/// their labels at 375 px.
+///
+/// The same pills as a second-row [TabBarLike]: each takes taps over 40 px,
+/// the row starts at the page [Gutter], and on a phone it scrolls sideways
+/// and fades at the edge while more pills lie past it. Wider, it wraps: a
+/// mouse cannot drag a strip.
+class FilterPills<T> extends StatefulWidget {
+  const FilterPills({
+    super.key,
+    required this.items,
+    required this.selected,
+    required this.onSelected,
+    this.padding,
+  });
+
+  final List<FilterPill<T>> items;
+  final T selected;
+  final ValueChanged<T> onSelected;
+
+  /// Around the row; the page gutter at the sides when null.
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  State<FilterPills<T>> createState() => _FilterPillsState<T>();
+}
+
+class _FilterPillsState<T> extends State<FilterPills<T>> {
+  final _scroll = ScrollController();
+  bool _more = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_measure);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _measure() {
+    if (!mounted) return;
+    final more =
+        _scroll.hasClients &&
+        _scroll.position.hasContentDimensions &&
+        _scroll.offset < _scroll.position.maxScrollExtent - 1;
+    if (more != _more) setState(() => _more = more);
+  }
+
+  Widget _pill(BuildContext context, FilterPill<T> item) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final on = item.value == widget.selected;
+    final ink = on ? scheme.onPrimaryContainer : scheme.onSurface;
+    final chip = Theme(
+      data: theme.copyWith(canvasColor: Colors.transparent),
+      child: ChoiceChip(
+        key: item.key,
+        avatar: item.tone == null ? null : ToneDot(item.tone!),
+        showCheckmark: false,
+        selected: on,
+        color: WidgetStatePropertyAll(
+          on ? scheme.primaryContainer : Colors.transparent,
+        ),
+        side: on
+            ? BorderSide.none
+            : BorderSide(color: EzBiziTheme.edge(context)),
+        shape: const StadiumBorder(),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        label: Text.rich(
+          TextSpan(
+            text: item.label,
+            style: TextStyle(color: ink, fontWeight: FontWeight.w600),
+            children: [
+              if (item.count != null)
+                TextSpan(
+                  text: '  ${formatCount(item.count!)}',
+                  style: TextStyle(
+                    color: on ? ink : scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        onSelected: (_) => widget.onSelected(item.value),
+      ),
+    );
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => widget.onSelected(item.value),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: pillHitHeight),
+        child: Center(widthFactor: 1, child: chip),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final gutter = Gutter.of(context);
+    final padding = widget.padding ?? EdgeInsets.symmetric(horizontal: gutter);
+    final pills = [for (final item in widget.items) _pill(context, item)];
+
+    if (MediaQuery.sizeOf(context).width >= 600) {
+      return Padding(
+        padding: padding,
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Wrap(spacing: 6, runSpacing: 4, children: pills),
+        ),
+      );
+    }
+
+    final opaque = Theme.of(context).colorScheme.surface;
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+        return false;
+      },
+      child: ShaderMask(
+        key: const Key('filter-pills-strip'),
+        blendMode: BlendMode.dstIn,
+        shaderCallback: (bounds) => LinearGradient(
+          colors: [opaque, opaque, _more ? Colors.transparent : opaque],
+          stops: const [0, 0.8, 1],
+        ).createShader(bounds),
+        child: SingleChildScrollView(
+          controller: _scroll,
+          scrollDirection: Axis.horizontal,
+          padding: padding,
+          child: Row(
+            spacing: 6,
+            children: [
+              ...pills,
+              if (_more) const SizedBox.shrink(key: Key('filter-pills-more')),
+            ],
+          ),
+        ),
       ),
     );
   }

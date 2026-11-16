@@ -189,7 +189,9 @@ trait ScopesToPlaces
         $qualify = function (?string $companyId, string $leaf) use ($named): string {
             $parent = $companyId === null ? null : $named->get($companyId);
 
-            return $parent === null ? $leaf : $parent->name.' › '.$leaf;
+            // "Company · Branch", the app's one way to name a branch (Jose's
+            // branch-label rule; desktop review 2026-11-13 found "›" here).
+            return $parent === null ? $leaf : $parent->name.' · '.$leaf;
         };
 
         foreach ($companies->whereIn('id', $places['companies']) as $company) {

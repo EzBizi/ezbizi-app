@@ -54,6 +54,27 @@ class FilterTiles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Mobile review 2026-11-13, P10 (preview §8 A): on a phone six tiles took
+    // three rows before the first record (HR Invitations, Onboarding). There
+    // they fold into one sideways row of pills, the same filters and counts.
+    if (MediaQuery.sizeOf(context).width < 600 && facts.isEmpty) {
+      return FilterPills<String?>(
+        key: Key('$prefix-tiles-folded'),
+        padding: EdgeInsets.zero,
+        selected: picked,
+        onSelected: (key) => onPick(key == picked ? null : key),
+        items: [
+          for (final tile in tiles)
+            FilterPill(
+              tile.key,
+              tile.label,
+              count: tile.count,
+              tone: (tile.count ?? 0) == 0 ? null : tile.tone,
+              key: Key('$prefix-tile-${tile.key ?? 'all'}'),
+            ),
+        ],
+      );
+    }
     return LayoutBuilder(
       builder: (context, box) {
         const gap = 10.0;
@@ -63,13 +84,34 @@ class FilterTiles extends StatelessWidget {
         );
         final width = (box.maxWidth - gap * (across - 1)) / across;
 
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
+        // Rows of equal-height tiles rather than a Wrap (desktop review
+        // 2026-11-13, D4): a label or note may take two lines now instead of
+        // being cut ("plans and their averag…", "cannot be dialled insi…"),
+        // and a tile beside a two-line one stretches to match it.
+        final all = [for (final tile in tiles) _tile(context, tile), ...facts];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final tile in tiles)
-              SizedBox(width: width, child: _tile(context, tile)),
-            for (final fact in facts) SizedBox(width: width, child: fact),
+            for (var at = 0; at < all.length; at += across)
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: at + across < all.length ? gap : 0,
+                ),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = at; i < at + across && i < all.length; i++)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            right: i < at + across - 1 ? gap : 0,
+                          ),
+                          child: SizedBox(width: width, child: all[i]),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -105,7 +147,7 @@ class FilterTiles extends StatelessWidget {
             children: [
               Text(
                 tile.label.toUpperCase(),
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.labelSmall?.copyWith(
                   letterSpacing: 0.8,
@@ -122,7 +164,7 @@ class FilterTiles extends StatelessWidget {
               ),
               Text(
                 tile.note,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -170,7 +212,7 @@ class FactTile extends StatelessWidget {
         children: [
           Text(
             label.toUpperCase(),
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.labelSmall?.copyWith(
               letterSpacing: 0.8,
@@ -188,7 +230,7 @@ class FactTile extends StatelessWidget {
           ),
           Text(
             note,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,

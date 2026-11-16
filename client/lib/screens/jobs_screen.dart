@@ -1,4 +1,6 @@
 import '../core/deep_links.dart';
+import '../widgets/module_page_header.dart';
+import '../widgets/list_filters.dart';
 import '../widgets/list_search.dart';
 import '../widgets/mention_field.dart';
 import 'package:flutter/material.dart';
@@ -462,30 +464,33 @@ class _JobsScreenState extends State<JobsScreen> {
     final counted = _statusCounts.isNotEmpty;
     final all = _statusCounts.values.fold(0, (a, b) => a + b);
 
+    // Mobile review 2026-11-13, P5: one filter strip, page gutter, 40 px
+    // pills and a fade where more lie past the edge.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
-      child: SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: FilterPills<String?>(
         key: const ValueKey('tour-jobs-status'),
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          spacing: 6,
-          children: [
-            _chip(
-              context,
-              value: null,
-              label: 'All',
-              count: counted ? all : null,
+        selected: _status,
+        onSelected: (value) {
+          setState(() => _status = value);
+          _load();
+        },
+        items: [
+          FilterPill(
+            null,
+            'All',
+            count: counted ? all : null,
+            key: const ValueKey('status-chip-all'),
+          ),
+          for (final s in _chipStatuses())
+            FilterPill(
+              s.value,
+              s.label,
+              count: counted ? (_statusCounts[s.value] ?? 0) : null,
+              tone: toneForJobStatus(s.value),
+              key: ValueKey('status-chip-${s.value}'),
             ),
-            for (final s in _chipStatuses())
-              _chip(
-                context,
-                value: s.value,
-                label: s.label,
-                count: counted ? (_statusCounts[s.value] ?? 0) : null,
-                tone: toneForJobStatus(s.value),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -563,7 +568,12 @@ class _JobsScreenState extends State<JobsScreen> {
 
     return Padding(
       key: const ValueKey('tour-jobs-money'),
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
       child: wide
           ? Row(
               spacing: 8,
@@ -646,40 +656,6 @@ class _JobsScreenState extends State<JobsScreen> {
         : mark;
   }
 
-  Widget _chip(
-    BuildContext context, {
-    required String? value,
-    required String label,
-    int? count,
-    Tone? tone,
-  }) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-
-    return ChoiceChip(
-      key: ValueKey('status-chip-${value ?? 'all'}'),
-      avatar: tone == null ? null : ToneDot(tone),
-      // Not drawn beside the dot but ON it — see TabBarLike.
-      showCheckmark: false,
-      selected: _status == value,
-      label: Text.rich(
-        TextSpan(
-          text: label,
-          children: [
-            if (count != null)
-              TextSpan(
-                text: '  ${formatCount(count)}',
-                style: TextStyle(color: muted, fontWeight: FontWeight.w500),
-              ),
-          ],
-        ),
-      ),
-      onSelected: (_) {
-        setState(() => _status = value);
-        _load();
-      },
-    );
-  }
-
   Widget _toolbar(
     BuildContext context,
     Me me,
@@ -688,7 +664,12 @@ class _JobsScreenState extends State<JobsScreen> {
   }) {
     final n = _activeCount;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -721,14 +702,17 @@ class _JobsScreenState extends State<JobsScreen> {
             session: widget.session,
             resource: 'jobs',
           ),
-          Refused(
-            // Two refusals with different remedies; see _jobsTab.
-            reason: refused,
-            child: FilledButton.icon(
-              key: const ValueKey('tour-jobs-add'),
-              onPressed: refused == null ? _create : null,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add job'),
+          // Desktop review 2026-11-13, D3: header right, as every module.
+          ModuleAction(
+            child: Refused(
+              // Two refusals with different remedies; see _jobsTab.
+              reason: refused,
+              child: FilledButton.icon(
+                key: const ValueKey('tour-jobs-add'),
+                onPressed: refused == null ? _create : null,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add job'),
+              ),
             ),
           ),
         ],
@@ -912,7 +896,12 @@ class _JobsScreenState extends State<JobsScreen> {
 
     return Padding(
       key: const Key('jobs-active-filters'),
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
       child: Wrap(
         spacing: 6,
         runSpacing: 6,
@@ -938,30 +927,25 @@ class _JobsScreenState extends State<JobsScreen> {
     final upcoming = _whenCounts['upcoming'];
     final past = _whenCounts['past'];
 
-    return SegmentedButton<String>(
+    return FilterPills<String>(
       key: const Key('jobs-window'),
-      showSelectedIcon: false,
-      segments: [
-        ButtonSegment(
-          value: 'upcoming',
-          label: Text(label('Upcoming', upcoming)),
-        ),
-        ButtonSegment(value: 'past', label: Text(label('Past', past))),
-        ButtonSegment(
-          value: 'all',
-          label: Text(
-            label(
-              'All',
-              upcoming == null || past == null ? null : upcoming + past,
-            ),
+      padding: EdgeInsets.zero,
+      selected: _when,
+      onSelected: (value) {
+        setState(() => _when = value);
+        _load();
+      },
+      items: [
+        FilterPill('upcoming', label('Upcoming', upcoming)),
+        FilterPill('past', label('Past', past)),
+        FilterPill(
+          'all',
+          label(
+            'All',
+            upcoming == null || past == null ? null : upcoming + past,
           ),
         ),
       ],
-      selected: {_when},
-      onSelectionChanged: (chosen) {
-        setState(() => _when = chosen.first);
-        _load();
-      },
     );
   }
 

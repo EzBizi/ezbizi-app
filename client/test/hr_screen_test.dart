@@ -394,7 +394,7 @@ void main() {
     await _tap(tester, _tab('Records'));
     expect(queries.last.containsKey('company_id'), isFalse);
 
-    await _choose(tester, 'Filter by company', 'Serenisima › Texas');
+    await _choose(tester, 'Filter by company', 'Serenisima · Texas');
     expect(queries.last['franchise_id'], 'fr-3');
     expect(queries.last.containsKey('company_id'), isFalse);
 

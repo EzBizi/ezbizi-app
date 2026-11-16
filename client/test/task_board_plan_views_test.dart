@@ -338,7 +338,10 @@ void main() {
     'on a phone the calendar is an agenda with Move date on each task',
     (tester) async {
       await pumpBoard(tester, size: const Size(400, 800));
-      await tester.tap(find.text('Calendar'));
+      // A phone picks the view from one dropdown (phone review 2026-11-13).
+      await tester.tap(find.byKey(const Key('tasks-view-picker')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Calendar').last);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('plan-agenda')), findsOneWidget);
       expect(find.textContaining('Today ·'), findsOneWidget);
