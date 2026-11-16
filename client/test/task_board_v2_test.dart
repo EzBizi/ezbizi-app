@@ -940,6 +940,39 @@ void main() {
     expect(tester.getSize(head).width, lessThanOrEqualTo(80));
   });
 
+  testWidgets('a Kanban card shows its first four filled columns and '
+      '+N more, not every column', (tester) async {
+    extra = [
+      {
+        'id': 't7',
+        'board_id': 'b-1',
+        'group_id': 'g1',
+        'parent_task_id': null,
+        'title': 'Full card',
+        'status_id': 's-new',
+        'owner': null,
+        'due_on': null,
+        'about': null,
+        'updates_count': 0,
+        'values': {
+          'c-hours': 2,
+          'c-ok': true,
+          for (var i = 3; i < 8; i++) 'c-x$i': 'v$i',
+        },
+      },
+    ];
+    await pump(tester, columns: 8);
+    await tester.tap(find.text('Kanban').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('task-card-more-t7')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('task-card-more-t7'))).data,
+      '+3 more',
+    );
+    expect(find.text('v7'), findsNothing);
+  });
+
   testWidgets('Created comes before Due in the header', (tester) async {
     builtins = customised();
     builtins!['created'] = {'label': 'Created', 'visible': true};
