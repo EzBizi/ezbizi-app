@@ -163,8 +163,12 @@ class _MarketingReportState extends State<MarketingReport> {
     final text = _cell(row, key);
     if (text == '—') return const GridCell.none();
     final value = row[key];
+    // A sub company's account that names no branch, shared out by jobs
+    // (Angi Sweep, Ace, Jose 2026-11-16): an estimate, and the cell says so.
+    final note = key == 'cost_minor' ? row['cost_note'] : null;
     return GridCell(
-      text,
+      note is String ? '≈ $text' : text,
+      tooltip: note is String ? note : null,
       tone: key == 'net_profit_minor' && value is num && value < 0
           ? Tone.bad
           : null,

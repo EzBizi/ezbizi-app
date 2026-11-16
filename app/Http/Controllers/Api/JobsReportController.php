@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Franchise;
 use App\Support\Phone\NumberNames;
 use App\Support\Reports\Experimental\RingCentralCallLog;
+use App\Support\Reports\ReportJobs;
 use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizClock;
@@ -72,6 +73,7 @@ class JobsReportController extends Controller
                 DB::raw("trim(concat_ws(' ', json_unquote(json_extract(j.payload, '$.FirstName')), json_unquote(json_extract(j.payload, '$.LastName')))) as client"),
                 DB::raw("json_unquote(json_extract(j.payload, '$.Phone')) as phone"),
                 DB::raw("json_unquote(json_extract(j.payload, '$.SecondPhone')) as phone2"),
+                DB::raw("json_extract(j.payload, '$.Tags') as tags"),
                 DB::raw("cast(coalesce(json_unquote(json_extract(j.payload, '$.JobTotalPrice')), 0) as decimal(12,2)) as total"),
             ]);
 
@@ -85,6 +87,11 @@ class JobsReportController extends Controller
         [$dialed, $read] = $this->dialed($jobs, $q['from'], $calls);
         $names = $read ? $calls->numberNames() : [];
         $syncing = now()->subMinutes(self::SYNC_MINUTES)->toDateTimeString();
+        // The two kinds of duplicate "Without duplicates" leaves out: a tag every "jobs created" figure
+        // leaves out (Settings › Lists), else Workiz's $0 copy of a finished job.
+        $skip = ReportJobs::tags('reports.tags_not_created');
+        $duplicate = fn (object $j) => ReportJobs::tagged($j->tags ?? [], $skip) ? 'tagged'
+            : (ReportJobs::copy($j) ? 'copy' : null);
         $rows = $jobs->map(fn (object $j) => [
             'ezbizi_id' => $j->ezbizi_id,
             'ezbizi_number' => $j->ezbizi_number,
@@ -105,6 +112,7 @@ class JobsReportController extends Controller
             'status' => $j->status,
             'total' => (float) $j->total,
             'created_by' => $j->created_by,
+            'duplicate' => $duplicate($j),
         ]);
 
         // Each filter's choices are the whole range's; 'none' picks the jobs with none.
@@ -127,6 +135,8 @@ class JobsReportController extends Controller
         return response()->json(['data' => [
             'rows' => $shown->slice((int) ($q['offset'] ?? 0), (int) ($q['limit'] ?? 200))->values(),
             'count' => $shown->count(),
+            'unique' => $shown->whereNull('duplicate')->count(),
+            'duplicates' => ['tagged' => $shown->where('duplicate', 'tagged')->count(), 'copies' => $shown->where('duplicate', 'copy')->count()],
             'total' => round($shown->sum('total'), 2),
             'sources' => $counted('source'),
             'areas' => $counted('service_area'),

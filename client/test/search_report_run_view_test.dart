@@ -22,10 +22,11 @@ void main() {
             'data': {
               'columns': [
                 {'key': 'jobs.title', 'label': 'Title', 'type': 'string'},
+                {'key': 'customers.phone', 'label': 'Phone', 'type': 'string'},
               ],
               'rows': [
-                {'jobs.title': 'Sweep'},
-                {'jobs.title': 'Cap install'},
+                {'jobs.title': 'Sweep', 'customers.phone': '7326748312'},
+                {'jobs.title': 'Cap install', 'customers.phone': '2035550142'},
               ],
               'capped': false,
               'count': 2,
@@ -48,6 +49,23 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  // Jose, 2026-11-16: "give format to numbers"; the digits still find it.
+  testWidgets('a phone column is written as a number and found by digits', (
+    tester,
+  ) async {
+    await pump(tester, 1200);
+    expect(find.text('+1 (732) 674-8312'), findsOneWidget);
+    expect(find.text('7326748312'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const Key('report-run-search')),
+      '732674',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Sweep'), findsOneWidget);
+    expect(find.text('Cap install'), findsNothing);
+  });
 
   for (final width in [1200.0, 375.0]) {
     testWidgets('the search narrows the rows at $width', (tester) async {

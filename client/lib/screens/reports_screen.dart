@@ -22,6 +22,7 @@ import 'reports/meta_ads_report.dart';
 import 'reports/overbooking_report_panel.dart';
 import 'reports/report_builder.dart';
 import 'reports/report_dates.dart';
+import 'reports/report_range.dart';
 import 'reports/scoring_report.dart';
 import 'reports/thumbtack_report.dart';
 import 'reports/jobs_report.dart';
@@ -81,8 +82,15 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   /// ONE date range for every tab that reads one (review 2026-10-30, item
   /// 14, Jose approved): Last 7 days on first open, then the person's last
-  /// choice for the session, carried between tabs.
-  late DateSpan _span = ReportDates.quick(_today)['1 week']!;
+  /// choice for the session, carried between tabs - and back into Reports
+  /// after leaving it (Jose, 2026-11-16), so it lives beyond this State.
+  /// Kept against the Session object, not this State.
+  static final _lastSpan = Expando<DateSpan>('reports span');
+  late DateSpan _span =
+      _lastSpan[widget.session] ?? ReportDates.quick(_today)['1 week']!;
+
+  void _setSpan(DateSpan span) =>
+      setState(() => _span = _lastSpan[widget.session] = span);
 
   DateTime get _today => DateSpan.single(widget.now()).from;
 
@@ -90,7 +98,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   static const _ranged = {
     'Performance',
     'Scoring',
-    'Marketing',
+    'Marketing Reports',
     'Meta',
     'Thumbtack',
     'Jobs',
@@ -355,29 +363,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     today: _today,
                     formats:
                         widget.session.me?.display ?? DisplayFormats.fallback,
-                    onChanged: (span) => setState(() => _span = span),
+                    onChanged: _setSpan,
                   ),
                 ),
               ),
             if (!ownPadding) const SizedBox(height: 12),
             Expanded(
-              child: HeadingPin(
-                pinned:
-                    _headingsPinned ??
-                    widget.session.me?.reportHeadingsPinned ??
-                    true,
-                onChanged: (pinned) {
-                  setState(() => _headingsPinned = pinned);
-                  // Not awaited: the screen is already right, and a write the
-                  // server refuses comes back through Session's refresh.
-                  widget.session.setPreference('reports.pin_headings', pinned);
-                },
-                child: ownPadding
-                    ? _body(context, constraints)
-                    : Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        child: _body(context, constraints),
-                      ),
+              child: ReportRange(
+                span: _span,
+                onChanged: _setSpan,
+                child: HeadingPin(
+                  pinned:
+                      _headingsPinned ??
+                      widget.session.me?.reportHeadingsPinned ??
+                      true,
+                  onChanged: (pinned) {
+                    setState(() => _headingsPinned = pinned);
+                    // Not awaited: the screen is already right, and a write the
+                    // server refuses comes back through Session's refresh.
+                    widget.session.setPreference(
+                      'reports.pin_headings',
+                      pinned,
+                    );
+                  },
+                  child: ownPadding
+                      ? _body(context, constraints)
+                      : Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          child: _body(context, constraints),
+                        ),
+                ),
               ),
             ),
           ],
@@ -465,7 +480,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (_mayOpen('marketing') &&
           (me?.reachableModules.any((m) => m.key == 'profit_loss') ?? false))
         (
-          'Marketing',
+          // "Marketing Reports" (Jose, 2026-11-16): not the Marketing module.
+          'Marketing Reports',
           Icons.campaign_outlined,
           () => MarketingReport(
             api: widget.api,
@@ -685,7 +701,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           key: ValueKey('performance-$_openCall'),
           openCall: _openCall,
           span: _span,
-          onSpan: (span) => setState(() => _span = span),
+          onSpan: _setSpan,
           // The same clock as the shared range, so "Last 7 days" names it.
           now: widget.now,
           api: widget.api,

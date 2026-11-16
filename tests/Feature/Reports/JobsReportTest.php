@@ -81,6 +81,36 @@ class JobsReportTest extends TestCase
     }
 
     /** With no Workiz call tied to it, the number dialed is the client's last call in before the job was booked. */
+    /**
+     * Jose, 2026-11-16: "another box that counts the number without the duplicates". A tag the business
+     * leaves out, else Workiz's $0 "done pending approval" copy; a copy with money is a real job.
+     * Shapes as prod has them (XBE3AK and its copy J84MRI).
+     */
+    public function test_without_duplicates_leaves_out_the_tagged_and_workiz_copies(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $f = $t['franchise'];
+        $this->inTenant($t['org'], function () use ($f) {
+            $job = fn (string $ref, string $status, float $total, array $tags) => WorkizJob::query()->create([
+                'franchise_id' => $f->id, 'remote_id' => $ref, 'serial_id' => '5000'.substr($ref, -2), 'job_source' => 'PPC', 'service_area' => 'NJ',
+                'status' => $status, 'booked_at' => '2026-11-08 12:41:41', 'job_type' => 'Chimney Inspection', 'created_by' => 'Lucas Snyder',
+                'payload' => ['FirstName' => 'Tim', 'LastName' => 'Menture', 'Phone' => '2017573112', 'ClientId' => 14352, 'JobTotalPrice' => $total, 'Tags' => $tags],
+                'synced_at' => now(),
+            ]);
+            $job('J10', 'Done', 99, []);
+            $job('J11', 'done pending approval', 0, [' ⁠🔴 Free – Estimated']);
+            $job('J12', 'done pending approval', 0, ['PAID - ESTIMATED']);
+            $job('J13', 'done pending approval', 150, []);
+        });
+
+        $data = $this->signedInAs($t['admin'])->getJson('/api/v1/reports/jobs?from=2026-11-08&to=2026-11-08')->assertOk()->json('data');
+
+        $this->assertSame(4, $data['count']);
+        $this->assertSame(2, $data['unique']);
+        $this->assertSame(['tagged' => 1, 'copies' => 1], $data['duplicates']);
+        $this->assertSame(['J10' => null, 'J11' => 'copy', 'J12' => 'tagged', 'J13' => null], collect($data['rows'])->sortBy('workiz_id')->pluck('duplicate', 'workiz_id')->all());
+    }
+
     public function test_the_number_dialed_is_the_clients_last_call_before_the_job(): void
     {
         $job = fn (string $id, string $phone) => (object) ['workiz_id' => $id, 'phone' => $phone, 'created_at' => '2026-11-10 09:00:00', 'timezone' => 'America/New_York'];

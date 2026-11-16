@@ -178,4 +178,75 @@ void main() {
       expect(asked.last['source[]'], isNull);
     },
   );
+
+  // Jose, 2026-11-16: a box without Workiz's duplicates, a Total that says
+  // what it is, and phone numbers written as numbers.
+  testWidgets(
+    'counts without duplicates, names the gross, formats Workiz digits',
+    (tester) async {
+      final api = ApiClient(
+        client: MockClient(
+          (request) async => http.Response(
+            jsonEncode({
+              'data': {
+                'rows': [
+                  {
+                    ...row('J1', ezbizi: '1042', dialed: '+17324264555'),
+                    // As Workiz stores it: bare digits.
+                    'phone': '7326748312',
+                  },
+                ],
+                'count': 61,
+                'unique': 47,
+                'duplicates': {'tagged': 14, 'copies': 0},
+                'total': 300.5,
+                'sources': [],
+                'areas': [],
+                'dialed': [],
+                'calls_read': true,
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          ),
+        ),
+      );
+      tester.view.physicalSize = const Size(2400, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: JobsReport(
+              api: api,
+              span: DateSpan(DateTime(2026, 10, 18), DateTime(2026, 11, 16)),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('JOBS CREATED (ALL)'), findsOneWidget);
+      expect(find.text('61'), findsOneWidget);
+      expect(find.text('WITHOUT DUPLICATES'), findsOneWidget);
+      expect(find.text('47'), findsOneWidget);
+      final why = tester.widget<Tooltip>(
+        find.ancestor(
+          of: find.byKey(const ValueKey('jobs-unique')),
+          matching: find.byType(Tooltip),
+        ),
+      );
+      expect(why.message, contains('PAID – ESTIMATED'));
+      expect(why.message, contains('done pending approval'));
+      expect(why.message, contains(': 14'));
+
+      expect(find.text('GROSS, INCL. TAX'), findsOneWidget);
+      expect(find.text('Job total'), findsOneWidget);
+
+      expect(find.text('+1 (732) 674-8312'), findsOneWidget);
+      expect(find.text('7326748312'), findsNothing);
+      expect(find.textContaining('+1 (732) 426-4555'), findsOneWidget);
+    },
+  );
 }

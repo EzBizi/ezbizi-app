@@ -926,6 +926,60 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'Performance'), findsNothing);
   });
 
+  // Jose, 2026-11-16: one range for every tab, still there after leaving.
+  testWidgets('the date range survives leaving Reports and coming back', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final froms = <String?>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) {
+          return _json({
+            'data': {
+              ..._me,
+              'permissions': ['reports.view', 'reports.jobs.view'],
+              'modules': [],
+            },
+          });
+        }
+        if (path.endsWith('/reports/jobs')) {
+          froms.add(request.url.queryParameters['from']);
+          return _json({
+            'data': {'rows': [], 'count': 0, 'total': 0},
+          });
+        }
+        return _json({'data': []});
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    final now = DateTime(2026, 11, 16, 12);
+    Widget reports() => MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: ReportsScreen(api: api, session: session, now: () => now),
+      ),
+    );
+
+    await tester.pumpWidget(reports());
+    await tester.pumpAndSettle();
+    expect(froms.last, '2026-11-10');
+
+    await tester.tap(find.text('Last 30 days'));
+    await tester.pumpAndSettle();
+    expect(froms.last, '2026-10-18');
+
+    // Away to another module, then back.
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.pumpWidget(reports());
+    await tester.pumpAndSettle();
+    expect(froms.last, '2026-10-18');
+  });
+
   // Jose, 2026-11-16: a pin in a report table's headings, pinned until this
   // person unpins it, and remembered for them.
   testWidgets(

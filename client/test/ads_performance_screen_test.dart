@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/ads_performance_screen.dart';
+import 'package:ezbizi_client/screens/reports/report_range.dart';
 import 'package:ezbizi_client/widgets/date_range_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,6 +41,7 @@ void main() {
     required List<Map<String, dynamic>> accounts,
     Map<String, dynamic>? report,
     Map<String, dynamic>? rollup,
+    DateSpan? range,
   }) async {
     tester.view.physicalSize = const Size(1400, 1200);
     tester.view.devicePixelRatio = 1.0;
@@ -87,7 +89,13 @@ void main() {
       MaterialApp(
         theme: EzBiziTheme.light(),
         home: Scaffold(
-          body: AdsPerformanceScreen(api: api, session: Session(api)),
+          body: range == null
+              ? AdsPerformanceScreen(api: api, session: Session(api))
+              : ReportRange(
+                  span: range,
+                  onChanged: (_) {},
+                  child: AdsPerformanceScreen(api: api, session: Session(api)),
+                ),
         ),
       ),
     );
@@ -478,6 +486,24 @@ void main() {
       reason: 'dropping it would read as "this account spent nothing", which is '
           'a different and wrong statement',
     );
+  });
+
+  // Jose, 2026-11-16: inside Reports, the range every tab shares.
+  testWidgets('inside Reports it asks Google for the shared range', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      accounts: twoAccounts(),
+      report: report(),
+      range: DateSpan(DateTime(2026, 10, 18), DateTime(2026, 11, 15)),
+    );
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    final asked = urls.lastWhere((u) => u.path.contains('/ads/performance'));
+    expect(asked.queryParameters['from'], '2026-10-18');
+    expect(asked.queryParameters['to'], '2026-11-15');
   });
 
   testWidgets('with nothing connected it names the way in', (tester) async {

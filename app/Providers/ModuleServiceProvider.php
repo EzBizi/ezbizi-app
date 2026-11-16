@@ -4567,7 +4567,7 @@ class ModuleServiceProvider extends ServiceProvider
                     // Ad cost against jobs and profit (Jose, 2026-10-12); the
                     // server also asks for profit_loss.view, its profit being
                     // the P&L's margin.
-                    new TabDefinition('marketing', 'Marketing'),
+                    new TabDefinition('marketing', 'Marketing Reports'),
                     // Facebook ad spend by campaign, state and category.
                     new TabDefinition('meta', 'Meta'),
                     // Thumbtack lead spend by category and branch (2026-10-13).

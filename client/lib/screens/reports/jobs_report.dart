@@ -148,7 +148,29 @@ class _JobsReportState extends State<JobsReport> {
   );
 
   static String _line(Object? number, Object? name) =>
-      [formatPhoneNumber('$number'), ?name].join(' · ');
+      [_phone(number), ?name].join(' · ');
+
+  /// Workiz keeps bare digits (7326748312): written as every number in the
+  /// app is (Jose, 2026-11-16: "give format to numbers"). Display only; the
+  /// search still reads the digits.
+  static String _phone(Object? number) =>
+      formatPhoneNumber(toE164('${number ?? ''}') ?? '${number ?? ''}');
+
+  static const _grossHelp =
+      "Each job's Workiz total: its line items after discounts, plus tax. "
+      'Every job in the list counts, cancelled ones too. Not net: Workiz '
+      'jobs carry no costs.';
+
+  /// What "Without duplicates" left out, as the server counted it.
+  static String _duplicatesHelp(Object? kinds) {
+    final k = (kinds as Map?) ?? const {};
+    int n(String kind) => ((k[kind] as num?) ?? 0).toInt();
+    return 'Jobs created, less the two kinds of duplicate Workiz makes:\n'
+        '• tagged PAID – ESTIMATED (Settings › Lists, as every "jobs '
+        'created" figure leaves out): ${formatCount(n('tagged'))}\n'
+        '• its \$0 copy of a finished job, status "done pending approval": '
+        '${formatCount(n('copies'))}';
+  }
 
   GridCell _text(Object? v) =>
       v == null || '$v'.isEmpty ? const GridCell.none() : GridCell('$v');
@@ -218,12 +240,29 @@ class _JobsReportState extends State<JobsReport> {
           OverviewFigures(
             key: const ValueKey('jobs-totals'),
             figures: [
-              OverviewFigure(label: 'Jobs created', value: formatCount(count)),
               OverviewFigure(
-                label: 'Total',
+                label: 'Jobs created (all)',
+                value: formatCount(count),
+                help:
+                    'Every job created in Workiz in these dates, '
+                    'duplicates included.',
+              ),
+              // Jose, 2026-11-16: "another box that counts the number without
+              // the duplicates ... its a workiz issue".
+              OverviewFigure(
+                key: const ValueKey('jobs-unique'),
+                label: 'Without duplicates',
+                value: formatCount(((data['unique'] as num?) ?? count).toInt()),
+                help: _duplicatesHelp(data['duplicates']),
+              ),
+              // Jose: "specify what total means like gross, net etc".
+              OverviewFigure(
+                key: const ValueKey('jobs-gross'),
+                label: 'Gross, incl. tax',
                 value: formatMoney(
                   (((data['total'] as num?) ?? 0) * 100).round(),
                 ),
+                help: _grossHelp,
               ),
             ],
           ),
@@ -243,7 +282,12 @@ class _JobsReportState extends State<JobsReport> {
               GridColumn('Called at'),
               GridColumn('Job type'),
               GridColumn('Status'),
-              GridColumn('Total', numeric: true, main: true),
+              GridColumn(
+                'Job total',
+                numeric: true,
+                main: true,
+                help: _grossHelp,
+              ),
               GridColumn('Created by'),
             ],
             rows: [
@@ -266,7 +310,7 @@ class _JobsReportState extends State<JobsReport> {
                   _text(r['client']),
                   r['phone'] == null
                       ? const GridCell.none()
-                      : GridCell(formatPhoneNumber('${r['phone']}')),
+                      : GridCell(_phone(r['phone'])),
                   _text(r['branch']),
                   _text(r['service_area']),
                   _text(r['source']),

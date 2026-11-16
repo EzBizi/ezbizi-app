@@ -163,4 +163,65 @@ void main() {
     await tester.pumpAndSettle();
     expect(asked.last, {'from': '2026-09-01', 'to': '2026-09-30'});
   });
+
+  // Jose, 2026-11-16: Ace's one account names no branch; its cost is shared
+  // out by jobs, so the cell is marked as an estimate and says how.
+  testWidgets('a shared-out cost is marked as an estimate and explained', (
+    tester,
+  ) async {
+    const why =
+        'Includes 23% of Ace Home Care LLC (no branch in its name): this '
+        "branch's 11 of the 47 Ace Fireplace Services jobs created.";
+    final api = ApiClient(
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'data': {
+              'rows': [
+                {
+                  'branch': 'Connecticut',
+                  'source': 'Ace Fireplace Services',
+                  'clicks': 293,
+                  'conversions': 20.1,
+                  'cost_minor': 317059,
+                  'cost_note': why,
+                  'jobs_created': 11,
+                  'done_jobs': 5,
+                  'gross_minor': 1225631,
+                },
+              ],
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+    tester.view.physicalSize = const Size(2400, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MarketingReport(api: api, now: () => DateTime(2026, 11, 16)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final cell = find.descendant(
+      of: find.byKey(const Key('marketing-table')),
+      matching: find.text(r'≈ $3,170.59'),
+    );
+    expect(cell, findsOneWidget);
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.ancestor(of: cell, matching: find.byType(Tooltip)).first,
+          )
+          .message,
+      why,
+    );
+  });
 }
