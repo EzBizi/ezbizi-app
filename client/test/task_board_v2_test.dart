@@ -760,6 +760,75 @@ void main() {
     expect(find.text('DUE'), findsWidgets);
   });
 
+  testWidgets("every heading has a ⋯ that opens its menu: Hide column sends "
+      'hidden, and Delete asks once inside the menu', (tester) async {
+    builtins = customised();
+    await pump(tester);
+
+    // Built-ins and board columns alike wear the ⋯.
+    expect(find.byKey(const ValueKey('builtin-more-due')), findsWidgets);
+    expect(find.byKey(const ValueKey('column-more-c-hours')), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('column-more-c-hours')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('column-menu-hide-c-hours')));
+    await tester.pumpAndSettle();
+    sent(log.single, 'PATCH', '/task-boards/b-1/columns/c-hours', {
+      'hidden': true,
+    });
+
+    await tester.tap(find.byKey(const ValueKey('column-more-c-hours')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('column-menu-remove-c-hours')));
+    await tester.pumpAndSettle();
+    // Nothing sent yet: the menu stays open and asks.
+    expect(log, hasLength(1));
+    expect(find.byType(Dialog), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('column-menu-delete-cancel-c-hours')),
+    );
+    await tester.pumpAndSettle();
+    expect(log, hasLength(1));
+    expect(
+      find.byKey(const ValueKey('column-menu-delete-confirm-c-hours')),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const ValueKey('column-menu-remove-c-hours')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('column-menu-delete-confirm-c-hours')),
+    );
+    await tester.pumpAndSettle();
+    sent(log.last, 'DELETE', '/task-boards/b-1/columns/c-hours', null);
+  });
+
+  testWidgets("a built-in heading's ⋯ offers Hide and never Delete", (
+    tester,
+  ) async {
+    builtins = customised();
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-more-due')).first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('builtin-hide-due')), findsOneWidget);
+    expect(find.textContaining('Delete'), findsNothing);
+  });
+
+  testWidgets('Columns · N hidden shows a hidden board column again', (
+    tester,
+  ) async {
+    builtins = customised();
+    await pump(tester);
+
+    await tester.tap(find.byKey(const Key('tasks-columns')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('column-show-c-gone')));
+    await tester.pumpAndSettle();
+    sent(log.last, 'PATCH', '/task-boards/b-1/columns/c-gone', {
+      'hidden': false,
+    });
+  });
+
   testWidgets('a board you cannot edit has no column menus and no Columns', (
     tester,
   ) async {
