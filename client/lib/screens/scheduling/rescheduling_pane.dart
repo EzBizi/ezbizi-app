@@ -3,6 +3,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
+
 import '../../widgets/filters_fold.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -397,18 +399,13 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
               children: [
                 bar,
                 ?moved,
-                Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        'Nothing to move: every booked job has other work '
-                        'near it on its day.',
-                        key: const Key('rescheduling-empty'),
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ),
+                const Expanded(
+                  child: EmptyState(
+                    key: Key('rescheduling-empty'),
+                    icon: Icons.event_available_outlined,
+                    title: 'Nothing to move',
+                    message:
+                        'Every booked job has other work near it on its day.',
                   ),
                 ),
               ],
