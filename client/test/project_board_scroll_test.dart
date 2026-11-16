@@ -114,9 +114,11 @@ void main() {
             .byWidgetPredicate(
               (w) =>
                   w is SingleChildScrollView &&
-                  w.scrollDirection == Axis.horizontal,
+                  w.scrollDirection == Axis.horizontal &&
+                  // The table's is the last; the tab strip scrolls too.
+                  w.controller != null,
             )
-            .first,
+            .last,
       )
       .controller!
       .position;

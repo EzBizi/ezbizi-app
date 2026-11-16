@@ -631,13 +631,13 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               style: theme.textTheme.titleSmall,
             ),
             const SizedBox(height: 8),
+            // A family is a row on a phone too: its fixed-height card ran
+            // its status lines out of the box, under the next row (mobile
+            // review 2026-11-13: Telegram drawn over WhatsApp's status).
             if (_phone)
               for (final provider in mine)
                 _isFamily(provider)
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: card(provider),
-                      )
+                    ? _familyRow(provider, byProvider)
                     : _providerRow(
                         context,
                         provider: provider,
@@ -1135,25 +1135,44 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     Map<String, List<IntegrationConnection>> byProvider,
   ) {
     final all = [head, ...?_folded[head]];
-    final rows = [for (final p in all) ...?byProvider[p]];
     return _providerCard(
       context,
       provider: head,
-      rows: rows,
+      rows: [for (final p in all) ...?byProvider[p]],
       statusOf: all,
-      onTap: () => showSidePanel<void>(
-        context,
-        builder: (panel) => SidePanel(
-          title: _label(head),
-          child: _familyCard(
-            head,
-            byProvider,
-            close: () => Navigator.of(panel).pop(),
-          ),
-        ),
-      ),
+      onTap: () => _openFamily(head, byProvider),
     );
   }
+
+  /// The same family as one line of a phone's list.
+  Widget _familyRow(
+    String head,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) {
+    final all = [head, ...?_folded[head]];
+    return _providerRow(
+      context,
+      provider: head,
+      rows: [for (final p in all) ...?byProvider[p]],
+      statusOf: all,
+      onTap: () => _openFamily(head, byProvider),
+    );
+  }
+
+  void _openFamily(
+    String head,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) => showSidePanel<void>(
+    context,
+    builder: (panel) => SidePanel(
+      title: _label(head),
+      child: _familyCard(
+        head,
+        byProvider,
+        close: () => Navigator.of(panel).pop(),
+      ),
+    ),
+  );
 
   /// "Choose what to connect" (UI queue 183): ticks sign in for just those;
   /// unticking removes one product with `DELETE …/connections?product=`.
@@ -1440,6 +1459,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     BuildContext context, {
     required String provider,
     required List<IntegrationConnection> rows,
+    List<String>? statusOf,
+    VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
     final broken = rows.where((r) => !r.connected).length;
@@ -1447,9 +1468,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
     return InkWell(
       key: ValueKey('provider:$provider'),
-      onTap: none && _catalogue[provider]?['usable'] == false
-          ? null
-          : () => setState(() => _open = provider),
+      onTap:
+          onTap ??
+          (none && _catalogue[provider]?['usable'] == false
+              ? null
+              : () => setState(() => _open = provider)),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
@@ -1480,7 +1503,12 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                     ),
                   ),
                   if (!none)
-                    _statusOrChecked(theme, provider, [provider], rows),
+                    _statusOrChecked(
+                      theme,
+                      provider,
+                      statusOf ?? [provider],
+                      rows,
+                    ),
                 ],
               ),
             ),

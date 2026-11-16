@@ -1458,7 +1458,19 @@ void main() {
     await _tap(tester, _tab('Records'));
     await _openPerson(tester, 'Bea Okafor');
     await _tap(tester, _section('Onboarding'));
-    await _tap(tester, find.byIcon(Icons.chevron_right).first);
+    await _tap(
+      tester,
+      // Not the tab strip's "More tabs" chevron.
+      find
+          .byElementPredicate(
+            (e) =>
+                e.widget is Icon &&
+                (e.widget as Icon).icon == Icons.chevron_right &&
+                e.findAncestorWidgetOfExactType<IconButton>()?.key !=
+                    const Key('tab-bar-chevron'),
+          )
+          .first,
+    );
 
     expect(find.text('Back to Bea Okafor'), findsOneWidget);
 
