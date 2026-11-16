@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/side_panel.dart';
@@ -157,26 +159,11 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
                 },
               ),
               Text('$from to $to', style: TextStyle(color: muted)),
-              SizedBox(
-                width: 240,
-                child: TextField(
-                  key: const Key('financials-adjustments-search'),
-                  controller: _search,
-                  onChanged: _searched,
-                  // bodyMedium for the text and the hint, as the dense pickers draw:
-                  // 53 points tall, as they are; the theme's 16-point hint makes 56.
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    hintText: 'Technician, job or reason',
-                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(
-                        context,
-                      ).inputDecorationTheme.hintStyle?.color,
-                    ),
-                  ),
-                ),
+              ListSearch(
+                key: const Key('financials-adjustments-search'),
+                controller: _search,
+                onChanged: _searched,
+                hint: 'Technician, job or reason',
               ),
             ],
           ),
