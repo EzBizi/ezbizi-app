@@ -3435,17 +3435,15 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       sliver: SliverMainAxisGroup(
         slivers: [
           PinnedHeaderSliver(
-            child: Container(
+            child: _groupEdge(
+              context,
               key: ValueKey('task-group-top-$fold'),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                border: folded
-                    ? Border.fromBorderSide(edge)
-                    : Border(top: edge, left: edge, right: edge),
-                borderRadius: folded
-                    ? BorderRadius.circular(12)
-                    : const BorderRadius.vertical(top: Radius.circular(12)),
-              ),
+              border: folded
+                  ? Border.fromBorderSide(edge)
+                  : Border(top: edge, left: edge, right: edge),
+              radius: folded
+                  ? BorderRadius.circular(12)
+                  : const BorderRadius.vertical(top: Radius.circular(12)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -3552,22 +3550,41 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final last = lines.length - 1;
     return SliverList.builder(
       itemCount: lines.length,
-      itemBuilder: (context, i) => DecoratedBox(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            left: edge,
-            right: edge,
-            bottom: i == last ? edge : BorderSide.none,
-          ),
-          borderRadius: i == last
-              ? const BorderRadius.vertical(bottom: Radius.circular(12))
-              : null,
+      itemBuilder: (context, i) => _groupEdge(
+        context,
+        border: Border(
+          left: edge,
+          right: edge,
+          bottom: i == last ? edge : BorderSide.none,
         ),
+        radius: i == last
+            ? const BorderRadius.vertical(bottom: Radius.circular(12))
+            : null,
         child: lines[i](),
       ),
     );
   }
+
+  /// A group's outline round its headings and round each of its rows: the
+  /// one box both sit in, so their columns start at the same x. A Container
+  /// here insets its child by the border and put the headings' dividers a
+  /// pixel right of the rows' (Jose 11-16: "Missalignment between the top
+  /// row column divide and the rest").
+  Widget _groupEdge(
+    BuildContext context, {
+    Key? key,
+    required Border border,
+    BorderRadius? radius,
+    required Widget child,
+  }) => DecoratedBox(
+    key: key,
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surface,
+      border: border,
+      borderRadius: radius,
+    ),
+    child: child,
+  );
 
   static const _widths = (add: 40.0);
   static const _baseWidths = {
