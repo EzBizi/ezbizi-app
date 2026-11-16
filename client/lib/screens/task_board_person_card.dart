@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../widgets/lazy_menu_anchor.dart';
 import '../widgets/user_avatar.dart';
 
 /// Monday's person hover card (Jose 11-13): photo, name, presence, local
@@ -33,8 +34,11 @@ class _PersonHoverCardState extends State<PersonHoverCard> {
 
   Future<void> _show() async {
     await Future<void>.delayed(const Duration(milliseconds: 350));
-    if (!mounted || !_inChild) return;
+    if (!mounted || !_inChild || LazyMenuAnchor.openCount.value > 0) return;
     _portal.show();
+    // A click on the face opens the cell's picker; the card sat on top of
+    // it (hands-on QA 11-16). Listening only while shown costs rows nothing.
+    LazyMenuAnchor.openCount.addListener(_menuOpened);
     if (_data != null) return;
     final r = await widget.api.get(
       '/task-boards/${widget.boardId}/people/${widget.userId}',
@@ -43,12 +47,25 @@ class _PersonHoverCardState extends State<PersonHoverCard> {
     setState(() => _data = (r.data as Map).cast<String, dynamic>());
   }
 
+  void _menuOpened() {
+    if (LazyMenuAnchor.openCount.value > 0) _hide();
+  }
+
+  void _hide() {
+    LazyMenuAnchor.openCount.removeListener(_menuOpened);
+    if (_portal.isShowing) _portal.hide();
+    if (mounted) setState(() => _contact = false);
+  }
+
+  @override
+  void dispose() {
+    LazyMenuAnchor.openCount.removeListener(_menuOpened);
+    super.dispose();
+  }
+
   void _maybeHide() {
     Future<void>.delayed(const Duration(milliseconds: 200), () {
-      if (mounted && !_inChild && !_inCard) {
-        _portal.hide();
-        setState(() => _contact = false);
-      }
+      if (mounted && !_inChild && !_inCard) _hide();
     });
   }
 

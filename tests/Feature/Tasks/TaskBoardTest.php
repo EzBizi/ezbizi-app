@@ -118,6 +118,22 @@ class TaskBoardTest extends TestCase
         $this->assertNotContains('Outsider', $assignable('Alpha F1'));
     }
 
+    public function test_assignable_says_who_has_a_photo_so_faces_without_one_ask_for_none(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['tasks.view']);
+        $pictured = $this->userWithRole($tenant, 'Pictured', ['tasks.view']);
+        $this->inTenant($tenant['org'], fn () => $pictured->forceFill(['avatar_path' => 'avatars/pictured.jpg'])->save());
+
+        $boards = $this->signedInAs($viewer)->getJson('/api/v1/task-boards')->json('data');
+        $id = collect($boards)->firstWhere('name', 'Alpha F1')['id'];
+        $people = collect($this->signedInAs($viewer)->getJson("/api/v1/task-boards/{$id}")->assertOk()->json('data.assignable'))
+            ->keyBy('name');
+
+        $this->assertTrue($people['Pictured']['has_avatar']);
+        $this->assertFalse($people['Viewer']['has_avatar']);
+    }
+
     public function test_create_update_and_done_sets_and_clears_completed_at_and_emits(): void
     {
         $tenant = $this->provisionTenant('Alpha');

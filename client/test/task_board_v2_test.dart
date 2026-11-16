@@ -43,6 +43,9 @@ void main() {
   /// Top-level tasks added after the three every test has.
   var extra = <Map<String, dynamic>>[];
 
+  /// A board with no tasks at all.
+  var emptyBoard = false;
+
   ApiClient fakeServer({int columns = 3}) {
     log = [];
     tasks = [
@@ -100,6 +103,7 @@ void main() {
       },
       ...extra,
     ];
+    if (emptyBoard) tasks.clear();
     var next = 10;
     http.Response json(Object body, [int code = 200]) => http.Response(
       jsonEncode(body),
@@ -381,6 +385,7 @@ void main() {
     canEdit = true;
     refuseBoardPatch = false;
     extra = [];
+    emptyBoard = false;
   });
 
   Future<void> pump(
@@ -576,6 +581,8 @@ void main() {
       'go first', (tester) async {
     await pump(tester);
 
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-statuses')));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -673,7 +680,11 @@ void main() {
       expect(find.text(h), findsWidgets, reason: h);
     }
     expect(find.text('CREATED'), findsNothing);
-    expect(find.byKey(const Key('tasks-columns')), findsNothing);
+    // No built-ins to hide on such a server: no Hide on the line or in the ⋯.
+    expect(find.byKey(const Key('list-toolbar-hide')), findsNothing);
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('tasks-more-hide')), findsNothing);
   });
 
   testWidgets('Created, when shown, is the day the task was made', (
@@ -731,7 +742,7 @@ void main() {
     expect(find.text('SUMMARY'), findsWidgets);
   });
 
-  testWidgets('Hide sends visible false, and Columns shows it again', (
+  testWidgets('Hide sends visible false, and the toolbar Hide shows it again', (
     tester,
   ) async {
     builtins = customised();
@@ -748,10 +759,20 @@ void main() {
     });
     expect(find.text('DUE'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('tasks-columns')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('builtin-show-created')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('builtin-show-due')));
+    // One Hide: the toolbar's lists every column, unticked while hidden,
+    // and counts the hidden ones (Created, Due and the hidden c-gone).
+    expect(find.textContaining('Hide · 3'), findsWidgets);
+    await openTool(tester, 'hide');
+    bool ticked(String id) =>
+        tester
+            .widget<CheckboxListTile>(find.byKey(ValueKey('tasks-hide-$id')))
+            .value ==
+        true;
+    expect(ticked('b:created'), isFalse);
+    expect(ticked('b:due'), isFalse);
+    expect(ticked('b:status'), isTrue);
+    await tester.tap(find.byKey(const ValueKey('tasks-hide-b:due')));
+    await tester.tap(find.byKey(const Key('tasks-hide-apply')));
     await tester.pumpAndSettle();
     sent(log.last, 'PATCH', '/task-boards/b-1', {
       'builtin_columns': {
@@ -815,15 +836,15 @@ void main() {
     expect(find.textContaining('Delete'), findsNothing);
   });
 
-  testWidgets('Columns · N hidden shows a hidden board column again', (
+  testWidgets('Hide shows a hidden board column again, and hides one', (
     tester,
   ) async {
     builtins = customised();
     await pump(tester);
 
-    await tester.tap(find.byKey(const Key('tasks-columns')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('column-show-c-gone')));
+    await openTool(tester, 'hide');
+    await tester.tap(find.byKey(const ValueKey('tasks-hide-c:c-gone')));
+    await tester.tap(find.byKey(const Key('tasks-hide-apply')));
     await tester.pumpAndSettle();
     sent(log.last, 'PATCH', '/task-boards/b-1/columns/c-gone', {
       'hidden': false,
@@ -839,7 +860,7 @@ void main() {
 
     expect(find.text('SUMMARY'), findsWidgets);
     expect(find.byKey(const ValueKey('builtin-head-about')), findsNothing);
-    expect(find.byKey(const Key('tasks-columns')), findsNothing);
+    expect(find.byKey(const Key('list-toolbar-hide')), findsNothing);
   });
 
   testWidgets('several owners: the primary and +N, and the panel adds one '
@@ -1066,8 +1087,7 @@ void main() {
     extra = [doneTask()];
     await pump(tester);
 
-    await tester.tap(find.byKey(const Key('tasks-group-by')));
-    await tester.pumpAndSettle();
+    await openTool(tester, 'group-by');
     await tester.tap(find.byKey(const ValueKey('group-by-status')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('task-group-by:s-stuck')), findsOneWidget);
@@ -1076,8 +1096,7 @@ void main() {
     // A Group by group takes no new tasks: it is not a group on the board.
     expect(find.byKey(const ValueKey('group-menu-by:s-done')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('tasks-group-by')));
-    await tester.pumpAndSettle();
+    await openTool(tester, 'group-by');
     await tester.tap(find.byKey(const Key('group-by-none')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('task-group-g1')), findsOneWidget);
@@ -1257,4 +1276,152 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('column-save')), findsOneWidget);
   });
+
+  // ── Hands-on QA 11-16, second pass ─────────────────────────────
+
+  testWidgets('the toolbar is one line at 1440: what fits sits on it, the '
+      'rest is in the ⋯', (tester) async {
+    await pump(tester, width: 1440);
+
+    final line = find.byKey(const Key('tasks-toolbar-line'));
+    expect(tester.getSize(line).height, lessThan(60));
+    final row = tester.getCenter(find.byKey(const Key('tasks-search'))).dy;
+    for (final key in ['tasks-new-task', 'tasks-people', 'board-menu']) {
+      expect(
+        tester.getCenter(find.byKey(Key(key)).first).dy,
+        moreOrLessEquals(row, epsilon: 1),
+        reason: key,
+      );
+    }
+    // Whatever did not fit is offered in the ⋯, not wrapped to a new row.
+    final hidden = [
+      for (final k in ['person', 'filter', 'sort', 'views'])
+        if (find.byKey(Key('list-toolbar-$k')).hitTestable().evaluate().isEmpty)
+          k,
+    ];
+    expect(hidden, isNotEmpty, reason: 'nothing folded at 1440');
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    for (final k in hidden) {
+      expect(find.byKey(ValueKey('tasks-more-$k')), findsOneWidget, reason: k);
+    }
+  });
+
+  testWidgets('on a phone the line keeps the view, the search and New task', (
+    tester,
+  ) async {
+    await pump(tester, width: 390);
+
+    final row = tester.getCenter(find.byKey(const Key('tasks-search'))).dy;
+    for (final key in ['tasks-view-picker', 'tasks-new-task', 'board-menu']) {
+      final f = find.byKey(Key(key)).hitTestable();
+      expect(f, findsOneWidget, reason: key);
+      expect(
+        tester.getCenter(f).dy,
+        moreOrLessEquals(row, epsilon: 2),
+        reason: key,
+      );
+    }
+    expect(
+      find.byKey(const Key('list-toolbar-filter')).hitTestable(),
+      findsNothing,
+    );
+  });
+
+  testWidgets('New task stays on Kanban: it makes a task and opens it', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(find.text('Kanban').first);
+    await tester.pumpAndSettle();
+
+    await openTool(tester, 'new-task');
+    final post = log.where((c) => c.$1 == 'POST' && c.$2 == '/tasks').single;
+    expect((post.$3 as Map)['title'], 'New task');
+    expect(find.byType(TextField), findsWidgets);
+  });
+
+  testWidgets('a Kanban card dropped on another column takes its status', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(find.text('Kanban').first);
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const ValueKey('kanban-drag-t1'));
+    final to = find.byKey(const ValueKey('kanban-s-wait'));
+    final gesture = await tester.startGesture(tester.getCenter(card));
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.moveTo(tester.getCenter(to));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    sent(log.single, 'PATCH', '/tasks/t1', {'status_id': 's-wait'});
+  });
+
+  testWidgets('bulk Status sends the board status by id', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('task-pick-t1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('task-bulk-status')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('task-choice')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Waiting on client').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('task-choice-go')));
+    await tester.pumpAndSettle();
+
+    final bulk = log.where((c) => c.$2 == '/tasks/bulk').single;
+    expect(bulk.$3, {
+      'ids': ['t1'],
+      'op': 'status',
+      'status_id': 's-wait',
+    });
+  });
+
+  testWidgets('Esc closes a status menu opened from its cell', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('task-status-t1')).first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-status-t1-edit')), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-status-t1-edit')), findsNothing);
+    expect(find.byKey(const Key('tasks-status-scrim')), findsNothing);
+  });
+
+  testWidgets('a board with no tasks keeps its headings and says it is empty', (
+    tester,
+  ) async {
+    emptyBoard = true;
+    await pump(tester);
+
+    expect(find.byKey(const Key('tasks-board-empty')), findsOneWidget);
+    expect(find.text('STATUS'), findsWidgets);
+    expect(find.text('TASK'), findsWidgets);
+  });
+}
+
+/// Opens toolbar control [key] ("hide", "group-by"...): its button when the
+/// line has room, else its entry in the ⋯.
+Future<void> openTool(WidgetTester tester, String key) async {
+  final button = find.byKey(
+    Key(switch (key) {
+      'group-by' => 'tasks-group-by',
+      'new-task' => 'tasks-new-task',
+      _ => 'list-toolbar-$key',
+    }),
+  );
+  if (button.hitTestable().evaluate().isNotEmpty) {
+    await tester.tap(button);
+  } else {
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('tasks-more-$key')));
+  }
+  await tester.pumpAndSettle();
 }
