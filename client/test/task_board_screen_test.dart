@@ -557,6 +557,43 @@ void main() {
     expect(find.byKey(const ValueKey('task-t1')), findsNothing);
   });
 
+  testWidgets('Kanban columns keep a readable width and scroll sideways', (
+    tester,
+  ) async {
+    // Desktop review 2026-11-13, Top 1: at 1440 eleven columns were squeezed
+    // into the width, about 30 px each, one letter per line.
+    await pumpBoard(tester);
+
+    await tester.tap(find.text('Kanban'));
+    await tester.pumpAndSettle();
+    final column = find.byKey(const ValueKey('kanban-stuck'));
+    expect(tester.getSize(column).width, 280);
+    expect(
+      find.ancestor(of: column, matching: find.byType(Scrollable)),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('on a phone the view switcher is one dropdown', (tester) async {
+    // Phone review 2026-11-13, item 7: the segments broke "Kanb/an".
+    await pumpBoard(tester, size: const Size(390, 844));
+
+    expect(find.byKey(const Key('tasks-view-picker')), findsOneWidget);
+    expect(find.byType(SegmentedButton<String>), findsNothing);
+    await tester.tap(find.byKey(const Key('tasks-view-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kanban').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w.key is ValueKey<String> &&
+            (w.key! as ValueKey<String>).value.startsWith('kanban-'),
+      ),
+      findsWidgets,
+    );
+  });
+
   testWidgets('on a phone each task is a card with its status in words', (
     tester,
   ) async {

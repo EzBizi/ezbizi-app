@@ -2222,6 +2222,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     return '$name Board';
   }
 
+  static const _viewChoices = [
+    ('table', 'Table', Icons.table_rows_outlined),
+    ('kanban', 'Kanban', Icons.view_kanban_outlined),
+    ('calendar', 'Calendar', Icons.calendar_month_outlined),
+    ('timeline', 'Timeline', Icons.view_timeline_outlined),
+    ('gallery', 'Gallery', Icons.photo_library_outlined),
+  ];
+
   Widget _toolbar(BuildContext context, {required bool phone}) {
     final theme = Theme.of(context);
     return Padding(
@@ -2231,29 +2239,58 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          SegmentedButton<String>(
-            key: const Key('tasks-view'),
-            showSelectedIcon: false,
-            segments: [
-              for (final (v, label, icon) in const [
-                ('table', 'Table', Icons.table_rows_outlined),
-                ('kanban', 'Kanban', Icons.view_kanban_outlined),
-                ('calendar', 'Calendar', Icons.calendar_month_outlined),
-                ('timeline', 'Timeline', Icons.view_timeline_outlined),
-                ('gallery', 'Gallery', Icons.photo_library_outlined),
-              ])
-                ButtonSegment(
-                  value: v,
-                  label: Text(label),
-                  icon: phone ? null : Icon(icon, size: 18),
-                ),
-            ],
-            selected: {_view},
-            onSelectionChanged: (v) => setState(() {
-              _view = v.first;
-              _filter = _filter.copyWith(layout: v.first);
-            }),
-          ),
+          if (phone)
+            // One dropdown on a phone: the segments broke "Kanb/an" and
+            // "Calen/dar" mid-word (phone review 2026-11-13, item 7).
+            SizedBox(
+              width: 170,
+              child: SearchPickerField<String>(
+                key: const Key('tasks-view-picker'),
+                value: _view,
+                label: 'View',
+                isDense: true,
+                searchFrom: 99,
+                options: [
+                  for (final (v, label, icon) in _viewChoices)
+                    SearchOption<String>(
+                      value: v,
+                      label: label,
+                      child: Row(
+                        children: [
+                          Icon(icon, size: 18),
+                          const SizedBox(width: 10),
+                          Text(label),
+                        ],
+                      ),
+                    ),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    _view = v;
+                    _filter = _filter.copyWith(layout: v);
+                  });
+                },
+              ),
+            )
+          else
+            SegmentedButton<String>(
+              key: const Key('tasks-view'),
+              showSelectedIcon: false,
+              segments: [
+                for (final (v, label, icon) in _viewChoices)
+                  ButtonSegment(
+                    value: v,
+                    label: Text(label),
+                    icon: Icon(icon, size: 18),
+                  ),
+              ],
+              selected: {_view},
+              onSelectionChanged: (v) => setState(() {
+                _view = v.first;
+                _filter = _filter.copyWith(layout: v.first);
+              }),
+            ),
           if (_canEdit && _view == 'table') _newTaskButton(),
           if (_view == 'table' && _board != null) _groupByButton(),
           SizedBox(
@@ -4482,30 +4519,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     ];
 
     // ponytail: no drag between columns; the card's status menu moves it.
-    if (narrow) {
-      return ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-        children: [
-          for (final c in columns)
-            Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: SizedBox(width: 260, child: c),
-            ),
-        ],
-      );
-    }
-    return Padding(
+    // A fixed width at every size, scrolling sideways: Expanded columns
+    // squeezed eleven statuses to ~30 px at 1440 (desktop review 2026-11-13).
+    return ListView(
+      scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < columns.length; i++) ...[
-            if (i > 0) const SizedBox(width: 10),
-            Expanded(child: columns[i]),
-          ],
-        ],
-      ),
+      children: [
+        for (final c in columns)
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: SizedBox(width: narrow ? 260 : 280, child: c),
+          ),
+      ],
     );
   }
 
