@@ -28,6 +28,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Contract extends Model
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'hr_contracts';
+
     use HasFactory;
     use HasUuids;
 

@@ -49,6 +49,16 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'people';
+
+    /** Written in passing: saved filters, sign-in and two-step bookkeeping. */
+    protected static array $changeFeedIgnores = [
+        'preferences', 'remember_token', 'password', 'totp_secret', 'pending_totp_secret',
+        'totp_confirmed_at', 'last_totp_timestamp', 'recovery_codes', 'email_verified_at',
+    ];
 
     use HasApiTokens;
     /** @use HasFactory<UserFactory> */

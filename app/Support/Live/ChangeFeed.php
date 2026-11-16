@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  */
 class ChangeFeed
 {
-    /** type => [permission a reader needs, ...]. Also the list `types=` accepts. */
+    /** type => the permission a reader needs (or any one of a list). Also the list `types=` accepts. */
     public const TYPES = [
         'jobs' => 'jobs.view',
         'leads' => 'leads.view',
@@ -31,6 +31,20 @@ class ChangeFeed
         // Purchase orders, issues and sales: the Orders tab.
         'inventory_orders' => 'inventory.orders.view',
         'inventory_locations' => 'inventory.locations.view',
+        'vehicles' => 'fleet_management.view',
+        // A person's HR record: the person, their time off, clock and papers
+        // (HR's Records, and Work Hours' time off and approvals).
+        'people' => ['hr.view', 'work_hours.view'],
+        'hr_invitations' => 'hr.view',
+        'hr_contracts' => 'hr.contracts.view',
+    ];
+
+    /**
+     * Types whose rows are not filed on a branch (a person is assigned, not
+     * filed): a second rule, method name => the ids of them the reader may see.
+     */
+    private const NARROW = [
+        'people' => 'visiblePeople',
     ];
 
     /** One reply holds at most this many; more says reload. */
@@ -110,7 +124,7 @@ class ChangeFeed
             return ['cursor' => $head, 'reload' => false, 'changes' => []];
         }
         $types = array_values(array_filter($types,
-            fn (string $t) => isset(self::TYPES[$t]) && $user->hasPermission(self::TYPES[$t])));
+            fn (string $t) => isset(self::TYPES[$t]) && array_filter((array) self::TYPES[$t], $user->hasPermission(...)) !== []));
         if ($types === []) {
             return ['cursor' => $head, 'reload' => false, 'changes' => []];
         }
@@ -137,8 +151,32 @@ class ChangeFeed
         foreach ($rows as $r) {
             $out[$r->type.':'.$r->record_id] = ['type' => $r->type, 'id' => $r->record_id, 'deleted' => (bool) $r->deleted];
         }
+        foreach (self::NARROW as $type => $method) {
+            $ids = array_values(array_map(fn ($c) => $c['id'],
+                array_filter($out, fn ($c) => $c['type'] === $type)));
+            if ($ids === []) {
+                continue;
+            }
+            $visible = array_flip(self::$method($user, $ids));
+            $out = array_filter($out, fn ($c) => $c['type'] !== $type || isset($visible[$c['id']]));
+        }
 
         return ['cursor' => $head, 'reload' => false, 'changes' => array_values($out)];
+    }
+
+    /**
+     * People the reader may see (HrPeopleController's rule, ScopeReach).
+     *
+     * @param  string[]  $ids
+     * @return string[]
+     */
+    private static function visiblePeople(User $user, array $ids): array
+    {
+        return User::withoutGlobalScopes()
+            ->where('organization_id', $user->organization_id)
+            ->whereIn('id', $ids)
+            ->where(fn ($q) => app(\App\Support\Access\ScopeReach::class)->constrainToVisiblePeople($q, $user))
+            ->pluck('id')->map(fn ($id) => (string) $id)->all();
     }
 
     /** Null for somebody who reaches the whole organization. */

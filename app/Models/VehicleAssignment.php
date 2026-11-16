@@ -29,6 +29,11 @@ class VehicleAssignment extends Model implements HoldsPersonalData
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its vehicle's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['vehicles', Vehicle::class, 'vehicle_id'];
+
 
     // ── §9 data inventory ────────────────────────────────────────
 

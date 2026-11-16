@@ -37,6 +37,11 @@ class VehicleInsurancePolicy extends Model implements StatesRetention
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its vehicle's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['vehicles', Vehicle::class, 'vehicle_id'];
+
     use HasAttachments;
 
     protected function casts(): array
