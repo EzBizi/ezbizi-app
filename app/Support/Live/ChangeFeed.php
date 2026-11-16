@@ -28,6 +28,9 @@ class ChangeFeed
         'customers' => 'customers.view',
         'tasks' => 'tasks.view',
         'inventory' => 'inventory.view',
+        // Purchase orders, issues and sales: the Orders tab.
+        'inventory_orders' => 'inventory.orders.view',
+        'inventory_locations' => 'inventory.locations.view',
     ];
 
     /** One reply holds at most this many; more says reload. */
@@ -46,13 +49,18 @@ class ChangeFeed
         if ($org === null || $model->getKey() === null) {
             return;
         }
-        $franchise = $model->getAttribute('franchise_id') ?? null;
+        // A record filed through a parent (an issue through its location)
+        // names its place with changeFeedPlace(): [company_id, franchise_id].
+        // Null both is organization-wide: everyone holding the permission.
+        [$company, $franchise] = method_exists($model, 'changeFeedPlace')
+            ? $model->changeFeedPlace()
+            : [$model->getAttribute('company_id'), $model->getAttribute('franchise_id')];
         $key = $type.':'.$model->getKey();
         self::$pending[$key] = [
             'organization_id' => (string) $org,
             'type' => $type,
             'record_id' => (string) $model->getKey(),
-            'company_id' => $model->getAttribute('company_id'),
+            'company_id' => $company,
             'franchise_id' => $franchise,
             'deleted' => $deleted,
             'changed_at' => now(),

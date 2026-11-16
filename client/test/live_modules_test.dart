@@ -4,10 +4,15 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/live_changes.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/customers/customer_detail_panel.dart';
 import 'package:ezbizi_client/screens/customers_screen.dart';
 import 'package:ezbizi_client/screens/inventory/item_list.dart';
+import 'package:ezbizi_client/screens/inventory/location_list.dart';
+import 'package:ezbizi_client/screens/inventory/order_list.dart';
 import 'package:ezbizi_client/screens/leads_screen.dart';
 import 'package:ezbizi_client/screens/project_board_screen.dart';
+import 'package:ezbizi_client/screens/scheduling/availability_pane.dart';
+import 'package:ezbizi_client/screens/scheduling/rescheduling_pane.dart';
 import 'package:ezbizi_client/screens/scheduling/schedule_pane.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -237,6 +242,196 @@ void main() {
     expect(find.text('8 mil liner'), findsOneWidget);
   });
 
+  testWidgets('Customer record: a change elsewhere fills the fields, an edit '
+      'being typed is never overwritten', (tester) async {
+    var name = 'Riley Park';
+    final s = await _pump(
+      tester,
+      size: const Size(1200, 1400),
+      permissions: ['customers.view', 'customers.edit'],
+      handler: (r) => r.url.path.endsWith('/customers/c-1')
+          ? _json({
+              'data': {
+                'id': 'c-1',
+                'number': 'C-2041',
+                'name': name,
+                'phone': '+18605550100',
+                'is_active': true,
+                'jobs_count': 0,
+                'workiz_client_ids': <int>[],
+                'owning_franchise': {'id': 'fr-1', 'name': 'Connecticut'},
+                'address': {'line1': '9 Oak St', 'city': 'Hartford'},
+              },
+            })
+          : null,
+      home: (api, session) => CustomerDetailPanel(
+        api: api,
+        session: session,
+        id: 'c-1',
+        onDone: (_) {},
+      ),
+    );
+    expect(find.text('Riley Park'), findsWidgets);
+    name = 'Riley Park-Owens';
+    await _tick(tester, s, 'customers', 'c-1');
+    expect(find.text('Riley Park-Owens'), findsWidgets);
+    expect(find.text('Riley Park'), findsNothing);
+
+    // Somebody typing: the next change waits for them.
+    await tester.enterText(find.text('9 Oak St'), '11 Elm St');
+    name = 'Renamed by Workiz';
+    final reads = s.reads['/customers/c-1'];
+    await _tick(tester, s, 'customers', 'c-1');
+    expect(s.reads['/customers/c-1'], reads, reason: 'not even asked');
+    expect(find.text('11 Elm St'), findsOneWidget);
+    expect(find.text('Renamed by Workiz'), findsNothing);
+  });
+
+  testWidgets('Inventory Orders: an order changed elsewhere shows', (
+    tester,
+  ) async {
+    var number = 'PO-00001';
+    final s = await _pump(
+      tester,
+      permissions: ['inventory.view', 'inventory.orders.view'],
+      handler: (r) {
+        final path = r.url.path;
+        if (path.endsWith('/inventory/purchase-orders')) {
+          return _json({
+            'data': [
+              {
+                'id': 'po-1',
+                'number': number,
+                'status': 'open',
+                'vendor': {'id': 'ven-1', 'name': 'Supply Co'},
+                'company': {'id': 'co-1', 'name': 'Everdoors'},
+                'franchise': {'id': 'fr-1', 'name': 'Connecticut'},
+                'lines': <dynamic>[],
+              },
+            ],
+            'meta': {'total': 1, 'last_page': 1},
+          });
+        }
+        if (path.endsWith('/inventory/issues') ||
+            path.endsWith('/inventory/sales')) {
+          return _json({
+            'data': <dynamic>[],
+            'meta': {'total': 0, 'last_page': 1},
+          });
+        }
+        return null;
+      },
+      home: (api, session) =>
+          OrderList(api: api, session: session, visible: true),
+    );
+    expect(find.textContaining('PO-00001'), findsWidgets);
+    number = 'PO-00002';
+    await _tick(tester, s, 'inventory_orders', 'po-1');
+    expect(find.textContaining('PO-00002'), findsWidgets);
+    expect(find.textContaining('PO-00001'), findsNothing);
+  });
+
+  testWidgets('Inventory Locations: a place renamed elsewhere shows', (
+    tester,
+  ) async {
+    var name = 'Main shop';
+    final s = await _pump(
+      tester,
+      permissions: ['inventory.view', 'inventory.locations.view'],
+      handler: (r) => r.url.path.endsWith('/inventory/locations')
+          ? _json({
+              'data': [
+                {
+                  'id': 'loc-1',
+                  'name': name,
+                  'kind': 'shop',
+                  'status': 'active',
+                  'company': {'id': 'co-1', 'name': 'Everdoors'},
+                  'franchise': {'id': 'fr-1', 'name': 'Connecticut'},
+                },
+              ],
+              'meta': {'total': 1, 'last_page': 1},
+            })
+          : null,
+      home: (api, session) =>
+          LocationList(api: api, session: session, visible: true),
+    );
+    expect(find.text('Main shop'), findsOneWidget);
+    name = 'North shop';
+    await _tick(tester, s, 'inventory_locations', 'loc-1');
+    expect(find.text('North shop'), findsOneWidget);
+  });
+
+  testWidgets('Re-Scheduling: a job changed elsewhere re-reads the list', (
+    tester,
+  ) async {
+    var customer = 'Ana Ruiz';
+    final s = await _pump(
+      tester,
+      size: const Size(1400, 1000),
+      permissions: ['scheduling.view', 'scheduling.rescheduling.view'],
+      handler: (r) => r.url.path.endsWith('/scheduling/reschedules')
+          ? _json({
+              'data': [_reschedule(customer)],
+            })
+          : null,
+      home: (api, session) =>
+          ReschedulingPane(api: api, session: session, visible: true),
+    );
+    expect(find.textContaining('Ana Ruiz'), findsWidgets);
+    customer = 'Ana Ruiz-Lopez';
+    await _tick(tester, s, 'jobs', 'ez-job-1');
+    expect(find.textContaining('Ana Ruiz-Lopez'), findsWidgets);
+  });
+
+  testWidgets(
+    'Availability: a job booked elsewhere asks the answer again now',
+    (tester) async {
+      var area = 'Dallas';
+      final s = await _pump(
+        tester,
+        size: const Size(1400, 1200),
+        permissions: ['scheduling.view', 'scheduling.availability.view'],
+        handler: (r) {
+          if (r.url.path.endsWith('/scheduling/availability/suggestion')) {
+            return _json({'data': null});
+          }
+          if (!r.url.path.endsWith('/scheduling/availability')) return null;
+          return _json({
+            'data': {
+              'areas': [
+                {
+                  'area_id': 'a1',
+                  'area_name': area,
+                  'franchise_name': 'F',
+                  'configured': true,
+                  'first': {
+                    'date': '2026-10-16',
+                    'windows': <dynamic>[],
+                    'no_time': 1,
+                  },
+                  'after': <dynamic>[],
+                  'closed': <dynamic>[],
+                },
+              ],
+            },
+          });
+        },
+        home: (api, session) => AvailabilityPane(
+          api: api,
+          session: session,
+          visible: true,
+          initialZip: '75201',
+        ),
+      );
+      expect(find.textContaining('DALLAS'), findsOneWidget);
+      area = 'Plano';
+      await _tick(tester, s, 'jobs', 'j-9');
+      expect(find.textContaining('PLANO'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox()); // its own refresh timer
+    },
+  );
+
   testWidgets('a change of another type reads nothing again', (tester) async {
     final s = await _pump(
       tester,
@@ -335,6 +530,68 @@ Future<_Server> _pump(
   await tester.pumpAndSettle();
   return s;
 }
+
+/// One change of [type]/[id] on the feed, one tick, settled.
+Future<void> _tick(
+  WidgetTester tester,
+  _Server s,
+  String type,
+  String id, {
+  bool deleted = false,
+}) async {
+  s.feed = [
+    {'type': type, 'id': id, 'deleted': deleted},
+  ];
+  LiveChanges.of(s.api).poll();
+  await tester.pumpAndSettle();
+}
+
+Map<String, dynamic> _reschedule(String customer) => {
+  'area_id': 'a-mg',
+  'area_name': 'Maple Grove',
+  'job': {
+    'kind': 'job',
+    'job_id': 'ez-job-1',
+    'workiz_job_id': 'job-1',
+    'lead_id': null,
+    'number': '4127',
+    'status': 'Scheduled',
+    'time': '08:00',
+    'end_time': '10:00',
+    'service': 'Chimney sweep',
+    'technicians': ['Sam Ortiz'],
+    'notes': null,
+    'customer': {
+      'name': customer,
+      'phone': '555-0142',
+      'email': null,
+      'address': '1180 Larkspur Ln',
+    },
+    'date': '2026-10-14',
+    'latitude': 41.9,
+    'longitude': -87.6,
+  },
+  'current_nearest_miles': null,
+  'suggested': {
+    'date': '2026-10-16',
+    'window': {'start_time': '10:00', 'end_time': '12:00', 'remaining': 2},
+    'window_index': 1,
+    'day': 'Thursday',
+    'nearby': 3,
+    'nearest_miles': 0.8,
+    'technicians': ['Sam Ortiz'],
+    'jobs': [
+      {
+        'latitude': 41.91,
+        'longitude': -87.6,
+        'miles': 0.8,
+        'nearby': true,
+        'customer': 'Leo Brandt',
+        'time': '08:00',
+      },
+    ],
+  },
+};
 
 Map<String, dynamic> _lead(String id, String name) => {
   'id': id,
