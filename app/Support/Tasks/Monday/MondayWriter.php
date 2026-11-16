@@ -47,6 +47,11 @@ final class MondayWriter
         $this->mutate('mutation($i:ID!,$g:String!){ move_item_to_group(item_id:$i, group_id:$g) { id } }', ['i' => $itemId, 'g' => $groupId]);
     }
 
+    public function archiveItem(string $itemId): void
+    {
+        $this->mutate('mutation($i:ID!){ archive_item(item_id:$i) { id } }', ['i' => $itemId]);
+    }
+
     public function createItem(string $boardId, ?string $groupId, string $name, array $values): string
     {
         $data = $this->mutate('mutation($b:ID!,$g:String,$n:String!,$v:JSON){ create_item(board_id:$b, group_id:$g, item_name:$n, column_values:$v, create_labels_if_missing:true) { id } }',

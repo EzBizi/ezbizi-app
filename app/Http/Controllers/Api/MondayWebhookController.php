@@ -67,7 +67,10 @@ class MondayWebhookController extends Controller
                 ->when(isset($claims['accountId']), fn ($q) => $q->where('remote_id', (string) $claims['accountId']))
                 ->first();
             if ($connection !== null) {
-                SyncMondayItem::dispatch((string) $connection->getKey(), substr($boardRef, strlen('monday:')), $itemId);
+                // Read a little later: when the item is one MondayPush just made, Monday calls before
+                // push has stored the item id on the task, and an immediate read would make a twin.
+                SyncMondayItem::dispatch((string) $connection->getKey(), substr($boardRef, strlen('monday:')), $itemId)
+                    ->delay(now()->addSeconds(30));
                 $queued++;
             }
         }
