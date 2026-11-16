@@ -527,6 +527,7 @@ class ActionRunner
             'inspection_report.workiz' => $this->putInspectionReportOnWorkiz($subject),
             'workiz.job_update' => $this->updateWorkizJob($action, $subject),
             'job.set' => $this->setJob($action, $event, $subject),
+            'job.source_from_dialed' => $this->sourceFromDialed($automation),
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
@@ -1044,6 +1045,19 @@ class ActionRunner
      * after five weeks while four people were reading it fine. `ok()` is false
      * only when NOTHING left the building.
      */
+    /** Jose, 2026-11-16: a job's source from the line its client dialed, in EzBizi and Workiz. */
+    private function sourceFromDialed(?Automation $automation): array
+    {
+        $type = 'job.source_from_dialed';
+        if ($automation === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step runs only as part of a saved rule.'];
+        }
+        [$changed, $refused] = app(\App\Support\Jobs\SourceFromDialed::class)->apply($automation);
+
+        return ['type' => $type, 'ok' => $refused === [], 'skipped' => $changed === 0 && $refused === [],
+            'detail' => trim("Changed the source of {$changed} job".($changed === 1 ? '' : 's').'. '.implode(' ', $refused))];
+    }
+
     private function sendReport(array $action, AutomationEvent $event, ?Automation $automation): array
     {
         $type = 'report.send';

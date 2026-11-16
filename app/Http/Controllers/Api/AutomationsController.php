@@ -171,6 +171,8 @@ class AutomationsController extends Controller
         // Workiz's: the report's link on its Workiz job (ActionRunner::putInspectionReportOnWorkiz).
         'inspection_report.workiz',
         'workiz.job_update',
+        // Jose, 2026-11-16: a job's source from the line its client dialed.
+        'job.source_from_dialed',
         'job.set',
         /*
          * `ActionRunner::assignTraining` (task 9) is the real arm — the same
@@ -2456,6 +2458,8 @@ class AutomationsController extends Controller
             $type('inspection_report.email', 'Email the report to the customer', true, []),
             $type('inspection_report.workiz', 'Put the report on its Workiz job', true, []),
             // EzBizi first, Workiz mirrored (Jose, 2026-10-27). The Workiz-only step below stays for rules built on it.
+            // Every job booked since the rule was made, last 48 hours; the pairs are Settings › Lists.
+            $type('job.source_from_dialed', 'Set job sources from the line dialed', false, []),
             $type('job.set', 'Set the job status and tags', true, [
                 $parameter('status', 'Status', 'status', required: false),
                 $parameter('sub_status', 'Sub-status', 'text', required: false),
