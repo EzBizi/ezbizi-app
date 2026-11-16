@@ -3211,8 +3211,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   static const _widths = (add: 40.0);
   static const _baseWidths = {
     'task': 320.0,
-    'creator': 130.0,
-    'owner': 130.0,
+    'creator': 80.0,
+    'owner': 80.0,
     'status': 130.0,
     'due': 104.0,
     'created': 104.0,
@@ -3259,7 +3259,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       _dragWidths[key] ??
       _savedWidths()[_widthSlot(key)] ??
       _baseWidths[key] ??
-      120.0;
+      (_peopleColumn(key) ? 80.0 : 120.0);
+
+  /// A Person or People column is faces only, so as narrow as Owner.
+  bool _peopleColumn(String key) =>
+      key.startsWith('c:') &&
+      boardColumns(_board).any(
+        (c) => 'c:${c.id}' == key && (c.type == 'people' || c.type == 'person'),
+      );
 
   /// A heading with a drag handle on its right edge (Jose, 2026-11-12).
   Widget _resizable(String key, Widget heading) => Stack(
@@ -3577,7 +3584,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Widget _row(BuildContext context, _Json t, Color colour, {bool sub = false}) {
     final theme = Theme.of(context);
     final owners = _ownerNames(t);
-    final owner = owners.firstOrNull;
     final about = (t['about'] as Map?)?['label'] as String?;
     final updates = (t['updates_count'] as num?) ?? 0;
     final late = _late(t, _board);
@@ -3659,40 +3665,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   context,
                   _w('owner'),
                   _canEdit
-                      ? _ownerMenu(
-                          t,
-                          owner == null
-                              ? _automationOwner(t)
-                              : Row(
-                                  children: [
-                                    _ownerFace(context, t, owner),
-                                    const SizedBox(width: 6),
-                                    Flexible(
-                                      child: Text(
-                                        owner.split(' ').first,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    if (owners.length > 1)
-                                      _moreOwners(t, owners),
-                                  ],
-                                ),
-                        )
-                      : owner == null
-                      ? _automationOwner(t)
-                      : Row(
-                          children: [
-                            _ownerFace(context, t, owner),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                owner.split(' ').first,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (owners.length > 1) _moreOwners(t, owners),
-                          ],
-                        ),
+                      ? _ownerMenu(t, _ownerFaces(t, owners))
+                      : _ownerFaces(t, owners),
                 ),
               if (shown('status'))
                 SizedBox(width: _w('status'), child: _statusCell(context, t)),
@@ -4231,17 +4205,40 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       return const SizedBox.shrink();
     }
     final label = madeBy['label'] as String;
+    if (madeBy['type'] == 'user' && madeBy['id'] != null) {
+      return Center(
+        key: ValueKey('task-creator-${t['id']}'),
+        child: PeopleAvatars(
+          names: [label],
+          ids: ['${madeBy['id']}'],
+          api: widget.api,
+          boardId: _board == null ? null : '${_board!['id']}',
+        ),
+      );
+    }
     return Tooltip(
       key: ValueKey('task-creator-${t['id']}'),
       message: label,
-      child: Row(
-        children: [
-          if (madeBy['type'] == 'user') ...[
-            _avatar(context, label, api: widget.api, userId: madeBy['id']),
-            const SizedBox(width: 6),
-          ],
-          Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
-        ],
+      child: Text(label, overflow: TextOverflow.ellipsis),
+    );
+  }
+
+  /// The owners as faces only, Monday's way (Jose 11-16: "just use the
+  /// icon instead of the name to save space"): photo or initials, three
+  /// overlapping and "+N", each with its hover card; a rule's card with
+  /// nobody wears EzBizi's mark, and an empty one a faint person-plus.
+  Widget _ownerFaces(_Json t, List<String> owners) {
+    if (owners.isEmpty && _automationOwner(t) is! SizedBox) {
+      return Center(child: _automationOwner(t, mark: true));
+    }
+    final ids = _ownerIds(t);
+    return Center(
+      key: ValueKey('task-owner-faces-${t['id']}'),
+      child: PeopleAvatars(
+        names: owners,
+        ids: ids.length == owners.length ? ids : null,
+        api: widget.api,
+        boardId: _board == null ? null : '${_board!['id']}',
       ),
     );
   }
@@ -4249,28 +4246,33 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// "+2" after a task's primary owner, every name on hover.
   /// A card a rule made with nobody on it is EzBizi's: the mark and the
   /// name, with the rule's name on hover (Jose, 2026-10-22).
-  Widget _automationOwner(_Json t) {
+  Widget _automationOwner(_Json t, {bool mark = false}) {
     final madeBy = t['created_by'];
     if (madeBy is! Map || madeBy['type'] != 'automation') {
       return const SizedBox.shrink();
     }
+    final logo = Image.asset(
+      'assets/logo/app-icon-120.png',
+      width: 18,
+      height: 18,
+      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+    );
     return Tooltip(
       key: ValueKey('task-owner-ezbizi-${t['id']}'),
-      message: '${madeBy['label'] ?? ''}',
-      child: Row(
-        children: [
-          Image.asset(
-            'assets/logo/app-icon-120.png',
-            width: 18,
-            height: 18,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
-          ),
-          const SizedBox(width: 6),
-          const Flexible(
-            child: Text('EzBizi', overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
+      message: mark
+          ? 'EzBizi · ${madeBy['label'] ?? ''}'
+          : '${madeBy['label'] ?? ''}',
+      child: mark
+          ? Semantics(label: 'EzBizi', child: logo)
+          : Row(
+              children: [
+                logo,
+                const SizedBox(width: 6),
+                const Flexible(
+                  child: Text('EzBizi', overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
     );
   }
 
