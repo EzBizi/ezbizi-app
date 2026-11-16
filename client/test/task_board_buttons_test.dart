@@ -223,7 +223,7 @@ void main() {
         ),
     ];
     await pumpBoard(tester, boards: many);
-    for (final name in ['My board', 'A-1 Chimney', 'Boston', 'Branch 5']) {
+    for (final name in ['My Board', 'A-1 Chimney', 'Boston', 'Branch 5']) {
       expect(find.text(name), findsWidgets, reason: name);
     }
     await tester.enterText(
