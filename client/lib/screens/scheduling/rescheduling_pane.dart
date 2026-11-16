@@ -9,6 +9,7 @@ import '../../widgets/filters_fold.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -67,6 +68,19 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
   void initState() {
     super.initState();
     if (widget.visible) _load();
+    // A job booked, moved or cancelled elsewhere changes who needs moving:
+    // the list re-reads quietly; the open row and the search stay.
+    _live = LiveChanges.of(widget.api).subscribe({'jobs'}, (_) {
+      if (!_loading && !_moving && !_confirming) return _load(quiet: true);
+    }, active: () => widget.visible && LiveChanges.visible(this)());
+  }
+
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
   }
 
   @override
@@ -75,15 +89,19 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
     if (widget.visible && !old.visible) _load();
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final ticket = ++_request;
-    setState(() {
-      _loading = _rows.isEmpty;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _rows.isEmpty;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/scheduling/reschedules');
     if (!mounted || ticket != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;
