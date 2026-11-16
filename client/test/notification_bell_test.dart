@@ -151,7 +151,12 @@ void main() {
     expect(find.text('Row a'), findsOneWidget);
     expect(find.text('Row c'), findsNothing);
 
+    // The test font is wide, so the tab strip scrolls in the narrow panel and
+    // "All" sits off its left edge once "Assigned to me" is chosen.
+    await tester.ensureVisible(find.text('All'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('All'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('notifications-unread-only')));
     await tester.pumpAndSettle();
     expect(find.text('Row b'), findsNothing);

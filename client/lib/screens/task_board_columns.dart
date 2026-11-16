@@ -14,6 +14,7 @@ import '../widgets/calendar_day_field.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/user_avatar.dart';
 import 'task_board_person_card.dart';
 
 /// A board's own columns (UI queue 84; Jose: "i should be able to make custom
@@ -1005,12 +1006,16 @@ class ColumnCell extends StatelessWidget {
           style: at == null ? muted : null,
         );
       case 'person':
+        // A face, not a name (Jose 11-16: "just use the icon ... like
+        // monday does"); the hover card says who.
         final name = people['$v'];
-        return Text(
-          name == null ? '—' : name.split(' ').first,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: name == null ? muted : null,
+        return Center(
+          child: PeopleAvatars(
+            names: [?name],
+            ids: [if (name != null) '$v'],
+            api: api,
+            boardId: boardId,
+          ),
         );
       default:
         return Text(
@@ -2791,45 +2796,76 @@ class PeopleAvatars extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (names.isEmpty) {
-      return Text(
-        '—',
-        style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+      // Nobody yet: a faint person-plus; the cell's own tap assigns.
+      return Semantics(
+        label: 'Nobody assigned',
+        child: Icon(
+          Icons.person_add_alt_outlined,
+          key: const Key('people-empty'),
+          size: 18,
+          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+        ),
       );
     }
     final shown = names.take(3).toList();
     final more = names.length - shown.length;
-    Widget face(int i, String n) => !_cards
+    // The photo where there is one, initials while it loads or without.
+    Widget photo(int i, String n) => !_cards
         ? _initials(theme, n)
+        : Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: theme.colorScheme.surface, width: 2),
+            ),
+            child: UserAvatar(api: api!, userId: ids![i], name: n, radius: 11),
+          );
+    Widget face(int i, String n) => !_cards
+        ? photo(i, n)
         : PersonHoverCard(
             key: ValueKey('people-face-${ids![i]}'),
             api: api!,
             boardId: boardId!,
             userId: ids![i],
-            child: _initials(theme, n),
+            child: photo(i, n),
           );
     return Tooltip(
       // The card says who; a tooltip on top of it would cover it.
       message: _cards ? '' : names.join(', '),
-      child: SizedBox(
-        height: 26,
-        width: 26.0 + (shown.length - 1) * 16 + (more > 0 ? 22 : 0),
-        child: Stack(
-          children: [
-            for (final (i, n) in shown.indexed)
-              Positioned(left: i * 16.0, child: face(i, n)),
-            if (more > 0)
-              Positioned(
-                left: shown.length * 16.0 + 6,
-                top: 5,
-                child: Text(
-                  '+$more',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+      excludeFromSemantics: true,
+      child: Semantics(
+        label: names.join(', '),
+        child: ExcludeSemantics(child: _faces(theme, shown, more, face)),
+      ),
+    );
+  }
+
+  Widget _faces(
+    ThemeData theme,
+    List<String> shown,
+    int more,
+    Widget Function(int, String) face,
+  ) {
+    return SizedBox(
+      height: 26,
+      width: 26.0 + (shown.length - 1) * 16 + (more > 0 ? 22 : 0),
+      child: Stack(
+        children: [
+          for (final (i, n) in shown.indexed)
+            Positioned(left: i * 16.0, child: face(i, n)),
+          if (more > 0)
+            Positioned(
+              left: shown.length * 16.0 + 6,
+              top: 5,
+              child: Text(
+                '+$more',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
