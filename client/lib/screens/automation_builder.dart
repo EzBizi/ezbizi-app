@@ -5177,6 +5177,24 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                           chosen,
                     ),
             )
+          else if (definition.parameters[i].kind == 'task_board')
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              label: definition.parameters[i].label,
+              isDense: true,
+              options: [
+                for (final board in widget.catalogue.taskBoards)
+                  SearchOption<String>(value: board.key, label: board.label),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+            )
           else if (definition.parameters[i].kind == 'training')
             SearchPickerField<String>(
               value: row.parameter(definition.parameters[i].key).text.isEmpty
