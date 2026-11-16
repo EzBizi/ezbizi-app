@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -55,10 +56,22 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
   void initState() {
     super.initState();
     _load();
+    // A plan added or changed by another admin, or members moving: the
+    // plans and their counts re-read; a plan being edited keeps its boxes.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'membership_plans', 'memberships'},
+      (_) {
+        if (!_loading && !_saving) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _name.dispose();
     _description.dispose();
     _workizType.dispose();
@@ -66,17 +79,20 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _plans.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the plans on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _plans.isEmpty;
+        _error = null;
+      });
+    }
 
     final results = await Future.wait([
       widget.api.get('/memberships/plans'),
       widget.api.get('/memberships'),
     ]);
-    if (!mounted) return;
+    if (!mounted || (quiet && !results[0].ok)) return;
 
     setState(() {
       _loading = false;

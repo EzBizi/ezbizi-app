@@ -5,7 +5,12 @@ namespace Tests\Feature\Live;
 use App\Models\Assignment;
 use App\Models\Automation;
 use App\Models\Complaint;
+use App\Models\Customer;
+use App\Models\Estimate;
 use App\Models\FinancialAdjustment;
+use App\Models\InspectionDefinition;
+use App\Models\InspectionDefinitionVersion;
+use App\Models\InspectionReport;
 use App\Models\Franchise;
 use App\Models\InventoryIssue;
 use App\Models\InventoryItem;
@@ -18,11 +23,17 @@ use App\Models\InventoryVendor;
 use App\Models\Invitation;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
+use App\Models\Job;
+use App\Models\Membership;
+use App\Models\MembershipPlan;
 use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
+use App\Models\Promotion;
+use App\Models\PromotionText;
 use App\Models\PtoRequest;
+use App\Models\Service;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleServiceVisit;
@@ -285,5 +296,110 @@ class ModuleFeedsTest extends TestCase
             'scope_type' => 'franchise', 'scope_id' => $f->id, 'name' => 'When a job is booked '.bin2hex(random_bytes(2)),
             'trigger_key' => 'job.created', 'is_active' => false,
         ])->id);
+    }
+
+    public function test_memberships(): void
+    {
+        $this->assertScoped('memberships', ['memberships.view', 'memberships.members.view'], function (Franchise $f) {
+            $customer = Customer::create(['owning_franchise_id' => $f->id, 'number' => 'C-'.bin2hex(random_bytes(3)), 'name' => 'Marta Quill']);
+            $plan = MembershipPlan::create(['name' => 'Yearly sweep '.bin2hex(random_bytes(3)), 'price_minor' => 19900, 'billing' => 'yearly']);
+
+            return Membership::create(['franchise_id' => $f->id, 'customer_id' => $customer->id, 'membership_plan_id' => $plan->id,
+                'enrollment' => 'new', 'starts_on' => '2026-01-01', 'ends_on' => '2026-12-31'])->id;
+        });
+    }
+
+    /** A promotion names branches; it reaches a reader who holds every one. A text sent is its promotion's change. */
+    public function test_promotions_keep_to_the_branches_they_name(): void
+    {
+        $this->assertScoped('membership_promotions', ['memberships.view', 'memberships.promotions.view'],
+            fn (Franchise $f) => $this->promotion([$f->id])->id);
+
+        $t = $this->provisionTenant('Gamma');
+        $sibling = $this->extraFranchise($t, 'Gamma F2');
+        $branch = $this->userWithRole($t, 'Branch', ['memberships.view', 'memberships.promotions.view'], onlyAt: $t['franchise']);
+        $since = $this->cursor($t['admin'], 'membership_promotions');
+        $both = $this->inTenant($t['org'], fn () => $this->promotion([$t['franchise']->id, $sibling->id]));
+        $this->assertSame([], $this->ids($branch, 'membership_promotions', $since), 'a sibling named too: not theirs');
+        $this->assertSame([$both->id], $this->ids($t['admin'], 'membership_promotions', $since));
+
+        $mine = $this->inTenant($t['org'], fn () => $this->promotion([$t['franchise']->id]));
+        $since = $this->cursor($t['admin'], 'membership_promotions');
+        $this->inTenant($t['org'], fn () => PromotionText::create(['promotion_id' => $mine->id, 'franchise_id' => $t['franchise']->id,
+            'e164' => '+13055550123', 'sent_at' => now()]));
+        $this->assertSame([$mine->id], $this->ids($branch, 'membership_promotions', $since), 'a text: its promotion');
+    }
+
+    private function promotion(array $franchises): Promotion
+    {
+        return Promotion::create(['jobs_from' => '2026-01-01', 'jobs_to' => '2026-06-30', 'body' => 'Spring sweep, 20% off',
+            'franchise_ids' => $franchises]);
+    }
+
+    public function test_estimates_and_a_line_as_its_estimate(): void
+    {
+        $this->assertScoped('estimates', ['estimates.view', 'jobs.financials'], fn (Franchise $f) => $this->estimate($f)->id);
+
+        $t = $this->provisionTenant('Gamma');
+        $estimate = $this->inTenant($t['org'], fn () => $this->estimate($t['franchise']));
+        $since = $this->cursor($t['admin'], 'estimates');
+        $this->inTenant($t['org'], fn () => $estimate->lines()->create(['name' => 'Cap', 'quantity' => 1, 'unit_price_minor' => 8950, 'position' => 0]));
+        $this->assertSame([$estimate->id], $this->ids($t['admin'], 'estimates', $since));
+    }
+
+    private function estimate(Franchise $f): Estimate
+    {
+        $customer = Customer::create(['owning_franchise_id' => $f->id, 'number' => 'C-'.bin2hex(random_bytes(3)), 'name' => 'A Customer']);
+
+        return Estimate::create(['franchise_id' => $f->id, 'customer_id' => $customer->id,
+            'number' => 'E-'.bin2hex(random_bytes(3)), 'status' => 'draft', 'currency' => 'USD']);
+    }
+
+    /** Filed through its job, or (no job) its customer's branch: both halves keep to reach. */
+    public function test_inspection_reports_are_filed_where_their_job_or_customer_is(): void
+    {
+        $permissions = ['inspection.view', 'inspection.reports.view'];
+        $this->assertScoped('inspection_reports', $permissions, function (Franchise $f) {
+            $customer = Customer::factory()->create(['owning_franchise_id' => $f->id]);
+            $job = Job::factory()->create(['franchise_id' => $f->id, 'customer_id' => $customer->id]);
+
+            return $this->report($customer->id, $job->id)->id;
+        });
+        $this->assertScoped('inspection_reports', $permissions, fn (Franchise $f) => $this->report(
+            Customer::factory()->create(['owning_franchise_id' => $f->id])->id, null)->id);
+    }
+
+    private function report(string $customerId, ?string $jobId): InspectionReport
+    {
+        $by = User::factory()->create()->id;
+        $definition = InspectionDefinition::create(['name' => 'Level '.bin2hex(random_bytes(3)), 'created_by' => $by, 'published_at' => now(), 'screens' => []]);
+        $version = InspectionDefinitionVersion::create(['inspection_definition_id' => $definition->id, 'version' => 1,
+            'layout_preset' => 'step_strip', 'screens' => [], 'published_by' => $by]);
+
+        return InspectionReport::create(['customer_id' => $customerId, 'job_id' => $jobId,
+            'inspection_definition_id' => $definition->id, 'inspection_definition_version_id' => $version->id,
+            'submitted_by' => $by, 'submitted_at' => now(), 'answers' => [],
+            'layout_preset' => 'step_strip', 'definition_name' => 'Level 1']);
+    }
+
+    public function test_services(): void
+    {
+        $this->assertScoped('services', ['services.view'],
+            fn (Franchise $f) => Service::factory()->create(['company_id' => $f->company_id, 'franchise_id' => $f->id])->id);
+    }
+
+    /** A company's own service (no branch) is read by its branches' people (InventoryVisibility); a sibling company's is not. */
+    public function test_a_company_service_reaches_the_people_of_its_branches(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $branch = $this->userWithRole($t, 'Branch', ['services.view'], onlyAt: $t['franchise']);
+        $other = $this->inTenant($t['org'], fn () => \App\Models\Company::create(['name' => 'Sibling Co']));
+        $since = $this->cursor($t['admin'], 'services');
+        [$own, $theirs] = $this->inTenant($t['org'], fn () => [
+            Service::factory()->create(['company_id' => $t['company']->id, 'franchise_id' => null])->id,
+            Service::factory()->create(['company_id' => $other->id, 'franchise_id' => null])->id,
+        ]);
+        $this->assertSame([$own], $this->ids($branch, 'services', $since), 'its company yes, a sibling company no');
+        $this->assertSame($this->sorted($own, $theirs), $this->ids($t['admin'], 'services', $since));
     }
 }

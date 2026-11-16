@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'dart:typed_data';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -110,20 +111,46 @@ class _ReportsTabState extends State<ReportsTab> {
   void initState() {
     super.initState();
     _load();
+    // A report submitted or archived elsewhere: the list re-reads quietly;
+    // the open report is read again only when it is the one that changed.
+    _live = LiveChanges.of(widget.api).subscribe({'inspection_reports'}, (
+      batch,
+    ) {
+      if (_loading || _busy != null) return null;
+      final open = _selectedId;
+      return _load(
+        quiet: true,
+        reopen:
+            batch.reload ||
+            (open != null &&
+                batch.touched('inspection_reports').contains(open)),
+      );
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load({String? openId}) async {
+  /// [quiet]: a live re-read; a failure keeps the list on screen, and the
+  /// open report (and its photos) is read again only when [reopen].
+  Future<void> _load({
+    String? openId,
+    bool quiet = false,
+    bool reopen = true,
+  }) async {
     final request = ++_request;
-    setState(() {
-      _loading = _hits.isEmpty && _open == null;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _hits.isEmpty && _open == null;
+        _error = null;
+      });
+    }
 
     final query = <String, String>{
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
@@ -131,6 +158,7 @@ class _ReportsTabState extends State<ReportsTab> {
     };
     final list = await widget.api.get('/inspections/reports', query);
     if (!mounted || request != _request) return;
+    if (quiet && !list.ok) return;
 
     if (!list.ok) {
       setState(() {
@@ -162,7 +190,7 @@ class _ReportsTabState extends State<ReportsTab> {
     });
 
     if (keep != null) {
-      await _openReport(keep);
+      if (reopen || _open?['id']?.toString() != keep) await _openReport(keep);
     } else {
       setState(() => _open = null);
     }

@@ -14,6 +14,11 @@ use Illuminate\Database\Eloquent\Model;
 class MembershipPlan extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES): organization-wide. */
+    protected static string $changeType = 'membership_plans';
+
     use HasUuids;
 
     public const BILLINGS = ['yearly', 'monthly'];

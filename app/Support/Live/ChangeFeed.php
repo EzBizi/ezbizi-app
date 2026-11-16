@@ -50,7 +50,23 @@ class ChangeFeed
         'automations' => 'automations.view',
         'newsletters' => 'newsletter.view',
         'qr_codes' => 'marketing.qr_codes.view',
+        // A member-year, filed on the customer's branch.
+        'memberships' => 'memberships.members.view',
+        'membership_plans' => 'memberships.view',
+        // A promotion and its texts (sent, failed, answered).
+        'membership_promotions' => 'memberships.promotions.view',
+        // An estimate and its lines (the list also needs jobs.financials).
+        'estimates' => 'estimates.view',
+        'inspection_reports' => 'inspection.reports.view',
+        'services' => 'services.view',
+        'service_taxonomy' => 'services.view',
     ];
+
+    /**
+     * Types read through InventoryVisibility: a company's own rows (no
+     * branch) are seen by people holding one of its branches as well.
+     */
+    private const SOFT_REACH = ['inventory', 'services', 'service_taxonomy'];
 
     /**
      * Types whose rows are not filed on a branch (a person is assigned, not
@@ -60,6 +76,7 @@ class ChangeFeed
         'people' => 'visiblePeople',
         'phone_calls' => 'readableCalls',
         'phone_messages' => 'readableMessages',
+        'membership_promotions' => 'readablePromotions',
     ];
 
     /** One reply holds at most this many; more says reload. */
@@ -151,10 +168,14 @@ class ChangeFeed
             ->whereIn('type', $types);
         $reach = self::reach($user);
         if ($reach !== null) {
+            $soft = array_values(array_intersect($types, self::SOFT_REACH));
             $query->where(fn ($q) => $q
                 ->whereIn('franchise_id', $reach['franchises'])
                 ->orWhere(fn ($q) => $q->whereNull('franchise_id')->where(fn ($q) => $q
-                    ->whereNull('company_id')->orWhereIn('company_id', $reach['companies']))));
+                    ->whereNull('company_id')->orWhereIn('company_id', $reach['companies'])))
+                ->when($soft !== [], fn ($q) => $q->orWhere(fn ($q) => $q
+                    ->whereIn('type', $soft)->whereNull('franchise_id')
+                    ->whereIn('company_id', self::companiesOwning($reach['franchises'])))));
         }
         $rows = $query->orderBy('id')->limit(self::CAP + 1)->get(['id', 'type', 'record_id', 'deleted']);
         if ($rows->count() > self::CAP) {
@@ -221,6 +242,36 @@ class ChangeFeed
             ->whereIn('id', $ids)
             ->where(fn ($q) => app(\App\Support\Access\ScopeReach::class)->constrainToVisiblePeople($q, $user))
             ->pluck('id')->map(fn ($id) => (string) $id)->all();
+    }
+
+    /**
+     * Promotions name branches in a list: the ones whose every branch the
+     * reader reaches (PromotionsController's rule, against reach).
+     *
+     * @param  string[]  $ids
+     * @return string[]
+     */
+    private static function readablePromotions(User $user, array $ids): array
+    {
+        $reach = self::reach($user);
+        $promotions = \App\Models\Promotion::withoutGlobalScopes()
+            ->where('organization_id', $user->organization_id)
+            ->whereIn('id', $ids)->get(['id', 'franchise_ids']);
+        if ($reach === null) {
+            return $promotions->map(fn ($p) => (string) $p->id)->all();
+        }
+        $mine = array_flip(array_map('strval', $reach['franchises']));
+
+        return $promotions
+            ->filter(fn ($p) => array_diff(array_map('strval', (array) $p->franchise_ids), array_keys($mine)) === [])
+            ->map(fn ($p) => (string) $p->id)->values()->all();
+    }
+
+    /** @param  string[]  $franchises  @return string[] */
+    private static function companiesOwning(array $franchises): array
+    {
+        return \App\Models\Franchise::withoutGlobalScopes()->whereIn('id', $franchises)
+            ->pluck('company_id')->filter()->unique()->values()->all();
     }
 
     /** Null for somebody who reaches the whole organization. */
