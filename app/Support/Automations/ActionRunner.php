@@ -3845,8 +3845,13 @@ class ActionRunner
                 ->first(fn (?Company $c) => $c !== null && TaskBoards::hasPlaceBoard($c));
         }
         $owner ??= $assignee;
+        // A named board wins over the place's (desk 11-16: missed calls onto "Outgoing Calls"); canEdit still decides.
+        $named = trim((string) ($action['board'] ?? '')) !== '' ? TaskBoard::query()->find($action['board']) : null;
+        if (trim((string) ($action['board'] ?? '')) !== '' && $named === null) {
+            return ['type' => 'task.create', 'ok' => false, 'detail' => 'The board this step names no longer exists.'];
+        }
 
-        if ($owner === null) {
+        if ($owner === null && $named === null) {
             return ['type' => 'task.create', 'ok' => false, 'detail' => 'No board to put the task on: give it to somebody, or use a trigger about a place.'];
         }
 
@@ -3862,11 +3867,21 @@ class ActionRunner
             return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => 'This rule already added a task about this record in the last 10 minutes.'];
         }
 
-        $board = app(TaskBoards::class)->ensureFor($owner);
+        $board = $named ?? app(TaskBoards::class)->ensureFor($owner);
 
         // The board's own columns by name, and its group by name (Task Board, 60f643812).
         $values = array_map(fn ($v) => $this->interpolate((string) $v, $event, $subject), (array) ($action['values'] ?? []));
         $group = trim((string) ($action['group'] ?? ''));
+
+        // Skip while an open task in that group has this title, or carries the
+        // dedupe value (e.g. {{phone}}) in its title: one call-back per caller.
+        $dedupe = trim($this->interpolate((string) ($action['dedupe'] ?? ''), $event, $subject));
+        if (($action['dedupe'] ?? '') !== '' && Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
+            ->when($group !== '', fn ($q) => $q->whereHas('group', fn ($g) => $g->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($group)])))
+            ->where(fn ($q) => $q->where('title', mb_substr($title, 0, 255))->when($dedupe !== '' && $dedupe !== 'title', fn ($q) => $q->orWhere('title', 'like', '%'.addcslashes($dedupe, '%_').'%')))
+            ->exists()) {
+            return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => "An open task \"{$title}\" is already on that board."];
+        }
 
         return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
             // A rule's group is made on the branch's board the first time it is

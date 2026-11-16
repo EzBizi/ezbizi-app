@@ -351,12 +351,22 @@ final class MondayBoardReader
      * Ids of the items on the board that changed at or after $since (all of
      * them when null); a subitem's change counts for its parent.
      *
+     * $filtered asks Monday for the items updated since the day before $since
+     * only (its __last_updated__ filter works by the day; measured on prod
+     * 2026-11-16: NW's 24,700 items → 6 rows for "today") instead of listing
+     * the whole board — the 10-minute pass. A change only to a subitem may not
+     * move its parent's date; the nightly scan ($filtered false) and the
+     * webhooks catch those.
+     *
      * @return array{ids: list<string>, latest: ?string}
      */
-    public function changedSince(string $boardId, ?CarbonImmutable $since): array
+    public function changedSince(string $boardId, ?CarbonImmutable $since, bool $filtered = false): array
     {
         $fields = 'cursor items { id updated_at subitems { id updated_at } }';
-        $page = $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { items_page(limit:500) { '.$fields.' } } }', ['b' => [$boardId]])['boards'][0]['items_page'] ?? ['items' => [], 'cursor' => null];
+        $page = $filtered && $since !== null
+            ? $this->api->query('query($b:[ID!],$d:CompareValue!){ boards(ids:$b, state:all) { items_page(limit:500, query_params:{rules:[{column_id:"__last_updated__", compare_value:$d, operator:greater_than_or_equals, compare_attribute:"UPDATED_AT"}]}) { '.$fields.' } } }',
+                ['b' => [$boardId], 'd' => ['EXACT', $since->utc()->subDay()->toDateString()]])['boards'][0]['items_page'] ?? ['items' => [], 'cursor' => null]
+            : $this->api->query('query($b:[ID!]){ boards(ids:$b, state:all) { items_page(limit:500) { '.$fields.' } } }', ['b' => [$boardId]])['boards'][0]['items_page'] ?? ['items' => [], 'cursor' => null];
         $items = $page['items'];
         while (! empty($page['cursor'])) {
             $page = $this->api->query('query($c:String!){ next_items_page(limit:500, cursor:$c) { '.$fields.' } }', ['c' => $page['cursor']])['next_items_page'];
@@ -371,7 +381,9 @@ final class MondayBoardReader
             if ($newest !== null && ($latest === null || $newest > $latest)) {
                 $latest = $newest;
             }
-            if ($since === null || $newest === null || CarbonImmutable::parse($newest)->greaterThanOrEqualTo($since)) {
+            // After the cursor, not at it: the cursor is the newest change already taken (every item at that
+            // second was in the same read), so a quiet pass reads nothing.
+            if ($since === null || $newest === null || CarbonImmutable::parse($newest)->greaterThan($since)) {
                 $ids[] = (string) $item['id'];
             }
         }

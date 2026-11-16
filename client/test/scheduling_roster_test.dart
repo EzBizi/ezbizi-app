@@ -160,6 +160,15 @@ void main() {
     await _pump(tester, size: const Size(390, 844));
 
     expect(find.byType(Card), findsNWidgets(2));
+    // Mobile review 2026-11-13, P9: every card is the full row, not shrunk
+    // to its own text and centred.
+    expect(
+      {
+        for (final c in tester.widgetList<Card>(find.byType(Card)))
+          tester.getSize(find.byWidget(c)).width,
+      },
+      hasLength(1),
+    );
     expect(find.text('Linked to Dana Diaz'), findsOneWidget);
 
     await tester.tap(find.text('Ivan Sharkov'));

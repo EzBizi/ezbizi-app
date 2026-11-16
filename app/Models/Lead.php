@@ -35,6 +35,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'leads';
     use HasUuids;
 
     /** Google's Local Services, through the tenant's own Google Ads account. */

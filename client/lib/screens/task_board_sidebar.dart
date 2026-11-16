@@ -295,7 +295,10 @@ class _BoardTreeState extends State<BoardTree> {
       final colour = _colour(f['colour']) ?? theme.colorScheme.onSurfaceVariant;
       final boards = [
         for (final (i, b) in widget.boards.indexed)
-          if (b['folder_id'] == id && matches(i)) i,
+          if (b['folder_id'] == id &&
+              matches(i) &&
+              !(b['kind'] == 'user' && b['section'] == 'mine'))
+            i,
       ]..sort((a, b) => _byPlace(widget.boards[a], widget.boards[b]));
       final inner = [
         ..._folderRows(context, id, indent + 14, board, matches),
@@ -783,7 +786,16 @@ class _BoardTreeState extends State<BoardTree> {
 
     final sectioned = boards.any((b) => b['section'] != null);
     final folderIds = {for (final f in _folders) '${f['id']}'};
-    bool loose(Map<String, dynamic> b) => !folderIds.contains(b['folder_id']);
+    // My own board is the first entry, above every section, even when it was
+    // filed in a folder (Jose, 2026-11-16).
+    final personal = boards.indexWhere(
+      (b) =>
+          b['kind'] == 'user' &&
+          (sectioned ? b['section'] == 'mine' : b['archived'] != true),
+    );
+    bool loose(Map<String, dynamic> b) =>
+        !folderIds.contains(b['folder_id']) &&
+        (personal < 0 || !identical(b, boards[personal]));
     List<int> inSection(String key) => [
       for (final (i, b) in boards.indexed)
         if (b['section'] == key && loose(b)) i,
@@ -891,7 +903,9 @@ class _BoardTreeState extends State<BoardTree> {
     final names = people.keys.toList()..sort();
 
     final rows = <Widget>[
-      if (mine.any(matches)) header(sectioned ? 'My boards' : 'My board'),
+      if (personal >= 0 && matches(personal))
+        board(personal, label: 'My Board'),
+      if (mine.any(matches)) header('My boards'),
       for (final i in mine)
         if (matches(i)) board(i),
       ...group('shared', 'Shared with me', asHeader: true, [

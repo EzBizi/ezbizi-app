@@ -62,7 +62,7 @@ void main() {
     );
 
     expect(find.text('Phone number'), findsOneWidget);
-    expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_phone]'), findsOneWidget);
   });
 
   /*
@@ -164,7 +164,7 @@ void main() {
 
     // The first site is selected for you rather than leaving an empty pane.
     expect(find.text('Phone number'), findsOneWidget);
-    expect(find.textContaining('[ezbizi_phone]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_phone]'), findsOneWidget);
   });
 
   /// A section shows its own fields and nobody else's.
@@ -189,7 +189,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Facebook'), findsOneWidget);
-    expect(find.textContaining('[ezbizi_facebook]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_facebook]'), findsOneWidget);
 
     // General's fields are gone, and so is the address block that belongs to
     // them — a section that leaked its neighbour's fields would still pass the
@@ -440,6 +440,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Everdoors North'), findsNothing);
+    // Jose 11-16: the null choice reads as the company's own level, not as a gap.
+    expect(find.text('Company Level (A-1 Chimney)'), findsWidgets);
     // "Company · Branch", like every branch picker.
     await tester.tap(find.text('A-1 Chimney · A1 - Chimney MA').last);
     await tester.pumpAndSettle();

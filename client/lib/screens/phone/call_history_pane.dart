@@ -5,6 +5,7 @@ import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/status_pill.dart';
@@ -89,10 +90,17 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
   void initState() {
     super.initState();
     _load();
+    // A call ringing, answered or ended anywhere: re-read quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'phone_calls'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDebounce?.cancel();
     super.dispose();
   }
@@ -122,13 +130,14 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
     if (old.reloadToken != widget.reloadToken) _load();
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final query = _query.trim();
     final response = await widget.api.get('/phone/calls', {
       'per_page': '40',
       if (query.isNotEmpty) 'q': query,
     });
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;

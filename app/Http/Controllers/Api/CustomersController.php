@@ -694,15 +694,18 @@ class CustomersController extends Controller
                 Franchise::select('name')->whereColumn('franchises.id', 'customers.owning_franchise_id'),
                 $direction,
             );
+        } elseif (($sort === 'name' || ! isset(self::SORTS[$sort])) && $query->getConnection()->getDriverName() === 'mysql') {
+            // By the name's first letter or digit (desktop review 2026-11-13):
+            // "'Bob" and "-- Ann" sorted ahead of every A, and the list opened
+            // on junk. The stored name is untouched; only the order skips them.
+            $query->orderByRaw("REGEXP_REPLACE(customers.name, '^[^[:alnum:]]+', '') {$direction}");
         } else {
             $query->orderBy(self::SORTS[$sort] ?? 'name', $direction);
         }
 
         // Name second, so equal cities or job counts still read alphabetically,
         // then id, so the order is total and a page cannot repeat or drop a row.
-        if ($sort !== 'name') {
-            $query->orderBy('name');
-        }
+        $query->orderBy('name');
 
         $query->orderBy('customers.id');
     }

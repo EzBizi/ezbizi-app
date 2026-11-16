@@ -1,6 +1,8 @@
+import '../widgets/module_page_header.dart';
 import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/automation_catalogue.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
@@ -107,10 +109,18 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     super.initState();
     DeepLinks.pending.addListener(_openLinked);
     _load();
+    // A rule switched, edited or run elsewhere: the list (last run,
+    // counts) re-reads quietly; the rule open in the builder is its own.
+    _live = LiveChanges.of(widget.api).subscribe({'automations'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_openLinked);
     super.dispose();
   }
@@ -126,30 +136,34 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     if (rule != null) _open(rule);
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
-    setState(() {
-      // A spinner only when there is nothing to keep — see AsyncBody. An
-      // organization with no rules yet is the normal starting state, so an
-      // empty list does not mean "not loaded"; the catalogue does, because it
-      // is the same for everyone and arrives with the first answer. Flipping a
-      // automation's switch, or deleting one, leaves the rest of the list up.
-      _loading = _automations.isEmpty && _catalogue == null;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        // A spinner only when there is nothing to keep — see AsyncBody. An
+        // organization with no rules yet is the normal starting state, so an
+        // empty list does not mean "not loaded"; the catalogue does, because it
+        // is the same for everyone and arrives with the first answer. Flipping a
+        // automation's switch, or deleting one, leaves the rest of the list up.
+        _loading = _automations.isEmpty && _catalogue == null;
+        _error = null;
+      });
+    }
 
     final automations = await widget.api.get('/automations');
     // NOT ASKED FOR WHEN THE BUILDER IS NOT THIS PERSON'S. The catalogue is the
     // build tab's own endpoint and now answers 403 without that grant, so
     // requesting it anyway would put "Could not load what this system can
     // automate" across the top of a list that loaded perfectly.
-    final catalogue = _mayOpen('build')
+    final catalogue = _mayOpen('build') && !quiet
         ? await widget.api.get('/automations/catalogue')
         : null;
 
     // Superseded by a newer load — applying this would undo it.
     if (!mounted || request != _request) return;
+    if (quiet && !automations.ok) return;
 
     setState(() {
       _loading = false;
@@ -215,18 +229,20 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                     '${_automations.where(_runs).length} on',
           action: _tab != 'rules'
               ? null
-              : Refused(
-                  // Visible and refused, never hidden: somebody looking for
-                  // "New automation" and not finding it concludes the app is
-                  // broken, and never that their role is missing one grant.
-                  reason: noCreate,
-                  child: FilledButton.icon(
-                    key: const ValueKey('tour-automations-new'),
-                    onPressed: (noCreate != null || _catalogue == null)
-                        ? null
-                        : _new,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New automation'),
+              : ModuleAction(
+                  child: Refused(
+                    // Visible and refused, never hidden: somebody looking for
+                    // "New automation" and not finding it concludes the app is
+                    // broken, and never that their role is missing one grant.
+                    reason: noCreate,
+                    child: FilledButton.icon(
+                      key: const ValueKey('tour-automations-new'),
+                      onPressed: (noCreate != null || _catalogue == null)
+                          ? null
+                          : _new,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('New automation'),
+                    ),
                   ),
                 ),
         ),

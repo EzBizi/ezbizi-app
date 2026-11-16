@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../core/api_client.dart';
 
@@ -60,6 +61,22 @@ class UserAvatar extends StatefulWidget {
 
   @override
   State<UserAvatar> createState() => _UserAvatarState();
+
+  /// What a list already knows about who has a photo, by user id: a face
+  /// with none is never asked for (hands-on QA 11-16: every face without a
+  /// photo logged a 404). A later true undoes an earlier false.
+  static void knownPhotos(Map<String, bool> hasPhoto) {
+    for (final MapEntry(key: id, value: has) in hasPhoto.entries) {
+      final path = '/users/$id/avatar';
+      if (!has) {
+        if (_UserAvatarState._cache.containsKey(path)) continue;
+        _UserAvatarState._cache[path] = Future.value(null);
+        _UserAvatarState._told.add(path);
+      } else if (_UserAvatarState._told.remove(path)) {
+        _UserAvatarState._cache.remove(path);
+      }
+    }
+  }
 }
 
 class _UserAvatarState extends State<UserAvatar> {
@@ -69,7 +86,22 @@ class _UserAvatarState extends State<UserAvatar> {
   // ponytail: never evicted; one small entry per person seen this session.
   static final Map<String, Future<Uint8List?>> _cache = {};
 
+  /// Paths [UserAvatar.knownPhotos] marked as having no photo.
+  static final Set<String> _told = {};
+
   Uint8List? _bytes;
+  String? _path;
+
+  /// Decoded at the size drawn, once per photo: a 1600 px photo decoded whole
+  /// per face was 10 MB each, and a board of faces thrashed the image cache
+  /// on every scroll (Task Board lag, Jose 2026-11-16).
+  static final _images = Expando<ImageProvider>('avatar');
+
+  ImageProvider _image(Uint8List bytes, int px) {
+    final key = _images[bytes];
+    if (key is ResizeImage && key.width == px) return key;
+    return _images[bytes] = ResizeImage(MemoryImage(bytes), width: px);
+  }
 
   @override
   void initState() {
@@ -99,6 +131,7 @@ class _UserAvatarState extends State<UserAvatar> {
         '/users/${widget.userId}/avatar'
         '${widget.version.isEmpty ? '' : '?v=${widget.version}'}';
 
+    _path = path;
     final bytes = await _cache.putIfAbsent(path, () async {
       final raw = await widget.api.getBytes(path);
       return raw == null ? null : Uint8List.fromList(raw);
@@ -117,14 +150,36 @@ class _UserAvatarState extends State<UserAvatar> {
     return CircleAvatar(
       radius: widget.radius,
       backgroundColor: scheme.primaryContainer,
-      foregroundImage: shown == null ? null : MemoryImage(shown),
+      foregroundImage: shown == null
+          ? null
+          : _image(
+              shown,
+              (widget.radius *
+                      2 *
+                      MediaQuery.devicePixelRatioOf(context).clamp(1.0, 4.0))
+                  .ceil(),
+            ),
       // Bytes that are not a picture draw the initials, not a blank circle.
       onForegroundImageError: shown == null
           ? null
           : (_, _) {
-              if (mounted && widget.bytes == null) {
-                setState(() => _bytes = null);
+              // Not a picture: remembered as none, so the next row's face
+              // does not decode it again. The error comes while painting,
+              // where a setState asserts and re-lays the whole list.
+              if (widget.bytes != null) return;
+              final path = _path;
+              if (path != null) _cache[path] = Future.value(null);
+              void none() {
+                if (mounted) setState(() => _bytes = null);
               }
+
+              final phase = SchedulerBinding.instance.schedulerPhase;
+              phase == SchedulerPhase.idle ||
+                      phase == SchedulerPhase.postFrameCallbacks
+                  ? none()
+                  : SchedulerBinding.instance.addPostFrameCallback(
+                      (_) => none(),
+                    );
             },
       child: shown != null
           ? null

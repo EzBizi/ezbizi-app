@@ -52,6 +52,27 @@ final class GoogleBusinessProfilePublisher implements DeletesPosts, LinksToPosts
     /** The buttons a post may carry; CALL takes no URL. */
     public const ACTIONS = ['BOOK', 'ORDER', 'SHOP', 'LEARN_MORE', 'SIGN_UP', 'CALL'];
 
+    /**
+     * Google's photo rules for a post: JPG or PNG, 10 KB to 5 MB, at least
+     * 250 x 250. Null when the picture passes; else the sentence to show.
+     */
+    public static function refusesImage(string $bytes, string $extension): ?string
+    {
+        if (! in_array(strtolower($extension), ['jpg', 'jpeg', 'png'], true)) {
+            return 'Google Business Profile takes a JPG or PNG picture.';
+        }
+        $size = strlen($bytes);
+        if ($size < 10 * 1024 || $size > 5 * 1024 * 1024) {
+            return 'Google Business Profile takes a picture from 10 KB to 5 MB; this one is '.max(1, (int) round($size / 1024)).' KB.';
+        }
+        $dimensions = @getimagesizefromstring($bytes);
+        if ($dimensions === false || $dimensions[0] < 250 || $dimensions[1] < 250) {
+            return 'Google Business Profile takes a picture at least 250 x 250 pixels.';
+        }
+
+        return null;
+    }
+
     public function cannotSend(SocialMediaKind $kind): ?string
     {
         return $kind === SocialMediaKind::Video

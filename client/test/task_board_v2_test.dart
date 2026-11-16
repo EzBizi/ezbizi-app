@@ -8,6 +8,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_files.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
+import 'package:ezbizi_client/widgets/user_avatar.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +42,9 @@ void main() {
 
   /// Top-level tasks added after the three every test has.
   var extra = <Map<String, dynamic>>[];
+
+  /// A board with no tasks at all.
+  var emptyBoard = false;
 
   ApiClient fakeServer({int columns = 3}) {
     log = [];
@@ -99,6 +103,7 @@ void main() {
       },
       ...extra,
     ];
+    if (emptyBoard) tasks.clear();
     var next = 10;
     http.Response json(Object body, [int code = 200]) => http.Response(
       jsonEncode(body),
@@ -380,6 +385,7 @@ void main() {
     canEdit = true;
     refuseBoardPatch = false;
     extra = [];
+    emptyBoard = false;
   });
 
   Future<void> pump(
@@ -425,8 +431,8 @@ void main() {
       find.descendant(of: cell, matching: find.text('Stuck')),
       findsOneWidget,
     );
-    final fill = tester.widget<Material>(
-      find.ancestor(of: cell, matching: find.byType(Material)).first,
+    final fill = tester.widget<ColoredBox>(
+      find.ancestor(of: cell, matching: find.byType(ColoredBox)).first,
     );
     expect(fill.color, const Color(0xFFC53B3B));
 
@@ -575,6 +581,8 @@ void main() {
       'go first', (tester) async {
     await pump(tester);
 
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-statuses')));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -672,7 +680,11 @@ void main() {
       expect(find.text(h), findsWidgets, reason: h);
     }
     expect(find.text('CREATED'), findsNothing);
-    expect(find.byKey(const Key('tasks-columns')), findsNothing);
+    // No built-ins to hide on such a server: no Hide on the line or in the ⋯.
+    expect(find.byKey(const Key('list-toolbar-hide')), findsNothing);
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('tasks-more-hide')), findsNothing);
   });
 
   testWidgets('Created, when shown, is the day the task was made', (
@@ -730,7 +742,7 @@ void main() {
     expect(find.text('SUMMARY'), findsWidgets);
   });
 
-  testWidgets('Hide sends visible false, and Columns shows it again', (
+  testWidgets('Hide sends visible false, and the toolbar Hide shows it again', (
     tester,
   ) async {
     builtins = customised();
@@ -747,10 +759,20 @@ void main() {
     });
     expect(find.text('DUE'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('tasks-columns')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('builtin-show-created')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('builtin-show-due')));
+    // One Hide: the toolbar's lists every column, unticked while hidden,
+    // and counts the hidden ones (Created, Due and the hidden c-gone).
+    expect(find.textContaining('Hide · 3'), findsWidgets);
+    await openTool(tester, 'hide');
+    bool ticked(String id) =>
+        tester
+            .widget<CheckboxListTile>(find.byKey(ValueKey('tasks-hide-$id')))
+            .value ==
+        true;
+    expect(ticked('b:created'), isFalse);
+    expect(ticked('b:due'), isFalse);
+    expect(ticked('b:status'), isTrue);
+    await tester.tap(find.byKey(const ValueKey('tasks-hide-b:due')));
+    await tester.tap(find.byKey(const Key('tasks-hide-apply')));
     await tester.pumpAndSettle();
     sent(log.last, 'PATCH', '/task-boards/b-1', {
       'builtin_columns': {
@@ -758,6 +780,75 @@ void main() {
       },
     });
     expect(find.text('DUE'), findsWidgets);
+  });
+
+  testWidgets("every heading has a ⋯ that opens its menu: Hide column sends "
+      'hidden, and Delete asks once inside the menu', (tester) async {
+    builtins = customised();
+    await pump(tester);
+
+    // Built-ins and board columns alike wear the ⋯.
+    expect(find.byKey(const ValueKey('builtin-more-due')), findsWidgets);
+    expect(find.byKey(const ValueKey('column-more-c-hours')), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('column-more-c-hours')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('column-menu-hide-c-hours')));
+    await tester.pumpAndSettle();
+    sent(log.single, 'PATCH', '/task-boards/b-1/columns/c-hours', {
+      'hidden': true,
+    });
+
+    await tester.tap(find.byKey(const ValueKey('column-more-c-hours')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('column-menu-remove-c-hours')));
+    await tester.pumpAndSettle();
+    // Nothing sent yet: the menu stays open and asks.
+    expect(log, hasLength(1));
+    expect(find.byType(Dialog), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('column-menu-delete-cancel-c-hours')),
+    );
+    await tester.pumpAndSettle();
+    expect(log, hasLength(1));
+    expect(
+      find.byKey(const ValueKey('column-menu-delete-confirm-c-hours')),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const ValueKey('column-menu-remove-c-hours')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('column-menu-delete-confirm-c-hours')),
+    );
+    await tester.pumpAndSettle();
+    sent(log.last, 'DELETE', '/task-boards/b-1/columns/c-hours', null);
+  });
+
+  testWidgets("a built-in heading's ⋯ offers Hide and never Delete", (
+    tester,
+  ) async {
+    builtins = customised();
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-more-due')).first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('builtin-hide-due')), findsOneWidget);
+    expect(find.textContaining('Delete'), findsNothing);
+  });
+
+  testWidgets('Hide shows a hidden board column again, and hides one', (
+    tester,
+  ) async {
+    builtins = customised();
+    await pump(tester);
+
+    await openTool(tester, 'hide');
+    await tester.tap(find.byKey(const ValueKey('tasks-hide-c:c-gone')));
+    await tester.tap(find.byKey(const Key('tasks-hide-apply')));
+    await tester.pumpAndSettle();
+    sent(log.last, 'PATCH', '/task-boards/b-1/columns/c-gone', {
+      'hidden': false,
+    });
   });
 
   testWidgets('a board you cannot edit has no column menus and no Columns', (
@@ -769,18 +860,34 @@ void main() {
 
     expect(find.text('SUMMARY'), findsWidgets);
     expect(find.byKey(const ValueKey('builtin-head-about')), findsNothing);
-    expect(find.byKey(const Key('tasks-columns')), findsNothing);
+    expect(find.byKey(const Key('list-toolbar-hide')), findsNothing);
   });
 
   testWidgets('several owners: the primary and +N, and the panel adds one '
       'with every owner sent', (tester) async {
     await pump(tester);
 
+    // Faces only, Monday's way (Jose 11-16): three overlapping, no names
+    // drawn, every name in the cell's semantics label.
+    final faces = find.byKey(const ValueKey('task-owner-faces-t1'));
     expect(
-      tester
-          .widget<Text>(find.byKey(const ValueKey('task-owners-more-t1')))
-          .data,
-      '+2',
+      find.descendant(of: faces, matching: find.byType(UserAvatar)),
+      findsNWidgets(3),
+    );
+    expect(
+      find.descendant(of: faces, matching: find.text('Omar')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: faces,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is Semantics &&
+              w.properties.label == 'Omar Feld, Priya Nandakumar, Tomas Reyes',
+        ),
+      ),
+      findsOneWidget,
     );
 
     // The name opens the task; a cell edits in place (Jose, 2026-11-12).
@@ -797,6 +904,94 @@ void main() {
       'assignee_user_ids': ['u-1', 'u-2', 'u-3', 'u-4'],
     });
     expect(find.byKey(const ValueKey('task-panel-owner-u-4')), findsOneWidget);
+  });
+
+  testWidgets('an owner cell is a face: no name drawn, the name on hover, '
+      'and an empty one is a faint person-plus that assigns', (tester) async {
+    extra = [
+      {
+        'id': 't8',
+        'board_id': 'b-1',
+        'group_id': 'g1',
+        'parent_task_id': null,
+        'title': 'Nobody on it',
+        'status_id': 's-new',
+        'owner': null,
+        'owners': <dynamic>[],
+        'due_on': null,
+        'about': null,
+        'updates_count': 0,
+        'values': <String, dynamic>{},
+      },
+    ];
+    await pump(tester);
+
+    expect(find.text('Omar'), findsNothing);
+    expect(find.text('Omar Feld'), findsNothing);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(
+      tester.getCenter(find.byKey(const ValueKey('people-face-u-1')).first),
+    );
+    // This fake has no person card data: the card opens on its loader.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey('person-card-u-1')), findsOneWidget);
+    await mouse.moveTo(Offset.zero);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(const ValueKey('person-card-u-1')), findsNothing);
+
+    final empty = find.descendant(
+      of: find.byKey(const ValueKey('task-owner-faces-t8')),
+      matching: find.byKey(const Key('people-empty')),
+    );
+    expect(empty, findsOneWidget);
+    await tester.tap(empty);
+    await tester.pumpAndSettle();
+    expect(find.text('Lena Okafor'), findsWidgets);
+  });
+
+  testWidgets('Owner and People columns default to about 80 wide', (
+    tester,
+  ) async {
+    await pump(tester);
+    final head = find.byKey(const ValueKey('builtin-head-owner')).first;
+    expect(tester.getSize(head).width, lessThanOrEqualTo(80));
+  });
+
+  testWidgets('a Kanban card shows its first four filled columns and '
+      '+N more, not every column', (tester) async {
+    extra = [
+      {
+        'id': 't7',
+        'board_id': 'b-1',
+        'group_id': 'g1',
+        'parent_task_id': null,
+        'title': 'Full card',
+        'status_id': 's-new',
+        'owner': null,
+        'due_on': null,
+        'about': null,
+        'updates_count': 0,
+        'values': {
+          'c-hours': 2,
+          'c-ok': true,
+          for (var i = 3; i < 8; i++) 'c-x$i': 'v$i',
+        },
+      },
+    ];
+    await pump(tester, columns: 8);
+    await tester.tap(find.text('Kanban').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('task-card-more-t7')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('task-card-more-t7'))).data,
+      '+3 more',
+    );
+    expect(find.text('v7'), findsNothing);
   });
 
   testWidgets('Created comes before Due in the header', (tester) async {
@@ -837,14 +1032,15 @@ void main() {
 
     final mark = find.byKey(const ValueKey('task-owner-ezbizi-t9'));
     expect(mark, findsOneWidget);
+    // The mark alone; its name and the rule's on hover.
     expect(
       find.descendant(of: mark, matching: find.text('EzBizi')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(tester.widget<Tooltip>(mark).message, 'New lead follow-up');
+    expect(tester.widget<Tooltip>(mark).message, 'EzBizi · New lead follow-up');
 
     expect(find.byKey(const ValueKey('task-owner-ezbizi-t1')), findsNothing);
-    expect(find.text('Omar'), findsWidgets);
+    expect(find.byKey(const ValueKey('task-owner-faces-t1')), findsOneWidget);
   });
 
   Map<String, dynamic> doneTask() => {
@@ -891,8 +1087,7 @@ void main() {
     extra = [doneTask()];
     await pump(tester);
 
-    await tester.tap(find.byKey(const Key('tasks-group-by')));
-    await tester.pumpAndSettle();
+    await openTool(tester, 'group-by');
     await tester.tap(find.byKey(const ValueKey('group-by-status')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('task-group-by:s-stuck')), findsOneWidget);
@@ -901,8 +1096,7 @@ void main() {
     // A Group by group takes no new tasks: it is not a group on the board.
     expect(find.byKey(const ValueKey('group-menu-by:s-done')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('tasks-group-by')));
-    await tester.pumpAndSettle();
+    await openTool(tester, 'group-by');
     await tester.tap(find.byKey(const Key('group-by-none')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('task-group-g1')), findsOneWidget);
@@ -1082,4 +1276,152 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('column-save')), findsOneWidget);
   });
+
+  // ── Hands-on QA 11-16, second pass ─────────────────────────────
+
+  testWidgets('the toolbar is one line at 1440: what fits sits on it, the '
+      'rest is in the ⋯', (tester) async {
+    await pump(tester, width: 1440);
+
+    final line = find.byKey(const Key('tasks-toolbar-line'));
+    expect(tester.getSize(line).height, lessThan(60));
+    final row = tester.getCenter(find.byKey(const Key('tasks-search'))).dy;
+    for (final key in ['tasks-new-task', 'tasks-people', 'board-menu']) {
+      expect(
+        tester.getCenter(find.byKey(Key(key)).first).dy,
+        moreOrLessEquals(row, epsilon: 1),
+        reason: key,
+      );
+    }
+    // Whatever did not fit is offered in the ⋯, not wrapped to a new row.
+    final hidden = [
+      for (final k in ['person', 'filter', 'sort', 'views'])
+        if (find.byKey(Key('list-toolbar-$k')).hitTestable().evaluate().isEmpty)
+          k,
+    ];
+    expect(hidden, isNotEmpty, reason: 'nothing folded at 1440');
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    for (final k in hidden) {
+      expect(find.byKey(ValueKey('tasks-more-$k')), findsOneWidget, reason: k);
+    }
+  });
+
+  testWidgets('on a phone the line keeps the view, the search and New task', (
+    tester,
+  ) async {
+    await pump(tester, width: 390);
+
+    final row = tester.getCenter(find.byKey(const Key('tasks-search'))).dy;
+    for (final key in ['tasks-view-picker', 'tasks-new-task', 'board-menu']) {
+      final f = find.byKey(Key(key)).hitTestable();
+      expect(f, findsOneWidget, reason: key);
+      expect(
+        tester.getCenter(f).dy,
+        moreOrLessEquals(row, epsilon: 2),
+        reason: key,
+      );
+    }
+    expect(
+      find.byKey(const Key('list-toolbar-filter')).hitTestable(),
+      findsNothing,
+    );
+  });
+
+  testWidgets('New task stays on Kanban: it makes a task and opens it', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(find.text('Kanban').first);
+    await tester.pumpAndSettle();
+
+    await openTool(tester, 'new-task');
+    final post = log.where((c) => c.$1 == 'POST' && c.$2 == '/tasks').single;
+    expect((post.$3 as Map)['title'], 'New task');
+    expect(find.byType(TextField), findsWidgets);
+  });
+
+  testWidgets('a Kanban card dropped on another column takes its status', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(find.text('Kanban').first);
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const ValueKey('kanban-drag-t1'));
+    final to = find.byKey(const ValueKey('kanban-s-wait'));
+    final gesture = await tester.startGesture(tester.getCenter(card));
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.moveTo(tester.getCenter(to));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    sent(log.single, 'PATCH', '/tasks/t1', {'status_id': 's-wait'});
+  });
+
+  testWidgets('bulk Status sends the board status by id', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('task-pick-t1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('task-bulk-status')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('task-choice')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Waiting on client').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('task-choice-go')));
+    await tester.pumpAndSettle();
+
+    final bulk = log.where((c) => c.$2 == '/tasks/bulk').single;
+    expect(bulk.$3, {
+      'ids': ['t1'],
+      'op': 'status',
+      'status_id': 's-wait',
+    });
+  });
+
+  testWidgets('Esc closes a status menu opened from its cell', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('task-status-t1')).first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-status-t1-edit')), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-status-t1-edit')), findsNothing);
+    expect(find.byKey(const Key('tasks-status-scrim')), findsNothing);
+  });
+
+  testWidgets('a board with no tasks keeps its headings and says it is empty', (
+    tester,
+  ) async {
+    emptyBoard = true;
+    await pump(tester);
+
+    expect(find.byKey(const Key('tasks-board-empty')), findsOneWidget);
+    expect(find.text('STATUS'), findsWidgets);
+    expect(find.text('TASK'), findsWidgets);
+  });
+}
+
+/// Opens toolbar control [key] ("hide", "group-by"...): its button when the
+/// line has room, else its entry in the ⋯.
+Future<void> openTool(WidgetTester tester, String key) async {
+  final button = find.byKey(
+    Key(switch (key) {
+      'group-by' => 'tasks-group-by',
+      'new-task' => 'tasks-new-task',
+      _ => 'list-toolbar-$key',
+    }),
+  );
+  if (button.hitTestable().evaluate().isNotEmpty) {
+    await tester.tap(button);
+  } else {
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('tasks-more-$key')));
+  }
+  await tester.pumpAndSettle();
 }

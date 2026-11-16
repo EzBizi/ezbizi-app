@@ -217,6 +217,32 @@ void main() {
     expect(find.byType(ReorderableListView), findsOneWidget);
     expect(find.byIcon(Icons.drag_handle), findsNWidgets(4));
   });
+
+  testWidgets(
+    'a phone has a bottom bar: Jobs first, and More opens the drawer',
+    (tester) async {
+      // Mobile review 2026-11-13, P7.
+      tester.view.physicalSize = const Size(375, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await _pumpShell(
+        tester,
+        modules: ['dashboard', 'customers', 'jobs'],
+        order: ['dashboard', 'customers', 'jobs'],
+      );
+
+      final bar = find.byKey(const Key('phone-bottom-bar'));
+      expect(bar, findsOneWidget);
+      await tester.tap(find.descendant(of: bar, matching: find.text('Jobs')));
+      await tester.pumpAndSettle();
+      expect(_open('Jobs'), findsOneWidget);
+
+      await tester.tap(find.descendant(of: bar, matching: find.text('More')));
+      await tester.pumpAndSettle();
+      expect(find.byType(Drawer), findsOneWidget);
+    },
+  );
 }
 
 // ── harness ────────────────────────────────────────────────────────

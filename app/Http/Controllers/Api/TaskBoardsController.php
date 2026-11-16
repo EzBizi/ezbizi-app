@@ -173,16 +173,25 @@ class TaskBoardsController extends Controller
     {
         $this->authorize('view', $taskBoard);
         $user = $request->user();
+        // Taken before the read: GET changes?since=<this> picks up from here.
+        $cursor = now()->startOfSecond()->toIso8601String();
 
         // An API key (MCP) or the AI is never shown a sensitive task, not even its title.
         $hidden = \App\Support\Tasks\SensitiveTasks::machineReader($user);
-        $tasks = $taskBoard->tasks()
-            ->when($hidden, fn ($q) => $q->where('sensitive', false))
-            ->with(TasksController::WITH)
-            ->withCount(TasksController::counts())
-            ->orderBy('position')
-            ->orderBy('created_at')
-            ->get();
+        // ?per_group=N: the first N top-level tasks of each group (and their
+        // subtasks), with each group's full count and footers. A 24,713-task
+        // board was a 20 MB reply (Jose, 2026-11-16). Absent: every task.
+        $perGroup = min(max($request->integer('per_group'), 0), 500);
+        $groups = null;
+        if ($perGroup > 0) {
+            $groups = $this->groupPages($taskBoard, $hidden, $perGroup);
+            $pick = collect($groups)->flatMap(fn (array $g) => $g['ids'])->all();
+            $tasks = $this->ownTasks($taskBoard, $hidden)
+                ->where(fn ($q) => $q->whereIn('id', $pick)->orWhereIn('parent_task_id', $pick))
+                ->get();
+        } else {
+            $tasks = $this->ownTasks($taskBoard, $hidden)->get();
+        }
 
         // A company board carries its branches' tasks as the same rows, each
         // marked with the board it lives on (Jose, 2026-10-28).
@@ -202,9 +211,13 @@ class TaskBoardsController extends Controller
         $unread = \App\Support\Notes\NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
             $tasks->concat($rolled)->map(fn (Task $t) => (string) $t->id)->all(), (string) $user->id);
         $present = fn (Task $t) => TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0];
+        $assignable = $this->boards->assignable($taskBoard);
+        $withPhoto = \App\Models\User::query()->whereIn('id', $assignable->pluck('id'))
+            ->whereNotNull('avatar_path')->pluck('id')->mapWithKeys(fn ($id) => [(string) $id => true])->all();
 
         return response()->json(['data' => [
             'id' => $taskBoard->id,
+            'cursor' => $cursor,
             'kind' => $taskBoard->kind,
             'name' => $taskBoard->name,
             'visibility' => $taskBoard->visibility,
@@ -235,7 +248,12 @@ class TaskBoardsController extends Controller
             // Saved views: the board's shared ones and this person's own.
             'views' => TaskBoardViewsController::visible($taskBoard, $user->id),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
-            'assignable' => $this->boards->assignable($taskBoard)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
+            // has_avatar: a face without a photo is not asked for one (each was a 404).
+            'assignable' => $assignable->map(fn ($u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'has_avatar' => isset($withPhoto[(string) $u->id]),
+            ])->all(),
             'tasks' => $tasks->map($present)
                 ->concat($rolled->map(fn (Task $t) => $present($t) + ['rolled_up_from' => [
                     'board_id' => $t->board_id,
@@ -243,7 +261,174 @@ class TaskBoardsController extends Controller
                     // The client files it under this board's group of the same name.
                     'group_name' => $t->group?->name,
                 ]]))->all(),
-        ]]);
+        ] + ($groups === null ? [] : [
+            // {group id, or '' for none of them: {count, shown, has_more, footers}}.
+            'group_totals' => (object) collect($groups)
+                ->map(fn (array $g) => array_diff_key($g, ['ids' => 0]))->all(),
+        ])]);
+    }
+
+    /** The board's own tasks, as the list presents them. */
+    private function ownTasks(TaskBoard $board, bool $hidden)
+    {
+        return $board->tasks()
+            ->when($hidden, fn ($q) => $q->where('sensitive', false))
+            ->with(TasksController::WITH)
+            ->withCount(TasksController::counts())
+            ->orderBy('position')
+            ->orderBy('created_at');
+    }
+
+    /**
+     * Each group's top-level tasks in board order: its count, the page
+     * [$skip, $skip + $take) of ids, and its number columns' sum and average
+     * over ALL its top-level tasks (a locked sensitive task's values are not
+     * shown, so they are not added either). Keyed by group id; '' holds the
+     * tasks in none of the board's groups.
+     *
+     * @return array<string, array{count: int, shown: int, has_more: bool, ids: list<string>, footers: object}>
+     */
+    private function groupPages(TaskBoard $board, bool $hidden, int $take, int $skip = 0, ?string $only = null): array
+    {
+        $known = $board->groups->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $key = fn ($groupId) => in_array((string) $groupId, $known, true) ? (string) $groupId : '';
+        $rows = $board->tasks()
+            ->when($hidden, fn ($q) => $q->where('sensitive', false))
+            ->whereNull('parent_task_id')
+            ->orderBy('position')->orderBy('created_at')
+            ->get(['id', 'group_id'])
+            ->groupBy(fn (Task $t) => $key($t->group_id))->toBase();
+        if ($only !== null) {
+            $rows = $rows->only([$only]);
+        }
+
+        $numbers = $board->columns->where('type', 'number')->pluck('id')->all();
+        $sums = [];
+        if ($numbers !== []) {
+            $found = \App\Models\TaskColumnValue::query()
+                ->join('tasks', 'tasks.id', '=', 'task_column_values.task_id')
+                ->where('tasks.board_id', $board->id)
+                ->whereNull('tasks.deleted_at')
+                ->whereNull('tasks.parent_task_id')
+                ->where('tasks.sensitive', false)
+                ->whereIn('task_column_values.column_id', $numbers)
+                ->whereNotNull('task_column_values.value_number')
+                ->groupBy('tasks.group_id', 'task_column_values.column_id')
+                ->selectRaw('tasks.group_id as g, task_column_values.column_id as c, SUM(task_column_values.value_number) as s, COUNT(*) as n')
+                ->toBase()->get();
+            foreach ($found as $r) {
+                $g = $key($r->g);
+                $c = (string) $r->c;
+                $sums[$g][$c] = [
+                    's' => ($sums[$g][$c]['s'] ?? 0) + (float) $r->s,
+                    'n' => ($sums[$g][$c]['n'] ?? 0) + (int) $r->n,
+                ];
+            }
+        }
+
+        $out = [];
+        foreach ($rows as $group => $tasks) {
+            $out[(string) $group] = [
+                'count' => $tasks->count(),
+                'shown' => min($skip + $take, $tasks->count()),
+                'has_more' => $tasks->count() > $skip + $take,
+                'ids' => $tasks->slice($skip, $take)->pluck('id')->map(fn ($id) => (string) $id)->values()->all(),
+                'footers' => (object) collect($sums[(string) $group] ?? [])
+                    ->map(fn (array $a) => ['sum' => $a['s'], 'average' => $a['n'] > 0 ? $a['s'] / $a['n'] : 0])->all(),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * GET task-boards/{id}/changes?since=<cursor>: what changed on the board
+     * since the cursor, so an open board patches itself (Jose, 2026-11-16:
+     * a Monday status change showed only after leaving the tab). Tasks are
+     * the same rows show gives (rolled-up ones included), deleted ids are the
+     * soft-deleted ones, and groups are the board's whole list (a deleted
+     * group has no row to date). group_totals come with any task change.
+     * Inclusive at the second, so a write in the cursor's own second is sent
+     * twice rather than never. Over 500 changed tasks: reload, nothing else.
+     */
+    public function changes(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+        $input = $request->validate(['since' => ['required', 'string', 'max:64']]);
+        try {
+            $since = \Carbon\CarbonImmutable::parse($input['since'])->setTimezone(config('app.timezone'));
+        } catch (\Throwable) {
+            throw ValidationException::withMessages(['since' => 'Not a time.']);
+        }
+        $cursor = now()->startOfSecond();
+        $user = $request->user();
+        $hidden = \App\Support\Tasks\SensitiveTasks::machineReader($user);
+        $sources = $this->boards->rolledUpBoards($user, $taskBoard)->keyBy('id');
+        $boardIds = [$taskBoard->id, ...$sources->keys()->all()];
+
+        $touched = Task::query()->withTrashed()
+            ->whereIn('board_id', $boardIds)
+            ->where(fn ($q) => $q->where('updated_at', '>=', $since)->orWhere('deleted_at', '>=', $since));
+        if ((clone $touched)->count() > 500) {
+            return response()->json(['data' => ['reload' => true, 'cursor' => $cursor->toIso8601String()]]);
+        }
+        $rows = $touched->with([...TasksController::WITH, 'group:id,name'])
+            ->withCount(TasksController::counts())->get();
+        // Gone from this reader: deleted, or (for an API key) made sensitive.
+        [$gone, $live] = $rows->partition(fn (Task $t) => $t->trashed() || ($hidden && $t->sensitive));
+
+        $unread = \App\Support\Notes\NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
+            $live->map(fn (Task $t) => (string) $t->id)->values()->all(), (string) $user->id);
+        $tasks = $live->map(function (Task $t) use ($unread, $sources, $taskBoard) {
+            $row = TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0];
+
+            return $t->board_id === $taskBoard->id ? $row : $row + ['rolled_up_from' => [
+                'board_id' => $t->board_id,
+                'board_name' => $sources[$t->board_id]->name,
+                'group_name' => $t->group?->name,
+            ]];
+        })->values()->all();
+
+        return response()->json(['data' => [
+            'cursor' => $cursor->toIso8601String(),
+            'tasks' => $tasks,
+            'deleted' => $gone->map(fn (Task $t) => (string) $t->id)->values()->all(),
+            'groups' => $taskBoard->groups()->get()->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
+        ] + ($rows->isEmpty() ? [] : [
+            // Counts and footers only: shown/has_more are the client's, by what it loaded.
+            'group_totals' => (object) collect($this->groupPages($taskBoard, $hidden, 0))
+                ->map(fn (array $g) => ['count' => $g['count'], 'footers' => $g['footers']])->all(),
+        ])]);
+    }
+
+    /**
+     * GET task-boards/{id}/group-tasks?group_id=&offset=&limit=: the next page
+     * of one group's top-level tasks and their subtasks ("Show more").
+     * group_id '' (or absent) is the tasks in none of the board's groups.
+     */
+    public function groupTasks(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+        $input = $request->validate([
+            'group_id' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'offset' => ['sometimes', 'integer', 'min:0'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:500'],
+        ]);
+        $user = $request->user();
+        $hidden = \App\Support\Tasks\SensitiveTasks::machineReader($user);
+        $group = (string) ($input['group_id'] ?? '');
+        $page = $this->groupPages($taskBoard, $hidden, (int) ($input['limit'] ?? 50), (int) ($input['offset'] ?? 0), $group)[$group]
+            ?? ['count' => 0, 'shown' => 0, 'has_more' => false, 'ids' => [], 'footers' => (object) []];
+        $tasks = $this->ownTasks($taskBoard, $hidden)
+            ->where(fn ($q) => $q->whereIn('id', $page['ids'])->orWhereIn('parent_task_id', $page['ids']))
+            ->get();
+        $unread = \App\Support\Notes\NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
+            $tasks->map(fn (Task $t) => (string) $t->id)->all(), (string) $user->id);
+
+        return response()->json([
+            'data' => $tasks->map(fn (Task $t) => TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0])->all(),
+            'meta' => array_diff_key($page, ['ids' => 0]),
+        ]);
     }
 
     /** POST task-boards {name, visibility, company_id?, franchise_id?}: a custom board, filed on the current view. */

@@ -39,21 +39,22 @@ class Tag extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final caution = ToneColours.of(context, Tone.caution);
     final problem = ToneColours.of(context, Tone.bad);
+    final own = colour == null ? null : tagColour(context, colour!);
 
     return Padding(
       padding: const EdgeInsets.only(left: 8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: colour != null
-              ? colour!
-              : bad
-              ? problem.fill
-              : warn
-              ? caution.fill
-              : good
-              ? EzBiziTheme.clockIn(context).withValues(alpha: 0.14)
-              : scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+          color:
+              own ??
+              (bad
+                  ? problem.fill
+                  : warn
+                  ? caution.fill
+                  : good
+                  ? EzBiziTheme.clockIn(context).withValues(alpha: 0.14)
+                  : scheme.surfaceContainerHighest.withValues(alpha: 0.6)),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
@@ -65,8 +66,8 @@ class Tag extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: colour != null
-                ? inkOn(colour!)
+            color: own != null
+                ? inkOn(own)
                 : bad
                 ? problem.ink
                 : warn

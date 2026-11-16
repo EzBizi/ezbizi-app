@@ -1,3 +1,4 @@
+import '../widgets/module_page_header.dart';
 import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -599,8 +600,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       _open = null;
     });
 
-    return Padding(
-      padding: const EdgeInsets.only(left: 12),
+    // Desktop review 2026-11-13, D3: header right, as every module.
+    return ModuleAction(
       // On a phone it took the strip's width and left "Reports, Repor…" (UI
       // audit, 2026-10-13): the icon alone there, beside the picker.
       child: compact

@@ -3,6 +3,11 @@
 Jose's name for it (2026-11-13): every mistake the deploy desk made, so it is never made twice.
 Newest first. Each entry: what happened, what it cost, the rule that stops it.
 
+## 2026-11-16 — Reports: a filtered phpunit run voided my own full gate
+- **What:** while the 0.0.0577 P&L gate ran on `ezbizi_testing_reports`, I started a one-test `--filter` run on the same schema. Its migrate dropped the tables under the gate: 4245 "table doesn't exist" errors.
+- **Cost:** a 100-minute gate thrown away; the P&L SHA reached the desk ~2 hours late.
+- **Rule:** before any phpunit, check no phpunit of mine is running on that schema (`Get-CimInstance Win32_Process -Filter "Name='php.exe'"`). While a gate runs, write code and run only `flutter test`.
+
 ## 2026-11-13 — Audit hand-over hid 9 PHPUnit warnings (failed the 0574 precheck)
 - **What:** the audit merge left `OAuthTokenRequestShapeTest`'s 3-argument tests on 6-field data-provider rows. PHPUnit warned 9 times and exited 1; I read the pao JSON, saw only the 17 known Windows fails, and called the red accounted for.
 - **Cost:** 0574 precheck failed; the desk fixed it (36fce1c42).

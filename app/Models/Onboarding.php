@@ -43,6 +43,11 @@ use Illuminate\Support\Collection;
 class Onboarding extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its invitation's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['hr_invitations', Invitation::class, 'invitation_id'];
+
     use HasAttachments;
     use HasFactory;
     use HasUuids;

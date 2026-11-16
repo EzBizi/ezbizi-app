@@ -1,4 +1,7 @@
+import '../core/theme.dart';
 import '../core/deep_links.dart';
+import '../core/live_changes.dart';
+import '../widgets/module_page_header.dart';
 import '../widgets/list_search.dart';
 import 'dart:async';
 
@@ -152,6 +155,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
     super.initState();
     _load();
     _loadTags();
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'customers'},
+      _liveCustomers,
+      active: LiveChanges.visible(this),
+    );
     // A link to one customer (a notification, or /customers/{id} in the bar).
     DeepLinks.pending.addListener(_takeLink);
     WidgetsBinding.instance.addPostFrameCallback((_) => _takeLink());
@@ -159,13 +167,47 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_takeLink);
     _search.dispose();
     _openDirty.dispose();
     super.dispose();
   }
 
-  Future<void> _load({int page = 1}) async {
+  // ── Live: imports, syncs and webhooks show without leaving ─────────
+
+  LiveSubscription? _live;
+
+  /// Page one is read again quietly (rows and scroll stay). With more pages
+  /// loaded, deleted rows leave and changed rows are read one by one.
+  Future<void> _liveCustomers(LiveBatch batch) async {
+    if (_loading) return;
+    if (_page == 1) {
+      await _load(quiet: true);
+      return;
+    }
+    final gone = batch.deletedOf('customers');
+    final fresh = <String, Map<String, dynamic>>{};
+    for (final c in _customers) {
+      if (fresh.length >= 20) break;
+      final id = '${c['id']}';
+      if (!batch.changedOf('customers').contains(id)) continue;
+      final res = await widget.api.get('/customers/$id');
+      if (res.ok && res.data is Map) {
+        fresh[id] = {...c, ...Map<String, dynamic>.from(res.data as Map)};
+      }
+    }
+    if (!mounted || (gone.isEmpty && fresh.isEmpty)) return;
+    setState(() {
+      _customers = [
+        for (final c in _customers)
+          if (!gone.contains(c['id'])) fresh[c['id']] ?? c,
+      ];
+    });
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     // A second tap while the first request is in flight appends the same page
     // twice, so the list grows with duplicate rows.
     // Appends only. Two appends at once duplicate rows, and an append landing
@@ -210,7 +252,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
         // is not something to whisper — the retry has to be the obvious next
         // thing. A later page failing leaves page one intact, so that one
         // reports beside the rows rather than over them.
-        if (page == 1) {
+        if (quiet) {
+          // A missed live tick: the next one tries again.
+        } else if (page == 1) {
           _error = response.message;
         } else {
           _pageError = response.message;
@@ -332,16 +376,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   // number the screen has already been told is wrong.
                   onImported: _load,
                 ),
-                Refused(
-                  // The server decides in the end. This decides what is OFFERED,
-                  // and a control that cannot be used stays on screen saying why
-                  // rather than going dark or disappearing.
-                  reason: refused,
-                  child: FilledButton.icon(
-                    key: const ValueKey('tour-customers-add'),
-                    onPressed: refused == null ? _create : null,
-                    icon: const Icon(Icons.person_add_outlined, size: 18),
-                    label: const Text('Add customer'),
+                // Desktop review 2026-11-13, D3: header right, as every module.
+                ModuleAction(
+                  child: Refused(
+                    // The server decides in the end. This decides what is OFFERED,
+                    // and a control that cannot be used stays on screen saying why
+                    // rather than going dark or disappearing.
+                    reason: refused,
+                    child: FilledButton.icon(
+                      key: const ValueKey('tour-customers-add'),
+                      onPressed: refused == null ? _create : null,
+                      icon: const Icon(Icons.person_add_outlined, size: 18),
+                      label: const Text('Add customer'),
+                    ),
                   ),
                 ),
               ],
@@ -390,7 +437,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
       child: Wrap(
         key: const ValueKey('tour-customers-segments'),
         spacing: 6,
@@ -414,7 +466,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        12,
+      ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           // On a phone the search takes the line and the two pickers split the
@@ -952,7 +1009,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final groups = <String, List<Map<String, dynamic>>>{};
 
     for (final customer in customers) {
-      final name = '${customer['name'] ?? ''}';
+      // From the first letter or digit, as the server sorts (desktop review
+      // 2026-11-13): "'Bob" files under B, not under "#".
+      final name = '${customer['name'] ?? ''}'.replaceFirst(
+        RegExp(r'^[^\p{L}\p{N}]+', unicode: true),
+        '',
+      );
       final first = name.isEmpty ? '' : name[0].toUpperCase();
       final letter = _unaccented[first] ?? first;
       final key = RegExp(r'^[A-Z]$').hasMatch(letter) ? letter : '#';

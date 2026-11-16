@@ -232,7 +232,7 @@ void main() {
   testWidgets('right-click on a row opens the fast actions', (tester) async {
     await pumpBoard(tester);
     await tester.tap(
-      find.byKey(const ValueKey('task-t1')),
+      find.text('Sweep the Oak Park flue'),
       buttons: kSecondaryButton,
     );
     await tester.pumpAndSettle();
@@ -252,10 +252,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('3 selected'), findsOneWidget);
 
-    await tester.tap(
-      find.byKey(const ValueKey('task-t2')),
-      buttons: kSecondaryButton,
-    );
+    await tester.tap(find.text('Order a cap'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     expect(find.text('3 tasks selected'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('task-rc-delete')));

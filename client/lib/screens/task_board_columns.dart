@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../widgets/cell_tap.dart';
+import '../widgets/lazy_menu_anchor.dart';
+import '../widgets/range_calendar.dart';
 import 'package:flutter/services.dart';
 
 import 'package:url_launcher/url_launcher.dart';
@@ -13,6 +16,7 @@ import '../widgets/calendar_day_field.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/user_avatar.dart';
 import 'task_board_person_card.dart';
 
 /// A board's own columns (UI queue 84; Jose: "i should be able to make custom
@@ -449,9 +453,17 @@ String formatCellPhone(String raw) {
 /// The inline "+ Add tag" row of a label or tags menu: typing a new one
 /// adds it to the column and picks it (Jose, 2026-11-09).
 class _AddOption extends StatefulWidget {
-  const _AddOption({required this.columnId, required this.onAdd});
+  const _AddOption({
+    required this.columnId,
+    required this.onAdd,
+    this.noun = 'tag',
+  });
 
   final String columnId;
+
+  /// "tag" under Tags, "label" under a label column (QA 11-16: a label
+  /// menu said "+ Add tag" over "Edit labels…").
+  final String noun;
   final Future<void> Function(String label) onAdd;
 
   @override
@@ -487,10 +499,10 @@ class _AddOptionState extends State<_AddOption> {
         key: ValueKey('column-option-new-${widget.columnId}'),
         controller: _text,
         enabled: !_busy,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           isDense: true,
-          hintText: '+ Add tag',
-          border: OutlineInputBorder(),
+          hintText: '+ Add ${widget.noun}',
+          border: const OutlineInputBorder(),
         ),
         onSubmitted: (_) => _submit(),
       ),
@@ -590,7 +602,11 @@ class ColumnCell extends StatelessWidget {
     this.onFilter,
     this.tasks,
     this.onAddFile,
+    this.taskDone = false,
   });
+
+  /// The task's status is a done one: its timeline is never overdue.
+  final bool taskDone;
 
   /// Searches customers and jobs for a link column's card.
   final ApiClient? api;
@@ -708,7 +724,7 @@ class ColumnCell extends StatelessWidget {
       case 'status':
         final picked = _option(column, v);
         final fill = picked?.colour ?? blankLabel(theme);
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             Builder(
               builder: (context) => LabelBlocks(
@@ -742,9 +758,9 @@ class ColumnCell extends StatelessWidget {
           ],
           onOpen: () => onMenu?.call(true),
           onClose: () => onMenu?.call(false),
-          builder: (context, menu, _) => Material(
+          builder: (context, menu, _) => ColoredBox(
             color: fill,
-            child: InkWell(
+            child: CellTap(
               key: ValueKey('column-cell-${column.id}'),
               onTap: onChanged == null
                   ? null
@@ -767,7 +783,7 @@ class ColumnCell extends StatelessWidget {
       case 'dropdown':
         final picked = _option(column, v);
         final fill = picked?.colour;
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             for (final o in column.options)
               if (!o.retired || o.id == v)
@@ -784,7 +800,7 @@ class ColumnCell extends StatelessWidget {
               ),
             ..._optionTools(theme, (id) => onChanged?.call(id)),
           ],
-          builder: (context, menu, _) => InkWell(
+          builder: (context, menu, _) => CellTap(
             key: ValueKey('column-cell-${column.id}'),
             onTap: onChanged == null
                 ? null
@@ -812,7 +828,7 @@ class ColumnCell extends StatelessWidget {
         );
       case 'people':
         final ids = [for (final id in (v as List?) ?? const []) '$id'];
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             for (final p in people.entries)
               CheckboxMenuButton(
@@ -830,7 +846,7 @@ class ColumnCell extends StatelessWidget {
                 child: Text(p.value),
               ),
           ],
-          builder: (context, menu, _) => InkWell(
+          builder: (context, menu, _) => CellTap(
             key: ValueKey('column-cell-${column.id}'),
             onTap: onChanged == null
                 ? null
@@ -847,7 +863,7 @@ class ColumnCell extends StatelessWidget {
         );
       case 'tags':
         final ids = [for (final id in (v as List?) ?? const []) '$id'];
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             for (final o in column.options)
               if (!o.retired || ids.contains(o.id))
@@ -867,7 +883,7 @@ class ColumnCell extends StatelessWidget {
                 ),
             ..._optionTools(theme, (id) => onChanged?.call([...ids, ?id])),
           ],
-          builder: (context, menu, _) => InkWell(
+          builder: (context, menu, _) => CellTap(
             key: ValueKey('column-cell-${column.id}'),
             onTap: onChanged == null
                 ? null
@@ -919,12 +935,15 @@ class ColumnCell extends StatelessWidget {
           style: text == null || text.isEmpty ? muted : null,
         );
       case 'timeline':
-        return TimelinePill(value: v, formats: formats);
+        return TimelinePill(value: v, formats: formats, done: taskDone);
       case 'number':
       case 'currency':
       case 'formula':
+        // widthFactor 1: a cell's tight width still right-aligns it; a card's
+        // loose one no longer pushes "0.5" 100 px from its label (QA 11-16).
         return Align(
           alignment: Alignment.centerRight,
+          widthFactor: 1,
           child: Text(
             v == null ? '—' : formatColumnNumber(v, column),
             textAlign: TextAlign.right,
@@ -1000,12 +1019,16 @@ class ColumnCell extends StatelessWidget {
           style: at == null ? muted : null,
         );
       case 'person':
+        // A face, not a name (Jose 11-16: "just use the icon ... like
+        // monday does"); the hover card says who.
         final name = people['$v'];
-        return Text(
-          name == null ? '—' : name.split(' ').first,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: name == null ? muted : null,
+        return Center(
+          child: PeopleAvatars(
+            names: [?name],
+            ids: [if (name != null) '$v'],
+            api: api,
+            boardId: boardId,
+          ),
         );
       default:
         return Text(
@@ -1036,6 +1059,7 @@ class ColumnCell extends StatelessWidget {
       const Divider(height: 8),
       _AddOption(
         columnId: column.id,
+        noun: column.type == 'tags' ? 'tag' : 'label',
         onAdd: (label) async {
           final id = await onAddOption!(label);
           if (id != null) picked(id);
@@ -1089,6 +1113,8 @@ class _ColumnEditorState extends State<ColumnEditor> {
       'number' ||
       'currency' => widget.value == null ? '' : _number(widget.value, null),
       'location' => '${(widget.value as Map?)?['address'] ?? ''}',
+      // Read as the table reads it, "(440) 555-0100" (hands-on QA 11-16).
+      'phone' => widget.value == null ? '' : formatCellPhone('${widget.value}'),
       _ => widget.value == null ? '' : '${widget.value}',
     },
   );
@@ -1136,7 +1162,13 @@ class _ColumnEditorState extends State<ColumnEditor> {
       return;
     }
     final next = typed.isEmpty ? null : typed;
-    if (next != widget.value) widget.onChanged?.call(next);
+    // The box shows a phone formatted; left as shown, it is not a change.
+    final same =
+        next == widget.value ||
+        (widget.column.type == 'phone' &&
+            widget.value is String &&
+            next == formatCellPhone(widget.value as String));
+    if (!same) widget.onChanged?.call(next);
     widget.onDone?.call();
   }
 
@@ -1148,12 +1180,14 @@ class _ColumnEditorState extends State<ColumnEditor> {
 
     switch (c.type) {
       case 'checkbox':
+        // The table's and the card's Checkbox, not a Switch (hands-on QA
+        // 11-16: one value, two controls).
         return Align(
           alignment: Alignment.centerLeft,
-          child: Switch(
+          child: Checkbox(
             key: key,
             value: widget.value == true,
-            onChanged: editable ? (b) => widget.onChanged!(b) : null,
+            onChanged: editable ? (b) => widget.onChanged!(b ?? false) : null,
           ),
         );
       case 'status':
@@ -1295,47 +1329,16 @@ class _ColumnEditorState extends State<ColumnEditor> {
         );
       case 'timeline':
         final range = widget.value is Map ? widget.value as Map : const {};
-        void set(String end, Object? day) {
-          final next = {'from': range['from'], 'to': range['to'], end: day};
-          if (next['from'] == null && next['to'] == null) {
-            widget.onChanged?.call(null);
-            return;
-          }
-          // One end alone is a single day.
-          next['from'] ??= next['to'];
-          next['to'] ??= next['from'];
-          if ('${next['from']}'.compareTo('${next['to']}') > 0) {
-            end == 'from'
-                ? next['to'] = next['from']
-                : next['from'] = next['to'];
-          }
-          widget.onChanged?.call(next);
-        }
-
-        return Row(
+        // One calendar: first click starts, second ends (Jose, 2026-11-16).
+        return RangeCalendar(
           key: key,
-          children: [
-            Expanded(
-              child: _DateEditor(
-                key: ValueKey('column-editor-${c.id}-from'),
-                value: range['from'] as String?,
-                formats: widget.formats,
-                onChanged: editable ? (d) => set('from', d) : null,
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 6),
-              child: Text('–'),
-            ),
-            Expanded(
-              child: _DateEditor(
-                key: ValueKey('column-editor-${c.id}-to'),
-                value: range['to'] as String?,
-                formats: widget.formats,
-                onChanged: editable ? (d) => set('to', d) : null,
-              ),
-            ),
-          ],
+          from: range['from'] as String?,
+          to: range['to'] as String?,
+          onChanged: editable
+              ? (from, to) => widget.onChanged?.call(
+                  from == null ? null : {'from': from, 'to': to},
+                )
+              : null,
         );
       default:
         return TextField(
@@ -2312,6 +2315,11 @@ class InlineCellEditor extends StatefulWidget {
 
   final ApiClient? api;
 
+  /// How many cells are open for editing right now. A board's live refresh
+  /// patches rows in place but holds back inserts and removals while one is
+  /// open, so the row under the editor stays the row being edited.
+  static final editing = ValueNotifier<int>(0);
+
   @override
   State<InlineCellEditor> createState() => _InlineCellEditorState();
 }
@@ -2326,15 +2334,47 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
   bool get _inPlace =>
       const {'text', 'number', 'currency'}.contains(widget.column.type);
 
+  /// The value this cell last sent, and whether the value under it moved to
+  /// something else while it was open (a remote change: Monday, a colleague).
+  Object? _sent;
+  bool _elsewhere = false;
+
+  static bool _same(Object? a, Object? b) =>
+      a == b || jsonEncode(a) == jsonEncode(b);
+
   void _start() {
     setState(() => _editing = true);
+    InlineCellEditor.editing.value++;
     if (!_inPlace) _card.show();
   }
 
   void _stop() {
     if (!mounted || !_editing) return;
     if (_card.isShowing) _card.hide();
-    setState(() => _editing = false);
+    InlineCellEditor.editing.value--;
+    setState(() {
+      _editing = false;
+      _elsewhere = false;
+      _sent = null;
+    });
+  }
+
+  @override
+  void didUpdateWidget(InlineCellEditor old) {
+    super.didUpdateWidget(old);
+    // The editor keeps what the person typed; the marker says the saved
+    // value under it changed meanwhile.
+    if (_editing &&
+        !_same(widget.value, old.value) &&
+        !_same(widget.value, _sent)) {
+      _elsewhere = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_editing) InlineCellEditor.editing.value--;
+    super.dispose();
   }
 
   Widget _editor() => CallbackShortcuts(
@@ -2342,25 +2382,48 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
     child: TapRegion(
       groupId: this,
       onTapOutside: (_) => Future.microtask(_stop),
-      child: ColumnEditor(
-        api: widget.api,
-        column: widget.column,
-        value: widget.value,
-        people: widget.people,
-        formats: widget.formats,
-        autofocus: true,
-        onDone: () => Future.microtask(_stop),
-        onChanged: (v) {
-          widget.onChanged(v);
-          // A timeline is two days: stay open for the second.
-          if (widget.column.type != 'timeline' &&
-              widget.column.type != 'datetime' &&
-              !_inPlace) {
-            _stop();
-          }
-        },
+      child: Stack(
+        clipBehavior: Clip.none,
+        fit: StackFit.passthrough,
+        children: [
+          _columnEditor(),
+          if (_elsewhere)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: Tooltip(
+                message: 'Changed elsewhere; saving keeps yours',
+                child: Icon(
+                  key: const Key('cell-changed-elsewhere'),
+                  Icons.sync_problem,
+                  size: 14,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ),
+        ],
       ),
     ),
+  );
+
+  Widget _columnEditor() => ColumnEditor(
+    api: widget.api,
+    column: widget.column,
+    value: widget.value,
+    people: widget.people,
+    formats: widget.formats,
+    autofocus: true,
+    onDone: () => Future.microtask(_stop),
+    onChanged: (v) {
+      _sent = v;
+      widget.onChanged(v);
+      // A timeline is two days: stay open for the second.
+      if (widget.column.type != 'timeline' &&
+          widget.column.type != 'datetime' &&
+          !_inPlace) {
+        _stop();
+      }
+    },
   );
 
   /// What a copied cell carries: text as typed, anything else as JSON so a
@@ -2445,6 +2508,17 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
     if (_editing && _inPlace) {
       return KeyedSubtree(key: key, child: _editor());
     }
+    final cell = CellTap(
+      key: key,
+      onTap: _editing ? null : _start,
+      onSecondaryTapDown: _editing ? null : (d) => _menu(d.globalPosition),
+      child: SizedBox.expand(
+        child: Align(alignment: Alignment.centerLeft, child: widget.child),
+      ),
+    );
+    // The card's portal only while editing: one per cell on every row was
+    // most of a big board's build (Task Board lag, 11-16).
+    if (!_editing) return CompositedTransformTarget(link: _link, child: cell);
     return CompositedTransformTarget(
       link: _link,
       child: OverlayPortal(
@@ -2465,14 +2539,7 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
             ),
           ),
         ),
-        child: InkWell(
-          key: key,
-          onTap: _editing ? null : _start,
-          onSecondaryTapDown: _editing ? null : (d) => _menu(d.globalPosition),
-          child: SizedBox.expand(
-            child: Align(alignment: Alignment.centerLeft, child: widget.child),
-          ),
-        ),
+        child: cell,
       ),
     );
   }
@@ -2595,11 +2662,15 @@ class TimelinePill extends StatelessWidget {
     required this.value,
     required this.formats,
     this.now,
+    this.done = false,
   });
 
   final Object? value;
   final DisplayFormats formats;
   final DateTime? now;
+
+  /// The task is done: an end date in the past is finished, not late.
+  final bool done;
 
   @override
   Widget build(BuildContext context) {
@@ -2618,42 +2689,60 @@ class TimelinePill extends StatelessWidget {
     final to = DateTime.parse('${v['to']}').add(const Duration(days: 1));
     final at = now ?? DateTime.now();
     final total = to.difference(from).inMinutes;
-    final done = total <= 0
+    final elapsed = total <= 0
         ? 1.0
         : (at.difference(from).inMinutes / total).clamp(0.0, 1.0);
     final back = theme.colorScheme.onSurfaceVariant;
+    // Monday: an open task whose end date has passed wears red.
+    final day = DateTime(at.year, at.month, at.day);
+    // [to] is the midnight after the last day: late from that midnight on.
+    final overdue = !done && !to.isAfter(day);
     return Center(
-      child: Container(
-        height: 22,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: back,
-          borderRadius: BorderRadius.circular(11),
-        ),
-        child: Stack(
-          children: [
-            FractionallySizedBox(
-              key: const Key('timeline-elapsed'),
-              widthFactor: done,
-              heightFactor: 1,
-              child: Container(color: theme.colorScheme.primary),
-            ),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: labelInk(back),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
+      child: Tooltip(
+        message: label,
+        child: Container(
+          height: 22,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: back,
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Stack(
+            children: [
+              FractionallySizedBox(
+                key: const Key('timeline-elapsed'),
+                widthFactor: elapsed,
+                heightFactor: 1,
+                child: Container(
+                  color: overdue
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.primary,
+                ),
+              ),
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    // The short range, "11/16–20": the full one was cut to
+                    // "11/16/2026 –…" in a 120 px cell (hands-on QA 11-16).
+                    dateRangeLabel(
+                          [from, DateTime.parse('${v['to']}')],
+                          formats,
+                          short: true,
+                        ) ??
+                        label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: labelInk(overdue ? theme.colorScheme.error : back),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2697,13 +2786,45 @@ class LabelBar extends StatelessWidget {
 
 /// A group footer's date range: the earliest to the latest day in [days];
 /// null when there are none.
-String? dateRangeLabel(Iterable<DateTime> days, DisplayFormats formats) {
+/// [short] drops the year when both ends share one, for a footer's 104 px
+/// (hands-on QA 11-16: "11/16/2026…" was cut off).
+String? dateRangeLabel(
+  Iterable<DateTime> days,
+  DisplayFormats formats, {
+  bool short = false,
+}) {
   final list = days.toList()..sort();
   if (list.isEmpty) return null;
-  return list.first == list.last
-      ? formats.formatDate(list.first)
-      : '${formats.formatDate(list.first)} – ${formats.formatDate(list.last)}';
+  final (first, last) = (list.first, list.last);
+  if (short && first.year == last.year) {
+    if (first == last) return shortDate(first, formats);
+    // One month: its days run together, "11/16–21" (Monday's "Nov 16 - 21").
+    if (first.month == last.month) {
+      return switch (formats.dateFormat) {
+        'M/D/YYYY' => '${first.month}/${first.day}–${last.day}',
+        'D/M/YYYY' => '${first.day}–${last.day}/${first.month}',
+        _ =>
+          '${shortDate(first, formats)}–${last.day.toString().padLeft(2, '0')}',
+      };
+    }
+    return '${shortDate(first, formats)}–${shortDate(last, formats)}';
+  }
+  return first == last
+      ? formats.formatDate(first)
+      : '${formats.formatDate(first)} – ${formats.formatDate(last)}';
 }
+
+/// A day without its year, in the organization's order: "11/16", "16/11"
+/// or "11-16".
+String shortDate(
+  DateTime d,
+  DisplayFormats formats,
+) => switch (formats.dateFormat) {
+  'M/D/YYYY' => '${d.month}/${d.day}',
+  'D/M/YYYY' => '${d.day}/${d.month}',
+  _ =>
+    '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+};
 
 /// Every day a value covers, for a footer's range: a date, or a timeline's
 /// two ends.
@@ -2745,45 +2866,76 @@ class PeopleAvatars extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (names.isEmpty) {
-      return Text(
-        '—',
-        style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+      // Nobody yet: a faint person-plus; the cell's own tap assigns.
+      return Semantics(
+        label: 'Nobody assigned',
+        child: Icon(
+          Icons.person_add_alt_outlined,
+          key: const Key('people-empty'),
+          size: 18,
+          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+        ),
       );
     }
     final shown = names.take(3).toList();
     final more = names.length - shown.length;
-    Widget face(int i, String n) => !_cards
+    // The photo where there is one, initials while it loads or without.
+    Widget photo(int i, String n) => !_cards
         ? _initials(theme, n)
+        : Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: theme.colorScheme.surface, width: 2),
+            ),
+            child: UserAvatar(api: api!, userId: ids![i], name: n, radius: 11),
+          );
+    Widget face(int i, String n) => !_cards
+        ? photo(i, n)
         : PersonHoverCard(
             key: ValueKey('people-face-${ids![i]}'),
             api: api!,
             boardId: boardId!,
             userId: ids![i],
-            child: _initials(theme, n),
+            child: photo(i, n),
           );
     return Tooltip(
       // The card says who; a tooltip on top of it would cover it.
       message: _cards ? '' : names.join(', '),
-      child: SizedBox(
-        height: 26,
-        width: 26.0 + (shown.length - 1) * 16 + (more > 0 ? 22 : 0),
-        child: Stack(
-          children: [
-            for (final (i, n) in shown.indexed)
-              Positioned(left: i * 16.0, child: face(i, n)),
-            if (more > 0)
-              Positioned(
-                left: shown.length * 16.0 + 6,
-                top: 5,
-                child: Text(
-                  '+$more',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+      excludeFromSemantics: true,
+      child: Semantics(
+        label: names.join(', '),
+        child: ExcludeSemantics(child: _faces(theme, shown, more, face)),
+      ),
+    );
+  }
+
+  Widget _faces(
+    ThemeData theme,
+    List<String> shown,
+    int more,
+    Widget Function(int, String) face,
+  ) {
+    return SizedBox(
+      height: 26,
+      width: 26.0 + (shown.length - 1) * 16 + (more > 0 ? 22 : 0),
+      child: Stack(
+        children: [
+          for (final (i, n) in shown.indexed)
+            Positioned(left: i * 16.0, child: face(i, n)),
+          if (more > 0)
+            Positioned(
+              left: shown.length * 16.0 + 6,
+              top: 5,
+              child: Text(
+                '+$more',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

@@ -31,8 +31,21 @@ class InventoryIssue extends Model implements StatesRetention
     }
 
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'inventory_orders';
     use HasAttachments;
     use HasUuids;
+
+    /** Filed where its location is (ChangeFeed). */
+    public function changeFeedPlace(): array
+    {
+        $at = $this->location_id === null ? null
+            : InventoryLocation::withoutGlobalScopes()->find($this->location_id, ['id', 'company_id', 'franchise_id']);
+
+        return [$at?->company_id, $at?->franchise_id];
+    }
 
     protected function casts(): array
     {

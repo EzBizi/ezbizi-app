@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/theme.dart';
+
 /// A panel that slides in from the right — the app's answer to a modal dialog.
 ///
 /// ── Why there are no dialogs in this app ─────────────────────────
@@ -235,11 +237,13 @@ class _SidePanelState extends State<SidePanel> {
       : child;
 
   Widget _content(BuildContext context) {
+    // Mobile review 2026-11-13, P6: 24 a side left a phone 327 of 375.
+    final g = Gutter.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 12, 16),
+          padding: EdgeInsets.fromLTRB(g, 20, 12, 16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -286,18 +290,18 @@ class _SidePanelState extends State<SidePanel> {
         Expanded(
           child: widget.scrollable
               ? SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                  padding: EdgeInsets.fromLTRB(g, 20, g, 20),
                   child: _readable(widget.child),
                 )
               : Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                  padding: EdgeInsets.fromLTRB(g, 20, g, 20),
                   child: _readable(widget.child),
                 ),
         ),
         if (widget.actions.isNotEmpty) ...[
           const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+            padding: EdgeInsets.fromLTRB(g, 14, g, 18),
             // Wraps rather than overflows. Three buttons is about 344px,
             // which fits the panel until the window is narrow enough that
             // the panel becomes the window — and that is exactly where a

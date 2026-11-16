@@ -748,6 +748,10 @@ class _LeadThreadState extends State<LeadThread> {
           ),
         if (leadNameIsAi(lead))
           const AiMark(key: ValueKey('thread-ai-name'), tooltip: aiNameTooltip),
+        // Whose lead it is, beside the name (Jose, 2026-09-30; moved up
+        // 2026-11-16: "next to the name").
+        if (leadCompany(lead) case final company?)
+          CompanyTag(company, key: const ValueKey('thread-company')),
         if (src.sourceKey != null)
           LeadSourceChip(src.sourceKey, key: const ValueKey('thread-source-chip')),
         leadStatusPill(lead['status'], key: const ValueKey('thread-status')),
@@ -1150,10 +1154,6 @@ class _LeadThreadState extends State<LeadThread> {
         ),
       if (all && src.handle != null)
         fact('Handle', text(src.handle!, key: const ValueKey('details-handle'))),
-      // Whose lead it is: chimney prices went to a garage-door lead (Jose,
-      // 2026-09-30).
-      if (all && company != null)
-        CompanyTag(company, key: const ValueKey('thread-company')),
       if (all && d != null) ..._factPills(lead, d),
       if (all && line.isNotEmpty)
         Text(line, style: quiet, maxLines: 1, overflow: TextOverflow.ellipsis),

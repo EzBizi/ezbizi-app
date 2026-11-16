@@ -415,10 +415,15 @@ class TaskBoardTimeline extends StatefulWidget {
     required this.onSetRange,
     this.onAddColumn,
     this.compact = false,
+    this.isDone,
   });
 
   final List<Map<String, dynamic>> groups;
   final List<PlanTask> Function(Object? groupId) tasksIn;
+
+  /// Whether a task's status is a done one; an open task whose end date has
+  /// passed draws in the error colour, as Monday's does.
+  final bool Function(PlanTask)? isDone;
 
   /// The board's first Timeline column; null shows how to add one.
   final String? columnId;
@@ -496,7 +501,8 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
       final from = r.$1.add(Duration(days: d?.move ?? 0));
       var to = r.$2.add(Duration(days: (d?.move ?? 0) + (d?.grow ?? 0)));
       if (to.isBefore(from)) to = from;
-      final colour = widget.colourOf(t);
+      final late = r.$2.isBefore(today) && !(widget.isDone?.call(t) ?? false);
+      final colour = late ? theme.colorScheme.error : widget.colourOf(t);
       // A board picks its own status colours: dark ink on a light bar.
       final ink =
           ThemeData.estimateBrightnessForColor(colour) == Brightness.dark
@@ -512,10 +518,30 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
       }
 
       final barW = (to.difference(from).inDays + 1) * dayW;
+      final range = from == to ? _short(from) : '${_short(from)}–${_short(to)}';
+      // A short bar wore a clipped "Nov" (hands-on QA 11-16): its dates go
+      // beside it instead, as Monday does.
+      final outside = barW < 96;
       return SizedBox(
         height: rowH,
         child: Stack(
+          clipBehavior: Clip.none,
           children: [
+            if (outside)
+              Positioned(
+                left: x(from) + barW + 6,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Text(
+                    range,
+                    key: ValueKey('plan-bar-label-${t['id']}'),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               left: x(from),
               top: 6,
@@ -549,9 +575,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
                     children: [
                       Expanded(
                         child: Text(
-                          from == to
-                              ? _short(from)
-                              : '${_short(from)}–${_short(to)}',
+                          outside ? '' : range,
                           maxLines: 1,
                           overflow: TextOverflow.clip,
                           style: theme.textTheme.labelSmall?.copyWith(

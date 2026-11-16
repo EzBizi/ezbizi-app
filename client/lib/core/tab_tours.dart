@@ -825,7 +825,7 @@ const Map<String, Tour> tabTours = {
         anchor: 'tour-marketing-social-panes',
         title: 'Social Media Management',
         body:
-            'Dashboard, Compose, Calendar, Accounts and QR Codes, as your role allows.',
+            'Dashboard, Compose, Calendar, Accounts, Comments and QR Codes, as your role allows.',
       ),
       TourStep(
         anchor: 'tour-marketing-social-tiles',
