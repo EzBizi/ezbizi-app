@@ -61,4 +61,70 @@ void main() {
     );
     expect(find.text('Add job'), findsOneWidget);
   });
+
+  testWidgets('only the tab in front fills the header (offstage tabs)', (
+    tester,
+  ) async {
+    final toolbar = ValueNotifier<Widget?>(null);
+    final action = ValueNotifier<Widget?>(null);
+    var front = 0;
+    late StateSetter set;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              ListenableBuilder(
+                listenable: action,
+                builder: (context, _) => ModulePageHeader(
+                  key: const Key('header'),
+                  title: 'Inventory',
+                  actions: [?action.value],
+                ),
+              ),
+              Expanded(
+                child: ModuleToolbarScope(
+                  slot: toolbar,
+                  action: action,
+                  child: StatefulBuilder(
+                    builder: (context, setState) {
+                      set = setState;
+                      return Stack(
+                        children: [
+                          for (final (i, label) in const [
+                            (0, 'Add item'),
+                            (1, 'Add location'),
+                          ])
+                            Offstage(
+                              offstage: i != front,
+                              child: ModuleActionGate(
+                                active: i == front,
+                                child: ModuleAction(child: Text(label)),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    Finder inHeader(String text) => find.descendant(
+      of: find.byKey(const Key('header')),
+      matching: find.text(text),
+    );
+    expect(inHeader('Add item'), findsOneWidget);
+    expect(inHeader('Add location'), findsNothing);
+
+    set(() => front = 1);
+    await tester.pump();
+    await tester.pump();
+    expect(inHeader('Add location'), findsOneWidget);
+    expect(inHeader('Add item'), findsNothing);
+  });
 }

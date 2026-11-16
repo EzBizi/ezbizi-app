@@ -1,3 +1,4 @@
+import '../../widgets/module_page_header.dart';
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -54,7 +55,6 @@ class _LocationListState extends State<LocationList> {
   bool _adding = false;
   String? _selectedId;
   Map<String, dynamic>? _open;
-
 
   @override
   void initState() {
@@ -117,7 +117,8 @@ class _LocationListState extends State<LocationList> {
       _page = page;
       if (page == 1) {
         final meta = response.body['meta'];
-        Map<String, dynamic>? block(String key) => meta is Map && meta[key] is Map
+        Map<String, dynamic>? block(String key) =>
+            meta is Map && meta[key] is Map
             ? Map<String, dynamic>.from(meta[key] as Map)
             : null;
         _tiles = block('tiles');
@@ -178,19 +179,21 @@ class _LocationListState extends State<LocationList> {
             ? '1 location in this view.'
             : '$_total in this view.',
         action: canCreate
-            ? Refused(
-                reason: refused,
-                child: FilledButton.icon(
-                  key: const ValueKey('tour-inventory-locations-add'),
-                  onPressed: refused == null
-                      ? () => setState(() {
-                          _adding = true;
-                          _selectedId = null;
-                          _open = null;
-                        })
-                      : null,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add location'),
+            ? ModuleAction(
+                child: Refused(
+                  reason: refused,
+                  child: FilledButton.icon(
+                    key: const ValueKey('tour-inventory-locations-add'),
+                    onPressed: refused == null
+                        ? () => setState(() {
+                            _adding = true;
+                            _selectedId = null;
+                            _open = null;
+                          })
+                        : null,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add location'),
+                  ),
                 ),
               )
             : null,
@@ -231,9 +234,9 @@ class _LocationListState extends State<LocationList> {
             onChanged: (_) => setState(() {}),
             onSubmitted: (_) => _load(),
             onClear: () {
-                          _search.clear();
-                          _load();
-                        },
+              _search.clear();
+              _load();
+            },
           ),
         ),
         Padding(
@@ -340,12 +343,14 @@ class _LocationListState extends State<LocationList> {
                       ),
                       Text(
                         [
-                          vehicle?['label'],
-                          inventoryOwnerLabel(
-                            location,
-                            widget.session.me!.organization.name,
-                          ),
-                        ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
+                              vehicle?['label'],
+                              inventoryOwnerLabel(
+                                location,
+                                widget.session.me!.organization.name,
+                              ),
+                            ]
+                            .where((p) => p != null && '$p'.isNotEmpty)
+                            .join(' · '),
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall,
                       ),

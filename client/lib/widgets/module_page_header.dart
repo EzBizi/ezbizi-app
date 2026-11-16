@@ -81,6 +81,10 @@ class ModulePageHeader extends StatelessWidget {
             Flexible(
               child: Text(
                 title,
+                // One line on a phone: beside a primary action (D3) a long
+                // name wrapped and pushed the screen below the fold.
+                maxLines: phone ? 1 : null,
+                overflow: phone ? TextOverflow.ellipsis : null,
                 // headlineMedium is the theme's own, and the only heading
                 // token it defined before this work. On a phone the same
                 // token at 22 rather than a fifth hardcoded size.
@@ -223,7 +227,19 @@ class _ModuleActionState extends State<ModuleAction> {
   @override
   Widget build(BuildContext context) {
     final slot = _slot;
+    final active = ModuleActionGate.of(context);
     if (slot == null) return widget.child;
+    if (!active) {
+      // A tab kept alive offstage: hand the slot back to the tab in front.
+      final given = _given;
+      _given = null;
+      if (given != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (identical(slot.value, given)) slot.value = null;
+        });
+      }
+      return const SizedBox.shrink();
+    }
     final child = widget.child;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -232,4 +248,24 @@ class _ModuleActionState extends State<ModuleAction> {
     });
     return const SizedBox.shrink();
   }
+}
+
+/// Marks a subtree (a tab kept alive offstage) whose [ModuleAction]s must
+/// not claim the header: only the tab in front fills the slot.
+class ModuleActionGate extends InheritedWidget {
+  const ModuleActionGate({
+    super.key,
+    required this.active,
+    required super.child,
+  });
+
+  final bool active;
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ModuleActionGate>()?.active ??
+      true;
+
+  @override
+  bool updateShouldNotify(ModuleActionGate oldWidget) =>
+      oldWidget.active != active;
 }

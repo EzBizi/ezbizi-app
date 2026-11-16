@@ -1,3 +1,4 @@
+import '../../widgets/module_page_header.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ class _OrderListState extends State<OrderList> {
   List<Map<String, dynamic>> _orders = [];
   List<Map<String, dynamic>> _issues = [];
   List<Map<String, dynamic>> _sales = [];
+
   /// The tile narrowing the list: null, `receive`, `open`, `sales` or
   /// `issues`; and the counts on the tiles, across every page (Inventory,
   /// 83999f2c). A server without them draws the old chips.
@@ -143,12 +145,12 @@ class _OrderListState extends State<OrderList> {
       _orders = inventoryRows(po.data);
       _issues = inventoryRows(issues.data);
       _sales = inventoryRows(sales.data);
-      Map<String, dynamic>? tiles(ApiResponse r) =>
-          switch (r.body['meta']) {
-            {'tiles': final Map<dynamic, dynamic> t} =>
-              Map<String, dynamic>.from(t),
-            _ => null,
-          };
+      Map<String, dynamic>? tiles(ApiResponse r) => switch (r.body['meta']) {
+        {'tiles': final Map<dynamic, dynamic> t} => Map<String, dynamic>.from(
+          t,
+        ),
+        _ => null,
+      };
       _poTiles = tiles(po);
       _saleTiles = tiles(sales);
       _issueTotal = switch (issues.body['meta']) {
@@ -310,22 +312,24 @@ class _OrderListState extends State<OrderList> {
                 runSpacing: 8,
                 children: [
                   if (canCreate)
-                    Refused(
-                      reason: createRefused,
-                      child: FilledButton.icon(
-                        key: const ValueKey('tour-inventory-orders-add'),
-                        onPressed: createRefused == null
-                            ? () => setState(() {
-                                _addingPo = true;
-                                _addingIssue = false;
-                                _addingSale = false;
-                                _selectedId = null;
-                                _open = null;
-                                _kind = null;
-                              })
-                            : null,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add purchase order'),
+                    ModuleAction(
+                      child: Refused(
+                        reason: createRefused,
+                        child: FilledButton.icon(
+                          key: const ValueKey('tour-inventory-orders-add'),
+                          onPressed: createRefused == null
+                              ? () => setState(() {
+                                  _addingPo = true;
+                                  _addingIssue = false;
+                                  _addingSale = false;
+                                  _selectedId = null;
+                                  _open = null;
+                                  _kind = null;
+                                })
+                              : null,
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add purchase order'),
+                        ),
                       ),
                     ),
                   if (canEdit)
@@ -555,7 +559,8 @@ class _OrderListState extends State<OrderList> {
       default:
         forWho = '${inventoryMap(row['vendor'])?['name'] ?? ''}';
         final part =
-            status == 'open' && _sum(row, 'qty_received') > 0 &&
+            status == 'open' &&
+            _sum(row, 'qty_received') > 0 &&
             _hasRemaining(row);
         pill = StatusPill(
           part ? 'Part received' : inventoryPoStatusLabel(status),

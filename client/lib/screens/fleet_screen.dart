@@ -1,3 +1,4 @@
+import '../widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -254,7 +255,8 @@ class _FleetScreenState extends State<FleetScreen> {
                 canAdd: canCreate && vehicles,
                 onAdd: _add,
               ),
-              if (vehicles) _register(context),
+              if (vehicles)
+                ModuleActionGate(active: _tab == 1, child: _register(context)),
             ],
           ),
         ),
@@ -284,13 +286,15 @@ class _FleetScreenState extends State<FleetScreen> {
               ? '1 vehicle in the register.'
               : '$_total in the register.',
           action: canCreate
-              ? Refused(
-                  reason: refused,
-                  child: FilledButton.icon(
-                    key: const ValueKey('tour-fleet_management-add'),
-                    onPressed: refused == null ? _add : null,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add vehicle'),
+              ? ModuleAction(
+                  child: Refused(
+                    reason: refused,
+                    child: FilledButton.icon(
+                      key: const ValueKey('tour-fleet_management-add'),
+                      onPressed: refused == null ? _add : null,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add vehicle'),
+                    ),
                   ),
                 )
               : null,
