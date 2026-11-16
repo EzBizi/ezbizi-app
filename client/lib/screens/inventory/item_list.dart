@@ -1,3 +1,4 @@
+import '../../widgets/module_page_header.dart';
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -43,6 +44,7 @@ class _ItemListState extends State<ItemList> {
   String? _pageError;
   bool _fetching = false;
   int _request = 0;
+
   /// The counts on the tiles, the whole catalogue's (`meta.tiles`), and the
   /// tile narrowing the list: null, `low`, `out` or `discontinued`. A server
   /// without tiles draws none.
@@ -148,19 +150,21 @@ class _ItemListState extends State<ItemList> {
             ? '1 item in the catalogue.'
             : '$_total in the catalogue.',
         action: canCreate
-            ? Refused(
-                reason: refused,
-                child: FilledButton.icon(
-                  key: const ValueKey('tour-inventory-items-add'),
-                  onPressed: refused == null
-                      ? () => setState(() {
-                          _adding = true;
-                          _selectedId = null;
-                          _open = null;
-                        })
-                      : null,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add item'),
+            ? ModuleAction(
+                child: Refused(
+                  reason: refused,
+                  child: FilledButton.icon(
+                    key: const ValueKey('tour-inventory-items-add'),
+                    onPressed: refused == null
+                        ? () => setState(() {
+                            _adding = true;
+                            _selectedId = null;
+                            _open = null;
+                          })
+                        : null,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add item'),
+                  ),
                 ),
               )
             : null,
@@ -201,9 +205,9 @@ class _ItemListState extends State<ItemList> {
             onChanged: (_) => setState(() {}),
             onSubmitted: (_) => _load(),
             onClear: () {
-                          _search.clear();
-                          _load();
-                        },
+              _search.clear();
+              _load();
+            },
           ),
         ),
         // A server without tiles keeps the old way to see discontinued ones.
@@ -354,13 +358,18 @@ class _ItemListState extends State<ItemList> {
                   ],
                 ),
               ),
-              (2, Text('${item['sku'] ?? '—'}', overflow: TextOverflow.ellipsis)),
+              (
+                2,
+                Text('${item['sku'] ?? '—'}', overflow: TextOverflow.ellipsis),
+              ),
               if (money)
                 (
                   2,
                   right(
                     item['last_cost_minor'] is num
-                        ? inventoryMoney((item['last_cost_minor'] as num).toInt())
+                        ? inventoryMoney(
+                            (item['last_cost_minor'] as num).toInt(),
+                          )
                         : '—',
                   ),
                 ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../widgets/range_calendar.dart';
 import 'package:flutter/services.dart';
 
 import 'package:url_launcher/url_launcher.dart';
@@ -1299,47 +1300,16 @@ class _ColumnEditorState extends State<ColumnEditor> {
         );
       case 'timeline':
         final range = widget.value is Map ? widget.value as Map : const {};
-        void set(String end, Object? day) {
-          final next = {'from': range['from'], 'to': range['to'], end: day};
-          if (next['from'] == null && next['to'] == null) {
-            widget.onChanged?.call(null);
-            return;
-          }
-          // One end alone is a single day.
-          next['from'] ??= next['to'];
-          next['to'] ??= next['from'];
-          if ('${next['from']}'.compareTo('${next['to']}') > 0) {
-            end == 'from'
-                ? next['to'] = next['from']
-                : next['from'] = next['to'];
-          }
-          widget.onChanged?.call(next);
-        }
-
-        return Row(
+        // One calendar: first click starts, second ends (Jose, 2026-11-16).
+        return RangeCalendar(
           key: key,
-          children: [
-            Expanded(
-              child: _DateEditor(
-                key: ValueKey('column-editor-${c.id}-from'),
-                value: range['from'] as String?,
-                formats: widget.formats,
-                onChanged: editable ? (d) => set('from', d) : null,
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 6),
-              child: Text('–'),
-            ),
-            Expanded(
-              child: _DateEditor(
-                key: ValueKey('column-editor-${c.id}-to'),
-                value: range['to'] as String?,
-                formats: widget.formats,
-                onChanged: editable ? (d) => set('to', d) : null,
-              ),
-            ),
-          ],
+          from: range['from'] as String?,
+          to: range['to'] as String?,
+          onChanged: editable
+              ? (from, to) => widget.onChanged?.call(
+                  from == null ? null : {'from': from, 'to': to},
+                )
+              : null,
         );
       default:
         return TextField(

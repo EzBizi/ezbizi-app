@@ -23,7 +23,7 @@ use Illuminate\Console\Command;
  */
 class MondaySyncCommand extends Command
 {
-    protected $signature = 'ezbizi:monday-sync {--connection= : one Monday connection id} {--full : read every item, not just the changed ones} {--people= : JSON file of monday email => EzBizi email}';
+    protected $signature = 'ezbizi:monday-sync {--connection= : one Monday connection id} {--full : read every item, not just the changed ones} {--scan : list every item to find the changed ones (a subitem-only change), not just the Monday date filter} {--people= : JSON file of monday email => EzBizi email}';
 
     protected $description = 'Read Monday boards imported onto the Task Board and bring their changes over';
 
@@ -52,7 +52,7 @@ class MondaySyncCommand extends Command
                 $save(['setup' => $setup]);
             }
             try {
-                $reports = $sync->run($connection, full: (bool) $this->option('full'));
+                $reports = $sync->run($connection, full: (bool) $this->option('full'), scan: (bool) $this->option('scan'));
             } catch (MondayRefused $e) {
                 $save([
                     'status' => SocialConnection::STATUS_BROKEN,

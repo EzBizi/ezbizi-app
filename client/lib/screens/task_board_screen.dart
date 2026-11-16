@@ -367,6 +367,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   bool get _canEdit => _board?['can_edit'] == true;
 
+  /// The column whose Delete was asked once in its header menu.
+  String? _deletingColumn;
+
   /// Rows ticked for the bulk bar (Jose, 2026-10-28).
   final Set<String> _picked = {};
 
@@ -1723,11 +1726,38 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         builder: (context, menu, _) => InkWell(
           key: ValueKey('builtin-head-$key'),
           onTap: () => menu.isOpen ? menu.close() : menu.open(),
-          child: Align(alignment: Alignment.centerLeft, child: label),
+          child: _headWithMore(
+            label,
+            ValueKey('builtin-more-$key'),
+            () => menu.isOpen ? menu.close() : menu.open(),
+          ),
         ),
       ),
     );
   }
+
+  /// A heading with its ⋯: the menu was there but only a tap on the name
+  /// opened it, and Jose did not find it (2026-11-16).
+  Widget _headWithMore(Widget label, Key key, VoidCallback open) => Row(
+    children: [
+      Expanded(
+        child: Align(alignment: Alignment.centerLeft, child: label),
+      ),
+      InkWell(
+        key: key,
+        onTap: open,
+        borderRadius: BorderRadius.circular(4),
+        child: Tooltip(
+          message: 'Column options',
+          child: Icon(
+            Icons.more_horiz,
+            size: 16,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    ],
+  );
 
   /// The box a built-in column's new name is typed into, under the
   /// headings it was asked from.
@@ -1898,28 +1928,74 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             onPressed: () => patch({'position': at + 1}),
             child: const Text('Move right'),
           ),
+          const Divider(height: 8),
           MenuItemButton(
             key: ValueKey('column-menu-hide-${c.id}'),
             leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
             onPressed: () => patch({'hidden': true}),
-            child: const Text('Hide'),
+            child: const Text('Hide column'),
           ),
-          MenuItemButton(
-            key: ValueKey('column-menu-remove-${c.id}'),
-            leadingIcon: const Icon(Icons.delete_outline, size: 18),
-            onPressed: () => _editColumn(c),
-            child: const Text('Remove column…'),
-          ),
+          // Delete asks once, inside the menu (Jose, 2026-11-16: "hide or
+          // delete columns"); the menu stays open for the second click.
+          if (_deletingColumn == c.id) ...[
+            MenuItemButton(
+              key: ValueKey('column-menu-delete-confirm-${c.id}'),
+              leadingIcon: Icon(
+                Icons.delete_forever_outlined,
+                size: 18,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () async {
+                setState(() => _deletingColumn = null);
+                final r = await widget.api.delete(
+                  columnsPath('${_board!['id']}', c.id),
+                );
+                if (!mounted) return;
+                if (!r.ok) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(r.reason)));
+                }
+                await _load();
+              },
+              child: Text(
+                'Delete "${c.name}" and its values',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+            MenuItemButton(
+              key: ValueKey('column-menu-delete-cancel-${c.id}'),
+              closeOnActivate: false,
+              onPressed: () => setState(() => _deletingColumn = null),
+              child: const Text('Keep it'),
+            ),
+          ] else
+            MenuItemButton(
+              key: ValueKey('column-menu-remove-${c.id}'),
+              closeOnActivate: false,
+              leadingIcon: const Icon(Icons.delete_outline, size: 18),
+              onPressed: () => setState(() => _deletingColumn = c.id),
+              child: const Text('Delete column…'),
+            ),
         ],
+        onClose: () {
+          if (_deletingColumn == c.id) setState(() => _deletingColumn = null);
+        },
         builder: (context, menu, _) => InkWell(
           key: ValueKey('column-head-${c.id}'),
           onTap: _canEdit
               ? () => menu.isOpen ? menu.close() : menu.open()
               : null,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Tooltip(message: c.name, child: title),
-          ),
+          child: _canEdit
+              ? _headWithMore(
+                  Tooltip(message: c.name, child: title),
+                  ValueKey('column-more-${c.id}'),
+                  () => menu.isOpen ? menu.close() : menu.open(),
+                )
+              : Align(
+                  alignment: Alignment.centerLeft,
+                  child: Tooltip(message: c.name, child: title),
+                ),
         ),
       ),
     );
