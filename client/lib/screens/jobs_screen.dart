@@ -1057,10 +1057,16 @@ class _JobsScreenState extends State<JobsScreen> {
             style: TextStyle(color: muted),
           ),
         ),
-      TableColumn('Title', flex: 3, cell: (_, job) => _titleCell(job)),
+      TableColumn(
+        'Title',
+        flex: 3,
+        minWidth: 200,
+        cell: (_, job) => _titleCell(job),
+      ),
       TableColumn(
         'Customer',
         flex: 3,
+        minWidth: 160,
         cell: (_, job) => Text('${_customer(job)['name'] ?? ''}'),
       ),
       // Which company, only when looking at the whole organization (Jose,
@@ -1069,6 +1075,7 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Company',
           flex: 2,
+          minWidth: 130,
           cell: (_, job) => Text(
             '${(job['company'] as Map?)?['name'] ?? '—'}',
             overflow: TextOverflow.ellipsis,
@@ -1078,6 +1085,7 @@ class _JobsScreenState extends State<JobsScreen> {
       TableColumn(
         'Where',
         flex: 3,
+        minWidth: 180,
         cell: (_, job) => WhereLabel(job, placeable: _placeable(job)),
       ),
       // Who booked it (Trey Brannan, 2026-11-12), when a loaded job says.
@@ -1085,6 +1093,7 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Booked by',
           flex: 2,
+          minWidth: 130,
           cell: (_, job) => Text(
             '${job['booked_by'] ?? '—'}',
             overflow: TextOverflow.ellipsis,
@@ -1105,6 +1114,7 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Tags',
           flex: 3,
+          minWidth: 140,
           cell: (_, job) => Align(
             alignment: AlignmentDirectional.centerStart,
             child: JobTagsSummary(jobTags(job), colours: jobTagColours(job)),
