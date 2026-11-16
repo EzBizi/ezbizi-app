@@ -70,6 +70,7 @@ void main() {
           return _json({
             'data': [
               {'id': 'u-7', 'name': 'Guy Shimonov'},
+              {'id': 'u-9', 'name': 'Old Dispatcher', 'outside_roles': true},
             ],
           });
         }
@@ -194,6 +195,9 @@ void main() {
       find.byKey(const ValueKey('project-board-technician:j-1')),
     );
     await tester.pumpAndSettle();
+    // Only the server's role-filtered list; an assignee outside the roles
+    // is named as such (Jose, 2026-11-16).
+    expect(find.text('Old Dispatcher (not a technician role)'), findsOneWidget);
     await tester.tap(find.text('Guy Shimonov'));
     await tester.pumpAndSettle();
     final tech = requests.lastWhere(
@@ -315,6 +319,36 @@ void main() {
 
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
+    // Each sub-tab's rules in its own card (Jose, 2026-11-16), and the
+    // technician roles, Technician + Local Manager by default.
+    for (final key in const [
+      'unscheduled',
+      'ready_to_schedule',
+      'scheduled',
+      'in_progress',
+    ]) {
+      final card = find.byKey(ValueKey('project-board-tab-card:$key'));
+      expect(card, findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.byType(Card)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.byKey(ValueKey('project-board-statuses:$key')),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(
+      tester
+          .widget<FilterChip>(
+            find.byKey(const ValueKey('project-board-tech-role:Technician')),
+          )
+          .selected,
+      isTrue,
+    );
     // Tag lists are compact pickers, not a wall of chips; the new columns
     // have their settings (Jose, 2026-11-10).
     expect(
@@ -357,10 +391,12 @@ void main() {
       Tone.bad,
     );
     await tester.ensureVisible(
-      find.byKey(const Key('project-board-save:tabs')),
+      find.byKey(const Key('project-board-save:tabs:unscheduled')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('project-board-save:tabs')));
+    await tester.tap(
+      find.byKey(const Key('project-board-save:tabs:unscheduled')),
+    );
     await tester.pumpAndSettle();
 
     final tabs = requests.firstWhere(
