@@ -2603,9 +2603,9 @@ Route::prefix('v1')
         // Every comment on every connected account (Facebook, Instagram,
         // YouTube, X) in one inbox; each row names the actions it supports.
         Route::get('social/comments', [SocialCommentsController::class, 'index']);
-        Route::post('social/connections/{connection}/comments/{network}/{comment}/replies', [SocialCommentsController::class, 'reply'])->whereIn('network', ['facebook', 'instagram', 'youtube', 'x']);
-        Route::post('social/connections/{connection}/comments/{network}/{comment}/hide', [SocialCommentsController::class, 'hide'])->whereIn('network', ['facebook', 'instagram', 'youtube', 'x']);
-        Route::delete('social/connections/{connection}/comments/{network}/{comment}', [SocialCommentsController::class, 'destroy'])->whereIn('network', ['facebook', 'instagram', 'youtube', 'x']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/replies', [SocialCommentsController::class, 'reply']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/hide', [SocialCommentsController::class, 'hide']);
+        Route::delete('social/connections/{connection}/comments/{network}/{comment}', [SocialCommentsController::class, 'destroy']);
         Route::delete('social/providers/{provider}/connections', [SocialConnectionsController::class, 'destroyProvider']);
         // What stops working if a connection is disconnected (the disconnect panel).
         Route::get('integrations/{kind}/{id}/dependents', [IntegrationDependentsController::class, 'show'])
