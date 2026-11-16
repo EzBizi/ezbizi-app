@@ -7,6 +7,8 @@ import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
+import '../../widgets/side_panel.dart';
 
 /// Customers › Memberships › Promotions (Jose, 2026-11-06, 2026-11-09).
 ///
@@ -273,7 +275,9 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
     _confirming = false;
   });
 
-  Widget _chips(
+  /// Branch, Job type, Service and the tags: a searchable picker that shows
+  /// only the chosen ones, as chips (option A, Jose 2026-11-16).
+  Widget _picker(
     String label,
     Iterable<String> values,
     Set<String> picked, {
@@ -282,24 +286,90 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
     final options = ({...values}..remove('')).toList()..sort();
     if (options.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.labelLarge),
-          for (final o in options)
-            FilterChip(
-              label: Text(name?.call(o) ?? o),
-              selected: picked.contains(o),
-              onSelected: (on) =>
-                  _changed(() => on ? picked.add(o) : picked.remove(o)),
-            ),
-        ],
+      padding: const EdgeInsets.only(top: 12),
+      child: _MultiPick(
+        label: label,
+        options: options,
+        picked: picked,
+        name: name,
+        onChanged: (value, on) =>
+            _changed(() => on ? picked.add(value) : picked.remove(value)),
       ),
     );
   }
+
+  /// How many filters are narrowing the list: the phone's "Filters · N".
+  int get _activeFilters =>
+      [
+        _branches,
+        _types,
+        _services,
+        _jobTags,
+        _customerTags,
+      ].where((s) => s.isNotEmpty).length +
+      (_amountMin.text.trim().isEmpty ? 0 : 1) +
+      (_amountMax.text.trim().isEmpty ? 0 : 1) +
+      (_noJobSince == null ? 0 : 1) +
+      (_excludeOpen ? 1 : 0) +
+      (_excludeMembers ? 1 : 0);
+
+  Widget _section(ThemeData theme, String text, {Widget? trailing}) => Row(
+    children: [
+      Expanded(child: Text(text, style: theme.textTheme.titleSmall)),
+      ?trailing,
+    ],
+  );
+
+  Widget _when(ThemeData theme) => Column(
+    key: const ValueKey('promotions-dates'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _section(theme, 'When'),
+      const SizedBox(height: 6),
+      SearchPickerField<_Preset>(
+        key: const ValueKey('promotions-when'),
+        value: _preset,
+        hint: 'Pick the dates of Done jobs',
+        isDense: true,
+        options: [
+          for (final p in _Preset.values)
+            SearchOption(value: p, label: p.label),
+        ],
+        onChanged: _busy
+            ? null
+            : (p) {
+                if (p != null) _choosePreset(p);
+              },
+      ),
+      if (_preset != null) ...[
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            OutlinedButton(
+              key: const ValueKey('promotions-from'),
+              onPressed: _busy ? null : () => _pickDay(from: true),
+              child: Text(
+                'From ${_from == null ? '—' : formatCalendarDay(_from!)}',
+              ),
+            ),
+            OutlinedButton(
+              key: const ValueKey('promotions-to'),
+              onPressed: _busy ? null : () => _pickDay(from: false),
+              child: Text('To ${_to == null ? '—' : formatCalendarDay(_to!)}'),
+            ),
+            IconButton(
+              tooltip: 'Pick on a calendar',
+              onPressed: _busy ? null : _pickRange,
+              icon: const Icon(Icons.date_range),
+            ),
+          ],
+        ),
+      ],
+    ],
+  );
 
   Widget _filters(ThemeData theme) {
     final jobs = [
@@ -308,105 +378,147 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
     ];
     return Column(
       key: const ValueKey('promotions-filters'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Filters', style: theme.textTheme.titleSmall),
-        _chips(
-          'Branch',
-          _rows.map((r) => '${r['franchise'] ?? ''}'),
-          _branches,
-        ),
-        _chips('Job type', jobs.map((j) => '${j['type'] ?? ''}'), _types),
-        _chips(
-          'Service',
-          jobs.expand((j) => _strings(j['services'])),
-          _services,
-          name: (id) => '${_serviceNames[id] ?? id}',
-        ),
-        _chips('Job tags', jobs.expand((j) => _strings(j['tags'])), _jobTags),
-        _chips(
-          'Customer tags',
-          _rows.expand((r) => _strings(r['customer_tags'])),
-          _customerTags,
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(
-              width: 130,
-              child: TextField(
-                key: const ValueKey('promotions-amount-min'),
-                controller: _amountMin,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Job \$ from'),
-                onChanged: (_) => _changed(() {}),
-              ),
-            ),
-            SizedBox(
-              width: 130,
-              child: TextField(
-                key: const ValueKey('promotions-amount-max'),
-                controller: _amountMax,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Job \$ to'),
-                onChanged: (_) => _changed(() {}),
-              ),
-            ),
-            OutlinedButton.icon(
-              key: const ValueKey('promotions-no-job-since'),
-              icon: const Icon(Icons.event_busy),
-              label: Text(
-                _noJobSince == null
-                    ? 'No job since…'
-                    : 'No job since ${formatCalendarDay(_noJobSince!)}',
-              ),
-              onPressed: () async {
-                final now = DateTime.now();
-                final picked = await showDatePicker(
-                  context: context,
-                  firstDate: DateTime(now.year - 5),
-                  lastDate: DateTime(now.year + 1),
-                  initialDate: _noJobSince ?? _to ?? now,
-                );
-                if (picked != null && mounted) {
-                  _changed(() => _noJobSince = picked);
-                }
-              },
-            ),
-            if (_noJobSince != null)
-              IconButton(
-                tooltip: 'Clear',
-                icon: const Icon(Icons.close),
-                onPressed: () => _changed(() => _noJobSince = null),
-              ),
-          ],
-        ),
-        CheckboxListTile(
-          key: const ValueKey('promotions-exclude-open'),
-          contentPadding: EdgeInsets.zero,
-          controlAffinity: ListTileControlAffinity.leading,
-          value: _excludeOpen,
-          onChanged: (v) => _changed(() => _excludeOpen = v ?? false),
-          title: const Text(
-            'Leave out customers with an open or scheduled job',
+        _when(theme),
+        if (_loaded) ...[
+          _picker(
+            'Branch',
+            _rows.map((r) => '${r['franchise'] ?? ''}'),
+            _branches,
           ),
-        ),
-        CheckboxListTile(
-          key: const ValueKey('promotions-exclude-members'),
-          contentPadding: EdgeInsets.zero,
-          controlAffinity: ListTileControlAffinity.leading,
-          value: _excludeMembers,
-          onChanged: (v) => _changed(() => _excludeMembers = v ?? false),
-          title: const Text('Leave out members'),
-        ),
+          _picker('Job type', jobs.map((j) => '${j['type'] ?? ''}'), _types),
+          _picker(
+            'Service',
+            jobs.expand((j) => _strings(j['services'])),
+            _services,
+            name: (id) => '${_serviceNames[id] ?? id}',
+          ),
+          _picker(
+            'Job tags',
+            jobs.expand((j) => _strings(j['tags'])),
+            _jobTags,
+          ),
+          _picker(
+            'Customer tags',
+            _rows.expand((r) => _strings(r['customer_tags'])),
+            _customerTags,
+          ),
+          const SizedBox(height: 16),
+          _section(theme, 'More'),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('promotions-amount-min'),
+                  controller: _amountMin,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Job \$ from',
+                    isDense: true,
+                  ),
+                  onChanged: (_) => _changed(() {}),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('promotions-amount-max'),
+                  controller: _amountMax,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Job \$ to',
+                    isDense: true,
+                  ),
+                  onChanged: (_) => _changed(() {}),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  key: const ValueKey('promotions-no-job-since'),
+                  icon: const Icon(Icons.event_busy),
+                  label: Text(
+                    _noJobSince == null
+                        ? 'No job since…'
+                        : 'No job since ${formatCalendarDay(_noJobSince!)}',
+                  ),
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      firstDate: DateTime(now.year - 5),
+                      lastDate: DateTime(now.year + 1),
+                      initialDate: _noJobSince ?? _to ?? now,
+                    );
+                    if (picked != null && mounted) {
+                      _changed(() => _noJobSince = picked);
+                    }
+                  },
+                ),
+              ),
+              if (_noJobSince != null)
+                IconButton(
+                  tooltip: 'Clear',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => _changed(() => _noJobSince = null),
+                ),
+            ],
+          ),
+          CheckboxListTile(
+            key: const ValueKey('promotions-exclude-open'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _excludeOpen,
+            onChanged: (v) => _changed(() => _excludeOpen = v ?? false),
+            title: const Text(
+              'Leave out customers with an open or scheduled job',
+            ),
+          ),
+          CheckboxListTile(
+            key: const ValueKey('promotions-exclude-members'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _excludeMembers,
+            onChanged: (v) => _changed(() => _excludeMembers = v ?? false),
+            title: const Text('Leave out members'),
+          ),
+        ],
       ],
     );
   }
 
-  Widget _list(ThemeData theme, List<Map<String, dynamic>> filtered) {
+  /// The per-customer tick list, in a side panel (Review list ›).
+  Future<void> _review() => showSidePanel<void>(
+    context,
+    builder: (_) => StatefulBuilder(
+      builder: (context, setPanel) {
+        final filtered = _filtered;
+        return SidePanel(
+          title: 'Review list',
+          subtitle: '${_chosen.length} of ${filtered.length} ticked',
+          scrollable: false,
+          actions: [
+            FilledButton(
+              key: const ValueKey('promotions-review-done'),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done'),
+            ),
+          ],
+          child: _list(filtered, () => setPanel(() {})),
+        );
+      },
+    ),
+  );
+
+  Widget _list(List<Map<String, dynamic>> filtered, VoidCallback refresh) {
     final q = _search.text.trim().toLowerCase();
     final shown = q.isEmpty
         ? filtered
@@ -417,7 +529,7 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
           ];
     return Column(
       key: const ValueKey('promotions-list'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
           key: const ValueKey('promotions-search'),
@@ -426,11 +538,13 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
             prefixIcon: Icon(Icons.search),
             hintText: 'Search names and phones',
           ),
-          onChanged: (_) => setState(() {}),
+          onChanged: (_) {
+            setState(() {});
+            refresh();
+          },
         ),
         const SizedBox(height: 4),
-        SizedBox(
-          height: 320,
+        Expanded(
           child: ListView.builder(
             itemCount: shown.length,
             itemBuilder: (context, i) {
@@ -442,11 +556,14 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
                 dense: true,
                 controlAffinity: ListTileControlAffinity.leading,
                 value: !_unticked.contains(phone),
-                onChanged: (on) => _changed(
-                  () => on == true
-                      ? _unticked.remove(phone)
-                      : _unticked.add(phone),
-                ),
+                onChanged: (on) {
+                  _changed(
+                    () => on == true
+                        ? _unticked.remove(phone)
+                        : _unticked.add(phone),
+                  );
+                  refresh();
+                },
                 title: Text('${r['name'] ?? 'No name'} · $phone'),
                 subtitle: Text(
                   [
@@ -576,90 +693,189 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
 
   // ── Build ──────────────────────────────────────────────────────────────
 
+  /// Below this the filter card goes on top and folds to "Filters · N".
+  static const _wide = 720.0;
+
+  bool _filtersOpen = false;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final filtered = _loaded ? _filtered : const <Map<String, dynamic>>[];
     final chosen = _loaded ? _chosen : const <Map<String, dynamic>>[];
+
+    final header = <Widget>[
+      Text(
+        'Text the customers of Done jobs',
+        style: theme.textTheme.titleMedium,
+      ),
+      const SizedBox(height: 4),
+      Text(
+        'One text per phone. Numbers that replied STOP are skipped and every '
+        'text ends with "$_footer" Answers arrive in Leads › Promotions.',
+        style: theme.textTheme.bodySmall,
+      ),
+      if (_error != null) ...[const SizedBox(height: 12), ErrorNote(_error!)],
+      if (_note != null) ...[
+        const SizedBox(height: 12),
+        Text(_note!, key: const ValueKey('promotions-note')),
+      ],
+      const SizedBox(height: 12),
+    ];
+
+    return LayoutBuilder(
+      key: const ValueKey('memberships-promotions'),
+      builder: (context, box) {
+        final message = _message(theme, filtered, chosen);
+        final sticky = _loaded ? _sticky(theme, chosen) : null;
+        if (box.maxWidth >= _wide) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ...header,
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: 300,
+                        child: _card(
+                          theme,
+                          SingleChildScrollView(child: _filters(theme)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _card(
+                          theme,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: SingleChildScrollView(child: message),
+                              ),
+                              ?sticky,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  ...header,
+                  _card(theme, _fold(theme)),
+                  const SizedBox(height: 12),
+                  _card(theme, message),
+                ],
+              ),
+            ),
+            if (sticky != null)
+              Material(
+                color: theme.colorScheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: sticky,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _card(ThemeData theme, Widget child) => Card(
+    margin: EdgeInsets.zero,
+    child: Padding(padding: const EdgeInsets.all(12), child: child),
+  );
+
+  /// The phone's filter card: one "Filters · N" row that opens.
+  Widget _fold(ThemeData theme) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      InkWell(
+        key: const ValueKey('promotions-filters-toggle'),
+        onTap: () => setState(() => _filtersOpen = !_filtersOpen),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Filters · $_activeFilters',
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              Icon(_filtersOpen ? Icons.expand_less : Icons.expand_more),
+            ],
+          ),
+        ),
+      ),
+      if (_filtersOpen) ...[const SizedBox(height: 8), _filters(theme)],
+    ],
+  );
+
+  /// The right card: who gets it, from where, and what it says.
+  Widget _message(
+    ThemeData theme,
+    List<Map<String, dynamic>> filtered,
+    List<Map<String, dynamic>> chosen,
+  ) {
     final first = chosen.firstOrNull;
     final rendered = _rendered(first);
     final senders = [for (final s in _senders) '${(s as Map)['e164']}'];
-
-    return ListView(
-      key: const ValueKey('memberships-promotions'),
-      padding: const EdgeInsets.all(16),
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Text the customers of Done jobs',
-          style: theme.textTheme.titleMedium,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'One text per phone. Numbers that replied STOP are skipped and every '
-          'text ends with "$_footer" Answers arrive in Leads › Promotions.',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          key: const ValueKey('promotions-dates'),
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final p in _Preset.values)
-              ChoiceChip(
-                label: Text(p.label),
-                selected: _preset == p,
-                onSelected: _busy ? null : (_) => _choosePreset(p),
-              ),
-          ],
-        ),
-        if (_preset != null) ...[
-          const SizedBox(height: 8),
+        if (!_loaded && _busy)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        if (_loaded) ...[
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.end,
             children: [
-              OutlinedButton(
-                key: const ValueKey('promotions-from'),
-                onPressed: _busy ? null : () => _pickDay(from: true),
-                child: Text(
-                  'From ${_from == null ? '—' : formatCalendarDay(_from!)}',
+              Text(
+                '${chosen.length}',
+                key: const ValueKey('promotions-total'),
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              OutlinedButton(
-                key: const ValueKey('promotions-to'),
-                onPressed: _busy ? null : () => _pickDay(from: false),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
                 child: Text(
-                  'To ${_to == null ? '—' : formatCalendarDay(_to!)}',
+                  'customers will get it',
+                  style: theme.textTheme.bodyLarge,
                 ),
-              ),
-              TextButton.icon(
-                onPressed: _busy ? null : _pickRange,
-                icon: const Icon(Icons.date_range),
-                label: const Text('Pick on a calendar'),
               ),
             ],
           ),
-        ],
-        if (_error != null) ...[const SizedBox(height: 12), ErrorNote(_error!)],
-        if (_note != null) ...[
-          const SizedBox(height: 12),
-          Text(_note!, key: const ValueKey('promotions-note')),
-        ],
-        if (_loaded) ...[
-          const SizedBox(height: 16),
-          _filters(theme),
-          const SizedBox(height: 12),
           Text(
             '${chosen.length} customers will be texted'
             '${filtered.length == _rows.length ? '' : ' (${_rows.length} before filters)'}'
             '${_optedOut == 0 ? '' : '; $_optedOut replied STOP and are skipped'}.',
             key: const ValueKey('promotions-count'),
-            style: theme.textTheme.bodyLarge,
+            style: muted,
           ),
-          const SizedBox(height: 8),
-          _list(theme, filtered),
           const SizedBox(height: 16),
           Text(
             senders.isEmpty
@@ -685,7 +901,7 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
           Text(
             _segments(rendered, picture: _picture != null),
             key: const ValueKey('promotions-segments'),
-            style: theme.textTheme.bodySmall,
+            style: muted,
           ),
           const SizedBox(height: 8),
           if (_canPicture)
@@ -709,17 +925,14 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
                     }),
                     child: const Text('Remove picture'),
                   ),
-                Text(
-                  'JPG, PNG or GIF, up to 5 MB.',
-                  style: theme.textTheme.bodySmall,
-                ),
+                Text('JPG, PNG or GIF, up to 5 MB.', style: muted),
               ],
             )
           else if (senders.isNotEmpty)
             Text(
               '${senders.join(', ')} cannot send pictures, so the text goes without one.',
               key: const ValueKey('promotions-no-picture'),
-              style: theme.textTheme.bodySmall,
+              style: muted,
             ),
           const SizedBox(height: 16),
           Text(
@@ -777,35 +990,11 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
                 ),
                 Text(
                   'One text marked TEST, not part of the promotion.',
-                  style: theme.textTheme.bodySmall,
+                  style: muted,
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
-                key: const ValueKey('promotions-send'),
-                onPressed:
-                    _busy ||
-                        chosen.isEmpty ||
-                        _body.text.trim().isEmpty ||
-                        senders.isEmpty
-                    ? null
-                    : () => _send(chosen),
-                icon: const Icon(Icons.send),
-                label: Text(
-                  _confirming
-                      ? 'Press again to text ${chosen.length} customers'
-                      : 'Send',
-                ),
-              ),
-            ),
-          ] else
-            Text(
-              'Sending needs permission to edit memberships.',
-              style: theme.textTheme.bodySmall,
-            ),
+          ],
         ],
         if (_sent.isNotEmpty) ...[
           const SizedBox(height: 24),
@@ -827,6 +1016,175 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+        ],
+      ],
+    );
+  }
+
+  /// Review list › and Send, always in sight.
+  Widget _sticky(ThemeData theme, List<Map<String, dynamic>> chosen) {
+    final hasSender = _senders.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.only(top: 10),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
+      ),
+      child: Row(
+        children: [
+          TextButton(
+            key: const ValueKey('promotions-review'),
+            onPressed: _rows.isEmpty ? null : _review,
+            child: const Text('Review list ›'),
+          ),
+          const Spacer(),
+          if (_canSend)
+            Flexible(
+              child: FilledButton.icon(
+                key: const ValueKey('promotions-send'),
+                onPressed:
+                    _busy ||
+                        chosen.isEmpty ||
+                        _body.text.trim().isEmpty ||
+                        !hasSender
+                    ? null
+                    : () => _send(chosen),
+                icon: const Icon(Icons.send),
+                label: Text(
+                  _confirming
+                      ? 'Press again to text ${chosen.length} customers'
+                      : 'Send to ${chosen.length}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            )
+          else
+            Flexible(
+              child: Text(
+                'Sending needs permission to edit memberships.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A searchable multi-select: a search box, the matches under it while you
+/// type, and the chosen ones as removable chips with an "N of M" count.
+class _MultiPick extends StatefulWidget {
+  const _MultiPick({
+    required this.label,
+    required this.options,
+    required this.picked,
+    required this.onChanged,
+    this.name,
+  });
+
+  final String label;
+  final List<String> options;
+  final Set<String> picked;
+  final void Function(String value, bool on) onChanged;
+  final String Function(String)? name;
+
+  @override
+  State<_MultiPick> createState() => _MultiPickState();
+}
+
+class _MultiPickState extends State<_MultiPick> {
+  final _query = TextEditingController();
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _query.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  String _named(String o) => widget.name?.call(o) ?? o;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final q = _query.text.trim().toLowerCase();
+    final matches = q.isEmpty && !_focus.hasFocus
+        ? const <String>[]
+        : [
+            for (final o in widget.options)
+              if (!widget.picked.contains(o) &&
+                  _named(o).toLowerCase().contains(q))
+                o,
+          ].take(8).toList();
+    final chosen = [...widget.picked]..sort();
+    return Column(
+      key: ValueKey('promotions-pick-${widget.label}'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(widget.label, style: theme.textTheme.titleSmall),
+            ),
+            Text(
+              widget.picked.isEmpty
+                  ? 'All'
+                  : '${widget.picked.length} of ${widget.options.length}',
+              key: ValueKey('promotions-pick-${widget.label}-count'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          key: ValueKey('promotions-pick-${widget.label}-search'),
+          controller: _query,
+          focusNode: _focus,
+          decoration: InputDecoration(
+            isDense: true,
+            prefixIcon: const Icon(Icons.search, size: 18),
+            hintText: 'Search ${widget.label.toLowerCase()}',
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        for (final m in matches)
+          ListTile(
+            key: ValueKey('promotions-pick-${widget.label}-option-$m'),
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: const EdgeInsets.only(left: 4, right: 4),
+            leading: const Icon(Icons.add, size: 18),
+            title: Text(_named(m)),
+            onTap: () {
+              widget.onChanged(m, true);
+              _query.clear();
+              setState(() {});
+            },
+          ),
+        if (chosen.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final p in chosen)
+                InputChip(
+                  key: ValueKey('promotions-pick-${widget.label}-chip-$p'),
+                  label: Text(_named(p)),
+                  onDeleted: () => widget.onChanged(p, false),
+                ),
+            ],
+          ),
         ],
       ],
     );
