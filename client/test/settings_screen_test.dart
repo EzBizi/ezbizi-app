@@ -268,6 +268,40 @@ void main() {
     expect(find.byType(DropdownButton<String>), findsNothing);
   });
 
+  // UI pass 2026-11-17: answers longer than a word were cut at 260 px.
+  testWidgets('a picker is wide enough for a sentence-long answer', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'scheduling.nearby_window',
+            label: 'Which windows count as nearby',
+            type: 'enum',
+            value: 'adjacent',
+            options: const [
+              {
+                'value': 'adjacent',
+                'label': 'The same window or the one next to it',
+              },
+            ],
+            source: null,
+          ),
+        ],
+      });
+    });
+
+    expect(
+      tester.getSize(find.byType(SearchPickerField<Object>)).width,
+      greaterThanOrEqualTo(340),
+    );
+  });
+
   // UI audit 2026-10-08: AI Assistance's welcome message read "Choose an
   // optio" in the box a number gets.
   testWidgets('a sentence gets the width of one, and reads from the left', (

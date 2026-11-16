@@ -393,9 +393,13 @@ class _Card extends StatelessWidget {
                 ],
               ),
               const Spacer(),
+              // Two lines: the figure is a sentence ("This week: $0.00
+              // refunded · 0 disputes"), and one line cut it on every card
+              // at 1440 (UI pass 2026-11-17). The Spacer above gives way.
               Text(
                 card.figure ?? '—',
-                maxLines: 1,
+                key: ValueKey('financial-card-figure-${card.id}'),
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,

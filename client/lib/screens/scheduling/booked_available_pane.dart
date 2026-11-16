@@ -454,10 +454,13 @@ class _BookedAvailablePaneState extends State<BookedAvailablePane> {
                   selected: e.key == _date,
                   label: Text('${_day(e.key)} · ${e.value} over'),
                   labelStyle: TextStyle(
-                    color: ToneColours.of(context, Tone.bad).ink,
+                    color: ToneColours.of(context, overTone(e.value)).ink,
                     fontWeight: FontWeight.w600,
                   ),
-                  backgroundColor: ToneColours.of(context, Tone.bad).fill,
+                  backgroundColor: ToneColours.of(
+                    context,
+                    overTone(e.value),
+                  ).fill,
                   onSelected: (_) => _go(e.key),
                 ),
             ],
@@ -576,15 +579,24 @@ class _BookedAvailablePaneState extends State<BookedAvailablePane> {
           Expanded(flex: 3, child: Text('AREA', style: style)),
           Expanded(flex: 4, child: Text('BOOKED', style: style)),
           Expanded(flex: 4, child: Text('TIME WINDOWS', style: style)),
-          const SizedBox(width: 150),
+          const SizedBox(width: _offerColumn),
         ],
       ),
     );
   }
 
+  /// Room for "Offer a move by text" on one line: at 150 it wrapped to three
+  /// lines inside its outline (UI pass 2026-11-17).
+  static const double _offerColumn = 210;
+
+  /// How loud "N over" is: amber for one or two, red from three. Ten red
+  /// chips at "1 over" read as ten emergencies (UI pass 2026-11-17, option A
+  /// in docs/previews/ui-pass-2026-11-17.html).
+  static Tone overTone(int over) => over <= 2 ? Tone.caution : Tone.bad;
+
   /// "2 over", "3 open" or "Full", with its tone.
   static (String, Tone) _chip(int gap) => gap < 0
-      ? ('${-gap} over', Tone.bad)
+      ? ('${-gap} over', overTone(-gap))
       : gap > 0
       ? ('$gap open', Tone.ok)
       : ('Full', Tone.neutral);
@@ -812,7 +824,7 @@ class _BookedAvailablePaneState extends State<BookedAvailablePane> {
               ),
               Expanded(flex: 4, child: _windows(context, a)),
               SizedBox(
-                width: 150,
+                width: _offerColumn,
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: offerButton ?? const SizedBox.shrink(),

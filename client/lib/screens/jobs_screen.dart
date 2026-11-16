@@ -380,13 +380,25 @@ class _JobsScreenState extends State<JobsScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Offstage(offstage: _tab != 'jobs', child: _jobsTab(context)),
+              // Gated: offstage, the Jobs tab still handed "Add job" to the
+              // header, beside Estimates' own "New estimate" (UI pass
+              // 2026-11-17). Only the tab in front fills the slot.
+              Offstage(
+                offstage: _tab != 'jobs',
+                child: ModuleActionGate(
+                  active: _tab == 'jobs',
+                  child: _jobsTab(context),
+                ),
+              ),
               if (_seesEstimates)
                 Offstage(
                   offstage: _tab != 'estimates',
-                  child: _opened.contains('estimates')
-                      ? EstimatesTab(api: widget.api, session: widget.session)
-                      : const SizedBox.shrink(),
+                  child: ModuleActionGate(
+                    active: _tab == 'estimates',
+                    child: _opened.contains('estimates')
+                        ? EstimatesTab(api: widget.api, session: widget.session)
+                        : const SizedBox.shrink(),
+                  ),
                 ),
             ],
           ),

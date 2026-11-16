@@ -352,8 +352,11 @@ class _HelpersPaneState extends State<HelpersPane> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          // "Company · Branch" needs the room: at 220 it read "A-1 Chimney ·
+          // Conne…", and at 170 on a phone less (UI pass 2026-11-17). On a
+          // phone it takes the row.
           SizedBox(
-            width: wide ? 220 : 170,
+            width: wide ? 300 : double.infinity,
             child: SearchPickerField<String>(
               key: const Key('helpers-branch'),
               label: 'Branch',

@@ -67,6 +67,17 @@ void main() {
     expect(find.text('Helpers · 3'), findsOneWidget);
   });
 
+  // UI pass 2026-11-17: the branch picker cut "Company · Branch" at 220.
+  testWidgets('the branch picker has room for Company · Branch', (
+    tester,
+  ) async {
+    await _pump(tester, wide);
+    expect(
+      tester.getSize(find.byKey(const Key('helpers-branch'))).width,
+      greaterThanOrEqualTo(300),
+    );
+  });
+
   testWidgets('booking for somebody else posts helper, date, slot, who, job '
       'and note', (tester) async {
     final calls = await _pump(tester, wide);

@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/jobs/estimates_tab.dart';
 import 'package:ezbizi_client/screens/jobs_screen.dart';
+import 'package:ezbizi_client/widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -34,6 +35,28 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Brian Moss'), findsOneWidget);
       expect(find.text('Chimney Sweep'), findsNothing);
+    });
+
+    // UI pass 2026-11-17: on Estimates the header still said "Add job"
+    // (the Jobs tab, offstage, kept the slot) beside an inline "New
+    // estimate". Only the tab in front fills the header.
+    testWidgets('the header action belongs to the tab in front', (
+      tester,
+    ) async {
+      final header = ValueNotifier<Widget?>(null);
+      await _jobs(tester, _all, header: header);
+      expect(find.byKey(const ValueKey('tour-jobs-add')), findsOneWidget);
+      expect(find.byKey(const ValueKey('estimate-new')), findsNothing);
+
+      await tester.tap(find.text('Estimates'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('tour-jobs-add')), findsNothing);
+      expect(find.byKey(const ValueKey('estimate-new')), findsOneWidget);
+
+      await tester.tap(find.text('Jobs').first);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('tour-jobs-add')), findsOneWidget);
+      expect(find.byKey(const ValueKey('estimate-new')), findsNothing);
     });
 
     testWidgets("a look at the estimates keeps a job's unsaved edits", (
@@ -829,18 +852,40 @@ Future<void> _estimates(
   await tester.pumpAndSettle();
 }
 
-Future<void> _jobs(WidgetTester tester, List<String> permissions) async {
+Future<void> _jobs(
+  WidgetTester tester,
+  List<String> permissions, {
+  ValueNotifier<Widget?>? header,
+}) async {
   tester.view.physicalSize = const Size(1280, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
   final session = await _session(tester, permissions);
+  final screen = JobsScreen(api: session.api, session: session);
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: JobsScreen(api: session.api, session: session),
+        // As the shell draws it: the module header's action slot above the
+        // screen, filled through ModuleAction.
+        body: header == null
+            ? screen
+            : ModuleToolbarScope(
+                slot: ValueNotifier<Widget?>(null),
+                action: header,
+                child: Column(
+                  children: [
+                    ValueListenableBuilder<Widget?>(
+                      valueListenable: header,
+                      builder: (_, action, _) =>
+                          action ?? const SizedBox.shrink(),
+                    ),
+                    Expanded(child: screen),
+                  ],
+                ),
+              ),
       ),
     ),
   );

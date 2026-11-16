@@ -215,6 +215,58 @@ void main() {
     expect(find.byKey(const ValueKey('report-row:outbound')), findsOneWidget);
   });
 
+  // UI pass 2026-11-17: at 1440 (a ~1150 px content area) six tiles fitted
+  // and "Not tagged" sat alone on a second row. All seven share one now.
+  testWidgets('the seven totals share one row at a computer width', (
+    tester,
+  ) async {
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) return _json({'data': _me});
+        if (path.endsWith('/phone/reports/run')) {
+          return _json({
+            'data': {
+              'totals': {'calls': 3, 'inbound': 2, 'outbound': 1},
+              'rows': <Object>[],
+              'labels': <Object>[],
+            },
+          });
+        }
+        return _json({'data': <Object>[]});
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    tester.view.physicalSize = const Size(1150, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: ReportsTab(api: api, session: session),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final tops = {
+      for (final key in [
+        'all',
+        'inbound',
+        'outbound',
+        'missed',
+        'voicemails',
+        'average',
+        'untagged',
+      ])
+        tester.getTopLeft(find.byKey(Key('reports-tile-$key'))).dy,
+    };
+    expect(tops, hasLength(1));
+  });
+
   // UI/UX audit 2026-11-13, §10.1: Jose's Reports said "No calls in this
   // period" while Records listed 317. The server had sent him 15 calls for
   // the last 30 days (576 bytes in the access log); the screen drew the
