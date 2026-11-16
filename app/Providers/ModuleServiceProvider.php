@@ -1877,6 +1877,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('calendar', 'Calendar', within: 'social'),
                     new TabDefinition('accounts', 'Accounts', within: 'social'),
                     // Dynamic QR codes (Jose, 2026-10-05). Enforced on its routes.
+                    // One comments inbox across the accounts (Jose, 2026-11-16).
+                    new TabDefinition('comments', 'Comments', within: 'social'),
                     new TabDefinition('qr_codes', 'QR Codes', within: 'social'),
                 ],
                 triggers: [

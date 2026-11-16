@@ -3,6 +3,7 @@ import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -147,10 +148,22 @@ class _RecordsTabState extends State<RecordsTab> {
     } else {
       _loading = false; // a spinner nobody sees never settles
     }
+    // A call or a text arriving: the newest page re-reads quietly. Older
+    // pages already loaded are not thrown away under the reader.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'phone_calls', 'phone_messages'},
+      (_) {
+        if (!_loading && _page == 1) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _player.stop();
     if (_ownsPlayer) _player.dispose();
     super.dispose();
@@ -282,11 +295,14 @@ class _RecordsTabState extends State<RecordsTab> {
     return threads;
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _calls.isEmpty && _messages.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _calls.isEmpty && _messages.isEmpty;
+        _error = null;
+      });
+    }
 
     final page = {'per_page': '$_pageSize', 'page': '1'};
     final calls = widget.api.get('/phone/calls', page);
@@ -296,7 +312,7 @@ class _RecordsTabState extends State<RecordsTab> {
     final callsRes = await calls;
     final messagesRes = await messages;
     final numbersRes = await numbers;
-    if (!mounted) return;
+    if (!mounted || (quiet && !(callsRes.ok && messagesRes.ok))) return;
 
     if (!callsRes.ok) {
       setState(() {

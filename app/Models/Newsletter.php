@@ -23,6 +23,11 @@ use Illuminate\Support\Carbon;
 class Newsletter extends Model implements CarriesAutomationScope, StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'newsletters';
+
     use HasUuids;
 
     public const SCOPE_ORGANIZATION = 'organization';

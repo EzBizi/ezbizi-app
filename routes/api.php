@@ -65,6 +65,7 @@ use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InstagramCommentsController;
+use App\Http\Controllers\Api\SocialCommentsController;
 use App\Http\Controllers\Api\IntegrationDependentsController;
 use App\Http\Controllers\Api\IntegrationsOverviewController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
@@ -1036,6 +1037,7 @@ Route::prefix('v1')
         Route::get('task-boards', [TaskBoardsController::class, 'index']);
         Route::get('task-boards/{taskBoard}', [TaskBoardsController::class, 'show']);
         Route::get('task-boards/{taskBoard}/group-tasks', [TaskBoardsController::class, 'groupTasks']);
+        Route::get('task-boards/{taskBoard}/changes', [TaskBoardsController::class, 'changes']);
         // Custom boards and members, monday-style (inbox 0120).
         Route::post('task-boards', [TaskBoardsController::class, 'store']);
         Route::patch('task-boards/{taskBoard}', [TaskBoardsController::class, 'update']);
@@ -2558,6 +2560,8 @@ Route::prefix('v1')
         // Managing a post after Publish: from the Dashboard's side panel or Compose.
         Route::middleware('permission:marketing.dashboard.view,marketing.compose.view')->group(function () {
             Route::patch('social/posts/{post}', [SocialPostsController::class, 'update']);
+            Route::post('social/posts/{post}/media', [SocialPostsController::class, 'media']);
+            Route::get('social/posts/{post}/media', [SocialPostsController::class, 'mediaFile']);
             Route::delete('social/posts/{post}', [SocialPostsController::class, 'cancel']);
             Route::post('social/posts/{post}/targets/{target}/dismiss', [SocialPostsController::class, 'dismiss']);
             Route::delete('social/posts/{post}/targets/{target}/remote', [SocialPostsController::class, 'deleteRemote']);
@@ -2596,6 +2600,12 @@ Route::prefix('v1')
         Route::get('social/connections/{connection}/instagram-comments', [InstagramCommentsController::class, 'index']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/replies', [InstagramCommentsController::class, 'reply']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/hide', [InstagramCommentsController::class, 'hide']);
+        // Every comment on every connected account (Facebook, Instagram,
+        // YouTube, X) in one inbox; each row names the actions it supports.
+        Route::get('social/comments', [SocialCommentsController::class, 'index']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/replies', [SocialCommentsController::class, 'reply']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/hide', [SocialCommentsController::class, 'hide']);
+        Route::delete('social/connections/{connection}/comments/{network}/{comment}', [SocialCommentsController::class, 'destroy']);
         Route::delete('social/providers/{provider}/connections', [SocialConnectionsController::class, 'destroyProvider']);
         // What stops working if a connection is disconnected (the disconnect panel).
         Route::get('integrations/{kind}/{id}/dependents', [IntegrationDependentsController::class, 'show'])
@@ -3584,6 +3594,9 @@ Route::prefix('v1')
 
         // The release on its way, for the bar in What's been built (Jose 11-12).
         Route::get('release/upcoming', [\App\Http\Controllers\Api\StaffReleaseStatusController::class, 'upcoming']);
+
+        // The app-wide live feed: ids changed since a cursor (ChangeFeed).
+        Route::get('changes', [\App\Http\Controllers\Api\ChangesController::class, 'index']);
 
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)

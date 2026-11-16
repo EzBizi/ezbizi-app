@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -157,6 +158,13 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointer);
     HardwareKeyboard.instance.addHandler(_onKey);
     _loadFranchises();
+    // A job booked or moved anywhere spends or frees a slot: the answer on
+    // screen is asked again now, not at the next timed refresh.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      (_) => _refreshNow(),
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
     final zip = widget.initialZip?.trim() ?? '';
     if (zip.isNotEmpty) {
       _search.text = zip;
@@ -190,8 +198,11 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     _run(query, quiet: true);
   }
 
+  LiveSubscription? _live;
+
   @override
   void dispose() {
+    _live?.cancel();
     _refresh?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_onPointer);

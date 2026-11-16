@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
@@ -70,8 +73,10 @@ class _NewsletterTabState extends State<NewsletterTab> {
   bool _mayOpen(String pane) =>
       widget.session.me?.permissions.contains('newsletter.$pane.view') ?? false;
 
-  List<(String, String, IconData)> get _shownPanes =>
-      [for (final pane in _panes) if (_mayOpen(pane.$1)) pane];
+  List<(String, String, IconData)> get _shownPanes => [
+    for (final pane in _panes)
+      if (_mayOpen(pane.$1)) pane,
+  ];
 
   /// The pane actually on screen: the chosen one if it is shown, else the
   /// first that is. Resolved every frame, so a grant changing mid-session
@@ -144,10 +149,18 @@ class _NewsletterTabState extends State<NewsletterTab> {
   void initState() {
     super.initState();
     _load();
+    // A send finishing or a draft saved elsewhere: the list re-reads;
+    // the draft open in the composer is not touched.
+    _live = LiveChanges.of(widget.api).subscribe({'newsletters'}, (_) {
+      if (!_loading) return _reloadList();
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _settleTimer?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();
@@ -202,9 +215,9 @@ class _NewsletterTabState extends State<NewsletterTab> {
       _audiences = audiences == null || !audiences.ok
           ? const []
           : ((audiences.body['data'] as List<dynamic>?) ?? const [])
-              .whereType<Map<String, dynamic>>()
-              .map(NewsletterAudience.fromJson)
-              .toList();
+                .whereType<Map<String, dynamic>>()
+                .map(NewsletterAudience.fromJson)
+                .toList();
 
       if (_selectedId == null && _all.isNotEmpty) _open(_all.first);
     });
@@ -333,7 +346,9 @@ class _NewsletterTabState extends State<NewsletterTab> {
     });
 
     final response = await widget.api.put('/newsletters/$id', {
-      'subject': _subject.text.trim().isEmpty ? 'Untitled' : _subject.text.trim(),
+      'subject': _subject.text.trim().isEmpty
+          ? 'Untitled'
+          : _subject.text.trim(),
       'blocks': _blocks,
       // Always sent: the server keeps what it holds only when this is absent.
       'html_override': _htmlOverride,
@@ -373,7 +388,9 @@ class _NewsletterTabState extends State<NewsletterTab> {
     if (!mounted || !response.ok) return;
 
     final data = response.body['data'];
-    setState(() => _previewHtml = data is Map ? (data['html'] as String? ?? '') : '');
+    setState(
+      () => _previewHtml = data is Map ? (data['html'] as String? ?? '') : '',
+    );
   }
 
   /// The list only, so saving does not reset the editor under the cursor.
@@ -550,21 +567,11 @@ class _NewsletterTabState extends State<NewsletterTab> {
         status: _dashStatus,
         onStatus: _filter,
         query: _q,
-        search: TextField(
+        search: ListSearch(
           key: const Key('newsletters-search'),
           controller: _search,
           onChanged: _searched,
-          // bodyMedium for the text and the hint, as the dense pickers draw:
-          // 53 points tall, as they are; the theme's 16-point hint makes 56.
-          style: Theme.of(context).textTheme.bodyMedium,
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: const Icon(Icons.search, size: 18),
-            hintText: 'Subject or mailing list',
-            hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-            ),
-          ),
+          hint: 'Subject or mailing list',
         ),
         onNew: _create,
         scheduled: [
@@ -719,7 +726,8 @@ class _NewsletterTabState extends State<NewsletterTab> {
                 style: TextButton.styleFrom(
                   foregroundColor: Theme.of(context).colorScheme.error,
                 ),
-                onPressed: (widget.session.me?.can('newsletter.delete') ?? false) &&
+                onPressed:
+                    (widget.session.me?.can('newsletter.delete') ?? false) &&
                         _selected?.status != 'sending'
                     ? _delete
                     : null,
@@ -797,8 +805,8 @@ class _NewsletterTabState extends State<NewsletterTab> {
       saveState: _dirty
           ? 'Unsaved'
           : _saving
-              ? 'Saving…'
-              : 'Saved',
+          ? 'Saving…'
+          : 'Saved',
       previewHtml: _previewHtml,
       onChanged: _touched,
       onAudience: (id) {
@@ -847,8 +855,10 @@ class _NewsletterTabState extends State<NewsletterTab> {
     await _save();
     if (!mounted) return;
     if (_saveError != null || _dirty) {
-      setState(() => _saveError ??=
-          'The latest changes are not saved yet, so nothing was sent. Try again.');
+      setState(
+        () => _saveError ??=
+            'The latest changes are not saved yet, so nothing was sent. Try again.',
+      );
       return;
     }
 
@@ -957,4 +967,3 @@ class _Newsletter {
     );
   }
 }
-

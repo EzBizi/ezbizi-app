@@ -2,6 +2,7 @@ import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/deep_links.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -96,10 +97,21 @@ class _PtoTabState extends State<PtoTab> {
     _takeLink();
     DeepLinks.pending.addListener(_takeLink);
     _load();
+    // Days off recorded or a request decided elsewhere: read again quietly.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'people'},
+      (_) {
+        if (!_loading) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_takeLink);
     _search.dispose();
     super.dispose();
@@ -2793,20 +2805,37 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
   void initState() {
     super.initState();
     _load();
+    // A request asked for or decided elsewhere; never under a decision
+    // being typed here.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'people'},
+      (_) {
+        if (!_loading && !_asking && _denying == null && _busy.isEmpty) {
+          return _load(quiet: true);
+        }
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _denyReason.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     final query = <String, String>{
       'status': ?_status,
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
@@ -2815,7 +2844,7 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
         ? '/hr/pto/requests'
         : '/hr/pto/requests?${Uri(queryParameters: query).query}';
     final response = await widget.api.get(path);
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
     setState(() {
       _loading = false;
       if (!response.ok) {

@@ -1,5 +1,6 @@
 import '../core/theme.dart';
 import '../core/deep_links.dart';
+import '../core/live_changes.dart';
 import '../widgets/module_page_header.dart';
 import '../widgets/list_search.dart';
 import 'dart:async';
@@ -154,6 +155,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
     super.initState();
     _load();
     _loadTags();
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'customers'},
+      _liveCustomers,
+      active: LiveChanges.visible(this),
+    );
     // A link to one customer (a notification, or /customers/{id} in the bar).
     DeepLinks.pending.addListener(_takeLink);
     WidgetsBinding.instance.addPostFrameCallback((_) => _takeLink());
@@ -161,13 +167,47 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_takeLink);
     _search.dispose();
     _openDirty.dispose();
     super.dispose();
   }
 
-  Future<void> _load({int page = 1}) async {
+  // ── Live: imports, syncs and webhooks show without leaving ─────────
+
+  LiveSubscription? _live;
+
+  /// Page one is read again quietly (rows and scroll stay). With more pages
+  /// loaded, deleted rows leave and changed rows are read one by one.
+  Future<void> _liveCustomers(LiveBatch batch) async {
+    if (_loading) return;
+    if (_page == 1) {
+      await _load(quiet: true);
+      return;
+    }
+    final gone = batch.deletedOf('customers');
+    final fresh = <String, Map<String, dynamic>>{};
+    for (final c in _customers) {
+      if (fresh.length >= 20) break;
+      final id = '${c['id']}';
+      if (!batch.changedOf('customers').contains(id)) continue;
+      final res = await widget.api.get('/customers/$id');
+      if (res.ok && res.data is Map) {
+        fresh[id] = {...c, ...Map<String, dynamic>.from(res.data as Map)};
+      }
+    }
+    if (!mounted || (gone.isEmpty && fresh.isEmpty)) return;
+    setState(() {
+      _customers = [
+        for (final c in _customers)
+          if (!gone.contains(c['id'])) fresh[c['id']] ?? c,
+      ];
+    });
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     // A second tap while the first request is in flight appends the same page
     // twice, so the list grows with duplicate rows.
     // Appends only. Two appends at once duplicate rows, and an append landing
@@ -212,7 +252,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
         // is not something to whisper — the retry has to be the obvious next
         // thing. A later page failing leaves page one intact, so that one
         // reports beside the rows rather than over them.
-        if (page == 1) {
+        if (quiet) {
+          // A missed live tick: the next one tries again.
+        } else if (page == 1) {
           _error = response.message;
         } else {
           _pageError = response.message;

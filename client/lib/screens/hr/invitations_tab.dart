@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/hr.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -90,6 +91,7 @@ class _InvitationsTabState extends State<InvitationsTab> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDelay?.cancel();
     super.dispose();
   }
@@ -120,7 +122,13 @@ class _InvitationsTabState extends State<InvitationsTab> {
   void initState() {
     super.initState();
     _load();
+    // An invitation opened, accepted or sent elsewhere: page one re-read.
+    _live = LiveChanges.of(widget.api).subscribe({'hr_invitations'}, (_) {
+      if (_page == 1 && !_fetching) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   /// The list's search box (Jose, 2026-10-14: "we lack searchbars on the 3
   /// last human resources tabs"), as Records has one.
@@ -142,7 +150,8 @@ class _InvitationsTabState extends State<InvitationsTab> {
     ),
   );
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
@@ -152,8 +161,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
       // refresh after inviting, resending or revoking leaves the rows up.
       _loading = page == 1 && _invitations.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final answers = await Future.wait([
@@ -172,6 +183,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
     if (!mounted || request != _request) return;
 
     final invitations = answers[0];
+    if (quiet && !invitations.ok) {
+      setState(() => _fetching = false);
+      return;
+    }
     final options = answers[1];
 
     setState(() {

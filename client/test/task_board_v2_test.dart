@@ -8,6 +8,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_files.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
+import 'package:ezbizi_client/widgets/user_avatar.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -425,8 +426,8 @@ void main() {
       find.descendant(of: cell, matching: find.text('Stuck')),
       findsOneWidget,
     );
-    final fill = tester.widget<Material>(
-      find.ancestor(of: cell, matching: find.byType(Material)).first,
+    final fill = tester.widget<ColoredBox>(
+      find.ancestor(of: cell, matching: find.byType(ColoredBox)).first,
     );
     expect(fill.color, const Color(0xFFC53B3B));
 
@@ -845,11 +846,27 @@ void main() {
       'with every owner sent', (tester) async {
     await pump(tester);
 
+    // Faces only, Monday's way (Jose 11-16): three overlapping, no names
+    // drawn, every name in the cell's semantics label.
+    final faces = find.byKey(const ValueKey('task-owner-faces-t1'));
     expect(
-      tester
-          .widget<Text>(find.byKey(const ValueKey('task-owners-more-t1')))
-          .data,
-      '+2',
+      find.descendant(of: faces, matching: find.byType(UserAvatar)),
+      findsNWidgets(3),
+    );
+    expect(
+      find.descendant(of: faces, matching: find.text('Omar')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: faces,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is Semantics &&
+              w.properties.label == 'Omar Feld, Priya Nandakumar, Tomas Reyes',
+        ),
+      ),
+      findsOneWidget,
     );
 
     // The name opens the task; a cell edits in place (Jose, 2026-11-12).
@@ -866,6 +883,94 @@ void main() {
       'assignee_user_ids': ['u-1', 'u-2', 'u-3', 'u-4'],
     });
     expect(find.byKey(const ValueKey('task-panel-owner-u-4')), findsOneWidget);
+  });
+
+  testWidgets('an owner cell is a face: no name drawn, the name on hover, '
+      'and an empty one is a faint person-plus that assigns', (tester) async {
+    extra = [
+      {
+        'id': 't8',
+        'board_id': 'b-1',
+        'group_id': 'g1',
+        'parent_task_id': null,
+        'title': 'Nobody on it',
+        'status_id': 's-new',
+        'owner': null,
+        'owners': <dynamic>[],
+        'due_on': null,
+        'about': null,
+        'updates_count': 0,
+        'values': <String, dynamic>{},
+      },
+    ];
+    await pump(tester);
+
+    expect(find.text('Omar'), findsNothing);
+    expect(find.text('Omar Feld'), findsNothing);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(
+      tester.getCenter(find.byKey(const ValueKey('people-face-u-1')).first),
+    );
+    // This fake has no person card data: the card opens on its loader.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey('person-card-u-1')), findsOneWidget);
+    await mouse.moveTo(Offset.zero);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(const ValueKey('person-card-u-1')), findsNothing);
+
+    final empty = find.descendant(
+      of: find.byKey(const ValueKey('task-owner-faces-t8')),
+      matching: find.byKey(const Key('people-empty')),
+    );
+    expect(empty, findsOneWidget);
+    await tester.tap(empty);
+    await tester.pumpAndSettle();
+    expect(find.text('Lena Okafor'), findsWidgets);
+  });
+
+  testWidgets('Owner and People columns default to about 80 wide', (
+    tester,
+  ) async {
+    await pump(tester);
+    final head = find.byKey(const ValueKey('builtin-head-owner')).first;
+    expect(tester.getSize(head).width, lessThanOrEqualTo(80));
+  });
+
+  testWidgets('a Kanban card shows its first four filled columns and '
+      '+N more, not every column', (tester) async {
+    extra = [
+      {
+        'id': 't7',
+        'board_id': 'b-1',
+        'group_id': 'g1',
+        'parent_task_id': null,
+        'title': 'Full card',
+        'status_id': 's-new',
+        'owner': null,
+        'due_on': null,
+        'about': null,
+        'updates_count': 0,
+        'values': {
+          'c-hours': 2,
+          'c-ok': true,
+          for (var i = 3; i < 8; i++) 'c-x$i': 'v$i',
+        },
+      },
+    ];
+    await pump(tester, columns: 8);
+    await tester.tap(find.text('Kanban').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('task-card-more-t7')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('task-card-more-t7'))).data,
+      '+3 more',
+    );
+    expect(find.text('v7'), findsNothing);
   });
 
   testWidgets('Created comes before Due in the header', (tester) async {
@@ -906,14 +1011,15 @@ void main() {
 
     final mark = find.byKey(const ValueKey('task-owner-ezbizi-t9'));
     expect(mark, findsOneWidget);
+    // The mark alone; its name and the rule's on hover.
     expect(
       find.descendant(of: mark, matching: find.text('EzBizi')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(tester.widget<Tooltip>(mark).message, 'New lead follow-up');
+    expect(tester.widget<Tooltip>(mark).message, 'EzBizi · New lead follow-up');
 
     expect(find.byKey(const ValueKey('task-owner-ezbizi-t1')), findsNothing);
-    expect(find.text('Omar'), findsWidgets);
+    expect(find.byKey(const ValueKey('task-owner-faces-t1')), findsOneWidget);
   });
 
   Map<String, dynamic> doneTask() => {

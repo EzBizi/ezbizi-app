@@ -1,6 +1,8 @@
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_table.dart';
+
 import '../../core/api_client.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
@@ -351,10 +353,13 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
       return SelectableText.rich(
         TextSpan(
           children: [
-            for (final (i, part) in text.split(RegExp(r'\*(?=\S)|(?<=\S)\*')).indexed)
+            for (final (i, part)
+                in text.split(RegExp(r'\*(?=\S)|(?<=\S)\*')).indexed)
               TextSpan(
                 text: part,
-                style: i.isOdd ? const TextStyle(fontWeight: FontWeight.w700) : null,
+                style: i.isOdd
+                    ? const TextStyle(fontWeight: FontWeight.w700)
+                    : null,
               ),
           ],
         ),
@@ -418,22 +423,16 @@ class _ReportWorkspaceState extends State<ReportWorkspace> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              for (final h in rows.first) DataColumn(label: Text(cell(h))),
-            ],
-            rows: [
-              for (final r in shown)
-                DataRow(
-                  cells: [
-                    for (var i = 0; i < rows.first.length; i++)
-                      DataCell(Text(i < r.length ? cell(r[i]) : '')),
-                  ],
-                ),
-            ],
-          ),
+        ListTable(
+          key: const Key('report-workspace-table'),
+          columns: [for (final h in rows.first) ListColumn(cell(h))],
+          rows: [
+            for (final r in shown)
+              [
+                for (var i = 0; i < rows.first.length; i++)
+                  Text(i < r.length ? cell(r[i]) : ''),
+              ],
+          ],
         ),
         if (pages > 1)
           Row(

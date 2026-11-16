@@ -31,7 +31,14 @@ Future<bool> pickJobTechnician(
     options: [
       const SearchOption(value: '', label: 'Nobody'),
       for (final u in (list.data as List?) ?? const [])
-        if (u is Map) SearchOption(value: '${u['id']}', label: '${u['name']}'),
+        if (u is Map)
+          SearchOption(
+            value: '${u['id']}',
+            // Assigned before the roles rule, or by Workiz (Jose, 2026-11-16).
+            label: u['outside_roles'] == true
+                ? '${u['name']} (not a technician role)'
+                : '${u['name']}',
+          ),
     ],
   );
   if (picked == null || picked == (currentId ?? '')) return false;

@@ -23,6 +23,11 @@ class AutomationRun extends Model implements StatesRetention
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its rule's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['automations', Automation::class, 'automation_id'];
+
 
     /**
      * Goes with the event that caused it — one number, in one place.

@@ -20,6 +20,7 @@ import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:ezbizi_client/widgets/social_network_mark.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +43,8 @@ import 'package:video_player/video_player.dart';
 /// truth, and a test kept alive past the thing it describes is how a suite
 /// starts defending the wrong behaviour.
 void main() {
+  _jose1116Tests();
+
   group('the tab says what it is rather than showing nothing', () {
     testWidgets('the sub-module is named, and named as unbuilt', (
       tester,
@@ -5116,3 +5119,462 @@ String _weekRange(DateTime monday) {
   return '${monday.day} ${_shortMonths[monday.month - 1]} – '
       '${sunday.day} ${_shortMonths[sunday.month - 1]}';
 }
+
+// Jose 2026-11-16: the post panel edits in place; the calendar days answer the
+// mouse and open their list; Comments is a tab of its own.
+void _jose1116Tests() {
+  group('Jose 2026-11-16', () {
+    const longBody =
+        'Fall is here and the first cold night is closer than it looks. '
+        'Book your chimney sweep now, before the rush, and we will check the '
+        'flue, the cap, the crown and the damper while we are up there. '
+        'Line two of the draft.\nLine three.\nLine four.\nLine five.\n'
+        'Line six.\nLine seven.\nThe very last words of the AI draft.';
+
+    Map<String, Object?> draft() => {
+      ..._landed('awaiting_approval'),
+      'body': longBody,
+    };
+
+    testWidgets('the post panel shows the whole text in a field that saves '
+        'before Approve', (tester) async {
+      final calls = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [draft()],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'PATCH' &&
+            request.url.path.endsWith('/social/posts/post-1')) {
+          calls.add('PATCH ${jsonDecode(request.body)['body']}');
+          return _json({
+            'data': {'id': 'post-1'},
+          });
+        }
+        if (request.method == 'POST' &&
+            request.url.path.contains('/business-profile/post-queue/')) {
+          calls.add('APPROVE');
+          return _json({
+            'data': {'id': 'target-1', 'status': 'queued'},
+          });
+        }
+        return inner(request);
+      });
+
+      await _openCalendar(tester);
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byKey(Key('month-day-${DateTime.now().day}')),
+              matching: find.textContaining('Fall is here'),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+
+      final field = find.byKey(const Key('social-post-text'));
+      expect(field, findsOneWidget);
+      expect(
+        tester.widget<TextField>(field).controller!.text,
+        longBody,
+        reason: 'the whole text, not cut with an ellipsis',
+      );
+      expect(find.textContaining('The very last words'), findsWidgets);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('social-post-count'))).data,
+        '${longBody.characters.length} / 800',
+      );
+
+      await tester.enterText(field, 'Edited by hand.');
+      await tester.pump();
+      expect(
+        tester.widget<Text>(find.byKey(const Key('social-post-count'))).data,
+        '15 / 800',
+      );
+      await tester.tap(find.byKey(const Key('social-approve-target-1')));
+      await tester.pumpAndSettle();
+
+      expect(calls, ['PATCH Edited by hand.', 'APPROVE']);
+    });
+
+    testWidgets('a picture Google would refuse is refused before it is sent', (
+      tester,
+    ) async {
+      final uploads = <String>[];
+      final gbp = {
+        ...draft(),
+        'targets': [
+          {
+            'id': 'target-1',
+            'connection_id': 'conn-9',
+            'account': 'Dayton',
+            'provider': 'google_business_profile',
+            'provider_label': 'Google Business Profile',
+            'status': 'awaiting_approval',
+          },
+        ],
+      };
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [gbp],
+      );
+      await _pumpSocial(
+        tester,
+        (request) async {
+          if (request.url.path.endsWith('/social/posts/post-1/media')) {
+            uploads.add(request.method);
+            return _json({
+              'data': {'id': 'post-1', 'has_media': true},
+            });
+          }
+          return inner(request);
+        },
+        pickMedia: () async => PickedBytes('tiny.gif', List.filled(50, 1)),
+      );
+
+      await _openCalendar(tester);
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byKey(Key('month-day-${DateTime.now().day}')),
+              matching: find.textContaining('Fall is here'),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('social-post-upload')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Google Business Profile takes a JPG or PNG picture.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('social-post-image')), findsNothing);
+      expect(uploads, isEmpty);
+    });
+
+    testWidgets('a calendar day tints under the mouse and shows the pointer', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_pinterestBoard]),
+      );
+      await _openCalendar(tester);
+      final day = find.byKey(Key('month-day-${DateTime.now().day}'));
+
+      Color? fill() => (tester
+                  .widget<Container>(
+                    find
+                        .descendant(of: day, matching: find.byType(Container))
+                        .first,
+                  )
+                  .decoration!
+              as BoxDecoration)
+          .color;
+
+      final region = tester.widget<MouseRegion>(
+        find.descendant(of: day, matching: find.byType(MouseRegion)).first,
+      );
+      expect(region.cursor, SystemMouseCursors.click);
+
+      final before = fill();
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(day));
+      await tester.pump();
+      expect(fill(), isNot(before));
+      await mouse.moveTo(Offset.zero);
+      await tester.pump();
+      expect(fill(), before);
+    });
+
+    testWidgets('a day with more than fits opens its whole list, searchable, '
+        'and a row opens the post', (tester) async {
+      final now = DateTime.now();
+      String two(int n) => n.toString().padLeft(2, '0');
+      final busy = [
+        for (var i = 0; i < 12; i++)
+          {
+            ..._landed(
+              'scheduled',
+              scheduledFor:
+                  '${now.year}-${two(now.month)}-${two(now.day)} '
+                  '${two(8 + i)}:00',
+            ),
+            'id': 'busy-$i',
+            'body': 'Busy post number $i',
+          },
+      ];
+      final ranges = <Map<String, String>>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: busy,
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.url.path.endsWith('/social/posts') &&
+            request.url.queryParameters.containsKey('from')) {
+          ranges.add(request.url.queryParameters);
+        }
+        return inner(request);
+      });
+      await _openCalendar(tester);
+
+      final more = find.byKey(Key('day-more-${now.month}-${now.day}'));
+      expect(find.text('+10 more'), findsWidgets);
+      await tester.tap(more.last);
+      await tester.pumpAndSettle();
+
+      final day = formatCalendarDayForTest(now);
+      expect(ranges.last, {'from': day, 'to': day});
+      expect(find.byKey(const Key('social-day-list')), findsOneWidget);
+      expect(find.textContaining('12 posts'), findsOneWidget);
+      expect(find.byKey(const Key('social-day-search')), findsOneWidget);
+
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const Key('social-day-search')),
+          matching: find.byType(TextField),
+        ),
+        'number 11',
+      );
+      await tester.pump();
+      expect(find.byKey(const Key('social-day-post-busy-11')), findsOneWidget);
+      expect(find.byKey(const Key('social-day-post-busy-1')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('social-day-post-busy-11')));
+      await tester.pumpAndSettle();
+      expect(find.byType(SidePanel), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('social-post-text')))
+            .controller!
+            .text,
+        'Busy post number 11',
+      );
+    });
+
+    testWidgets('Comments is a tab: one inbox, a badge, filters, reply in '
+        'place', (tester) async {
+      final replies = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_facebookPage, _pinterestBoard],
+        tabs: const [..._allTabs, 'marketing.comments.view'],
+      );
+      await _pumpSocial(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/social/comments')) {
+          return _json({
+            'data': [
+              {
+                'id': 'c-old',
+                'network': 'instagram',
+                'connection_id': 'conn-1',
+                'account': 'Everdoors',
+                'post': {'id': 'm-1', 'text': 'Our new oak door'},
+                'author': 'ann',
+                'text': 'Answered already',
+                'timestamp': '2026-11-01T10:00:00+0000',
+                'hidden': false,
+                'replies': [
+                  {'id': 'r1', 'text': 'Thanks!', 'author': 'everdoors'},
+                ],
+                'actions': ['reply', 'hide'],
+                'unavailable': {},
+              },
+              {
+                'id': 'c-new',
+                'network': 'instagram',
+                'connection_id': 'conn-1',
+                'account': 'Everdoors',
+                'post': {'id': 'm-1', 'text': 'Our new oak door'},
+                'author': 'bob',
+                'text': 'How much is it?',
+                'timestamp': '2026-11-15T10:00:00+0000',
+                'hidden': false,
+                'replies': [],
+                'actions': ['reply', 'hide'],
+                'unavailable': {},
+              },
+            ],
+            'sources': [
+              {
+                'connection_id': 'conn-1',
+                'network': 'instagram',
+                'account': 'Everdoors',
+                'error': null,
+              },
+            ],
+          });
+        }
+        if (path.contains('/comments/') && path.endsWith('/replies')) {
+          replies.add('$path ${jsonDecode(request.body)['message']}');
+          return _json({
+            'data': {'id': 'r2'},
+          });
+        }
+        return inner(request);
+      });
+
+      // The badge: one unreplied comment, beside the tab's name.
+      final tab = find.widgetWithText(ChoiceChip, 'Comments');
+      expect(tab, findsOneWidget);
+      expect(
+        find.descendant(of: tab, matching: find.text('1')),
+        findsOneWidget,
+      );
+
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('social-comments-inbox')), findsOneWidget);
+      // Newest first, with the post each is on.
+      expect(
+        tester.getTopLeft(find.text('How much is it?')).dy,
+        lessThan(tester.getTopLeft(find.text('Answered already')).dy),
+      );
+      expect(find.text('On: Our new oak door'), findsNWidgets(2));
+
+      await tester.tap(find.byKey(const Key('social-comments-unreplied')));
+      await tester.pumpAndSettle();
+      expect(find.text('Answered already'), findsNothing);
+      expect(find.text('How much is it?'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('social-comment-replybtn-c-new')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('social-comment-reply-c-new')),
+        'It is \$900.',
+      );
+      await tester.tap(find.byKey(const Key('social-comment-send-c-new')));
+      await tester.pumpAndSettle();
+      expect(replies, [
+        '/api/v1/social/connections/conn-1/comments/instagram/c-new/replies '
+            'It is \$900.',
+      ]);
+    });
+
+    testWidgets('Comments merges all four networks and draws only the '
+        'actions each row supports', (tester) async {
+      Map<String, dynamic> row(
+        String id,
+        String network,
+        String at,
+        List<String> actions, [
+        Map<String, String> unavailable = const {},
+      ]) => {
+        'id': id,
+        'network': network,
+        'connection_id': 'conn-1',
+        'account': 'Everdoors',
+        'post': {'id': 'p', 'text': 'A post'},
+        'author': 'someone',
+        'text': 'Comment on $network',
+        'timestamp': at,
+        'hidden': false,
+        'replies': [],
+        'actions': actions,
+        'unavailable': unavailable,
+      };
+      final hidden = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_facebookPage, _pinterestBoard],
+        tabs: const [..._allTabs, 'marketing.comments.view'],
+      );
+      await _pumpSocial(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/social/comments')) {
+          return _json({
+            'data': [
+              row('fb-1', 'facebook', '2026-11-12T10:00:00Z', [], {
+                'reply':
+                    'Facebook needs the manage-engagement permission to reply or hide.',
+                'hide':
+                    'Facebook needs the manage-engagement permission to reply or hide.',
+              }),
+              row('ig-1', 'instagram', '2026-11-13T10:00:00Z', [
+                'reply',
+                'hide',
+              ]),
+              row('yt-1', 'youtube', '2026-11-14T10:00:00Z', [
+                'reply',
+                'hide',
+              ]),
+              row('x-1', 'x', '2026-11-15T10:00:00Z', ['reply'], {
+                'hide': 'X needs moderation permission to hide replies.',
+              }),
+            ],
+            'sources': [
+              {
+                'connection_id': 'conn-9',
+                'network': 'x',
+                'account': 'Second X',
+                'error': 'Too Many Requests',
+              },
+            ],
+          });
+        }
+        if (path.endsWith('/hide')) {
+          hidden.add(path);
+          return _json({
+            'data': {'hidden': true},
+          });
+        }
+        return inner(request);
+      });
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Comments'));
+      await tester.pumpAndSettle();
+
+      for (final n in ['facebook', 'instagram', 'youtube', 'x']) {
+        expect(find.text('Comment on $n'), findsOneWidget);
+      }
+      // Newest first across networks.
+      expect(
+        tester.getTopLeft(find.text('Comment on x')).dy,
+        lessThan(tester.getTopLeft(find.text('Comment on facebook')).dy),
+      );
+      // The failing network is a note; the others still show.
+      expect(find.text('Second X (X): Too Many Requests'), findsOneWidget);
+
+      Finder action(String key) => find.byKey(Key(key));
+      expect(action('social-comment-replybtn-fb-1'), findsNothing);
+      expect(action('social-comment-hide-fb-1'), findsNothing);
+      expect(
+        find.text(
+          'Facebook needs the manage-engagement permission to reply or hide.',
+        ),
+        findsOneWidget,
+      );
+      expect(action('social-comment-replybtn-ig-1'), findsOneWidget);
+      expect(action('social-comment-hide-ig-1'), findsOneWidget);
+      expect(action('social-comment-replybtn-yt-1'), findsOneWidget);
+      expect(action('social-comment-hide-yt-1'), findsOneWidget);
+      expect(action('social-comment-replybtn-x-1'), findsOneWidget);
+      expect(action('social-comment-hide-x-1'), findsNothing);
+      expect(
+        find.text('X needs moderation permission to hide replies.'),
+        findsOneWidget,
+      );
+      for (final id in ['fb-1', 'ig-1', 'yt-1', 'x-1']) {
+        expect(action('social-comment-delete-$id'), findsNothing);
+      }
+
+      await tester.ensureVisible(action('social-comment-hide-yt-1'));
+      await tester.tap(action('social-comment-hide-yt-1'));
+      await tester.pumpAndSettle();
+      expect(hidden, [
+        '/api/v1/social/connections/conn-1/comments/youtube/yt-1/hide',
+      ]);
+    });
+  });
+}
+
+String formatCalendarDayForTest(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';

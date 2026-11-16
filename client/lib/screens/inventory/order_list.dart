@@ -3,8 +3,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../widgets/empty_state.dart';
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
@@ -68,10 +71,22 @@ class _OrderListState extends State<OrderList> {
   void initState() {
     super.initState();
     _load();
+    // An order received, a sale fulfilled, an issue posted elsewhere: the
+    // three lists re-read quietly (scroll, the open pane and the search kept).
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'inventory_orders'},
+      (_) {
+        if (!_loading) return _load(quiet: true);
+      },
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -95,11 +110,14 @@ class _OrderListState extends State<OrderList> {
   bool get _hasPane =>
       _addingPo || _addingIssue || _addingSale || _open != null;
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _orders.isEmpty && _issues.isEmpty && _sales.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _orders.isEmpty && _issues.isEmpty && _sales.isEmpty;
+        _error = null;
+      });
+    }
 
     final po = await widget.api.get('/inventory/purchase-orders', {
       if (_tile == 'receive') 'filter': 'to_receive',
@@ -115,6 +133,7 @@ class _OrderListState extends State<OrderList> {
     });
 
     if (!mounted) return;
+    if (quiet && !(po.ok && issues.ok && sales.ok)) return;
 
     if (!po.ok) {
       setState(() {
@@ -419,20 +438,13 @@ class _OrderListState extends State<OrderList> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: TextField(
-            key: const Key('inventory-orders-search'),
-            controller: _search,
-            onChanged: _searched,
-            // bodyMedium for the text and the hint, as the dense pickers draw:
-            // 53 points tall, as they are; the theme's 16-point hint makes 56.
-            style: Theme.of(context).textTheme.bodyMedium,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: 'Number, vendor, customer or item',
-              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-              ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ListSearch(
+              key: const Key('inventory-orders-search'),
+              controller: _search,
+              onChanged: _searched,
+              hint: 'Number, vendor, customer or item',
             ),
           ),
         ),

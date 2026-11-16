@@ -4,6 +4,7 @@ import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../core/theme.dart';
@@ -79,10 +80,18 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
   void initState() {
     super.initState();
     _load();
+    // A voicemail left, transcribed or dealt with elsewhere: the chosen
+    // box re-reads quietly (the one playing keeps playing).
+    _live = LiveChanges.of(widget.api).subscribe({'phone_calls'}, (_) {
+      if (!_loading) return _loadMessages(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDebounce?.cancel();
     if (_ownsPlayer) _player.dispose();
     super.dispose();
@@ -131,7 +140,8 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
     await _loadMessages();
   }
 
-  Future<void> _loadMessages() async {
+  /// [quiet]: a live re-read; a failure keeps the messages on screen.
+  Future<void> _loadMessages({bool quiet = false}) async {
     final boxId = _boxId;
 
     // No box chosen is EVERY voicemail, not none. `voicemail_only` asks the
@@ -152,7 +162,7 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
     };
 
     final response = await widget.api.get('/phone/calls', query);
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     final meta = response.ok ? response.body['meta'] : null;
     final tiles = meta is Map ? meta['tiles'] : null;

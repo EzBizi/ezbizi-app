@@ -236,6 +236,16 @@ void main() {
     expect(tester.widget<Text>(find.byKey(const ValueKey('google-name-11'))).data, 'Cleveland Search');
   });
 
+  testWidgets('the budget column names no period its cells contradict (D9)', (tester) async {
+    await open(tester, permissions: manage);
+
+    expect(find.textContaining('BUDGET / DAY'), findsNothing);
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('google-budget-11')), matching: find.textContaining('/ day')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a Local Services budget reads and saves per week', (tester) async {
     await open(tester, permissions: manage);
 

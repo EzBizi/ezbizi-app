@@ -3,7 +3,10 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/branch_options.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
@@ -42,10 +45,17 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
   void initState() {
     super.initState();
     _load();
+    // A bill read or saved elsewhere: the list re-reads quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'financial_bills'}, (_) {
+      return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -80,12 +90,13 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
     ];
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the bills on screen.
+  Future<void> _load({bool quiet = false}) async {
     final r = await widget.api.get(
       '/financials/bills',
       _q.isEmpty ? null : {'q': _q},
     );
-    if (!mounted) return;
+    if (!mounted || (quiet && !r.ok)) return;
     setState(() {
       _bills = r.ok ? (r.body['data'] as List).cast<Map>() : null;
       _error = r.ok ? null : r.message;
@@ -149,26 +160,11 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 240),
-                child: TextField(
-                  key: const Key('financials-bills-search'),
-                  controller: _search,
-                  onChanged: _searched,
-                  // bodyMedium for the text and the hint, as the dense pickers draw:
-                  // 53 points tall, as they are; the theme's 16-point hint makes 56.
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    hintText: 'Place, period or line',
-                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(
-                        context,
-                      ).inputDecorationTheme.hintStyle?.color,
-                    ),
-                  ),
-                ),
+              ListSearch(
+                key: const Key('financials-bills-search'),
+                controller: _search,
+                onChanged: _searched,
+                hint: 'Place, period or line',
               ),
               if (_canEdit) ...[
                 OutlinedButton(
@@ -198,27 +194,11 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
                 ),
               ),
               Flexible(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 240),
-                  child: TextField(
-                    key: const Key('financials-bills-search'),
-                    controller: _search,
-                    onChanged: _searched,
-                    // bodyMedium for the text and the hint, as the dense pickers draw:
-                    // 53 points tall, as they are; the theme's 16-point hint makes 56.
-                    style: Theme.of(context).textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      prefixIcon: const Icon(Icons.search, size: 18),
-                      hintText: 'Place, period or line',
-                      hintStyle: Theme.of(context).textTheme.bodyMedium
-                          ?.copyWith(
-                            color: Theme.of(
-                              context,
-                            ).inputDecorationTheme.hintStyle?.color,
-                          ),
-                    ),
-                  ),
+                child: ListSearch(
+                  key: const Key('financials-bills-search'),
+                  controller: _search,
+                  onChanged: _searched,
+                  hint: 'Place, period or line',
                 ),
               ),
               if (_canEdit) ...[

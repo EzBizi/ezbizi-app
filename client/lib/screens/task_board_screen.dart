@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
+import '../widgets/cell_tap.dart';
+import '../widgets/lazy_menu_anchor.dart';
 import '../widgets/list_search.dart';
 import 'dart:math' as math;
 
@@ -26,6 +28,7 @@ import 'task_board_automate.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
 import 'task_board_gallery.dart';
+import 'task_board_live.dart';
 import '../widgets/list_filters.dart';
 import '../widgets/list_toolbar.dart';
 import '../widgets/mention_field.dart';
@@ -310,7 +313,8 @@ String _dayLabel(DateTime? day, DisplayFormats formats) {
   };
 }
 
-class _TaskBoardScreenState extends State<TaskBoardScreen> {
+class _TaskBoardScreenState extends State<TaskBoardScreen>
+    with WidgetsBindingObserver {
   List<_Json> _boards = const [];
   int _selected = 0;
   _Json? _board;
@@ -375,11 +379,66 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   void initState() {
     super.initState();
     DeepLinks.pending.addListener(_takeLink);
+    WidgetsBinding.instance.addObserver(this);
+    _live = Timer.periodic(liveEvery, (_) => _catchUp());
     _load();
+  }
+
+  // ── Live: the open board follows changes made elsewhere ──────────
+
+  Timer? _live;
+
+  /// Where the board's changes feed picks up; null until a board has come.
+  String? _cursor;
+  bool _catching = false;
+  bool _inFront = true;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _inFront = state == AppLifecycleState.resumed;
+    if (_inFront) _catchUp();
+  }
+
+  /// One read of the board's changes, folded into the board in place.
+  Future<void> _catchUp() async {
+    final board = _board;
+    final since = _cursor;
+    if (_catching || !mounted || !_inFront || board == null || since == null) {
+      return;
+    }
+    // A tab out of view (an Offstage shell) has its tickers off: no reads.
+    if (!TickerMode.valuesOf(context).enabled) return;
+    _catching = true;
+    try {
+      final res = await widget.api.get('/task-boards/${board['id']}/changes', {
+        'since': since,
+      });
+      if (!mounted || !res.ok || _board?['id'] != board['id']) return;
+      if (_cursor != since) return; // the board was opened again meanwhile
+      final data = res.body['data'];
+      if (data is! _Json) return;
+      if (data['reload'] == true) {
+        await _open(_selected);
+        return;
+      }
+      final merged = mergeBoardChanges(
+        _board!,
+        data,
+        since,
+        adopt: _adopt,
+        hold: InlineCellEditor.editing.value > 0,
+      );
+      if (!merged.held) _cursor = data['cursor'] as String? ?? since;
+      if (merged.board != null) setState(() => _board = merged.board);
+    } finally {
+      _catching = false;
+    }
   }
 
   @override
   void dispose() {
+    _live?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     DeepLinks.pending.removeListener(_takeLink);
     _rangeFocus.dispose();
     _tableScroll.dispose();
@@ -518,6 +577,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       }
       final first = _board == null;
       _board = _adoptAll(res.body['data'] as _Json);
+      _cursor = _board!['cursor'] as String?;
       // A group that is all done opens folded, as Monday's Done group does.
       if (first) {
         for (final g in _groups(_board!)) {
@@ -1198,6 +1258,17 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Map<String, FilterField> get _filterFields {
     final board = _board;
     if (board == null) return const {};
+    // Worked out once per board: every cell and, under a filter, every task
+    // asked for the whole map on each build (Task Board lag, 11-16).
+    if (identical(_fieldsFor, board)) return _fieldsMemo;
+    _fieldsFor = board;
+    return _fieldsMemo = _filterFieldsNow(board);
+  }
+
+  Object? _fieldsFor;
+  Map<String, FilterField> _fieldsMemo = const {};
+
+  Map<String, FilterField> _filterFieldsNow(_Json board) {
     final people = [for (final e in _people.entries) (e.key, e.value)];
     final out = <FilterField>[
       (
@@ -1319,6 +1390,16 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// Who a task can be given to, by id. The board says, where it does; a
   /// server from before it did offers you and the people already owning one.
   Map<String, String> get _people {
+    final board = _board;
+    if (identical(_peopleFor, board) && board != null) return _peopleMemo;
+    _peopleFor = board;
+    return _peopleMemo = _peopleNow();
+  }
+
+  Object? _peopleFor;
+  Map<String, String> _peopleMemo = const {};
+
+  Map<String, String> _peopleNow() {
     final assignable = _board?['assignable'];
     return {
       if (assignable is List)
@@ -1680,25 +1761,21 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   /// A heading with its ⋯: the menu was there but only a tap on the name
   /// opened it, and Jose did not find it (2026-11-16).
-  Widget _headWithMore(Widget label, Key key, VoidCallback open) => Row(
-    children: [
-      Expanded(
-        child: Align(alignment: Alignment.centerLeft, child: label),
+  Widget _headWithMore(Widget label, Key key, VoidCallback open) =>
+      _HoverMore(label: label, more: _moreDots(key, open));
+
+  Widget _moreDots(Key key, VoidCallback open) => InkWell(
+    key: key,
+    onTap: open,
+    borderRadius: BorderRadius.circular(4),
+    child: Tooltip(
+      message: 'Column options',
+      child: Icon(
+        Icons.more_horiz,
+        size: 16,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
-      InkWell(
-        key: key,
-        onTap: open,
-        borderRadius: BorderRadius.circular(4),
-        child: Tooltip(
-          message: 'Column options',
-          child: Icon(
-            Icons.more_horiz,
-            size: 16,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    ],
+    ),
   );
 
   /// The box a built-in column's new name is typed into, under the
@@ -3211,8 +3288,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   static const _widths = (add: 40.0);
   static const _baseWidths = {
     'task': 320.0,
-    'creator': 130.0,
-    'owner': 130.0,
+    'creator': 80.0,
+    'owner': 80.0,
     'status': 130.0,
     'due': 104.0,
     'created': 104.0,
@@ -3259,7 +3336,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       _dragWidths[key] ??
       _savedWidths()[_widthSlot(key)] ??
       _baseWidths[key] ??
-      120.0;
+      (_peopleColumn(key) ? 80.0 : 120.0);
+
+  /// A Person or People column is faces only, so as narrow as Owner.
+  bool _peopleColumn(String key) =>
+      key.startsWith('c:') &&
+      boardColumns(_board).any(
+        (c) => 'c:${c.id}' == key && (c.type == 'people' || c.type == 'person'),
+      );
 
   /// A heading with a drag handle on its right edge (Jose, 2026-11-12).
   Widget _resizable(String key, Widget heading) => Stack(
@@ -3577,7 +3661,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Widget _row(BuildContext context, _Json t, Color colour, {bool sub = false}) {
     final theme = Theme.of(context);
     final owners = _ownerNames(t);
-    final owner = owners.firstOrNull;
     final about = (t['about'] as Map?)?['label'] as String?;
     final updates = (t['updates_count'] as num?) ?? 0;
     final late = _late(t, _board);
@@ -3659,40 +3742,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   context,
                   _w('owner'),
                   _canEdit
-                      ? _ownerMenu(
-                          t,
-                          owner == null
-                              ? _automationOwner(t)
-                              : Row(
-                                  children: [
-                                    _ownerFace(context, t, owner),
-                                    const SizedBox(width: 6),
-                                    Flexible(
-                                      child: Text(
-                                        owner.split(' ').first,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    if (owners.length > 1)
-                                      _moreOwners(t, owners),
-                                  ],
-                                ),
-                        )
-                      : owner == null
-                      ? _automationOwner(t)
-                      : Row(
-                          children: [
-                            _ownerFace(context, t, owner),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                owner.split(' ').first,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (owners.length > 1) _moreOwners(t, owners),
-                          ],
-                        ),
+                      ? _ownerMenu(t, _ownerFaces(t, owners))
+                      : _ownerFaces(t, owners),
                 ),
               if (shown('status'))
                 SizedBox(width: _w('status'), child: _statusCell(context, t)),
@@ -3734,6 +3785,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           child: ColumnCell(
                             column: c,
                             value: columnValue(t, c),
+                            taskDone: _isDone(_board, t),
                             people: _people,
                             formats: _formats,
                             onChanged: _canEdit
@@ -3762,6 +3814,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           ColumnCell(
                             column: c,
                             value: columnValue(t, c),
+                            taskDone: _isDone(_board, t),
                             people: _people,
                             formats: _formats,
                             onChanged: _canEdit
@@ -3799,7 +3852,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 _cell(
                   context,
                   _w('about'),
-                  InkWell(
+                  CellTap(
                     key: ValueKey('task-about-${t['id']}'),
                     onTap: _canEdit ? () => _editAbout(t) : null,
                     child: Align(
@@ -3916,7 +3969,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       }
       _rangeAnchor ??= id;
     });
-    _rangeFocus.requestFocus();
+    // The range's Focus is built with the pick, so it is asked after it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _rangeFocus.requestFocus();
+    });
   }
 
   void _clearRange() {
@@ -3990,50 +4046,67 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Widget _rangeCell(_Json t, BoardColumn c, Widget child) {
     final picked = _rangeColumn == c.id && _range.contains(t['id']);
     final scheme = Theme.of(context).colorScheme;
+    // No menu, focus or overlay per cell until one is asked for: a row of
+    // eleven columns was a thousand widgets (Task Board lag, 11-16).
+    Widget cell = picked
+        ? DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.10),
+              border: Border.all(color: scheme.primary),
+            ),
+            child: child,
+          )
+        : child;
+    if (picked && _range.first == t['id']) {
+      cell = Focus(focusNode: _rangeFocus, onKeyEvent: _rangeKey, child: cell);
+    }
+    // A Listener for the pick: the cell's own editor wins the tap arena.
+    return Listener(
+      key: ValueKey('range-cell-${c.id}-${t['id']}'),
+      onPointerDown: (e) {
+        if (e.buttons == kPrimaryButton) _pickCell(t, c);
+      },
+      // A gesture for the menu, so it wins over the row's right-click; an
+      // in-place cell has its own menu, with Filter by this value.
+      child: ColumnCell.editsInPlace(c, editable: _canEdit)
+          ? cell
+          : GestureDetector(
+              onSecondaryTapUp: (d) => _cellMenu(t, c, d.globalPosition),
+              child: cell,
+            ),
+    );
+  }
+
+  /// Right-click on a cell without its own menu: Filter by this value.
+  Future<void> _cellMenu(_Json t, BoardColumn c, Offset at) async {
     final value = _valueOf(c.id, t);
-    final menu = MenuController();
-    return MenuAnchor(
-      controller: menu,
-      menuChildren: [
-        MenuItemButton(
+    final box = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        at & const Size(1, 1),
+        Offset.zero & box.size,
+      ),
+      items: [
+        PopupMenuItem(
           key: const Key('cell-filter-value'),
-          leadingIcon: const Icon(Icons.filter_list, size: 18),
-          onPressed: value.isEmpty ? null : () => _filterTo(c.id, value),
+          value: 'filter',
+          enabled: value.isNotEmpty,
+          height: 36,
           child: const Text('Filter by this value'),
         ),
         if (_filteredOn(c.id))
-          MenuItemButton(
-            onPressed: () => _clearFilterOn(c.id),
-            child: const Text('Clear filter'),
+          const PopupMenuItem(
+            value: 'clear',
+            height: 36,
+            child: Text('Clear filter'),
           ),
       ],
-      // A Listener for the pick: the cell's own editor wins the tap arena.
-      child: Listener(
-        key: ValueKey('range-cell-${c.id}-${t['id']}'),
-        onPointerDown: (e) {
-          if (e.buttons == kPrimaryButton) _pickCell(t, c);
-        },
-        // A gesture for the menu, so it wins over the row's right-click; an
-        // in-place cell has its own menu, with Filter by this value.
-        child: GestureDetector(
-          onSecondaryTapUp: ColumnCell.editsInPlace(c, editable: _canEdit)
-              ? null
-              : (d) => menu.open(position: d.localPosition),
-          child: Focus(
-            focusNode: picked && _range.first == t['id'] ? _rangeFocus : null,
-            onKeyEvent: _rangeKey,
-            child: DecoratedBox(
-              position: DecorationPosition.foreground,
-              decoration: BoxDecoration(
-                color: picked ? scheme.primary.withValues(alpha: 0.10) : null,
-                border: picked ? Border.all(color: scheme.primary) : null,
-              ),
-              child: child,
-            ),
-          ),
-        ),
-      ),
     );
+    if (!mounted) return;
+    if (choice == 'filter') _filterTo(c.id, value);
+    if (choice == 'clear') _clearFilterOn(c.id);
   }
 
   /// A Files cell's "+": the file goes up as an update on the task (the
@@ -4231,17 +4304,40 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       return const SizedBox.shrink();
     }
     final label = madeBy['label'] as String;
+    if (madeBy['type'] == 'user' && madeBy['id'] != null) {
+      return Center(
+        key: ValueKey('task-creator-${t['id']}'),
+        child: PeopleAvatars(
+          names: [label],
+          ids: ['${madeBy['id']}'],
+          api: widget.api,
+          boardId: _board == null ? null : '${_board!['id']}',
+        ),
+      );
+    }
     return Tooltip(
       key: ValueKey('task-creator-${t['id']}'),
       message: label,
-      child: Row(
-        children: [
-          if (madeBy['type'] == 'user') ...[
-            _avatar(context, label, api: widget.api, userId: madeBy['id']),
-            const SizedBox(width: 6),
-          ],
-          Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
-        ],
+      child: Text(label, overflow: TextOverflow.ellipsis),
+    );
+  }
+
+  /// The owners as faces only, Monday's way (Jose 11-16: "just use the
+  /// icon instead of the name to save space"): photo or initials, three
+  /// overlapping and "+N", each with its hover card; a rule's card with
+  /// nobody wears EzBizi's mark, and an empty one a faint person-plus.
+  Widget _ownerFaces(_Json t, List<String> owners) {
+    if (owners.isEmpty && _automationOwner(t) is! SizedBox) {
+      return Center(child: _automationOwner(t, mark: true));
+    }
+    final ids = _ownerIds(t);
+    return Center(
+      key: ValueKey('task-owner-faces-${t['id']}'),
+      child: PeopleAvatars(
+        names: owners,
+        ids: ids.length == owners.length ? ids : null,
+        api: widget.api,
+        boardId: _board == null ? null : '${_board!['id']}',
       ),
     );
   }
@@ -4249,28 +4345,33 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// "+2" after a task's primary owner, every name on hover.
   /// A card a rule made with nobody on it is EzBizi's: the mark and the
   /// name, with the rule's name on hover (Jose, 2026-10-22).
-  Widget _automationOwner(_Json t) {
+  Widget _automationOwner(_Json t, {bool mark = false}) {
     final madeBy = t['created_by'];
     if (madeBy is! Map || madeBy['type'] != 'automation') {
       return const SizedBox.shrink();
     }
+    final logo = Image.asset(
+      'assets/logo/app-icon-120.png',
+      width: 18,
+      height: 18,
+      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+    );
     return Tooltip(
       key: ValueKey('task-owner-ezbizi-${t['id']}'),
-      message: '${madeBy['label'] ?? ''}',
-      child: Row(
-        children: [
-          Image.asset(
-            'assets/logo/app-icon-120.png',
-            width: 18,
-            height: 18,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
-          ),
-          const SizedBox(width: 6),
-          const Flexible(
-            child: Text('EzBizi', overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
+      message: mark
+          ? 'EzBizi · ${madeBy['label'] ?? ''}'
+          : '${madeBy['label'] ?? ''}',
+      child: mark
+          ? Semantics(label: 'EzBizi', child: logo)
+          : Row(
+              children: [
+                logo,
+                const SizedBox(width: 6),
+                const Flexible(
+                  child: Text('EzBizi', overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
     );
   }
 
@@ -4349,7 +4450,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final editable = (_board?['statuses'] as List? ?? const []).any(
       (s) => s is Map && s.containsKey('id'),
     );
-    return MenuAnchor(
+    return LazyMenuAnchor(
       menuChildren: [
         Builder(
           builder: (context) => LabelBlocks(
@@ -4385,9 +4486,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       ],
       onOpen: () => _statusMenu(true),
       onClose: () => _statusMenu(false),
-      builder: (context, menu, _) => Material(
+      builder: (context, menu, _) => ColoredBox(
         color: colours.fill,
-        child: InkWell(
+        child: CellTap(
           key: ValueKey('task-status-${t['id']}'),
           onTap: _canEdit
               ? () => menu.isOpen ? menu.close() : menu.open()
@@ -4400,7 +4501,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   /// Owner edits where it is: a list of the board's people (Jose 11-13:
   /// only the name opens the task).
-  Widget _ownerMenu(_Json t, Widget shown) => MenuAnchor(
+  Widget _ownerMenu(_Json t, Widget shown) => LazyMenuAnchor(
     menuChildren: [
       MenuItemButton(
         onPressed: () => _patchTask(t, {'assignee_user_id': null}),
@@ -4413,7 +4514,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           child: Text(p.value),
         ),
     ],
-    builder: (context, menu, _) => InkWell(
+    builder: (context, menu, _) => CellTap(
       key: ValueKey('task-owner-${t['id']}'),
       onTap: () => menu.isOpen ? menu.close() : menu.open(),
       child: Align(alignment: Alignment.centerLeft, child: shown),
@@ -4442,6 +4543,21 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     return id;
   }
 
+  /// A card shows its first few filled columns, Monday's way; the rest
+  /// are a "+N more" and live in the task (hands-on QA 11-16: a card
+  /// with every column was taller than the screen).
+  static const _cardFieldCap = 4;
+  ({List<BoardColumn> shown, int more}) _cardFields(_Json t) {
+    final filled = [
+      for (final c in boardColumns(_board))
+        if (columnValue(t, c) != null) c,
+    ];
+    return (
+      shown: filled.take(_cardFieldCap).toList(),
+      more: (filled.length - _cardFieldCap).clamp(0, 1 << 20),
+    );
+  }
+
   Widget _card(BuildContext context, _Json t, {bool sub = false}) {
     final theme = Theme.of(context);
     final colours = _statusColours(context, _statusFor(_board, _statusOf(t)));
@@ -4453,6 +4569,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         ? _createdLabel(t['created_at'], _formats)
         : '';
     bool shown(String key) => _builtinShown(_board, key);
+    final fields = _cardFields(t);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -4547,33 +4664,42 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                   color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
-                            for (final c in boardColumns(_board))
-                              if (columnValue(t, c) != null)
-                                Text.rich(
-                                  TextSpan(
-                                    text: '${c.name}: ',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    children: [
-                                      WidgetSpan(
-                                        alignment: PlaceholderAlignment.middle,
-                                        child: ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                            maxWidth: 160,
-                                            maxHeight: 24,
-                                          ),
-                                          child: ColumnCell(
-                                            column: c,
-                                            value: columnValue(t, c),
-                                            people: _people,
-                                            formats: _formats,
-                                          ),
+                            for (final c in fields.shown)
+                              Text.rich(
+                                TextSpan(
+                                  text: '${c.name}: ',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  children: [
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.middle,
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 160,
+                                          maxHeight: 24,
+                                        ),
+                                        child: ColumnCell(
+                                          column: c,
+                                          value: columnValue(t, c),
+                                          taskDone: _isDone(_board, t),
+                                          people: _people,
+                                          formats: _formats,
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
+                              ),
+                            if (fields.more > 0)
+                              Text(
+                                '+${fields.more} more',
+                                key: ValueKey('task-card-more-${t['id']}'),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             if ((t['about'] as Map?)?['label']
                                 case final String about when shown('about'))
                               Text(
@@ -4683,6 +4809,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       canEdit: _canEdit,
       compact: phone,
       colourOf: _planColour,
+      isDone: (t) => _isDone(_board, t),
       onOpen: _openTask,
       onSetRange: (t, from, to) => _patchTask(t, {
         'values': {
@@ -5621,4 +5748,47 @@ class _SortArrowState extends State<SortArrow> {
       ),
     );
   }
+}
+
+/// A heading whose ⋯ shows on hover, drawn over the name's right end so a
+/// narrow column keeps its whole width for the name (hands-on QA 11-16:
+/// "OWNE", "ASS" at 80 px). It is always there to tap, only unseen.
+class _HoverMore extends StatefulWidget {
+  const _HoverMore({required this.label, required this.more});
+
+  final Widget label;
+  final Widget more;
+
+  @override
+  State<_HoverMore> createState() => _HoverMoreState();
+}
+
+class _HoverMoreState extends State<_HoverMore> {
+  bool _over = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _over = true),
+    onExit: (_) => setState(() => _over = false),
+    child: Stack(
+      alignment: Alignment.centerLeft,
+      children: [
+        Align(alignment: Alignment.centerLeft, child: widget.label),
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          child: Opacity(
+            opacity: _over ? 1 : 0,
+            child: Container(
+              alignment: Alignment.center,
+              color: _over ? Theme.of(context).colorScheme.surface : null,
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: widget.more,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }

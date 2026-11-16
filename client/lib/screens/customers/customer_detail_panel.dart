@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/job_status.dart';
+import '../../core/live_changes.dart';
 import '../../core/numbers.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -111,6 +112,36 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       c.addListener(_markDirty);
     }
     _load();
+    // Live: a sync, webhook or another person changing this customer shows
+    // here, unless something is being typed.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'customers'},
+      (batch) {
+        if (batch.reload || batch.touched('customers').contains(widget.id)) {
+          return _refresh();
+        }
+      },
+      active: LiveChanges.visible(this),
+    );
+  }
+
+  LiveSubscription? _live;
+
+  /// The customer read again in place, with no spinner. Skipped while
+  /// somebody is typing or saving: their edit is never overwritten.
+  Future<void> _refresh() async {
+    if (_loading || _busy || _reassigning || _typed != _loaded) return;
+    final response = await widget.api.get('/customers/${widget.id}', {
+      'today': formatCalendarDay(DateTime.now()),
+    });
+    if (!mounted || !response.ok || _busy || _typed != _loaded) return;
+    final row = Map<String, dynamic>.from(response.data as Map);
+    setState(() {
+      _fill(row);
+      _row = row;
+    });
+    _loaded = _typed;
+    widget.dirty?.value = false;
   }
 
   /// A tag saved on its own, so a plain close still refreshes the list.
@@ -129,6 +160,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _name.dispose();
     _phone.dispose();
     _email.dispose();
@@ -730,15 +762,32 @@ class _CustomerJobsState extends State<_CustomerJobs> {
   void initState() {
     super.initState();
     _load();
+    // A job booked, moved or closed for this customer anywhere: read again.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      (_) {
+        if (_jobs != null) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
 
-  Future<void> _load() async {
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the jobs on screen.
+  Future<void> _load({bool quiet = false}) async {
     final response = await widget.api.get('/jobs', {
       'customer_id': widget.customerId,
       'per_page': '50',
     });
 
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       if (!response.ok) {

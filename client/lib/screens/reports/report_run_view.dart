@@ -1,6 +1,8 @@
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_table.dart';
+
 import '../../core/api_client.dart';
 import '../../core/job_money.dart';
 import '../../widgets/error_note.dart';
@@ -194,29 +196,25 @@ class _ReportRunViewState extends State<ReportRunView> {
   ) {
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columns: [
-            for (final column in run.columns)
-              DataColumn(
-                label: Text(column.label),
-                numeric: column.type == 'integer' || column.type == 'money',
-              ),
-          ],
-          rows: [
-            for (final row in rows)
-              DataRow(
-                cells: [
-                  for (final column in run.columns)
-                    // `column.key` contains a dot — `jobs.title` — and is a
-                    // FLAT key rather than a path. Splitting on it finds
-                    // nothing and draws a blank table.
-                    DataCell(Text(_cell(row[column.key], column.type))),
-                ],
-              ),
-          ],
-        ),
+      child: ListTable(
+        key: const Key('report-run-table'),
+        columns: [
+          for (final column in run.columns)
+            ListColumn(
+              column.label,
+              end: column.type == 'integer' || column.type == 'money',
+            ),
+        ],
+        rows: [
+          for (final row in rows)
+            [
+              for (final column in run.columns)
+                // `column.key` contains a dot - `jobs.title` - and is a
+                // FLAT key rather than a path. Splitting on it finds
+                // nothing and draws a blank table.
+                Text(_cell(row[column.key], column.type)),
+            ],
+        ],
       ),
     );
   }

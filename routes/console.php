@@ -67,6 +67,8 @@ Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('Americ
 // command above. Two sweeps deleting from one table on different rules is a bug
 // waiting for the night they disagree.
 Schedule::command('ezbizi:expire-data')->dailyAt('03:50');
+// The live feed (GET changes) only needs the last minutes; keep a day.
+Schedule::command('ezbizi:prune-change-events')->hourlyAt(11)->withoutOverlapping(30);
 
 // A sudden jump in errors, crashes or freezes from one app version (2026-10-15).
 Schedule::command('ezbizi:check-client-issues')->everyTenMinutes()->withoutOverlapping(5);

@@ -15,6 +15,11 @@ use Illuminate\Database\Eloquent\Model;
 class InvoicePayment extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its invoice's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['invoices', Invoice::class, 'invoice_id'];
+
     use HasUuids;
 
     public const METHODS = ['cash', 'check', 'card', 'transfer', 'other'];

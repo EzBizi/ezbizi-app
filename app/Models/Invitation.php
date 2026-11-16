@@ -76,6 +76,16 @@ class Invitation extends Model implements CarriesAutomationScope, HoldsPersonalD
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'hr_invitations';
+
+    /** Filed where the invitation assigns the person (ChangeFeed). */
+    public function changeFeedPlace(): array
+    {
+        return [$this->assigned_company_id, $this->assigned_franchise_id];
+    }
 
     // ── §9 data inventory ────────────────────────────────────────
 

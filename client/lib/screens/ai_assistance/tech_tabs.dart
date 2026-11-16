@@ -9,6 +9,8 @@ library;
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
+
 import '../../core/api_client.dart';
 import '../../core/files.dart';
 import '../../core/theme.dart';
@@ -43,11 +45,7 @@ List<String> _list(Object? v) =>
 Widget _search(Key key, String hint, ValueChanged<String> onChanged) =>
     SizedBox(
       width: 260,
-      child: ListSearch(
-        key: key,
-        hint: hint,
-        onChanged: onChanged,
-      ),
+      child: ListSearch(key: key, hint: hint, onChanged: onChanged),
     );
 
 // ── Parts ───────────────────────────────────────────────────────────
@@ -179,12 +177,13 @@ class _PartsTabState extends State<PartsTab> {
         ),
         const SizedBox(height: 14),
         if (shown.isEmpty)
-          Text(
-            parts.isEmpty
-                ? 'No parts yet. The assistant names only part numbers listed '
-                      'here or printed in a manual.'
-                : 'No parts match.',
-            style: theme.textTheme.bodyMedium,
+          EmptyState(
+            icon: Icons.build_outlined,
+            title: parts.isEmpty ? 'No parts yet' : 'No parts match',
+            message: parts.isEmpty
+                ? 'The assistant names only part numbers listed here or '
+                      'printed in a manual.'
+                : 'Try another name or part number.',
           )
         else
           ListTable(
@@ -581,9 +580,12 @@ class _ManualsTabState extends State<ManualsTab> {
         ),
         const SizedBox(height: 14),
         if (shown.isEmpty)
-          const Text(
-            'No manuals yet. Upload a PDF and the assistant reads its pages '
-            'when a tech asks about that model.',
+          const EmptyState(
+            icon: Icons.menu_book_outlined,
+            title: 'No manuals yet',
+            message:
+                'Upload a PDF and the assistant reads its pages when a tech '
+                'asks about that model.',
           )
         else
           ListTable(
