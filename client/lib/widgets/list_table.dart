@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -613,17 +614,30 @@ class ListTable extends StatelessWidget {
           final pinned = lazy && first == 0;
           // A visible bar: a mouse wheel cannot reach the right-hand columns
           // (Jose, 2026-11-12: "stuff being hidden towards the right side").
-          final rest = Scrollbar(
-            controller: s.sideways,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
+          // Middle button held: drag pans sideways (Jose, 2026-11-16).
+          final rest = Listener(
+            onPointerMove: (e) {
+              if (e.buttons & kMiddleMouseButton == 0 ||
+                  !s.sideways.hasClients) {
+                return;
+              }
+              final p = s.sideways.position;
+              s.sideways.jumpTo(
+                (p.pixels - e.delta.dx).clamp(0.0, p.maxScrollExtent),
+              );
+            },
+            child: Scrollbar(
               controller: s.sideways,
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(bottom: 12),
-              child: SizedBox(
-                width:
-                    natural.skip(first).fold<double>(0, (a, b) => a + b) + 28,
-                child: half(first, columns.length, lazy: pinned),
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: s.sideways,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(bottom: 12),
+                child: SizedBox(
+                  width:
+                      natural.skip(first).fold<double>(0, (a, b) => a + b) + 28,
+                  child: half(first, columns.length, lazy: pinned),
+                ),
               ),
             ),
           );
