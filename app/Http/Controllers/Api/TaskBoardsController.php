@@ -173,6 +173,8 @@ class TaskBoardsController extends Controller
     {
         $this->authorize('view', $taskBoard);
         $user = $request->user();
+        // Taken before the read: GET changes?since=<this> picks up from here.
+        $cursor = now()->startOfSecond()->toIso8601String();
 
         // An API key (MCP) or the AI is never shown a sensitive task, not even its title.
         $hidden = \App\Support\Tasks\SensitiveTasks::machineReader($user);
@@ -212,6 +214,7 @@ class TaskBoardsController extends Controller
 
         return response()->json(['data' => [
             'id' => $taskBoard->id,
+            'cursor' => $cursor,
             'kind' => $taskBoard->kind,
             'name' => $taskBoard->name,
             'visibility' => $taskBoard->visibility,
@@ -328,6 +331,66 @@ class TaskBoardsController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * GET task-boards/{id}/changes?since=<cursor>: what changed on the board
+     * since the cursor, so an open board patches itself (Jose, 2026-11-16:
+     * a Monday status change showed only after leaving the tab). Tasks are
+     * the same rows show gives (rolled-up ones included), deleted ids are the
+     * soft-deleted ones, and groups are the board's whole list (a deleted
+     * group has no row to date). group_totals come with any task change.
+     * Inclusive at the second, so a write in the cursor's own second is sent
+     * twice rather than never. Over 500 changed tasks: reload, nothing else.
+     */
+    public function changes(Request $request, TaskBoard $taskBoard): JsonResponse
+    {
+        $this->authorize('view', $taskBoard);
+        $input = $request->validate(['since' => ['required', 'string', 'max:64']]);
+        try {
+            $since = \Carbon\CarbonImmutable::parse($input['since'])->setTimezone(config('app.timezone'));
+        } catch (\Throwable) {
+            throw ValidationException::withMessages(['since' => 'Not a time.']);
+        }
+        $cursor = now()->startOfSecond();
+        $user = $request->user();
+        $hidden = \App\Support\Tasks\SensitiveTasks::machineReader($user);
+        $sources = $this->boards->rolledUpBoards($user, $taskBoard)->keyBy('id');
+        $boardIds = [$taskBoard->id, ...$sources->keys()->all()];
+
+        $touched = Task::query()->withTrashed()
+            ->whereIn('board_id', $boardIds)
+            ->where(fn ($q) => $q->where('updated_at', '>=', $since)->orWhere('deleted_at', '>=', $since));
+        if ((clone $touched)->count() > 500) {
+            return response()->json(['data' => ['reload' => true, 'cursor' => $cursor->toIso8601String()]]);
+        }
+        $rows = $touched->with([...TasksController::WITH, 'group:id,name'])
+            ->withCount(TasksController::counts())->get();
+        // Gone from this reader: deleted, or (for an API key) made sensitive.
+        [$gone, $live] = $rows->partition(fn (Task $t) => $t->trashed() || ($hidden && $t->sensitive));
+
+        $unread = \App\Support\Notes\NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
+            $live->map(fn (Task $t) => (string) $t->id)->values()->all(), (string) $user->id);
+        $tasks = $live->map(function (Task $t) use ($unread, $sources, $taskBoard) {
+            $row = TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0];
+
+            return $t->board_id === $taskBoard->id ? $row : $row + ['rolled_up_from' => [
+                'board_id' => $t->board_id,
+                'board_name' => $sources[$t->board_id]->name,
+                'group_name' => $t->group?->name,
+            ]];
+        })->values()->all();
+
+        return response()->json(['data' => [
+            'cursor' => $cursor->toIso8601String(),
+            'tasks' => $tasks,
+            'deleted' => $gone->map(fn (Task $t) => (string) $t->id)->values()->all(),
+            'groups' => $taskBoard->groups()->get()->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
+        ] + ($rows->isEmpty() ? [] : [
+            // Counts and footers only: shown/has_more are the client's, by what it loaded.
+            'group_totals' => (object) collect($this->groupPages($taskBoard, $hidden, 0))
+                ->map(fn (array $g) => ['count' => $g['count'], 'footers' => $g['footers']])->all(),
+        ])]);
     }
 
     /**

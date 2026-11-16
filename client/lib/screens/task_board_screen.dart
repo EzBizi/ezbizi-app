@@ -26,6 +26,7 @@ import 'task_board_automate.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
 import 'task_board_gallery.dart';
+import 'task_board_live.dart';
 import '../widgets/list_filters.dart';
 import '../widgets/list_toolbar.dart';
 import '../widgets/mention_field.dart';
@@ -310,7 +311,8 @@ String _dayLabel(DateTime? day, DisplayFormats formats) {
   };
 }
 
-class _TaskBoardScreenState extends State<TaskBoardScreen> {
+class _TaskBoardScreenState extends State<TaskBoardScreen>
+    with WidgetsBindingObserver {
   List<_Json> _boards = const [];
   int _selected = 0;
   _Json? _board;
@@ -372,11 +374,66 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   void initState() {
     super.initState();
     DeepLinks.pending.addListener(_takeLink);
+    WidgetsBinding.instance.addObserver(this);
+    _live = Timer.periodic(liveEvery, (_) => _catchUp());
     _load();
+  }
+
+  // ── Live: the open board follows changes made elsewhere ──────────
+
+  Timer? _live;
+
+  /// Where the board's changes feed picks up; null until a board has come.
+  String? _cursor;
+  bool _catching = false;
+  bool _inFront = true;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _inFront = state == AppLifecycleState.resumed;
+    if (_inFront) _catchUp();
+  }
+
+  /// One read of the board's changes, folded into the board in place.
+  Future<void> _catchUp() async {
+    final board = _board;
+    final since = _cursor;
+    if (_catching || !mounted || !_inFront || board == null || since == null) {
+      return;
+    }
+    // A tab out of view (an Offstage shell) has its tickers off: no reads.
+    if (!TickerMode.valuesOf(context).enabled) return;
+    _catching = true;
+    try {
+      final res = await widget.api.get('/task-boards/${board['id']}/changes', {
+        'since': since,
+      });
+      if (!mounted || !res.ok || _board?['id'] != board['id']) return;
+      if (_cursor != since) return; // the board was opened again meanwhile
+      final data = res.body['data'];
+      if (data is! _Json) return;
+      if (data['reload'] == true) {
+        await _open(_selected);
+        return;
+      }
+      final merged = mergeBoardChanges(
+        _board!,
+        data,
+        since,
+        adopt: _adopt,
+        hold: InlineCellEditor.editing.value > 0,
+      );
+      if (!merged.held) _cursor = data['cursor'] as String? ?? since;
+      if (merged.board != null) setState(() => _board = merged.board);
+    } finally {
+      _catching = false;
+    }
   }
 
   @override
   void dispose() {
+    _live?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     DeepLinks.pending.removeListener(_takeLink);
     _rangeFocus.dispose();
     _tableScroll.dispose();
@@ -515,6 +572,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       }
       final first = _board == null;
       _board = _adoptAll(res.body['data'] as _Json);
+      _cursor = _board!['cursor'] as String?;
       // A group that is all done opens folded, as Monday's Done group does.
       if (first) {
         for (final g in _groups(_board!)) {
@@ -3658,6 +3716,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           child: ColumnCell(
                             column: c,
                             value: columnValue(t, c),
+                            taskDone: _isDone(_board, t),
                             people: _people,
                             formats: _formats,
                             onChanged: _canEdit
@@ -3686,6 +3745,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           ColumnCell(
                             column: c,
                             value: columnValue(t, c),
+                            taskDone: _isDone(_board, t),
                             people: _people,
                             formats: _formats,
                             onChanged: _canEdit
@@ -4490,6 +4550,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                           child: ColumnCell(
                                             column: c,
                                             value: columnValue(t, c),
+                                            taskDone: _isDone(_board, t),
                                             people: _people,
                                             formats: _formats,
                                           ),
@@ -4607,6 +4668,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       canEdit: _canEdit,
       compact: phone,
       colourOf: _planColour,
+      isDone: (t) => _isDone(_board, t),
       onOpen: _openTask,
       onSetRange: (t, from, to) => _patchTask(t, {
         'values': {
