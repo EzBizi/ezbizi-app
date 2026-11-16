@@ -1688,6 +1688,16 @@ class SettingRegistry
                     .'is confirmed" in your logo and colour, with the day, arrival window and address. '
                     .'Replies go to the email on your website.',
             ),
+            // {{price_list}} (Shoval, 2026-11-16): which catalogue prices a first reply quotes.
+            new SettingDefinition(
+                key: 'leads.quote_services',
+                label: 'Prices an auto reply quotes',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                editPermission: 'leads.edit',
+                help: 'Service names from Services, separated by commas, e.g. "Chimney Sweep - Level 1, Chimney Inspection - Level 1". '
+                    .'{{price_list}} lists them with their catalogue price, plus any service the customer names in full. Empty: no prices.',
+            ),
             new SettingDefinition(
                 key: 'leads.office_phone',
                 label: 'Office phone for customers',

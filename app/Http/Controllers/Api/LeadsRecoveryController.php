@@ -97,8 +97,8 @@ class LeadsRecoveryController extends Controller
         $values = ['booking_link' => $host ? "https://{$host}/b/Ab3dE7x" : ''];
         $value = fn (string $k) => (string) ($values[$k] ?? (is_scalar($v = $lead->getAttribute($k)) ? $v : ''));
 
-        // As ActionRunner::interpolate: a line whose link, slot or phone is blank is dropped.
-        $lines = array_filter(explode("\n", $input['text']), fn (string $line) => ! collect(['booking_link', 'offered_slot', 'office_phone'])
+        // As ActionRunner::interpolate: a line whose link, slot, phone or quote is blank is dropped.
+        $lines = array_filter(explode("\n", $input['text']), fn (string $line) => ! collect(['booking_link', 'offered_slot', 'office_phone', 'price_list', 'open_windows', 'missing_info'])
             ->contains(fn ($k) => preg_match('/\{\{\s*'.$k.'\s*\}\}/i', $line) && $value($k) === ''));
         $text = preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', fn ($m) => $value($m[1]), implode("\n", $lines));
 
@@ -114,12 +114,17 @@ class LeadsRecoveryController extends Controller
     }
 
     /** A customer reply on a recovery trigger; on lead.received and replies, only the closed-office ones. */
-    private static function isRecovery(Automation $a): bool
+    public static function isRecovery(Automation $a): bool
     {
         if (! collect($a->activeVersion?->actions)->contains('type', 'reply')) {
             return false;
         }
         if (! in_array($a->trigger_key, ['lead.received', 'lead.customer_replied'], true)) {
+            return true;
+        }
+        // The quoting first reply (Shoval, 2026-11-16) is recovery too.
+        $message = (string) (collect($a->activeVersion?->actions)->firstWhere('type', 'reply')['message'] ?? '');
+        if (preg_match('/\{\{\s*(price_list|open_windows)\s*\}\}/', $message) === 1) {
             return true;
         }
 

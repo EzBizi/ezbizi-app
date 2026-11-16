@@ -14,6 +14,7 @@ use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\SlotOffer;
+use App\Support\Leads\LsaQuote;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Web\BookingLink;
 use Carbon\CarbonImmutable;
@@ -559,7 +560,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         'marketing_consent_at', 'marketing_consent_text',
         'sms_consent_at', 'sms_consent_text', 'sms_consent_site', 'sms_consent_ip',
         'lead_type', 'category', 'service', 'locale', 'summary', 'site_host', 'note', 'note_by_user_id', 'note_updated_at', 'note_mentions',
-        'status', 'dispatcher', 'dispatcher_by_user_id', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'service_state', 'received_at', 'synced_at',
+        'status', 'dispatcher', 'dispatcher_by_user_id', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'service_state', 'received_at', 'synced_at', 'recovery_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
         'form_answers', 'form_name', 'form_submitted_at',
     ];
@@ -572,6 +573,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'referral' => 'array',
             'hidden_at' => 'datetime',
             'received_at' => 'datetime',
+            'recovery_at' => 'datetime',
             'synced_at' => 'datetime',
             'last_contact_at' => 'datetime',
             'reply_overdue_raised_at' => 'datetime',
@@ -738,6 +740,46 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * `{{source}}` is the wire value a condition compares (Jose, 2026-09-30: a
      * notification said "local_services"; "Local Services").
      */
+    /**
+     * Two spellings of one place (Jose, 2026-11-16: "1734 Hallman Dr, Blue
+     * Bell, PA 19422, USA" was offered "1734 Hallman Dr, Blue bell PA 19422"
+     * as a different address). Case, punctuation, spacing, a trailing country
+     * and Dr/Drive-style words are ignored, and a ZIP is its first five
+     * digits. Any other word more or less is a different address: a held one
+     * with "I am available tomorrow" after it still gets the clean offer.
+     */
+    public static function sameAddress(?string $a, ?string $b): bool
+    {
+        [$x, $y] = [self::addressWords($a), self::addressWords($b)];
+        if ($x === [] || $y === []) {
+            return $x === $y;
+        }
+
+        sort($x);
+        sort($y);
+
+        return $x === $y;
+    }
+
+    /** @return list<string> */
+    private static function addressWords(?string $address): array
+    {
+        $address = preg_replace('/(\d{5})-\d{4}/', '$1', mb_strtolower((string) $address));
+        $words = preg_split('/[^a-z0-9]+/', (string) $address, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $short = ['street' => 'st', 'drive' => 'dr', 'avenue' => 'ave', 'road' => 'rd', 'lane' => 'ln', 'court' => 'ct',
+            'boulevard' => 'blvd', 'place' => 'pl', 'circle' => 'cir', 'parkway' => 'pkwy', 'highway' => 'hwy', 'terrace' => 'ter',
+            'north' => 'n', 'south' => 's', 'east' => 'e', 'west' => 'w', 'apartment' => 'apt', 'suite' => 'ste'];
+        $out = [];
+        foreach ($words as $w) {
+            if (in_array($w, ['usa', 'us', 'united', 'states', 'america'], true)) {
+                continue;
+            }
+            $out[] = preg_match('/^(\d{5})\d{4}$/', $w, $m) ? $m[1] : ($short[$w] ?? $w);
+        }
+
+        return array_values(array_unique($out));
+    }
+
     /** "Mark" from "Mark Morrow"; null for a phone number or an initial. */
     public static function firstNameOf(?string $name): ?string
     {
@@ -789,6 +831,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         return [
             'booking_link', 'company_name', 'lead_details', 'lead_headline', 'office_note', 'office_opens',
             'office_phone', 'offered_slot', 'photos_email', 'reply_headline', 'reply_preview', 'source_name', 'thank_you',
+            'price_list', 'open_windows', 'missing_info',
         ];
     }
 
@@ -855,6 +898,22 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             ->for((string) $this->postal_code, $today, RequestedWindow::from($said, $today));
 
         return $offer['label'] ?? '';
+    }
+
+    /** `{{price_list}}`, `{{open_windows}}`, `{{missing_info}}`: LsaQuote (Shoval, 2026-11-16). */
+    public function getPriceListAttribute(): string
+    {
+        return LsaQuote::prices($this);
+    }
+
+    public function getOpenWindowsAttribute(): string
+    {
+        return LsaQuote::windows($this);
+    }
+
+    public function getMissingInfoAttribute(): string
+    {
+        return LsaQuote::missing($this);
     }
 
     /** `{{office_phone}}`: the number a customer calls the branch on. */

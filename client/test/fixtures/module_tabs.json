@@ -205,6 +205,7 @@
                 "WhatsApp",
                 "Workiz",
                 "Promotions",
+                "Recovery",
                 "Hidden"
             ],
             "within": {
@@ -556,6 +557,7 @@
         "leads.manage",
         "leads.promotions.view",
         "leads.reclassify",
+        "leads.recovery.view",
         "leads.ringcentral.view",
         "leads.thumbtack.view",
         "leads.view",

@@ -2436,7 +2436,10 @@ class _LeadThreadState extends State<LeadThread> {
       final who = !mine
           ? 'Customer'
           : c['automatic'] == true
-          ? 'Automation'
+          // Which rule wrote it (Jose, 2026-11-16: Leads › Recovery).
+          ? (c['automation_name'] is String
+                ? 'Automatic · ${c['automation_name']}'
+                : 'Automation')
           : (c['sent_by'] as String?) ?? 'Sent outside EzBizi';
       final when = messageWhen(
         c['occurred_at'] as String?,
