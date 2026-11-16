@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/empty_state.dart';
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
@@ -58,7 +59,17 @@ class _ItemListState extends State<ItemList> {
   void initState() {
     super.initState();
     _load();
+    // Stock moved, an item edited, a sale fulfilled: page one re-read in place.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'inventory'},
+      (_) {
+        if (_page == 1 && !_loading) return _load();
+      },
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void didUpdateWidget(covariant ItemList oldWidget) {
@@ -68,6 +79,7 @@ class _ItemListState extends State<ItemList> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }

@@ -202,7 +202,7 @@ class _JobsScreenState extends State<JobsScreen> {
     super.dispose();
   }
 
-  // â”€â”€ Live: syncs, webhooks and automations show without leaving â”€â”€â”€â”€â”€
+  // ── Live: syncs, webhooks and automations show without leaving ─────
 
   LiveSubscription? _live;
 
