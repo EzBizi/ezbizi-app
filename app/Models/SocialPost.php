@@ -24,6 +24,17 @@ use Illuminate\Support\Facades\Storage;
 class SocialPost extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). Its place is its targets' pages, so the feed asks which a reader reaches (ChangeFeed::NARROW). */
+    protected static string $changeType = 'social_posts';
+
+    /** Filed on no one place: a post goes to pages at several (ChangeFeed::readableSocialPosts). */
+    public function changeFeedPlace(): array
+    {
+        return [null, null];
+    }
+
     use HasUuids;
 
     public static function retention(): RetentionPolicy

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Live;
 
+use App\Models\AdSchedule;
 use App\Models\Assignment;
 use App\Models\Automation;
 use App\Models\Complaint;
@@ -24,8 +25,11 @@ use App\Models\Invitation;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Models\Job;
+use App\Models\Mailbox;
+use App\Models\MailboxGrant;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
+use App\Models\MessageSeen;
 use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Models\PhoneMessage;
@@ -34,6 +38,9 @@ use App\Models\Promotion;
 use App\Models\PromotionText;
 use App\Models\PtoRequest;
 use App\Models\Service;
+use App\Models\SocialConnection;
+use App\Models\SocialPost;
+use App\Models\SocialPostTarget;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleServiceVisit;
@@ -401,5 +408,92 @@ class ModuleFeedsTest extends TestCase
         ]);
         $this->assertSame([$own], $this->ids($branch, 'services', $since), 'its company yes, a sibling company no');
         $this->assertSame($this->sorted($own, $theirs), $this->ids($t['admin'], 'services', $since));
+    }
+
+    /** A post is read where its pages are: SocialConnectionAccess, from reach. A page's send is the post's change. */
+    public function test_social_posts_keep_to_the_pages_a_reader_reaches(): void
+    {
+        $this->assertScoped('social_posts', ['marketing.view', 'marketing.dashboard.view'], function (Franchise $f) {
+            $page = SocialConnection::create(['scope_type' => SocialConnection::SCOPE_FRANCHISE, 'scope_id' => $f->id,
+                'provider' => 'facebook', 'remote_id' => 'r-'.bin2hex(random_bytes(3)), 'display_name' => 'Page', 'handle' => 'page']);
+            $post = SocialPost::create(['body' => 'Autumn sweeps.', 'created_by' => User::factory()->create()->id]);
+            SocialPostTarget::create(['social_post_id' => $post->id, 'social_connection_id' => $page->id, 'status' => 'scheduled']);
+
+            return $post->id;
+        });
+
+        // The minute sweep's conditional UPDATE fires no event: announced by hand.
+        $t = $this->provisionTenant('Gamma');
+        $target = $this->inTenant($t['org'], function () use ($t) {
+            $page = SocialConnection::create(['scope_type' => SocialConnection::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id,
+                'provider' => 'facebook', 'remote_id' => 'r-org', 'display_name' => 'Page', 'handle' => 'page']);
+            $post = SocialPost::create(['body' => 'Winter caps.', 'created_by' => $t['admin']->id]);
+
+            return SocialPostTarget::create(['social_post_id' => $post->id, 'social_connection_id' => $page->id, 'status' => 'failed']);
+        });
+        $since = $this->cursor($t['admin'], 'social_posts');
+        $this->inTenant($t['org'], function () use ($target) {
+            SocialPostTarget::query()->whereKey($target->id)->update(['status' => 'queued']);
+            SocialPostTarget::announce($target->id);
+        });
+        $this->assertSame([$target->social_post_id], $this->ids($t['admin'], 'social_posts', $since));
+    }
+
+    public function test_ad_schedules_are_filed_where_their_account_is(): void
+    {
+        $this->assertScoped('ad_schedules', ['ads_manager.view'], function (Franchise $f) {
+            $account = SocialConnection::create(['scope_type' => SocialConnection::SCOPE_FRANCHISE, 'scope_id' => $f->id,
+                'provider' => 'facebook_ads', 'remote_id' => 'act_'.random_int(100, 999999), 'display_name' => 'Ads']);
+
+            return AdSchedule::create(['connection_id' => $account->id, 'object_id' => '120', 'object_name' => 'Milwaukee',
+                'days' => [1, 2, 3, 4, 5], 'on_at' => '08:00', 'off_at' => '18:00', 'timezone' => 'America/New_York'])->id;
+        });
+    }
+
+    /** An inbox is read by grant and reach (MailboxAccess::readable); the watcher's bookkeeping is not news, its mark is. */
+    public function test_mailboxes_keep_to_the_inboxes_a_reader_may_open(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $sibling = $this->extraFranchise($t, 'Alpha F2');
+        $branch = $this->userWithRole($t, 'Branch', ['email.view', 'email.inbox.view'], onlyAt: $t['franchise']);
+        $without = $this->userWithRole($t, 'Without', ['leads.view']);
+        // Granted to the branch's role: grant AND reach. Given by name: opens
+        // outside reach too (MailboxAccess::givenByName, Jose 2026-11-09).
+        [$mine, $theirs, $ungranted, $named] = $this->inTenant($t['org'], fn () => [
+            $this->inbox($t['franchise']->id, 'own@example.test', ['role_id' => $branch->role_id]),
+            $this->inbox($sibling->id, 'sibling@example.test', ['role_id' => $branch->role_id]),
+            $this->inbox($t['franchise']->id, 'nobody@example.test', null),
+            $this->inbox($sibling->id, 'named@example.test', ['user_id' => $branch->id]),
+        ]);
+
+        $since = $this->cursor($t['admin'], 'mailboxes');
+        $this->inTenant($t['org'], function () use ($mine, $theirs, $ungranted, $named, $t) {
+            foreach ([$mine, $theirs, $ungranted, $named] as $box) {
+                MessageSeen::create(['mailbox_id' => $box->id, 'provider_message_id' => 'm-'.bin2hex(random_bytes(3)),
+                    'user_id' => $t['admin']->id, 'seen_at' => now()]);
+            }
+        });
+        $this->assertSame($this->sorted($mine->id, $named->id), $this->ids($branch, 'mailboxes', $since),
+            'granted and reached, or given by name; never a sibling by role, never ungranted');
+        $this->assertSame([], $this->ids($without, 'mailboxes', $since), 'no permission: nothing');
+
+        $since = $this->cursor($t['admin'], 'mailboxes');
+        $this->inTenant($t['org'], fn () => Mailbox::query()->find($mine->id)->forceFill([
+            'last_reached_at' => now(), 'watch_marked_at' => now(), 'watch_failures' => 0, 'watch_next_poll_at' => now()->addMinute(),
+        ])->save());
+        $this->assertSame([], $this->ids($branch, 'mailboxes', $since), 'a poll that found nothing is not news');
+        $this->inTenant($t['org'], fn () => Mailbox::query()->find($mine->id)->forceFill(['watch_mark' => '98765'])->save());
+        $this->assertSame([$mine->id], $this->ids($branch, 'mailboxes', $since), 'new mail is');
+    }
+
+    private function inbox(string $franchiseId, string $address, ?array $grant): Mailbox
+    {
+        $box = Mailbox::create(['scope_type' => Mailbox::SCOPE_FRANCHISE, 'scope_id' => $franchiseId,
+            'address' => $address, 'display_name' => 'Office', 'provider' => 'gmail_oauth']);
+        if ($grant !== null) {
+            MailboxGrant::create(['mailbox_id' => $box->id, ...$grant]);
+        }
+
+        return $box;
     }
 }

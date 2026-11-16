@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/deep_links.dart';
 import '../../core/device_key_store_io.dart'
     if (dart.library.js_interop) '../../core/device_key_store_web.dart'
@@ -225,10 +226,25 @@ class _GmailInboxState extends State<GmailInbox> {
     // Connecting an inbox happens in the browser; coming back must show it.
     _resume = AppLifecycleListener(onResume: _loadMailboxes);
     _loadMailboxes();
+    // New mail (the watcher moved an inbox's mark), or a colleague seeing,
+    // dealing with or snoozing a message: the page on screen re-reads in
+    // place; ticks, the open conversation and the search are kept. Not once
+    // older mail has been appended below it, which a re-read would drop.
+    _live = LiveChanges.of(widget.api).subscribe({'mailboxes'}, (_) {
+      if (!_loadingList && !_appending && !_appended) {
+        return _loadList(cursor: _cursor, quiet: true);
+      }
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
+
+  /// Older mail was appended below the page: a live re-read would drop it.
+  bool _appended = false;
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_followLink);
     _resume.dispose();
     _debounce?.cancel();
@@ -297,16 +313,24 @@ class _GmailInboxState extends State<GmailInbox> {
     ).whenComplete(() => _appending = false);
   }
 
-  Future<void> _loadList({String? cursor, bool append = false}) async {
+  /// [quiet]: a live re-read of the page on screen; nothing dims, and a
+  /// failure keeps the rows.
+  Future<void> _loadList({
+    String? cursor,
+    bool append = false,
+    bool quiet = false,
+  }) async {
     if (_mailboxes.isEmpty) return;
 
     final request = ++_listRequest;
 
-    setState(() {
-      _loadingList = !append && (_rows.isEmpty || cursor != _cursor);
-      _refreshingList = !append && !_loadingList;
-      _listError = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loadingList = !append && (_rows.isEmpty || cursor != _cursor);
+        _refreshingList = !append && !_loadingList;
+        _listError = null;
+      });
+    }
 
     final filterId = _folder.startsWith('filter:')
         ? _folder.substring(7)
@@ -323,6 +347,7 @@ class _GmailInboxState extends State<GmailInbox> {
     final response = await widget.api.get('/email/inbox', query);
 
     if (!mounted || request != _listRequest) return;
+    if (quiet && (!response.ok || _appended)) return;
 
     setState(() {
       _loadingList = false;
@@ -340,8 +365,10 @@ class _GmailInboxState extends State<GmailInbox> {
         final seen = {for (final r in _rows) r.key};
         _rows = [..._rows, ...page.rows.where((r) => !seen.contains(r.key))];
         _next = page.cursor;
+        _appended = true;
         return;
       }
+      _appended = false;
       _rows = page.rows;
       _cursor = cursor;
       _next = page.cursor;
