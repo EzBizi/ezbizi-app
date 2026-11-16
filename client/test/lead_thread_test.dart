@@ -1638,6 +1638,118 @@ void main() {
       );
     });
 
+    testWidgets('More appears only when the AI line is cut, and opens it', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1200, 900));
+      expect(find.byKey(const ValueKey('lead-summary')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('lead-summary-more')),
+        findsNothing,
+        reason: 'one line fits: nothing to open',
+      );
+
+      final long = List.filled(
+        12,
+        'Smoky fireplace that backs up into the living room when lit',
+      ).join('; ');
+      await _pump(
+        tester,
+        player: FakeRecordingPlayer(),
+        recordingGate: Completer()..complete(),
+        size: const Size(1200, 900),
+        details: details,
+        reading: reading,
+        classification: 'BOOK',
+        summary: long,
+      );
+      final text = find.byKey(const ValueKey('lead-summary'));
+      final more = find.byKey(const ValueKey('lead-summary-more'));
+      expect(more, findsOneWidget);
+      expect(find.descendant(of: more, matching: find.text('More')), findsOneWidget);
+      expect(tester.widget<Text>(text).maxLines, 3);
+      final cut = tester.getSize(text).height;
+
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: more, matching: find.text('Less')), findsOneWidget);
+      expect(tester.widget<Text>(text).maxLines, isNull);
+      expect(tester.getSize(text).height, greaterThan(cut));
+
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(text).maxLines, 3);
+      expect(tester.getSize(text).height, cut);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final size in const [Size(1440, 400), Size(390, 640)]) {
+      testWidgets('at ${size.width.toInt()}x${size.height.toInt()} the '
+          'thread keeps at least half the pane', (tester) async {
+        await pumpFull(tester, size);
+        expect(tester.takeException(), isNull);
+
+        final list = find.byKey(const ValueKey('thread-list'));
+        expect(list, findsOneWidget);
+        expect(
+          tester.getSize(list).height,
+          greaterThanOrEqualTo(size.height / 2),
+        );
+        // Who it is stays in view; the rest waits behind one control.
+        expect(find.text('Marcus Bell'), findsWidgets);
+        for (final k in const [
+          'lead-asked',
+          'thread-facts',
+          'lead-customer',
+        ]) {
+          expect(find.byKey(ValueKey(k)), findsNothing, reason: k);
+        }
+      });
+    }
+
+    testWidgets('a short desktop pane opens its details without overflow', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1440, 400));
+      final toggle = find.byKey(const ValueKey('thread-short-details'));
+      expect(toggle, findsOneWidget);
+      expect(find.byKey(const ValueKey('status-moves')), findsNothing);
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      for (final k in const [
+        'status-moves',
+        'lead-asked',
+        'thread-facts',
+        'lead-customer',
+      ]) {
+        expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+      }
+      // Open, the details scroll inside their share of the pane.
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('thread-details-scroll')))
+            .height,
+        lessThanOrEqualTo(400 * 0.3),
+      );
+      expect(
+        tester.getSize(find.byKey(const ValueKey('thread-list'))).height,
+        greaterThan(0),
+      );
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('lead-asked')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a tall desktop pane draws no Details line', (tester) async {
+      await pumpFull(tester, const Size(1440, 900));
+      expect(find.byKey(const ValueKey('thread-short-details')), findsNothing);
+      expect(find.byKey(const ValueKey('lead-asked')), findsOneWidget);
+    });
+
     testWidgets('a phone at 390 opens every piece without overflow', (
       tester,
     ) async {
