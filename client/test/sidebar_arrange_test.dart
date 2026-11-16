@@ -243,6 +243,39 @@ void main() {
       expect(find.byType(Drawer), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'the phone bar keeps every label on one line at 320 px and large text',
+    (tester) async {
+      // Jose, 2026-11-16: "Communicati / on" on the iOS build.
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      await _pumpShell(
+        tester,
+        modules: ['jobs', 'scheduling', 'leads', 'phone'],
+        order: ['jobs', 'scheduling', 'leads', 'phone'],
+      );
+      expect(tester.takeException(), isNull);
+
+      final bar = find.byKey(const Key('phone-bottom-bar'));
+      final labels = find.descendant(of: bar, matching: find.byType(Text));
+      expect(labels, findsWidgets);
+      expect(
+        find.descendant(of: bar, matching: find.text('Communication')),
+        findsNothing,
+      );
+      final one = tester
+          .getSize(find.descendant(of: bar, matching: find.text('More')))
+          .height;
+      for (final e in labels.evaluate()) {
+        expect(tester.getSize(find.byWidget(e.widget)).height, one);
+      }
+    },
+  );
 }
 
 // ── harness ────────────────────────────────────────────────────────

@@ -26,6 +26,8 @@ final class SmsConsent
 
     public const REFUSAL = 'This number replied STOP, so it cannot be texted until it replies START.';
 
+    public const CAPPED = 'This number already got its automatic texts for the last 24 hours (Settings: leads.automatic_texts_per_day), so this one was not sent.';
+
     /** Record an inbound STOP or START. Returns the keyword it acted on, if any. */
     public static function absorb(string $organizationId, string $from, string $body): ?string
     {
@@ -82,11 +84,18 @@ final class SmsConsent
      * the opt-out line; a person's 1:1 text carries it only on the first text
      * (desk for Jose, 2026-11-03).
      */
-    public static function prepare(PhoneConnection $connection, string $to, string $body, bool $automated = false): ?string
+    public static function prepare(PhoneConnection $connection, string $to, string $body, bool $automated = false, bool $capped = false): ?string
     {
         $org = (string) $connection->organization_id;
         if (self::optedOut($org, $to)) {
             return null;
+        }
+        // A rule's text to a customer, never a person's or a booking confirmation (callers pass $capped).
+        // Automatic texts are the ones carrying the opt-out footer (prepare adds it to each).
+        // ponytail: a person's first-ever text to a number carries it too, so it counts once.
+        if ($capped && DB::table('phone_messages')->where('organization_id', $org)->where('direction', 'outbound')
+            ->where('to_e164', $to)->where('body', 'like', '%'.self::FOOTER)->where('created_at', '>=', now()->subDay())->count() >= (int) \App\Support\Settings\SettingsResolver::forOrganization('leads.automatic_texts_per_day')) {
+            throw new SmsCapped(self::CAPPED);
         }
 
         $texted = ! $automated && DB::table('phone_messages')
