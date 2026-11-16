@@ -775,18 +775,40 @@ class _PersonRecordState extends State<_PersonRecord> {
 
   bool _busy = false;
 
+  /// Somebody went into a box on this record since it was last read: a live
+  /// re-read waits until they save (which reads it again) or change section.
+  bool _typing = false;
+
   @override
   void initState() {
     super.initState();
     _reload();
+    // Live: this person changed elsewhere (HR, Work Hours, a sync) re-reads
+    // in place, never over a draft.
+    _live = LiveChanges.of(widget.api).subscribe({'people'}, (batch) {
+      if (batch.reload || batch.changedOf('people').contains(widget.personId)) {
+        if (!_loading && !_busy && !_typing) return _reload(quiet: true);
+      }
+    }, active: LiveChanges.visible(this));
   }
 
-  Future<void> _reload() async {
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the record on screen.
+  Future<void> _reload({bool quiet = false}) async {
     final response = await widget.api.get('/hr/people/${widget.personId}');
 
     if (!mounted) return;
+    if (quiet && (!response.ok || _busy || _typing)) return;
 
     setState(() {
+      _typing = false;
       _loading = false;
       if (!response.ok) {
         _error = response.reason;
@@ -891,7 +913,10 @@ class _PersonRecordState extends State<_PersonRecord> {
                 labels: [for (final s in _shown) (s.$2, s.$3)],
                 missing: [for (final s in _shown) _emptyIn(s.$1)],
                 selected: _shown.indexWhere((s) => s.$1 == _active),
-                onSelected: (i) => setState(() => _section = _shown[i].$1),
+                onSelected: (i) => setState(() {
+                  _section = _shown[i].$1;
+                  _typing = false;
+                }),
               ),
             ),
             const Divider(height: 1),
@@ -905,7 +930,14 @@ class _PersonRecordState extends State<_PersonRecord> {
             child: ConstrainedBox(
               key: const ValueKey('tour-hr-record-section'),
               constraints: const BoxConstraints(maxWidth: 760),
-              child: _body(context),
+              child: Focus(
+                canRequestFocus: false,
+                skipTraversal: true,
+                onFocusChange: (has) {
+                  if (has) _typing = true;
+                },
+                child: _body(context),
+              ),
             ),
           ),
         ),

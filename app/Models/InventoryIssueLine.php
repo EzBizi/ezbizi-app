@@ -24,6 +24,11 @@ class InventoryIssueLine extends Model implements StatesRetention
     }
 
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A line is its issue's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['inventory_orders', InventoryIssue::class, 'issue_id'];
+
     use HasUuids;
 
     protected function casts(): array
