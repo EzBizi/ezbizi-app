@@ -128,6 +128,8 @@ final class RescheduleOffers
                 'phone' => $c['phone'],
                 'phone_digits' => Lead::digits($c['phone']),
                 'lead_type' => 'Reschedule',
+                // Leads › Recovery holds it (Jose, 2026-11-16).
+                'recovery_at' => now(),
                 'summary' => 'Offered '.$date->format('D M j').' instead of '.CarbonImmutable::parse($c['scheduled_for'])->format('D M j'),
                 'status' => Lead::STATUS_NEW,
                 'received_at' => now(),

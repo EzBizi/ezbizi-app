@@ -519,7 +519,7 @@ class ActionRunner
             'unassign' => $this->unassign($subject),
             'resend' => $this->resendInvitation($subject),
             'revoke' => $this->revokeInvitation($subject),
-            'reply' => $this->replyToLead($action, $event, $subject),
+            'reply' => $this->replyToLead($action, $event, $subject, $automation),
             'book_by_chat' => $this->bookByChat($action, $event, $subject),
             'report.send' => $this->sendReport($action, $event, $automation),
             'email.send' => $this->sendEmail($action, $event, $automation, $subject),
@@ -1197,7 +1197,7 @@ class ActionRunner
      * deep and every link has a default, so it compiled perfectly while dropping
      * the flag at one call site - see docs/AUTOMATION-COVERAGE.md.
      */
-    private function replyToLead(array $action, AutomationEvent $event, ?Model $subject): array
+    private function replyToLead(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation = null): array
     {
         $type = 'reply';
         $message = trim((string) ($action['message'] ?? ''));
@@ -1280,11 +1280,20 @@ class ActionRunner
         }
 
         try {
-            $bySms
+            $sent = $bySms
                 ? app(LeadTexts::class)->send($subject, $text, automatic: true)
                 : $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        // "Automatic · <rule>" on the thread, and Leads › Recovery holds the lead
+        // a win-back text went to, so a reply to it is answered (Jose, 2026-11-16).
+        if ($automation !== null) {
+            $sent instanceof \App\Models\LeadConversation &&$sent->forceFill(['automation_name' => mb_substr((string) $automation->name, 0, 150)])->saveQuietly();
+            if (\App\Http\Controllers\Api\LeadsRecoveryController::isRecovery($automation)) {
+                $subject->forceFill(['recovery_at' => now()])->saveQuietly();
+            }
         }
 
         $this->audit->log('automation.lead_replied', $subject);
@@ -3732,7 +3741,7 @@ class ActionRunner
         // booking page it is dropped and the rest still goes (Leads, 2026-10-13).
         // The same for an offered slot with no open window (2026-10-19).
         // "If it's urgent, call us at {{office_phone}}." likewise, where a place has no phone (2026-10-20).
-        foreach (['booking_link', 'offered_slot', 'office_phone'] as $field) {
+        foreach (['booking_link', 'offered_slot', 'office_phone', 'price_list', 'open_windows', 'missing_info'] as $field) {
             if (preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $template)
                 && blank($subject?->getAttribute($field))
                 && blank($event->payload['after'][$field] ?? $event->payload[$field] ?? null)) {

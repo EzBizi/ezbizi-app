@@ -3079,6 +3079,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('workiz', 'Workiz'),
                     // Answers to Memberships > Promotions texts (Jose, 2026-11-06).
                     new TabDefinition('promotions', 'Promotions'),
+                    // Leads a Recovery text went to, so their replies are answered (Jose, 2026-11-16).
+                    new TabDefinition('recovery', 'Recovery'),
                     // Private conversations kept from staff: sees, hides and unhides them (Jose, 2026-10-29).
                     new TabDefinition('hidden', 'Hidden', within: 'Manage'),
                 ],
