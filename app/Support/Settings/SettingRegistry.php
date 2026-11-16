@@ -1067,6 +1067,14 @@ class SettingRegistry
                 help: 'Service area, technician, repair team, an attachment, a note: the ones ticked must be there.',
             ),
             new SettingDefinition(
+                key: 'project_board.technician_roles', label: 'Project Management: roles that can be picked as Technician',
+                type: SettingDefinition::TYPE_JSON,
+                default: ['Technician', 'Local Manager'],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                // Jose, 2026-11-16: the picker shows only these roles; matched by name, any case.
+                help: 'Role names, any case. The technician picker lists only active users holding one of them; Workiz sync is not limited.',
+            ),
+            new SettingDefinition(
                 key: 'project_board.client_texts', label: 'Project Management: text the client the times',
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],

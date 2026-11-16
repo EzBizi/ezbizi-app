@@ -1,3 +1,4 @@
+import '../../widgets/module_page_header.dart';
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -158,13 +159,15 @@ class _StockListState extends State<StockList> {
                 label: const Text('Purchase order'),
               ),
             if (canEdit)
-              Refused(
-                reason: refused,
-                child: FilledButton.icon(
-                  key: const ValueKey('tour-inventory-stock-transfer'),
-                  onPressed: refused == null ? () => _transfer() : null,
-                  icon: const Icon(Icons.swap_horiz, size: 18),
-                  label: const Text('Transfer'),
+              ModuleAction(
+                child: Refused(
+                  reason: refused,
+                  child: FilledButton.icon(
+                    key: const ValueKey('tour-inventory-stock-transfer'),
+                    onPressed: refused == null ? () => _transfer() : null,
+                    icon: const Icon(Icons.swap_horiz, size: 18),
+                    label: const Text('Transfer'),
+                  ),
                 ),
               ),
           ],

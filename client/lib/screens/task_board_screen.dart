@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
+import '../widgets/cell_tap.dart';
+import '../widgets/lazy_menu_anchor.dart';
 import '../widgets/list_search.dart';
 import 'dart:math' as math;
 
@@ -26,6 +28,7 @@ import 'task_board_automate.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
 import 'task_board_gallery.dart';
+import 'task_board_live.dart';
 import '../widgets/list_filters.dart';
 import '../widgets/list_toolbar.dart';
 import '../widgets/mention_field.dart';
@@ -310,7 +313,8 @@ String _dayLabel(DateTime? day, DisplayFormats formats) {
   };
 }
 
-class _TaskBoardScreenState extends State<TaskBoardScreen> {
+class _TaskBoardScreenState extends State<TaskBoardScreen>
+    with WidgetsBindingObserver {
   List<_Json> _boards = const [];
   int _selected = 0;
   _Json? _board;
@@ -375,11 +379,66 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   void initState() {
     super.initState();
     DeepLinks.pending.addListener(_takeLink);
+    WidgetsBinding.instance.addObserver(this);
+    _live = Timer.periodic(liveEvery, (_) => _catchUp());
     _load();
+  }
+
+  // ── Live: the open board follows changes made elsewhere ──────────
+
+  Timer? _live;
+
+  /// Where the board's changes feed picks up; null until a board has come.
+  String? _cursor;
+  bool _catching = false;
+  bool _inFront = true;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _inFront = state == AppLifecycleState.resumed;
+    if (_inFront) _catchUp();
+  }
+
+  /// One read of the board's changes, folded into the board in place.
+  Future<void> _catchUp() async {
+    final board = _board;
+    final since = _cursor;
+    if (_catching || !mounted || !_inFront || board == null || since == null) {
+      return;
+    }
+    // A tab out of view (an Offstage shell) has its tickers off: no reads.
+    if (!TickerMode.valuesOf(context).enabled) return;
+    _catching = true;
+    try {
+      final res = await widget.api.get('/task-boards/${board['id']}/changes', {
+        'since': since,
+      });
+      if (!mounted || !res.ok || _board?['id'] != board['id']) return;
+      if (_cursor != since) return; // the board was opened again meanwhile
+      final data = res.body['data'];
+      if (data is! _Json) return;
+      if (data['reload'] == true) {
+        await _open(_selected);
+        return;
+      }
+      final merged = mergeBoardChanges(
+        _board!,
+        data,
+        since,
+        adopt: _adopt,
+        hold: InlineCellEditor.editing.value > 0,
+      );
+      if (!merged.held) _cursor = data['cursor'] as String? ?? since;
+      if (merged.board != null) setState(() => _board = merged.board);
+    } finally {
+      _catching = false;
+    }
   }
 
   @override
   void dispose() {
+    _live?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     DeepLinks.pending.removeListener(_takeLink);
     _rangeFocus.dispose();
     _tableScroll.dispose();
@@ -518,6 +577,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       }
       final first = _board == null;
       _board = _adoptAll(res.body['data'] as _Json);
+      _cursor = _board!['cursor'] as String?;
       // A group that is all done opens folded, as Monday's Done group does.
       if (first) {
         for (final g in _groups(_board!)) {
@@ -1198,6 +1258,17 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Map<String, FilterField> get _filterFields {
     final board = _board;
     if (board == null) return const {};
+    // Worked out once per board: every cell and, under a filter, every task
+    // asked for the whole map on each build (Task Board lag, 11-16).
+    if (identical(_fieldsFor, board)) return _fieldsMemo;
+    _fieldsFor = board;
+    return _fieldsMemo = _filterFieldsNow(board);
+  }
+
+  Object? _fieldsFor;
+  Map<String, FilterField> _fieldsMemo = const {};
+
+  Map<String, FilterField> _filterFieldsNow(_Json board) {
     final people = [for (final e in _people.entries) (e.key, e.value)];
     final out = <FilterField>[
       (
@@ -1319,6 +1390,16 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// Who a task can be given to, by id. The board says, where it does; a
   /// server from before it did offers you and the people already owning one.
   Map<String, String> get _people {
+    final board = _board;
+    if (identical(_peopleFor, board) && board != null) return _peopleMemo;
+    _peopleFor = board;
+    return _peopleMemo = _peopleNow();
+  }
+
+  Object? _peopleFor;
+  Map<String, String> _peopleMemo = const {};
+
+  Map<String, String> _peopleNow() {
     final assignable = _board?['assignable'];
     return {
       if (assignable is List)
@@ -3704,6 +3785,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           child: ColumnCell(
                             column: c,
                             value: columnValue(t, c),
+                            taskDone: _isDone(_board, t),
                             people: _people,
                             formats: _formats,
                             onChanged: _canEdit
@@ -3732,6 +3814,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           ColumnCell(
                             column: c,
                             value: columnValue(t, c),
+                            taskDone: _isDone(_board, t),
                             people: _people,
                             formats: _formats,
                             onChanged: _canEdit
@@ -3769,7 +3852,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 _cell(
                   context,
                   _w('about'),
-                  InkWell(
+                  CellTap(
                     key: ValueKey('task-about-${t['id']}'),
                     onTap: _canEdit ? () => _editAbout(t) : null,
                     child: Align(
@@ -3886,7 +3969,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       }
       _rangeAnchor ??= id;
     });
-    _rangeFocus.requestFocus();
+    // The range's Focus is built with the pick, so it is asked after it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _rangeFocus.requestFocus();
+    });
   }
 
   void _clearRange() {
@@ -3960,50 +4046,67 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Widget _rangeCell(_Json t, BoardColumn c, Widget child) {
     final picked = _rangeColumn == c.id && _range.contains(t['id']);
     final scheme = Theme.of(context).colorScheme;
+    // No menu, focus or overlay per cell until one is asked for: a row of
+    // eleven columns was a thousand widgets (Task Board lag, 11-16).
+    Widget cell = picked
+        ? DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.10),
+              border: Border.all(color: scheme.primary),
+            ),
+            child: child,
+          )
+        : child;
+    if (picked && _range.first == t['id']) {
+      cell = Focus(focusNode: _rangeFocus, onKeyEvent: _rangeKey, child: cell);
+    }
+    // A Listener for the pick: the cell's own editor wins the tap arena.
+    return Listener(
+      key: ValueKey('range-cell-${c.id}-${t['id']}'),
+      onPointerDown: (e) {
+        if (e.buttons == kPrimaryButton) _pickCell(t, c);
+      },
+      // A gesture for the menu, so it wins over the row's right-click; an
+      // in-place cell has its own menu, with Filter by this value.
+      child: ColumnCell.editsInPlace(c, editable: _canEdit)
+          ? cell
+          : GestureDetector(
+              onSecondaryTapUp: (d) => _cellMenu(t, c, d.globalPosition),
+              child: cell,
+            ),
+    );
+  }
+
+  /// Right-click on a cell without its own menu: Filter by this value.
+  Future<void> _cellMenu(_Json t, BoardColumn c, Offset at) async {
     final value = _valueOf(c.id, t);
-    final menu = MenuController();
-    return MenuAnchor(
-      controller: menu,
-      menuChildren: [
-        MenuItemButton(
+    final box = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        at & const Size(1, 1),
+        Offset.zero & box.size,
+      ),
+      items: [
+        PopupMenuItem(
           key: const Key('cell-filter-value'),
-          leadingIcon: const Icon(Icons.filter_list, size: 18),
-          onPressed: value.isEmpty ? null : () => _filterTo(c.id, value),
+          value: 'filter',
+          enabled: value.isNotEmpty,
+          height: 36,
           child: const Text('Filter by this value'),
         ),
         if (_filteredOn(c.id))
-          MenuItemButton(
-            onPressed: () => _clearFilterOn(c.id),
-            child: const Text('Clear filter'),
+          const PopupMenuItem(
+            value: 'clear',
+            height: 36,
+            child: Text('Clear filter'),
           ),
       ],
-      // A Listener for the pick: the cell's own editor wins the tap arena.
-      child: Listener(
-        key: ValueKey('range-cell-${c.id}-${t['id']}'),
-        onPointerDown: (e) {
-          if (e.buttons == kPrimaryButton) _pickCell(t, c);
-        },
-        // A gesture for the menu, so it wins over the row's right-click; an
-        // in-place cell has its own menu, with Filter by this value.
-        child: GestureDetector(
-          onSecondaryTapUp: ColumnCell.editsInPlace(c, editable: _canEdit)
-              ? null
-              : (d) => menu.open(position: d.localPosition),
-          child: Focus(
-            focusNode: picked && _range.first == t['id'] ? _rangeFocus : null,
-            onKeyEvent: _rangeKey,
-            child: DecoratedBox(
-              position: DecorationPosition.foreground,
-              decoration: BoxDecoration(
-                color: picked ? scheme.primary.withValues(alpha: 0.10) : null,
-                border: picked ? Border.all(color: scheme.primary) : null,
-              ),
-              child: child,
-            ),
-          ),
-        ),
-      ),
     );
+    if (!mounted) return;
+    if (choice == 'filter') _filterTo(c.id, value);
+    if (choice == 'clear') _clearFilterOn(c.id);
   }
 
   /// A Files cell's "+": the file goes up as an update on the task (the
@@ -4347,7 +4450,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final editable = (_board?['statuses'] as List? ?? const []).any(
       (s) => s is Map && s.containsKey('id'),
     );
-    return MenuAnchor(
+    return LazyMenuAnchor(
       menuChildren: [
         Builder(
           builder: (context) => LabelBlocks(
@@ -4383,9 +4486,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       ],
       onOpen: () => _statusMenu(true),
       onClose: () => _statusMenu(false),
-      builder: (context, menu, _) => Material(
+      builder: (context, menu, _) => ColoredBox(
         color: colours.fill,
-        child: InkWell(
+        child: CellTap(
           key: ValueKey('task-status-${t['id']}'),
           onTap: _canEdit
               ? () => menu.isOpen ? menu.close() : menu.open()
@@ -4398,7 +4501,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   /// Owner edits where it is: a list of the board's people (Jose 11-13:
   /// only the name opens the task).
-  Widget _ownerMenu(_Json t, Widget shown) => MenuAnchor(
+  Widget _ownerMenu(_Json t, Widget shown) => LazyMenuAnchor(
     menuChildren: [
       MenuItemButton(
         onPressed: () => _patchTask(t, {'assignee_user_id': null}),
@@ -4411,7 +4514,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           child: Text(p.value),
         ),
     ],
-    builder: (context, menu, _) => InkWell(
+    builder: (context, menu, _) => CellTap(
       key: ValueKey('task-owner-${t['id']}'),
       onTap: () => menu.isOpen ? menu.close() : menu.open(),
       child: Align(alignment: Alignment.centerLeft, child: shown),
@@ -4466,6 +4569,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         ? _createdLabel(t['created_at'], _formats)
         : '';
     bool shown(String key) => _builtinShown(_board, key);
+    final fields = _cardFields(t);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -4560,7 +4664,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                   color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
-                            for (final c in _cardFields(t).shown)
+                            for (final c in fields.shown)
                               Text.rich(
                                 TextSpan(
                                   text: '${c.name}: ',
@@ -4578,6 +4682,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                         child: ColumnCell(
                                           column: c,
                                           value: columnValue(t, c),
+                                          taskDone: _isDone(_board, t),
                                           people: _people,
                                           formats: _formats,
                                         ),
@@ -4586,9 +4691,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                   ],
                                 ),
                               ),
-                            if (_cardFields(t).more > 0)
+                            if (fields.more > 0)
                               Text(
-                                '+${_cardFields(t).more} more',
+                                '+${fields.more} more',
                                 key: ValueKey('task-card-more-${t['id']}'),
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurfaceVariant,
@@ -4704,6 +4809,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       canEdit: _canEdit,
       compact: phone,
       colourOf: _planColour,
+      isDone: (t) => _isDone(_board, t),
       onOpen: _openTask,
       onSetRange: (t, from, to) => _patchTask(t, {
         'values': {

@@ -22,6 +22,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Task extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'tasks';
     use HasUuids;
     use SoftDeletes;
 

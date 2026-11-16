@@ -13,7 +13,9 @@ use Tests\TestCase;
 class SchedulerLanesTest extends TestCase
 {
     private const SLOW = ['ezbizi:sync-leads', 'ezbizi:sync-workiz', 'ezbizi:workiz-web-sales',
-        'ezbizi:workiz-web-estimate-links', 'ezbizi:project-workiz', 'ezbizi:gbp-sync', 'ezbizi:review-backlog'];
+        'ezbizi:workiz-web-estimate-links', 'ezbizi:project-workiz', 'ezbizi:gbp-sync', 'ezbizi:review-backlog',
+        // 2026-11-16: ~4 min of a 5-min slot; slot 1 timed out at 14:15 UTC.
+        'ezbizi:monday-sync'];
 
     /** @return array<string, bool> command => would its filters pass */
     private function lane(?string $lane): array
@@ -57,6 +59,8 @@ class SchedulerLanesTest extends TestCase
         // The control: a fast command, and a near-name that must stay fast.
         $this->assertTrue($fast['ezbizi:leads-reply-overdue']);
         $this->assertFalse($slow['ezbizi:leads-reply-overdue']);
+        $this->assertTrue($fast['ezbizi:monday-push'], 'the one-minute outbox stays fast');
+        $this->assertFalse($slow['ezbizi:monday-push']);
         $this->assertTrue($fast['ezbizi:sync-workiz-records'] ?? true);
         $this->assertFalse($slow['ezbizi:sync-workiz-records'] ?? false);
     }

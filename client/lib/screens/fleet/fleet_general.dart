@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/empty_state.dart';
+
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -110,25 +112,13 @@ class _FleetGeneralState extends State<FleetGeneral> {
     final health = (data['health'] as Map?)?.cast<String, dynamic>() ?? {};
 
     if (health['empty'] == true) {
-      return ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          Text(
-            '${health['sentence'] ?? 'No vehicles to show.'}',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          if (widget.canAdd) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
-                onPressed: widget.onAdd,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add vehicle'),
-              ),
-            ),
-          ],
-        ],
+      return EmptyState(
+        key: const ValueKey('fleet-general-empty'),
+        icon: Icons.local_shipping_outlined,
+        title: 'No vehicles yet',
+        message: '${health['sentence'] ?? 'No vehicles to show.'}',
+        actionLabel: 'Add vehicle',
+        onAction: widget.canAdd ? widget.onAdd : null,
       );
     }
 
@@ -299,9 +289,7 @@ class _FleetGeneralState extends State<FleetGeneral> {
             )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final row in rows) _attentionRow(context, row),
-              ],
+              children: [for (final row in rows) _attentionRow(context, row)],
             ),
     );
   }
@@ -426,7 +414,8 @@ class _FleetGeneralState extends State<FleetGeneral> {
     );
   }
 
-  static String _date(DateTime day) => '${shortMonths[day.month - 1]} ${day.day}';
+  static String _date(DateTime day) =>
+      '${shortMonths[day.month - 1]} ${day.day}';
 
   // --- Spending -----------------------------------------------------------
 

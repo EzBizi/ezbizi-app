@@ -1,3 +1,4 @@
+import '../widgets/module_page_header.dart';
 import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
@@ -215,18 +216,20 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                     '${_automations.where(_runs).length} on',
           action: _tab != 'rules'
               ? null
-              : Refused(
-                  // Visible and refused, never hidden: somebody looking for
-                  // "New automation" and not finding it concludes the app is
-                  // broken, and never that their role is missing one grant.
-                  reason: noCreate,
-                  child: FilledButton.icon(
-                    key: const ValueKey('tour-automations-new'),
-                    onPressed: (noCreate != null || _catalogue == null)
-                        ? null
-                        : _new,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New automation'),
+              : ModuleAction(
+                  child: Refused(
+                    // Visible and refused, never hidden: somebody looking for
+                    // "New automation" and not finding it concludes the app is
+                    // broken, and never that their role is missing one grant.
+                    reason: noCreate,
+                    child: FilledButton.icon(
+                      key: const ValueKey('tour-automations-new'),
+                      onPressed: (noCreate != null || _catalogue == null)
+                          ? null
+                          : _new,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('New automation'),
+                    ),
                   ),
                 ),
         ),

@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../widgets/cell_tap.dart';
+import '../widgets/lazy_menu_anchor.dart';
+import '../widgets/range_calendar.dart';
 import 'package:flutter/services.dart';
 
 import 'package:url_launcher/url_launcher.dart';
@@ -591,7 +594,11 @@ class ColumnCell extends StatelessWidget {
     this.onFilter,
     this.tasks,
     this.onAddFile,
+    this.taskDone = false,
   });
+
+  /// The task's status is a done one: its timeline is never overdue.
+  final bool taskDone;
 
   /// Searches customers and jobs for a link column's card.
   final ApiClient? api;
@@ -709,7 +716,7 @@ class ColumnCell extends StatelessWidget {
       case 'status':
         final picked = _option(column, v);
         final fill = picked?.colour ?? blankLabel(theme);
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             Builder(
               builder: (context) => LabelBlocks(
@@ -743,9 +750,9 @@ class ColumnCell extends StatelessWidget {
           ],
           onOpen: () => onMenu?.call(true),
           onClose: () => onMenu?.call(false),
-          builder: (context, menu, _) => Material(
+          builder: (context, menu, _) => ColoredBox(
             color: fill,
-            child: InkWell(
+            child: CellTap(
               key: ValueKey('column-cell-${column.id}'),
               onTap: onChanged == null
                   ? null
@@ -768,7 +775,7 @@ class ColumnCell extends StatelessWidget {
       case 'dropdown':
         final picked = _option(column, v);
         final fill = picked?.colour;
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             for (final o in column.options)
               if (!o.retired || o.id == v)
@@ -785,7 +792,7 @@ class ColumnCell extends StatelessWidget {
               ),
             ..._optionTools(theme, (id) => onChanged?.call(id)),
           ],
-          builder: (context, menu, _) => InkWell(
+          builder: (context, menu, _) => CellTap(
             key: ValueKey('column-cell-${column.id}'),
             onTap: onChanged == null
                 ? null
@@ -813,7 +820,7 @@ class ColumnCell extends StatelessWidget {
         );
       case 'people':
         final ids = [for (final id in (v as List?) ?? const []) '$id'];
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             for (final p in people.entries)
               CheckboxMenuButton(
@@ -831,7 +838,7 @@ class ColumnCell extends StatelessWidget {
                 child: Text(p.value),
               ),
           ],
-          builder: (context, menu, _) => InkWell(
+          builder: (context, menu, _) => CellTap(
             key: ValueKey('column-cell-${column.id}'),
             onTap: onChanged == null
                 ? null
@@ -848,7 +855,7 @@ class ColumnCell extends StatelessWidget {
         );
       case 'tags':
         final ids = [for (final id in (v as List?) ?? const []) '$id'];
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             for (final o in column.options)
               if (!o.retired || ids.contains(o.id))
@@ -868,7 +875,7 @@ class ColumnCell extends StatelessWidget {
                 ),
             ..._optionTools(theme, (id) => onChanged?.call([...ids, ?id])),
           ],
-          builder: (context, menu, _) => InkWell(
+          builder: (context, menu, _) => CellTap(
             key: ValueKey('column-cell-${column.id}'),
             onTap: onChanged == null
                 ? null
@@ -920,7 +927,7 @@ class ColumnCell extends StatelessWidget {
           style: text == null || text.isEmpty ? muted : null,
         );
       case 'timeline':
-        return TimelinePill(value: v, formats: formats);
+        return TimelinePill(value: v, formats: formats, done: taskDone);
       case 'number':
       case 'currency':
       case 'formula':
@@ -1300,47 +1307,16 @@ class _ColumnEditorState extends State<ColumnEditor> {
         );
       case 'timeline':
         final range = widget.value is Map ? widget.value as Map : const {};
-        void set(String end, Object? day) {
-          final next = {'from': range['from'], 'to': range['to'], end: day};
-          if (next['from'] == null && next['to'] == null) {
-            widget.onChanged?.call(null);
-            return;
-          }
-          // One end alone is a single day.
-          next['from'] ??= next['to'];
-          next['to'] ??= next['from'];
-          if ('${next['from']}'.compareTo('${next['to']}') > 0) {
-            end == 'from'
-                ? next['to'] = next['from']
-                : next['from'] = next['to'];
-          }
-          widget.onChanged?.call(next);
-        }
-
-        return Row(
+        // One calendar: first click starts, second ends (Jose, 2026-11-16).
+        return RangeCalendar(
           key: key,
-          children: [
-            Expanded(
-              child: _DateEditor(
-                key: ValueKey('column-editor-${c.id}-from'),
-                value: range['from'] as String?,
-                formats: widget.formats,
-                onChanged: editable ? (d) => set('from', d) : null,
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 6),
-              child: Text('–'),
-            ),
-            Expanded(
-              child: _DateEditor(
-                key: ValueKey('column-editor-${c.id}-to'),
-                value: range['to'] as String?,
-                formats: widget.formats,
-                onChanged: editable ? (d) => set('to', d) : null,
-              ),
-            ),
-          ],
+          from: range['from'] as String?,
+          to: range['to'] as String?,
+          onChanged: editable
+              ? (from, to) => widget.onChanged?.call(
+                  from == null ? null : {'from': from, 'to': to},
+                )
+              : null,
         );
       default:
         return TextField(
@@ -2317,6 +2293,11 @@ class InlineCellEditor extends StatefulWidget {
 
   final ApiClient? api;
 
+  /// How many cells are open for editing right now. A board's live refresh
+  /// patches rows in place but holds back inserts and removals while one is
+  /// open, so the row under the editor stays the row being edited.
+  static final editing = ValueNotifier<int>(0);
+
   @override
   State<InlineCellEditor> createState() => _InlineCellEditorState();
 }
@@ -2331,15 +2312,47 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
   bool get _inPlace =>
       const {'text', 'number', 'currency'}.contains(widget.column.type);
 
+  /// The value this cell last sent, and whether the value under it moved to
+  /// something else while it was open (a remote change: Monday, a colleague).
+  Object? _sent;
+  bool _elsewhere = false;
+
+  static bool _same(Object? a, Object? b) =>
+      a == b || jsonEncode(a) == jsonEncode(b);
+
   void _start() {
     setState(() => _editing = true);
+    InlineCellEditor.editing.value++;
     if (!_inPlace) _card.show();
   }
 
   void _stop() {
     if (!mounted || !_editing) return;
     if (_card.isShowing) _card.hide();
-    setState(() => _editing = false);
+    InlineCellEditor.editing.value--;
+    setState(() {
+      _editing = false;
+      _elsewhere = false;
+      _sent = null;
+    });
+  }
+
+  @override
+  void didUpdateWidget(InlineCellEditor old) {
+    super.didUpdateWidget(old);
+    // The editor keeps what the person typed; the marker says the saved
+    // value under it changed meanwhile.
+    if (_editing &&
+        !_same(widget.value, old.value) &&
+        !_same(widget.value, _sent)) {
+      _elsewhere = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_editing) InlineCellEditor.editing.value--;
+    super.dispose();
   }
 
   Widget _editor() => CallbackShortcuts(
@@ -2347,25 +2360,48 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
     child: TapRegion(
       groupId: this,
       onTapOutside: (_) => Future.microtask(_stop),
-      child: ColumnEditor(
-        api: widget.api,
-        column: widget.column,
-        value: widget.value,
-        people: widget.people,
-        formats: widget.formats,
-        autofocus: true,
-        onDone: () => Future.microtask(_stop),
-        onChanged: (v) {
-          widget.onChanged(v);
-          // A timeline is two days: stay open for the second.
-          if (widget.column.type != 'timeline' &&
-              widget.column.type != 'datetime' &&
-              !_inPlace) {
-            _stop();
-          }
-        },
+      child: Stack(
+        clipBehavior: Clip.none,
+        fit: StackFit.passthrough,
+        children: [
+          _columnEditor(),
+          if (_elsewhere)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: Tooltip(
+                message: 'Changed elsewhere; saving keeps yours',
+                child: Icon(
+                  key: const Key('cell-changed-elsewhere'),
+                  Icons.sync_problem,
+                  size: 14,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ),
+        ],
       ),
     ),
+  );
+
+  Widget _columnEditor() => ColumnEditor(
+    api: widget.api,
+    column: widget.column,
+    value: widget.value,
+    people: widget.people,
+    formats: widget.formats,
+    autofocus: true,
+    onDone: () => Future.microtask(_stop),
+    onChanged: (v) {
+      _sent = v;
+      widget.onChanged(v);
+      // A timeline is two days: stay open for the second.
+      if (widget.column.type != 'timeline' &&
+          widget.column.type != 'datetime' &&
+          !_inPlace) {
+        _stop();
+      }
+    },
   );
 
   /// What a copied cell carries: text as typed, anything else as JSON so a
@@ -2450,6 +2486,17 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
     if (_editing && _inPlace) {
       return KeyedSubtree(key: key, child: _editor());
     }
+    final cell = CellTap(
+      key: key,
+      onTap: _editing ? null : _start,
+      onSecondaryTapDown: _editing ? null : (d) => _menu(d.globalPosition),
+      child: SizedBox.expand(
+        child: Align(alignment: Alignment.centerLeft, child: widget.child),
+      ),
+    );
+    // The card's portal only while editing: one per cell on every row was
+    // most of a big board's build (Task Board lag, 11-16).
+    if (!_editing) return CompositedTransformTarget(link: _link, child: cell);
     return CompositedTransformTarget(
       link: _link,
       child: OverlayPortal(
@@ -2470,14 +2517,7 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
             ),
           ),
         ),
-        child: InkWell(
-          key: key,
-          onTap: _editing ? null : _start,
-          onSecondaryTapDown: _editing ? null : (d) => _menu(d.globalPosition),
-          child: SizedBox.expand(
-            child: Align(alignment: Alignment.centerLeft, child: widget.child),
-          ),
-        ),
+        child: cell,
       ),
     );
   }
@@ -2600,11 +2640,15 @@ class TimelinePill extends StatelessWidget {
     required this.value,
     required this.formats,
     this.now,
+    this.done = false,
   });
 
   final Object? value;
   final DisplayFormats formats;
   final DateTime? now;
+
+  /// The task is done: an end date in the past is finished, not late.
+  final bool done;
 
   @override
   Widget build(BuildContext context) {
@@ -2623,10 +2667,14 @@ class TimelinePill extends StatelessWidget {
     final to = DateTime.parse('${v['to']}').add(const Duration(days: 1));
     final at = now ?? DateTime.now();
     final total = to.difference(from).inMinutes;
-    final done = total <= 0
+    final elapsed = total <= 0
         ? 1.0
         : (at.difference(from).inMinutes / total).clamp(0.0, 1.0);
     final back = theme.colorScheme.onSurfaceVariant;
+    // Monday: an open task whose end date has passed wears red.
+    final day = DateTime(at.year, at.month, at.day);
+    // [to] is the midnight after the last day: late from that midnight on.
+    final overdue = !done && !to.isAfter(day);
     return Center(
       child: Container(
         height: 22,
@@ -2639,9 +2687,13 @@ class TimelinePill extends StatelessWidget {
           children: [
             FractionallySizedBox(
               key: const Key('timeline-elapsed'),
-              widthFactor: done,
+              widthFactor: elapsed,
               heightFactor: 1,
-              child: Container(color: theme.colorScheme.primary),
+              child: Container(
+                color: overdue
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.primary,
+              ),
             ),
             Center(
               child: Padding(
@@ -2651,7 +2703,7 @@ class TimelinePill extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: labelInk(back),
+                    color: labelInk(overdue ? theme.colorScheme.error : back),
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                   ),

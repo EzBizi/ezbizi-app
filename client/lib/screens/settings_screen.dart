@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+
+import '../widgets/list_search.dart';
 import '../core/api_client.dart';
 import '../core/files.dart';
 import '../core/session.dart';
@@ -589,23 +591,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         runSpacing: 10,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          SizedBox(
-            width: 300,
-            child: TextField(
-              controller: _search,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: 'Search $total settings',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        tooltip: 'Clear',
-                        onPressed: _search.clear,
-                      ),
-              ),
-            ),
+          ListSearch(
+            key: const Key('settings-search'),
+            controller: _search,
+            hint: 'Search $total settings',
+            onClear: _search.clear,
           ),
 
           // The one number that says how much of this scope is its own doing.

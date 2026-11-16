@@ -103,7 +103,7 @@ void main() {
     );
 
     expect(find.text('Serving the tri-state area since 1974.'), findsOneWidget);
-    expect(find.text('[ezbizi_template_1]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_template_1]'), findsOneWidget);
   });
 
   /// THE one. A path here would tie the text to one page, and the shortcode
@@ -136,8 +136,8 @@ void main() {
     await tester.tap(find.text('Add a template'));
     await tester.pumpAndSettle();
 
-    expect(find.text('[ezbizi_template_4]'), findsOneWidget);
-    expect(find.text('[ezbizi_template_2]'), findsNothing);
+    expect(find.byTooltip('Copies [ezbizi_template_4]'), findsOneWidget);
+    expect(find.byTooltip('Copies [ezbizi_template_2]'), findsNothing);
   });
 
   /// Emptying it is what removes it — the server deletes a blank value, and a

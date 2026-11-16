@@ -89,33 +89,44 @@ class ScopeSwitcher extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.6),
+          ),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 300),
-            child: Tooltip(
-              message: me.scope.fullPath,
-              child: Text(
-                // The company AND the place. "Connecticut" alone named one of
-                // two different places with different data behind each.
-                me.scope.shortPath,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Flexible: a fixed 300 ran under the top bar's Clock Out chip on a
+            // phone (phone review 2026-11-13, item 2). It ellipsises instead.
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 300),
+                child: Tooltip(
+                  message: me.scope.fullPath,
+                  child: Text(
+                    // The company AND the place. "Connecticut" alone named one of
+                    // two different places with different data behind each.
+                    me.scope.shortPath,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 6),
-          Icon(Icons.unfold_more, size: 15, color: scheme.onSurfaceVariant),
-        ]),
+            const SizedBox(width: 6),
+            Icon(Icons.unfold_more, size: 15, color: scheme.onSurfaceVariant),
+          ],
+        ),
       ),
     );
   }
 
   static IconData _iconFor(String type) => switch (type) {
-        'company' => Icons.apartment_outlined,
-        'franchise' => Icons.storefront_outlined,
-        _ => Icons.hub_outlined,
-      };
+    'company' => Icons.apartment_outlined,
+    'franchise' => Icons.storefront_outlined,
+    _ => Icons.hub_outlined,
+  };
 }
-

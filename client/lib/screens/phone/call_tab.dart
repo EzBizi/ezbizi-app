@@ -1240,30 +1240,41 @@ class _CallTabState extends State<CallTab> {
         // Starting widths. The history opened at whatever was left over when
         // the customer pane was away, which on a wide window was about three
         // quarters of the screen for a list of phone numbers.
-        var history = _historyWidth ?? available * 0.26;
+        // Never under their floors, even from a saved drag: the history at
+        // ~170 px cut every name and number (desktop review 2026-11-13).
+        var history = math.max(
+          _historyWidth ?? available * 0.26,
+          _historyFloor,
+        );
         var customer = showCustomer
-            ? (_customerWidth ?? available * 0.44)
+            ? math.max(_customerWidth ?? available * 0.44, _customerFloor)
             : 0.0;
 
         // The pad is the one with a hard minimum: a list just gets narrower
         // and stays readable, a keypad stops being tappable. So it is paid
-        // first and the other two give the width back.
+        // first: the customer pane gives back first, then the history.
         var pad = available - history - customer;
+        if (pad < _padFloor && showCustomer) {
+          final take = math.min(_padFloor - pad, customer - _customerFloor);
+          customer -= take;
+          pad += take;
+        }
         if (pad < _padFloor) {
-          final short = _padFloor - pad;
-          final give = (history - _historyFloor) + (customer - _customerFloor);
-
-          if (give <= 0) {
-            // Nothing left to take. Let the pad be squeezed rather than
-            // overflow the row, which is a yellow-and-black stripe.
-            pad = math.max(0, available - history - customer);
-          } else {
-            history -= short * ((history - _historyFloor) / give);
-            if (showCustomer) {
-              customer -= short * ((customer - _customerFloor) / give);
-            }
-            pad = available - history - customer;
-          }
+          final take = math.min(_padFloor - pad, history - _historyFloor);
+          history -= take;
+          pad += take;
+        }
+        if (pad < _padFloor && showCustomer) {
+          // Still short: the customer pane narrows past its floor (it
+          // collapses first) rather than the list or the keypad.
+          customer = math.max(0, customer - (_padFloor - pad));
+          pad = available - history - customer;
+        }
+        if (pad < 0) {
+          // Nothing left to take. Let the pad be squeezed rather than
+          // overflow the row, which is a yellow-and-black stripe.
+          history = math.max(0, history + pad);
+          pad = 0;
         }
 
         return Row(
@@ -1362,7 +1373,7 @@ class _CallTabState extends State<CallTab> {
   /// The customer pane needed a constant of its own once it became draggable:
   /// it used to take whatever was left, so it could not be dragged to nothing
   /// because nothing ever dragged it.
-  static const double _historyFloor = 200;
+  static const double _historyFloor = 260;
   static const double _padFloor = 280;
   static const double _customerFloor = 280;
 
