@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Models\Company;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -917,5 +918,37 @@ class CampaignPerformanceTest extends TestCase
         $this->signedInAs($t['admin']->fresh())
             ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
             ->assertOk();
+    }
+
+    /** Jose, 2026-11-16: "Everything" - the company and its sub companies, each account once, read once. */
+    public function test_everything_rolls_up_every_account_in_view_once_and_reads_google_once(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $child = $this->connected($t);
+        $this->inTenant($t['org'], function () use ($t) {
+            $this->manager($t)->forceFill(['is_manager' => true])->save();
+            $sub = Company::create(['organization_id' => $t['org']->id, 'parent_company_id' => $t['company']->id, 'name' => 'Angi Sweep']);
+            foreach ([['1726694743', 'Angi Sweep - Bucks', $sub->id], ['405-172-9356', 'Cleveland again', $t['company']->id]] as [$remote, $name, $company]) {
+                $row = SocialConnection::create(['organization_id' => $t['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $company,
+                    'provider' => SocialProvider::GoogleAds->value, 'remote_id' => $remote, 'display_name' => $name]);
+                $row->connect(['refresh_token' => 'rt-good']);
+                $row->save();
+            }
+        });
+        $this->fakeGoogle($this->customerRow(), []);
+        $as = $this->signedInAs($t['admin']->fresh());
+
+        $body = $as->getJson('/api/v1/ads/rollup?everything=1')->assertOk()->json();
+
+        // The manager is not an account of its own, and Cleveland, connected twice, counts once.
+        $this->assertEqualsCanonicalizing(['A1 Chimney - Cleveland', 'Angi Sweep - Bucks'], array_column($body['data'], 'account'));
+        $this->assertSame(2, $body['children_total']);
+        $this->assertContains($child->getKey(), array_column($body['data'], 'connection_id'));
+        $this->assertEquals(412, $body['data'][0]['clicks']);
+
+        $searches = fn () => count(Http::recorded(fn ($r) => str_contains($r->url(), 'googleads.googleapis.com')));
+        $this->assertSame(2, $searches(), 'one account-level query per account, no campaigns');
+        $as->getJson('/api/v1/ads/rollup?everything=1')->assertOk();
+        $this->assertSame(2, $searches(), 'the second look is read from the cache');
     }
 }

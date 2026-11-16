@@ -21,16 +21,16 @@ class GoogleAdsManagerTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
-    private function connected(array $t): SocialConnection
+    private function connected(array $t, string $remote = '4941850746', string $name = 'A1 Chimney - Cleveland'): SocialConnection
     {
-        return $this->inTenant($t['org'], function () use ($t) {
+        return $this->inTenant($t['org'], function () use ($t, $remote, $name) {
             $row = SocialConnection::create([
                 'organization_id' => $t['org']->id,
                 'scope_type' => SocialConnection::SCOPE_COMPANY,
                 'scope_id' => $t['company']->id,
                 'provider' => SocialProvider::GoogleAds->value,
-                'remote_id' => '4941850746',
-                'display_name' => 'A1 Chimney - Cleveland',
+                'remote_id' => $remote,
+                'display_name' => $name,
             ]);
             $row->connect(['refresh_token' => 'rt-good']);
             $row->save();
@@ -130,5 +130,28 @@ class GoogleAdsManagerTest extends TestCase
             ->assertUnprocessable()->assertJsonPath('message', 'This budget is shared with other campaigns; change it in Google Ads.');
 
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), ':mutate'));
+    }
+
+    /** Jose, 2026-11-16: every account's campaigns on one screen, read once and kept. */
+    public function test_all_accounts_lists_every_accounts_campaigns_with_its_name_and_reads_google_once(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $cleveland = $this->connected($t);
+        $hamden = $this->connected($t, '8839813550', 'A1 Chimney - Hamden');
+        // Two accounts, two operations each, in display_name order: Cleveland, then Hamden.
+        $this->fakeGoogle([
+            ['results' => [$this->campaign('11')]], ['results' => []],
+            ['results' => [$this->campaign('21')]], ['results' => []],
+        ]);
+        $as = $this->signedInAs($this->userWithRole($t, 'Marketing', ['ads_manager.view']));
+        $url = '/api/v1/ads-manager/google/campaigns?all=1&from=2026-11-01&to=2026-11-08';
+
+        $data = $as->getJson($url)->assertOk()->json('data');
+        $this->assertSame([['11', 'A1 Chimney - Cleveland', $cleveland->getKey()], ['21', 'A1 Chimney - Hamden', $hamden->getKey()]],
+            array_map(fn ($c) => [$c['id'], $c['account'], $c['connection_id']], $data['campaigns']));
+
+        // The sequence is spent: a second read that reached Google would throw.
+        $this->assertCount(2, $as->getJson($url)->assertOk()->json('data.campaigns'));
+        Http::assertSentCount(6); // 2 tokens + 4 searches, all from the first read
     }
 }

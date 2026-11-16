@@ -369,8 +369,25 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     if (onlyOne) _loadReport();
   }
 
+  /// "Everything": every account of the company and its sub companies, each
+  /// once (Jose, 2026-11-16: "Combining a1chimney and angisweep").
+  static const _everything = '*everything*';
+
+  /// The list as drawn: Everything above the managers, when there is more
+  /// than one account to combine.
+  List<Map<String, dynamic>> get _listed => [
+    if (_accounts.length > 1)
+      {
+        'connection_id': _everything,
+        'name': 'Everything',
+        'customer_id': 'company and sub companies, each account once',
+        'is_manager': true,
+      },
+    ..._accounts,
+  ];
+
   bool get _selectedIsManager {
-    final a = _accounts.where((a) => a['connection_id'] == _selected);
+    final a = _listed.where((a) => a['connection_id'] == _selected);
     return a.isNotEmpty && a.first['is_manager'] == true;
   }
 
@@ -409,7 +426,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     });
 
     final query = {
-      'connection_id': id,
+      if (id == _everything) 'everything': '1' else 'connection_id': id,
       'from': formatCalendarDay(from),
       'to': formatCalendarDay(to),
     };
@@ -635,8 +652,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     // either - "Hamden" and "8839813550" are both how somebody refers to it.
     final needle = _accountSearch.text.trim().toLowerCase();
     final shown = needle.isEmpty
-        ? _accounts
-        : _accounts
+        ? _listed
+        : _listed
               .where(
                 (a) =>
                     '${a['name']}'.toLowerCase().contains(needle) ||
@@ -715,7 +732,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   // load, and the only thing that makes it correct here is
                   // that somebody chose it knowing what it was.
                   subtitle: Text(
-                    a['is_manager'] == true
+                    id == _everything
+                        ? '${a['customer_id']}'
+                        : a['is_manager'] == true
                         ? '${a['customer_id']} - reads every account beneath it'
                         : '${a['customer_id']}',
                   ),

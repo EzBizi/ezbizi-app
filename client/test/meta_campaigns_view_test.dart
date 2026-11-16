@@ -124,6 +124,7 @@ void main() {
   Future<void> open(
     WidgetTester tester, {
     required List<String> permissions,
+    bool unfold = true,
     List<Map<String, dynamic>>? accounts,
     List<Map<String, dynamic>>? campaigns,
     double width = 1400,
@@ -185,6 +186,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Meta'));
     await tester.pumpAndSettle();
+    // Paused rows fold under Inactive (Jose, 2026-11-16); these tests act on them.
+    final fold = find.byKey(const ValueKey('meta-inactive'));
+    if (unfold && fold.evaluate().isNotEmpty) {
+      await tester.tap(fold);
+      await tester.pumpAndSettle();
+    }
   }
 
   const manage = ['ads_manager.view', 'ads_manager.manage'];

@@ -77,6 +77,7 @@ void main() {
   Future<void> open(
     WidgetTester tester, {
     required List<String> permissions,
+    bool unfold = true,
   }) async {
     tester.view.physicalSize = const Size(1500, 1000);
     tester.view.devicePixelRatio = 1.0;
@@ -103,7 +104,33 @@ void main() {
                 'name': 'A1 Chimney - Cleveland',
                 'is_manager': false,
               },
+              {
+                'connection_id': 'g2',
+                'customer_id': '8839813550',
+                'name': 'A1 Chimney - Hamden',
+                'is_manager': false,
+              },
             ],
+          });
+        }
+        if (path.endsWith('/ads-manager/google/campaigns') &&
+            request.url.queryParameters['all'] == '1') {
+          return json({
+            'data': {
+              'campaigns': [
+                {
+                  ...campaign('11', 'Cleveland Search'),
+                  'connection_id': 'g1',
+                  'account': 'A1 Chimney - Cleveland',
+                },
+                {
+                  ...campaign('21', 'Hamden Search'),
+                  'connection_id': 'g2',
+                  'account': 'A1 Chimney - Hamden',
+                },
+              ],
+              'refused': <Object>[],
+            },
           });
         }
         if (path.endsWith('/ads-manager/google/campaigns')) {
@@ -142,6 +169,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // Paused rows fold under Inactive (Jose, 2026-11-16); these tests act on them.
+    final fold = find.byKey(const ValueKey('google-inactive'));
+    if (unfold && fold.evaluate().isNotEmpty) {
+      await tester.tap(fold);
+      await tester.pumpAndSettle();
+    }
   }
 
   List<Map> posted(String what) => [
@@ -268,5 +301,50 @@ void main() {
     expect(find.text('Cleveland Search'), findsOneWidget);
     expect(find.byType(Switch), findsNothing);
     expect(find.byKey(const ValueKey('google-budget-11')), findsNothing);
+  });
+
+  // Jose, 2026-11-16: "paused ones are hidden by default".
+  testWidgets('paused campaigns fold under Inactive with a count; search opens the fold', (tester) async {
+    await open(tester, permissions: manage, unfold: false);
+
+    expect(find.byKey(const ValueKey('google-name-11')), findsOneWidget);
+    expect(find.byKey(const ValueKey('google-name-12')), findsNothing);
+    expect(find.text('Inactive (1)'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('google-ads-search')), 'local');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('google-name-12')), findsOneWidget);
+  });
+
+  testWidgets('the range is Reports\' own picker, sent as from and to', (tester) async {
+    await open(tester, permissions: manage);
+    final read = requests.firstWhere((r) => r.url.path.endsWith('/ads-manager/google/campaigns'));
+    final from = DateTime.parse(read.url.queryParameters['from']!);
+    final to = DateTime.parse(read.url.queryParameters['to']!);
+    expect(to.difference(from).inDays, 29, reason: 'Last 30 days, both ends included');
+    expect(find.byKey(const ValueKey('google-ads-range')), findsOneWidget);
+  });
+
+  testWidgets('All accounts lists every account with its name, and a change goes to the row\'s account', (tester) async {
+    await open(tester, permissions: manage);
+
+    await tester.tap(find.byKey(const ValueKey('google-ads-account')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('All accounts').last);
+    await tester.pumpAndSettle();
+
+    final read = requests.lastWhere((r) => r.url.path.endsWith('/ads-manager/google/campaigns'));
+    expect(read.url.queryParameters['all'], '1');
+    expect(read.url.queryParameters.containsKey('connection_id'), isFalse);
+    expect(find.text('ACCOUNT'), findsOneWidget);
+    expect(find.text('A1 Chimney - Hamden'), findsOneWidget);
+    expect(find.byKey(const ValueKey('google-kpi-Spend')), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('google-kpi-Spend'))).data, r'$1,800.00');
+
+    await tester.tap(find.byKey(const ValueKey('google-on-21')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ad-change-confirm')));
+    await tester.pumpAndSettle();
+    expect(posted('status').single, {'connection_id': 'g2', 'campaign_id': '21', 'status': 'PAUSED'});
   });
 }
