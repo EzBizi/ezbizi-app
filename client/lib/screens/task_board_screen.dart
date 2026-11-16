@@ -105,8 +105,17 @@ Widget _avatar(
 /// still read here, coloured by [_tone].
 typedef _Status = ({String id, String name, Color? colour, bool done});
 
-List<_Status> _statuses(_Json? board) => [
-  for (final s in (board?['statuses'] as List? ?? const []).whereType<Map>())
+/// Parsed once per statuses list: every row asks for them (freeze 11-16).
+final _statusMemo = Expando<List<_Status>>('statuses');
+
+List<_Status> _statuses(_Json? board) {
+  final raw = board?['statuses'];
+  if (raw is! List) return const [];
+  return _statusMemo[raw] ??= _parseStatuses(raw);
+}
+
+List<_Status> _parseStatuses(List raw) => [
+  for (final s in raw.whereType<Map>())
     (
       id: '${s['id'] ?? s['key']}',
       name: '${s['name'] ?? s['label'] ?? s['key']}',
@@ -584,7 +593,22 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     ];
   }
 
+  /// A group's tasks, worked out once per board, filter and Group by: the
+  /// table asks on every build (freeze 11-16). Callers copy before editing.
   List<_Json> _tasksIn(Object? groupId) {
+    if (!identical(_inFor.$1, _board) ||
+        !identical(_inFor.$2, _filter) ||
+        _inFor.$3 != _groupBy) {
+      _inFor = (_board, _filter, _groupBy);
+      _inMemo.clear();
+    }
+    return _inMemo[groupId] ??= List.unmodifiable(_tasksInNow(groupId));
+  }
+
+  (Object?, Object?, String?) _inFor = (null, null, null);
+  final _inMemo = <Object?, List<_Json>>{};
+
+  List<_Json> _tasksInNow(Object? groupId) {
     if (groupId is String && groupId.startsWith('by:')) {
       final v = groupId.substring(3);
       return _filter.sorted([
@@ -1093,10 +1117,22 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   /// A task's subtasks: rows of the board that name it as their parent.
-  List<_Json> _subtasksOf(_Json t) => [
-    for (final x in _tasks)
-      if (x['parent_task_id'] != null && x['parent_task_id'] == t['id']) x,
-  ];
+  List<_Json> _subtasksOf(_Json t) {
+    final raw = _board?['tasks'];
+    if (raw is! List) return const [];
+    // Indexed once per task list: a scan per row was rows × tasks per build.
+    final byParent = _childMemo[raw] ??= () {
+      final m = <Object, List<_Json>>{};
+      for (final x in raw.cast<_Json>()) {
+        final p = x['parent_task_id'];
+        if (p != null) (m[p] ??= []).add(x);
+      }
+      return m;
+    }();
+    return byParent[t['id']] ?? const [];
+  }
+
+  static final _childMemo = Expando<Map<Object, List<_Json>>>('subtasks');
 
   /// "2 / 4": the count the server sends, or the one on screen.
   (int, int) _subtaskCount(_Json t) {
@@ -2866,33 +2902,33 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
 
     if (cards) {
-      return SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              header,
-              if (!folded) ...[
-                for (final t in shown) ...[
-                  _card(context, t),
-                  if (_expanded.contains(t['id'])) ...[
-                    for (final sub in _subtasksOf(t))
-                      Padding(
-                        padding: const EdgeInsets.only(left: 20),
-                        child: _card(context, sub, sub: true),
-                      ),
-                    if (_canEdit && id != null)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 20),
-                        child: _addRow(context, id, parent: t['id'] as String),
-                      ),
-                  ],
-                ],
-                if (_canEdit && id != null) _addRow(context, id),
-              ],
+      // Built as they scroll into view, as the table's rows are.
+      final lines = <Widget Function()>[
+        () => header,
+        if (!folded) ...[
+          for (final t in shown) ...[
+            () => _card(context, t),
+            if (_expanded.contains(t['id'])) ...[
+              for (final sub in _subtasksOf(t))
+                () => Padding(
+                  padding: const EdgeInsets.only(left: 20),
+                  child: _card(context, sub, sub: true),
+                ),
+              if (_canEdit && id != null)
+                () => Padding(
+                  padding: const EdgeInsets.only(left: 20),
+                  child: _addRow(context, id, parent: t['id'] as String),
+                ),
             ],
-          ),
+          ],
+          if (_canEdit && id != null) () => _addRow(context, id),
+        ],
+      ];
+      return SliverPadding(
+        padding: const EdgeInsets.only(bottom: 14),
+        sliver: SliverList.builder(
+          itemCount: lines.length,
+          itemBuilder: (context, i) => lines[i](),
         ),
       );
     }
@@ -2930,67 +2966,71 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               ),
             ),
           ),
-          if (!folded)
-            SliverToBoxAdapter(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  border: Border(left: edge, right: edge, bottom: edge),
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(12),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final (at, t) in shown.indexed) ...[
-                      _dropOn(id, at, _row(context, t, colour)),
-                      if (_expanded.contains(t['id'])) ...[
-                        for (final sub in _subtasksOf(t))
-                          _row(context, sub, colour, sub: true),
-                        if (_canEdit && id != null)
-                          _cellBorder(
-                            context,
-                            Row(
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 38,
-                                  color: colour.withValues(alpha: 0.3),
-                                ),
-                                const SizedBox(width: 28),
-                                Expanded(
-                                  child: _addRow(
-                                    context,
-                                    id,
-                                    parent: t['id'] as String,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ],
-                    ?_footer(context, shown),
-                    if (_canEdit && id != null)
-                      _cellBorder(
-                        context,
-                        Row(
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 38,
-                              color: colour.withValues(alpha: 0.3),
-                            ),
-                            Expanded(child: _addRow(context, id)),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
+          if (!folded) _rowsSliver(context, shown, id, colour),
         ],
+      ),
+    );
+  }
+
+  /// A group's rows, built only as they scroll into view: a Column of every
+  /// row froze the desktop app on a 169-task board (Jose, 2026-11-16).
+  Widget _rowsSliver(
+    BuildContext context,
+    List<_Json> shown,
+    String? id,
+    Color colour,
+  ) {
+    final theme = Theme.of(context);
+    final edge = BorderSide(color: theme.dividerColor);
+    Widget addLine({String? parent}) => _cellBorder(
+      context,
+      Row(
+        children: [
+          Container(width: 6, height: 38, color: colour.withValues(alpha: 0.3)),
+          if (parent != null) const SizedBox(width: 28),
+          Expanded(child: _addRow(context, id!, parent: parent)),
+        ],
+      ),
+    );
+    // One entry per line: a row, a subtask, or an add line under them.
+    final lines = <Widget Function()>[
+      for (final (at, t) in shown.indexed) ...[
+        () => _dropOn(id, at, _row(context, t, colour)),
+        if (_expanded.contains(t['id'])) ...[
+          for (final sub in _subtasksOf(t))
+            () => _row(context, sub, colour, sub: true),
+          if (_canEdit && id != null) () => addLine(parent: t['id'] as String),
+        ],
+      ],
+      if (_footer(context, shown) case final f?) () => f,
+      if (_canEdit && id != null) () => addLine(),
+    ];
+    if (lines.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Container(
+          height: 1,
+          decoration: BoxDecoration(
+            border: Border(left: edge, right: edge, bottom: edge),
+          ),
+        ),
+      );
+    }
+    final last = lines.length - 1;
+    return SliverList.builder(
+      itemCount: lines.length,
+      itemBuilder: (context, i) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(
+            left: edge,
+            right: edge,
+            bottom: i == last ? edge : BorderSide.none,
+          ),
+          borderRadius: i == last
+              ? const BorderRadius.vertical(bottom: Radius.circular(12))
+              : null,
+        ),
+        child: lines[i](),
       ),
     );
   }
@@ -3018,6 +3058,23 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       .toLowerCase()
       .replaceAll(RegExp(r'[^a-z0-9_.-]'), '');
 
+  /// This person's saved widths for this board, read once per change of
+  /// preferences or board: every cell asks (freeze 11-16).
+  Map<int, double> _savedWidths() {
+    final prefs = widget.session.me?.preferences;
+    final board = _board?['id'];
+    if (!identical(prefs, _widthsFrom) || board != _widthsBoard) {
+      _widthsFrom = prefs;
+      _widthsBoard = board;
+      _widthsSaved = widget.session.me?.listColumnWidths(_widthList) ?? {};
+    }
+    return _widthsSaved;
+  }
+
+  Object? _widthsFrom;
+  Object? _widthsBoard;
+  Map<int, double> _widthsSaved = const {};
+
   int _widthSlot(String key) => key == 'task'
       ? 7
       : key.startsWith('c:')
@@ -3027,7 +3084,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// A column's width: being dragged, saved by this person, or the default.
   double _w(String key) =>
       _dragWidths[key] ??
-      widget.session.me?.listColumnWidths(_widthList)[_widthSlot(key)] ??
+      _savedWidths()[_widthSlot(key)] ??
       _baseWidths[key] ??
       120.0;
 

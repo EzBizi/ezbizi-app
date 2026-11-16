@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:http/http.dart' as http;
 
 import 'issue_reporter.dart';
@@ -472,7 +473,7 @@ class ApiClient {
 
       final body = response.body.isEmpty
           ? <String, dynamic>{}
-          : jsonDecode(response.body) as Map<String, dynamic>;
+          : await decodeJsonBody(response.body);
 
       /*
        * ONLY WHEN WE WERE HOLDING A TOKEN, and that is the whole condition.
@@ -740,3 +741,13 @@ class ApiBytesResponse {
 
   bool get ok => statusCode >= 200 && statusCode < 300;
 }
+
+/// Decodes a reply; a large one (a 20 MB task board) on another isolate, so
+/// the window keeps painting its spinner (freeze, Jose 2026-11-16).
+Future<Map<String, dynamic>> decodeJsonBody(String text) async =>
+    text.length < 256 * 1024
+    ? jsonDecode(text) as Map<String, dynamic>
+    : await compute(_decodeMap, text);
+
+Map<String, dynamic> _decodeMap(String text) =>
+    jsonDecode(text) as Map<String, dynamic>;
