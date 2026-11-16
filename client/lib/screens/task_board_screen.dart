@@ -1189,43 +1189,43 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   Widget _bulkBar(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
+    return Material(
       key: const Key('task-bulk-bar'),
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Wrap(
-        spacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text(
-            '${_picked.length} selected',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSecondaryContainer,
+      elevation: 6,
+      color: theme.colorScheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '${_picked.length} selected',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.onSecondaryContainer,
+              ),
             ),
-          ),
-          for (final (op, label) in const [
-            ('move', 'Move'),
-            ('copy', 'Copy'),
-            ('duplicate', 'Duplicate'),
-            ('status', 'Status'),
-            ('assign', 'Assign'),
-            ('delete', 'Delete'),
-          ])
+            for (final (op, label) in const [
+              ('move', 'Move'),
+              ('copy', 'Copy'),
+              ('duplicate', 'Duplicate'),
+              ('status', 'Status'),
+              ('assign', 'Assign'),
+              ('delete', 'Delete'),
+            ])
+              TextButton(
+                key: ValueKey('task-bulk-$op'),
+                onPressed: () => _bulk(op),
+                child: Text(label),
+              ),
             TextButton(
-              key: ValueKey('task-bulk-$op'),
-              onPressed: () => _bulk(op),
-              child: Text(label),
+              key: const Key('task-bulk-clear'),
+              onPressed: () => setState(_picked.clear),
+              child: const Text('Clear'),
             ),
-          TextButton(
-            key: const Key('task-bulk-clear'),
-            onPressed: () => setState(_picked.clear),
-            child: const Text('Clear'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -3236,17 +3236,31 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Widget _tableView(BuildContext context, {required bool cards}) {
     final list = _tableList(context, cards: cards);
     if (cards) return list;
-    return LayoutBuilder(
-      builder: (context, box) {
-        // 32: page padding; 2: the group box's border.
-        final need = 34 + _fixedWidth;
-        if (box.maxWidth >= need) return list;
-        return SingleChildScrollView(
-          key: const Key('tasks-table-scroll'),
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(width: need, height: box.maxHeight, child: list),
-        );
-      },
+    // The bulk bar floats over the rows' foot, Monday's way: put above the
+    // table it pushed every row down under the pointer (QA 11-16, #28).
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        LayoutBuilder(
+          builder: (context, box) {
+            // 32: page padding; 2: the group box's border.
+            final need = 34 + _fixedWidth;
+            if (box.maxWidth >= need) return list;
+            return SingleChildScrollView(
+              key: const Key('tasks-table-scroll'),
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(width: need, height: box.maxHeight, child: list),
+            );
+          },
+        ),
+        if (_picked.isNotEmpty)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 16,
+            child: Center(child: _bulkBar(context)),
+          ),
+      ],
     );
   }
 
@@ -3257,10 +3271,15 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       controller: _tableScroll,
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+          // Room under the last group for the floating bulk bar.
+          padding: EdgeInsets.fromLTRB(
+            16,
+            10,
+            16,
+            _picked.isNotEmpty && !cards ? 96 : 24,
+          ),
           sliver: SliverMainAxisGroup(
             slivers: [
-              if (_picked.isNotEmpty && !cards) box(_bulkBar(context)),
               for (final (i, g) in _shownGroups().indexed)
                 // The walkthrough's last step points at the first group.
                 i == 0

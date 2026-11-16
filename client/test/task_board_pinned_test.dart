@@ -165,4 +165,26 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('#28: ticking a row floats the bulk bar at the foot; no row '
+      'moves under the pointer', (tester) async {
+    await pumpBoard(tester, width: 1400);
+    final row = find.byKey(const ValueKey('task-t2'));
+    final before = tester.getTopLeft(row);
+
+    await tester.tap(find.byKey(const ValueKey('task-pick-t1')));
+    await tester.pumpAndSettle();
+
+    final bar = find.byKey(const Key('task-bulk-bar'));
+    expect(bar, findsOneWidget);
+    expect(tester.getTopLeft(row), before);
+    // At the bottom of the table, over it, not above the rows.
+    expect(tester.getRect(bar).bottom, greaterThan(800 - 40));
+    expect(tester.getRect(bar).top, greaterThan(before.dy));
+    expect(
+      find.byKey(const ValueKey('task-bulk-delete')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
