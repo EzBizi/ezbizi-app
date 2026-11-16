@@ -1143,6 +1143,10 @@ class _BoardSettingsState extends State<_BoardSettings> {
   List<Map<String, dynamic>> _users = const [];
   List<String> _repairColours = const [];
   final Set<String> _readyNeeds = {};
+
+  /// Roles that can be picked as Technician (Jose, 2026-11-16).
+  List<String> _knownRoles = const [];
+  List<String> _techRoles = [];
   final _warnDays = TextEditingController();
   final _badDays = TextEditingController();
   bool _ready = false;
@@ -1199,6 +1203,15 @@ class _BoardSettingsState extends State<_BoardSettings> {
       ];
       _repairColours = [
         for (final c in (options['repair_colours'] as List?) ?? const []) '$c',
+      ];
+      _knownRoles = [
+        for (final r in (options['roles'] as List?) ?? const []) '$r',
+      ];
+      _techRoles = [
+        for (final r
+            in (byKey['project_board.technician_roles'] as List?) ??
+                const ['Technician', 'Local Manager'])
+          '$r',
       ];
       _readyNeeds
         ..clear()
@@ -1651,22 +1664,22 @@ class _BoardSettingsState extends State<_BoardSettings> {
           ],
           _labelValues,
         ),
-        _card(
-          'tabs',
-          'Sub-tabs',
-          'What puts a job on each sub-tab: its status, its tags, and its scheduled date. A sub-tab with no status chosen lists nothing.',
-          [
-            for (final (key, name, _) in _tabs)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
+        // One card per sub-tab (Jose, 2026-11-16: "separated in their own
+        // boxes"); each Save writes every sub-tab's rules, as before.
+        for (final (key, name, _) in _tabs)
+          KeyedSubtree(
+            key: ValueKey('project-board-tab-card:$key'),
+            child: _card(
+              'tabs:$key',
+              name,
+              'What puts a job on $name: its status, its tags, and its scheduled date. No status chosen lists nothing.',
+              [
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Expanded(
-                          child: Text(name, style: theme.textTheme.titleSmall),
-                        ),
+                        const Spacer(),
                         DropdownMenu<String>(
                           enableFilter: true,
                           requestFocusOnTap: true,
@@ -1742,23 +1755,53 @@ class _BoardSettingsState extends State<_BoardSettings> {
                     ),
                   ],
                 ),
-              ),
-          ],
-          () => {
-            'project_board.tabs': {
-              for (final (key, _, _) in _tabs)
-                key: {
-                  'statuses': _statuses[key]!,
-                  if (_tabTags[key]!.isNotEmpty) ...{
-                    'tags': _tabTags[key]!,
-                    'tags_mode': _anyTag[key] == true ? 'any' : 'all',
-                  },
-                  if (_tabNoTags[key]!.isNotEmpty)
-                    'tags_none': _tabNoTags[key]!,
-                  if (_scheduled[key] != null) 'scheduled': _scheduled[key]!,
+              ],
+              () => {
+                'project_board.tabs': {
+                  for (final (key, _, _) in _tabs)
+                    key: {
+                      'statuses': _statuses[key]!,
+                      if (_tabTags[key]!.isNotEmpty) ...{
+                        'tags': _tabTags[key]!,
+                        'tags_mode': _anyTag[key] == true ? 'any' : 'all',
+                      },
+                      if (_tabNoTags[key]!.isNotEmpty)
+                        'tags_none': _tabNoTags[key]!,
+                      if (_scheduled[key] != null)
+                        'scheduled': _scheduled[key]!,
+                    },
                 },
-            },
-          },
+              },
+            ),
+          ),
+        _card(
+          'tech_roles',
+          'Roles that can be picked as Technician',
+          'The technician picker lists only active users holding one of these roles.',
+          [
+            Wrap(
+              key: const Key('project-board-tech-roles'),
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final r in {..._knownRoles, ..._techRoles})
+                  FilterChip(
+                    key: ValueKey('project-board-tech-role:$r'),
+                    label: Text(r),
+                    selected: _techRoles.any(
+                      (t) => t.toLowerCase() == r.toLowerCase(),
+                    ),
+                    onSelected: (on) => setState(() {
+                      _techRoles.removeWhere(
+                        (t) => t.toLowerCase() == r.toLowerCase(),
+                      );
+                      if (on) _techRoles.add(r);
+                    }),
+                  ),
+              ],
+            ),
+          ],
+          () => {'project_board.technician_roles': _techRoles},
         ),
         _card(
           'parts',
