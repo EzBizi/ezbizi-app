@@ -252,6 +252,40 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    public function test_a_named_board_takes_the_task_and_dedupe_skips_a_second_call_while_the_first_is_open(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($t, 'Viewer', ['tasks.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $viewer) {
+            $board = app(\App\Support\Tasks\TaskBoards::class)->ensureFor($t['franchise']);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.missed_call', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = fn (string $phone) => new AutomationEvent(['event_key' => 'lead.missed_call', 'payload' => ['after' => ['phone' => $phone]],
+                'scope_snapshot' => ['type' => 'company', 'id' => $t['company']->id, 'company_chain' => [$t['company']->id]]]);
+            $step = ['type' => 'task.create', 'title' => 'NJ Ads {{phone}}', 'board' => $board->id, 'group' => 'Missed Calls', 'dedupe' => '{{phone}}'];
+
+            $first = app(ActionRunner::class)->run($step, $event('(281) 701-1639'), null, automation: $rule);
+            $this->assertTrue($first['ok'], $first['detail']);
+            $this->assertSame($board->id, Task::query()->sole()->board_id, 'the named board, not the company one');
+
+            $again = app(ActionRunner::class)->run($step, $event('(281) 701-1639'), null, automation: $rule);
+            $this->assertTrue($again['skipped'] ?? false, $again['detail']);
+            $this->assertSame(1, Task::query()->count());
+
+            app(ActionRunner::class)->run($step, $event('(305) 555-0101'), null, automation: $rule);
+            $this->assertSame(2, Task::query()->count(), 'another caller is another task');
+
+            Task::query()->where('title', 'like', '%701-1639%')->update(['completed_at' => now()]);
+            app(ActionRunner::class)->run($step, $event('(281) 701-1639'), null, automation: $rule);
+            $this->assertSame(3, Task::query()->count(), 'once the first is done, a new call is a new task');
+
+            $theirs = Automation::create(['name' => 'V', 'trigger_key' => 'lead.missed_call', 'is_active' => false, 'created_by' => $viewer->id]);
+            $refused = app(ActionRunner::class)->run([...$step, 'dedupe' => ''], $event('(212) 555-0199'), null, automation: $theirs);
+            $this->assertFalse($refused['ok'], 'the board still decides who may write it');
+            $this->assertSame(3, Task::query()->count());
+        });
+    }
+
     public function test_one_rule_adds_one_task_per_record_in_ten_minutes(): void
     {
         // Review 2026-11-02: one call read as two transcripts made two
