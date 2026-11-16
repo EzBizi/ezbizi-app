@@ -1560,29 +1560,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
   static String _two(int n) => n.toString().padLeft(2, '0');
 
-  String _beneath(List<IntegrationConnection> rows) {
-    if (rows.isEmpty) return 'Nothing connected here yet.';
-
-    final broken = rows.where((r) => !r.connected).length;
-
-    final scopes = <String>{
-      for (final row in rows.where((r) => r.scopeType.isNotEmpty))
-        switch (row.scopeType) {
-          'organization' => 'the organization',
-          'company' => 'a company',
-          'franchise' => 'a branch',
-          _ => 'another place',
-        },
-    };
-
-    final where = scopes.isEmpty ? '' : ' at ${scopes.join(', ')}';
-
-    // The broken count leads when there is one, because a connection that has
-    // stopped working is the whole reason somebody opens this screen.
-    return broken > 0
-        ? '$broken of ${rows.length} need attention$where'
-        : '${rows.length} connected$where';
-  }
+  String _beneath(List<IntegrationConnection> rows) =>
+      integrationsBeneath(rows);
 
   Widget _dot(
     ThemeData theme, {
@@ -1642,4 +1621,32 @@ List<String> _phoneProblems(Map<String, dynamic> n) {
       .whereType<String>()
       .toList();
   return problems.isEmpty ? const ['This line is not working.'] : problems;
+}
+
+/// The line under a product: "N connected at …" only when every account is
+/// connected; otherwise "N accounts (X connected) at …", where X counts only
+/// rows whose status is connected, the Dashboard's number. Counting revoked,
+/// paused and broken rows as connected showed Google Ads 89 here and 46 on
+/// the Dashboard (UI/UX audit, 2026-11-13).
+@visibleForTesting
+String integrationsBeneath(List<IntegrationConnection> rows) {
+  if (rows.isEmpty) return 'Nothing connected here yet.';
+
+  final connected = rows.where((r) => r.connected).length;
+
+  final scopes = <String>{
+    for (final row in rows.where((r) => r.scopeType.isNotEmpty))
+      switch (row.scopeType) {
+        'organization' => 'the organization',
+        'company' => 'a company',
+        'franchise' => 'a branch',
+        _ => 'another place',
+      },
+  };
+
+  final where = scopes.isEmpty ? '' : ' at ${scopes.join(', ')}';
+
+  return connected == rows.length
+      ? '${rows.length} connected$where'
+      : '${rows.length} accounts ($connected connected)$where';
 }

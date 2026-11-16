@@ -115,10 +115,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('tab-bar-chevron')), findsOneWidget);
 
-    // The first tab whose left edge is on screen but whose right is not.
+    // The first tab whose left edge is in view but whose right runs on past
+    // where the strip ends, beside the chevron (tab widths vary with the
+    // style, so the edge is measured, not assumed).
+    final end = tester.getRect(find.byKey(const Key('tab-bar-chevron'))).left;
     final half = many.indexWhere((l) {
       final r = tester.getRect(find.text(l));
-      return r.left < 340 && r.right > 340;
+      return r.left < end - 12 && r.right > end;
     });
     if (half >= 0) {
       await tester.tapAt(

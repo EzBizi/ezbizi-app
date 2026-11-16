@@ -2797,7 +2797,7 @@ class _DetailListState extends State<_DetailList> {
 
   Future<void> _returned(Map<String, dynamic> row) => _write(
     () => widget.api.patch('$_base/${row['id']}', {
-      'returned_on': _DetailForm.ymd(DateTime.now()),
+      'returned_on': formatCalendarDay(DateTime.now()),
     }),
   );
 
@@ -2893,11 +2893,6 @@ class _DetailForm extends StatefulWidget {
   final _DetailKind kind;
   final Map<String, dynamic>? initial;
   final DisplayFormats formats;
-
-  static String ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
 
   @override
   State<_DetailForm> createState() => _DetailFormState();

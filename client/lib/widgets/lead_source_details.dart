@@ -74,18 +74,6 @@ class LeadSourceFields {
     if (campaignName != null) 'campaign $campaignName',
   ]);
 
-  bool get hasDetails => [
-    phone,
-    email,
-    address,
-    jobType,
-    adName,
-    campaignName,
-    headline,
-    pageName,
-    handle,
-  ].any((v) => v != null);
-
   static String? _text(Object? value) {
     final s = value is String ? value.trim() : null;
 

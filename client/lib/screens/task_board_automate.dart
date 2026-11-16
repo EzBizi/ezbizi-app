@@ -21,12 +21,24 @@ const _triggers = <(String, String)>[
   ('task.created', 'a task is created'),
   ('task.status_changed', 'the status changes to'),
   ('task.overdue', 'a task is overdue'),
+  ('task.column_changed', 'a column changes to'),
+  ('task.date_arrived', 'a date arrives'),
 ];
 
 const _assign = 'task.assign';
 const _notify = 'notify';
 const _alert = 'alert.send';
 const _move = 'task.move_group';
+const _shift = 'task.shift_date';
+const _set = 'task.set_value';
+
+/// "Add" keeps whoever is already assigned (task.assign add:true).
+const _assignAdd = 'task.assign+add';
+
+/// The built-in Due date, as task.date_arrived and the date actions name it.
+const _due = 'due';
+
+const _dateTypes = {'date', 'datetime', 'timeline'};
 
 /// A status by NAME, resolved on the task's own board by the engine.
 const _status = 'change_status';
@@ -62,6 +74,15 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
   String? _person = _assignee;
   String? _groupId;
   String? _toStatus;
+  String? _columnId;
+  String _value = '';
+  int _daysUntil = 0;
+  String? _actionColumn;
+  String _amount = '1';
+  String _unit = 'days';
+
+  /// set_value's own value ('today' for a date).
+  String _value2 = '';
   bool _saving = false;
 
   String get _boardId => '${widget.board['id']}';
@@ -88,6 +109,16 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
 
   String? _nameIn(String key, Object? id) =>
       _list(key).where((m) => m['id'] == id).firstOrNull?['name'] as String?;
+
+  String _columnName(Object? id) =>
+      id == _due ? 'Due' : (_nameIn('columns', id) ?? 'a column');
+
+  List<SearchOption<String>> _columnOptions({bool dates = false}) => [
+    const SearchOption(value: _due, label: 'Due'),
+    for (final c in _list('columns'))
+      if (!dates || _dateTypes.contains(c['type']))
+        SearchOption(value: '${c['id']}', label: '${c['name']}'),
+  ];
 
   @override
   void initState() {
@@ -150,13 +181,27 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
         .whereType<Map>()
         .where((c) => c['field'] == 'status_id')
         .firstOrNull?['value'];
+    Object? field(String f) => conditions
+        .whereType<Map>()
+        .where((c) => c['field'] == f)
+        .firstOrNull?['value'];
+    final column = field('column_id');
+    final extra = [
+      status,
+      column,
+      field('value'),
+      field('days_until'),
+    ].where((v) => v != null).length;
     final actions = (rule['actions'] as List? ?? const []).whereType<Map>();
-    if (actions.length != 1 || conditions.length > (status == null ? 1 : 2)) {
+    if (actions.length != 1 || conditions.length > 1 + extra) {
       return '${rule['name']}';
     }
     return _say(
       trigger: '${rule['trigger_key']}',
       statusId: status as String?,
+      columnId: column,
+      value: field('value'),
+      daysUntil: field('days_until'),
       action: actions.first,
     );
   }
@@ -164,17 +209,26 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
   String _say({
     required String trigger,
     String? statusId,
+    Object? columnId,
+    Object? value,
+    Object? daysUntil,
     required Map action,
   }) {
     final when = switch (trigger) {
       'task.status_changed' =>
         'When the status changes to ${_nameIn('statuses', statusId) ?? 'any status'}',
       'task.overdue' => 'When a task is overdue',
+      'task.column_changed' =>
+        'When ${_columnName(columnId)} changes to ${value ?? 'anything'}',
+      'task.date_arrived' =>
+        '${daysUntil == 1 ? 'The day before' : 'When'} ${_columnName(columnId)} arrives',
       _ => 'When a task is created',
     };
     String person(Object? id) => _nameIn('assignable', id) ?? 'somebody';
     final ids = action['user_ids'] as List? ?? const [];
     final then = switch (action['type']) {
+      _assign when action['add'] == true =>
+        'add ${person('${action['user_field']}'.replaceFirst('user:', ''))} to it',
       _assign =>
         'assign it to ${person('${action['user_field']}'.replaceFirst('user:', ''))}',
       _notify when action['to_assignee'] == true =>
@@ -185,6 +239,9 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
       _status => 'set the status to ${action['value']}',
       _move =>
         'move it to ${_nameIn('groups', action['group_id']) ?? 'another group'}',
+      _shift =>
+        'push ${_columnName(action['column_id'])} by ${action['amount']} ${action['unit']}',
+      _set => 'set ${_columnName(action['column_id'])} to ${action['value']}',
       _ => 'do ${action['type']}',
     };
     return '$when, $then';
@@ -195,11 +252,29 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
     final what = switch (_trigger) {
       'task.status_changed' => 'is now ${_nameIn('statuses', _statusId)}',
       'task.overdue' => 'is overdue',
+      'task.column_changed' => 'changed ${_columnName(_columnId)}',
+      'task.date_arrived' => 'reached ${_columnName(_columnId)}',
       _ => 'was added',
     };
     final message = '{{title}} $what ($board)';
     return switch (_action) {
       _assign => {'type': _assign, 'user_field': 'user:$_person'},
+      _assignAdd => {
+        'type': _assign,
+        'user_field': 'user:$_person',
+        'add': true,
+      },
+      _shift => {
+        'type': _shift,
+        'column_id': _actionColumn,
+        'amount': int.tryParse(_amount) ?? 1,
+        'unit': _unit,
+      },
+      _set => {
+        'type': _set,
+        'column_id': _actionColumn,
+        'value': _value2.trim(),
+      },
       _alert => {
         'type': _alert,
         'message': message,
@@ -218,11 +293,18 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
     };
   }
 
+  bool get _onColumn =>
+      _trigger == 'task.column_changed' || _trigger == 'task.date_arrived';
+
   bool get _draftComplete =>
       (_trigger != 'task.status_changed' || _statusId != null) &&
+      (!_onColumn || _columnId != null) &&
+      (_trigger != 'task.column_changed' || _value.trim().isNotEmpty) &&
       switch (_action) {
         _move => _groupId != null,
         _status => _toStatus != null,
+        _shift => _actionColumn != null && int.tryParse(_amount) != null,
+        _set => _actionColumn != null && _value2.trim().isNotEmpty,
         _notify => _person != null,
         _ => _person != null && _person != _assignee,
       };
@@ -243,15 +325,27 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
       _error = null;
     });
     final action = _draftAction;
+    final said = _say(
+      trigger: _trigger,
+      statusId: _statusId,
+      columnId: _columnId,
+      value: _value.trim(),
+      daysUntil: _daysUntil,
+      action: action,
+    );
     final created = await widget.api.post('/automations', {
-      'name':
-          '${widget.board['name']}: ${_say(trigger: _trigger, statusId: _statusId, action: action)}',
+      'name': '${widget.board['name']}: $said',
       'trigger_key': _trigger,
       'conditions': {
         'all': [
           {'field': 'board_id', 'op': 'eq', 'value': _boardId},
           if (_trigger == 'task.status_changed')
             {'field': 'status_id', 'op': 'eq', 'value': _statusId},
+          if (_onColumn) {'field': 'column_id', 'op': 'eq', 'value': _columnId},
+          if (_trigger == 'task.column_changed')
+            {'field': 'value', 'op': 'changed_to', 'value': _value.trim()},
+          if (_trigger == 'task.date_arrived')
+            {'field': 'days_until', 'op': 'eq', 'value': _daysUntil},
         ],
       },
       'actions': [action],
@@ -389,6 +483,21 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
       ),
     );
 
+    Widget text(
+      String key,
+      String label,
+      ValueChanged<String> onChanged, [
+      String initial = '',
+    ]) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextFormField(
+        key: Key(key),
+        initialValue: initial,
+        decoration: InputDecoration(labelText: label, isDense: true),
+        onChanged: (v) => setState(() => onChanged(v)),
+      ),
+    );
+
     return Card(
       key: const Key('board-rule-composer'),
       child: Padding(
@@ -404,6 +513,21 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
                 for (final s in _list('statuses'))
                   SearchOption(value: s['id'] as String, label: '${s['name']}'),
               ], (v) => _statusId = v),
+            if (_onColumn)
+              pick<String>(
+                'board-rule-column',
+                'Column',
+                _columnId,
+                _columnOptions(dates: _trigger == 'task.date_arrived'),
+                (v) => _columnId = v,
+              ),
+            if (_trigger == 'task.column_changed')
+              text('board-rule-value', 'Changes to', (v) => _value = v),
+            if (_trigger == 'task.date_arrived')
+              pick<int>('board-rule-days', 'When', _daysUntil, const [
+                SearchOption(value: 0, label: 'on the day'),
+                SearchOption(value: 1, label: 'the day before'),
+              ], (v) => _daysUntil = v ?? 0),
             pick<String>(
               'board-rule-then',
               'Then',
@@ -411,6 +535,7 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
               [
                 const SearchOption(value: _notify, label: 'notify'),
                 const SearchOption(value: _assign, label: 'assign it to'),
+                const SearchOption(value: _assignAdd, label: 'add a person'),
                 if (_canAlert)
                   const SearchOption(
                     value: _alert,
@@ -418,6 +543,8 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
                   ),
                 const SearchOption(value: _status, label: 'set the status to'),
                 const SearchOption(value: _move, label: 'move it to a group'),
+                const SearchOption(value: _shift, label: 'push a date by'),
+                const SearchOption(value: _set, label: 'set a column to'),
               ],
               (v) {
                 _action = v ?? _action;
@@ -435,7 +562,34 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
                 for (final s in _list('statuses'))
                   SearchOption(value: '${s['name']}', label: '${s['name']}'),
               ], (v) => _toStatus = v)
-            else
+            else if (_action == _shift) ...[
+              pick<String>(
+                'board-rule-shift-column',
+                'Date',
+                _actionColumn,
+                _columnOptions(dates: true),
+                (v) => _actionColumn = v,
+              ),
+              text('board-rule-amount', 'By', (v) => _amount = v, _amount),
+              pick<String>('board-rule-unit', 'Unit', _unit, const [
+                SearchOption(value: 'days', label: 'days'),
+                SearchOption(value: 'weeks', label: 'weeks'),
+                SearchOption(value: 'months', label: 'months'),
+              ], (v) => _unit = v ?? _unit),
+            ] else if (_action == _set) ...[
+              pick<String>(
+                'board-rule-set-column',
+                'Column',
+                _actionColumn,
+                _columnOptions(),
+                (v) => _actionColumn = v,
+              ),
+              text(
+                'board-rule-set-value',
+                'To (a label, or today)',
+                (v) => _value2 = v,
+              ),
+            ] else
               pick<String>('board-rule-person', 'Who', _person, [
                 if (_action == _notify)
                   const SearchOption(

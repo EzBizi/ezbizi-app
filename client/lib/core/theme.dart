@@ -515,6 +515,20 @@ class EzBiziTheme {
   /// hardcode its own eight and the same person would be two colours in two
   /// places. And these carry white glyphs, so the day dark mode makes one of
   /// them unreadable there is exactly one place to fix it.
+  /// Task Board folder and board colours (Jose 11-13): Monday's folder
+  /// colours, kept as data like a status's colour. No purple.
+  static const List<Color> boardPalette = [
+    Color(0xFFC4C4C4),
+    Color(0xFFE2445C),
+    Color(0xFFFDAB3D),
+    Color(0xFFFFCB00),
+    Color(0xFF00C875),
+    Color(0xFF4ECCC6),
+    Color(0xFF0086C0),
+    Color(0xFF225091),
+    Color(0xFF7F5347),
+  ];
+
   static const List<Color> avatarPalette = [
     Color(0xFF1A73E8),
     Color(0xFFD93025),
@@ -738,13 +752,6 @@ class ToneColours {
   /// Both tables, for the contrast test.
   static Map<Tone, ToneColours> table(Brightness brightness) =>
       brightness == Brightness.dark ? _dark : _light;
-
-  /// A mid grey for a bar's share that has no category ("No reason"): plainly
-  /// darker (light) or lighter (dark) than [Tone.neutral]'s fill, the track.
-  static Color midGrey(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark
-      ? const Color(0xFF7D8A95)
-      : const Color(0xFF8C98A3);
 }
 
 /// A person's colour, for the avatar beside what they wrote (Leads' replies,

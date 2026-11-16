@@ -8,6 +8,7 @@ use App\Models\GoogleWorkspaceConnection;
 use App\Models\Mailbox;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\Jwt;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Client\ConnectionException;
@@ -15,7 +16,6 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
-use RuntimeException;
 
 /**
  * Domain-wide delegation — opening Workspace mailboxes without each inbox signing in.
@@ -906,14 +906,15 @@ final class GoogleWorkspace
 
         $now = time();
 
-        $jwt = $this->signJwt([
+        $jwt = Jwt::signRs256([
             'iss'   => $email,
             'sub'   => strtolower($subject),
             'aud'   => self::TOKEN_ENDPOINT,
             'iat'   => $now,
             'exp'   => $now + 3600,
             'scope' => implode(' ', $scopes),
-        ], $key);
+        ], $key, 'EzBizi could not sign a Google Workspace request. The service account private '
+            .'key on this installation is not usable.');
 
         try {
             $response = Http::asForm()
@@ -949,29 +950,5 @@ final class GoogleWorkspace
         }
 
         return str_replace('\\n', "\n", $key);
-    }
-
-    /** @param  array<string, int|string>  $claims */
-    private function signJwt(array $claims, string $privateKey): string
-    {
-        $header = $this->base64Url(json_encode(['alg' => 'RS256', 'typ' => 'JWT'], JSON_THROW_ON_ERROR));
-        $body   = $this->base64Url(json_encode($claims, JSON_THROW_ON_ERROR));
-        $signing = $header.'.'.$body;
-
-        $ok = openssl_sign($signing, $signature, $privateKey, OPENSSL_ALGO_SHA256);
-
-        if ($ok !== true || $signature === '') {
-            throw new RuntimeException(
-                'EzBizi could not sign a Google Workspace request. The service account private '
-                .'key on this installation is not usable.'
-            );
-        }
-
-        return $signing.'.'.$this->base64Url($signature);
-    }
-
-    private function base64Url(string $value): string
-    {
-        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
     }
 }

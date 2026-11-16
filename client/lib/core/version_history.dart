@@ -13,6 +13,37 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0576', date: '16 Nov 2026', items: [
+      'Task Board no longer freezes the app on big boards: rows draw as you scroll',
+      'Monday state boards can be merged into their branch boards, and sync follows the merged board',
+      'Project Management: the table fills the screen with its own scrollbars, so they stay put as more jobs load; the Ready to schedule button is in a first column called Action; hold the mouse wheel button and drag to scroll sideways; long Required lists show two items and +N more',
+      'Monday sync: a status cleared on Monday shows as Not started',
+    ]),
+    VersionRelease(version: '0.0.0575', date: '14 Nov 2026', items: [
+      'Monday import: Project Management boards take their status from Job Status; re-runs never add a file twice; Monday automations find their people the same way the import does',
+    ]),
+    VersionRelease(version: '0.0.0574', date: '13 Nov 2026', items: [
+      'Task Board: dragging a column edge moves the edge with your pointer',
+      'Monday sync keeps working when Monday renews its access, and each board picks up where it left off',
+      'Behind the scenes: about 3,400 lines of unused code removed',
+    ]),
+    VersionRelease(version: '0.0.0573', date: '13 Nov 2026', items: [
+      'Project Management: the sideways scrollbar and column headings stay on screen at every row',
+      'Task Board: Connect and Dependency cells open a card to search and tick tasks; Files cells upload from a paperclip; a Mirror column picks the Connect column it follows and the column it shows',
+      'Task Board: the + add-column menu has a search box',
+      'Task Board: company groups and branch boards in the board list take a colour from their right-click menu, for the whole organization',
+    ]),
+    VersionRelease(version: '0.0.0572', date: '13 Nov 2026', items: [
+      'Task Board: sort any column from its heading; saved views keep their layout; hover a face for the person’s card (role, local time, contact)',
+      'Task Board: your own folders and subfolders in the board list, a colour per folder and board, right-click to colour or move, drag boards into folders',
+      'Task Board: filter by a column’s values from its heading or by right-clicking a cell, and Group by any column from the top bar',
+      'Task Board: the top bar has Integrate, Automate with the number of rules, Invite with the members, and Import (paste one task per line)',
+      'Task Board: Shift- or Ctrl-click picks a range of cells in a column to copy and paste; while dragging a row, Esc cancels and the table scrolls at the edges',
+      'Task Board › Automate: when a column changes to…, when a date arrives; push a date, set a column, add a person',
+      'Task Board: rating columns show the number of stars set for the column',
+      'Monday boards keep their folders and colours; archived boards come over read-only',
+      'Tabs look the same everywhere: a module’s own tabs are underlined and tabs inside a tab are small pills; on phones the more-tabs arrow no longer covers a tab',
+    ]),
     VersionRelease(version: '0.0.0571', date: '13 Nov 2026', items: [
       'Task Board: click a cell to edit it in place; the status menu dims the board and has Edit labels; columns resize, hide or remove; the task panel is simpler (status, owner, due on top, then fields, subtasks and updates)',
       'Leads: every customer reply is read for phone, email, address, the job, deadline and availability; blanks fill in, differences show as a one-click Use suggestion, and the booking panel shows when the customer is free',
@@ -27,6 +58,25 @@ class VersionHistory {
       'Task Board: People columns hold several people, shown as faces; staff photos show in HR Records, Roles, the Task Board and the Leads dashboard',
       'Email signatures: a missing photo shows the company logo in the same round slot, so every signature has the same shape',
       'Task Board: status cells are solid colour with a colour-block picker (Edit labels, Auto-assign); group footers show a label bar and date range; timelines are pills filled to today',
+      'Task Board: right-click a row to open, copy its link, move, duplicate, add a subtask or delete; right-click a cell to copy, paste or clear; Shift-click selects a range, dragging moves every selected row, and a task dropped on a board in the sidebar moves there',
+      'Task Board: Monday’s column types (Location, Rating, Files, Connect boards, Dependency, Mirror, Last updated, Creation log) and Monday’s formula functions; the + menu is grouped like Monday’s',
+      'Sidebar: modules are grouped under Work, Customers, Communication, Operations, People and System, keeping your order inside each',
+      'Dashboard: click a box to open its module; every box says when its figures were updated; HR counts the same people as the HR page, voicemails say to deal with, and unbuilt modules no longer show Coming soon',
+      'Integrations: back to category sections with chips that jump to each, every card the same size, problems listed last in plain words; each product says how many of its accounts are connected',
+      'Email signatures: the person’s own EzBizi photo comes first; the Workspace panel draws In Gmail now and Will be exactly as Gmail shows them, and a person’s own signature previews as it is typed',
+      'Photos on the HR overview, Scoring and the sender bubbles in lead threads',
+      'Jobs, Leads and Email: changing a filter dims the old rows under a loading line until the new ones arrive',
+      'Phone › Reports: says Counting the calls until the count answers, instead of No calls',
+      'Ads › Google: Local Services budgets read per week as set in LSA, and their campaigns are named Local Services · account',
+      'Meta ads: when every campaign is paused, the spend says it is from before the pause',
+      'Field: Open alerts is the sum of its tiles',
+      'Inventory: total stock value is the same on every tab',
+      'HR Invitations hide personal emails until opened; inspection reports show readable answers',
+      'Phone: each list loads once per visit; calls and texts load 200 at a time with Load older',
+      'Settings › Activity and Phone alerts mask personal emails and phone numbers until you open the row',
+      'Memberships › Promotions opens on last month’s customers with the count and composer ready',
+      'Leads: older lead dates read Nov 5 instead of being cut off',
+      'Task Board: Monday boards come over with their columns, labels, colours and automations, and changes sync back to Monday while both are in use',
     ]),
     VersionRelease(version: '0.0.0570', date: '13 Nov 2026', items: [
       'Texting: a customer who replied STOP is remembered, and automations skip them instead of failing',

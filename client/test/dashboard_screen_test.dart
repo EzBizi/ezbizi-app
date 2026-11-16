@@ -5,8 +5,6 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/dashboard_screen.dart';
-import 'package:ezbizi_client/widgets/dashboard_card.dart';
-import 'package:ezbizi_client/widgets/tag.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -89,24 +87,15 @@ void main() {
     }
   });
 
-  testWidgets('an empty glance is the sentence, coming soon is tagged', (
+  testWidgets('an empty glance is the sentence, coming soon is not drawn', (
     tester,
   ) async {
     await _pump(tester, _handler());
 
     expect(find.text('No new customers this month.'), findsOneWidget);
-    expect(find.text('Coming soon'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byType(DashboardCard),
-        matching: find.byType(Tag),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('The register is not here yet'),
-      findsOneWidget,
-    );
+    // Muse 10.5: a box for a module that has not shipped is hidden.
+    expect(find.text('Coming soon'), findsNothing);
+    expect(find.textContaining('The register is not here yet'), findsNothing);
   });
 
   testWidgets('tapping a card does not push another route', (tester) async {

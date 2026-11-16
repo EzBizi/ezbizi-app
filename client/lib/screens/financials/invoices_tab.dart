@@ -7,6 +7,7 @@ import '../../widgets/list_search.dart';
 import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/grouped_rows.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
@@ -198,8 +199,8 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     };
     if (_month case final m?) {
       final first = DateTime.parse('$m-01');
-      query['from'] = isoDay(first);
-      query['to'] = isoDay(DateTime(first.year, first.month + 1, 0));
+      query['from'] = formatCalendarDay(first);
+      query['to'] = formatCalendarDay(DateTime(first.year, first.month + 1, 0));
     }
     final r = await widget.api.get('/invoices', query.isEmpty ? null : query);
     if (!mounted) return;
@@ -236,7 +237,7 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
           final key = '${d.year}-${d.month.toString().padLeft(2, '0')}';
           return SearchOption(
             value: key,
-            label: '${_monthNames[d.month - 1]} ${d.year}',
+            label: '${longMonths[d.month - 1]} ${d.year}',
           );
         }(),
     ];
@@ -512,18 +513,3 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     );
   }
 }
-
-const _monthNames = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];

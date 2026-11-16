@@ -2194,10 +2194,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
       rows.remove(item);
     } else {
       final now = DateTime.now();
-      final today =
-          '${now.year.toString().padLeft(4, '0')}-'
-          '${now.month.toString().padLeft(2, '0')}-'
-          '${now.day.toString().padLeft(2, '0')}';
+      final today = formatCalendarDay(now);
       final received = rows[item]?['received'] ?? '';
       rows[item] = {
         'quantity': '$quantity',

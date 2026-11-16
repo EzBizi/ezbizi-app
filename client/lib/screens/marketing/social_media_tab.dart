@@ -3534,9 +3534,6 @@ class _AttachedVideo extends StatelessWidget {
   final bool failed;
   final Widget placeholder;
 
-  static String _clock(Duration d) =>
-      '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -3617,7 +3614,7 @@ class _AttachedVideo extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      _clock(value.duration),
+                      formatClock(value.duration),
                       key: const ValueKey('social-video-length'),
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.onInverseSurface,
@@ -3688,21 +3685,6 @@ class _CalendarsColumn extends StatefulWidget {
   final DisplayFormats formats;
   final void Function(_SentPost)? onOpen;
 
-  static const _monthNames = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   static DateTime mondayOf(DateTime d) {
@@ -3711,7 +3693,7 @@ class _CalendarsColumn extends StatefulWidget {
   }
 
   static String monthTitle(DateTime d) =>
-      '${_monthNames[d.month - 1]} ${d.year}';
+      '${longMonths[d.month - 1]} ${d.year}';
 
   static String weekRange(DateTime monday) {
     final sunday = monday.add(const Duration(days: 6));
@@ -3757,11 +3739,6 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
     _loadRange();
   }
 
-  static String _day(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
   /// The month's grid with a week either side, and this week for the
   /// Weekly card.
   Future<void> _loadRange() async {
@@ -3776,8 +3753,8 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
     if (sunday.isAfter(to)) to = sunday;
 
     final response = await api.get('/social/posts', {
-      'from': _day(from),
-      'to': _day(to),
+      'from': formatCalendarDay(from),
+      'to': formatCalendarDay(to),
     });
     if (!mounted || month != _month || !response.ok) return;
     setState(() => _range = _SocialMediaTabState._readPosts(response));
@@ -5892,16 +5869,6 @@ String _postWord(_SentPost post) => switch (post.tone) {
   _ => 'posted',
 };
 
-const _weekdayNames = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
-
 /// Whole days from today to [day], counted on the calendar rather than in
 /// hours, so the night the clocks change is still one day.
 int _daysFromToday(DateTime day) {
@@ -5923,7 +5890,7 @@ String _shortDay(DateTime day) =>
 String _dayWord(DateTime day) => switch (_daysFromToday(day)) {
   0 => 'today',
   1 => 'tomorrow',
-  final n when n > 1 && n < 7 => _weekdayNames[day.weekday - 1],
+  final n when n > 1 && n < 7 => longWeekdays[day.weekday - 1],
   _ => _shortDay(day),
 };
 

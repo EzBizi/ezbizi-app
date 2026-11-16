@@ -68,28 +68,23 @@ class OperationalHealthTest extends TestCase
         $this->assertFalse(app(MailStatus::class)->delivers());
     }
 
-    public function test_ses_without_credentials_names_what_is_missing(): void
+    public function test_smtp_without_credentials_names_what_is_missing(): void
     {
         config([
-            'mail.default' => 'ses',
+            'mail.default' => 'smtp',
             'mail.from.address' => 'noreply@ezbizi.com',
-            'services.ses.key' => null,
-            'services.ses.secret' => null,
+            'mail.mailers.smtp.username' => null,
         ]);
 
-        $missing = app(MailStatus::class)->missing();
-
-        $this->assertContains('AWS_ACCESS_KEY_ID', $missing);
-        $this->assertContains('AWS_SECRET_ACCESS_KEY', $missing);
+        $this->assertContains('MAIL_USERNAME', app(MailStatus::class)->missing());
     }
 
     public function test_the_placeholder_from_address_counts_as_unconfigured(): void
     {
         config([
-            'mail.default' => 'ses',
+            'mail.default' => 'smtp',
             'mail.from.address' => 'hello@example.com',
-            'services.ses.key' => 'a-key',
-            'services.ses.secret' => 'a-secret',
+            'mail.mailers.smtp.username' => 'a-user',
         ]);
 
         // Worse than blank: SES rejects a From it has no identity for, so every
@@ -101,10 +96,9 @@ class OperationalHealthTest extends TestCase
     public function test_a_fully_configured_transport_reports_healthy(): void
     {
         config([
-            'mail.default' => 'ses',
+            'mail.default' => 'smtp',
             'mail.from.address' => 'noreply@ezbizi.com',
-            'services.ses.key' => 'a-key',
-            'services.ses.secret' => 'a-secret',
+            'mail.mailers.smtp.username' => 'a-user',
         ]);
 
         $this->assertTrue(app(MailStatus::class)->delivers());
@@ -428,10 +422,9 @@ class OperationalHealthTest extends TestCase
         // The same shape as a healthy transport above, so the send is attempted
         // rather than refused at the door — faked, so nothing leaves the box.
         config([
-            'mail.default'        => 'ses',
-            'mail.from.address'   => 'noreply@ezbizi.com',
-            'services.ses.key'    => 'a-key',
-            'services.ses.secret' => 'a-secret',
+            'mail.default'               => 'smtp',
+            'mail.from.address'          => 'noreply@ezbizi.com',
+            'mail.mailers.smtp.username' => 'a-user',
         ]);
 
         \Illuminate\Support\Facades\Mail::fake();

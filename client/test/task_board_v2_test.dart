@@ -3,10 +3,14 @@ import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/task_board_files.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -31,6 +35,9 @@ void main() {
   Map<String, dynamic>? builtins;
   var canEdit = true;
   var refuseBoardPatch = false;
+
+  /// Adds a Files column, c-files.
+  var withFiles = false;
 
   /// Top-level tasks added after the three every test has.
   var extra = <Map<String, dynamic>>[];
@@ -57,7 +64,12 @@ void main() {
         'updates_count': 0,
         'subtasks_count': 2,
         'subtasks_done': 1,
-        'values': {'c-type': 'o-masonry', 'c-hours': 3.5, 'c-ok': false},
+        'values': {
+          'c-type': 'o-masonry',
+          'c-hours': 3.5,
+          'c-ok': false,
+          if (withFiles) 'c-files': ['a-0'],
+        },
       },
       {
         'id': 't2',
@@ -97,7 +109,11 @@ void main() {
     return ApiClient(
       client: MockClient((request) async {
         final path = request.url.path.replaceFirst('/api/v1', '');
-        final body = request.body.isEmpty ? null : jsonDecode(request.body);
+        final multipart =
+            request.headers['content-type']?.startsWith('multipart') ?? false;
+        final body = request.body.isEmpty || multipart
+            ? null
+            : jsonDecode(request.body);
         if (request.method != 'GET') log.add((request.method, path, body));
         if (path.endsWith('/me')) {
           return json({
@@ -252,6 +268,15 @@ void main() {
                     'hidden': false,
                     'settings': <String, dynamic>{},
                   },
+                if (withFiles)
+                  {
+                    'id': 'c-files',
+                    'name': 'Files',
+                    'type': 'files',
+                    'position': 50,
+                    'hidden': false,
+                    'settings': <String, dynamic>{},
+                  },
                 {
                   'id': 'c-gone',
                   'name': 'Hidden one',
@@ -288,6 +313,16 @@ void main() {
               ...?(body as Map?)?.cast<String, dynamic>(),
             },
           });
+        }
+        if (path == '/tasks/t1/updates' && multipart) {
+          return json({
+            'data': {
+              'id': 'up-1',
+              'attachments': [
+                {'id': 'a-9', 'name': 'photo.jpg'},
+              ],
+            },
+          }, 201);
         }
         if (path == '/tasks' && request.method == 'POST') {
           final m = body as Map<String, dynamic>;
@@ -341,6 +376,7 @@ void main() {
 
   setUp(() {
     builtins = null;
+    withFiles = false;
     canEdit = true;
     refuseBoardPatch = false;
     extra = [];
@@ -456,6 +492,43 @@ void main() {
     expect(find.byKey(const Key('tasks-table-scroll')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  // Jose 11-13: dragging left made the column grow rightwards in place,
+  // because the stretchy Task column ate every change. The edge must follow
+  // the pointer, as in Monday.
+  for (final dx in [-20.0, 50.0]) {
+    testWidgets('a column edge follows the pointer ($dx)', (tester) async {
+      await pump(tester, width: 2400, columns: 3);
+      final handles = find.byWidgetPredicate(
+        (w) =>
+            w.key is ValueKey &&
+            '${(w.key as ValueKey).value}'.startsWith('column-resize-'),
+      );
+      // The status column and the last column on the row, in the first
+      // group's headings.
+      for (final handle in [
+        find.byKey(const ValueKey('column-resize-status')).first,
+        handles.last,
+      ]) {
+        final before = tester.getRect(handle);
+        final g = await tester.startGesture(
+          before.center,
+          kind: PointerDeviceKind.mouse,
+        );
+        for (var i = 0; i < 10; i++) {
+          await g.moveBy(Offset(dx / 10, 0));
+          await tester.pump();
+        }
+        expect(
+          tester.getRect(handle).center.dx,
+          closeTo(before.center.dx + dx, 2),
+        );
+        await g.up();
+        await tester.pumpAndSettle();
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('a column is edited in the task\'s panel by its type', (
     tester,
@@ -772,5 +845,241 @@ void main() {
 
     expect(find.byKey(const ValueKey('task-owner-ezbizi-t1')), findsNothing);
     expect(find.text('Omar'), findsWidgets);
+  });
+
+  Map<String, dynamic> doneTask() => {
+    'id': 't9',
+    'board_id': 'b-1',
+    'group_id': 'g1',
+    'parent_task_id': null,
+    'title': 'Sweep the Elm St chimney',
+    'status_id': 's-done',
+    'owner': null,
+    'due_on': null,
+    'about': null,
+    'updates_count': 0,
+    'values': <String, dynamic>{},
+  };
+
+  testWidgets("a heading's Filter… keeps only the value picked, and Clear "
+      'filter brings the rest back', (tester) async {
+    builtins = customised();
+    extra = [doneTask()];
+    await pump(tester);
+    expect(find.text('Order liner parts for the Oak Park job'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-head-status')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-status')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-status-s-done')));
+    await tester.pumpAndSettle();
+    expect(find.text('Order liner parts for the Oak Park job'), findsNothing);
+    expect(find.text('Sweep the Elm St chimney'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-head-status')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-status')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('header-filter-clear-status')));
+    await tester.pumpAndSettle();
+    expect(find.text('Order liner parts for the Oak Park job'), findsOneWidget);
+  });
+
+  testWidgets('Group by Status draws one group per status, and Board groups '
+      'goes back', (tester) async {
+    extra = [doneTask()];
+    await pump(tester);
+
+    await tester.tap(find.byKey(const Key('tasks-group-by')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('group-by-status')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-group-by:s-stuck')), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-group-by:s-done')), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-group-g1')), findsNothing);
+    // A Group by group takes no new tasks: it is not a group on the board.
+    expect(find.byKey(const ValueKey('group-menu-by:s-done')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('tasks-group-by')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('group-by-none')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-group-g1')), findsOneWidget);
+  });
+
+  testWidgets('right-click a cell and Filter by this value keeps the tasks '
+      'with it', (tester) async {
+    extra = [doneTask()];
+    await pump(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('range-cell-c-hours-t1')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cell-filter-value')));
+    await tester.pumpAndSettle();
+    expect(find.text('Order liner parts for the Oak Park job'), findsOneWidget);
+    expect(find.text('Sweep the Elm St chimney'), findsNothing);
+  });
+
+  testWidgets('Ctrl-click picks cells in one column and Ctrl+V pastes over '
+      'every one', (tester) async {
+    extra = [doneTask()];
+    await pump(tester);
+    String? clip = '7';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.getData') return {'text': clip};
+        if (call.method == 'Clipboard.setData') {
+          clip = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    for (final id in ['t1', 't9']) {
+      await tester.tap(find.byKey(ValueKey('range-cell-c-hours-$id')));
+      await tester.pump();
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.pump();
+    expect(clip, '3.5');
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    final patches = [
+      for (final (m, p, b) in log)
+        if (m == 'PATCH') '$p ${jsonEncode(b)}',
+    ];
+    expect(patches, [
+      '/tasks/t1 {"values":{"c-hours":3.5}}',
+      '/tasks/t9 {"values":{"c-hours":3.5}}',
+    ]);
+  });
+
+  testWidgets('a label cell has Filter by this value on right-click too', (
+    tester,
+  ) async {
+    extra = [doneTask()];
+    await pump(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('range-cell-c-type-t1')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cell-filter-value')));
+    await tester.pumpAndSettle();
+    expect(find.text('Sweep the Elm St chimney'), findsNothing);
+  });
+
+  Future<List<String>> dragT9OntoT1(
+    WidgetTester tester, {
+    required bool esc,
+  }) async {
+    extra = [doneTask()];
+    await pump(tester);
+    final from = tester.getCenter(find.byKey(const ValueKey('task-drag-t9')));
+    final to = tester.getCenter(find.byKey(const ValueKey('task-t1')));
+    final g = await tester.startGesture(from);
+    await tester.pump(const Duration(milliseconds: 50));
+    await g.moveTo(Offset(from.dx, (from.dy + to.dy) / 2));
+    await tester.pump();
+    if (esc) await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await g.moveTo(to);
+    await tester.pump();
+    await g.up();
+    await tester.pumpAndSettle();
+    return [
+      for (final (m, p, _) in log)
+        if (m != 'GET') '$m $p',
+    ];
+  }
+
+  testWidgets('a row dropped on another moves it', (tester) async {
+    expect(await dragT9OntoT1(tester, esc: false), isNotEmpty);
+  });
+
+  testWidgets('Esc during a row drag cancels it: the drop moves nothing', (
+    tester,
+  ) async {
+    expect(await dragT9OntoT1(tester, esc: true), isEmpty);
+  });
+
+  testWidgets('a row dragged to the bottom edge scrolls the list', (
+    tester,
+  ) async {
+    extra = [
+      for (var i = 0; i < 40; i++)
+        {...doneTask(), 'id': 'x$i', 'title': 'Filler task $i'},
+    ];
+    await pump(tester);
+    final list = find.byType(CustomScrollView).first;
+    final before = tester
+        .state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first,
+        )
+        .position
+        .pixels;
+    final from = tester.getCenter(find.byKey(const ValueKey('task-drag-x0')));
+    final bottom = tester.getBottomLeft(list).dy - 10;
+    final g = await tester.startGesture(from);
+    await tester.pump(const Duration(milliseconds: 50));
+    for (var i = 0; i < 10; i++) {
+      await g.moveTo(Offset(from.dx, bottom - (i.isEven ? 0 : 1)));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final after = tester
+        .state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first,
+        )
+        .position
+        .pixels;
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(after, greaterThan(before));
+  });
+
+  testWidgets("a Files cell's + uploads the file to the task and adds it to "
+      'the cell', (tester) async {
+    withFiles = true;
+    pickTaskUpdateFile = () async =>
+        PickedBytes('photo.jpg', utf8.encode('jpeg'));
+    addTearDown(() => pickTaskUpdateFile = () async => null);
+    await pump(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('column-file-add-c-files')).first,
+    );
+    await tester.pumpAndSettle();
+    final writes = [
+      for (final (m, p, b) in log)
+        if (m != 'GET') '$m $p ${b == null ? '' : jsonEncode(b)}',
+    ];
+    expect(writes, [
+      'POST /tasks/t1/updates ',
+      'PATCH /tasks/t1 {"values":{"c-files":["a-0","a-9"]}}',
+    ]);
+  });
+
+  testWidgets("the + menu's search finds a type from More, and hides the "
+      'rest', (tester) async {
+    await pump(tester);
+    await tester.tap(find.byKey(const Key('column-add')).first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('column-add-rating')), findsNothing);
+    await tester.enterText(find.byKey(const Key('column-add-search')), 'rat');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('column-add-number')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('column-add-rating')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('column-save')), findsOneWidget);
   });
 }

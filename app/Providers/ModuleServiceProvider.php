@@ -2712,6 +2712,21 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A task that is not done passed its due date. Raised once '
                             .'per task; changing the due date lets it be raised again.',
                     ),
+                    // Monday parity (2026-11-13): "when Area changes to Connecticut".
+                    new TriggerDefinition(
+                        key: 'task.column_changed',
+                        label: 'Task column changed',
+                        description: 'A value in one of the board\'s own columns changed, for example Area '
+                            .'to Connecticut. It carries the column and its old and new value as words.',
+                    ),
+                    // Monday parity (2026-11-13): "when Date arrives", Recurring Tasks.
+                    new TriggerDefinition(
+                        key: 'task.date_arrived',
+                        label: 'Task date arrived',
+                        description: 'A task\'s due date, or a date in one of its date columns, is today '
+                            .'(days_until 0) or tomorrow (days_until 1). Raised once per date; delay the '
+                            .'rule to run it at an hour of the day.',
+                    ),
                 ],
                 automationActions: [
                     new ActionDefinition(
@@ -2733,6 +2748,21 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Move the task to a group',
                         description: 'Moves the task the rule fired on into another group on its own board.',
                         executionType: 'task.move_group',
+                    ),
+                    // Monday parity (2026-11-13): "push Date by 1 month" on Recurring Tasks.
+                    new ActionDefinition(
+                        key: 'task.shift_date',
+                        label: 'Push a date',
+                        description: 'Moves the task\'s due date, or a date column, later by days, weeks or months.',
+                        executionType: 'task.shift_date',
+                    ),
+                    // Monday parity (2026-11-13): "set Reminder to Done", "set Date to today".
+                    new ActionDefinition(
+                        key: 'task.set_value',
+                        label: 'Set a column',
+                        description: 'Sets one of the task\'s columns: a label by name, a date to today, '
+                            .'a checkbox, or words.',
+                        executionType: 'task.set_value',
                     ),
                 ],
             ),

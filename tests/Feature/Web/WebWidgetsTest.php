@@ -259,11 +259,13 @@ class WebWidgetsTest extends TestCase
                 ],
             ])->assertOk();
 
-        $body = $this->signedInAs($editor)
+        $response = $this->signedInAs($editor)
             ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
-            ->assertOk()
-            ->json();
+            ->assertOk();
+        $body = $response->json();
 
+        // {} not []: the screen casts it to a Map and stalled on a List (11-13).
+        $this->assertStringContainsString('"inherited":{}', $response->getContent());
         $this->assertTrue($body['own']);
         $this->assertSame('Talk to A-1', $body['config']['chat']['title']);
         $this->assertSame('#aa0000', $body['config']['style']['accent']);

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/files.dart';
+import '../../core/timestamps.dart';
 import 'recording_player.dart';
 
 /// Play, pause, scrub, and how far through you are.
@@ -277,14 +278,16 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
 
                   Text(
                     scrubbable
-                        ? '${_clock(_dragging == null ? at : Duration(seconds: _dragging!.round()))} / ${_clock(total)}'
+                        ? '${formatClock(_dragging == null ? at : Duration(seconds: _dragging!.round()))} / ${formatClock(total)}'
                         : switch (widget.knownLength) {
                             final length? when length > Duration.zero =>
-                              '0:00 / ${_clock(length)}',
+                              '0:00 / ${formatClock(length)}',
                             _ => '--:--',
                           },
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
+                      // m:ss, and mm:ss past ten minutes. Tabular figures stop
+                      // the whole row twitching as the seconds change width.
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
@@ -398,15 +401,6 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
         ),
       ),
     );
-  }
-
-  /// m:ss, and mm:ss past ten minutes. Tabular figures above stop the whole
-  /// row twitching as the seconds change width.
-  static String _clock(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 }
 

@@ -79,13 +79,10 @@ final class InventorySummary
                     $inStock++;
                 }
 
-                if ($item->last_cost_minor !== null) {
-                    // Keep the fractional on-hand; round the product to nearest
-                    // minor unit (half-up) rather than truncating qty first.
-                    $stockValueMinor += (int) round(((float) $qty) * (int) $item->last_cost_minor);
-                }
             }
         }
+
+        $stockValueMinor = self::stockValueMinor($user, $scope) ?? 0;
 
         return [
             'items' => $items,
@@ -346,7 +343,7 @@ final class InventorySummary
 
         $worth = fn (InventoryBalance $b): ?int => $b->item->last_cost_minor === null
             ? null
-            : (int) round(((float) $b->qty_on_hand) * (int) $b->item->last_cost_minor);
+            : self::shelfValue((string) $b->qty_on_hand, (int) $b->item->last_cost_minor);
         $sum = function (Collection $rows) use ($worth): ?int {
             $values = $rows->map($worth)->filter(fn ($v) => $v !== null);
 
@@ -393,6 +390,36 @@ final class InventorySummary
             'by_location' => $byLocation->sort($desc('items'))->values()->all(),
             'top_items' => $byItem->sort($desc('qty'))->take(5)->values()->all(),
         ];
+    }
+
+    /**
+     * THE inventory value, the one figure every tab shows (UI/UX audit
+     * 2026-11-13 found the tabs a dollar apart: separate sums over different
+     * sets of shelves and items).
+     *
+     * Every shelf holding something, at a place this caller can see, of an
+     * item this caller can see whatever its status (a discontinued part on a
+     * shelf is still worth its cost), at last cost, rounded per shelf.
+     * Locations' per-place values use the same rule, so they add up to this.
+     * Null when nothing held is priced; never a counted zero.
+     */
+    public static function stockValueMinor(User $user, ViewScope $scope): ?int
+    {
+        $values = InventoryBalance::query()
+            ->where('qty_on_hand', '>', 0)
+            ->whereHas('item', fn ($q) => InventoryVisibility::constrain($q, $user, $scope)->whereNotNull('last_cost_minor'))
+            ->whereHas('location', fn ($q) => InventoryVisibility::constrain($q, $user, $scope))
+            ->with('item:id,last_cost_minor')
+            ->get(['id', 'item_id', 'qty_on_hand'])
+            ->map(fn (InventoryBalance $b) => self::shelfValue((string) $b->qty_on_hand, (int) $b->item->last_cost_minor));
+
+        return $values->isEmpty() ? null : (int) $values->sum();
+    }
+
+    /** One shelf's worth in cents, rounded half-up: the only rounding rule. */
+    public static function shelfValue(string $qty, int $costMinor): int
+    {
+        return (int) round(((float) $qty) * $costMinor);
     }
 
     /** @return list<string> */

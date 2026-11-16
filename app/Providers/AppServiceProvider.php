@@ -10,7 +10,6 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\User;
 use App\Observers\JobThumbtackObserver;
-use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
 use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\ScopeReach;
@@ -29,7 +28,6 @@ use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\WebsiteChatReplies;
-use Aws\BedrockRuntime\BedrockRuntimeClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Events\DiagnosingHealth;
@@ -71,22 +69,6 @@ class AppServiceProvider extends ServiceProvider
             \App\Support\Integrations\Dependents\Counters\TelegramLinksCounter::class,
             \App\Support\Integrations\Dependents\Counters\ProviderFeaturesCounter::class,
         ],\App\Support\Integrations\Dependents\DependentRegistry::TAG);
-
-        // Bedrock, for what a model can say about a lead. No keys, no client:
-        // LeadInsights::enabled() is false and every caller shows nothing.
-        $this->app->bind(LeadInsights::class, function () {
-            $cfg = (array) config('services.bedrock');
-            $on = ($cfg['key'] ?? '') !== '' && ($cfg['secret'] ?? '') !== '' && ($cfg['model'] ?? '') !== '';
-
-            return new LeadInsights(
-                $on ? new BedrockRuntimeClient([
-                    'version' => 'latest',
-                    'region' => (string) ($cfg['region'] ?? 'us-east-1'),
-                    'credentials' => ['key' => $cfg['key'], 'secret' => $cfg['secret']],
-                ]) : null,
-                (string) ($cfg['model'] ?? ''),
-            );
-        });
 
         /*
          * Where a reply to a lead goes, per source.

@@ -2,9 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Organization;
 use App\Models\SocialConnection;
-use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizRecords;
 use App\Support\Workiz\WorkizWebSession;
@@ -27,18 +25,7 @@ class SyncWorkizWebLists extends Command
 
     public function handle(TenantContext $tenant): int
     {
-        $landed = 0;
-
-        $connections = SocialConnection::query()->withoutGlobalScopes()
-            ->where('provider', SocialProvider::WorkizWeb->value)->where('status', 'connected')->get();
-
-        foreach ($connections as $connection) {
-            $organization = Organization::query()->withoutGlobalScopes()->find($connection->organization_id);
-
-            if ($organization !== null) {
-                $landed += $tenant->run($organization, fn () => $this->connection($connection));
-            }
-        }
+        $landed = WorkizWebSession::eachConnection($tenant, fn (SocialConnection $connection) => $this->connection($connection));
 
         $this->info($landed.' Workiz list row(s) read.');
 

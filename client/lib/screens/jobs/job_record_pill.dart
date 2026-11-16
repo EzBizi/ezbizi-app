@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/field_recorder.dart';
 import '../../core/field_tracker.dart';
 import '../../widgets/side_panel.dart';
+import '../field/recording_control.dart';
 
 /// The job header's "● Record" (design 177, part B; Jose 2026-11-03, "as u
 /// recommend"): starts the safety recording against this job, asking first in
@@ -14,59 +15,26 @@ import '../../widgets/side_panel.dart';
 ///
 /// Binds to [FieldTracker.current], which exists only on a phone, so on a
 /// desk this draws nothing.
-class JobRecordPill extends StatefulWidget {
-  const JobRecordPill({super.key, required this.jobId, this.recorder, this.me});
+class JobRecordPill extends RecordingControlWidget {
+  const JobRecordPill({
+    super.key,
+    required this.jobId,
+    super.recorder,
+    super.me,
+  });
 
   final String jobId;
-
-  /// For tests; the app's own tracker's otherwise.
-  final FieldRecorder? recorder;
-  final ValueNotifier<Map<String, dynamic>?>? me;
 
   @override
   State<JobRecordPill> createState() => _JobRecordPillState();
 }
 
-class _JobRecordPillState extends State<JobRecordPill> {
-  Timer? _tick;
-  bool _busy = false;
-
-  FieldRecorder? get _recorder =>
-      widget.recorder ?? FieldTracker.current?.recorder;
-  ValueNotifier<Map<String, dynamic>?>? get _me =>
-      widget.me ?? FieldTracker.current?.me;
-
-  @override
-  void initState() {
-    super.initState();
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && (_recorder?.active ?? false)) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _tick?.cancel();
-    super.dispose();
-  }
-
-  static String _clock(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return h > 0 ? '$h:$m:$s' : '$m:$s';
-  }
-
-  Future<void> _run(Future<void> Function() act) async {
-    setState(() => _busy = true);
-    await act();
-    if (mounted) setState(() => _busy = false);
-  }
-
+class _JobRecordPillState extends State<JobRecordPill>
+    with RecordingControl<JobRecordPill> {
   @override
   Widget build(BuildContext context) {
-    final recorder = _recorder;
-    final meNotifier = _me;
+    final recorder = fieldRecorder;
+    final meNotifier = fieldMe;
     if (recorder == null || meNotifier == null) return const SizedBox.shrink();
 
     return ValueListenableBuilder<Map<String, dynamic>?>(
@@ -83,9 +51,7 @@ class _JobRecordPillState extends State<JobRecordPill> {
             }
             return OutlinedButton.icon(
               key: const ValueKey('job-record-start'),
-              onPressed: _busy
-                  ? null
-                  : () => _consent(context, recorder, rules),
+              onPressed: busy ? null : () => _consent(context, recorder, rules),
               icon: Icon(
                 Icons.fiber_manual_record,
                 size: 14,
@@ -108,9 +74,9 @@ class _JobRecordPillState extends State<JobRecordPill> {
               backgroundColor: scheme.error,
               foregroundColor: scheme.onError,
             ),
-            onPressed: _busy ? null : () => _run(() => recorder.stop('done')),
+            onPressed: busy ? null : () => run(() => recorder.stop('done')),
             icon: const Icon(Icons.fiber_manual_record, size: 14),
-            label: Text('${_clock(elapsed)} · Stop'),
+            label: Text('${recordingClock(elapsed)} · Stop'),
           );
         },
       ),
@@ -129,7 +95,7 @@ class _JobRecordPillState extends State<JobRecordPill> {
           _ConsentPanel(announce: announce, notice: '${rules['notice'] ?? ''}'),
     );
     if (told == null || !mounted) return;
-    await _run(
+    await run(
       () => recorder.start(jobId: widget.jobId, customerTold: announce && told),
     );
   }

@@ -73,7 +73,7 @@ class _FlowsPaneState extends State<FlowsPane> {
   /// the filter runs here.
   String _query = '';
   List<RingGroupRef> _groups = const [];
-  List<_Conn> _connections = const [];
+  List<PhoneConnectionRef> _connections = const [];
   List<_Ext> _extensions = const [];
 
   _Draft? _draft;
@@ -152,7 +152,7 @@ class _FlowsPaneState extends State<FlowsPane> {
     setState(() {
       _flows = _Flow.listFrom(results[0].body);
       _groups = RingGroupRef.listFrom(results[1].body);
-      _connections = _Conn.listFrom(results[2].body);
+      _connections = PhoneConnectionRef.listFrom(results[2].body);
       _extensions = _Ext.listFrom(results[3].body);
       _loading = false;
     });
@@ -279,18 +279,7 @@ class _FlowsPaneState extends State<FlowsPane> {
     }
 
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
+      return ErrorRetry(_error!, onRetry: _load);
     }
 
     if (_connections.isEmpty) {
@@ -1031,23 +1020,6 @@ class _Ext {
             name: r['name']?.toString() ?? 'Somebody',
           ),
         )
-        .toList(growable: false);
-  }
-}
-
-@immutable
-class _Conn {
-  const _Conn({required this.id});
-
-  final String id;
-
-  static List<_Conn> listFrom(dynamic payload) {
-    final data = payload is Map ? payload['data'] : payload;
-    if (data is! List) return const [];
-
-    return data
-        .whereType<Map<String, dynamic>>()
-        .map((r) => _Conn(id: r['id'].toString()))
         .toList(growable: false);
   }
 }

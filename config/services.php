@@ -14,24 +14,6 @@ return [
     |
     */
 
-    'ses' => [
-        'key' => env('AWS_ACCESS_KEY_ID'),
-        'secret' => env('AWS_SECRET_ACCESS_KEY'),
-        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
-    ],
-
-    /*
-    | Amazon Bedrock, for what a model can say about a lead (Leads §AI).
-    | Off until all three are set: the same AWS keys as SES, and the model id
-    | exactly as the Bedrock console shows it for Claude in this region.
-    */
-    'bedrock' => [
-        'key' => env('AWS_ACCESS_KEY_ID'),
-        'secret' => env('AWS_SECRET_ACCESS_KEY'),
-        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
-        'model' => env('BEDROCK_MODEL', ''),
-    ],
-
     /*
     |--------------------------------------------------------------------------
     | Google, for shared Gmail inboxes

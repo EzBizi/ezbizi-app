@@ -7,6 +7,7 @@ import '../core/api_client.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/mention_field.dart';
 import '../widgets/connect_account.dart';
@@ -84,6 +85,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Timer? _searchDebounce;
 
   bool _loading = true;
+
+  /// A reload with leads already up (the source or a filter changed).
+  bool _refreshing = false;
   bool _syncing = false;
   String? _error;
   String? _notice;
@@ -443,6 +447,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       // "Nothing on screen yet", not "a request is in flight" — a refresh after
       // a status change keeps the list rendered rather than tearing it down.
       _loading = _leads.isEmpty;
+      _refreshing = _leads.isNotEmpty;
       _error = null;
     });
 
@@ -455,6 +460,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
     setState(() {
       _loading = false;
+      _refreshing = false;
 
       if (!response.ok) {
         _error = response.message;
@@ -512,8 +518,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Map<String, String> get _dateRange {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    String day(DateTime d) =>
-        '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
     final monday = today.subtract(Duration(days: today.weekday - 1));
     final (DateTime, DateTime)? range = switch (_dates) {
       'today' => (today, today),
@@ -531,7 +535,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       '30' => (today.subtract(const Duration(days: 29)), today),
       _ => null,
     };
-    return range == null ? const {} : {'from': day(range.$1), 'to': day(range.$2)};
+    return range == null ? const {} : {'from': formatCalendarDay(range.$1), 'to': formatCalendarDay(range.$2)};
   }
 
   /// Charge, IVR source, dispatcher and dates, under the three filters.
@@ -903,6 +907,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     required void Function(Map<String, dynamic> lead) onTap,
   }) => AsyncBody(
     loading: _loading,
+    refreshing: _refreshing,
     error: _error,
     onRetry: _load,
     child: _leads.isEmpty

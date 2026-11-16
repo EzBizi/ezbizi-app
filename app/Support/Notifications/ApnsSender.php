@@ -3,6 +3,7 @@
 namespace App\Support\Notifications;
 
 use App\Models\DeviceToken;
+use App\Support\Jwt;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -202,17 +203,17 @@ class ApnsSender
                 throw new RuntimeException('No APNs key is configured.');
             }
 
-            $header = $this->base64Url(json_encode(
+            $header = Jwt::base64Url(json_encode(
                 ['alg' => 'ES256', 'kid' => $settings['key_id'], 'typ' => 'JWT'],
                 JSON_THROW_ON_ERROR,
             ));
 
-            $claims = $this->base64Url(json_encode(
+            $claims = Jwt::base64Url(json_encode(
                 ['iss' => $settings['team_id'], 'iat' => time()],
                 JSON_THROW_ON_ERROR,
             ));
 
-            return $header.'.'.$claims.'.'.$this->base64Url(
+            return $header.'.'.$claims.'.'.Jwt::base64Url(
                 $this->joseSignature($header.'.'.$claims, $settings['key'])
             );
         });
@@ -264,11 +265,6 @@ class ApnsSender
     private function endpoint(): string
     {
         return config('services.apns.production') ? self::PRODUCTION : self::SANDBOX;
-    }
-
-    private function base64Url(string $value): string
-    {
-        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
     }
 
     /**

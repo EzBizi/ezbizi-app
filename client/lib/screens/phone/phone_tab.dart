@@ -140,6 +140,7 @@ class _PhoneTabState extends State<PhoneTab> {
                 initialFilter: RecordsFilter.sms,
                 showFilters: false,
                 reloadToken: _section == 2 ? _visits : 0,
+                loadOnStart: false,
               ),
               // Voicemail is boxes, not a filtered call list: a flat list
               // answers "did anybody ring" and not "did anybody ring ME",

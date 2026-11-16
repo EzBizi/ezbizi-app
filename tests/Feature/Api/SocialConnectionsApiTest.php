@@ -182,8 +182,10 @@ class SocialConnectionsApiTest extends TestCase
         // `connect_check` and `choices` (Marketing 3bdbd58e9) are ConnectSetup's
         // pass/fail summary (scope names, "renews automatically") and the
         // audience/board options, never a credential value.
+        // `avatar_url` (Marketing 669a4a356) is the account's public profile
+        // picture URL, shown on its card - an image address, not a token.
         $this->assertSame([
-            'id', 'provider', 'provider_label', 'display_name', 'label', 'handle', 'account_email',
+            'id', 'provider', 'provider_label', 'display_name', 'label', 'handle', 'avatar_url', 'account_email',
             'scope_type', 'scope_id', 'status', 'status_reason', 'detail', 'workiz', 'whatsapp', 'last_reached_at', 'last_checked_at',
             'connect_check', 'choices',
             'can_publish', 'cannot_publish_because', 'posting_note', 'asks_tiktok_choices', 'body_limit', 'refuses',

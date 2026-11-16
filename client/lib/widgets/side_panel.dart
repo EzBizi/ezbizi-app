@@ -391,3 +391,46 @@ Widget paneFooter({
     ],
   ),
 );
+
+/// A form pane: [paneHeader], its fields scrolling beneath (a spinner while
+/// [loading]), and [paneFooter]. Back and Cancel both call [onCancel], and
+/// neither works while [busy].
+Widget formPane(
+  BuildContext context,
+  String title, {
+  required bool showBack,
+  required bool busy,
+  required VoidCallback onCancel,
+  required VoidCallback? onSave,
+  String saveLabel = 'Save',
+  String backTooltip = 'Back to the list',
+  bool loading = false,
+  required List<Widget> children,
+}) => Column(
+  crossAxisAlignment: CrossAxisAlignment.stretch,
+  children: [
+    paneHeader(
+      context,
+      title,
+      showBack: showBack,
+      onBack: busy ? null : onCancel,
+      backTooltip: backTooltip,
+    ),
+    Expanded(
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: children,
+              ),
+            ),
+    ),
+    paneFooter(
+      onCancel: busy ? null : onCancel,
+      onSave: onSave,
+      saveLabel: saveLabel,
+    ),
+  ],
+);

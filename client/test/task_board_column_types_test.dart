@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/task_board_columns.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +20,7 @@ void main() {
     name: 'Description',
     type: type,
     unit: null,
+    max: null,
     options: options,
     format: 'plain',
     footer: 'none',
@@ -190,5 +192,142 @@ void main() {
     await tester.pumpAndSettle();
     expect(changes, ['new']);
     expect(find.byType(TextField), findsNothing);
+  });
+
+  testWidgets("hovering a People cell's face opens that person's card", (
+    tester,
+  ) async {
+    final asked = <String>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        asked.add(request.url.path);
+        return http.Response(
+          jsonEncode({
+            'data': {'id': 'u-2', 'name': 'Tobin Marsh', 'title': 'Tech'},
+          }),
+          200,
+          headers: const {'content-type': 'application/json'},
+        );
+      }),
+    );
+    await pump(
+      tester,
+      SizedBox(
+        width: 240,
+        child: ColumnCell(
+          column: column('people'),
+          value: const ['u-2'],
+          people: const {'u-2': 'Tobin Marsh'},
+          formats: DisplayFormats.fallback,
+          api: api,
+          boardId: 'b-1',
+        ),
+      ),
+    );
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(
+      tester.getCenter(find.byKey(const ValueKey('people-face-u-2'))),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(asked.single, endsWith('/task-boards/b-1/people/u-2'));
+    expect(find.byKey(const ValueKey('person-card-u-2')), findsOneWidget);
+  });
+
+  testWidgets('a Dependency cell ticks tasks in a card under it, searched '
+      'by title', (tester) async {
+    final changes = <Object?>[];
+    await pump(
+      tester,
+      SizedBox(
+        width: 240,
+        child: ColumnCell(
+          column: column('dependency'),
+          value: const ['t2'],
+          people: const {},
+          formats: DisplayFormats.fallback,
+          tasks: const [('t2', 'Measure the flue'), ('t3', 'Place the order')],
+          onChanged: changes.add,
+        ),
+      ),
+    );
+    expect(find.text('1 task'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('column-cell-c1')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('task-pick-search-c1')),
+      'order',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-pick-c1-t2')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('task-pick-c1-t3')).first);
+    await tester.pumpAndSettle();
+    expect(changes.single, ['t2', 't3']);
+  });
+
+  testWidgets('a Mirror column picks the connect column it follows and the '
+      'column it shows', (tester) async {
+    final bodies = <Map>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        bodies.add(jsonDecode(request.body) as Map);
+        return http.Response(
+          jsonEncode({'data': {}}),
+          200,
+          headers: const {'content-type': 'application/json'},
+        );
+      }),
+    );
+    BoardColumn other(String id, String name, String type) => (
+      id: id,
+      name: name,
+      type: type,
+      unit: null,
+      max: null,
+      options: const <ColumnOption>[],
+      format: 'plain',
+      footer: 'none',
+      formula: null,
+    );
+    await pump(
+      tester,
+      Builder(
+        builder: (context) => FilledButton(
+          onPressed: () => showSidePanel<bool>(
+            context,
+            builder: (_) => ColumnPanel(
+              api: api,
+              boardId: 'b1',
+              type: 'mirror',
+              column: column('mirror'),
+              raw: const {'id': 'c1', 'settings': null},
+              others: [
+                other('c-link', 'Linked jobs', 'connect'),
+                other('c-hours', 'Est. hours', 'number'),
+              ],
+            ),
+          ),
+          child: const Text('open'),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('column-mirror-connect')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Linked jobs').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('column-mirror-column')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Est. hours').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('column-save')));
+    await tester.pumpAndSettle();
+    expect(bodies.single['settings'], {
+      'connect_column_id': 'c-link',
+      'column_id': 'c-hours',
+    });
   });
 }

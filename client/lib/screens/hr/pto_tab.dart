@@ -1205,7 +1205,7 @@ class _PtoTabState extends State<PtoTab> {
               ),
               for (final e in earnings)
                 Positioned(
-                  key: Key('pto-earn-${PtoMaths.iso(e.on)}'),
+                  key: Key('pto-earn-${formatCalendarDay(e.on)}'),
                   left: (at(e.on) * w - dot / 2).clamp(0.0, w - dot),
                   top: top + track / 2 - dot / 2,
                   width: dot,
@@ -1487,7 +1487,7 @@ class _PtoTabState extends State<PtoTab> {
         // next one sits just above what already happened.
         for (final e in expected.reversed)
           Padding(
-            key: Key('pto-expected-${PtoMaths.iso(e.on)}'),
+            key: Key('pto-expected-${formatCalendarDay(e.on)}'),
             padding: const EdgeInsets.only(bottom: 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1909,11 +1909,6 @@ class PtoEvent {
 
 abstract final class PtoMaths {
 
-  static const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June', //
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
-
   static String month(DateTime at) => shortMonths[at.month - 1];
 
   /// Today as a date with no time in it.
@@ -2170,10 +2165,6 @@ abstract final class PtoMaths {
     });
     return events;
   }
-
-  static String iso(DateTime at) =>
-      '${at.year}-${at.month.toString().padLeft(2, '0')}-'
-      '${at.day.toString().padLeft(2, '0')}';
 }
 
 // ── the recorder: a month calendar, a reason, Save ───────────────────
@@ -2238,7 +2229,7 @@ class _RecordDaysOffState extends State<_RecordDaysOff> {
       {
         'days': [
           for (final d in days)
-            {'date': PtoMaths.iso(d), 'portion': _picked[d] == 1 ? 1 : 0.5},
+            {'date': formatCalendarDay(d), 'portion': _picked[d] == 1 ? 1 : 0.5},
         ],
         if (reason.isNotEmpty) 'reason': reason,
       },
@@ -2510,7 +2501,7 @@ class _Calendar extends StatelessWidget {
                 : BorderSide.none,
           ),
           child: InkWell(
-            key: Key('pto-day-${PtoMaths.iso(d)}'),
+            key: Key('pto-day-${formatCalendarDay(d)}'),
             borderRadius: BorderRadius.circular(6),
             // Already recorded: shown, and not offered again.
             onTap: was ? null : () => onTap(d),
@@ -2562,7 +2553,7 @@ class _Calendar extends StatelessWidget {
               ),
               Expanded(
                 child: Text(
-                  '${PtoMaths.monthNames[month.month - 1]} ${month.year}',
+                  '${longMonths[month.month - 1]} ${month.year}',
                   key: const Key('pto-cal-month'),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleSmall,
@@ -3456,7 +3447,7 @@ class _RequestFormState extends State<_RequestForm> {
     final response = await widget.api.post('/hr/pto/requests', {
       'days': [
         for (final d in days)
-          {'date': PtoMaths.iso(d), 'portion': _picked[d] == 1 ? 1 : 0.5},
+          {'date': formatCalendarDay(d), 'portion': _picked[d] == 1 ? 1 : 0.5},
       ],
       if (note.isNotEmpty) 'note': note,
     });

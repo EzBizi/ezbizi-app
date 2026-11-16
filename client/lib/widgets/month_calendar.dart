@@ -211,11 +211,6 @@ class _MonthCalendarState extends State<MonthCalendar> {
     );
   }
 
-  static String _title(DateTime month) {
-    const names = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
-    ];
-    return '${names[month.month - 1]} ${month.year}';
-  }
+  static String _title(DateTime month) =>
+      '${longMonths[month.month - 1]} ${month.year}';
 }

@@ -5,8 +5,8 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/task_board_columns.dart';
-import 'package:ezbizi_client/screens/task_board_plan_views.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,13 +60,13 @@ void main() {
     final tasks = [
       task(
         't1',
-        due: planIso(today),
+        due: formatCalendarDay(today),
         values: {
           'c-cost': 1200,
           'c-mat': 340,
           'c-time': {
-            'from': planIso(today),
-            'to': planIso(today.add(const Duration(days: 4))),
+            'from': formatCalendarDay(today),
+            'to': formatCalendarDay(today.add(const Duration(days: 4))),
           },
         },
       ),
@@ -204,6 +204,33 @@ void main() {
     },
   );
 
+  test(
+    'a formula speaks Monday: IF, VALUE, CONCATENATE, FLOOR, MOD, & and =',
+    () {
+      // Ohio PM's Total Cost (Monday audit 11-13).
+      const total = 'IF({paid}, (VALUE({price}) * 0.1) + {cost}, {cost})';
+      expect(
+        evalFormula(total, {'paid': true, 'price': '200', 'cost': 50}),
+        70,
+      );
+      expect(
+        evalFormula(total, {'paid': false, 'price': '200', 'cost': 50}),
+        50,
+      );
+      expect(
+        evalFormula('CONCATENATE(FLOOR({m} / 60), "h ", MOD({m}, 60), "m")', {
+          'm': 135,
+        }),
+        '2h 15m',
+      );
+      expect(evalFormula('{a} & "-" & {b}', {'a': 'OH', 'b': 7}), 'OH-7');
+      expect(evalFormula('{a} = "Done"', {'a': 'Done'}), true);
+      expect(evalFormula('ROUND({a}, 1)', {'a': 2.345}), 2.3);
+      expect(evalFormula('MOD({a}, 0)', {'a': 1}), isNull);
+      expect(evalFormula('EVAL(1)', const {}), isNull);
+    },
+  );
+
   testWidgets('the table shows currency, a formula and a group footer sum', (
     tester,
   ) async {
@@ -243,7 +270,7 @@ void main() {
       await tester.tap(find.text('Calendar'));
       await tester.pumpAndSettle();
 
-      final day = find.byKey(ValueKey('plan-day-${planIso(today)}'));
+      final day = find.byKey(ValueKey('plan-day-${formatCalendarDay(today)}'));
       expect(
         find.descendant(of: day, matching: find.text('Task t1')),
         findsOneWidget,
@@ -252,7 +279,7 @@ void main() {
 
       final from = tester.getCenter(find.byKey(const ValueKey('plan-task-t1')));
       final to = tester.getCenter(
-        find.byKey(ValueKey('plan-day-${planIso(other)}')),
+        find.byKey(ValueKey('plan-day-${formatCalendarDay(other)}')),
       );
       final g = await tester.startGesture(from);
       await tester.pump(const Duration(milliseconds: 50));
@@ -263,7 +290,7 @@ void main() {
       expect(patches, [
         jsonEncode([
           "t1",
-          {"due_on": planIso(other)},
+          {"due_on": formatCalendarDay(other)},
         ]),
       ]);
     },
@@ -297,8 +324,8 @@ void main() {
           {
             'values': {
               'c-time': {
-                'from': planIso(today.add(const Duration(days: 3))),
-                'to': planIso(today.add(const Duration(days: 7))),
+                'from': formatCalendarDay(today.add(const Duration(days: 3))),
+                'to': formatCalendarDay(today.add(const Duration(days: 7))),
               },
             },
           },

@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/logo_badge.dart';
 import 'field_status.dart';
@@ -111,8 +112,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
   }
 
   /// The map's day, as the server wants it.
-  String get _ymd =>
-      '${_day.year}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
+  String get _ymd => formatCalendarDay(_day);
 
   /// One day for the whole map (Jose, 2026-10-01): that day's jobs, and the
   /// route a person drove on it. Today is the default; the arrows step back

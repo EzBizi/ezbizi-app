@@ -12,6 +12,7 @@ import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/grouped_rows.dart';
+import '../../widgets/load_more.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
@@ -532,34 +533,16 @@ class _EstimatesTabState extends State<EstimatesTab> {
       );
     }
 
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 4, 24, 24),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
+    return DockedListDetail(
+      list: GroupedList<Map<String, dynamic>>(
+        groups: groups,
+        idOf: _id,
+        tile: _tile,
+        onOpen: (row) => _open(_id(row)),
+        selectedId: open,
+        footer: footer,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 380,
-            child: GroupedList<Map<String, dynamic>>(
-              groups: groups,
-              idOf: _id,
-              tile: _tile,
-              onOpen: (row) => _open(_id(row)),
-              selectedId: open,
-              footer: footer,
-            ),
-          ),
-          VerticalDivider(width: 1, color: scheme.outlineVariant),
-          Expanded(child: _panel(open, inPlace: false)),
-        ],
-      ),
+      detail: _panel(open, inPlace: false),
     );
   }
 
@@ -583,26 +566,13 @@ class _EstimatesTabState extends State<EstimatesTab> {
 
   Widget _loadMore() => Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_pageError != null) ...[
-            ErrorNote(_pageError!),
-            const SizedBox(height: 8),
-          ],
-          TextButton(
-            onPressed: _fetching ? null : () => _load(page: _page + 1),
-            child: Text(
-              _fetching
-                  ? 'Loading…'
-                  : _pageError != null
-                  ? 'Try again'
-                  : 'Load more (${formatCount(_total - _rows.length)} left)',
-            ),
-          ),
-        ],
-      ),
+    child: LoadMore(
+      shown: _rows.length,
+      total: _total,
+      busy: _fetching,
+      error: _pageError,
+      onMore: () => _load(page: _page + 1),
+      groupDigits: true,
     ),
   );
 

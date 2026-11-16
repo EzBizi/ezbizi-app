@@ -453,9 +453,9 @@ class RolesController extends Controller
                 // The mail goes with it — `mailbox_grants.role_id` cascades — so
                 // this line is the only record left that this role could read
                 // somebody's inbox. Addresses rather than ids, for the reason
-                // InboxAccess::sync gives: an id here resolves to nothing.
-                'inboxes' => $this->inboxes->addressesHeldBy($role),
-                'inspections' => $this->inspections->namesHeldBy($role),
+                // RoleGrantAccess::sync gives: an id here resolves to nothing.
+                'inboxes' => $this->inboxes->labelsHeldBy($role),
+                'inspections' => $this->inspections->labelsHeldBy($role),
                 'phone_numbers' => $this->phoneNumbers->labelsHeldBy($role),
             ]);
 

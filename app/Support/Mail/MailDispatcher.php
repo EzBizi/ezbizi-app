@@ -194,30 +194,6 @@ class MailDispatcher
             );
         }
 
-        /*
-         * Attribution WITHOUT a header the recipient can read.
-         *
-         * SES message tags need a configuration set to reach CloudWatch, and
-         * naming one that does not exist gets the message REJECTED — so the
-         * header only goes on when one is configured. Nothing is configured
-         * today, which is why this is a condition rather than a constant.
-         *
-         * No X-EzBizi-Tenant header: a recipient reads headers, and an internal
-         * id in one is a leak that buys us nothing we cannot get from the
-         * counter below.
-         */
-        $configurationSet = (string) config('mail.ses_configuration_set', '');
-
-        if ($configurationSet !== '') {
-            $message->withSymfonyMessage(function ($symfony) use ($configurationSet, $scope) {
-                $symfony->getHeaders()->addTextHeader('X-SES-CONFIGURATION-SET', $configurationSet);
-                $symfony->getHeaders()->addTextHeader(
-                    'X-SES-MESSAGE-TAGS',
-                    'source=automation,scope='.$this->resolver->scopeTypeOf($scope),
-                );
-            });
-        }
-
         $this->handOver($identity, $message, $to);
     }
 

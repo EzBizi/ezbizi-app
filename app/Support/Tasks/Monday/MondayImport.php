@@ -8,6 +8,8 @@ use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
+use App\Models\TaskBoardFolder;
+use App\Models\TaskBoardView;
 use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskStatus;
@@ -15,6 +17,7 @@ use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Files\AttachmentUploader;
+use App\Support\Tasks\ColumnConverter;
 use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
@@ -101,6 +104,9 @@ final class MondayImport
 
     private bool $refresh = false;
 
+    /** Take Monday's fields even where Monday has not changed since we took them (a mapping fixed later). */
+    private bool $reapply = false;
+
     private ?string $filesDir = null;
 
     private TaskWriter $writer;
@@ -114,9 +120,10 @@ final class MondayImport
      * @param  string|User  $as  the person the import acts as: a user, or an email the people map resolves
      * @return array{counts: array<string, int|float>, unmatched: list<string>, owners_dropped: array<string, int>, not_carried: list<string>}
      */
-    public function run(Organization $org, array $data, string|User $as, bool $dry = false, ?string $filesDir = null, bool $refresh = false, array $sensitiveItems = []): array
+    public function run(Organization $org, array $data, string|User $as, bool $dry = false, ?string $filesDir = null, bool $refresh = false, array $sensitiveItems = [], bool $reapply = false): array
     {
         $this->reset($data, $dry, $filesDir, $refresh);
+        $this->reapply = $reapply;
         $this->sensitiveItems = array_map('strval', $sensitiveItems);
 
         // Imports are history, not events: no rule texts anyone about them.
@@ -131,15 +138,15 @@ final class MondayImport
 
         DB::beginTransaction();
         try {
-            $this->tenant->run($org, function () use ($data, $as) {
+            // What Monday already has is never written back to it (MondayOutbox).
+            MondayOutbox::suppress(fn () => $this->tenant->run($org, function () use ($data, $as) {
                 $this->people = User::query()->get()->keyBy(fn (User $u) => mb_strtolower($u->email))->all();
                 $actor = $as instanceof User ? $as : ($this->person($as)
                     ?? throw new \RuntimeException('--as must be the email of a user in this organization.'));
                 foreach ($data['boards'] as $b) {
                     $board = $this->board($b, $actor);
-                    foreach ($b['groups'] ?? [] as $g) {
-                        $this->group($board, $g['name'], $g['colour'] ?? null);
-                    }
+                    $this->layout($board, $b);
+                    $this->folder($board, $b['folder'] ?? null);
                     foreach ($b['items'] as $item) {
                         $parent = $this->task($board, $item, null, $actor);
                         foreach ($item['subitems'] ?? [] as $sub) {
@@ -147,7 +154,7 @@ final class MondayImport
                         }
                     }
                 }
-            });
+            }));
             $this->dry ? DB::rollBack() : DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -176,7 +183,7 @@ final class MondayImport
             'restored (deleted earlier)' => 0, 'skipped (already imported)' => 0, 'refreshed from monday' => 0,
             'kept (changed here later)' => 0, 'updates' => 0, 'updates already there' => 0, 'files' => 0,
             'files MB' => 0.0, 'files not carried' => 0, 'statuses made' => 0, 'groups made' => 0, 'columns made' => 0,
-            'assignees kept as text' => 0,
+            'assignees kept as text' => 0, 'columns retyped' => 0, 'values filled' => 0, 'values not carried' => 0,
         ];
         $this->unmatched = $this->ownersDropped = $this->notCarried = $this->assignable = $this->map = $this->mondayNames = [];
         foreach ($data['people'] ?? [] as $from => $to) {
@@ -206,12 +213,66 @@ final class MondayImport
             $board->restore();
         }
         if ($board === null) {
-            $board = $this->boards->createCustom($as, $b['name'], TaskBoard::MAIN, null, null);
+            // "As we have it on Monday" (Jose, 11-13): a board of the same name, on the
+            // branch or company the map names (else the organization), main or private.
+            [$company, $franchise] = $this->place($b['scope'] ?? []);
+            $visibility = ($b['visibility'] ?? TaskBoard::MAIN) === TaskBoard::PRIVATE ? TaskBoard::PRIVATE : TaskBoard::MAIN;
+            $board = $this->boards->createCustom($as, mb_substr((string) $b['name'], 0, 255), $visibility, $company, $franchise);
             $board->forceFill(['external_ref' => $ref])->saveQuietly();
             $this->counts['boards made']++;
         }
+        if (! empty($b['archived']) && $board->archived_at === null) {
+            $board->forceFill(['archived_at' => now()])->saveQuietly(); // archived on Monday (Toula)
+        }
+        $this->members($board, $b['members'] ?? []);
 
         return $board;
+    }
+
+    /**
+     * The company/franchise a board lands on, by name as the map writes it
+     * ({company: "A-1 Chimney", franchise: "Illinois"}). A name that names
+     * nothing here stops the import: a board must not land on the wrong place.
+     *
+     * @return array{0: ?\App\Models\Company, 1: ?\App\Models\Franchise}
+     */
+    private function place(array $scope): array
+    {
+        $find = function (string $model, string $name, ?string $companyId = null) {
+            $rows = $model::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId))->get()
+                ->filter(fn ($r) => mb_strtolower(trim((string) $r->name)) === mb_strtolower(trim($name)));
+
+            return $rows->count() === 1 ? $rows->first()
+                : throw new \RuntimeException(sprintf('The map names %s "%s", which is %s here.', class_basename($model), $name, $rows->isEmpty() ? 'nothing' : 'more than one place'));
+        };
+        $company = ! empty($scope['company']) ? $find(\App\Models\Company::class, (string) $scope['company']) : null;
+        $franchise = ! empty($scope['franchise']) ? $find(\App\Models\Franchise::class, (string) $scope['franchise'], $company?->id) : null;
+
+        return [$company, $franchise];
+    }
+
+    /**
+     * Monday's owners and subscribers become the board's owners and members
+     * (a custom board only: a personal board is its person's). Added, never
+     * removed; somebody with no account here is counted, not invented.
+     */
+    private function members(TaskBoard $board, array $members): void
+    {
+        if ($board->kind !== TaskBoard::KIND_CUSTOM || $members === []) {
+            return;
+        }
+        $have = \App\Models\TaskBoardMember::query()->where('board_id', $board->id)->pluck('role', 'user_id')->all();
+        foreach ($members as $m) {
+            $user = $this->person($m['email'] ?? null);
+            if ($user === null || ! $user->is_active || isset($have[$user->id])) {
+                continue;
+            }
+            $role = ($m['role'] ?? '') === 'owner' ? \App\Models\TaskBoardMember::OWNER : \App\Models\TaskBoardMember::MEMBER;
+            \App\Models\TaskBoardMember::query()->create(['organization_id' => $board->organization_id, 'board_id' => $board->id, 'user_id' => $user->id, 'role' => $role]);
+            $have[$user->id] = $role;
+            $this->counts['members added'] = ($this->counts['members added'] ?? 0) + 1;
+        }
+        unset($this->assignable[$board->id]);
     }
 
     /**
@@ -238,9 +299,11 @@ final class MondayImport
         $existing = Task::query()->withTrashed()->where('external_ref', $ref)->first();
         if ($existing !== null && ! $existing->trashed()) {
             $this->refreshed($existing, $board, $item, $parent, $as);
+            $this->fillBlanks($existing->refresh(), $board, $item, $as);
             $this->owners($board, $item['people'] ?? []);
             $this->assignedInMonday($existing, $as);
             $this->updates($existing, $item, $as);
+            $this->fileColumns($existing, $board, $item, $as);
             $this->markSensitive($existing, $item, $parent, $as);
 
             return $existing;
@@ -262,6 +325,7 @@ final class MondayImport
         $this->assignedInMonday($task, $as);
 
         $this->updates($task, $item, $as);
+        $this->fileColumns($task, $board, $item, $as);
         $this->markSensitive($task, $item, $parent, $as);
 
         return $task;
@@ -310,9 +374,9 @@ final class MondayImport
             return;
         }
 
-        $mondayChanged = $task->external_updated_at === null
+        $mondayChanged = $this->reapply || ($task->external_updated_at === null
             ? $mondayAt->greaterThan($task->updated_at)
-            : $mondayAt->greaterThan($task->external_updated_at);
+            : $mondayAt->greaterThan($task->external_updated_at));
         if (! $mondayChanged) {
             $this->counts['skipped (already imported)']++;
 
@@ -367,7 +431,7 @@ final class MondayImport
         // Ohio's board has no Status column; its Job Status is the status.
         $columns = $item['columns'] ?? [];
         if (empty($item['status']) && ! empty($columns['Job Status'])) {
-            $item['status'] = $columns['Job Status'];
+            $item['status'] = is_array($columns['Job Status']) ? ($columns['Job Status']['value'] ?? null) : $columns['Job Status'];
             unset($columns['Job Status']);
         }
         $done = (bool) ($item['done'] ?? false)
@@ -375,15 +439,19 @@ final class MondayImport
 
         $values = [];
         foreach ($columns as $title => $value) {
-            [$type, $value] = is_array($value) ? [$value['type'] ?? 'text', $value['value'] ?? null] : ['text', $value];
-            if ($value !== null && $value !== '') {
-                $values[$this->column($board, $title, $type)->name] = $this->valueFor($board, $title, $value);
+            [$type, $value, $settings] = is_array($value) && array_key_exists('value', $value)
+                ? [$value['type'] ?? 'text', $value['value'], (array) ($value['settings'] ?? [])]
+                : ['text', $value, []];
+            if ($value !== null && $value !== '' && $value !== []) {
+                $column = $this->column($board, (string) $title, $type, $settings);
+                $values[$column->id] = $this->valueFor($board, $column, $value);
             }
         }
         $due = $item['due_on'] ?? null;
         if (! empty($item['timeline']['from']) && ! empty($item['timeline']['to'])) {
             $due ??= $item['timeline']['to'];
-            $values[$this->column($board, 'Timeline', 'timeline')->name] = $this->valueFor($board, 'Timeline', ['from' => $item['timeline']['from'], 'to' => $item['timeline']['to']]);
+            $column = $this->column($board, 'Timeline', 'timeline');
+            $values[$column->id] = $this->valueFor($board, $column, ['from' => $item['timeline']['from'], 'to' => $item['timeline']['to']]);
         }
 
         return [
@@ -438,6 +506,12 @@ final class MondayImport
         $this->asText = [];
         foreach ($emails as $email) {
             $user = $this->person($email);
+            if ($user !== null && $user->is_active && $board->kind === TaskBoard::KIND_CUSTOM
+                && ! in_array($user->id, $this->assignable[$board->id], true)) {
+                // Assigned on Monday's board, so on it here: a custom board takes them as a member.
+                $this->members($board, [['email' => $user->email, 'role' => 'member']]);
+                $this->assignable[$board->id] = $this->boards->assignable($board)->pluck('id')->all();
+            }
             if ($user !== null && in_array($user->id, $this->assignable[$board->id], true)) {
                 $out[] = $user->id;
 
@@ -467,6 +541,30 @@ final class MondayImport
             }
         }
         $this->asText = [];
+    }
+
+    /**
+     * A Monday file column: its files came on the task's "Files from Monday"
+     * update (they must be attachments before a Files value can name them);
+     * the column then lists them, by name. A value set here stays.
+     */
+    private function fileColumns(Task $task, TaskBoard $board, array $item, User $as): void
+    {
+        foreach ($item['columns'] ?? [] as $title => $value) {
+            if (! is_array($value) || ($value['type'] ?? null) !== 'files' || $this->dry) {
+                continue;
+            }
+            $column = $this->column($board, (string) $title, 'files');
+            if ($column->type !== 'files' || TaskColumnValue::query()->where('task_id', $task->id)->where('column_id', $column->id)->exists()) {
+                continue;
+            }
+            $update = TaskUpdate::query()->where('external_ref', 'monday:files.'.$item['monday_id'])->first();
+            $ids = $update ? $update->attachments()->whereIn('original_name', (array) $value['value'])->pluck('id')->map(fn ($id) => (string) $id)->all() : [];
+            if ($ids !== []) {
+                $this->writer->update($task->load('board'), ['values' => [$column->id => $ids]], $as);
+                $this->quietly($task->refresh(), ['external_synced_at' => now(), 'updated_at' => now()]);
+            }
+        }
     }
 
     private function updates(Task $task, array $item, User $as): void
@@ -530,13 +628,23 @@ final class MondayImport
         if ($files === []) {
             return;
         }
-        $have = $existing ? $update->attachments()->pluck('original_name')->all() : [];
+        // How many of each name the update already holds, by the file's real name: a sensitive
+        // task's files read "Locked file" with the name sealed, and matching on that re-added
+        // them on every run (prod, 2026-11-13). Counted, not just present: Monday allows three
+        // "image.png" on one update.
+        $have = [];
+        foreach ($existing ? $update->attachments()->get(['original_name', 'sealed_name']) : [] as $a) {
+            $real = $a->sealed_name !== null ? (string) SensitiveTasks::open($a->sealed_name) : (string) $a->original_name;
+            $have[$real] = ($have[$real] ?? 0) + 1;
+        }
         $extensions = array_map('mb_strtolower', (array) config('ezbizi.attachments.extensions', []));
         $notes = [];
         $carried = [];
         foreach ($files as $f) {
             $name = (string) ($f['name'] ?? 'file');
-            if (in_array($name, $have, true)) {
+            if (($have[$name] ?? 0) > 0) {
+                $have[$name]--;
+
                 continue;
             }
             $ext = mb_strtolower(ltrim((string) ($f['ext'] ?? pathinfo($name, PATHINFO_EXTENSION)), '.'));
@@ -625,6 +733,142 @@ final class MondayImport
         return null;
     }
 
+    /**
+     * The board as Monday has it (Jose, 2026-11-13: "as we have it on
+     * Monday"): its groups in Monday's order and colours, its status labels
+     * with their colours and done, and its columns in Monday's order with the
+     * Monday type's Task Board type and label colours. A column an earlier
+     * run made as text for a typed Monday column becomes that type, its values
+     * carried (ColumnConverter, the rule a person's type change meets). Empty
+     * starter groups Monday does not have go, so the board shows Monday's groups.
+     */
+    private function layout(TaskBoard $board, array $b): void
+    {
+        // A branch or company board a Monday board was merged into (Jose, 2026-11-16) keeps its own
+        // order, colours, groups and statuses: Monday's are only added where missing.
+        $mirror = in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true);
+        $groups = $b['groups'] ?? [];
+        foreach (array_values($groups) as $i => $g) {
+            $group = $this->group($board, $g['name'], $g['colour'] ?? null);
+            if ($mirror) {
+                $group->forceFill(array_filter(['colour' => $g['colour'] ?? null, 'position' => $i + 1], fn ($v) => $v !== null))->save();
+            }
+        }
+        if ($groups !== [] && $mirror) {
+            $names = array_map(fn ($g) => mb_strtolower(trim($g['name'])), $groups);
+            foreach ($board->groups()->get() as $i => $group) {
+                if (! in_array(mb_strtolower($group->name), $names, true)) {
+                    if (in_array($group->name, array_column(TaskBoards::DEFAULT_GROUPS, 0), true) && ! Task::query()->withTrashed()->where('group_id', $group->id)->exists()) {
+                        $group->delete();
+                        $this->counts['starter groups removed'] = ($this->counts['starter groups removed'] ?? 0) + 1;
+                    } else {
+                        $group->forceFill(['position' => count($groups) + 1 + $i])->save();
+                    }
+                }
+            }
+        }
+
+        foreach ($b['statuses'] ?? [] as $s) {
+            $this->status($board, $s['label'], (bool) ($s['done'] ?? false), $s['colour'] ?? null);
+        }
+        // A board whose status came from the wrong column (the PM boards' Area, before
+        // 2026-11-13) keeps those labels as statuses nobody is on: they go once unused, and only
+        // when they are another Monday column's labels and not the status column's own.
+        if (! empty($b['statuses']) && $mirror) {
+            $own = array_map(fn ($s) => mb_strtolower($s['label']), $b['statuses']);
+            $others = [];
+            foreach ($b['columns'] ?? [] as $c) {
+                foreach ($c['settings']['options'] ?? [] as $o) {
+                    $others[] = mb_strtolower((string) $o['label']);
+                }
+            }
+            foreach ($board->statuses()->whereNull('key')->get() as $s) {
+                $name = mb_strtolower($s->name);
+                if (! in_array($name, $own, true) && in_array($name, $others, true)
+                    && ! Task::query()->withTrashed()->where('status_id', $s->id)->exists()) {
+                    $s->delete();
+                    $this->counts['stray statuses removed'] = ($this->counts['stray statuses removed'] ?? 0) + 1;
+                }
+            }
+        }
+
+        foreach (array_values($b['columns'] ?? []) as $i => $c) {
+            $column = $this->column($board, $c['title'], $c['type'], (array) ($c['settings'] ?? []));
+            if ($mirror && $column->position !== $i + 1) {
+                $column->forceFill(['position' => $i + 1])->save();
+            }
+        }
+
+        // Monday's named views, shared with the board, once each (by Monday's view id).
+        $saved = TaskBoardView::query()->where('board_id', $board->id)->whereNull('user_id')->get();
+        foreach (array_values($b['views'] ?? []) as $i => $v) {
+            if ($saved->contains(fn (TaskBoardView $s) => ($s->config['monday_id'] ?? null) === $v['monday_id'])) {
+                continue;
+            }
+            $name = $v['name'];
+            for ($n = 2; $saved->contains(fn (TaskBoardView $s) => mb_strtolower($s->name) === mb_strtolower($name)); $n++) {
+                $name = mb_substr($v['name'], 0, 96).' '.$n;
+            }
+            $saved->push(TaskBoardView::query()->create([
+                'organization_id' => $board->organization_id, 'board_id' => $board->id, 'user_id' => null, 'name' => $name,
+                'config' => ['match' => 'all', 'filters' => [], 'sort' => [], 'layout' => $v['layout'], 'monday_id' => $v['monday_id']],
+                'position' => $i + 1,
+            ]));
+            $this->counts['views made'] = ($this->counts['views made'] ?? 0) + 1;
+        }
+    }
+
+    /**
+     * The board in Monday's folder (Jose 11-13: each board in the same folder
+     * with the same colour): the folder chain is found by name under its
+     * parent, or made with Monday's colour; a folder without a colour takes
+     * Monday's. A board somebody here already put in a folder stays there.
+     *
+     * @param  list<array{name: string, colour: ?string}>|null  $path  root first; null: the export does not say
+     */
+    private function folder(TaskBoard $board, ?array $path): void
+    {
+        if ($path === null || $path === [] || $board->folder_id !== null || ! in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true)) {
+            return;
+        }
+        $parent = null;
+        foreach ($path as $i => $f) {
+            $name = mb_substr(trim((string) $f['name']), 0, 255);
+            $found = TaskBoardFolder::query()->where('parent_id', $parent?->id)->get()
+                ->first(fn (TaskBoardFolder $x) => mb_strtolower($x->name) === mb_strtolower($name));
+            if ($found === null) {
+                $found = TaskBoardFolder::query()->create([
+                    'organization_id' => $board->organization_id, 'parent_id' => $parent?->id, 'name' => $name,
+                    'colour' => $f['colour'] ?? null, 'position' => (int) TaskBoardFolder::query()->where('parent_id', $parent?->id)->max('position') + 1,
+                ]);
+                $this->counts['folders made'] = ($this->counts['folders made'] ?? 0) + 1;
+            } elseif ($found->colour === null && ! empty($f['colour'])) {
+                $found->forceFill(['colour' => $f['colour']])->save();
+            }
+            $parent = $found;
+        }
+        $board->forceFill(['folder_id' => $parent->id])->saveQuietly();
+    }
+
+    /**
+     * Columns an existing task has no value in, filled from Monday — the
+     * re-run on boards imported before a type was carried (desk, 2026-11-13:
+     * "it must update existing tasks' values, not skip them"). A value
+     * somebody set here is never overwritten.
+     */
+    private function fillBlanks(Task $task, TaskBoard $board, array $item, User $as): void
+    {
+        $values = $this->input($board, $item)['values'];
+        $have = TaskColumnValue::query()->where('task_id', $task->id)->pluck('column_id')->all();
+        $blank = array_diff_key($values, array_flip($have));
+        if ($blank === []) {
+            return;
+        }
+        $this->writer->update($task->load('board'), ['values' => $blank], $as);
+        $this->quietly($task->refresh(), ['external_synced_at' => now(), 'updated_at' => now()]);
+        $this->counts['values filled'] += count($blank);
+    }
+
     private function group(TaskBoard $board, ?string $name, ?string $colour = null): TaskGroup
     {
         $name = trim((string) $name) ?: 'Open Tasks';
@@ -642,55 +886,215 @@ final class MondayImport
 
     /**
      * The board's status of that name, made if missing (done when the item is
-     * done); a done item with no label takes the board's first done status.
-     * Null keeps the board's default.
+     * done, or when Monday counts the label as done), with Monday's colour
+     * where it has none; a done item with no label takes the board's first
+     * done status. A blank label (Monday's empty status) is "Not started", so a
+     * label emptied on Monday — or taken from the wrong column earlier (the PM
+     * boards' Area, 2026-11-13) — is emptied here too.
      */
-    private function status(TaskBoard $board, ?string $label, bool $done): ?string
+    private function status(TaskBoard $board, ?string $label, bool $done, ?string $colour = null): ?string
     {
         $label = trim((string) $label);
         $statuses = $board->statuses()->orderBy('position')->get();
         if ($label === '') {
-            return $done ? $statuses->firstWhere('is_done', true)?->name : null;
+            return $done ? $statuses->firstWhere('is_done', true)?->name
+                : $statuses->firstWhere('key', Task::STATUS_NOT_STARTED)?->name;
         }
-        if (! $statuses->contains(fn (TaskStatus $s) => mb_strtolower($s->name) === mb_strtolower($label))) {
+        $found = $statuses->first(fn (TaskStatus $s) => mb_strtolower($s->name) === mb_strtolower($label));
+        if ($found === null) {
             TaskStatus::query()->create([
                 'organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => $label,
-                'is_done' => $done, 'position' => (int) $statuses->max('position') + 1,
+                'is_done' => $done, 'colour' => $colour, 'position' => (int) $statuses->max('position') + 1,
             ]);
             $this->counts['statuses made']++;
+        } elseif ($colour !== null && $found->colour === null) {
+            $found->forceFill(['colour' => $colour])->save();
         }
 
         return $label;
     }
 
-    private function column(TaskBoard $board, string $title, string $type = 'text'): TaskColumn
+    /**
+     * The board's column of that title, made with Monday's type and labels
+     * when missing. An existing text column for a typed Monday column (an
+     * earlier run wrote everything as text) becomes that type, its values
+     * carried; a column somebody here gave another type keeps it. Monday's
+     * labels are added to a status/tags column's options, and an option
+     * without a colour takes Monday's.
+     */
+    private function column(TaskBoard $board, string $title, string $type = 'text', array $settings = []): TaskColumn
     {
-        $found = $board->columns()->get()->first(fn (TaskColumn $c) => mb_strtolower($c->name) === mb_strtolower($title));
-        if ($found) {
-            return $found;
+        $type = in_array($type, TaskColumn::TYPES, true) ? $type : 'text';
+        $all = $board->columns()->get();
+        $found = $all->first(fn (TaskColumn $c) => mb_strtolower($c->name) === mb_strtolower($title));
+        if ($found !== null && $found->type !== $type && ! in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true)) {
+            // A branch board's own column of that name and another type stays as it is: Monday's
+            // is "<name> (Monday)" beside it (MondayBoardMerge names it so).
+            $title = mb_substr($title, 0, 240).' (Monday)';
+            $found = $all->first(fn (TaskColumn $c) => mb_strtolower($c->name) === mb_strtolower($title));
         }
-        $this->counts['columns made']++;
+        if ($found === null) {
+            $this->counts['columns made']++;
 
-        return TaskColumn::query()->create([
-            'organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => $title,
-            'type' => in_array($type, TaskColumn::TYPES, true) ? $type : 'text', 'hidden' => false,
-            'position' => (int) $board->columns()->max('position') + 1,
-        ]);
+            return TaskColumn::query()->create([
+                'organization_id' => $board->organization_id, 'board_id' => $board->id, 'name' => $title,
+                'type' => $type, 'settings' => $settings ?: null, 'hidden' => false,
+                'position' => (int) $board->columns()->max('position') + 1,
+            ]);
+        }
+        if ($found->type === 'text' && $type !== 'text') {
+            $this->retype($found, $type, $settings);
+        }
+        if (in_array($found->type, TaskColumn::WITH_OPTIONS, true) && ! empty($settings['options'])) {
+            $options = $found->options();
+            $changed = false;
+            foreach ($settings['options'] as $o) {
+                $i = $this->optionIndex($options, $o['label']);
+                if ($i === null) {
+                    $options[] = $o;
+                    $changed = true;
+                } elseif (($options[$i]['colour'] ?? null) === null && ($o['colour'] ?? null) !== null) {
+                    $options[$i]['colour'] = $o['colour'];
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                $found->forceFill(['settings' => ['options' => $options] + ($found->settings ?? [])])->save();
+            }
+        }
+        foreach (['unit', 'monday_formula', 'monday_type'] as $key) {
+            if (isset($settings[$key]) && ! isset($found->settings[$key])) {
+                $found->forceFill(['settings' => [$key => $settings[$key]] + ($found->settings ?? [])])->save();
+            }
+        }
+
+        return $found;
     }
 
-    /** The value as that column takes it; an existing column of another type gets the text. */
-    private function valueFor(TaskBoard $board, string $title, mixed $value): mixed
+    /** A text column an earlier run made, as the Monday type it always was; values carried where they read as it. */
+    private function retype(TaskColumn $column, string $type, array $settings): void
     {
-        $column = $this->column($board, $title);
-        $text = is_array($value) ? trim(($value['from'] ?? '').' – '.($value['to'] ?? ''), ' –') : (string) $value;
+        $target = $column->replicate();
+        $target->type = $type;
+        $target->settings = $settings ?: null;
+        $plan = app(ColumnConverter::class)->plan($column, $target);
+        $options = $plan['options'];
+        foreach ($settings['options'] ?? [] as $o) { // Monday's colour for a label the plan made
+            $i = $this->optionIndex($options, $o['label']);
+            if ($i !== null && ($options[$i]['colour'] ?? null) === null) {
+                $options[$i]['colour'] = $o['colour'] ?? null;
+            }
+        }
+        foreach ($plan['rows'] as $id => $row) {
+            $row === null
+                ? TaskColumnValue::query()->whereKey($id)->delete()
+                : TaskColumnValue::query()->whereKey($id)->update($row);
+        }
+        $column->forceFill([
+            'type' => $type,
+            'settings' => in_array($type, TaskColumn::WITH_OPTIONS, true) ? ['options' => $options] + array_diff_key($settings, ['options' => 1]) : ($settings ?: null),
+        ])->save();
+        $this->counts['columns retyped']++;
+    }
 
-        return match ($column->type) {
-            'timeline' => is_array($value) ? $value : null,
-            'number', 'currency' => is_numeric($value) ? (float) $value : null,
-            'date' => is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value : null,
-            'text', 'long_text' => mb_substr($text, 0, 5000),
-            default => null,
+    /** @param  list<array{id: string, label: string, colour: ?string}>  $options */
+    private function optionIndex(array $options, string $label): ?int
+    {
+        foreach ($options as $i => $o) {
+            if (mb_strtolower(trim((string) $o['label'])) === mb_strtolower(trim($label))) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The value as the column takes it (TaskWriter::encode decides), or null
+     * when it cannot be carried: a label becomes the option of that label
+     * (made if new), a person the first one this board can take. A column
+     * somebody here kept as text gets Monday's words.
+     */
+    private function valueFor(TaskBoard $board, TaskColumn $column, mixed $value): mixed
+    {
+        $words = fn (mixed $v): string => is_array($v)
+            ? (array_is_list($v) ? implode(', ', array_map('strval', $v)) : trim(($v['from'] ?? '').' – '.($v['to'] ?? ''), ' –'))
+            : (is_bool($v) ? ($v ? 'Yes' : 'No') : (string) $v);
+
+        $candidate = match ($column->type) {
+            'status', 'dropdown' => $this->option($column, is_array($value) ? (string) ($value[0] ?? '') : (string) $value),
+            'tags' => array_values(array_unique(array_filter(array_map(fn ($l) => $this->option($column, (string) $l), (array) $value)))) ?: null,
+            'person' => $this->peopleFor($board, (array) $value)[0] ?? null,
+            'people' => $this->peopleFor($board, (array) $value) ?: null,
+            'checkbox' => is_bool($value) ? $value : in_array(mb_strtolower((string) $value), ['true', 'yes', '1', 'v'], true),
+            'number', 'currency' => is_numeric($value) ? (float) $value : (is_numeric($n = preg_replace('/[$,\s]/', '', $words($value))) ? (float) $n : null),
+            'date' => is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}/', $value) ? substr($value, 0, 10) : null,
+            'datetime' => is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value.' 00:00' : $value,
+            'timeline' => is_array($value) && isset($value['from'], $value['to']) ? $value : null,
+            'text' => mb_substr($words($value), 0, 5000),
+            'long_text' => mb_substr($words($value), 0, 20000),
+            'rating' => is_numeric($value) ? (int) $value : null,
+            'location' => is_array($value) && ! empty($value['address']) ? $value : (is_string($value) && trim($value) !== '' ? ['address' => trim($value), 'lat' => null, 'lng' => null] : null),
+            // Monday item ids → the tasks carrying them; one not imported yet is filled on a later run.
+            'connect', 'dependency' => Task::query()->whereIn('external_ref', array_map(fn ($id) => 'monday:'.$id, array_map('strval', (array) $value)))
+                ->when($column->type === 'dependency', fn ($q) => $q->where('board_id', $board->id))->pluck('id')->all() ?: null,
+            'formula', 'mirror', 'creation_log', 'last_updated', 'files' => null, // computed, or written after the files arrive (fileColumns)
+            default => is_string($value) ? trim($value) : null,
         };
+        if ($candidate === null || $candidate === '') {
+            return null;
+        }
+        $assignable = $this->assignable[$board->id] ?? null;
+        if ($this->writer->encode($column, $candidate, $board, $assignable)[0] === null) {
+            $this->counts['values not carried']++;
+
+            return null;
+        }
+
+        return $candidate;
+    }
+
+    /** The column's option for a Monday label: matched by name, else added (no colour: Monday's arrives with the column). */
+    private function option(TaskColumn $column, string $label): ?string
+    {
+        $label = trim($label);
+        if ($label === '') {
+            return null;
+        }
+        $options = $column->options();
+        $i = $this->optionIndex($options, $label);
+        if ($i !== null) {
+            return (string) $options[$i]['id'];
+        }
+        $options[] = $o = ['id' => 'monday-'.substr(md5(mb_strtolower($label)), 0, 10), 'label' => mb_substr($label, 0, 100), 'colour' => null];
+        $column->forceFill(['settings' => ['options' => $options] + ($column->settings ?? [])])->save();
+
+        return $o['id'];
+    }
+
+    /**
+     * The Monday people this board can name, as user ids (a People column
+     * holds them all; an old single Person column the first). On a custom
+     * board somebody named on Monday's board joins it, as an assignee does.
+     *
+     * @return list<string>
+     */
+    private function peopleFor(TaskBoard $board, array $emails): array
+    {
+        $this->assignable[$board->id] ??= $this->boards->assignable($board)->pluck('id')->all();
+        $out = [];
+        foreach ($emails as $email) {
+            $user = $this->person((string) $email);
+            if ($user !== null && $user->is_active && $board->kind === TaskBoard::KIND_CUSTOM && ! in_array($user->id, $this->assignable[$board->id], true)) {
+                $this->members($board, [['email' => $user->email, 'role' => 'member']]);
+                $this->assignable[$board->id] = $this->boards->assignable($board)->pluck('id')->all();
+            }
+            if ($user !== null && in_array($user->id, $this->assignable[$board->id], true)) {
+                $out[] = $user->id;
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**

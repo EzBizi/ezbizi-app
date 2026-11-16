@@ -44,10 +44,6 @@ class AvailabilityCalendar extends StatefulWidget {
 }
 
 class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
-  static const _months = [
-    'January', 'February', 'March', 'April', 'May', 'June', 'July', //
-    'August', 'September', 'October', 'November', 'December',
-  ];
   static const double cellHeight = 92;
 
   /// Null before a pick; [_all] is "All areas" — every franchise in view,
@@ -223,7 +219,7 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
               SizedBox(
                 width: 170,
                 child: Text(
-                  '${_months[_month.month - 1]} ${_month.year}',
+                  '${longMonths[_month.month - 1]} ${_month.year}',
                   key: const Key('calendar-month'),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleMedium,

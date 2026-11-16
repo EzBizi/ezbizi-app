@@ -90,7 +90,7 @@ void main() {
     // Jose is named on Invitations too now, as who sent them (the Invited by
     // column), so the Records list is what must have gone.
     expect(find.byType(RecordsTab), findsNothing);
-    expect(find.text('bea@example.com'), findsOneWidget);
+    expect(find.text('b•••@example.com'), findsOneWidget);
 
     await _tap(tester, _tab('Records'));
 
@@ -665,7 +665,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('bea@example.com'),
+      find.text('b•••@example.com'),
       findsOneWidget,
       reason: 'The row vanished as though the revoke had worked.',
     );
@@ -1123,7 +1123,7 @@ void main() {
 
     // And the list is still there. Not being allowed to add to it does not make
     // it unreadable.
-    expect(find.text('bea@example.com'), findsOneWidget);
+    expect(find.text('b•••@example.com'), findsOneWidget);
   });
 
   /// The endpoint that says which roles are this person's to hand out is the

@@ -3,7 +3,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import 'error_note.dart';
 import 'side_panel.dart';
-import 'totp_setup_dialog.dart';
+import 'enrolment_dialog.dart';
 
 /// A client switching two-factor on for themselves (plan §6).
 ///
@@ -99,9 +99,12 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
 
     await showSidePanel<bool>(
       context,
-      builder: (_) => TotpSetupDialog(
+      builder: (_) => EnrolmentDialog(
         title: replacing ? 'Move to a new authenticator' : 'Turn on two-factor',
-        accountLabel: widget.session.me!.email,
+        note: EnrolmentDialog.lockYouOutNote,
+        autofocus: true,
+        codesOptional: true,
+        email: widget.session.me!.email,
         secret: enrolment['secret'] as String,
         uri: enrolment['uri'] as String,
         intro: replacing

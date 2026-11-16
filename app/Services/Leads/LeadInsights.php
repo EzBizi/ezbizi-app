@@ -7,7 +7,6 @@ use App\Models\LeadConversation;
 use App\Support\Ai\AppAsk;
 use App\Support\Ai\GrokCli;
 use App\Support\Ai\NameDecision;
-use Aws\BedrockRuntime\BedrockRuntimeClient;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
@@ -16,11 +15,9 @@ use Throwable;
  * What a model can say about an enquiry: which of three piles it belongs
  * on, one line of what it is about, and a draft the desk may send.
  *
- * Amazon Bedrock, Claude, through the AWS SDK this application already
- * carries for SES. Jose's decision of 2026-09-08 ("as you recommend"): the
- * managed service in the same AWS account, pay per request, nothing to run on
- * the box. Measured that day on A-1 Chimney's volume - twelve customer texts
- * and thirty-four leads a day - the bill is single digits a month.
+ * Grok through Jose's subscription. An Amazon Bedrock branch (Jose,
+ * 2026-09-08) was never configured on production (no BEDROCK_MODEL) and was
+ * removed with the AWS SDK on 2026-11-13.
  *
  * ── Two things this class never does ─────────────────────────────
  *
@@ -29,9 +26,9 @@ use Throwable;
  * without a person; this platform's Lead model was written to forbid exactly
  * that, and the rule stands until Jose lifts it by name.
  *
- * It never runs without keys. `enabled()` is false until AWS credentials and
- * a Bedrock model id are in the environment, and everything that calls this
- * checks first, so the screen shows nothing rather than an error.
+ * It never runs switched off. `enabled()` is false until LEADS_AI_GROK is on
+ * and the Grok CLI is configured, and everything that calls this checks
+ * first, so the screen shows nothing rather than an error.
  */
 class LeadInsights
 {
@@ -48,19 +45,9 @@ class LeadInsights
         .'three sentences, no greeting longer than their name, no sign-off, no promises of price or time '
         .'that the conversation does not already contain.';
 
-    public function __construct(
-        private readonly ?BedrockRuntimeClient $client,
-        private readonly string $model,
-    ) {}
-
     public function enabled(): bool
     {
-        return $this->bedrock() || self::grok();
-    }
-
-    private function bedrock(): bool
-    {
-        return $this->client !== null && $this->model !== '';
+        return self::grok();
     }
 
     /**
@@ -71,16 +58,6 @@ class LeadInsights
     private static function grok(): bool
     {
         return (bool) config('ezbizi.leads_ai_grok') && GrokCli::configured();
-    }
-
-    /**
-     * Whether a lead may be sorted inline, as its thread is written. Bedrock
-     * answers in about a second; Grok takes about eight, so on Grok the sorting
-     * runs in ezbizi:leads-read instead, off the sync's back.
-     */
-    public function inline(): bool
-    {
-        return $this->bedrock();
     }
 
     /**
@@ -261,44 +238,6 @@ class LeadInsights
         return $value === '' || strcasecmp($value, 'null') === 0 ? null : mb_substr($value, 0, $max);
     }
 
-    /**
-     * BOOK / SUPPORT / ARCHIVE and one line, or null when the lead has
-     * nothing said yet, the service is off, or the model did not answer.
-     *
-     * @return array{classification: string, summary: string}|null
-     */
-    public function classify(Lead $lead): ?array
-    {
-        $thread = $this->thread($lead);
-
-        if ($thread === '' || ! $this->enabled()) {
-            return null;
-        }
-
-        $answer = $this->ask(
-            'You sort enquiries for a home-services business (chimneys, fireplaces, '
-            .'inspections). Read the conversation and answer with JSON only: '
-            .'{"classification": "BOOK" | "SUPPORT" | "ARCHIVE", "summary": "<one line>"}. '
-            .'BOOK: a person who wants work done, quoted or scheduled. '
-            .'SUPPORT: an existing customer about a booking, an invoice, a follow-up, or a complaint. '
-            .'ARCHIVE: spam, a wrong number, a vendor selling something, or nothing to act on. '
-            .'The summary is what the person wants, in one plain sentence, no more than 140 characters.',
-            $thread,
-        );
-
-        $json = self::json($answer);
-        $classification = strtoupper(trim((string) ($json['classification'] ?? '')));
-
-        if (! in_array($classification, self::CLASSIFICATIONS, true)) {
-            return null;
-        }
-
-        return [
-            'classification' => $classification,
-            'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 255),
-        ];
-    }
-
     /** A draft for the desk to read, change and send. Null when there is nothing to draft from. */
     public function suggestReply(Lead $lead): ?string
     {
@@ -308,32 +247,17 @@ class LeadInsights
             return null;
         }
 
-        if (! $this->bedrock()) {
-            try {
-                $json = GrokCli::about($lead, fn () => GrokCli::ask(
-                    self::REPLY_BRIEF."\n\n".$thread,
-                    ['type' => 'object', 'properties' => ['reply' => ['type' => 'string']], 'required' => ['reply'], 'additionalProperties' => false],
-                ));
-            } catch (Throwable $e) {
-                Log::warning('Grok did not answer for a lead.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);
+        try {
+            $json = GrokCli::about($lead, fn () => GrokCli::ask(
+                self::REPLY_BRIEF."\n\n".$thread,
+                ['type' => 'object', 'properties' => ['reply' => ['type' => 'string']], 'required' => ['reply'], 'additionalProperties' => false],
+            ));
+        } catch (Throwable $e) {
+            Log::warning('Grok did not answer for a lead.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);
 
-                return null;
-            }
-            $draft = trim((string) ($json['reply'] ?? ''));
-
-            return $draft === '' ? null : mb_substr($draft, 0, 1000);
+            return null;
         }
-
-        $answer = $this->ask(
-            'You write short text replies on behalf of a home-services business to a person '
-            .'who enquired. Reply to the LAST message from the customer. Be warm, specific and '
-            .'brief: at most three sentences, no greeting longer than their name, no sign-off, '
-            .'no promises of price or time that the conversation does not already contain. '
-            .'Answer with the reply text only.',
-            $thread,
-        );
-
-        $draft = trim($answer);
+        $draft = trim((string) ($json['reply'] ?? ''));
 
         return $draft === '' ? null : mb_substr($draft, 0, 1000);
     }
@@ -359,24 +283,20 @@ class LeadInsights
             .'emoji and line breaks; do not rephrase, shorten or add anything. If nothing '
             .'is clearly wrong, return it unchanged.';
 
-        if (! $this->bedrock()) {
-            try {
-                $json = GrokCli::about($lead, fn () => GrokCli::ask(
-                    $brief."\n\nText:\n".$text,
-                    ['type' => 'object', 'properties' => ['fixed' => ['type' => 'string']], 'required' => ['fixed'], 'additionalProperties' => false],
-                    // A person waits on the reply box: give up well inside
-                    // nginx's gateway limit (11-10: 10 x 504 on the 300 s default).
-                    self::PROOFREAD_TIMEOUT,
-                ));
-            } catch (Throwable $e) {
-                Log::warning('Grok did not proofread a reply.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);
+        try {
+            $json = GrokCli::about($lead, fn () => GrokCli::ask(
+                $brief."\n\nText:\n".$text,
+                ['type' => 'object', 'properties' => ['fixed' => ['type' => 'string']], 'required' => ['fixed'], 'additionalProperties' => false],
+                // A person waits on the reply box: give up well inside
+                // nginx's gateway limit (11-10: 10 x 504 on the 300 s default).
+                self::PROOFREAD_TIMEOUT,
+            ));
+        } catch (Throwable $e) {
+            Log::warning('Grok did not proofread a reply.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);
 
-                return null;
-            }
-            $fixed = trim((string) ($json['fixed'] ?? ''));
-        } else {
-            $fixed = trim($this->ask($brief.' Answer with the text only.', $text));
+            return null;
         }
+        $fixed = trim((string) ($json['fixed'] ?? ''));
 
         return $fixed === '' || $fixed === $text || mb_strlen($fixed) > 2 * mb_strlen($text) ? null : $fixed;
     }
@@ -425,51 +345,5 @@ class LeadInsights
         }
 
         return mb_substr(implode("\n", $lines), -6000);
-    }
-
-    private function ask(string $system, string $user): string
-    {
-        try {
-            $result = $this->client->converse([
-                'modelId' => $this->model,
-                'system' => [['text' => $system]],
-                'messages' => [['role' => 'user', 'content' => [['text' => $user]]]],
-                'inferenceConfig' => ['maxTokens' => 400, 'temperature' => 0.2],
-            ]);
-        } catch (Throwable $e) {
-            // Nothing on screen depends on this answer; a quiet warning and a
-            // null is the right failure. Never the thread text in the log.
-            Log::warning('Bedrock did not answer for a lead.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);
-
-            return '';
-        }
-
-        $content = (array) ($result['output']['message']['content'] ?? []);
-
-        foreach ($content as $block) {
-            if (is_array($block) && isset($block['text'])) {
-                return (string) $block['text'];
-            }
-        }
-
-        return '';
-    }
-
-    /** @return array<string, mixed> */
-    private static function json(string $text): array
-    {
-        $text = trim($text);
-        $text = preg_replace('/^```(?:json)?\s*|\s*```$/', '', $text) ?? $text;
-
-        $start = strpos($text, '{');
-        $end = strrpos($text, '}');
-
-        if ($start === false || $end === false || $end < $start) {
-            return [];
-        }
-
-        $decoded = json_decode(substr($text, $start, $end - $start + 1), true);
-
-        return is_array($decoded) ? $decoded : [];
     }
 }

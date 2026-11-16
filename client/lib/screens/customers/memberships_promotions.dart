@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 
 /// Customers › Memberships › Promotions (Jose, 2026-11-06, 2026-11-09).
@@ -87,6 +88,9 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
   void initState() {
     super.initState();
     _loadSent();
+    // Open on a range, so the audience count and the composer are there at
+    // once; an empty page until a preset was tapped read as unbuilt (UI audit).
+    _choosePreset(_Preset.lastMonth);
   }
 
   @override
@@ -96,9 +100,6 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
     }
     super.dispose();
   }
-
-  static String _day(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   Future<void> _loadSent() async {
     final response = await widget.api.get('/memberships/promotions');
@@ -185,8 +186,8 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
       _confirming = false;
     });
     final response = await widget.api.get('/memberships/promotions/preview', {
-      'from': _day(_from!),
-      'to': _day(_to!),
+      'from': formatCalendarDay(_from!),
+      'to': formatCalendarDay(_to!),
     });
     if (!mounted) return;
     setState(() {
@@ -250,7 +251,9 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
     }
     final since = _noJobSince;
     final last = r['last_job'] as String?;
-    if (since != null && last != null && last.compareTo(_day(since)) >= 0) {
+    if (since != null &&
+        last != null &&
+        last.compareTo(formatCalendarDay(since)) >= 0) {
       return false;
     }
     if (_excludeOpen && r['open_job'] == true) return false;
@@ -358,7 +361,7 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
               label: Text(
                 _noJobSince == null
                     ? 'No job since…'
-                    : 'No job since ${_day(_noJobSince!)}',
+                    : 'No job since ${formatCalendarDay(_noJobSince!)}',
               ),
               onPressed: () async {
                 final now = DateTime.now();
@@ -545,8 +548,8 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
       _error = null;
     });
     final response = await widget.api.post('/memberships/promotions', {
-      'from': _day(_from!),
-      'to': _day(_to!),
+      'from': formatCalendarDay(_from!),
+      'to': formatCalendarDay(_to!),
       'body': _body.text.trim(),
       'phones': [for (final r in chosen) r['phone']],
       if (_picturePath != null) 'media_path': _picturePath,
@@ -620,12 +623,16 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
               OutlinedButton(
                 key: const ValueKey('promotions-from'),
                 onPressed: _busy ? null : () => _pickDay(from: true),
-                child: Text('From ${_from == null ? '—' : _day(_from!)}'),
+                child: Text(
+                  'From ${_from == null ? '—' : formatCalendarDay(_from!)}',
+                ),
               ),
               OutlinedButton(
                 key: const ValueKey('promotions-to'),
                 onPressed: _busy ? null : () => _pickDay(from: false),
-                child: Text('To ${_to == null ? '—' : _day(_to!)}'),
+                child: Text(
+                  'To ${_to == null ? '—' : formatCalendarDay(_to!)}',
+                ),
               ),
               TextButton.icon(
                 onPressed: _busy ? null : _pickRange,

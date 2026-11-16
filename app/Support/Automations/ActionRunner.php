@@ -31,6 +31,8 @@ use App\Models\Role;
 use App\Models\SavedReport;
 use App\Models\SocialConnection;
 use App\Models\Task;
+use App\Models\TaskColumn;
+use App\Models\TaskColumnValue;
 use App\Models\TaskBoard;
 use App\Models\TimeClockReport;
 use App\Models\TrainingAssignment;
@@ -536,6 +538,8 @@ class ActionRunner
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
             'task.move_group' => $this->moveTaskToGroup($action, $subject, $automation),
+            'task.shift_date' => $this->shiftTaskDate($action, $subject, $automation),
+            'task.set_value' => $this->setTaskValue($action, $subject, $automation),
             'alert.send' => $this->sendAlert($action, $event, $subject, $automation),
             'report.text' => $this->reportText($action, $automation),
             'lead.text' => $this->textLead($action, $event, $subject, $automation),
@@ -3910,8 +3914,17 @@ class ActionRunner
             return ['type' => 'task.assign', 'ok' => false, 'detail' => 'Nobody to give the task to.'];
         }
 
-        return $this->onTaskBoard('task.assign', $automation, $subject->board, function (User $actor) use ($subject, $user) {
-            app(TaskWriter::class)->update($subject, ['assignee_user_id' => $user->getKey()], $actor);
+        // Monday's "Add assignee" (add: true) keeps whoever has it; the default makes them the owner.
+        $add = filter_var($action['add'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        return $this->onTaskBoard('task.assign', $automation, $subject->board, function (User $actor) use ($subject, $user, $add) {
+            $owners = $subject->owners()->orderBy('position')->pluck('user_id')->all();
+            if ($add && in_array($user->getKey(), $owners, true)) {
+                return $user->name.' already has the task.';
+            }
+            app(TaskWriter::class)->update($subject, $add && $owners !== []
+                ? ['assignee_user_ids' => [...$owners, $user->getKey()]]
+                : ['assignee_user_id' => $user->getKey()], $actor);
 
             return 'Gave the task to '.$user->name.'.';
         });
@@ -3932,6 +3945,88 @@ class ActionRunner
             app(TaskWriter::class)->update($subject, ['group_id' => $groupId], $actor);
 
             return 'Moved the task to another group.';
+        });
+    }
+
+    /**
+     * Monday's "push Date by 1 month" (parity audit 2026-11-13): the task's
+     * due date (column_id "due") or a date column, later by days/weeks/months.
+     * A date that is empty stays empty.
+     */
+    private function shiftTaskDate(array $action, ?Model $subject, ?Automation $automation): array
+    {
+        $type = 'task.shift_date';
+        if (! $subject instanceof Task) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+        }
+        $column = (string) ($action['column_id'] ?? 'due');
+        $amount = (int) ($action['amount'] ?? 0);
+        $unit = (string) ($action['unit'] ?? 'days');
+        if ($amount === 0 || ! in_array($unit, ['days', 'weeks', 'months'], true)) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'Say how far to push the date: days, weeks or months.'];
+        }
+        $current = $column === 'due'
+            ? $subject->due_on
+            : TaskColumnValue::query()->where('task_id', $subject->id)->where('column_id', $column)->value('value_date');
+        if ($current === null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The date is empty, so there is nothing to push.'];
+        }
+        $date = CarbonImmutable::parse($current);
+        $next = (match ($unit) {
+            'days' => $date->addDays($amount),
+            'weeks' => $date->addWeeks($amount),
+            'months' => $date->addMonthsNoOverflow($amount),
+        })->toDateString();
+
+        return $this->onTaskBoard($type, $automation, $subject->board, function (User $actor) use ($subject, $column, $next) {
+            app(TaskWriter::class)->update($subject, $column === 'due' ? ['due_on' => $next] : ['values' => [$column => $next]], $actor);
+
+            return 'Moved the date to '.$next.'.';
+        });
+    }
+
+    /**
+     * Monday's "set Reminder to Done" / "set Date to today" (parity audit
+     * 2026-11-13): one of the task's own columns. A status/dropdown by the
+     * label's name, a date or due date to "today" (the organization's day) or
+     * a date, a checkbox to true/false, anything else as written.
+     */
+    private function setTaskValue(array $action, ?Model $subject, ?Automation $automation): array
+    {
+        $type = 'task.set_value';
+        if (! $subject instanceof Task) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+        }
+        $columnId = (string) ($action['column_id'] ?? '');
+        $raw = $action['value'] ?? null;
+        $today = fn () => CarbonImmutable::now((string) (app(SettingsResolver::class)->get('timezone', Organization::query()->findOrFail($subject->organization_id)) ?: config('app.timezone')))->toDateString();
+        if ($columnId === 'due') {
+            $value = $raw === 'today' ? $today() : $raw;
+
+            return $this->onTaskBoard($type, $automation, $subject->board, function (User $actor) use ($subject, $value) {
+                app(TaskWriter::class)->update($subject, ['due_on' => $value], $actor);
+
+                return 'Set the due date to '.$value.'.';
+            });
+        }
+        $column = TaskColumn::query()->where('board_id', $subject->board_id)->find($columnId);
+        if ($column === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'That column is not on the task\'s board.'];
+        }
+        $value = match ($column->type) {
+            'status', 'dropdown' => collect($column->options())->first(fn ($o) => mb_strtolower((string) $o['label']) === mb_strtolower(trim((string) $raw)))['id'] ?? null,
+            'date' => $raw === 'today' ? $today() : $raw,
+            'checkbox' => filter_var($raw, FILTER_VALIDATE_BOOLEAN),
+            default => $raw,
+        };
+        if ($value === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => '"'.$raw.'" is not one of '.$column->name.'\'s labels.'];
+        }
+
+        return $this->onTaskBoard($type, $automation, $subject->board, function (User $actor) use ($subject, $column, $value, $raw) {
+            app(TaskWriter::class)->update($subject, ['values' => [$column->id => $value]], $actor);
+
+            return 'Set '.$column->name.' to '.(is_scalar($raw) ? $raw : json_encode($raw)).'.';
         });
     }
 

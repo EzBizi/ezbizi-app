@@ -25,6 +25,8 @@ final class LinkedInOAuth implements SocialOAuth
         'rw_organization_admin',
     ];
 
+    private const TOKEN_ENDPOINT = 'https://www.linkedin.com/oauth/v2/accessToken';
+
     private const TIMEOUT = 10;
 
     public function provider(): SocialProvider
@@ -79,48 +81,22 @@ final class LinkedInOAuth implements SocialOAuth
     {
         return 'https://www.linkedin.com/oauth/v2/authorization?'.http_build_query([
             'response_type' => 'code',
-            'client_id'     => (string) config('services.linkedin.client_id'),
-            'redirect_uri'  => $this->redirectUri(),
-            'state'         => $state,
-            'scope'         => implode(' ', self::SCOPES),
+            'client_id' => (string) config('services.linkedin.client_id'),
+            'redirect_uri' => $this->redirectUri(),
+            'state' => $state,
+            'scope' => implode(' ', self::SCOPES),
         ]);
     }
 
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
-                'https://www.linkedin.com/oauth/v2/accessToken',
-                [
-                    'grant_type'    => 'authorization_code',
-                    'code'          => $code,
-                    'client_id'     => (string) config('services.linkedin.client_id'),
-                    'client_secret' => (string) config('services.linkedin.client_secret'),
-                    'redirect_uri'  => $this->redirectUri(),
-                ],
-            );
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
-        }
-
-        if ($response->failed()) {
-            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
-        }
-
-        $access = $response->json('access_token');
-
-        if (! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
-        }
-
-        $refresh = $response->json('refresh_token');
-
-        return new SocialOAuthGrant(
-            accessToken: $access,
-            refreshToken: is_string($refresh) && $refresh !== '' ? $refresh : null,
-            scopes: SocialOAuthGrant::parseScopes($response->json('scope')),
-            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
-        );
+        return OAuthTokens::exchanged(OAuthTokens::post(Http::asForm()->timeout(self::TIMEOUT), self::TOKEN_ENDPOINT, [
+            'grant_type' => 'authorization_code',
+            'code' => $code,
+            'client_id' => (string) config('services.linkedin.client_id'),
+            'client_secret' => (string) config('services.linkedin.client_secret'),
+            'redirect_uri' => $this->redirectUri(),
+        ], 'LinkedIn'), 'LinkedIn', lasting: false);
     }
 
     /**
@@ -137,40 +113,17 @@ final class LinkedInOAuth implements SocialOAuth
      */
     public function refresh(string $refreshToken): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()->timeout(self::TIMEOUT)->post(
-                'https://www.linkedin.com/oauth/v2/accessToken',
-                [
-                    'grant_type'    => 'refresh_token',
-                    'refresh_token' => $refreshToken,
-                    'client_id'     => (string) config('services.linkedin.client_id'),
-                    'client_secret' => (string) config('services.linkedin.client_secret'),
-                ],
-            );
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
-        }
+        $response = OAuthTokens::post(Http::asForm()->timeout(self::TIMEOUT), self::TOKEN_ENDPOINT, [
+            'grant_type' => 'refresh_token',
+            'refresh_token' => $refreshToken,
+            'client_id' => (string) config('services.linkedin.client_id'),
+            'client_secret' => (string) config('services.linkedin.client_secret'),
+        ], 'LinkedIn');
 
         // An expired or revoked refresh token is `invalid_grant`. That one is
         // about the grant, not the moment, so it is the only answer that
         // means "connect it again".
-        if ($response->json('error') === 'invalid_grant') {
-            throw SocialOAuthRefused::noLongerPermitted('LinkedIn no longer accepts this connection. It needs connecting again.');
-        }
-
-        $access = $response->json('access_token');
-
-        if ($response->failed() || ! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('LinkedIn');
-        }
-
-        $rotated = $response->json('refresh_token');
-
-        return new SocialOAuthGrant(
-            accessToken: $access,
-            refreshToken: is_string($rotated) && $rotated !== '' ? $rotated : $refreshToken,
-            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
-        );
+        return OAuthTokens::refreshed($response, 'LinkedIn', $refreshToken, $response->json('error') === 'invalid_grant');
     }
 
     public function identify(SocialOAuthGrant $grant): array

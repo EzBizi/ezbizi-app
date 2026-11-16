@@ -41,10 +41,6 @@ class SchedulePane extends StatefulWidget {
 }
 
 class _SchedulePaneState extends State<SchedulePane> {
-  static const _weekdays = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-    'Sunday', //
-  ];
 
   static const double _techColumn = 190;
   static const double _windowColumn = 250;
@@ -83,11 +79,6 @@ class _SchedulePaneState extends State<SchedulePane> {
     super.dispose();
   }
 
-  static String _ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
   Future<void> _load() async {
     final ticket = ++_request;
     setState(() {
@@ -96,7 +87,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     });
 
     final response = await widget.api.get('/scheduling/board', {
-      'date': _ymd(_day),
+      'date': formatCalendarDay(_day),
       'franchise_id': ?_franchiseId,
     });
     if (!mounted || ticket != _request) return;
@@ -189,7 +180,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     final franchises = (board?['franchises'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
     final label =
-        '${_weekdays[_day.weekday - 1]}, ${shortMonths[_day.month - 1]} '
+        '${longWeekdays[_day.weekday - 1]}, ${shortMonths[_day.month - 1]} '
         '${_day.day}, ${_day.year}';
 
     return Padding(
@@ -792,7 +783,7 @@ class _SchedulePaneState extends State<SchedulePane> {
 
     final moveLabel = _moveDay == null
         ? 'Pick a day'
-        : '${_weekdays[_moveDay!.weekday - 1].substring(0, 3)}, '
+        : '${longWeekdays[_moveDay!.weekday - 1].substring(0, 3)}, '
               '${shortMonths[_moveDay!.month - 1]} ${_moveDay!.day}';
 
     final children = <Widget>[
@@ -928,7 +919,7 @@ class _SchedulePaneState extends State<SchedulePane> {
                     _moveWindow! >= windows.length
                 ? null
                 : () => _dispatch('reschedule', {
-                    'date': _ymd(_moveDay!),
+                    'date': formatCalendarDay(_moveDay!),
                     'start_time': windows[_moveWindow!]['start_time'],
                     'end_time': windows[_moveWindow!]['end_time'],
                   }),

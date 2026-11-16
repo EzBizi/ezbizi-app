@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:async';
 import '../widgets/list_search.dart';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -29,6 +31,7 @@ import '../widgets/list_toolbar.dart';
 import '../widgets/mention_field.dart';
 import 'task_board_move.dart';
 import 'task_board_people.dart';
+import 'task_board_person_card.dart';
 import 'task_board_plan_views.dart';
 import 'task_board_sidebar.dart';
 import 'task_board_sensitive.dart';
@@ -102,8 +105,17 @@ Widget _avatar(
 /// still read here, coloured by [_tone].
 typedef _Status = ({String id, String name, Color? colour, bool done});
 
-List<_Status> _statuses(_Json? board) => [
-  for (final s in (board?['statuses'] as List? ?? const []).whereType<Map>())
+/// Parsed once per statuses list: every row asks for them (freeze 11-16).
+final _statusMemo = Expando<List<_Status>>('statuses');
+
+List<_Status> _statuses(_Json? board) {
+  final raw = board?['statuses'];
+  if (raw is! List) return const [];
+  return _statusMemo[raw] ??= _parseStatuses(raw);
+}
+
+List<_Status> _parseStatuses(List raw) => [
+  for (final s in raw.whereType<Map>())
     (
       id: '${s['id'] ?? s['key']}',
       name: '${s['name'] ?? s['label'] ?? s['key']}',
@@ -366,6 +378,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   @override
   void dispose() {
     DeepLinks.pending.removeListener(_takeLink);
+    _rangeFocus.dispose();
+    _tableScroll.dispose();
+    _columnSearch.dispose();
+    HardwareKeyboard.instance.removeHandler(_dragKey);
     _newTitle.dispose();
     _groupName.dispose();
     _columnName.dispose();
@@ -527,7 +543,79 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     return groups;
   }
 
+  // ── Group by (Monday parity, Jose 11-13) ─────────────────────────
+
+  /// The field the table is grouped by instead of the board's groups; null
+  /// shows the board's own groups.
+  String? _groupBy;
+
+  /// One value of [_groupBy] for [t]: its first id, or its text or day.
+  String _groupValue(_Json t) => _valueOf(_groupBy, t);
+
+  /// One value of field [key] for [t], as Group by and Filter… read it.
+  String _valueOf(String? key, _Json t) {
+    final f = _filterFields[key];
+    if (f == null) return '';
+    final v = f.read(t);
+    if (v is List) return v.isEmpty ? '' : '${v.first}';
+    if (v is bool) return v ? 'true' : '';
+    if (v == null) return '';
+    final text = '$v'.trim();
+    return f.kind == 'date' && text.length > 10 ? text.substring(0, 10) : text;
+  }
+
+  /// The groups the table draws: the board's own, or one per value of
+  /// [_groupBy] (ids `by:<value>`, which nothing can write to).
+  List<_Json> _shownGroups() {
+    final f = _filterFields[_groupBy];
+    if (f == null) return _groups(_board!);
+    final names = {for (final (id, label) in f.options) id: label};
+    final values = <String>{
+      for (final t in _tasks)
+        if (t['parent_task_id'] == null) _groupValue(t),
+    };
+    final ordered = [
+      for (final (id, _) in f.options)
+        if (values.contains(id)) id,
+      ...(values.where((v) => v.isNotEmpty && !names.containsKey(v)).toList()
+        ..sort()),
+    ];
+    return [
+      for (final v in ordered)
+        {
+          'id': 'by:$v',
+          'name': f.kind == 'checkbox' ? 'Ticked' : (names[v] ?? v),
+          'colour': null,
+          'virtual': true,
+        },
+      if (values.contains(''))
+        {'id': 'by:', 'name': 'No ${f.label}', 'colour': null, 'virtual': true},
+    ];
+  }
+
+  /// A group's tasks, worked out once per board, filter and Group by: the
+  /// table asks on every build (freeze 11-16). Callers copy before editing.
   List<_Json> _tasksIn(Object? groupId) {
+    if (!identical(_inFor.$1, _board) ||
+        !identical(_inFor.$2, _filter) ||
+        _inFor.$3 != _groupBy) {
+      _inFor = (_board, _filter, _groupBy);
+      _inMemo.clear();
+    }
+    return _inMemo[groupId] ??= List.unmodifiable(_tasksInNow(groupId));
+  }
+
+  (Object?, Object?, String?) _inFor = (null, null, null);
+  final _inMemo = <Object?, List<_Json>>{};
+
+  List<_Json> _tasksInNow(Object? groupId) {
+    if (groupId is String && groupId.startsWith('by:')) {
+      final v = groupId.substring(3);
+      return _filter.sorted([
+        for (final t in _tasks)
+          if (t['parent_task_id'] == null && _groupValue(t) == v) t,
+      ], _filterFields);
+    }
     final ids = (_board?['groups'] as List? ?? const [])
         .map((g) => (g as Map)['id'])
         .toSet();
@@ -552,7 +640,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final r = await widget.api.post('/task-boards/${_board!['id']}/views', {
       'name': name,
       'shared': _canEdit,
-      'config': _filter.toJson(),
+      'config': _filter.copyWith(layout: _view).toJson(),
     });
     if (!mounted) return;
     if (!r.ok) {
@@ -583,7 +671,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     key: const Key('tasks-toolbar'),
     fields: _filterFields.values.toList(),
     query: _filter,
-    onChanged: (q) => setState(() => _filter = q),
+    // A saved view brings its layout (Monday's Kanban / Calendar views).
+    onChanged: (q) => setState(() {
+      if (q.layout != null && q.layout != _filter.layout) _view = q.layout!;
+      _filter = q;
+    }),
     views: [
       for (final v in _views)
         (
@@ -874,6 +966,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     }
   }
 
+  /// A section title inside a menu.
+  Widget _menuHeading(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+    child: Text(
+      text.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
+      ),
+    ),
+  );
+
   Widget _rowMenu(_Json t) => PopupMenuButton<String>(
     key: ValueKey('task-menu-${t['id']}'),
     tooltip: 'More',
@@ -1012,10 +1117,22 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   /// A task's subtasks: rows of the board that name it as their parent.
-  List<_Json> _subtasksOf(_Json t) => [
-    for (final x in _tasks)
-      if (x['parent_task_id'] != null && x['parent_task_id'] == t['id']) x,
-  ];
+  List<_Json> _subtasksOf(_Json t) {
+    final raw = _board?['tasks'];
+    if (raw is! List) return const [];
+    // Indexed once per task list: a scan per row was rows × tasks per build.
+    final byParent = _childMemo[raw] ??= () {
+      final m = <Object, List<_Json>>{};
+      for (final x in raw.cast<_Json>()) {
+        final p = x['parent_task_id'];
+        if (p != null) (m[p] ??= []).add(x);
+      }
+      return m;
+    }();
+    return byParent[t['id']] ?? const [];
+  }
+
+  static final _childMemo = Expando<Map<Object, List<_Json>>>('subtasks');
 
   /// "2 / 4": the count the server sends, or the one on screen.
   (int, int) _subtaskCount(_Json t) {
@@ -1100,6 +1217,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   /// Every owner's id, for the person filter.
+  /// The first owner's face, with Monday's hover card on it.
+  Widget _ownerFace(BuildContext context, _Json t, String owner) {
+    final id = _ownerIds(t).firstOrNull;
+    final face = _avatar(context, owner, api: widget.api, userId: _ownerId(t));
+    if (id == null || _board == null) return face;
+    return PersonHoverCard(
+      api: widget.api,
+      boardId: '${_board!['id']}',
+      userId: id,
+      child: face,
+    );
+  }
+
   List<String> _ownerIds(_Json t) {
     final ids = [
       for (final o in (t['owners'] as List? ?? const []))
@@ -1305,51 +1435,194 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     });
   }
 
+  // ── Header sort (Monday parity, Jose 11-13) ─────────────────────
+
+  /// The direction [field] is sorted in: true descending, false ascending,
+  /// null not sorted.
+  bool? _sortDir(String field) {
+    for (final r in _filter.sort) {
+      if (r.field == field) return r.desc;
+    }
+    return null;
+  }
+
+  /// Sorts by [field] alone; null clears the sort.
+  void _sortBy(String field, bool? desc) => setState(
+    () => _filter = _filter.copyWith(
+      sort: desc == null ? const [] : [(field: field, desc: desc)],
+    ),
+  );
+
+  Widget _sortable(String field, Widget label) {
+    if (!_filterFields.containsKey(field)) return label;
+    final dir = _sortDir(field);
+    // The arrow sits beside the heading, outside the tap that opens its menu.
+    return Row(
+      children: [
+        Expanded(child: label),
+        SortArrow(
+          key: ValueKey('sort-$field'),
+          dir: dir,
+          // Ascending, descending, off.
+          onTap: () => _sortBy(field, switch (dir) {
+            null => false,
+            false => true,
+            true => null,
+          }),
+        ),
+      ],
+    );
+  }
+
+  /// The values [field] holds on this board, with their labels, for the
+  /// header's Filter… menu.
+  List<(String, String)> _valuesIn(String field) {
+    final f = _filterFields[field];
+    if (f == null) return const [];
+    final names = {for (final (id, label) in f.options) id: label};
+    final seen = <String>{
+      for (final t in _tasks)
+        if (t['parent_task_id'] == null) _valueOf(field, t),
+    }..remove('');
+    return [
+      for (final (id, label) in f.options)
+        if (seen.contains(id)) (id, label),
+      for (final v
+          in (seen.where((v) => !names.containsKey(v)).toList()..sort()))
+        (v, f.kind == 'checkbox' ? 'Ticked' : v),
+    ].take(30).toList();
+  }
+
+  /// The rule on [field] made from the header or a cell, in place of any
+  /// earlier one on it.
+  void _filterTo(String field, String value) => setState(
+    () => _filter = _filter.copyWith(
+      filters: [
+        for (final r in _filter.filters)
+          if (r.field != field) r,
+        (
+          field: field,
+          op: 'is',
+          value: switch (_filterFields[field]?.kind) {
+            'options' || 'people' => [value],
+            'checkbox' => value == 'true',
+            _ => value,
+          },
+        ),
+      ],
+    ),
+  );
+
+  bool _filteredOn(String field) =>
+      _filter.filters.any((r) => r.field == field);
+
+  void _clearFilterOn(String field) => setState(
+    () => _filter = _filter.copyWith(
+      filters: [
+        for (final r in _filter.filters)
+          if (r.field != field) r,
+      ],
+    ),
+  );
+
+  List<Widget> _sortItems(String field) => [
+    if (_filterFields.containsKey(field)) ...[
+      SubmenuButton(
+        key: ValueKey('header-filter-$field'),
+        leadingIcon: const Icon(Icons.filter_list, size: 18),
+        menuChildren: [
+          for (final (v, label) in _valuesIn(field))
+            MenuItemButton(
+              key: ValueKey('header-filter-$field-$v'),
+              onPressed: () => _filterTo(field, v),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 240),
+                child: Text(label, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          if (_valuesIn(field).isEmpty)
+            const MenuItemButton(onPressed: null, child: Text('No values yet')),
+          if (_filteredOn(field)) ...[
+            const Divider(height: 8),
+            MenuItemButton(
+              key: ValueKey('header-filter-clear-$field'),
+              onPressed: () => _clearFilterOn(field),
+              child: const Text('Clear filter'),
+            ),
+          ],
+        ],
+        child: const Text('Filter…'),
+      ),
+      MenuItemButton(
+        key: ValueKey('sort-asc-$field'),
+        leadingIcon: const Icon(Icons.arrow_upward, size: 18),
+        onPressed: () => _sortBy(field, false),
+        child: const Text('Sort ascending'),
+      ),
+      MenuItemButton(
+        key: ValueKey('sort-desc-$field'),
+        leadingIcon: const Icon(Icons.arrow_downward, size: 18),
+        onPressed: () => _sortBy(field, true),
+        child: const Text('Sort descending'),
+      ),
+      if (_sortDir(field) != null)
+        MenuItemButton(
+          onPressed: () => _sortBy(field, null),
+          child: const Text('Clear sort'),
+        ),
+      const Divider(height: 8),
+    ],
+  ];
+
   /// A built-in column's heading: its name, and on a board you may edit a
   /// menu to rename or hide it (Jose, 2026-10-20).
   Widget _builtinHead(String key, Object? group, Widget label) {
-    if (!_canEdit) return label;
-    return MenuAnchor(
-      menuChildren: [
-        // What a built-in column is for (Jose, 2026-11-12: "not sure where
-        // those are managed").
-        MenuItemButton(
-          key: ValueKey('builtin-about-$key'),
-          onPressed: null,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 240),
-            child: Text(_builtinHelp[key]!, softWrap: true),
-          ),
-        ),
-        const Divider(height: 8),
-        MenuItemButton(
-          key: ValueKey('builtin-rename-$key'),
-          leadingIcon: const Icon(Icons.edit_outlined, size: 18),
-          onPressed: () => setState(() {
-            _renaming = (key: key, group: group);
-            _renameError = null;
-            _columnName.text = _builtinLabel(_board, key);
-          }),
-          child: const Text('Rename'),
-        ),
-        if (key == 'status')
+    if (!_canEdit) return _sortable(key, label);
+    return _sortable(
+      key,
+      MenuAnchor(
+        menuChildren: [
+          ..._sortItems(key),
+          // What a built-in column is for (Jose, 2026-11-12: "not sure where
+          // those are managed").
           MenuItemButton(
-            key: const Key('builtin-status-labels'),
-            leadingIcon: const Icon(Icons.label_outline, size: 18),
-            onPressed: _editStatuses,
-            child: const Text('Edit labels…'),
+            key: ValueKey('builtin-about-$key'),
+            onPressed: null,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 240),
+              child: Text(_builtinHelp[key]!, softWrap: true),
+            ),
           ),
-        MenuItemButton(
-          key: ValueKey('builtin-hide-$key'),
-          leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
-          onPressed: () => _showBuiltin(key, false),
-          child: const Text('Hide column'),
+          const Divider(height: 8),
+          MenuItemButton(
+            key: ValueKey('builtin-rename-$key'),
+            leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+            onPressed: () => setState(() {
+              _renaming = (key: key, group: group);
+              _renameError = null;
+              _columnName.text = _builtinLabel(_board, key);
+            }),
+            child: const Text('Rename'),
+          ),
+          if (key == 'status')
+            MenuItemButton(
+              key: const Key('builtin-status-labels'),
+              leadingIcon: const Icon(Icons.label_outline, size: 18),
+              onPressed: _editStatuses,
+              child: const Text('Edit labels…'),
+            ),
+          MenuItemButton(
+            key: ValueKey('builtin-hide-$key'),
+            leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
+            onPressed: () => _showBuiltin(key, false),
+            child: const Text('Hide column'),
+          ),
+        ],
+        builder: (context, menu, _) => InkWell(
+          key: ValueKey('builtin-head-$key'),
+          onTap: () => menu.isOpen ? menu.close() : menu.open(),
+          child: Align(alignment: Alignment.centerLeft, child: label),
         ),
-      ],
-      builder: (context, menu, _) => InkWell(
-        key: ValueKey('builtin-head-$key'),
-        onTap: () => menu.isOpen ? menu.close() : menu.open(),
-        child: Align(alignment: Alignment.centerLeft, child: label),
       ),
     );
   }
@@ -1483,62 +1756,68 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       await _load();
     }
 
-    return MenuAnchor(
-      menuChildren: [
-        MenuItemButton(
-          key: ValueKey('column-menu-edit-${c.id}'),
-          leadingIcon: const Icon(Icons.edit_outlined, size: 18),
-          onPressed: () => _editColumn(c),
-          child: Text(
-            const {'status', 'dropdown', 'tags'}.contains(c.type)
-                ? 'Rename, labels and colours…'
-                : 'Rename and settings…',
+    return _sortable(
+      c.id,
+      MenuAnchor(
+        menuChildren: [
+          ..._sortItems(c.id),
+          MenuItemButton(
+            key: ValueKey('column-menu-edit-${c.id}'),
+            leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+            onPressed: () => _editColumn(c),
+            child: Text(
+              const {'status', 'dropdown', 'tags'}.contains(c.type)
+                  ? 'Rename, labels and colours…'
+                  : 'Rename and settings…',
+            ),
           ),
-        ),
-        SubmenuButton(
-          key: ValueKey('column-menu-type-${c.id}'),
-          leadingIcon: const Icon(Icons.swap_horiz, size: 18),
-          menuChildren: [
-            for (final (type, label, icon) in columnTypes)
-              if (type != c.type)
-                MenuItemButton(
-                  key: ValueKey('column-menu-type-${c.id}-$type'),
-                  leadingIcon: Icon(icon, size: 18),
-                  onPressed: () => _editColumn(c, type: type),
-                  child: Text(label),
-                ),
-          ],
-          child: Text('Type: ${columnTypeLabel(c.type)}'),
-        ),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.arrow_back, size: 18),
-          onPressed: () => patch({'position': (at - 1).clamp(0, 1000)}),
-          child: const Text('Move left'),
-        ),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.arrow_forward, size: 18),
-          onPressed: () => patch({'position': at + 1}),
-          child: const Text('Move right'),
-        ),
-        MenuItemButton(
-          key: ValueKey('column-menu-hide-${c.id}'),
-          leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
-          onPressed: () => patch({'hidden': true}),
-          child: const Text('Hide'),
-        ),
-        MenuItemButton(
-          key: ValueKey('column-menu-remove-${c.id}'),
-          leadingIcon: const Icon(Icons.delete_outline, size: 18),
-          onPressed: () => _editColumn(c),
-          child: const Text('Remove column…'),
-        ),
-      ],
-      builder: (context, menu, _) => InkWell(
-        key: ValueKey('column-head-${c.id}'),
-        onTap: _canEdit ? () => menu.isOpen ? menu.close() : menu.open() : null,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Tooltip(message: c.name, child: title),
+          SubmenuButton(
+            key: ValueKey('column-menu-type-${c.id}'),
+            leadingIcon: const Icon(Icons.swap_horiz, size: 18),
+            menuChildren: [
+              for (final (type, label, icon) in columnTypes)
+                if (type != c.type)
+                  MenuItemButton(
+                    key: ValueKey('column-menu-type-${c.id}-$type'),
+                    leadingIcon: Icon(icon, size: 18),
+                    onPressed: () => _editColumn(c, type: type),
+                    child: Text(label),
+                  ),
+            ],
+            child: Text('Type: ${columnTypeLabel(c.type)}'),
+          ),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.arrow_back, size: 18),
+            onPressed: () => patch({'position': (at - 1).clamp(0, 1000)}),
+            child: const Text('Move left'),
+          ),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.arrow_forward, size: 18),
+            onPressed: () => patch({'position': at + 1}),
+            child: const Text('Move right'),
+          ),
+          MenuItemButton(
+            key: ValueKey('column-menu-hide-${c.id}'),
+            leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
+            onPressed: () => patch({'hidden': true}),
+            child: const Text('Hide'),
+          ),
+          MenuItemButton(
+            key: ValueKey('column-menu-remove-${c.id}'),
+            leadingIcon: const Icon(Icons.delete_outline, size: 18),
+            onPressed: () => _editColumn(c),
+            child: const Text('Remove column…'),
+          ),
+        ],
+        builder: (context, menu, _) => InkWell(
+          key: ValueKey('column-head-${c.id}'),
+          onTap: _canEdit
+              ? () => menu.isOpen ? menu.close() : menu.open()
+              : null,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Tooltip(message: c.name, child: title),
+          ),
         ),
       ),
     );
@@ -1830,6 +2109,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       if (i != _selected) _open(i);
     },
     onDropTask: _canEdit ? _dropOnBoard : null,
+    api: widget.api,
+    canArrange: widget.session.me?.can('tasks.create_boards') ?? false,
+    onArranged: _load,
     onNewBoard: (widget.session.me?.can('tasks.create_boards') ?? false)
         ? () {
             setState(() => _choosing = false);
@@ -2003,8 +2285,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 ),
             ],
             selected: {_view},
-            onSelectionChanged: (v) => setState(() => _view = v.first),
+            onSelectionChanged: (v) => setState(() {
+              _view = v.first;
+              _filter = _filter.copyWith(layout: v.first);
+            }),
           ),
+          if (_canEdit && _view == 'table') _newTaskButton(),
+          if (_view == 'table' && _board != null) _groupByButton(),
           SizedBox(
             width: phone ? 200 : 240,
             child: ListSearch(
@@ -2041,8 +2328,171 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
   }
 
+  /// Monday's "Group by": the board's groups, or one group per value of a
+  /// column.
+  Widget _groupByButton() {
+    final fields = _filterFields.values.where((f) => f.key != 'title').toList();
+    final on = _filterFields[_groupBy];
+    return MenuAnchor(
+      menuChildren: [
+        MenuItemButton(
+          key: const Key('group-by-none'),
+          leadingIcon: Icon(on == null ? Icons.check : null, size: 18),
+          onPressed: () => setState(() => _groupBy = null),
+          child: const Text('Board groups'),
+        ),
+        const Divider(height: 8),
+        for (final f in fields)
+          MenuItemButton(
+            key: ValueKey('group-by-${f.key}'),
+            leadingIcon: Icon(_groupBy == f.key ? Icons.check : null, size: 18),
+            onPressed: () => setState(() => _groupBy = f.key),
+            child: Text(f.label),
+          ),
+      ],
+      builder: (context, menu, _) => OutlinedButton.icon(
+        key: const Key('tasks-group-by'),
+        onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+        icon: const Icon(Icons.view_agenda_outlined, size: 18),
+        label: Text(on == null ? 'Group by' : 'Group by: ${on.label}'),
+      ),
+    );
+  }
+
+  /// Import: tasks pasted one per line (a spreadsheet's first column comes
+  /// across the same way), each added to the board's first group.
+  Future<void> _import(Object? groupId) async {
+    final box = TextEditingController();
+    final lines = await showSidePanel<List<String>>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Import tasks',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(panel).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('tasks-import-go'),
+            onPressed: () => Navigator.of(panel).pop(
+              box.text
+                  .split('\n')
+                  .map((l) => l.split('\t').first.split(',').first.trim())
+                  .where((t) => t.isNotEmpty)
+                  .toList(),
+            ),
+            child: const Text('Import'),
+          ),
+        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Paste one task per line, or copy a column from a spreadsheet. '
+              'Each line becomes a task in the first group.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('tasks-import-text'),
+              controller: box,
+              autofocus: true,
+              minLines: 8,
+              maxLines: 20,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (lines == null || lines.isEmpty || !mounted) return;
+    var made = 0;
+    String? why;
+    for (final title in lines) {
+      final r = await widget.api.post('/tasks', {
+        'board_id': _board!['id'],
+        'title': title,
+        'group_id': ?groupId,
+      });
+      if (!r.ok) {
+        why = r.reason;
+        break;
+      }
+      made++;
+    }
+    if (!mounted) return;
+    _say(
+      why == null
+          ? (made == 1 ? '1 task imported.' : '$made tasks imported.')
+          : '$made imported, then: $why',
+    );
+    await _open(_selected);
+  }
+
   /// Folded away on a phone until asked for.
   bool _toolsOpen = false;
+
+  /// Monday's "New task" split button: the task opens its add box in the
+  /// first group; the arrow offers a new group (Jose 11-13).
+  Widget _newTaskButton() {
+    final first = _groups(_board!).where((g) => g['id'] != null).firstOrNull;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FilledButton.icon(
+          key: const Key('tasks-new-task'),
+          style: FilledButton.styleFrom(
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.horizontal(left: Radius.circular(8)),
+            ),
+          ),
+          onPressed: first == null
+              ? null
+              : () => setState(() {
+                  _adding = '${first['id']}';
+                  _addError = null;
+                  _newTitle.clear();
+                }),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('New task'),
+        ),
+        const SizedBox(width: 1),
+        MenuAnchor(
+          menuChildren: [
+            MenuItemButton(
+              key: const Key('tasks-new-group'),
+              leadingIcon: const Icon(Icons.playlist_add, size: 18),
+              onPressed: () => setState(() {
+                _naming = 'new';
+                _groupName.clear();
+              }),
+              child: const Text('New group'),
+            ),
+            if (first != null)
+              MenuItemButton(
+                key: const Key('tasks-import'),
+                leadingIcon: const Icon(Icons.upload_file_outlined, size: 18),
+                onPressed: () => _import(first['id']),
+                child: const Text('Import'),
+              ),
+          ],
+          builder: (context, menu, _) => FilledButton(
+            key: const Key('tasks-new-more'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              minimumSize: const Size(32, 40),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.horizontal(
+                  right: Radius.circular(8),
+                ),
+              ),
+            ),
+            onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+            child: const Icon(Icons.arrow_drop_down, size: 20),
+          ),
+        ),
+      ],
+    );
+  }
 
   /// Archive, delete and restore (Jose, 2026-11-09: "I can't delete boards").
   Widget _boardMenu() {
@@ -2288,19 +2738,31 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         key: const Key('tasks-people'),
         onPressed: _editPeople,
         icon: const Icon(Icons.group_outlined, size: 18),
-        label: Text('People · ${_board!['members_count'] ?? 0}'),
+        label: Text('Invite · ${_board!['members_count'] ?? 0}'),
       ),
       if (custom)
         StatusPill(
           boardVisibilityLabel(_board!['visibility']),
           tone: private ? Tone.caution : Tone.neutral,
         ),
+      // Monday's Integrate: EzBizi boards connect to jobs, leads and
+      // messages through task rules, so it opens the same panel.
+      if (automate && !phone)
+        OutlinedButton.icon(
+          key: const Key('tasks-integrate'),
+          onPressed: _automate,
+          icon: const Icon(Icons.hub_outlined, size: 18),
+          label: const Text('Integrate'),
+        ),
       if (automate && !phone)
         OutlinedButton.icon(
           key: const Key('tasks-automate'),
           onPressed: _automate,
           icon: const Icon(Icons.bolt, size: 18),
-          label: const Text('Automate'),
+          label: Text(switch (_board!['automations_count']) {
+            final num n when n > 0 => 'Automate · $n',
+            _ => 'Automate',
+          }),
         ),
       if (automate && phone)
         PopupMenuButton<String>(
@@ -2322,7 +2784,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     if (cards) return list;
     return LayoutBuilder(
       builder: (context, box) {
-        final need = 32 + 240 + _fixedWidth;
+        // 32: page padding; 2: the group box's border.
+        final need = 34 + _fixedWidth;
         if (box.maxWidth >= need) return list;
         return SingleChildScrollView(
           key: const Key('tasks-table-scroll'),
@@ -2336,13 +2799,15 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Widget _tableList(BuildContext context, {required bool cards}) {
     Widget box(Widget w) => SliverToBoxAdapter(child: w);
     return CustomScrollView(
+      key: _tableKey,
+      controller: _tableScroll,
       slivers: [
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
           sliver: SliverMainAxisGroup(
             slivers: [
               if (_picked.isNotEmpty && !cards) box(_bulkBar(context)),
-              for (final (i, g) in _groups(_board!).indexed)
+              for (final (i, g) in _shownGroups().indexed)
                 // The walkthrough's last step points at the first group.
                 i == 0
                     ? KeyedSubtree(
@@ -2380,15 +2845,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final all = _tasksIn(group['id']);
     final shown = all.where(_matches).toList();
     final folded = _folded.contains(group['id']);
-    final id = group['id'] as String?;
+    // A Group by group draws its tasks but takes no adds, moves or renames.
+    final virtual = group['virtual'] == true;
+    final id = virtual ? null : group['id'] as String?;
+    final fold = group['id'] as String?;
 
     final header = _dropOn(
       id,
       null,
       InkWell(
-        key: ValueKey('task-group-$id'),
+        key: ValueKey('task-group-$fold'),
         onTap: () =>
-            setState(() => folded ? _folded.remove(id) : _folded.add(id)),
+            setState(() => folded ? _folded.remove(fold) : _folded.add(fold)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
@@ -2434,33 +2902,33 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
 
     if (cards) {
-      return SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              header,
-              if (!folded) ...[
-                for (final t in shown) ...[
-                  _card(context, t),
-                  if (_expanded.contains(t['id'])) ...[
-                    for (final sub in _subtasksOf(t))
-                      Padding(
-                        padding: const EdgeInsets.only(left: 20),
-                        child: _card(context, sub, sub: true),
-                      ),
-                    if (_canEdit && id != null)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 20),
-                        child: _addRow(context, id, parent: t['id'] as String),
-                      ),
-                  ],
-                ],
-                if (_canEdit && id != null) _addRow(context, id),
-              ],
+      // Built as they scroll into view, as the table's rows are.
+      final lines = <Widget Function()>[
+        () => header,
+        if (!folded) ...[
+          for (final t in shown) ...[
+            () => _card(context, t),
+            if (_expanded.contains(t['id'])) ...[
+              for (final sub in _subtasksOf(t))
+                () => Padding(
+                  padding: const EdgeInsets.only(left: 20),
+                  child: _card(context, sub, sub: true),
+                ),
+              if (_canEdit && id != null)
+                () => Padding(
+                  padding: const EdgeInsets.only(left: 20),
+                  child: _addRow(context, id, parent: t['id'] as String),
+                ),
             ],
-          ),
+          ],
+          if (_canEdit && id != null) () => _addRow(context, id),
+        ],
+      ];
+      return SliverPadding(
+        padding: const EdgeInsets.only(bottom: 14),
+        sliver: SliverList.builder(
+          itemCount: lines.length,
+          itemBuilder: (context, i) => lines[i](),
         ),
       );
     }
@@ -2474,7 +2942,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         slivers: [
           PinnedHeaderSliver(
             child: Container(
-              key: ValueKey('task-group-top-$id'),
+              key: ValueKey('task-group-top-$fold'),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 border: folded
@@ -2498,73 +2966,78 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               ),
             ),
           ),
-          if (!folded)
-            SliverToBoxAdapter(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  border: Border(left: edge, right: edge, bottom: edge),
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(12),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final (at, t) in shown.indexed) ...[
-                      _dropOn(id, at, _row(context, t, colour)),
-                      if (_expanded.contains(t['id'])) ...[
-                        for (final sub in _subtasksOf(t))
-                          _row(context, sub, colour, sub: true),
-                        if (_canEdit && id != null)
-                          _cellBorder(
-                            context,
-                            Row(
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 38,
-                                  color: colour.withValues(alpha: 0.3),
-                                ),
-                                const SizedBox(width: 28),
-                                Expanded(
-                                  child: _addRow(
-                                    context,
-                                    id,
-                                    parent: t['id'] as String,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ],
-                    ?_footer(context, shown),
-                    if (_canEdit && id != null)
-                      _cellBorder(
-                        context,
-                        Row(
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 38,
-                              color: colour.withValues(alpha: 0.3),
-                            ),
-                            Expanded(child: _addRow(context, id)),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
+          if (!folded) _rowsSliver(context, shown, id, colour),
         ],
+      ),
+    );
+  }
+
+  /// A group's rows, built only as they scroll into view: a Column of every
+  /// row froze the desktop app on a 169-task board (Jose, 2026-11-16).
+  Widget _rowsSliver(
+    BuildContext context,
+    List<_Json> shown,
+    String? id,
+    Color colour,
+  ) {
+    final theme = Theme.of(context);
+    final edge = BorderSide(color: theme.dividerColor);
+    Widget addLine({String? parent}) => _cellBorder(
+      context,
+      Row(
+        children: [
+          Container(width: 6, height: 38, color: colour.withValues(alpha: 0.3)),
+          if (parent != null) const SizedBox(width: 28),
+          Expanded(child: _addRow(context, id!, parent: parent)),
+        ],
+      ),
+    );
+    // One entry per line: a row, a subtask, or an add line under them.
+    final lines = <Widget Function()>[
+      for (final (at, t) in shown.indexed) ...[
+        () => _dropOn(id, at, _row(context, t, colour)),
+        if (_expanded.contains(t['id'])) ...[
+          for (final sub in _subtasksOf(t))
+            () => _row(context, sub, colour, sub: true),
+          if (_canEdit && id != null) () => addLine(parent: t['id'] as String),
+        ],
+      ],
+      if (_footer(context, shown) case final f?) () => f,
+      if (_canEdit && id != null) () => addLine(),
+    ];
+    if (lines.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Container(
+          height: 1,
+          decoration: BoxDecoration(
+            border: Border(left: edge, right: edge, bottom: edge),
+          ),
+        ),
+      );
+    }
+    final last = lines.length - 1;
+    return SliverList.builder(
+      itemCount: lines.length,
+      itemBuilder: (context, i) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(
+            left: edge,
+            right: edge,
+            bottom: i == last ? edge : BorderSide.none,
+          ),
+          borderRadius: i == last
+              ? const BorderRadius.vertical(bottom: Radius.circular(12))
+              : null,
+        ),
+        child: lines[i](),
       ),
     );
   }
 
   static const _widths = (add: 40.0);
   static const _baseWidths = {
+    'task': 320.0,
     'creator': 130.0,
     'owner': 130.0,
     'status': 130.0,
@@ -2585,14 +3058,33 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       .toLowerCase()
       .replaceAll(RegExp(r'[^a-z0-9_.-]'), '');
 
-  int _widthSlot(String key) => key.startsWith('c:')
+  /// This person's saved widths for this board, read once per change of
+  /// preferences or board: every cell asks (freeze 11-16).
+  Map<int, double> _savedWidths() {
+    final prefs = widget.session.me?.preferences;
+    final board = _board?['id'];
+    if (!identical(prefs, _widthsFrom) || board != _widthsBoard) {
+      _widthsFrom = prefs;
+      _widthsBoard = board;
+      _widthsSaved = widget.session.me?.listColumnWidths(_widthList) ?? {};
+    }
+    return _widthsSaved;
+  }
+
+  Object? _widthsFrom;
+  Object? _widthsBoard;
+  Map<int, double> _widthsSaved = const {};
+
+  int _widthSlot(String key) => key == 'task'
+      ? 7
+      : key.startsWith('c:')
       ? 10 + boardColumns(_board).indexWhere((c) => 'c:${c.id}' == key)
       : _builtinDefaults.keys.toList().indexOf(key);
 
   /// A column's width: being dragged, saved by this person, or the default.
   double _w(String key) =>
       _dragWidths[key] ??
-      widget.session.me?.listColumnWidths(_widthList)[_widthSlot(key)] ??
+      _savedWidths()[_widthSlot(key)] ??
       _baseWidths[key] ??
       120.0;
 
@@ -2611,7 +3103,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             key: ValueKey('column-resize-$key'),
             behavior: HitTestBehavior.opaque,
             onHorizontalDragUpdate: (d) => setState(
-              () => _dragWidths[key] = (_w(key) + d.delta.dx).clamp(60, 600),
+              () => _dragWidths[key] = (_w(key) + d.delta.dx).clamp(
+                key == 'task' ? 200 : 60,
+                900,
+              ),
             ),
             onHorizontalDragEnd: (_) {
               final width = _dragWidths.remove(key);
@@ -2635,8 +3130,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// scrolls sideways instead of squeezing the task to nothing.
   double get _fixedWidth =>
       6 +
-      // The row's ⋯ menu, and its drag handle and tick where it can change.
-      (_canEdit ? 82 : 32) +
+      // The task column holds its drag handle, tick and ⋯ menu.
+      _w('task') +
       (_builtinShown(_board, 'creator') ? _w('creator') : 0) +
       (_builtinShown(_board, 'owner') ? _w('owner') : 0) +
       (_builtinShown(_board, 'status') ? _w('status') : 0) +
@@ -2778,7 +3273,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         child: Row(
           children: [
             const SizedBox(width: 6),
-            Expanded(
+            SizedBox(
+              width: _w('task'),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: columns.any((c) => total(c) != null)
@@ -2803,6 +3299,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             if (shown('about')) blank(_w('about')),
             if (shown('updates')) blank(_w('updates')),
             if (_canEdit) blank(_widths.add),
+            const Spacer(),
           ],
         ),
       ),
@@ -2842,10 +3339,17 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(width: 6),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Align(alignment: Alignment.centerLeft, child: h('Task')),
+            _resizable(
+              'task',
+              SizedBox(
+                width: _w('task'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: h('Task'),
+                  ),
+                ),
               ),
             ),
             if (shown('creator')) b('creator', _w('creator')),
@@ -2864,25 +3368,23 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               SizedBox(
                 width: _widths.add,
                 child: MenuAnchor(
-                  menuChildren: [
-                    for (final (type, label, icon) in columnTypes)
-                      MenuItemButton(
-                        key: ValueKey('column-add-$type'),
-                        leadingIcon: Icon(icon, size: 18),
-                        onPressed: () => _addColumn(type),
-                        child: Text(label),
-                      ),
-                  ],
+                  menuChildren: _addColumnItems(),
                   builder: (context, menu, _) => IconButton(
                     key: const Key('column-add'),
                     tooltip: 'Add a column',
                     iconSize: 18,
                     padding: EdgeInsets.zero,
-                    onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+                    onPressed: () {
+                      if (menu.isOpen) return menu.close();
+                      _columnSearch.clear();
+                      setState(() {});
+                      menu.open();
+                    },
                     icon: const Icon(Icons.add),
                   ),
                 ),
               ),
+            const Spacer(),
           ],
         ),
       ),
@@ -2915,7 +3417,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 width: 6,
                 color: sub ? colour.withValues(alpha: 0.4) : colour,
               ),
-              Expanded(
+              SizedBox(
+                width: _w('task'),
                 child: Padding(
                   padding: EdgeInsets.only(left: sub ? 34 : 2, right: 10),
                   child: Row(
@@ -2979,7 +3482,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               ? _automationOwner(t)
                               : Row(
                                   children: [
-                                    _avatar(context, owner),
+                                    _ownerFace(context, t, owner),
                                     const SizedBox(width: 6),
                                     Flexible(
                                       child: Text(
@@ -2996,12 +3499,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                       ? _automationOwner(t)
                       : Row(
                           children: [
-                            _avatar(
-                              context,
-                              owner,
-                              api: widget.api,
-                              userId: _ownerId(t),
-                            ),
+                            _ownerFace(context, t, owner),
                             const SizedBox(width: 6),
                             Flexible(
                               child: Text(
@@ -3045,47 +3543,73 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 ),
               for (final c in boardColumns(_board))
                 c.type == 'status'
-                    ? SizedBox(
-                        width: _w('c:${c.id}'),
-                        child: ColumnCell(
-                          column: c,
-                          value: columnValue(t, c),
-                          people: _people,
-                          formats: _formats,
-                          onChanged: _canEdit
-                              ? (v) => _setValue(t, c.id, v)
-                              : null,
-                          onAddOption: _canEdit
-                              ? (label) => _addOption(c, label)
-                              : null,
-                          onEditOptions: _canEdit ? () => _editColumn(c) : null,
-                          onMenu: _statusMenu,
-                          api: widget.api,
-                          onAutoAssign: _canEdit && c.type == 'status'
-                              ? () => _suggestLabel(t, c.id)
-                              : null,
+                    ? _rangeCell(
+                        t,
+                        c,
+                        SizedBox(
+                          width: _w('c:${c.id}'),
+                          child: ColumnCell(
+                            column: c,
+                            value: columnValue(t, c),
+                            people: _people,
+                            formats: _formats,
+                            onChanged: _canEdit
+                                ? (v) => _setValue(t, c.id, v)
+                                : null,
+                            onAddOption: _canEdit
+                                ? (label) => _addOption(c, label)
+                                : null,
+                            onEditOptions: _canEdit
+                                ? () => _editColumn(c)
+                                : null,
+                            onMenu: _statusMenu,
+                            api: widget.api,
+                            onAutoAssign: _canEdit && c.type == 'status'
+                                ? () => _suggestLabel(t, c.id)
+                                : null,
+                          ),
                         ),
                       )
-                    : _cell(
-                        context,
-                        _w('c:${c.id}'),
-                        ColumnCell(
-                          column: c,
-                          value: columnValue(t, c),
-                          people: _people,
-                          formats: _formats,
-                          onChanged: _canEdit
-                              ? (v) => _setValue(t, c.id, v)
-                              : null,
-                          onAddOption: _canEdit
-                              ? (label) => _addOption(c, label)
-                              : null,
-                          onEditOptions: _canEdit ? () => _editColumn(c) : null,
-                          onMenu: _statusMenu,
-                          api: widget.api,
-                          onAutoAssign: _canEdit && c.type == 'status'
-                              ? () => _suggestLabel(t, c.id)
-                              : null,
+                    : _rangeCell(
+                        t,
+                        c,
+                        _cell(
+                          context,
+                          _w('c:${c.id}'),
+                          ColumnCell(
+                            column: c,
+                            value: columnValue(t, c),
+                            people: _people,
+                            formats: _formats,
+                            onChanged: _canEdit
+                                ? (v) => _setValue(t, c.id, v)
+                                : null,
+                            onAddOption: _canEdit
+                                ? (label) => _addOption(c, label)
+                                : null,
+                            onEditOptions: _canEdit
+                                ? () => _editColumn(c)
+                                : null,
+                            onMenu: _statusMenu,
+                            api: widget.api,
+                            boardId: '${_board!['id']}',
+                            onFilter: () => _filterTo(c.id, _valueOf(c.id, t)),
+                            // Dependency: this board's other tasks; Connect
+                            // starts from them too.
+                            tasks: c.type == 'connect' || c.type == 'dependency'
+                                ? [
+                                    for (final o in _tasks)
+                                      if (o['id'] != t['id'])
+                                        ('${o['id']}', taskTitle(o)),
+                                  ]
+                                : null,
+                            onAddFile: _canEdit && c.type == 'files'
+                                ? () => _addFileTo(t, c)
+                                : null,
+                            onAutoAssign: _canEdit && c.type == 'status'
+                                ? () => _suggestLabel(t, c.id)
+                                : null,
+                          ),
                         ),
                       ),
               if (shown('about'))
@@ -3137,6 +3661,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 ),
               // Under the headings' +, so every column lines up.
               if (_canEdit) SizedBox(width: _widths.add),
+              const Spacer(),
             ],
           ),
         ),
@@ -3153,6 +3678,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             name: _builtinLabel(_board, 'due'),
             type: 'date',
             unit: null,
+            max: null,
             options: const [],
             format: 'plain',
             footer: 'none',
@@ -3165,11 +3691,306 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           child: label,
         );
 
+  // ── Cell range: right-click filter, Shift/Ctrl select, copy/paste ──
+
+  /// The column a range of cells is picked in, and the tasks picked.
+  String? _rangeColumn;
+  final List<String> _range = [];
+  String? _rangeAnchor;
+  final _rangeFocus = FocusNode(debugLabel: 'task-board-range');
+
+  /// Shift-click extends the range from the last cell clicked down or up the
+  /// column; Ctrl (or Cmd) toggles one cell. A plain click clears it.
+  void _pickCell(_Json t, BoardColumn c) {
+    final keys = HardwareKeyboard.instance;
+    final id = t['id'] as String;
+    final shift = keys.isShiftPressed;
+    final toggle = keys.isControlPressed || keys.isMetaPressed;
+    if (!shift && !toggle) {
+      if (_range.isNotEmpty) setState(_clearRange);
+      _rangeAnchor = id;
+      _rangeColumn = c.id;
+      return;
+    }
+    setState(() {
+      if (_rangeColumn != c.id) {
+        _range.clear();
+        _rangeColumn = c.id;
+      }
+      if (toggle) {
+        _range.contains(id) ? _range.remove(id) : _range.add(id);
+      } else {
+        final order = [for (final x in _shownTasks) x['id'] as String];
+        final from = order.indexOf(_rangeAnchor ?? id);
+        final to = order.indexOf(id);
+        _range
+          ..clear()
+          ..addAll(
+            from < 0
+                ? [id]
+                : order.sublist(math.min(from, to), math.max(from, to) + 1),
+          );
+      }
+      _rangeAnchor ??= id;
+    });
+    _rangeFocus.requestFocus();
+  }
+
+  void _clearRange() {
+    _range.clear();
+    _rangeColumn = null;
+  }
+
+  /// Ctrl+C copies the range's first value; Ctrl+V writes the clipboard to
+  /// every cell in it; Esc lets go.
+  KeyEventResult _rangeKey(FocusNode _, KeyEvent e) {
+    if (e is! KeyDownEvent || _range.isEmpty) return KeyEventResult.ignored;
+    final keys = HardwareKeyboard.instance;
+    final mod = keys.isControlPressed || keys.isMetaPressed;
+    if (e.logicalKey == LogicalKeyboardKey.escape) {
+      setState(_clearRange);
+      return KeyEventResult.handled;
+    }
+    if (mod && e.logicalKey == LogicalKeyboardKey.keyC) {
+      _copyRange();
+      return KeyEventResult.handled;
+    }
+    if (mod && e.logicalKey == LogicalKeyboardKey.keyV && _canEdit) {
+      _pasteRange();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  BoardColumn? get _rangeCol =>
+      boardColumns(_board).where((c) => c.id == _rangeColumn).firstOrNull;
+
+  Future<void> _copyRange() async {
+    final c = _rangeCol;
+    final t = _tasks.where((x) => x['id'] == _range.first).firstOrNull;
+    if (c == null || t == null) return;
+    final v = columnValue(t, c);
+    await Clipboard.setData(
+      ClipboardData(text: v == null ? '' : (v is String ? v : jsonEncode(v))),
+    );
+    if (mounted) _say(_range.length == 1 ? 'Copied' : 'Copied the first cell');
+  }
+
+  Future<void> _pasteRange() async {
+    final c = _rangeCol;
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    if (c == null || text == null || !mounted) return;
+    Object? value = text.trim().isEmpty ? null : text;
+    if (text.startsWith('[') || text.startsWith('{')) {
+      try {
+        value = jsonDecode(text);
+      } on FormatException {
+        // Plain text that only looks like JSON.
+      }
+    } else if (c.type == 'number' || c.type == 'currency') {
+      value = num.tryParse(text.trim());
+    } else if (c.type == 'checkbox') {
+      value = text.trim() == 'true';
+    }
+    for (final id in List.of(_range)) {
+      final t = _tasks.where((x) => x['id'] == id).firstOrNull;
+      if (t != null) await _setValue(t, c.id, value);
+      if (!mounted) return;
+    }
+    _say(
+      _range.length == 1 ? '1 cell pasted' : '${_range.length} cells pasted',
+    );
+  }
+
+  /// A board column's cell: picked into a range, and on right-click
+  /// Monday's "Filter by this value".
+  Widget _rangeCell(_Json t, BoardColumn c, Widget child) {
+    final picked = _rangeColumn == c.id && _range.contains(t['id']);
+    final scheme = Theme.of(context).colorScheme;
+    final value = _valueOf(c.id, t);
+    final menu = MenuController();
+    return MenuAnchor(
+      controller: menu,
+      menuChildren: [
+        MenuItemButton(
+          key: const Key('cell-filter-value'),
+          leadingIcon: const Icon(Icons.filter_list, size: 18),
+          onPressed: value.isEmpty ? null : () => _filterTo(c.id, value),
+          child: const Text('Filter by this value'),
+        ),
+        if (_filteredOn(c.id))
+          MenuItemButton(
+            onPressed: () => _clearFilterOn(c.id),
+            child: const Text('Clear filter'),
+          ),
+      ],
+      // A Listener for the pick: the cell's own editor wins the tap arena.
+      child: Listener(
+        key: ValueKey('range-cell-${c.id}-${t['id']}'),
+        onPointerDown: (e) {
+          if (e.buttons == kPrimaryButton) _pickCell(t, c);
+        },
+        // A gesture for the menu, so it wins over the row's right-click; an
+        // in-place cell has its own menu, with Filter by this value.
+        child: GestureDetector(
+          onSecondaryTapUp: ColumnCell.editsInPlace(c, editable: _canEdit)
+              ? null
+              : (d) => menu.open(position: d.localPosition),
+          child: Focus(
+            focusNode: picked && _range.first == t['id'] ? _rangeFocus : null,
+            onKeyEvent: _rangeKey,
+            child: DecoratedBox(
+              position: DecorationPosition.foreground,
+              decoration: BoxDecoration(
+                color: picked ? scheme.primary.withValues(alpha: 0.10) : null,
+                border: picked ? Border.all(color: scheme.primary) : null,
+              ),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A Files cell's "+": the file goes up as an update on the task (the
+  /// same upload as the sidebar's), then joins the cell.
+  Future<void> _addFileTo(_Json t, BoardColumn c) async {
+    final picked = await pickTaskUpdateFile();
+    if (picked == null || !mounted) return;
+    final refused = taskUpdateFileRefusal(picked.name, picked.bytes.length, 0);
+    if (refused != null) return _say(refused);
+    final res = await widget.api.postFiles(
+      '/tasks/${t['id']}/updates',
+      'files',
+      [(name: picked.name, bytes: picked.bytes)],
+    );
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    final added = [
+      for (final a
+          in ((res.body['data'] as Map?)?['attachments'] as List?) ?? const [])
+        if (a is Map && a['id'] != null) '${a['id']}',
+    ];
+    if (added.isEmpty) return;
+    final had = [
+      for (final id in (columnValue(t, c) as List?) ?? const []) '$id',
+    ];
+    await _setValue(t, c.id, [...had, ...added]);
+  }
+
+  /// The "+" menu's search box (Monday's add-column search).
+  final _columnSearch = TextEditingController();
+
+  /// The "+" menu: a search on top; with nothing typed, Monday's sections
+  /// and More; with a word typed, every type whose name has it.
+  List<Widget> _addColumnItems() {
+    final q = _columnSearch.text.trim().toLowerCase();
+    MenuItemButton item(String type, String label, IconData icon) =>
+        MenuItemButton(
+          key: ValueKey('column-add-$type'),
+          leadingIcon: Icon(icon, size: 18),
+          onPressed: () => _addColumn(type),
+          child: Text(label),
+        );
+    final found = [
+      for (final (type, label, icon) in columnTypes)
+        if (label.toLowerCase().contains(q) || type.contains(q))
+          item(type, label, icon),
+    ];
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+        child: SizedBox(
+          width: 220,
+          child: TextField(
+            key: const Key('column-add-search'),
+            controller: _columnSearch,
+            autofocus: true,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              isDense: true,
+              hintText: 'Find a column type',
+              prefixIcon: Icon(Icons.search, size: 18),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+      ),
+      if (q.isNotEmpty) ...[
+        ...found,
+        if (found.isEmpty)
+          const MenuItemButton(onPressed: null, child: Text('No column type')),
+      ] else ...[
+        for (final (title, types) in columnTypeSections) ...[
+          _menuHeading(context, title),
+          for (final (type, label, icon) in columnTypes)
+            if (types.contains(type)) item(type, label, icon),
+        ],
+        SubmenuButton(
+          key: const Key('column-add-more'),
+          leadingIcon: const Icon(Icons.more_horiz, size: 18),
+          menuChildren: [
+            for (final (type, label, icon) in columnTypes)
+              if (!columnTypeSections.any((s) => s.$2.contains(type)))
+                item(type, label, icon),
+          ],
+          child: const Text('More columns'),
+        ),
+      ],
+    ];
+  }
+
+  // ── Row drag: Esc cancels, the list scrolls near its edges ─────────
+
+  final _tableScroll = ScrollController();
+  final _tableKey = GlobalKey(debugLabel: 'task-table');
+
+  /// Esc was pressed during this drag: nothing it is dropped on moves.
+  bool _dragCancelled = false;
+
+  bool _dragKey(KeyEvent e) {
+    if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.escape) {
+      return false;
+    }
+    setState(() => _dragCancelled = true);
+    return true;
+  }
+
+  /// Within [_edge] of the list's top or bottom, the list scrolls towards
+  /// it, faster the closer the pointer is.
+  static const _edge = 56.0;
+  void _autoScroll(Offset at) {
+    final box = _tableKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !_tableScroll.hasClients || _dragCancelled) return;
+    final y = box.globalToLocal(at).dy;
+    final h = box.size.height;
+    final step = y < _edge
+        ? -(_edge - y)
+        : y > h - _edge
+        ? y - (h - _edge)
+        : 0.0;
+    if (step == 0) return;
+    final p = _tableScroll.position;
+    _tableScroll.jumpTo(
+      (p.pixels + step / 3).clamp(p.minScrollExtent, p.maxScrollExtent),
+    );
+  }
+
   Widget _dragHandle(BuildContext context, _Json t) {
     final theme = Theme.of(context);
     return Draggable<String>(
       key: ValueKey('task-drag-${t['id']}'),
       data: t['id'] as String,
+      onDragStarted: () {
+        _dragCancelled = false;
+        HardwareKeyboard.instance.addHandler(_dragKey);
+      },
+      onDragUpdate: (d) => _autoScroll(d.globalPosition),
+      onDragEnd: (_) {
+        HardwareKeyboard.instance.removeHandler(_dragKey);
+        if (_dragCancelled) setState(() {});
+      },
       feedback: Material(
         elevation: 4,
         borderRadius: BorderRadius.circular(8),
@@ -3199,8 +4020,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Widget _dropOn(String? groupId, int? position, Widget child) {
     if (!_canEdit || groupId == null) return child;
     return DragTarget<String>(
-      onWillAcceptWithDetails: (d) => true,
-      onAcceptWithDetails: (d) => _moveTo(d.data, groupId, position),
+      onWillAcceptWithDetails: (d) => !_dragCancelled,
+      onAcceptWithDetails: (d) {
+        if (!_dragCancelled) _moveTo(d.data, groupId, position);
+      },
       builder: (context, hovering, _) => hovering.isEmpty
           ? child
           : DecoratedBox(
@@ -3516,12 +4339,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                 ),
                               ),
                             if (owner != null && shown('owner')) ...[
-                              _avatar(
-                                context,
-                                owner,
-                                api: widget.api,
-                                userId: _ownerId(t),
-                              ),
+                              _ownerFace(context, t, owner),
                               if (owners.length > 1) _moreOwners(t, owners),
                             ],
                             if (!sub) ...[
@@ -4581,6 +5399,55 @@ class _TaskPanelState extends State<_TaskPanel> {
             ),
         ],
       ],
+    );
+  }
+}
+
+/// A column heading's sort arrow: shown while sorted, and faintly on hover
+/// so the heading stays quiet otherwise (Monday parity, Jose 11-13).
+class SortArrow extends StatefulWidget {
+  const SortArrow({super.key, required this.dir, required this.onTap});
+
+  /// true descending, false ascending, null unsorted.
+  final bool? dir;
+  final VoidCallback onTap;
+
+  @override
+  State<SortArrow> createState() => _SortArrowState();
+}
+
+class _SortArrowState extends State<SortArrow> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final on = widget.dir != null;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Tooltip(
+        message: switch (widget.dir) {
+          null => 'Sort ascending',
+          false => 'Sort descending',
+          true => 'Clear sort',
+        },
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Opacity(
+              opacity: on ? 1 : (_hover ? 0.6 : 0.15),
+              child: Icon(
+                widget.dir == true ? Icons.arrow_downward : Icons.arrow_upward,
+                size: 14,
+                color: on ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -3,6 +3,11 @@
 Jose's name for it (2026-11-13): every mistake the deploy desk made, so it is never made twice.
 Newest first. Each entry: what happened, what it cost, the rule that stops it.
 
+## 2026-11-13 — Audit hand-over hid 9 PHPUnit warnings (failed the 0574 precheck)
+- **What:** the audit merge left `OAuthTokenRequestShapeTest`'s 3-argument tests on 6-field data-provider rows. PHPUnit warned 9 times and exited 1; I read the pao JSON, saw only the 17 known Windows fails, and called the red accounted for.
+- **Cost:** 0574 precheck failed; the desk fixed it (36fce1c42).
+- **Rule:** run phpunit with `--log-events-text <file>` and require 0 `PHPUnit Warning`; a red exit is unexplained until failures + errors + warnings account for it.
+
 ## 2026-11-12 — Automation text edit wiped the rules (biggest one)
 - **What:** to change four auto-reply texts I PATCHed `/api/v1/automations/{id}` with only `actions`. The API saved new versions with **no conditions**. "Closed Office - Initial Auto Reply", "Closed Office - Message Received", "Not booked - after a call" and "Not booked - went quiet" fired on every event for ~18 h.
 - **Cost:** ~340 "we're closed" replies (many during open hours), ~80 "we got your message", ~110 "went quiet", and not-booked texts to booked leads. Jose found it on an A1 Garage Doors lead that got an open AND a closed reply.
