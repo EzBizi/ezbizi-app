@@ -95,6 +95,31 @@ void main() {
     expect(log.posts.last.$2['kind'], 'overbooked');
   });
 
+  // UI pass 2026-11-17: at 150 px "Offer a move by text" wrapped to three
+  // lines inside its outline. The column now leaves it room for one.
+  testWidgets('the offer button has room for its words on a computer', (
+    tester,
+  ) async {
+    await _pump(tester, _Log(), mode: BookedMode.over);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('booked-offer-a-over'))).width,
+      greaterThanOrEqualTo(200),
+    );
+  });
+
+  // UI pass 2026-11-17: ten red chips at "1 over" read as ten emergencies.
+  // One or two over is amber; three and more stays red.
+  testWidgets('a day one or two over is amber, not red', (tester) async {
+    await _pump(tester, _Log(), mode: BookedMode.over);
+    final chip = tester.widget<ChoiceChip>(
+      find.byKey(const ValueKey('booked-over-day-2026-11-05')),
+    );
+    final ctx = tester.element(
+      find.byKey(const ValueKey('booked-over-day-2026-11-05')),
+    );
+    expect(chip.backgroundColor, ToneColours.of(ctx, Tone.caution).fill);
+  });
+
   testWidgets('no Offer button without scheduling.edit', (tester) async {
     await _pump(tester, _Log(), canEdit: false);
     expect(find.byKey(const ValueKey('booked-offer-a-open')), findsNothing);

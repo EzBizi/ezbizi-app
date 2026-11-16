@@ -179,48 +179,53 @@ class NewsletterDashboard extends StatelessWidget {
     );
   }
 
-  /// Three tiles that filter and two that state a fact, five across when
+  /// Four tiles that filter and two that state a fact, six across when
   /// there is room.
+  ///
+  /// The width used to be counted for three filters: when Failed became the
+  /// fourth it wrapped alone onto a second row (UI pass 2026-11-17). The count
+  /// now comes from the list itself.
   ///
   /// FilterTiles lays out only the tiles it is given, so the two facts are
   /// drawn here at the same width beside it rather than as filters that
   /// would filter nothing.
   Widget _tiles(BuildContext context) {
+    final filterTiles = [
+      FilterTile(
+        key: 'sent',
+        label: 'Sent',
+        count: stats.sent,
+        note: 'went out',
+        tone: Tone.ok,
+      ),
+      FilterTile(
+        key: 'scheduled',
+        label: 'Scheduled',
+        count: stats.scheduled,
+        note: 'booked',
+        tone: Tone.info,
+      ),
+      FilterTile(
+        key: 'draft',
+        label: 'Drafts',
+        count: stats.drafts,
+        note: 'not sent',
+      ),
+      // A send the provider refused; the server counts it and filters it.
+      FilterTile(
+        key: 'failed',
+        label: 'Failed',
+        count: stats.failed,
+        note: 'did not go out',
+        tone: Tone.bad,
+      ),
+    ];
     final filters = FilterTiles(
       key: const ValueKey('tour-marketing-status-tiles'),
       prefix: 'newsletters',
       picked: status,
       onPick: onStatus,
-      tiles: [
-        FilterTile(
-          key: 'sent',
-          label: 'Sent',
-          count: stats.sent,
-          note: 'went out',
-          tone: Tone.ok,
-        ),
-        FilterTile(
-          key: 'scheduled',
-          label: 'Scheduled',
-          count: stats.scheduled,
-          note: 'booked',
-          tone: Tone.info,
-        ),
-        FilterTile(
-          key: 'draft',
-          label: 'Drafts',
-          count: stats.drafts,
-          note: 'not sent',
-        ),
-        // A send the provider refused; the server counts it and filters it.
-        FilterTile(
-          key: 'failed',
-          label: 'Failed',
-          count: stats.failed,
-          note: 'did not go out',
-          tone: Tone.bad,
-        ),
-      ],
+      tiles: filterTiles,
     );
 
     // Named for what it is. The provider reports what happens after it takes
@@ -245,12 +250,14 @@ class NewsletterDashboard extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, box) {
         const gap = 10.0;
-        if (box.maxWidth >= 5 * 170) {
-          final width = (box.maxWidth - gap * 4) / 5;
+        final n = filterTiles.length;
+        final across = n + 2;
+        if (box.maxWidth >= across * 170) {
+          final width = (box.maxWidth - gap * (across - 1)) / across;
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(width: width * 3 + gap * 2, child: filters),
+              SizedBox(width: width * n + gap * (n - 1), child: filters),
               const SizedBox(width: gap),
               SizedBox(width: width, child: reached),
               const SizedBox(width: gap),

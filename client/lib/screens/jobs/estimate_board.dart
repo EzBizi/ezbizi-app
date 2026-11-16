@@ -409,7 +409,11 @@ class EstimateCard extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
+                  // A full-width name ran into the amount ("Jackson$0"),
+                  // UI pass 2026-11-17.
+                  const SizedBox(width: 8),
                   Text(
+                    key: ValueKey('estimate-card-total-${row['id']}'),
                     formatMoney(
                       (row['total_minor'] as num?)?.toInt() ?? 0,
                       currency: '${row['currency'] ?? 'USD'}',

@@ -850,7 +850,9 @@ class _NumbersPaneState extends State<NumbersPane> {
                                       ? '1 problem'
                                       : '${line.problems!.length} problems',
                                   key: Key('number-health-${line.id}'),
-                                  tone: Tone.review,
+                                  // A problem is amber, never the teal of
+                                  // "done" (UI pass 2026-11-17).
+                                  tone: Tone.caution,
                                 ),
                         ),
                         for (final problem in line.problems!)

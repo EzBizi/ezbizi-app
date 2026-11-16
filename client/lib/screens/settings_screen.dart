@@ -2193,8 +2193,11 @@ class _EnumControl extends StatelessWidget {
       ...choices,
     ];
 
+    // 340: at 260 the longer answers were cut on every settings page —
+    // "The same window or the o…", "During their scheduled wor…" (UI pass
+    // 2026-11-17). On a phone the Flexible around the control still fits it.
     return SizedBox(
-      width: 260,
+      width: 340,
       child: SearchPickerField<Object>(
         key: ValueKey(selected),
         value: selected is Object ? selected : null,

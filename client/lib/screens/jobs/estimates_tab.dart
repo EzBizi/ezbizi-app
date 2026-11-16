@@ -14,6 +14,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/grouped_rows.dart';
 import '../../widgets/load_more.dart';
+import '../../widgets/module_page_header.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
@@ -263,13 +264,17 @@ class _EstimatesTabState extends State<EstimatesTab> {
             children: [
               PanelHeader(
                 note: _note(),
-                action: Refused(
-                  reason: refused,
-                  child: FilledButton.icon(
-                    key: const ValueKey('estimate-new'),
-                    onPressed: refused == null ? () => _open('new') : null,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New estimate'),
+                // In the module header, on the right, as every tab's primary
+                // action (desktop review D3; UI pass 2026-11-17).
+                action: ModuleAction(
+                  child: Refused(
+                    reason: refused,
+                    child: FilledButton.icon(
+                      key: const ValueKey('estimate-new'),
+                      onPressed: refused == null ? () => _open('new') : null,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('New estimate'),
+                    ),
                   ),
                 ),
               ),

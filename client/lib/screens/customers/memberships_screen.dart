@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/module_page_header.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../customers_screen.dart';
 import 'memberships_dashboard.dart';
@@ -65,12 +66,23 @@ class _CustomersWithMembershipsState extends State<CustomersWithMemberships> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Offstage(offstage: _tab != 0, child: customers),
+              // Gated: offstage, Customers still handed "Add customer" to the
+              // header over Memberships (UI pass 2026-11-17).
+              Offstage(
+                offstage: _tab != 0,
+                child: ModuleActionGate(active: _tab == 0, child: customers),
+              ),
               Offstage(
                 offstage: _tab != 1,
-                child: _membershipsOpened
-                    ? MembershipsScreen(api: widget.api, session: widget.session)
-                    : const SizedBox.shrink(),
+                child: ModuleActionGate(
+                  active: _tab == 1,
+                  child: _membershipsOpened
+                      ? MembershipsScreen(
+                          api: widget.api,
+                          session: widget.session,
+                        )
+                      : const SizedBox.shrink(),
+                ),
               ),
             ],
           ),
