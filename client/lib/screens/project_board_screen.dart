@@ -83,13 +83,29 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     setState(() {
       _sortDesc = _sortKey == key ? !_sortDesc : false;
       _sortKey = key;
-      _rows = const [];
+      // Rows stay on screen (Jose, 2026-11-16: "the tab seems to reload
+      // entirely"). Every row here: sort them in place. Paged: the same
+      // pages come back in the new order, swapped in when they arrive.
+      if (_rows.length >= _total) {
+        final dir = _sortDesc ? -1 : 1;
+        _rows = [..._rows]..sort((a, b) => _compare(a[key], b[key], dir));
+      }
     });
     widget.session.setPreference(
       'project_board.sort',
       '$key:${_sortDesc ? 'desc' : 'asc'}',
     );
-    _load();
+    if (_rows.length < _total) _load(quiet: true);
+  }
+
+  /// Blanks last either way, numbers as numbers, text without case.
+  static int _compare(Object? a, Object? b, int dir) {
+    bool blank(Object? v) => v == null || (v is String && v.isEmpty);
+    if (blank(a) || blank(b)) {
+      return blank(a) == blank(b) ? 0 : (blank(a) ? 1 : -1);
+    }
+    if (a is num && b is num) return dir * a.compareTo(b);
+    return dir * '$a'.toLowerCase().compareTo('$b'.toLowerCase());
   }
 
   String _tab = _tabs.first.$1;
@@ -120,11 +136,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     WidgetsBinding.instance.addObserver(this);
     _live = Timer.periodic(const Duration(seconds: 60), (_) => _refresh());
     // A job saved anywhere (Workiz sync, webhook, automation) within ~10 s.
-    _feed = LiveChanges.of(widget.api).subscribe(
-      {'jobs'},
-      (_) => _refresh(),
-      active: LiveChanges.visible(this),
-    );
+    _feed = LiveChanges.of(
+      widget.api,
+    ).subscribe({'jobs'}, (_) => _refresh(), active: LiveChanges.visible(this));
     _load();
   }
 
@@ -1072,6 +1086,16 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                         : 'No jobs in ${shown[selected].$2}.',
                   )
                 else ...[
+                  // A thin bar while new rows are on their way; the old
+                  // ones stay put (Jose, 2026-11-16).
+                  SizedBox(
+                    height: 2,
+                    child: _fetching
+                        ? const LinearProgressIndicator(
+                            key: Key('project-board-refreshing'),
+                          )
+                        : null,
+                  ),
                   if (_totals case final t?) _totalsStrip(t),
                   _fill(
                     (height) => ListTable(
