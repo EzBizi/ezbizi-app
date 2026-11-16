@@ -570,28 +570,28 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       ],
     );
 
+    // Mobile review 2026-11-13: beside the actions the counts wrapped to
+    // "3 not sho…". On a phone they get the line to themselves, and the
+    // chip, more and Check Google go under them.
     if (narrow) {
       return Padding(
-        padding: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Row(
-                children: [
-                  Expanded(child: counts),
-                  more,
-                  check,
-                ],
-              ),
+            counts,
+            const SizedBox(height: 6),
+            // A Wrap, so a long label or a large text size puts the chip on
+            // its own line rather than past the edge.
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              runSpacing: 4,
+              children: [
+                ?google,
+                Row(mainAxisSize: MainAxisSize.min, children: [more, check]),
+              ],
             ),
-            // No room beside the counts on a phone: the chip goes under them.
-            if (google != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Align(alignment: Alignment.centerLeft, child: google),
-              ),
           ],
         ),
       );
@@ -614,21 +614,34 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   // ── The filters: segment, branch, search ─────────────────────
 
   Widget _filters(ThemeData theme, bool narrow) {
+    // One line per segment on a phone: "Not showing · 3" wrapped to two
+    // (mobile review 2026-11-13). Scaled down rather than cut, so the count
+    // is never lost.
+    Widget fit(Widget label) =>
+        narrow ? FittedBox(fit: BoxFit.scaleDown, child: label) : label;
     final segment = SegmentedButton<_Show>(
       key: const ValueKey('tour-business-profile-not-showing'),
       segments: [
         ButtonSegment(
           value: _Show.showing,
-          label: Text(
-            'Showing · $_showingCount',
-            key: const ValueKey('gbp-show-showing'),
+          label: fit(
+            Text(
+              'Showing · $_showingCount',
+              maxLines: 1,
+              softWrap: false,
+              key: const ValueKey('gbp-show-showing'),
+            ),
           ),
         ),
         ButtonSegment(
           value: _Show.notShowing,
-          label: Text(
-            'Not showing · $_notShowingCount',
-            key: const ValueKey('gbp-show-not-showing'),
+          label: fit(
+            Text(
+              'Not showing · $_notShowingCount',
+              maxLines: 1,
+              softWrap: false,
+              key: const ValueKey('gbp-show-not-showing'),
+            ),
           ),
         ),
         const ButtonSegment(
@@ -877,11 +890,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         for (final l in rows)
           Material(
             key: ValueKey('gbp-row-${l['id']}'),
-            color: _live(l)
-                ? (l['id'] == _openId
-                      ? theme.colorScheme.primaryContainer
-                      : Colors.transparent)
-                : ToneColours.of(context, Tone.bad).fill,
+            // Neutral: the red pill names the problem; a whole red row read
+            // as an alarm (desktop review 2026-11-13, Top 7).
+            color: l['id'] == _openId
+                ? theme.colorScheme.primaryContainer
+                : Colors.transparent,
             child: InkWell(
               onTap: () => setState(
                 () => _openId = l['id'] == _openId ? null : l['id'] as String?,
@@ -955,9 +968,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Material(
               key: ValueKey('gbp-card-${l['id']}'),
-              color: _live(l)
-                  ? theme.colorScheme.surface
-                  : ToneColours.of(context, Tone.bad).fill,
+              color: theme.colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
                 side: BorderSide(color: EzBiziTheme.edge(context)),

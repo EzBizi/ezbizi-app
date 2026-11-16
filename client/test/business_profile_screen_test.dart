@@ -91,10 +91,12 @@ void main() {
     // Google's own word, in the error tone — SUSPENDED and UNVERIFIED need
     // different fixes, so collapsing them to "problem" would help nobody.
     final pill = tester.widget<StatusPill>(
-      find.descendant(
-        of: find.byKey(const ValueKey('gbp-row-loc-2')),
-        matching: find.byType(StatusPill),
-      ).first, // the Google column; WhatsApp's pill comes after it
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('gbp-row-loc-2')),
+            matching: find.byType(StatusPill),
+          )
+          .first, // the Google column; WhatsApp's pill comes after it
     );
     expect(pill.label, 'Suspended');
     expect(pill.tone, Tone.bad);
@@ -161,11 +163,13 @@ void main() {
 
     final context = tester.element(find.byKey(const ValueKey('gbp-row-loc-2')));
     final tint = ToneColours.of(context, Tone.bad).fill;
+    // The pill carries the problem; the row stays neutral (desktop review
+    // 2026-11-13, Top 7: whole red rows read as an alarm for every listing).
     expect(
       tester
           .widget<Material>(find.byKey(const ValueKey('gbp-row-loc-2')))
           .color,
-      tint,
+      isNot(tint),
     );
     expect(
       tester
@@ -386,6 +390,41 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('gbp-pane')), findsNothing);
     expect(find.byKey(const ValueKey('gbp-card-loc-1')), findsOneWidget);
+  });
+
+  // Mobile review 2026-11-13: on a phone the counts wrapped beside the
+  // actions ("3 not sho…") and "Not showing · 3" took two lines.
+  testWidgets('on a phone the header and segments keep to one line', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      locations: [showing, suspended],
+      notLive: 1,
+      connections: connected,
+      size: const Size(390, 844),
+    );
+
+    final counts = tester.getRect(find.byKey(const ValueKey('gbp-counts')));
+    final check = tester.getRect(
+      find.byKey(const ValueKey('tour-customer_experience-check-google')),
+    );
+    expect(
+      check.top,
+      greaterThanOrEqualTo(counts.bottom),
+      reason: 'The actions go under the counts, not beside them.',
+    );
+    expect(counts.width, greaterThan(300));
+
+    final one = tester
+        .getSize(find.byKey(const ValueKey('gbp-show-all')))
+        .height;
+    expect(
+      tester.getSize(find.byKey(const ValueKey('gbp-show-not-showing'))).height,
+      lessThanOrEqualTo(one + 0.5),
+      reason: '"Not showing · N" is one line, as tall as "All".',
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('every tour anchor is on screen', (tester) async {

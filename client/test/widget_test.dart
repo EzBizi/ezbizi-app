@@ -595,6 +595,19 @@ void main() {
       findsOneWidget,
       reason: 'Settings must stay pinned when the destinations scroll.',
     );
+
+    // 4. "More" has its own row: drawn over the list it covered a module
+    //    name (desktop review 2026-11-13, Top 6).
+    await tester.pump();
+    final more = find.byKey(const Key('sidebar-more-below'));
+    expect(more, findsOneWidget);
+    final moreBox = tester.getRect(more);
+    final list = tester.getRect(scroller.first);
+    expect(
+      moreBox.top,
+      greaterThanOrEqualTo(list.bottom - 0.5),
+      reason: 'More sits below the scrolling list, not on top of a row.',
+    );
   });
 
   /// The fifteen modules, in shell order.

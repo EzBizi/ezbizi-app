@@ -1168,7 +1168,7 @@ class _SiteDetailState extends State<_SiteDetail> {
         label: 'Branch',
         helperText: 'Where chats, forms and reviews from this website land in Leads.',
         options: [
-          SearchOption<String?>(value: null, label: 'No branch ($company)'),
+          SearchOption<String?>(value: null, label: 'Company Level ($company)'),
           // "Company · Branch", like every branch picker (branch_options.dart).
           for (final b in widget.branches) SearchOption<String?>(value: b.id, label: '$company · ${b.name}'),
         ],

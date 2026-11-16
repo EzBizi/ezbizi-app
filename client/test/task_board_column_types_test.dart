@@ -232,7 +232,11 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
-    expect(asked.single, endsWith('/task-boards/b-1/people/u-2'));
+    // The face also fetches the photo; the card asks for the person once.
+    expect(
+      asked.where((p) => p.contains('/people/')).single,
+      endsWith('/task-boards/b-1/people/u-2'),
+    );
     expect(find.byKey(const ValueKey('person-card-u-2')), findsOneWidget);
   });
 

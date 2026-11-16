@@ -60,6 +60,7 @@ import 'widgets/profile_aura.dart';
 import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/availability_button.dart';
+import 'widgets/broken_widget_card.dart';
 import 'widgets/callout.dart';
 import 'widgets/quick_search.dart';
 import 'widgets/incoming_call_bar.dart';
@@ -85,6 +86,9 @@ Future<void> main() async {
 
   // Crashes, freezes and failed calls reach the staff console (2026-10-15).
   IssueReporter.install();
+
+  // One widget that throws draws a card, not a grey or black app.
+  BrokenWidgetCard.install();
 
   // A paired camera-bridge PC streams on its site key, signed in or not.
   unawaited(startCameraBridge());
@@ -3019,6 +3023,10 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
             // list, so it is the last thing that should require scrolling to
             // reach.
             Expanded(
+              // Keyed: the search field above it comes and goes with the
+              // collapse, and an unkeyed sibling shift remounted this whole
+              // list (and its scroll view) on every toggle.
+              key: const ValueKey('sidebar-list'),
               // Nothing matched is the state that matters more than the happy
               // path: a sidebar with no modules in it and no explanation is
               // indistinguishable from a broken one. So it names what was
@@ -3035,80 +3043,85 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                     )
                   : filtering && shown.isEmpty
                   ? _noMatch(context, _query.trim())
-                  : LayoutBuilder(
-                      // A visible thumb when the list is taller than the
-                      // window: without it the lower group just stopped
-                      // mid-row with no hint there was more (deep dive
-                      // 2026-11-02).
-                      builder: (context, constraints) => Stack(
-                        children: [
-                          Scrollbar(
-                            controller: _railScroll,
-                            thumbVisibility: true,
-                            child: SingleChildScrollView(
-                              controller: _railScroll,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  minHeight: constraints.maxHeight,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    for (
-                                      var g = 0;
-                                      g < segments.length;
-                                      g++
-                                    ) ...[
-                                      if (!filtering &&
-                                          expanded &&
-                                          widget.headingAt.containsKey(
-                                            segments[g].first,
-                                          ))
-                                        _GroupHeading(
-                                          widget.headingAt[segments[g].first]!,
-                                        )
-                                      else if (g > 0)
-                                        Divider(
-                                          height: 17,
-                                          thickness: 1,
-                                          indent: width * 0.15,
-                                          endIndent: width * 0.15,
-                                          color: scheme.outlineVariant,
-                                        ),
-                                      IntrinsicHeight(
-                                        child: _rail(
-                                          context,
-                                          expanded: expanded,
-                                          width: width,
-                                          destinations: [
-                                            for (final i in segments[g])
-                                              widget.destinations[i],
-                                          ],
-                                          selectedIndex: within(segments[g]),
-                                          onSelected: (i) =>
-                                              widget.onSelected(segments[g][i]),
-                                          query: query,
-                                        ),
+                  : Column(
+                      children: [
+                        Expanded(
+                          child: LayoutBuilder(
+                            // A visible thumb when the list is taller than the
+                            // window: without it the lower group just stopped
+                            // mid-row with no hint there was more (deep dive
+                            // 2026-11-02).
+                            builder: (context, constraints) => Stack(
+                              children: [
+                                Scrollbar(
+                                  controller: _railScroll,
+                                  thumbVisibility: true,
+                                  child: SingleChildScrollView(
+                                    controller: _railScroll,
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        minHeight: constraints.maxHeight,
                                       ),
-                                    ],
-                                  ],
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          for (
+                                            var g = 0;
+                                            g < segments.length;
+                                            g++
+                                          ) ...[
+                                            if (!filtering &&
+                                                expanded &&
+                                                widget.headingAt.containsKey(
+                                                  segments[g].first,
+                                                ))
+                                              _GroupHeading(
+                                                widget.headingAt[segments[g]
+                                                    .first]!,
+                                              )
+                                            else if (g > 0)
+                                              Divider(
+                                                height: 17,
+                                                thickness: 1,
+                                                indent: width * 0.15,
+                                                endIndent: width * 0.15,
+                                                color: scheme.outlineVariant,
+                                              ),
+                                            IntrinsicHeight(
+                                              child: _rail(
+                                                context,
+                                                expanded: expanded,
+                                                width: width,
+                                                destinations: [
+                                                  for (final i in segments[g])
+                                                    widget.destinations[i],
+                                                ],
+                                                selectedIndex: within(
+                                                  segments[g],
+                                                ),
+                                                onSelected: (i) => widget
+                                                    .onSelected(segments[g][i]),
+                                                query: query,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
-                          // "More below" over the list's bottom edge while
-                          // rows remain under the fold. Jose read the cut-off
-                          // list on a short web window as modules MISSING
-                          // (11-13): the thin thumb alone was not enough.
-                          Positioned(
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            child: _MoreBelow(controller: _railScroll),
-                          ),
-                        ],
-                      ),
+                        ),
+                        // "More below" on its own row under the list while
+                        // rows remain under the fold (Jose 11-13 read the
+                        // cut-off list as modules MISSING). Drawn over the
+                        // list it covered a module name (desktop review
+                        // 2026-11-13, Top 6).
+                        _MoreBelow(controller: _railScroll),
+                      ],
                     ),
             ),
 
@@ -3229,44 +3242,53 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
 
     // Collapsed has one right width and dragging it would be a fight with the
     // toggle. The handle only exists when there is a width to change.
-    if (!expanded || widget.onResized == null) return sidebar;
-
+    //
+    // The Stack itself is ALWAYS there. Returning the bare sidebar when
+    // collapsed changed the root widget type, so every toggle threw the whole
+    // subtree away and mounted a new one: the old and new list both held the
+    // rail's scroll controller for a frame, `_MoreBelow` read
+    // `controller.position` (`positions.single`) and threw "Too many
+    // elements", and the column painted grey until the next click rebuilt it
+    // (Jose 11-16, 0.0.0575; client_issues 01a1e4ea).
+    final resizable = expanded && widget.onResized != null;
     return Stack(
       children: [
         sidebar,
-        Positioned(
-          top: 0,
-          bottom: 0,
-          // Straddles the border rather than sitting beside it, so the cursor
-          // changes where the eye says the edge is.
-          right: -3,
-          width: 7,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.resizeLeftRight,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onHorizontalDragStart: (_) => setState(() => _dragWidth = width),
-              onHorizontalDragUpdate: (d) => setState(() {
-                _dragWidth = ((_dragWidth ?? width) + d.delta.dx).clamp(
-                  NavigationSidebar.minWidth,
-                  NavigationSidebar.maxWidth,
-                );
-              }),
-              onHorizontalDragEnd: (_) {
-                final settled = _dragWidth;
-                setState(() => _dragWidth = null);
-                if (settled != null) widget.onResized!(settled);
-              },
-              // Double-click puts it back, because a resize handle without one
-              // means somebody who has dragged it somewhere odd has to find
-              // their way back by feel.
+        if (resizable)
+          Positioned(
+            top: 0,
+            bottom: 0,
+            // Straddles the border rather than sitting beside it, so the cursor
+            // changes where the eye says the edge is.
+            right: -3,
+            width: 7,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeLeftRight,
               child: GestureDetector(
-                onDoubleTap: () => widget.onResized!(220),
                 behavior: HitTestBehavior.translucent,
+                onHorizontalDragStart: (_) =>
+                    setState(() => _dragWidth = width),
+                onHorizontalDragUpdate: (d) => setState(() {
+                  _dragWidth = ((_dragWidth ?? width) + d.delta.dx).clamp(
+                    NavigationSidebar.minWidth,
+                    NavigationSidebar.maxWidth,
+                  );
+                }),
+                onHorizontalDragEnd: (_) {
+                  final settled = _dragWidth;
+                  setState(() => _dragWidth = null);
+                  if (settled != null) widget.onResized!(settled);
+                },
+                // Double-click puts it back, because a resize handle without one
+                // means somebody who has dragged it somewhere odd has to find
+                // their way back by feel.
+                child: GestureDetector(
+                  onDoubleTap: () => widget.onResized!(220),
+                  behavior: HitTestBehavior.translucent,
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -3470,6 +3492,10 @@ Widget _rail(
   String query = '',
 }) {
   return NavigationRail(
+    // A fresh rail per state, so it does not run its own extend animation.
+    // The column around it already snapped to its new width, and the rail
+    // animating its labels inside 80px overflowed every frame of a collapse.
+    key: ValueKey(expanded),
     backgroundColor: Colors.transparent,
     // null when an off-rail screen is showing, or when the OTHER rail holds the
     // selection. The assert allows it; a stale index would throw.
@@ -3539,22 +3565,40 @@ class Destination {
 
 /// A fade and a "More" chevron over the bottom of a scrolling list, shown only
 /// while there is still something below the fold. Tapping it scrolls down.
-class _MoreBelow extends StatelessWidget {
+class _MoreBelow extends StatefulWidget {
   const _MoreBelow({required this.controller});
 
   final ScrollController controller;
 
   @override
+  State<_MoreBelow> createState() => _MoreBelowState();
+}
+
+class _MoreBelowState extends State<_MoreBelow> {
+  ScrollController get controller => widget.controller;
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // The list lays out after this row's first build, and a controller only
+    // notifies on a scroll: look again once the list has its size.
+    if (controller.positions.length != 1 ||
+        !controller.positions.first.hasContentDimensions) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && controller.hasClients) setState(() {});
+      });
+    }
 
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
+        // `positions`, never `position`: during a rebuild the controller can
+        // briefly hold two, and `position` throws on more than one.
+        final positions = controller.positions;
         final more =
-            controller.hasClients &&
-            controller.position.hasContentDimensions &&
-            controller.position.extentAfter > 8;
+            positions.length == 1 &&
+            positions.first.hasContentDimensions &&
+            positions.first.extentAfter > 8;
         if (!more) return const SizedBox.shrink();
 
         // The sidebar panel's own fill (see `color: scheme.surfaceContainerLow` above).

@@ -1032,6 +1032,8 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
             ],
             selected: _tab.clamp(0, places.length - 1),
             onSelected: (i) => setState(() => _tab = i),
+            // Every website on show at once (Jose, 2026-09-29).
+            wrap: true,
           ),
           const SizedBox(height: 12),
           _place(context, places[_tab.clamp(0, places.length - 1)], wide: true),
