@@ -161,11 +161,13 @@ void main() {
 
     final context = tester.element(find.byKey(const ValueKey('gbp-row-loc-2')));
     final tint = ToneColours.of(context, Tone.bad).fill;
+    // The pill carries the problem; the row stays neutral (desktop review
+    // 2026-11-13, Top 7: whole red rows read as an alarm for every listing).
     expect(
       tester
           .widget<Material>(find.byKey(const ValueKey('gbp-row-loc-2')))
           .color,
-      tint,
+      isNot(tint),
     );
     expect(
       tester

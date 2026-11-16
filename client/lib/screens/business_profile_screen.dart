@@ -877,11 +877,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         for (final l in rows)
           Material(
             key: ValueKey('gbp-row-${l['id']}'),
-            color: _live(l)
-                ? (l['id'] == _openId
-                      ? theme.colorScheme.primaryContainer
-                      : Colors.transparent)
-                : ToneColours.of(context, Tone.bad).fill,
+            // Neutral: the red pill names the problem; a whole red row read
+            // as an alarm (desktop review 2026-11-13, Top 7).
+            color: l['id'] == _openId
+                ? theme.colorScheme.primaryContainer
+                : Colors.transparent,
             child: InkWell(
               onTap: () => setState(
                 () => _openId = l['id'] == _openId ? null : l['id'] as String?,
@@ -955,9 +955,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Material(
               key: ValueKey('gbp-card-${l['id']}'),
-              color: _live(l)
-                  ? theme.colorScheme.surface
-                  : ToneColours.of(context, Tone.bad).fill,
+              color: theme.colorScheme.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
                 side: BorderSide(color: EzBiziTheme.edge(context)),

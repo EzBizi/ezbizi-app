@@ -35,7 +35,9 @@ class BusinessProfilePerformanceController extends Controller
 
         $locations = $this->reachable($request->user())
             ->when($input['location'] ?? null, fn ($q, $id) => $q->whereKey($id))
-            ->get(['id', 'title']);
+            // city + state: label() names a listing by its town; without them 39
+            // listings all read "A1 Chimney" (desktop review 2026-11-13, Top 4).
+            ->get(['id', 'title', 'city', 'state']);
         $rows = BusinessLocationMetric::query()->whereIn('business_location_id', $locations->modelKeys())
             ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
             ->get(['business_location_id', 'date', 'metric', 'value']);
