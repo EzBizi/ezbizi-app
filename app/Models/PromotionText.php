@@ -17,6 +17,11 @@ use Illuminate\Database\Eloquent\Model;
 class PromotionText extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A text sent, failed or answered is its promotion's change on the live feed (RecordsParentChanges): the counts move. */
+    protected static array $changeParent = ['membership_promotions', Promotion::class, 'promotion_id'];
+
     use HasUuids;
 
     protected function casts(): array

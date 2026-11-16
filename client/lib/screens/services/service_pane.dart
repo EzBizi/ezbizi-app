@@ -61,21 +61,41 @@ class _ServicePaneState extends State<ServicePane> {
     super.initState();
     _groupId = inventoryMap(widget.service['group'])?['id'] as String?;
     _labelId = inventoryMap(widget.service['label'])?['id'] as String?;
+    _filled = _typed;
     _loadTaxonomy();
   }
 
   @override
   void didUpdateWidget(covariant ServicePane oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.service != widget.service) {
-      _service = widget.service;
-      _name.text = widget.service['name'] as String? ?? '';
-      _description.text = widget.service['description'] as String? ?? '';
-      _price.text = _priceText(widget.service['price_minor']);
-      _groupId = inventoryMap(widget.service['group'])?['id'] as String?;
-      _labelId = inventoryMap(widget.service['label'])?['id'] as String?;
-    }
+    if (oldWidget.service == widget.service) return;
+    // A live re-read of the list (somebody else's edit) fills the boxes only
+    // when nothing is typed here; another service always fills.
+    final other = oldWidget.service['id'] != widget.service['id'];
+    _service = widget.service;
+    if (other || (!_busy && _typed == _filled)) _fill(widget.service);
   }
+
+  void _fill(Map<String, dynamic> row) {
+    _name.text = row['name'] as String? ?? '';
+    _description.text = row['description'] as String? ?? '';
+    _price.text = _priceText(row['price_minor']);
+    _groupId = inventoryMap(row['group'])?['id'] as String?;
+    _labelId = inventoryMap(row['label'])?['id'] as String?;
+    _filled = _typed;
+  }
+
+  /// What the boxes hold, to tell an edit in progress from a filled form.
+  String get _typed => [
+    _name.text,
+    _description.text,
+    _price.text,
+    _groupId,
+    _labelId,
+  ].join('|');
+
+  /// [_typed] as last filled from the server.
+  String _filled = '';
 
   @override
   void dispose() {
@@ -141,6 +161,7 @@ class _ServicePaneState extends State<ServicePane> {
     setState(() {
       _busy = false;
       _service = Map<String, dynamic>.from(response.data as Map);
+      _fill(_service);
     });
     widget.onChanged(_service);
   }
