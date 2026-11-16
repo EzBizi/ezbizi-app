@@ -384,11 +384,6 @@ const Map<String, _Exemption> _exempt = {
     owner: 'Phone',
     host: null,
   ),
-  'lib/widgets/notification_bell.dart': (
-    why: 'the bell drop-down of recent notifications',
-    owner: 'UI/UX',
-    host: null,
-  ),
 };
 
 /// Server-search screen → the test that asserts it sends q. Pin C, plus the
