@@ -130,7 +130,7 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
 
       widget.onApproved?.call(
         ((data is Map<String, dynamic> ? data['approved_company_ids'] : null)
-                as List? ??
+                    as List? ??
                 const [])
             .map((id) => id.toString())
             .toList(growable: false),
@@ -211,7 +211,10 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
     }
 
     if (_error != null) {
-      return Padding(padding: const EdgeInsets.all(24), child: ErrorNote(_error!));
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: ErrorNote(_error!),
+      );
     }
 
     return Column(
@@ -310,15 +313,12 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              switch (status) {
-                'pending' => 'We are looking at your request',
-                'approved' => 'Phone service is switched on',
-                'partial' => 'Some of it is switched on',
-                _ => 'We could not switch it on yet',
-              },
-              style: theme.textTheme.titleSmall,
-            ),
+            Text(switch (status) {
+              'pending' => 'We are looking at your request',
+              'approved' => 'Phone service is switched on',
+              'partial' => 'Some of it is switched on',
+              _ => 'We could not switch it on yet',
+            }, style: theme.textTheme.titleSmall),
             const SizedBox(height: 8),
             Text(
               status == 'pending'
@@ -330,8 +330,12 @@ class _PhoneServiceRequestPaneState extends State<PhoneServiceRequestPane> {
             ),
 
             // The sentence a person wrote, shown as written. A refusal that
-            // does not explain itself is a dead end.
-            if ((latest['decision_note'] as String?)?.isNotEmpty ?? false) ...[
+            // does not explain itself is a dead end. An approval needs no
+            // reason, and its note is staff's own record (desktop review D9:
+            // it named the owner and an internal session to the customer).
+            if (status != 'approved' &&
+                ((latest['decision_note'] as String?)?.isNotEmpty ??
+                    false)) ...[
               const SizedBox(height: 12),
               Text(
                 latest['decision_note'] as String,
