@@ -472,6 +472,7 @@ class TaskWriter
                 $child->delete();
             }
             $this->audit->log('task.deleted', $task, actor: $actor);
+            app(MondayOutbox::class)->record($task, ['delete']); // archived on Monday; its subitems go with it
             $task->delete();
         });
     }

@@ -1131,9 +1131,9 @@ void main() {
     expect(find.text('Dates'), findsOneWidget);
     expect(find.byKey(const Key('date-range-button')), findsNothing);
 
+    // One tap on a quick choice takes it (Jose, 2026-11-16: "u click ... the
+    // preselected dates and nothing happens").
     await tester.tap(find.byKey(const ValueKey('date-preset-last_7')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Show 7 days'));
     await tester.pumpAndSettle();
 
     expect(asked.last, {'from': '2026-09-30', 'to': '2026-10-06'});
@@ -1149,8 +1149,6 @@ void main() {
     await tester.tap(find.byKey(const Key('date-range-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('date-preset-this_week')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Show 2 days'));
     await tester.pumpAndSettle();
 
     // Drawn whole, not cut to "Mon, Oct 5 –…" by a second flexible child

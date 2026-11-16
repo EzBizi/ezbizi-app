@@ -16,6 +16,7 @@ import 'instagram_comments_panel.dart';
 import 'qr_codes_tab.dart';
 import 'tiktok_post_choices.dart';
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -183,10 +184,21 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   void initState() {
     super.initState();
     _load();
+    // A post sent, failed, approved or written elsewhere (the minute sweep,
+    // a colleague, the weekly listing posts): the Posts list and its tiles
+    // re-read; Compose's draft and an open post are their own.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'social_posts'},
+      (_) => _loadPosts(),
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _poll?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();
@@ -3757,8 +3769,11 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
   List<_SentPost>? _dayPosts;
   final TextEditingController _dayQuery = TextEditingController();
 
+  LiveSubscription? _live;
+
   @override
   void dispose() {
+    _live?.cancel();
     _dayQuery.dispose();
     super.dispose();
   }
@@ -3791,6 +3806,15 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
     final now = widget.focusDay ?? DateTime.now();
     _month = DateTime(now.year, now.month, 1);
     _loadRange();
+    // The calendar follows posts scheduled or sent elsewhere.
+    final api = widget.api;
+    if (api != null) {
+      _live = LiveChanges.of(api).subscribe(
+        {'social_posts'},
+        (_) => _loadRange(),
+        active: LiveChanges.visible(this),
+      );
+    }
   }
 
   @override

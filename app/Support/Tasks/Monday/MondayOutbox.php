@@ -40,11 +40,13 @@ final class MondayOutbox
         if (self::$suppressed > 0 || ($kinds === [] && $update === null) || ! $this->linked($task)) {
             return;
         }
-        // On a branch or company board a Monday board was merged into (2026-11-16), only the
-        // tasks that came from Monday go back to it; the branch board's own work stays here.
-        $board = $task->relationLoaded('board') ? $task->board : $task->board()->withoutGlobalScopes()->first();
-        if (! in_array($board?->kind, [\App\Models\TaskBoard::KIND_CUSTOM, \App\Models\TaskBoard::KIND_USER], true)
-            && ! str_starts_with((string) $task->external_ref, 'monday:')) {
+        // Jose, 2026-11-16: "why won't they be copied in monday from ezbizi, if everything else
+        // syncs". A task made here on a Monday board — by a person or a rule — is made on Monday
+        // (create), and from then on goes both ways. A task that is not on Monday and was never
+        // sent there (a branch board's own work from before its Monday board was merged in) is
+        // not pushed after the fact, so Monday is not flooded with the past.
+        if (! str_starts_with((string) $task->external_ref, 'monday:') && ! in_array('create', $kinds, true)
+            && ! MondayOutboxEntry::query()->where('task_id', $task->id)->whereJsonContains('kinds', 'create')->exists()) {
             return;
         }
         if ($update !== null) {

@@ -5,6 +5,19 @@ import 'package:ezbizi_client/core/live_changes.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/customer_experience/complaints_tab.dart';
+import 'package:ezbizi_client/screens/email/gmail_inbox.dart';
+import 'package:ezbizi_client/screens/google_campaigns_view.dart';
+import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
+import 'package:ezbizi_client/screens/customers/memberships_dashboard.dart';
+import 'package:ezbizi_client/screens/customers/memberships_members.dart';
+import 'package:ezbizi_client/screens/customers/memberships_promotions.dart';
+import 'package:ezbizi_client/screens/customers/memberships_settings.dart';
+import 'package:ezbizi_client/screens/inspection/reports_tab.dart'
+    as inspection;
+import 'package:ezbizi_client/screens/jobs/estimates_tab.dart';
+import 'package:ezbizi_client/screens/services/service_list.dart';
+import 'package:ezbizi_client/screens/services/service_pane.dart';
+import 'package:ezbizi_client/screens/services/service_settings.dart';
 import 'package:ezbizi_client/screens/fleet/vehicle_pane.dart';
 import 'package:ezbizi_client/screens/hr/records_tab.dart';
 import 'package:ezbizi_client/screens/phone/records_tab.dart' as phone;
@@ -227,6 +240,235 @@ void main() {
         if (u.path.endsWith('/phone/calls')) u.queryParameters['page'],
     ];
     expect(pages, ['1', '2'], reason: 'older pages stay and re-read too');
+  });
+
+  for (final (name, path, type, permissions, home)
+      in <
+        (
+          String,
+          String,
+          String,
+          List<String>,
+          Widget Function(ApiClient, Session),
+        )
+      >[
+        (
+          'Memberships dashboard',
+          '/memberships',
+          'memberships',
+          ['memberships.view', 'memberships.dashboard.view'],
+          (api, session) => MembershipsDashboard(api: api, session: session),
+        ),
+        (
+          'Memberships members',
+          '/memberships',
+          'memberships',
+          ['memberships.view', 'memberships.members.view'],
+          (api, session) => MembershipsMembers(api: api, session: session),
+        ),
+        (
+          'Memberships plans',
+          '/memberships/plans',
+          'membership_plans',
+          ['memberships.view', 'memberships.settings.view'],
+          (api, session) => MembershipsSettings(api: api, session: session),
+        ),
+        (
+          'Promotions sent',
+          '/memberships/promotions',
+          'membership_promotions',
+          ['memberships.view', 'memberships.promotions.view'],
+          (api, session) => MembershipsPromotions(api: api, session: session),
+        ),
+        (
+          'Estimates',
+          '/estimates',
+          'estimates',
+          ['jobs.view', 'estimates.view', 'jobs.financials'],
+          (api, session) => EstimatesTab(api: api, session: session),
+        ),
+        (
+          'Inspection reports',
+          '/inspections/reports',
+          'inspection_reports',
+          ['inspection.view', 'inspection.reports.view'],
+          (api, session) => inspection.ReportsTab(api: api, session: session),
+        ),
+        (
+          'Services',
+          '/services',
+          'services',
+          ['services.view', 'services.catalogue.view'],
+          (api, session) =>
+              ServiceList(api: api, session: session, visible: true),
+        ),
+        (
+          'Service groups and labels',
+          '/services/groups',
+          'service_taxonomy',
+          ['services.view', 'services.settings.view'],
+          (api, session) =>
+              ServiceSettings(api: api, session: session, visible: true),
+        ),
+      ]) {
+    testWidgets('$name: a change of its type re-reads it quietly', (
+      tester,
+    ) async {
+      final s = await _pump(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: permissions,
+        handler: (r) => r.url.path.endsWith('/preview')
+            ? _json({
+                'data': {'rows': <dynamic>[]},
+              })
+            : null,
+        home: home,
+      );
+      final before = s.reads[path] ?? 0;
+      expect(before, greaterThan(0));
+      await _tick(tester, s, type, 'x-1');
+      expect(s.reads[path], before + 1);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      await _tick(tester, s, 'leads', 'l-1');
+      expect(s.reads[path], before + 1, reason: 'another type reads nothing');
+    });
+  }
+
+  for (final (name, path, type, permissions, handler, home)
+      in <
+        (
+          String,
+          String,
+          String,
+          List<String>,
+          http.Response? Function(http.Request),
+          Widget Function(ApiClient, Session),
+        )
+      >[
+        (
+          'Marketing posts',
+          '/social/posts',
+          'social_posts',
+          ['marketing.view', 'marketing.dashboard.view'],
+          (r) => r.url.path.endsWith('/social/posts')
+              ? _json({
+                  'data': <dynamic>[],
+                  'meta': {'tiles': <String, dynamic>{}},
+                })
+              : null,
+          (api, session) => SocialMediaTab(api: api, session: session),
+        ),
+        (
+          'Ads Manager campaigns',
+          '/ads-manager/google/campaigns',
+          'ad_schedules',
+          ['ads_manager.view'],
+          (r) => r.url.path.endsWith('/ads/accounts')
+              ? _json({
+                  'data': [
+                    {'connection_id': 'sc-1', 'display_name': 'A-1 Chimney'},
+                  ],
+                })
+              : r.url.path.endsWith('/campaigns')
+              ? _json({
+                  'data': {'campaigns': <dynamic>[]},
+                })
+              : null,
+          (api, session) => GoogleCampaignsView(
+            api: api,
+            session: session,
+            sourceSwitch: const SizedBox(),
+          ),
+        ),
+        (
+          'Email inbox',
+          '/email/inbox',
+          'mailboxes',
+          ['email.view', 'email.inbox.view'],
+          (r) => r.url.path.endsWith('/email/mailboxes')
+              ? _json({
+                  'data': [
+                    {
+                      'id': 'mb-1',
+                      'address': 'office@example.test',
+                      'display_name': 'Office',
+                      'provider': 'gmail_oauth',
+                      'status': 'connected',
+                      'can_read': true,
+                    },
+                  ],
+                })
+              : r.url.path.endsWith('/email/inbox')
+              ? _json({'data': <dynamic>[], 'meta': <String, dynamic>{}})
+              : null,
+          (api, session) => GmailInbox(api: api, session: session),
+        ),
+      ]) {
+    testWidgets('$name: a change of its type re-reads it quietly', (
+      tester,
+    ) async {
+      final s = await _pump(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: permissions,
+        handler: handler,
+        home: home,
+      );
+      final before = s.reads[path] ?? 0;
+      expect(before, greaterThan(0));
+      await _tick(tester, s, type, 'x-1');
+      expect(s.reads[path], greaterThan(before));
+      final after = s.reads[path];
+      await _tick(tester, s, 'leads', 'l-1');
+      expect(s.reads[path], after, reason: 'another type reads nothing');
+    });
+  }
+
+  testWidgets('Service record: a price changed elsewhere fills the boxes; a '
+      'typed name is kept', (tester) async {
+    Map<String, dynamic> service(String name, int price) => {
+      'id': 's-1',
+      'name': name,
+      'description': null,
+      'price_minor': price,
+      'group': null,
+      'label': null,
+    };
+    var row = service('Chimney sweep', 18900);
+    late void Function(Map<String, dynamic>) reopen;
+    await _pump(
+      tester,
+      permissions: ['services.view', 'services.edit'],
+      handler: (_) => null,
+      home: (api, session) => StatefulBuilder(
+        builder: (context, setState) {
+          reopen = (r) => setState(() => row = r);
+          return ServicePane(
+            api: api,
+            session: session,
+            service: row,
+            onBack: () {},
+            onChanged: (_) {},
+            onDeleted: () {},
+          );
+        },
+      ),
+    );
+    expect(_text(tester, 'Price'), '189.00');
+
+    reopen(service('Chimney sweep', 19900));
+    await tester.pumpAndSettle();
+    expect(_text(tester, 'Price'), '199.00', reason: 'nothing typed: fills');
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Name of service'),
+      'Chimney sweep, deluxe',
+    );
+    reopen(service('Chimney sweep', 20900));
+    await tester.pumpAndSettle();
+    expect(_text(tester, 'Name of service'), 'Chimney sweep, deluxe');
+    expect(_text(tester, 'Price'), '199.00', reason: 'the draft is whole');
   });
 }
 

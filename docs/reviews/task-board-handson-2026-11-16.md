@@ -56,6 +56,6 @@ stopped); this pass ran this worktree's.
 | 23 | L | Kanban / phone cards | A number sat 100 px right of its label ("Est. hours: ........0.5"). | Numbers shrink-wrap in a card, still right-aligned in a cell. | Fixed (pass 2 commit) |
 | 24 | L | Timeline cell | "11/16/2026 –…" cut off in a 120 px cell. | Short range in the pill, full range on hover. | Fixed (pass 2 commit) |
 | 25 | L | Label column menu | A label column's add box said "+ Add tag" over "Edit labels…". | "+ Add label" there, "+ Add tag" under Tags. | Fixed (pass 2 commit) |
-| 26 | M | Table, sideways scroll | The Task column scrolls away with the rest, so a row's cells cannot be told apart once scrolled right (Monday pins the item column). | Pin the Task column. Needs a split table (fixed left pane + scrolling right pane); not started. | Open |
-| 27 | L | Headings at 80 px | Person columns' names still cut: "REVIE", "ASSIG". | Tooltip with the full name, or 96 px for named person columns. | Open |
-| 28 | L | Bulk bar | Picking the first row inserts the bar above the table and pushes every row 54 px down under the pointer. | Float the bar at the bottom, Monday's way. | Open |
+| 26 | M | Table, sideways scroll | The Task column scrolls away with the rest, so a row's cells cannot be told apart once scrolled right (Monday pins the item column). | Pin the Task column. Needs a split table (fixed left pane + scrolling right pane); not started. | Fixed dcd58b074 |
+| 27 | L | Headings at 80 px | Person columns' names still cut: "REVIE", "ASSIG". | Tooltip with the full name, or 96 px for named person columns. | Fixed 70c86a40c |
+| 28 | L | Bulk bar | Picking the first row inserts the bar above the table and pushes every row 54 px down under the pointer. | Float the bar at the bottom, Monday's way. | Fixed e1348d957 |

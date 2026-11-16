@@ -36,6 +36,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InspectionReport extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'inspection_reports';
+
+    /** Filed where automationScope() files it: the job's branch, else the customer's (ChangeFeed). */
+    public function changeFeedPlace(): array
+    {
+        [, $franchise] = $this->automationScope();
+
+        return [null, $franchise];
+    }
+
     use HasAttachments;
     use HasUuids;
     use WrittenOnce;

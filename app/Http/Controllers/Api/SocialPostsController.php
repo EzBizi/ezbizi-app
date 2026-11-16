@@ -457,6 +457,7 @@ class SocialPostsController extends Controller
                 'target' => 'Only a post that failed can be sent again. This one is '.$target->status.'.',
             ]);
         }
+        SocialPostTarget::announce($target->getKey());
 
         if ($due) {
             PublishSocialTarget::dispatch($target->getKey());

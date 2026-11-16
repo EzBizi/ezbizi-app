@@ -15,6 +15,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Promotion extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). It names several branches, so the feed asks which a reader reaches (ChangeFeed::NARROW). */
+    protected static string $changeType = 'membership_promotions';
+
     use HasUuids;
 
     protected function casts(): array

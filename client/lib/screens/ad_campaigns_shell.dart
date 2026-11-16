@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/job_money.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
@@ -143,10 +144,19 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
     super.initState();
     search.addListener(() => setState(() {}));
     _loadAccounts();
+    // A schedule flipped a campaign on or off (the minute applier) or was
+    // set by somebody else: the campaigns and their schedules re-read
+    // quietly. The figures themselves are the ad network's, read live.
+    _live = LiveChanges.of(widget.api).subscribe({'ad_schedules'}, (_) {
+      if (account != null && !loading) return load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     search.dispose();
     super.dispose();
   }

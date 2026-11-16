@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -90,13 +91,23 @@ class _MembershipsPromotionsState extends State<MembershipsPromotions> {
   void initState() {
     super.initState();
     _loadSent();
+    // A promotion sending (its counts climbing) or a reply coming back: the
+    // Sent list re-reads; the composer and the audience are left alone.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'membership_promotions'},
+      (_) => _loadSent(),
+      active: LiveChanges.visible(this),
+    );
     // Open on a range, so the audience count and the composer are there at
     // once; an empty page until a preset was tapped read as unbuilt (UI audit).
     _choosePreset(_Preset.lastMonth);
   }
 
+  LiveSubscription? _live;
+
   @override
   void dispose() {
+    _live?.cancel();
     for (final c in [_amountMin, _amountMax, _search, _body, _testTo]) {
       c.dispose();
     }

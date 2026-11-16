@@ -170,6 +170,41 @@ class MondayPushTest extends TestCase
         $this->assertSame('monday:901', $this->inTenant($this->tenant['org'], fn () => TaskUpdate::query()->where('task_id', $this->task->id)->value('external_ref')));
     }
 
+    /**
+     * Jose 11-16: a branch board merged with its Monday board sends what is made on it from now on,
+     * deletes included, but not its own work from before the merge (nor that work's subtasks).
+     */
+    public function test_a_merged_branch_board_sends_new_tasks_and_deletes_but_not_its_past(): void
+    {
+        [$branch, $old, $new, $sub] = $this->inTenant($this->tenant['org'], function () {
+            $branch = TaskBoard::query()->where('franchise_id', $this->tenant['franchise']->id)->firstOrFail();
+            $old = app(TaskWriter::class)->create($branch, ['title' => 'Pre-merge job'], $this->jose);
+            $this->board->forceFill(['external_ref' => null])->save();
+            $branch->forceFill(['external_ref' => 'monday:100'])->save(); // the merge
+            app(TaskWriter::class)->update($old->fresh(), ['title' => 'Pre-merge job (edited)'], $this->jose);
+            app(TaskWriter::class)->comment($old->fresh(), $this->jose, 'Called back');
+            $this->assertSame(0, MondayOutboxEntry::query()->count(), 'the past is not pushed');
+            $new = app(TaskWriter::class)->create($branch->fresh(), ['title' => 'After ship job'], $this->jose);
+            $sub = app(TaskWriter::class)->create($branch->fresh(), ['title' => 'Bring the ladder', 'parent_task_id' => $old->id], $this->jose);
+
+            return [$branch, $old, $new, $sub];
+        });
+
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+
+        $made = collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_item(') || str_contains($m['query'], 'create_subitem('));
+        $this->assertSame(['After ship job'], $made->pluck('vars.n')->values()->all(), 'only the new task; the subtask of a past task stays here');
+        $this->assertSame('monday:77', $this->inTenant($this->tenant['org'], fn () => $new->fresh()->external_ref));
+        $this->assertNull($this->inTenant($this->tenant['org'], fn () => $sub->fresh()->external_ref));
+
+        $this->mutations = [];
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->delete($new->fresh(), $this->jose));
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $this->assertCount(1, $this->mutations);
+        $this->assertStringContainsString('archive_item(', $this->mutations[0]['query']);
+        $this->assertSame('77', $this->mutations[0]['vars']['i']);
+    }
+
     /** All Calls and Toula: archived on Monday, archived here, a read-only mirror (Jose via desk, 11-13). */
     public function test_an_archived_board_is_never_written_back_nor_polled(): void
     {
