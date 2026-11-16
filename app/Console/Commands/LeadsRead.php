@@ -241,9 +241,8 @@ class LeadsRead extends Command
             blank($lead->email) ? $fill['email'] = $email : $suggest['email'] = $email;
         }
         $address = $answer['address'] ?? null;
-        // A held address the reading already contains is the same place; anything else is offered.
-        $held = mb_strtolower(trim((string) $lead->address));
-        if ($address !== null && ($held === '' || ! str_contains(mb_strtolower($address), $held))) {
+        // The same place spelled differently is not offered (Lead::sameAddress).
+        if ($address !== null && (blank($lead->address) || ! Lead::sameAddress($address, $lead->address))) {
             blank($lead->address) ? $fill['address'] = $address : $suggest['address'] = $address;
         }
 

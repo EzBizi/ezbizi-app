@@ -26,7 +26,7 @@ const _triggerWords = {
   'lead.missed_call': 'Missed call',
   'lead.call_not_booked': 'After a call that did not book',
   'lead.follow_up_due': 'Went quiet without booking',
-  'lead.received': 'New enquiry while the office is closed',
+  'lead.received': 'New enquiry',
   'lead.customer_replied': 'Customer wrote while the office is closed',
 };
 

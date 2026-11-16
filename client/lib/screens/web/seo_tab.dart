@@ -659,10 +659,19 @@ class _SiteTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        site['host'] as String,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
+                      // One line, shrunk to fit: in the narrow list column a
+                      // host broke mid-word ("acefireplaceservices.co / m"),
+                      // UI pass 2026-11-17.
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          site['host'] as String,
+                          maxLines: 1,
+                          softWrap: false,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       Text(

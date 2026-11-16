@@ -248,6 +248,10 @@ class LeadsController extends Controller
             ->toBase()
             ->pluck('n', 'kind')
             ->map(fn ($n) => (int) $n);
+        // Recovery is a tab across sources; drawn only when it has some, as the rest.
+        if (($recovery = (clone $query)->whereRaw(self::UNREAD_SQL)->whereNotNull('leads.recovery_at')->reorder()->count()) > 0) {
+            $unreadBySource['recovery'] = $recovery;
+        }
 
         if (is_string($status = $request->query('status')) && $status !== '') {
             $query->where('leads.status', $status);
@@ -699,6 +703,22 @@ class LeadsController extends Controller
      * splits it: LS Call is the calls, LS Text everything else Google sends
      * (texts and bookings), so ticking every chip reaches every lead.
      */
+    /**
+     * The stored reading, less any address it offers that is the lead's own
+     * spelled differently: readings saved before Lead::sameAddress still
+     * carry the offer (Jose, 2026-11-16, John Sczepanski).
+     */
+    private static function readingNow(Lead $lead): ?array
+    {
+        $reading = $lead->ai_set['reading'] ?? null;
+        if (is_array($reading) && isset($reading['suggest']['address']) && Lead::sameAddress($reading['suggest']['address'], $lead->address)) {
+            unset($reading['suggest']['address']);
+            $reading['suggest'] = $reading['suggest'] === [] ? null : $reading['suggest'];
+        }
+
+        return $reading;
+    }
+
     private static function whereKind($query, string $key): void
     {
         match ($key) {
@@ -709,6 +729,8 @@ class LeadsController extends Controller
             Lead::KIND_LS_BOOKING => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)
                 ->where('leads.lead_type', 'BOOKING'),
             Lead::STATUS_JOB_APPLICANT => $query->where('leads.status', Lead::STATUS_JOB_APPLICANT),
+            // Every source a Recovery text went to (Jose, 2026-11-16).
+            'recovery' => $query->whereNotNull('leads.recovery_at'),
             Lead::KIND_BAD_RATING => $query->where('leads.source', Lead::SOURCE_WEBSITE_FORM)
                 ->where('leads.lead_type', 'BAD_RATING'),
             // Forms, without the Bad Ratings that have their own tab now.
@@ -1308,6 +1330,7 @@ class LeadsController extends Controller
             // sent it rather than a person, for the bot mark.
             'sent_by' => $sentBy !== '' ? $sentBy : null,
             'automatic' => (bool) $c->is_automatic,
+            'automation_name' => $c->automation_name,
             // Sent by staff from the WhatsApp Business app on the phone.
             'sent_from_phone' => str_starts_with((string) $c->remote_id, WhatsAppWebhookController::FROM_APP),
             // Tapped from a Click-to-Message ad's suggested questions, not typed.
@@ -2259,6 +2282,8 @@ class LeadsController extends Controller
         return [
             'id' => $lead->id,
             'source' => $lead->source,
+            // A Recovery text went to it: a "Recovery" chip in All (Jose, 2026-11-16).
+            'recovery_at' => $lead->recovery_at?->toIso8601String(),
 
             // A specimen from `ezbizi:thumbtack-test-lead`. It stays in the
             // list — seeing it is how somebody knows the pipe works — and the
@@ -2296,7 +2321,7 @@ class LeadsController extends Controller
             // lead holds, each a one-tap "Use ...?" (a PATCH of that field);
             // availability and deadline for the booking panel; source is the
             // message it was read from, for the activity.
-            'reading' => $lead->ai_set['reading'] ?? null,
+            'reading' => self::readingNow($lead),
             // Why AI set the status, while the status is still AI's.
             'ai_reason' => in_array('status', self::aiHeld($lead), true) ? ($lead->ai_set['reason'] ?? null) : null,
             // Google Local Services credit: AI's suggested reason, then what

@@ -162,8 +162,12 @@ class _LeadThreadState extends State<LeadThread> {
   /// note, the customer) behind one control, so the conversation keeps the
   /// screen: they took two thirds of it and left two messages in view (Jose,
   /// 2026-09-30: "a lot of wasted space and u can barely see the message
-  /// window").
+  /// window"). A desktop pane shorter than [_shortPaneBelow] folds the same
+  /// way, behind its "Details" line.
   bool _showDetails = false;
+
+  /// "What they asked" opened past its three lines.
+  bool _summaryOpen = false;
 
   /// Design 161: the form answers and the note, each opened in place from
   /// the header, and the header folded to its name row while the thread is
@@ -885,6 +889,28 @@ class _LeadThreadState extends State<LeadThread> {
     ],
   );
 
+  /// A short desktop pane: one line under the name row that opens where the
+  /// lead stands, what they asked, the facts and the customer.
+  Widget _shortDetailsToggle(ThemeData theme) => Align(
+    alignment: AlignmentDirectional.centerStart,
+    child: TextButton.icon(
+      key: const ValueKey('thread-short-details'),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        minimumSize: const Size(0, 28),
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      iconAlignment: IconAlignment.end,
+      onPressed: () => setState(() => _showDetails = !_showDetails),
+      icon: Icon(
+        _showDetails ? Icons.expand_less : Icons.expand_more,
+        size: 18,
+      ),
+      label: const Text('Details'),
+    ),
+  );
+
   /// A small rounded chip in the header: the note, the viewers.
   Widget _headerChip(
     ThemeData theme, {
@@ -1322,13 +1348,7 @@ class _LeadThreadState extends State<LeadThread> {
           if (hasSummary)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                summary,
-                key: const ValueKey('lead-summary'),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium,
-              ),
+              child: _summaryText(theme, summary),
             ),
           // The reply reader (Jose, 2026-11-13): what the customer's last
           // message said, with the message itself behind it.
@@ -1354,6 +1374,50 @@ class _LeadThreadState extends State<LeadThread> {
       ),
     );
   }
+
+  /// The AI's line, three lines at most; "More" only when that cut
+  /// something, so the rest is never out of reach.
+  Widget _summaryText(ThemeData theme, String summary) => LayoutBuilder(
+    builder: (context, box) {
+      final style = DefaultTextStyle.of(
+        context,
+      ).style.merge(theme.textTheme.bodyMedium);
+      final measure = TextPainter(
+        text: TextSpan(text: summary, style: style),
+        maxLines: 3,
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout(maxWidth: box.maxWidth);
+      final clipped = measure.didExceedMaxLines;
+      measure.dispose();
+      final open = clipped && _summaryOpen;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            summary,
+            key: const ValueKey('lead-summary'),
+            maxLines: open ? null : 3,
+            overflow: open ? null : TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium,
+          ),
+          if (clipped)
+            TextButton(
+              key: const ValueKey('lead-summary-more'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                minimumSize: const Size(0, 24),
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () => setState(() => _summaryOpen = !_summaryOpen),
+              child: Text(open ? 'Less' : 'More'),
+            ),
+        ],
+      );
+    },
+  );
 
   Widget _foldLink(
     ThemeData theme, {
@@ -1548,11 +1612,23 @@ class _LeadThreadState extends State<LeadThread> {
       ),
   ];
 
+  /// Below this pane height the header's lower part (where the lead stands,
+  /// what they asked, the facts, the customer) folds behind one "Details"
+  /// line: drawn open at 1440x400 it left the thread 15 px.
+  static const double _shortPaneBelow = 560;
+
+  /// Opened in a short pane, the lower part scrolls within this share of the
+  /// pane rather than pushing the thread off it.
+  static const double _shortDetailsShare = 0.3;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(builder: _pane);
+
+  Widget _pane(BuildContext context, BoxConstraints pane) {
     final theme = Theme.of(context);
     final lead = _lead;
     final narrow = MediaQuery.sizeOf(context).width < 600;
+    final short = pane.maxHeight.isFinite && pane.maxHeight < _shortPaneBelow;
     final src = LeadSourceFields.from(lead, _loaded);
 
     return Column(
@@ -1570,23 +1646,15 @@ class _LeadThreadState extends State<LeadThread> {
               // and never open while the keyboard is up.
               final folded = narrow
                   ? !_showDetails || MediaQuery.viewInsetsOf(context).bottom > 0
+                  : short
+                  ? !_showDetails
                   : _collapsed && !_editingNote;
               final working = [
                 if (_noteOpen || _editingNote) _noteBlock(theme, lead),
                 if (_booking != null) _bookingBlock(theme),
                 if (_offer != null) _offerBlock(theme),
               ];
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (narrow)
-                    _phoneBar(theme, lead, src)
-                  else
-                    _nameRow(theme, lead, src, narrow: narrow, width: box.maxWidth),
-                  // Scrolled back, a desktop keeps the moves under the name.
-                  if (!narrow && folded && widget.onStatusChanged != null)
-                    _movesRow(lead, box.maxWidth),
+              final lower = <Widget>[
                   if (!folded) ...[
                     if (narrow) ...[
                       Padding(
@@ -1608,11 +1676,42 @@ class _LeadThreadState extends State<LeadThread> {
                       ..._follows(theme, lead, src),
                     ] else
                       _headerBody(theme, lead, src, box.maxWidth),
-                    if (!narrow) ...working,
                   ],
-                  // What somebody is in the middle of stays on a phone
-                  // whether the details are open or not.
-                  if (narrow) ...working,
+                  // What somebody is in the middle of stays on a phone, and
+                  // in a short pane, whether the details are open or not.
+                  if (narrow || short || !folded) ...working,
+              ];
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (narrow)
+                    _phoneBar(theme, lead, src)
+                  else
+                    _nameRow(theme, lead, src, narrow: narrow, width: box.maxWidth),
+                  if (!narrow && short) _shortDetailsToggle(theme),
+                  // Scrolled back, a desktop keeps the moves under the name.
+                  if (!narrow &&
+                      !short &&
+                      folded &&
+                      widget.onStatusChanged != null)
+                    _movesRow(lead, box.maxWidth),
+                  if (short && lower.isNotEmpty)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: pane.maxHeight * _shortDetailsShare,
+                      ),
+                      child: SingleChildScrollView(
+                        key: const ValueKey('thread-details-scroll'),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: lower,
+                        ),
+                      ),
+                    )
+                  else
+                    ...lower,
                 ],
               );
             },
@@ -2436,7 +2535,10 @@ class _LeadThreadState extends State<LeadThread> {
       final who = !mine
           ? 'Customer'
           : c['automatic'] == true
-          ? 'Automation'
+          // Which rule wrote it (Jose, 2026-11-16: Leads › Recovery).
+          ? (c['automation_name'] is String
+                ? 'Automatic · ${c['automation_name']}'
+                : 'Automation')
           : (c['sent_by'] as String?) ?? 'Sent outside EzBizi';
       final when = messageWhen(
         c['occurred_at'] as String?,

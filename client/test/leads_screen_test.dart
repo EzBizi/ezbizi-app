@@ -275,6 +275,49 @@ void main() {
     );
   });
 
+  // Jose, 2026-11-16: the leads a Recovery text went to, in a tab of their
+  // own with an unread badge, and still in All with a Recovery chip.
+  testWidgets('Recovery is a rail tab with its badge, and its leads keep a chip in All', (
+    tester,
+  ) async {
+    final leads = [
+      {..._lead('lead-1', 'Marcus Bell'), 'recovery_at': '2026-11-16T15:00:00Z'},
+      _lead('lead-2', 'Dana Ruiz'),
+    ];
+    await _pump(
+      tester,
+      leads: leads,
+      connections: _connected,
+      permissions: const ['leads.view', 'leads.website_chat.view', 'leads.recovery.view'],
+      unreadBySource: const {'recovery': 3, 'website_chat': 1},
+    );
+
+    expect(find.byKey(const ValueKey('recovery-badge-lead-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('recovery-badge-lead-2')), findsNothing);
+
+    final tab = find.descendant(
+      of: find.byKey(const ValueKey('source-tabs')),
+      matching: find.text('Recovery'),
+    );
+    expect(tab, findsOneWidget);
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['source'], 'recovery');
+  });
+
+  testWidgets('without its tick there is no Recovery tab', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+      permissions: const ['leads.view', 'leads.website_chat.view'],
+    );
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('source-tabs')), matching: find.text('Recovery')),
+      findsNothing,
+    );
+  });
+
   /// A STALLED SYNC SAYS SO WHERE SOMEBODY IS LOOKING.
   ///
   /// 2026-09-16: Google refused every Local Services fetch for four hours and
