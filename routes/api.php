@@ -1035,6 +1035,7 @@ Route::prefix('v1')
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
         Route::get('task-boards', [TaskBoardsController::class, 'index']);
         Route::get('task-boards/{taskBoard}', [TaskBoardsController::class, 'show']);
+        Route::get('task-boards/{taskBoard}/group-tasks', [TaskBoardsController::class, 'groupTasks']);
         // Custom boards and members, monday-style (inbox 0120).
         Route::post('task-boards', [TaskBoardsController::class, 'store']);
         Route::patch('task-boards/{taskBoard}', [TaskBoardsController::class, 'update']);

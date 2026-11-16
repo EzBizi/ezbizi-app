@@ -502,7 +502,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       });
       return;
     }
-    final res = await widget.api.get('/task-boards/$id');
+    // 50 per group: a 24,713-task board was a 20 MB reply (11-16).
+    final res = await widget.api.get('/task-boards/$id', {
+      'per_group': '$_perGroup',
+    });
     if (!mounted || _boards[_selected]['id'] != id) return;
     setState(() {
       _loading = false;
@@ -521,6 +524,45 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           }
         }
       }
+    });
+  }
+
+  static const _perGroup = 50;
+
+  /// The server's count, page and footers for group [id] (null: no group),
+  /// or null when the board came whole.
+  Map? _totalsOf(Object? id) =>
+      (_board?['group_totals'] as Map?)?[id == null ? '' : '$id'] as Map?;
+
+  /// Show more: the group's next page, added to the board.
+  Future<void> _showMore(String? groupId) async {
+    final board = _board;
+    final at = _totalsOf(groupId);
+    if (board == null || at == null) return;
+    final res = await widget.api.get(
+      '/task-boards/${board['id']}/group-tasks',
+      {
+        'group_id': groupId ?? '',
+        'offset': '${at['shown']}',
+        'limit': '$_perGroup',
+      },
+    );
+    if (!mounted || !identical(_board, board)) return;
+    if (!res.ok) return _say(res.reason);
+    final have = {for (final t in _tasks) t['id']};
+    setState(() {
+      _board = {
+        ...board,
+        'tasks': [
+          ..._tasks,
+          for (final t in (res.body['data'] as List).cast<_Json>())
+            if (!have.contains(t['id'])) _adopt(board, t),
+        ],
+        'group_totals': {
+          ...(board['group_totals'] as Map),
+          groupId ?? '': res.body['meta'],
+        },
+      };
     });
   }
 
@@ -729,7 +771,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// group, with its subtasks, updates, files and activity (they hang off
   /// the task, so the server's move takes them along).
   Future<void> _dropOnBoard(int index, String id) async {
-    final res = await widget.api.get('/task-boards/${_boards[index]['id']}');
+    final res = await widget.api.get('/task-boards/${_boards[index]['id']}', {
+      'per_group': '1',
+    });
     if (!mounted) return;
     if (!res.ok) return _say(res.reason);
     final groups = ((res.body['data'] as Map?)?['groups'] as List?) ?? const [];
@@ -2923,7 +2967,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                       ),
                     const SizedBox(width: 8),
                     Text(
-                      all.length == 1 ? '1 task' : '${all.length} tasks',
+                      switch ((_totalsOf(id)?['count'] as num?)?.toInt() ??
+                          all.length) {
+                        1 => '1 task',
+                        final n => '$n tasks',
+                      },
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -3039,7 +3087,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           if (_canEdit && id != null) () => addLine(parent: t['id'] as String),
         ],
       ],
-      if (_footer(context, shown) case final f?) () => f,
+      if (_totalsOf(id) case {'has_more': true, 'count': num n, 'shown': num s})
+        () => _cellBorder(
+          context,
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: ValueKey('group-more-$id'),
+              onPressed: () => _showMore(id),
+              child: Text('Show more (${n - s})'),
+            ),
+          ),
+        ),
+      if (_footer(context, shown, groupId: id) case final f?) () => f,
       if (_canEdit && id != null) () => addLine(),
     ];
     if (lines.isEmpty) {
@@ -3198,7 +3258,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   /// Under a group's rows: each number or formula column's sum or average,
   /// as its settings say (design 178). Null when no column asks for one.
-  Widget? _footer(BuildContext context, List<_Json> tasks) {
+  Widget? _footer(BuildContext context, List<_Json> tasks, {String? groupId}) {
+    // The server's sums over every task, when only a page is here and
+    // nothing narrows the rows.
+    final server = _filter.isEmpty && _query.trim().isEmpty && _groupBy == null
+        ? (_totalsOf(groupId)?['footers'] as Map?)
+        : null;
     final columns = boardColumns(_board);
     if (tasks.isEmpty) return null;
     final theme = Theme.of(context);
@@ -3227,6 +3292,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     String? total(BoardColumn c) {
       if (c.footer == 'none' || (c.type != 'number' && c.type != 'formula')) {
         return null;
+      }
+      if (server?[c.id] case {'sum': num sum, 'average': num avg}) {
+        return c.footer == 'average'
+            ? 'avg ${formatColumnNumber(avg, c)}'
+            : formatColumnNumber(sum, c);
       }
       final values = [
         for (final t in tasks)
