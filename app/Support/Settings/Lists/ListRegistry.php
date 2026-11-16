@@ -83,6 +83,14 @@ final class ListRegistry
                     .'Ticoit). Everyone else is matched to Workiz\'s team list by first and last name.',
                 editPermission: 'reports.handles',
             ),
+            // The source a job gets from the line its client dialed (Jose, 2026-11-16).
+            new ListDefinition(
+                key: 'jobs.sources_by_line', label: 'Job source by line dialed', module: 'jobs',
+                columns: [['key' => 'line', 'label' => 'Line: a number, or the end of its name (- PPC)'], ['key' => 'source', 'label' => 'Workiz job source']],
+                help: 'Used by the automation step "Set job sources from the line dialed". A number matches that line; '
+                    .'anything else matches a line whose name ends with it. The source must be on the branch\'s own Workiz list.',
+                editPermission: 'jobs.edit',
+            ),
             // Which Workiz job sources Google Ads pays for (Reports' Marketing).
             new ListDefinition(
                 key: 'reports.paid_sources', label: 'Paid job sources', module: 'reports',

@@ -6,6 +6,13 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/customers/customer_detail_panel.dart';
 import 'package:ezbizi_client/screens/customers_screen.dart';
+import 'package:ezbizi_client/screens/fleet_screen.dart';
+import 'package:ezbizi_client/screens/hr/contracts_tab.dart';
+import 'package:ezbizi_client/screens/hr/invitations_tab.dart';
+import 'package:ezbizi_client/screens/hr/onboarding_tab.dart';
+import 'package:ezbizi_client/screens/hr/pto_tab.dart';
+import 'package:ezbizi_client/screens/hr/records_tab.dart';
+import 'package:ezbizi_client/screens/hr/work_hours_approval_tab.dart';
 import 'package:ezbizi_client/screens/inventory/item_list.dart';
 import 'package:ezbizi_client/screens/inventory/location_list.dart';
 import 'package:ezbizi_client/screens/inventory/order_list.dart';
@@ -14,6 +21,20 @@ import 'package:ezbizi_client/screens/project_board_screen.dart';
 import 'package:ezbizi_client/screens/scheduling/availability_pane.dart';
 import 'package:ezbizi_client/screens/scheduling/rescheduling_pane.dart';
 import 'package:ezbizi_client/screens/scheduling/schedule_pane.dart';
+import 'package:ezbizi_client/screens/financials/financial_adjustments.dart';
+import 'package:ezbizi_client/screens/financials/financial_bills.dart';
+import 'package:ezbizi_client/screens/financials/invoice_panel.dart';
+import 'package:ezbizi_client/screens/financials/invoices_tab.dart';
+import 'package:ezbizi_client/core/timestamps.dart';
+import 'package:ezbizi_client/screens/phone/call_history_pane.dart';
+import 'package:ezbizi_client/screens/phone/voicemails_pane.dart';
+import 'package:ezbizi_client/screens/phone/records_tab.dart' as phone;
+import 'package:ezbizi_client/screens/reviews_screen.dart';
+import 'package:ezbizi_client/screens/customer_experience/complaints_tab.dart';
+import 'package:ezbizi_client/screens/automations_screen.dart';
+import 'package:ezbizi_client/screens/marketing/newsletter_tab.dart';
+import 'package:ezbizi_client/screens/marketing/qr_codes_tab.dart';
+import 'package:ezbizi_client/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -432,6 +453,346 @@ void main() {
     },
   );
 
+  testWidgets('Fleet: a vehicle changed elsewhere re-reads the register and '
+      'General', (tester) async {
+    final s = await _pump(
+      tester,
+      permissions: [
+        'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
+      ],
+      handler: (r) => r.url.path.endsWith('/vehicles/summary')
+          ? _json(<String, dynamic>{})
+          : null,
+      home: (api, session) => FleetScreen(api: api, session: session),
+    );
+    final list = s.reads['/vehicles'] ?? 0;
+    final summary = s.reads['/vehicles/summary'] ?? 0;
+    await _tick(tester, s, 'vehicles', 'v-1');
+    expect(s.reads['/vehicles'], list + 1);
+    expect(s.reads['/vehicles/summary'], summary + 1);
+    await _tick(tester, s, 'people', 'u-1');
+    expect(
+      s.reads['/vehicles'],
+      list + 1,
+      reason: 'another type reads nothing',
+    );
+  });
+
+  testWidgets(
+    'Work Hours approvals: a clock-in elsewhere shows on the open day',
+    (tester) async {
+      var name = 'Pat Lin';
+      final s = await _pump(
+        tester,
+        permissions: ['work_hours.view', 'work_hours.approval.view'],
+        handler: (r) => r.url.path.endsWith('/hr/time-clock/approvals')
+            ? _json({
+                'data': {
+                  'date': '2026-10-21',
+                  'label': 'Tuesday, Oct 21',
+                  'counts': {'waiting': 1, 'approved': 0, 'no_shows': 0},
+                  'rows': [_approvalRow('u-1', name)],
+                },
+              })
+            : null,
+        home: (api, session) =>
+            WorkHoursApprovalTab(api: api, session: session),
+      );
+      expect(find.textContaining('Pat Lin'), findsWidgets);
+      name = 'Pat Lin-Moreno';
+      await _tick(tester, s, 'people', 'u-1');
+      expect(find.textContaining('Pat Lin-Moreno'), findsWidgets);
+      expect(
+        s.requests
+            .lastWhere((u) => u.path.endsWith('/approvals'))
+            .queryParameters['date'],
+        '2026-10-21',
+        reason: 'the open day, not today',
+      );
+    },
+  );
+
+  for (final (name, path, type, permissions, home)
+      in <
+        (
+          String,
+          String,
+          String,
+          List<String>,
+          Widget Function(ApiClient, Session),
+        )
+      >[
+        (
+          'HR Records',
+          '/hr/people',
+          'people',
+          ['hr.view', 'hr.records.view'],
+          (api, session) => RecordsTab(api: api, session: session),
+        ),
+        (
+          'HR Invitations',
+          '/hr/invitations',
+          'hr_invitations',
+          ['hr.view', 'hr.invitations.view'],
+          (api, session) => InvitationsTab(api: api, session: session),
+        ),
+        (
+          'HR Onboarding',
+          '/hr/onboardings',
+          'hr_invitations',
+          ['hr.view', 'hr.onboarding.view'],
+          (api, session) => OnboardingTab(api: api, session: session),
+        ),
+        (
+          'HR Contracts',
+          '/hr/contracts',
+          'hr_contracts',
+          ['hr.view', 'hr.contracts.view'],
+          (api, session) => ContractsTab(api: api, session: session),
+        ),
+        (
+          'Work Hours time off',
+          '/hr/pto',
+          'people',
+          ['work_hours.view', 'work_hours.pto.view'],
+          (api, session) => PtoTab(api: api, session: session),
+        ),
+      ]) {
+    testWidgets('$name: a change of its type re-reads it quietly', (
+      tester,
+    ) async {
+      final s = await _pump(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: permissions,
+        handler: (_) => null,
+        home: home,
+      );
+      final before = s.reads[path] ?? 0;
+      expect(before, greaterThan(0));
+      await _tick(tester, s, type, 'x-1');
+      expect(s.reads[path], before + 1);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+    });
+  }
+
+  for (final (name, path, type, permissions, home)
+      in <
+        (
+          String,
+          String,
+          String,
+          List<String>,
+          Widget Function(ApiClient, Session),
+        )
+      >[
+        (
+          'Invoices',
+          '/invoices',
+          'invoices',
+          ['financials.view', 'invoices.view'],
+          (api, session) => InvoiceListTab(api: api, me: session.me!),
+        ),
+        (
+          'Financials Bills',
+          '/financials/bills',
+          'financial_bills',
+          ['financials.view', 'financials.bills.view'],
+          (api, session) => FinancialBillsTab(api: api, me: session.me!),
+        ),
+        (
+          'Financials Adjustments',
+          '/financials/adjustments',
+          'financial_adjustments',
+          ['financials.view', 'financials.bases.view'],
+          (api, session) => FinancialAdjustmentsList(api: api),
+        ),
+      ]) {
+    testWidgets('$name: a change of its type re-reads it quietly', (
+      tester,
+    ) async {
+      final s = await _pump(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: permissions,
+        handler: (_) => null,
+        home: home,
+      );
+      final before = s.reads[path] ?? 0;
+      expect(before, greaterThan(0));
+      await _tick(tester, s, type, 'x-1');
+      expect(s.reads[path], before + 1);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      await _tick(tester, s, 'leads', 'l-1');
+      expect(s.reads[path], before + 1, reason: 'another type reads nothing');
+    });
+  }
+
+  testWidgets(
+    'Invoice record: paid online elsewhere shows on the open invoice',
+    (tester) async {
+      var status = 'sent';
+      final s = await _pump(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: ['financials.view', 'invoices.view'],
+        handler: (r) => r.url.path.endsWith('/invoices/i-1')
+            ? _json({
+                'data': {
+                  'id': 'i-1',
+                  'number': 'INV-00007',
+                  'status': status,
+                  'currency': 'USD',
+                  'issued_on': '2026-11-16',
+                  'bill_to': {'name': 'Pat Customer'},
+                  'lines': <dynamic>[],
+                  'payments': <dynamic>[],
+                  'subtotal_cents': 12500,
+                  'tax_cents': 0,
+                  'total_cents': 12500,
+                  'paid_cents': status == 'paid' ? 12500 : 0,
+                  'balance_cents': status == 'paid' ? 0 : 12500,
+                },
+              })
+            : null,
+        home: (api, session) => InvoicePanel(
+          api: api,
+          me: session.me!,
+          invoiceId: 'i-1',
+          inPlace: true,
+          onClose: () {},
+          onChanged: (_) {},
+        ),
+      );
+      final before = s.reads['/invoices/i-1']!;
+      await _tick(tester, s, 'invoices', 'i-2');
+      expect(s.reads['/invoices/i-1'], before, reason: 'another invoice');
+      status = 'paid';
+      await _tick(tester, s, 'invoices', 'i-1');
+      expect(s.reads['/invoices/i-1'], before + 1);
+    },
+  );
+
+  for (final (name, path, type, home)
+      in <(String, String, String, Widget Function(ApiClient, Session))>[
+        (
+          'Phone call history',
+          '/phone/calls',
+          'phone_calls',
+          (api, session) => CallHistoryPane(
+            api: api,
+            formats: DisplayFormats.fallback,
+            onPick: (_) {},
+          ),
+        ),
+        (
+          'Phone voicemails',
+          '/phone/calls',
+          'phone_calls',
+          (api, session) => VoicemailsPane(api: api, session: session),
+        ),
+        (
+          'Phone records (texts)',
+          '/phone/messages',
+          'phone_messages',
+          (api, session) => phone.RecordsTab(api: api, session: session),
+        ),
+      ]) {
+    testWidgets('$name: a webhook-written change re-reads it quietly', (
+      tester,
+    ) async {
+      final s = await _pump(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: ['phone.view', 'phone.records.view', 'phone.phone.view'],
+        handler: (_) => null,
+        home: home,
+      );
+      final before = s.reads[path] ?? 0;
+      expect(before, greaterThan(0));
+      await _tick(tester, s, type, 'x-1');
+      expect(s.reads[path], before + 1);
+      await _tick(tester, s, 'leads', 'l-1');
+      expect(s.reads[path], before + 1, reason: 'another type reads nothing');
+    });
+  }
+
+  for (final (name, path, type, permissions, home)
+      in <
+        (
+          String,
+          String,
+          String,
+          List<String>,
+          Widget Function(ApiClient, Session),
+        )
+      >[
+        (
+          'Reviews',
+          '/reviews',
+          'reviews',
+          ['reviews.view', 'customer_experience.view'],
+          (api, session) => ReviewsScreen(api: api, session: session),
+        ),
+        (
+          'Complaints',
+          '/complaints',
+          'complaints',
+          ['customer_experience.view', 'customer_experience.complaints.view'],
+          (api, session) => ComplaintsTab(api: api, session: session),
+        ),
+        (
+          'Automations',
+          '/automations',
+          'automations',
+          ['automations.view', 'automations.rules.view'],
+          (api, session) => AutomationsScreen(api: api, session: session),
+        ),
+        (
+          'Newsletters',
+          '/newsletters',
+          'newsletters',
+          ['newsletter.view', 'newsletter.dashboard.view'],
+          (api, session) => NewsletterTab(api: api, session: session),
+        ),
+        (
+          'QR codes',
+          '/marketing/qr-codes',
+          'qr_codes',
+          ['marketing.view', 'marketing.qr_codes.view'],
+          (api, session) => QrCodesTab(api: api, session: session),
+        ),
+        (
+          'Dashboard glances',
+          '/dashboard',
+          'jobs',
+          ['dashboard.view'],
+          (api, session) => DashboardScreen(api: api, session: session),
+        ),
+      ]) {
+    testWidgets('$name: a change of its type re-reads it quietly', (
+      tester,
+    ) async {
+      final s = await _pump(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: permissions,
+        handler: (r) => r.url.path.endsWith('/dashboard')
+            ? _json({'period': 'day', 'glances': <dynamic>[]})
+            : null,
+        home: home,
+      );
+      final before = s.reads[path] ?? 0;
+      expect(before, greaterThan(0));
+      await _tick(tester, s, type, 'x-1');
+      expect(s.reads[path], before + 1);
+      await _tick(tester, s, 'inventory_locations', 'loc-1');
+      expect(s.reads[path], before + 1, reason: 'another type reads nothing');
+    });
+  }
+
   testWidgets('a change of another type reads nothing again', (tester) async {
     final s = await _pump(
       tester,
@@ -459,6 +820,7 @@ class _Server {
   List<Map<String, dynamic>> feed = const [];
   int cursor = 1;
   final Map<String, int> reads = {};
+  final List<Uri> requests = [];
   late ApiClient api;
 }
 
@@ -502,6 +864,7 @@ Future<_Server> _pump(
     client: MockClient((request) async {
       final path = request.url.path.replaceFirst('/api/v1', '');
       s.reads[path] = (s.reads[path] ?? 0) + 1;
+      s.requests.add(request.url);
       if (path == '/me') {
         return _json({
           'data': {..._me, 'permissions': permissions},
@@ -545,6 +908,30 @@ Future<void> _tick(
   LiveChanges.of(s.api).poll();
   await tester.pumpAndSettle();
 }
+
+Map<String, dynamic> _approvalRow(String id, String name) => {
+  'person': {'id': id, 'name': name, 'role': 'Technician'},
+  'shifts': [
+    {
+      'id': 's-$id',
+      'clocked_in': '8:00',
+      'clocked_out': '16:00',
+      'clocked_in_local': '2026-10-21 08:00',
+      'clocked_out_local': '2026-10-21 16:00',
+      'ended_by': 'person',
+      'edited': null,
+    },
+  ],
+  'worked_seconds': 8 * 3600,
+  'scheduled': {'start': '08:00', 'end': '16:00'},
+  'late_seconds': 0,
+  'early_seconds': 0,
+  'no_show': false,
+  'status': 'waiting',
+  'approved_by': null,
+  'approved_at': null,
+  'adjustments': <Object>[],
+};
 
 Map<String, dynamic> _reschedule(String customer) => {
   'area_id': 'a-mg',

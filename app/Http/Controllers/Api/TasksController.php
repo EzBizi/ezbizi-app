@@ -260,7 +260,11 @@ class TasksController extends Controller
             'ids.*' => ['uuid'],
             'op' => ['required', Rule::in(['move', 'copy', 'delete', 'status', 'assign'])],
             'group_id' => [Rule::requiredIf(in_array($request->input('op'), ['move', 'copy'], true)), 'nullable', 'uuid'],
-            'status' => [Rule::requiredIf($request->input('op') === 'status'), 'nullable', 'string', 'max:64'],
+            // A board's own statuses go by id, as one task's PATCH does; a
+            // status key still works (bulk Status sent the id as a key and every
+            // task came back refused, hands-on QA 11-16).
+            'status' => [Rule::requiredIf($request->input('op') === 'status' && ! $request->filled('status_id')), 'nullable', 'string', 'max:64'],
+            'status_id' => ['sometimes', 'nullable', 'uuid'],
             'assignee_user_id' => ['sometimes', 'nullable', 'uuid'],
         ]);
         $user = $request->user();
@@ -281,7 +285,8 @@ class TasksController extends Controller
                     'move' => $this->writer->move($task, $group, null, $user),
                     'copy' => $this->writer->copy($task, $group, $user),
                     'delete' => $this->writer->delete($task, $user),
-                    'status' => $this->writer->update($task, ['status' => $input['status']], $user),
+                    'status' => $this->writer->update($task, isset($input['status_id'])
+                        ? ['status_id' => $input['status_id']] : ['status' => $input['status']], $user),
                     'assign' => $this->writer->update($task, ['assignee_user_id' => $input['assignee_user_id'] ?? null], $user),
                 };
                 $done[] = $id;

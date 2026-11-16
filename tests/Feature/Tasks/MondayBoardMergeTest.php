@@ -108,7 +108,8 @@ class MondayBoardMergeTest extends TestCase
             $this->assertSame($moved->group_id, $rule->activeVersion->actions[0]['group_id']);
             $this->assertSame(2, $rule->versions()->count(), 'a new version, the old kept');
 
-            // Two-way: the Monday task on the branch board still goes back; the branch board's own does not.
+            // Two-way: the Monday task on the branch board still goes back, and so does a task made there
+            // from now on (Jose 11-16); the branch board's own from before the merge does not.
             $c = new SocialConnection;
             $c->forceFill(['organization_id' => $branch->organization_id, 'scope_type' => SocialConnection::SCOPE_ORGANIZATION,
                 'scope_id' => $branch->organization_id, 'provider' => 'monday', 'remote_id' => 'acc1', 'display_name' => 'A-1 Group']);
@@ -116,8 +117,8 @@ class MondayBoardMergeTest extends TestCase
             $c->save();
             app(TaskWriter::class)->update($moved->fresh(), ['title' => 'Call from Ann (again)'], $jose);
             app(TaskWriter::class)->update(Task::query()->find($own->id), ['title' => 'Branch job 2'], $jose);
-            app(TaskWriter::class)->create($branch->fresh(), ['title' => 'New branch job'], $jose);
-            $this->assertSame([$task->id], MondayOutboxEntry::query()->pluck('task_id')->all());
+            $new = app(TaskWriter::class)->create($branch->fresh(), ['title' => 'New branch job'], $jose);
+            $this->assertEqualsCanonicalizing([$task->id, $new->id], MondayOutboxEntry::query()->pluck('task_id')->all());
         });
     }
 

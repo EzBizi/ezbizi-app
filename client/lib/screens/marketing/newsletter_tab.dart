@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/list_search.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
@@ -148,10 +149,18 @@ class _NewsletterTabState extends State<NewsletterTab> {
   void initState() {
     super.initState();
     _load();
+    // A send finishing or a draft saved elsewhere: the list re-reads;
+    // the draft open in the composer is not touched.
+    _live = LiveChanges.of(widget.api).subscribe({'newsletters'}, (_) {
+      if (!_loading) return _reloadList();
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _settleTimer?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();

@@ -253,6 +253,32 @@ void main() {
     expect(find.text('Approved by Mia'), findsOneWidget);
   });
 
+  /// Jose, 2026-11-16: another window instead, the asked-for one given back.
+  testWidgets('Another date picks an open window and approves it', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      booking: const {
+        'date': '2026-10-11',
+        'start_time': '08:00',
+        'end_time': '11:00',
+        'status': 'pending',
+        'decided_by': null,
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('booking-move')));
+    await tester.pumpAndSettle();
+    expect(find.text('Monday, Oct 12 · 11:00 AM - 2:00 PM'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('booking-move-2026-10-12-11:00')));
+    await tester.pumpAndSettle();
+
+    expect(_booked.last, {'date': '2026-10-12', 'start_time': '11:00'});
+    expect(find.text('Requested: Monday, Oct 12 · 11:00 AM - 2:00 PM'), findsOneWidget);
+    expect(find.text('Approved by Mia'), findsOneWidget);
+  });
+
   /// Kayla Culbreth, 2026-10-27: booked in Workiz already, so no Approve that
   /// would text her the window she asked for instead of the one booked.
   testWidgets('a booking already booked as a job shows the job, not Approve', (
@@ -1587,6 +1613,35 @@ Future<void> _pump(
         offer = {...?offer, 'moved_at': '2026-10-28T12:00:00Z', 'can_move': false};
         return http.Response(
           jsonEncode({'data': {'job_id': 'j-1'}}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      if (request.url.path.endsWith('/booking/days')) {
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {
+                'date': '2026-10-12',
+                'windows': [
+                  {'start_time': '11:00', 'end_time': '14:00'},
+                ],
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/booking/move')) {
+        _booked.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response(
+          jsonEncode({
+            'data': {...?booking, 'date': '2026-10-12', 'start_time': '11:00', 'end_time': '14:00', 'status': 'approved', 'decided_by': 'Mia'},
+          }),
           200,
           headers: {'content-type': 'application/json'},
         );

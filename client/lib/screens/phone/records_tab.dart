@@ -3,6 +3,7 @@ import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -147,10 +148,22 @@ class _RecordsTabState extends State<RecordsTab> {
     } else {
       _loading = false; // a spinner nobody sees never settles
     }
+    // A call or a text arriving or changing: every page already loaded
+    // re-reads quietly, so older pages stay and their rows stay current.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'phone_calls', 'phone_messages'},
+      (_) {
+        if (!_loading && !_loadingOlder) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _player.stop();
     if (_ownsPlayer) _player.dispose();
     super.dispose();
@@ -282,21 +295,47 @@ class _RecordsTabState extends State<RecordsTab> {
     return threads;
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _calls.isEmpty && _messages.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read of every page loaded so far ("Load older"
+  /// kept); a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _calls.isEmpty && _messages.isEmpty;
+        _error = null;
+      });
+    }
 
-    final page = {'per_page': '$_pageSize', 'page': '1'};
-    final calls = widget.api.get('/phone/calls', page);
-    final messages = widget.api.get('/phone/messages', page);
+    final pages = quiet ? _page : 1;
+    final calls = [
+      for (var p = 1; p <= pages; p++)
+        widget.api.get('/phone/calls', {
+          'per_page': '$_pageSize',
+          'page': '$p',
+        }),
+    ];
+    final messages = [
+      for (var p = 1; p <= pages; p++)
+        widget.api.get('/phone/messages', {
+          'per_page': '$_pageSize',
+          'page': '$p',
+        }),
+    ];
     final numbers = widget.api.get('/phone/numbers');
 
-    final callsRes = await calls;
-    final messagesRes = await messages;
+    final callPages = await Future.wait(calls);
+    final messagePages = await Future.wait(messages);
     final numbersRes = await numbers;
-    if (!mounted) return;
+    final callsRes = callPages.firstWhere(
+      (r) => !r.ok,
+      orElse: () => callPages.first,
+    );
+    final messagesRes = messagePages.firstWhere(
+      (r) => !r.ok,
+      orElse: () => messagePages.first,
+    );
+    if (!mounted || (quiet && !(callsRes.ok && messagesRes.ok))) return;
+    // Quiet: "Load older" ran meanwhile; its pages are not in this read.
+    if (quiet && pages != _page) return;
 
     if (!callsRes.ok) {
       setState(() {
@@ -335,16 +374,22 @@ class _RecordsTabState extends State<RecordsTab> {
       _loading = false;
       _labels = labels;
       _connectionOf = connections;
+      // Pages read together: a row that moved down a page shows once.
+      final seenCalls = <String>{}, seenTexts = <String>{};
       _calls = [
-        for (final row in (callsRes.data as List? ?? const []))
-          if (row is Map<String, dynamic>) _Call.fromJson(row),
-      ];
+        for (final res in callPages)
+          for (final row in (res.data as List? ?? const []))
+            if (row is Map<String, dynamic>) _Call.fromJson(row),
+      ].where((c) => seenCalls.add(c.id)).toList();
       _messages = [
-        for (final row in (messagesRes.data as List? ?? const []))
-          if (row is Map<String, dynamic>) _Message.fromJson(row),
-      ];
-      _page = 1;
-      _hasOlder = _calls.length >= _pageSize || _messages.length >= _pageSize;
+        for (final res in messagePages)
+          for (final row in (res.data as List? ?? const []))
+            if (row is Map<String, dynamic>) _Message.fromJson(row),
+      ].where((m) => seenTexts.add(m.id)).toList();
+      _page = pages;
+      _hasOlder =
+          ((callPages.last.data as List?)?.length ?? 0) >= _pageSize ||
+          ((messagePages.last.data as List?)?.length ?? 0) >= _pageSize;
     });
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/empty_state.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
@@ -65,6 +66,18 @@ class _FleetGeneralState extends State<FleetGeneral> {
   void initState() {
     super.initState();
     _load();
+    // A vehicle changed anywhere moves the figures: read again quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'vehicles'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: () => widget.visible && LiveChanges.visible(this)());
+  }
+
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
   }
 
   @override
@@ -73,18 +86,22 @@ class _FleetGeneralState extends State<FleetGeneral> {
     if (widget.visible && !oldWidget.visible) _load();
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the figures on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
-    setState(() {
-      _loading = _data == null;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _data == null;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/vehicles/summary', {
       'period': _period,
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;

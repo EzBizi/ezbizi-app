@@ -545,7 +545,7 @@ void main() {
   ) async {
     await pumpBoard(tester);
 
-    await tester.tap(find.text('Kanban'));
+    await pickView(tester, 'Kanban');
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('kanban-stuck')), findsOneWidget);
     expect(find.text('Working on it · 1'), findsOneWidget);
@@ -564,7 +564,7 @@ void main() {
     // into the width, about 30 px each, one letter per line.
     await pumpBoard(tester);
 
-    await tester.tap(find.text('Kanban'));
+    await pickView(tester, 'Kanban');
     await tester.pumpAndSettle();
     final column = find.byKey(const ValueKey('kanban-stuck'));
     expect(tester.getSize(column).width, 280);
@@ -610,4 +610,18 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+}
+
+/// Switches the board's view by its segment, or by the picker where the
+/// toolbar has no room for segments.
+Future<void> pickView(WidgetTester tester, String name) async {
+  final segments = find.byKey(const Key('tasks-view'));
+  if (segments.evaluate().isNotEmpty) {
+    await tester.tap(find.descendant(of: segments, matching: find.text(name)));
+  } else {
+    await tester.tap(find.byKey(const Key('tasks-view-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(name).last);
+  }
+  await tester.pumpAndSettle();
 }

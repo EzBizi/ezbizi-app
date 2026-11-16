@@ -65,6 +65,7 @@ use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InstagramCommentsController;
+use App\Http\Controllers\Api\SocialCommentsController;
 use App\Http\Controllers\Api\IntegrationDependentsController;
 use App\Http\Controllers\Api\IntegrationsOverviewController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
@@ -91,6 +92,7 @@ use App\Http\Controllers\Api\LeadHiddenController;
 use App\Http\Controllers\Api\LeadOfficeHoursController;
 use App\Http\Controllers\Api\LeadPresenceController;
 use App\Http\Controllers\Api\LeadReplyTemplatesController;
+use App\Http\Controllers\Api\LeadsRecoveryController;
 use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\LeadSourcesController;
 use App\Http\Controllers\Api\LeadStatsController;
@@ -1259,6 +1261,11 @@ Route::prefix('v1')
             // route constraint hides the call from ClientCallsRealRoutesTest (failed the 0.0.0478 precheck).
             Route::put('leads/office-hours/{scope}/{id}', [LeadOfficeHoursController::class, 'update']);
         });
+        // Leads › Manage › Recovery (Jose, 2026-11-16). Edits go through PATCH automations/{id}.
+        Route::middleware('permission:automations.view')->group(function () {
+            Route::get('leads/recovery', [LeadsRecoveryController::class, 'index']);
+            Route::post('leads/recovery/preview', [LeadsRecoveryController::class, 'preview']);
+        });
         Route::get('leads/reply-templates', [LeadReplyTemplatesController::class, 'index']);
         Route::put('leads/reply-templates/{company}', [LeadReplyTemplatesController::class, 'update']);
         Route::get('leads', [LeadsController::class, 'index']);
@@ -1279,6 +1286,9 @@ Route::prefix('v1')
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
         Route::get('leads/{lead}/workiz-choices', [LeadsController::class, 'workizChoices']);
         Route::post('leads/{lead}/google-credit', [LeadsController::class, 'requestCredit']);
+        // Another date (Jose, 2026-11-16): the area's open windows, then move and approve.
+        Route::get('leads/{lead}/booking/days', [LeadsController::class, 'bookingDays']);
+        Route::post('leads/{lead}/booking/move', [LeadsController::class, 'moveBooking']);
         Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
@@ -2599,6 +2609,12 @@ Route::prefix('v1')
         Route::get('social/connections/{connection}/instagram-comments', [InstagramCommentsController::class, 'index']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/replies', [InstagramCommentsController::class, 'reply']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/hide', [InstagramCommentsController::class, 'hide']);
+        // Every comment on every connected account (Facebook, Instagram,
+        // YouTube, X) in one inbox; each row names the actions it supports.
+        Route::get('social/comments', [SocialCommentsController::class, 'index']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/replies', [SocialCommentsController::class, 'reply']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/hide', [SocialCommentsController::class, 'hide']);
+        Route::delete('social/connections/{connection}/comments/{network}/{comment}', [SocialCommentsController::class, 'destroy']);
         Route::delete('social/providers/{provider}/connections', [SocialConnectionsController::class, 'destroyProvider']);
         // What stops working if a connection is disconnected (the disconnect panel).
         Route::get('integrations/{kind}/{id}/dependents', [IntegrationDependentsController::class, 'show'])

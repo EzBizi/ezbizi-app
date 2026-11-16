@@ -453,9 +453,17 @@ String formatCellPhone(String raw) {
 /// The inline "+ Add tag" row of a label or tags menu: typing a new one
 /// adds it to the column and picks it (Jose, 2026-11-09).
 class _AddOption extends StatefulWidget {
-  const _AddOption({required this.columnId, required this.onAdd});
+  const _AddOption({
+    required this.columnId,
+    required this.onAdd,
+    this.noun = 'tag',
+  });
 
   final String columnId;
+
+  /// "tag" under Tags, "label" under a label column (QA 11-16: a label
+  /// menu said "+ Add tag" over "Edit labels…").
+  final String noun;
   final Future<void> Function(String label) onAdd;
 
   @override
@@ -491,10 +499,10 @@ class _AddOptionState extends State<_AddOption> {
         key: ValueKey('column-option-new-${widget.columnId}'),
         controller: _text,
         enabled: !_busy,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           isDense: true,
-          hintText: '+ Add tag',
-          border: OutlineInputBorder(),
+          hintText: '+ Add ${widget.noun}',
+          border: const OutlineInputBorder(),
         ),
         onSubmitted: (_) => _submit(),
       ),
@@ -931,8 +939,11 @@ class ColumnCell extends StatelessWidget {
       case 'number':
       case 'currency':
       case 'formula':
+        // widthFactor 1: a cell's tight width still right-aligns it; a card's
+        // loose one no longer pushes "0.5" 100 px from its label (QA 11-16).
         return Align(
           alignment: Alignment.centerRight,
+          widthFactor: 1,
           child: Text(
             v == null ? '—' : formatColumnNumber(v, column),
             textAlign: TextAlign.right,
@@ -1048,6 +1059,7 @@ class ColumnCell extends StatelessWidget {
       const Divider(height: 8),
       _AddOption(
         columnId: column.id,
+        noun: column.type == 'tags' ? 'tag' : 'label',
         onAdd: (label) async {
           final id = await onAddOption!(label);
           if (id != null) picked(id);
@@ -1101,6 +1113,8 @@ class _ColumnEditorState extends State<ColumnEditor> {
       'number' ||
       'currency' => widget.value == null ? '' : _number(widget.value, null),
       'location' => '${(widget.value as Map?)?['address'] ?? ''}',
+      // Read as the table reads it, "(440) 555-0100" (hands-on QA 11-16).
+      'phone' => widget.value == null ? '' : formatCellPhone('${widget.value}'),
       _ => widget.value == null ? '' : '${widget.value}',
     },
   );
@@ -1148,7 +1162,13 @@ class _ColumnEditorState extends State<ColumnEditor> {
       return;
     }
     final next = typed.isEmpty ? null : typed;
-    if (next != widget.value) widget.onChanged?.call(next);
+    // The box shows a phone formatted; left as shown, it is not a change.
+    final same =
+        next == widget.value ||
+        (widget.column.type == 'phone' &&
+            widget.value is String &&
+            next == formatCellPhone(widget.value as String));
+    if (!same) widget.onChanged?.call(next);
     widget.onDone?.call();
   }
 
@@ -1160,12 +1180,14 @@ class _ColumnEditorState extends State<ColumnEditor> {
 
     switch (c.type) {
       case 'checkbox':
+        // The table's and the card's Checkbox, not a Switch (hands-on QA
+        // 11-16: one value, two controls).
         return Align(
           alignment: Alignment.centerLeft,
-          child: Switch(
+          child: Checkbox(
             key: key,
             value: widget.value == true,
-            onChanged: editable ? (b) => widget.onChanged!(b) : null,
+            onChanged: editable ? (b) => widget.onChanged!(b ?? false) : null,
           ),
         );
       case 'status':
@@ -2676,41 +2698,51 @@ class TimelinePill extends StatelessWidget {
     // [to] is the midnight after the last day: late from that midnight on.
     final overdue = !done && !to.isAfter(day);
     return Center(
-      child: Container(
-        height: 22,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: back,
-          borderRadius: BorderRadius.circular(11),
-        ),
-        child: Stack(
-          children: [
-            FractionallySizedBox(
-              key: const Key('timeline-elapsed'),
-              widthFactor: elapsed,
-              heightFactor: 1,
-              child: Container(
-                color: overdue
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.primary,
+      child: Tooltip(
+        message: label,
+        child: Container(
+          height: 22,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: back,
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Stack(
+            children: [
+              FractionallySizedBox(
+                key: const Key('timeline-elapsed'),
+                widthFactor: elapsed,
+                heightFactor: 1,
+                child: Container(
+                  color: overdue
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.primary,
+                ),
               ),
-            ),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: labelInk(overdue ? theme.colorScheme.error : back),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    // The short range, "11/16–20": the full one was cut to
+                    // "11/16/2026 –…" in a 120 px cell (hands-on QA 11-16).
+                    dateRangeLabel(
+                          [from, DateTime.parse('${v['to']}')],
+                          formats,
+                          short: true,
+                        ) ??
+                        label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: labelInk(overdue ? theme.colorScheme.error : back),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2754,13 +2786,45 @@ class LabelBar extends StatelessWidget {
 
 /// A group footer's date range: the earliest to the latest day in [days];
 /// null when there are none.
-String? dateRangeLabel(Iterable<DateTime> days, DisplayFormats formats) {
+/// [short] drops the year when both ends share one, for a footer's 104 px
+/// (hands-on QA 11-16: "11/16/2026…" was cut off).
+String? dateRangeLabel(
+  Iterable<DateTime> days,
+  DisplayFormats formats, {
+  bool short = false,
+}) {
   final list = days.toList()..sort();
   if (list.isEmpty) return null;
-  return list.first == list.last
-      ? formats.formatDate(list.first)
-      : '${formats.formatDate(list.first)} – ${formats.formatDate(list.last)}';
+  final (first, last) = (list.first, list.last);
+  if (short && first.year == last.year) {
+    if (first == last) return shortDate(first, formats);
+    // One month: its days run together, "11/16–21" (Monday's "Nov 16 - 21").
+    if (first.month == last.month) {
+      return switch (formats.dateFormat) {
+        'M/D/YYYY' => '${first.month}/${first.day}–${last.day}',
+        'D/M/YYYY' => '${first.day}–${last.day}/${first.month}',
+        _ =>
+          '${shortDate(first, formats)}–${last.day.toString().padLeft(2, '0')}',
+      };
+    }
+    return '${shortDate(first, formats)}–${shortDate(last, formats)}';
+  }
+  return first == last
+      ? formats.formatDate(first)
+      : '${formats.formatDate(first)} – ${formats.formatDate(last)}';
 }
+
+/// A day without its year, in the organization's order: "11/16", "16/11"
+/// or "11-16".
+String shortDate(
+  DateTime d,
+  DisplayFormats formats,
+) => switch (formats.dateFormat) {
+  'M/D/YYYY' => '${d.month}/${d.day}',
+  'D/M/YYYY' => '${d.day}/${d.month}',
+  _ =>
+    '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+};
 
 /// Every day a value covers, for a footer's range: a date, or a timeline's
 /// two ends.

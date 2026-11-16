@@ -211,6 +211,9 @@ class TaskBoardsController extends Controller
         $unread = \App\Support\Notes\NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
             $tasks->concat($rolled)->map(fn (Task $t) => (string) $t->id)->all(), (string) $user->id);
         $present = fn (Task $t) => TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0];
+        $assignable = $this->boards->assignable($taskBoard);
+        $withPhoto = \App\Models\User::query()->whereIn('id', $assignable->pluck('id'))
+            ->whereNotNull('avatar_path')->pluck('id')->mapWithKeys(fn ($id) => [(string) $id => true])->all();
 
         return response()->json(['data' => [
             'id' => $taskBoard->id,
@@ -245,7 +248,12 @@ class TaskBoardsController extends Controller
             // Saved views: the board's shared ones and this person's own.
             'views' => TaskBoardViewsController::visible($taskBoard, $user->id),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
-            'assignable' => $this->boards->assignable($taskBoard)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
+            // has_avatar: a face without a photo is not asked for one (each was a 404).
+            'assignable' => $assignable->map(fn ($u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'has_avatar' => isset($withPhoto[(string) $u->id]),
+            ])->all(),
             'tasks' => $tasks->map($present)
                 ->concat($rolled->map(fn (Task $t) => $present($t) + ['rolled_up_from' => [
                     'board_id' => $t->board_id,

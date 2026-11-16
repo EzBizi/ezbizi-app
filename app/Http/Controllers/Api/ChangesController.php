@@ -18,7 +18,9 @@ class ChangesController extends Controller
     {
         $input = $request->validate([
             'since' => ['nullable', 'integer', 'min:0'],
-            'types' => ['nullable', 'string', 'max:200'],
+            // Every type a client may hold at once (kept tabs, the dashboard):
+            // the whole list is past 600 characters, so the cap is generous.
+            'types' => ['nullable', 'string', 'max:4000'],
         ]);
         $types = array_filter(explode(',', $input['types'] ?? implode(',', array_keys(ChangeFeed::TYPES))));
         $since = isset($input['since']) ? (int) $input['since'] : null;

@@ -857,4 +857,39 @@ void main() {
       reason: 'the reader cannot ask about an omission nothing tells them about',
     );
   });
+
+  // Jose, 2026-11-16: "On top ... a Everything" combining A-1 Chimney and Angi Sweep.
+  testWidgets('Everything sits on top and rolls up every account in one request', (tester) async {
+    await pump(
+      tester,
+      accounts: twoAccounts(),
+      rollup: {
+        'children_total': 2,
+        'not_connected': 0,
+        'data': [
+          {'connection_id': 'c1', 'account': 'A1 Chimney - Cleveland', 'id': '4051729356', 'name': 'A1 Chimney - Cleveland',
+            'clicks': 412, 'impressions': 10500, 'conversions': 31.5, 'all_conversions': 44.25, 'cost': 1234.56, 'currency': 'USD'},
+          {'connection_id': 'c3', 'account': 'Angi Sweep - Bucks', 'id': '1726694743', 'name': 'Angi Sweep - Bucks',
+            'clicks': 88, 'impressions': 900, 'conversions': 4, 'all_conversions': 6, 'cost': 65.44, 'currency': 'USD'},
+        ],
+      },
+    );
+
+    final everything = find.byKey(const ValueKey('ads-account-*everything*'));
+    expect(everything, findsOneWidget);
+    expect(
+      tester.getTopLeft(everything).dy,
+      lessThan(tester.getTopLeft(find.byKey(const ValueKey('ads-account-c1'))).dy),
+      reason: 'above every account and manager',
+    );
+
+    await tester.tap(everything);
+    await tester.pumpAndSettle();
+
+    final asked = urls.where((u) => u.path.contains('/ads/rollup')).single;
+    expect(asked.queryParameters['everything'], '1');
+    expect(asked.queryParameters.containsKey('connection_id'), isFalse);
+    expect(calls.where((c) => c.contains('/ads/performance')), isEmpty);
+    expect(find.text('Angi Sweep - Bucks'), findsWidgets);
+  });
 }

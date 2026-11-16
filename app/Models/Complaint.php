@@ -21,6 +21,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Complaint extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'complaints';
+
     use HasUuids;
 
     public const KINDS = ['bad_review', 'bad_rating', 'call_complaint'];

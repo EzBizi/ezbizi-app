@@ -267,7 +267,7 @@ void main() {
     'Calendar puts a task on its day, keeps the undated in a tray, and a drag moves the date',
     (tester) async {
       await pumpBoard(tester);
-      await tester.tap(find.text('Calendar'));
+      await pickView(tester, 'Calendar');
       await tester.pumpAndSettle();
 
       final day = find.byKey(ValueKey('plan-day-${formatCalendarDay(today)}'));
@@ -299,7 +299,7 @@ void main() {
   testWidgets('a short Timeline bar wears its dates beside it, not clipped '
       'inside', (tester) async {
     await pumpBoard(tester);
-    await tester.tap(find.text('Timeline'));
+    await pickView(tester, 'Timeline');
     await tester.pumpAndSettle();
     final bar = find.byKey(const ValueKey('plan-bar-t1'));
     expect(tester.getSize(bar).width, lessThan(96));
@@ -315,7 +315,7 @@ void main() {
     'Timeline draws the range as a bar and a drag moves it by whole days',
     (tester) async {
       await pumpBoard(tester);
-      await tester.tap(find.text('Timeline'));
+      await pickView(tester, 'Timeline');
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('plan-today')), findsOneWidget);
       final bar = find.byKey(const ValueKey('plan-bar-t1'));
@@ -367,4 +367,18 @@ void main() {
       expect(find.byKey(const ValueKey('plan-move-day-t1')), findsOneWidget);
     },
   );
+}
+
+/// Switches the board's view by its segment, or by the picker where the
+/// toolbar has no room for segments.
+Future<void> pickView(WidgetTester tester, String name) async {
+  final segments = find.byKey(const Key('tasks-view'));
+  if (segments.evaluate().isNotEmpty) {
+    await tester.tap(find.descendant(of: segments, matching: find.text(name)));
+  } else {
+    await tester.tap(find.byKey(const Key('tasks-view-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(name).last);
+  }
+  await tester.pumpAndSettle();
 }

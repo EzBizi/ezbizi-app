@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/dashboard_panels.dart';
 import '../core/deep_links.dart';
 import '../core/job_money.dart';
@@ -107,25 +108,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .cast<Map<String, dynamic>>();
     }
     _load();
+    // The glances count what the modules hold: any of them changing re-reads
+    // the board quietly, at most once a minute (each glance is a query).
+    _live = LiveChanges.of(widget.api).subscribe(_glanceTypes, (_) {
+      final now = DateTime.now();
+      if (!_loading &&
+          now.difference(_lastLive) >= const Duration(minutes: 1)) {
+        _lastLive = now;
+        return _load(quiet: true);
+      }
+    }, active: LiveChanges.visible(this));
   }
 
-  Future<void> _load() async {
+  static const _glanceTypes = {
+    'jobs',
+    'leads',
+    'customers',
+    'inventory',
+    'inventory_orders',
+    'vehicles',
+    'people',
+    'invoices',
+    'phone_calls',
+    'reviews',
+    'complaints',
+  };
+
+  LiveSubscription? _live;
+  DateTime _lastLive = DateTime.fromMillisecondsSinceEpoch(0);
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the glances on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
-    setState(() {
-      // A spinner only when there is nothing to keep — see AsyncBody. An
-      // empty glances list is a legitimate answer (no modules in reach), so
-      // emptiness is not "still loading"; only a successful fetch is loaded.
-      // A failed first fetch must not count: Try again then has nothing to
-      // keep, and a spinner is the honest thing to draw.
-      _loading = !_loaded;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        // A spinner only when there is nothing to keep — see AsyncBody. An
+        // empty glances list is a legitimate answer (no modules in reach), so
+        // emptiness is not "still loading"; only a successful fetch is loaded.
+        // A failed first fetch must not count: Try again then has nothing to
+        // keep, and a spinner is the honest thing to draw.
+        _loading = !_loaded;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/dashboard');
 
     // Superseded by a newer load — applying this would undo it.
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;

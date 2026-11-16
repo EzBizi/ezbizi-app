@@ -18,6 +18,23 @@ use Illuminate\Support\Carbon;
 class AdSchedule extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES): the applier flipping a campaign writes here. */
+    protected static string $changeType = 'ad_schedules';
+
+    /** Filed where its ad account's connection is (ChangeFeed). */
+    public function changeFeedPlace(): array
+    {
+        $connection = SocialConnection::withoutGlobalScopes()->find($this->connection_id, ['id', 'scope_type', 'scope_id']);
+
+        return match ($connection?->scope_type) {
+            SocialConnection::SCOPE_COMPANY => [$connection->scope_id, null],
+            SocialConnection::SCOPE_FRANCHISE => [null, $connection->scope_id],
+            default => [null, null],
+        };
+    }
+
     use HasUuids;
 
     public const ON = 'on';

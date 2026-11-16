@@ -577,6 +577,7 @@ class RetentionTest extends TestCase
             'migrations' => 'the ledger of which migrations have run',
             'cache' => 'framework cache, evicted by its own TTL',
             'cache_locks' => 'framework cache locks, released on use',
+            'change_events' => 'live-update feed of record ids (no personal data), pruned after one day by ezbizi:prune-change-events',
             'queue_jobs' => 'pending queue payloads, deleted as they are processed. Named '
                 .'`queue_jobs` rather than `jobs` because `jobs` is the business table — see '
                 .'the rename migration, which exists so the two can never be confused.',

@@ -632,7 +632,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * predate that and for two stamps that are genuinely equal.
      */
     /** "Hi Mark" or "Hi there", as leads.greeting_named / _unnamed say. */
-    public static function greeting(?string $first, ?string $organizationId = null): string
+    public static function greetingFor(?string $first, ?string $organizationId = null): string
     {
         return $first === null
             ? (string) SettingsResolver::forOrganization('leads.greeting_unnamed', $organizationId)
@@ -647,6 +647,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public function replyOverdue(bool $canReply): bool
     {
+        // An online booking nobody approved or declined stays overdue, whatever
+        // was said since (Jose, 2026-11-16: Marisha Baldwin read "Replied").
+        // ponytail: one indexed exists() per row; batch it if the list slows.
+        if (self::pendingBookings($this->organization_id)->where('lead_id', $this->getKey())->exists()) {
+            return true;
+        }
+
         if (in_array($this->source, self::SOURCES_NO_REPLY_OWED, true)) {
             return false;
         }
@@ -656,6 +663,18 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             && $this->last_contact_from === LeadConversation::FROM_CONSUMER
             && $this->last_contact_at !== null
             && $this->last_contact_at->lte(now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes', $this->organization_id)));
+    }
+
+    /**
+     * Booking requests still waiting on Approve or Decline, past the overdue
+     * minutes. Not once the lead has a job (Approve answers 409 then) or owes
+     * nothing (Completed, Lost, Not a lead): prod 11-16 had 24 such, from October.
+     */
+    public static function pendingBookings(?string $organizationId = null): \Illuminate\Database\Eloquent\Builder
+    {
+        return WebBooking::query()->where('status', WebBooking::PENDING)
+            ->where('created_at', '<=', now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes', $organizationId)))
+            ->whereHas('lead', fn ($lead) => $lead->whereNull('job_id')->whereNotIn('status', self::STATUSES_NO_REPLY_OWED));
     }
 
     /**
@@ -736,7 +755,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     {
         $first = self::firstNameOf($this->contact_name);
 
-        return $first === null ? 'Thank you' : self::greeting($first, $this->organization_id).', thank you';
+        return $first === null ? 'Thank you' : self::greetingFor($first, $this->organization_id).', thank you';
     }
 
     /**
@@ -780,11 +799,22 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public function getBookingLinkAttribute(): string
     {
+        $url = $this->bookingPage();
+
+        return $url === '' ? '' : BookingLink::forLead($this, $url);
+    }
+
+    /**
+     * The booking page `{{booking_link}}` points at, '' when it would be left out.
+     * Without minting a code, so Leads › Recovery's preview writes nothing.
+     */
+    public function bookingPage(): string
+    {
         $url = $this->brandSetting('leads.booking_url');
 
         // A page that can offer no day is worse than no link (Bar, 2026-10-21:
         // garage-door customers were sent links with no availability).
-        return $url === '' || ! $this->bookableOnline() ? '' : BookingLink::forLead($this, $url);
+        return $url === '' || ! $this->bookableOnline() ? '' : $url;
     }
 
     /**

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
@@ -95,6 +96,23 @@ class _DashboardPaneState extends State<DashboardPane> {
   void initState() {
     super.initState();
     _load();
+    // This guide or test's people re-read when one of them moves on it;
+    // the assign form stays as it is.
+    _live = LiveChanges.of(widget.api).subscribe({'training'}, (batch) {
+      if (!_loading &&
+          !_assigning &&
+          (batch.reload || batch.touched('training').contains(widget.itemId))) {
+        return _load(quiet: true);
+      }
+    }, active: LiveChanges.visible(this));
+  }
+
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
   }
 
   @override
@@ -103,16 +121,19 @@ class _DashboardPaneState extends State<DashboardPane> {
     if (oldWidget.itemId != widget.itemId) _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; no spinner, and a failure keeps the people.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
-    final response = await widget.api.get(
-      '/training/dashboard/${widget.itemId}/people',
-    );
+    final itemId = widget.itemId;
+    final response = await widget.api.get('/training/dashboard/$itemId/people');
     if (!mounted) return;
+    if (quiet && (!response.ok || itemId != widget.itemId)) return;
 
     setState(() {
       _loading = false;

@@ -28,6 +28,11 @@ use Illuminate\Support\Collection;
 class WebWidget extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A widget saved is its site's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['web_sites', WebSite::class, 'site_id'];
+
     use HasUuids;
 
     protected $table = 'web_widgets';

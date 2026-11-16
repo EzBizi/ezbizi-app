@@ -486,6 +486,13 @@ class ActionRunner
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Not connected: '.$notConnected];
         }
 
+        // The enquiry is gone before its queued run: a RingCentral call lead
+        // withdrawn when Google's copy arrived (prod 11-15, five a day). That
+        // copy raises its own event, so this one is a skip, not a failure.
+        if ($subject === null && $event->subject_type === Lead::class) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Skipped: the enquiry was removed as a duplicate before this ran.'];
+        }
+
         return match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject, $automation),
@@ -527,6 +534,7 @@ class ActionRunner
             'inspection_report.workiz' => $this->putInspectionReportOnWorkiz($subject),
             'workiz.job_update' => $this->updateWorkizJob($action, $subject),
             'job.set' => $this->setJob($action, $event, $subject),
+            'job.source_from_dialed' => $this->sourceFromDialed($automation),
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
@@ -1044,6 +1052,19 @@ class ActionRunner
      * after five weeks while four people were reading it fine. `ok()` is false
      * only when NOTHING left the building.
      */
+    /** Jose, 2026-11-16: a job's source from the line its client dialed, in EzBizi and Workiz. */
+    private function sourceFromDialed(?Automation $automation): array
+    {
+        $type = 'job.source_from_dialed';
+        if ($automation === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step runs only as part of a saved rule.'];
+        }
+        [$changed, $refused] = app(\App\Support\Jobs\SourceFromDialed::class)->apply($automation);
+
+        return ['type' => $type, 'ok' => $refused === [], 'skipped' => $changed === 0 && $refused === [],
+            'detail' => trim("Changed the source of {$changed} job".($changed === 1 ? '' : 's').'. '.implode(' ', $refused))];
+    }
+
     private function sendReport(array $action, AutomationEvent $event, ?Automation $automation): array
     {
         $type = 'report.send';

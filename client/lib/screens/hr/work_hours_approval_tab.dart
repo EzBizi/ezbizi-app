@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/deep_links.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -69,10 +70,28 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
     unawaited(_load(date: link?.date));
     DeepLinks.pending.addListener(_onLink);
     widget.session.addListener(_onSession);
+    // Somebody clocking in or out, or a correction asked for: the open
+    // day re-read with no spinner, never in the middle of an action.
+    _live = LiveChanges.of(widget.api).subscribe({'people'}, (_) {
+      if (!_loading && !_busy) return _refreshQuiet();
+    }, active: LiveChanges.visible(this));
+  }
+
+  LiveSubscription? _live;
+
+  /// The open day read again in place.
+  Future<void> _refreshQuiet() async {
+    final date = _day?['date'] as String?;
+    final response = await widget.api.get('/hr/time-clock/approvals', {
+      if (date != null && date.isNotEmpty) 'date': date,
+    });
+    if (!mounted || !response.ok || _busy || _loading) return;
+    _adopt(response);
   }
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_onLink);
     widget.session.removeListener(_onSession);
     super.dispose();

@@ -13,6 +13,17 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0578', date: '16 Nov 2026', items: [
+      'Leads › Manage › Recovery: switch on, edit, preview and scope the automatic win-back texts in one place',
+      'Online booking requests stay Overdue until approved or declined, and Another date moves one to an open window and approves it',
+      'Task Board: a task made in EzBizi on a Monday board is created on Monday too, and deleting it archives the Monday item',
+      'Task Board: the Task column stays put when scrolling sideways, the bulk bar floats at the bottom, bulk Status works again, Kanban cards drag between columns, and New task works in every view',
+      'Updates live: Memberships, Estimates, Inspection reports, Services, Field, Training, Monitoring, Web Management, Marketing posts and calendar, Ads schedules, the Email inbox, and open vehicle, HR and complaint records',
+      'Live updates keep working when many modules are open at once',
+      'On a phone, the report date picker works again: a quick date applies in one tap, and Custom opens full screen',
+      'TikTok: choose Post to profile or Send to TikTok inbox as a draft when composing',
+      'Facebook connect can include Page comments (reply and hide), pending Meta review',
+    ]),
     VersionRelease(version: '0.0.0577', date: '16 Nov 2026', items: [
       'Task Board: big boards open and switch instantly, no more freezing or Not Responding on click, smoother scrolling; My Board is first in the boards list',
       'Jobs and the open job update by themselves within about 10 seconds when Workiz, an automation or a colleague changes them',
@@ -37,6 +48,12 @@ class VersionHistory {
       'Customer Experience: Google Business listings show their city; ratings say which period they cover',
       'A screen that hits an error shows a card instead of a black app',
       'Monday sync runs in the background lane and reads only what changed',
+      'Updates live, without reloading: Leads, Customers and the customer record, Project Management, Scheduling (incl. Availability and Re-Scheduling), Inventory (Items, Stock, Orders, Locations), Fleet, HR, Work Hours, Invoices, Bills, Adjustments, Phone history and voicemails, Reviews, Complaints, Automations, Newsletters, QR codes and the Dashboard; what you are typing is never overwritten',
+      'Marketing: edit the text and image of an AI post in the side panel before approving; calendar days light up on hover and +N more opens the list for that day',
+      'Marketing › Comments: one inbox for Instagram, Facebook, YouTube and X comments; reply and hide where each network allows',
+      'Task Board: the column menu shows on hover, Kanban cards show +N more, and short timeline bars show their dates',
+      'Automations: Add a task can put the task on a chosen board and skip it while an open task for the same caller exists',
+      'Reports: people who only make outbound calls get a row with an Outbound column and their calls in the drill-down; P&L no longer errors on a broken Airtable cell',
     ]),
     VersionRelease(version: '0.0.0576', date: '16 Nov 2026', items: [
       'Task Board no longer freezes the app on big boards: rows draw as you scroll',

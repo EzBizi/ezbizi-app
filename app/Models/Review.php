@@ -26,6 +26,11 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Review extends Model implements HoldsPersonalData, StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'reviews';
+
     use HasUuids;
 
     /**
