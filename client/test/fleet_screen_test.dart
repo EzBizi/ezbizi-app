@@ -338,6 +338,10 @@ void main() {
     );
 
     expect(find.byType(TextField), findsOneWidget);
+    // Mobile review P10: folded behind one button until asked for.
+    expect(find.text('Due soon'), findsNothing);
+    await tester.tap(find.byKey(const Key('filters-fold')));
+    await tester.pumpAndSettle();
     expect(find.text('Due soon'), findsOneWidget);
 
     // The chips now wrap past the first rows, so drag from a chip itself.

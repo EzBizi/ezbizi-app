@@ -3,6 +3,7 @@ import '../../core/branch_options.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -65,7 +66,17 @@ class _SchedulePaneState extends State<SchedulePane> {
   void initState() {
     super.initState();
     _load();
+    // A job booked, moved or assigned anywhere shows on the open day.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      (_) {
+        if (!_busy && _board != null) return _load();
+      },
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void didUpdateWidget(covariant SchedulePane old) {
@@ -75,6 +86,7 @@ class _SchedulePaneState extends State<SchedulePane> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _unassignedSearch.dispose();
     super.dispose();
   }

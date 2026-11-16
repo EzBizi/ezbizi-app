@@ -42,7 +42,7 @@ final class MondaySync
      * @param  list<string>|null  $items  read just these items (a webhook), not the changed ones
      * @return array<string, array<string, mixed>> monday board id => report
      */
-    public function run(SocialConnection $connection, bool $full = false, ?array $only = null, ?array $items = null, ?MondayClient $client = null): array
+    public function run(SocialConnection $connection, bool $full = false, ?array $only = null, ?array $items = null, ?MondayClient $client = null, bool $scan = false): array
     {
         $org = Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id);
         $reader = new MondayBoardReader($client ?? MondayClient::for($connection));
@@ -75,7 +75,11 @@ final class MondaySync
                 $ids = $items;
                 $latest = null;
             } else {
-                ['ids' => $ids, 'latest' => $latest] = $reader->changedSince($mondayId, $full || $cursor === null ? null : CarbonImmutable::parse($cursor));
+                // Every item when asked (--full) or for a board never read; else what changed since its cursor:
+                // Monday's own date filter on the 10-minute pass, a whole-board listing on the nightly --scan.
+                ['ids' => $ids, 'latest' => $latest] = $full || $cursor === null
+                    ? $reader->changedSince($mondayId, null)
+                    : $reader->changedSince($mondayId, CarbonImmutable::parse($cursor), filtered: ! $scan);
             }
             if ($ids !== []) {
                 $meta = $reader->board($mondayId);

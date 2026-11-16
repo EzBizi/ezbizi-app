@@ -72,7 +72,9 @@ class _GoogleCampaignsViewState
   @override
   List<Map<String, dynamic>> visibleRows() => sorted([
     for (final c in campaigns ?? const <Map<String, dynamic>>[])
-      if (needle.isEmpty || '${c['name']} ${titleOf(c)}'.toLowerCase().contains(needle)) c,
+      if (needle.isEmpty ||
+          '${c['name']} ${titleOf(c)}'.toLowerCase().contains(needle))
+        c,
   ]);
 
   static bool _lsa(Map<String, dynamic> c) => c['type'] == 'LOCAL_SERVICES';
@@ -84,8 +86,10 @@ class _GoogleCampaignsViewState
   String titleOf(Map<String, dynamic> c) {
     final name = '${c['name']}';
     if (!name.startsWith('LocalServicesCampaign:')) return name;
-    final owner = accounts
-        ?.firstWhere((a) => a['connection_id'] == account, orElse: () => const {})['name'];
+    final owner = accounts?.firstWhere(
+      (a) => a['connection_id'] == account,
+      orElse: () => const {},
+    )['name'];
     return owner == null ? 'Local Services' : 'Local Services · $owner';
   }
 
@@ -95,7 +99,7 @@ class _GoogleCampaignsViewState
   /// [lsaWeekly] undoes the cents Google rounded the division to.
   static String _budgetText(Map<String, dynamic> c) => _lsa(c)
       ? '${adMoney(lsaWeekly(adNumber(c['daily_budget'])))} / week'
-      : adMoney(c['daily_budget']);
+      : '${adMoney(c['daily_budget'])} / day';
 
   /// "Limited", "Not eligible"… when it is on and still not fully showing.
   static String? _why(Map<String, dynamic> c) {
@@ -248,7 +252,7 @@ class _GoogleCampaignsViewState
   List<(String, String?, double)> get columns => const [
     ('On', null, 190),
     ('Schedule', null, 250),
-    ('Budget / day', 'daily_budget', 130),
+    ('Budget', 'daily_budget', 130),
     ('Bid target', null, 140),
     ('Spend', 'spend', 100),
     ('Conv.', 'conversions', 70),

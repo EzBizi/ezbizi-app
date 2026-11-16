@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/empty_state.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
@@ -156,14 +158,11 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
               style: muted,
             ),
           if (stops.isEmpty && unroutable.isEmpty)
-            Padding(
-              key: const ValueKey('tour-field-route-empty'),
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                'No jobs on this day.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium,
-              ),
+            const EmptyState(
+              key: ValueKey('tour-field-route-empty'),
+              icon: Icons.route_outlined,
+              title: 'No jobs on this day',
+              message: 'Pick another day or person to see their route.',
             ),
           for (final (i, s) in stops.indexed)
             Card(

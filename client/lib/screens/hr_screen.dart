@@ -1,3 +1,4 @@
+import '../widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -342,9 +343,12 @@ class _HrScreenState extends State<HrScreen> {
               for (final tab in _shownTabs)
                 Offstage(
                   offstage: tab.$1 != _activeTab,
-                  child: _shown.contains(tab.$1) || tab.$1 == _activeTab
-                      ? tab.$4()
-                      : const SizedBox.shrink(),
+                  child: ModuleActionGate(
+                    active: tab.$1 == _activeTab,
+                    child: _shown.contains(tab.$1) || tab.$1 == _activeTab
+                        ? tab.$4()
+                        : const SizedBox.shrink(),
+                  ),
                 ),
             ],
           ),

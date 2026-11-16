@@ -204,7 +204,7 @@ void main() {
       'branches, in that order; no Other boards picker', (tester) async {
     await pumpBoard(tester);
     expect(find.text('Other boards'), findsNothing);
-    expect(inTree('My board'), findsOneWidget);
+    expect(inTree('My Board'), findsOneWidget);
     expect(inTree('Spring push · from Dana Reyes'), findsOneWidget);
     expect(inTree('A-1 Chimney'), findsNWidgets(2)); // the node and its board
     expect(inTree('Estimates follow-up'), findsOneWidget);
@@ -389,6 +389,54 @@ void main() {
       expect(formatCellNumber(-1200, r'$'), r'-$1,200');
       expect(formatCellNumber(-5000.75, 'ft'), '-5,000.75 ft');
     });
+  });
+
+  testWidgets('My Board is the first entry, above Shared with me, Folders, '
+      'Companies and Everyone, even when filed in a folder (Jose 11-16)', (
+    tester,
+  ) async {
+    folders = [
+      {
+        'id': 'fo-1',
+        'parent_id': null,
+        'name': 'Partners',
+        'colour': '#e2445c',
+        'position': 0,
+      },
+    ];
+    addTearDown(() => folders = []);
+    await pumpBoard(
+      tester,
+      boards: [
+        board('b-mine2', 'custom', 'Aaa plan', section: 'mine', owner: 'Maya'),
+        ...fixture.map(
+          (b) => b['id'] == 'b-me' ? {...b, 'folder_id': 'fo-1'} : b,
+        ),
+        board('b-ev', 'user', 'Zed Ray', section: 'everyone', owner: 'Zed Ray'),
+      ],
+    );
+    expect(inTree('My Board'), findsOneWidget);
+    expect(row('b-me'), findsOneWidget, reason: 'not again in its folder');
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    // Headers are drawn in capitals.
+    Finder heading(String text) => find.descendant(
+      of: tree,
+      matching: find.byWidgetPredicate(
+        (w) => w is Text && w.data?.toLowerCase() == text.toLowerCase(),
+      ),
+    );
+    final first = y(row('b-me'));
+    for (final below in [
+      heading('My boards'),
+      row('b-mine2'),
+      heading('Shared with me'),
+      heading('Folders'),
+      heading('Companies'),
+      heading("Everyone's boards"),
+    ]) {
+      expect(below, findsOneWidget);
+      expect(first, lessThan(y(below)));
+    }
   });
 
   testWidgets('a board in a folder shows under Folders, in its colour, and '

@@ -9,6 +9,7 @@ import '../core/api_client.dart';
 import '../core/branch_options.dart';
 import '../core/job_money.dart';
 import '../core/job_status.dart';
+import '../core/live_changes.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -182,6 +183,11 @@ class _JobsScreenState extends State<JobsScreen> {
   void initState() {
     super.initState();
     _load();
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      _liveJobs,
+      active: LiveChanges.visible(this),
+    );
     // A link to one job (a notification, or /jobs/{id} typed in the bar).
     DeepLinks.pending.addListener(_takeLink);
     WidgetsBinding.instance.addPostFrameCallback((_) => _takeLink());
@@ -189,13 +195,49 @@ class _JobsScreenState extends State<JobsScreen> {
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_takeLink);
     _search.dispose();
     _openDirty.dispose();
     super.dispose();
   }
 
-  Future<void> _load({int page = 1}) async {
+  // ── Live: syncs, webhooks and automations show without leaving ─────
+
+  LiveSubscription? _live;
+
+  /// Page one is read again quietly (rows stay up, so does the scroll). With
+  /// more pages loaded, the rows that changed are read one by one in place.
+  Future<void> _liveJobs(LiveBatch batch) async {
+    if (_tab != 'jobs' || _loading) return;
+    if (_page == 1 || batch.reload) {
+      if (_page == 1) await _load(quiet: true);
+      return;
+    }
+    final gone = batch.deletedOf('jobs');
+    final changed = [
+      for (final j in _jobs)
+        if (batch.changedOf('jobs').contains(j['id'])) '${j['id']}',
+    ];
+    final fresh = <String, Map<String, dynamic>>{};
+    for (final id in changed.take(20)) {
+      final res = await widget.api.get('/jobs/$id');
+      if (res.ok && res.data is Map) {
+        fresh[id] = Map<String, dynamic>.from(res.data as Map);
+      }
+    }
+    if (!mounted || (gone.isEmpty && fresh.isEmpty)) return;
+    setState(() {
+      _jobs = [
+        for (final j in _jobs)
+          if (!gone.contains(j['id'])) fresh[j['id']] ?? j,
+      ];
+    });
+  }
+
+  /// [quiet]: a live re-read. No dimming or bar (the Stack they need would
+  /// rebuild the list and lose its scroll), and a failure keeps the rows.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     // Appends only. Two appends at once duplicate rows, and an append landing
     // during a page-one refresh appends to a list that is being replaced. A
     // page-one load is never refused — it supersedes instead, via _request.
@@ -208,7 +250,7 @@ class _JobsScreenState extends State<JobsScreen> {
       // refetch after creating a job comes through here with rows on screen,
       // and they stay up until the new ones land.
       _loading = page == 1 && _jobs.isEmpty;
-      _refreshing = page == 1 && _jobs.isNotEmpty;
+      _refreshing = !quiet && page == 1 && _jobs.isNotEmpty;
       _fetching = true;
       _error = null;
       _pageError = null;
@@ -243,7 +285,9 @@ class _JobsScreenState extends State<JobsScreen> {
         // A first-page failure takes over the screen even when rows are still
         // in hand: they predate whatever the write did, and a refusal to
         // re-read them has to be said out loud rather than whispered.
-        if (page == 1) {
+        if (quiet) {
+          // A missed live tick: the next one tries again.
+        } else if (page == 1) {
           _error = response.message;
         } else {
           _pageError = response.message;
@@ -1057,10 +1101,16 @@ class _JobsScreenState extends State<JobsScreen> {
             style: TextStyle(color: muted),
           ),
         ),
-      TableColumn('Title', flex: 3, cell: (_, job) => _titleCell(job)),
+      TableColumn(
+        'Title',
+        flex: 3,
+        minWidth: 200,
+        cell: (_, job) => _titleCell(job),
+      ),
       TableColumn(
         'Customer',
         flex: 3,
+        minWidth: 160,
         cell: (_, job) => Text('${_customer(job)['name'] ?? ''}'),
       ),
       // Which company, only when looking at the whole organization (Jose,
@@ -1069,6 +1119,7 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Company',
           flex: 2,
+          minWidth: 130,
           cell: (_, job) => Text(
             '${(job['company'] as Map?)?['name'] ?? '—'}',
             overflow: TextOverflow.ellipsis,
@@ -1078,6 +1129,7 @@ class _JobsScreenState extends State<JobsScreen> {
       TableColumn(
         'Where',
         flex: 3,
+        minWidth: 180,
         cell: (_, job) => WhereLabel(job, placeable: _placeable(job)),
       ),
       // Who booked it (Trey Brannan, 2026-11-12), when a loaded job says.
@@ -1085,6 +1137,7 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Booked by',
           flex: 2,
+          minWidth: 130,
           cell: (_, job) => Text(
             '${job['booked_by'] ?? '—'}',
             overflow: TextOverflow.ellipsis,
@@ -1105,6 +1158,7 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Tags',
           flex: 3,
+          minWidth: 140,
           cell: (_, job) => Align(
             alignment: AlignmentDirectional.centerStart,
             child: JobTagsSummary(jobTags(job), colours: jobTagColours(job)),

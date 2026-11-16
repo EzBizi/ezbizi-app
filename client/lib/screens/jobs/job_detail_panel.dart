@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/job_money.dart';
+import '../../core/live_changes.dart';
 import '../../core/job_status.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -148,6 +149,34 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     _files.addListener(_filesChanged);
     _files.load();
     _load();
+    // Live: a sync, webhook or automation changing this job shows here.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      (batch) {
+        if (batch.reload || batch.touched('jobs').contains(widget.id)) {
+          return _refresh();
+        }
+      },
+      active: LiveChanges.visible(this),
+    );
+  }
+
+  LiveSubscription? _live;
+
+  /// The job read again in place, with no spinner. Skipped while somebody is
+  /// typing or saving: their edit is never overwritten from under them.
+  Future<void> _refresh() async {
+    if (_loading || _busy || _typed != _loaded) return;
+    final response = await widget.api.get('/jobs/${widget.id}');
+    if (!mounted || !response.ok || _busy || _typed != _loaded) return;
+    final row = Map<String, dynamic>.from(response.data as Map);
+    setState(() {
+      _fill(row);
+      _row = row;
+      _notes = jobNotes(row['notes']);
+    });
+    _loaded = _typed;
+    widget.dirty?.value = false;
   }
 
   /// Where the panel goes when it is finished: its route, or the list it is
@@ -169,6 +198,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _files.removeListener(_filesChanged);
     _files.dispose();
     _title.dispose();

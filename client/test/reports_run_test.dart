@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/reports/report_run_view.dart';
+import 'package:ezbizi_client/widgets/list_table.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -12,9 +13,9 @@ void main() {
   testWidgets('a wide screen draws the rows as a table', (tester) async {
     await _pumpRun(tester, width: 1200, run: _oneRow);
 
-    expect(find.byType(DataTable), findsOneWidget);
+    expect(find.byType(ListTable), findsOneWidget);
     expect(find.text('Sweep'), findsOneWidget);
-    expect(find.text('Title'), findsOneWidget);
+    expect(find.text('TITLE'), findsOneWidget);
   });
 
   testWidgets('a narrow screen leads with the count, then cards', (
@@ -22,7 +23,7 @@ void main() {
   ) async {
     await _pumpRun(tester, width: 375, run: _oneRow);
 
-    expect(find.byType(DataTable), findsNothing);
+    expect(find.byType(ListTable), findsNothing);
     expect(find.text('1 row'), findsOneWidget);
     expect(find.text('Sweep'), findsOneWidget);
   });

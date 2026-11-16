@@ -257,6 +257,8 @@ class ProjectBoardController extends Controller
             // For a repair team's "user" (Jose, 2026-11-10).
             'repair_colours' => WorkizTags::COLORS,
             'users' => User::query()->where('organization_id', $user->organization_id)->orderBy('name')->get(['id', 'name']),
+            // For "Roles that can be picked as Technician" (Jose, 2026-11-16).
+            'roles' => \App\Models\Role::query()->orderBy('name')->pluck('name')->unique()->values(),
             'tag_colours' => (object) collect(ViewScope::forUser($user)->switchedOnFranchiseIds())
                 ->reduce(fn (array $c, string $f) => $c + app(WorkizTagColours::class)->for($f, $tags->all()), []),
         ]]);

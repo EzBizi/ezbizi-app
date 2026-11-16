@@ -1,3 +1,4 @@
+import '../../widgets/module_page_header.dart';
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -203,11 +204,13 @@ class _ContractsTabState extends State<ContractsTab> {
               'what merges into the document. Editing one publishes a new '
               'version; the contracts already signed keep the version that '
               'produced them.',
-          action: FilledButton.icon(
-            key: const ValueKey('tour-hr-contracts-new'),
-            onPressed: _mayCreate && _cannotDesign == null ? _create : null,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('New contract'),
+          action: ModuleAction(
+            child: FilledButton.icon(
+              key: const ValueKey('tour-hr-contracts-new'),
+              onPressed: _mayCreate && _cannotDesign == null ? _create : null,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('New contract'),
+            ),
           ),
         ),
         if (_cannotDesign != null)
@@ -374,9 +377,7 @@ class _ContractsTabState extends State<ContractsTab> {
                   ),
               ],
             ),
-            Text(
-              template['version'] == null ? '—' : 'v${template['version']}',
-            ),
+            Text(template['version'] == null ? '—' : 'v${template['version']}'),
             Text(_questionCount(template['field_count'])),
             // Written, or still only questions: a template with no wording
             // produces a dump of answers, not an agreement. Absent is a server

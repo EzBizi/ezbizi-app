@@ -562,6 +562,11 @@ class AutomationsController extends Controller
                         ->all(),
                 ),
 
+                // Boards the author may write, for "Add a task" on a named board (desk 11-16).
+                'task_boards' => TaskBoard::query()->whereNull('archived_at')->orderBy('name')->get()
+                    ->filter(fn (TaskBoard $b) => app(TaskBoards::class)->canEdit($request->user(), $b))
+                    ->map(fn (TaskBoard $b) => ['id' => $b->id, 'label' => $b->name])->values()->all(),
+
                 // From Human Resources, not from a query here: it offers exactly
                 // what startOnboarding accepts, because both ask the same
                 // `usable()`. Name only — the version is resolved when it fires.
@@ -2496,6 +2501,10 @@ class AutomationsController extends Controller
             $type('task.create', 'Add a task', true, [
                 $parameter('title', 'Task', 'text', variables: true),
                 $parameter('assignee', 'Give it to', 'person', false, true),
+                // Empty = the place's board, as before.
+                $parameter('board', 'On the board (empty: the place board)', 'task_board', false),
+                // e.g. {{phone}}: skip while an open task in the group has it in its title.
+                $parameter('dedupe', 'Skip if an open task already has (title or e.g. {{phone}})', 'text', false, true),
             ]),
             // Communication › Alerts, from a rule (Jose, 2026-10-13).
             // From the branch's texting line, onto the enquiry's thread (Leads' LeadTexts).

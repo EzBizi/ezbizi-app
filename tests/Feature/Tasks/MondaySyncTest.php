@@ -120,6 +120,35 @@ class MondaySyncTest extends TestCase
         $this->assertSame(3, $this->inTenant($this->tenant['org'], fn () => Task::query()->whereNotNull('external_ref')->count()));
     }
 
+    /**
+     * 2026-11-16: the poll listed every item of 39 boards (88k) every ten
+     * minutes, ~4 min, and a 5-min scheduler slot timed out. A pass with
+     * nothing new asks Monday's date filter once per board and reads no item.
+     */
+    public function test_a_quiet_pass_asks_only_mondays_date_filter_and_reads_no_item(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z')]);
+        $this->assertSame('2026-11-12T12:00:00+00:00', $this->connection->fresh()->setup['monday']['cursors']['100']);
+
+        // The next day, Monday unchanged.
+        Carbon::setTestNow('2026-11-13 09:00:00');
+        $this->mondayQueries = [];
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+
+        $this->assertCount(1, $this->mondayQueries, 'one query for the one board: '.implode(' | ', $this->mondayQueries));
+        $this->assertStringContainsString('__last_updated__', $this->mondayQueries[0]);
+        $this->assertSame([], array_filter($this->mondayQueries, fn ($q) => str_contains($q, 'items(ids:') || str_contains($q, 'users(')),
+            'no item, update or user read');
+
+        // A change since the cursor is still found, and only it is read.
+        $this->monday['boards']['100']['items'][] = $this->mondayItem('12', 'New job', '2026-11-13T08:30:00Z') + ['_board' => '100'];
+        $this->mondayQueries = [];
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+        $this->assertNotNull($this->task('12'));
+        $this->assertSame('2026-11-13T08:30:00+00:00', $this->connection->fresh()->setup['monday']['cursors']['100']);
+    }
+
     public function test_last_writer_wins_a_change_here_after_mondays_stays_and_a_later_monday_change_wins(): void
     {
         Carbon::setTestNow('2026-11-12 11:30:00');
