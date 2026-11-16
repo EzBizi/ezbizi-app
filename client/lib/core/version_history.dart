@@ -37,6 +37,12 @@ class VersionHistory {
       'Customer Experience: Google Business listings show their city; ratings say which period they cover',
       'A screen that hits an error shows a card instead of a black app',
       'Monday sync runs in the background lane and reads only what changed',
+      'Updates live, without reloading: Leads, Customers and the customer record, Project Management, Scheduling (incl. Availability and Re-Scheduling), Inventory (Items, Stock, Orders, Locations), Fleet, HR, Work Hours, Invoices, Bills, Adjustments, Phone history and voicemails, Reviews, Complaints, Automations, Newsletters, QR codes and the Dashboard; what you are typing is never overwritten',
+      'Marketing: edit the text and image of an AI post in the side panel before approving; calendar days light up on hover and +N more opens the list for that day',
+      'Marketing › Comments: one inbox for Instagram, Facebook, YouTube and X comments; reply and hide where each network allows',
+      'Task Board: the column menu shows on hover, Kanban cards show +N more, and short timeline bars show their dates',
+      'Automations: Add a task can put the task on a chosen board and skip it while an open task for the same caller exists',
+      'Reports: people who only make outbound calls get a row with an Outbound column and their calls in the drill-down; P&L no longer errors on a broken Airtable cell',
     ]),
     VersionRelease(version: '0.0.0576', date: '16 Nov 2026', items: [
       'Task Board no longer freezes the app on big boards: rows draw as you scroll',
