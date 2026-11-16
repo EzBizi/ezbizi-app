@@ -65,6 +65,7 @@ use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InstagramCommentsController;
+use App\Http\Controllers\Api\SocialCommentsController;
 use App\Http\Controllers\Api\IntegrationDependentsController;
 use App\Http\Controllers\Api\IntegrationsOverviewController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
@@ -2599,6 +2600,12 @@ Route::prefix('v1')
         Route::get('social/connections/{connection}/instagram-comments', [InstagramCommentsController::class, 'index']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/replies', [InstagramCommentsController::class, 'reply']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/hide', [InstagramCommentsController::class, 'hide']);
+        // Every comment on every connected account (Facebook, Instagram,
+        // YouTube, X) in one inbox; each row names the actions it supports.
+        Route::get('social/comments', [SocialCommentsController::class, 'index']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/replies', [SocialCommentsController::class, 'reply'])->whereIn('network', ['facebook', 'instagram', 'youtube', 'x']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/hide', [SocialCommentsController::class, 'hide'])->whereIn('network', ['facebook', 'instagram', 'youtube', 'x']);
+        Route::delete('social/connections/{connection}/comments/{network}/{comment}', [SocialCommentsController::class, 'destroy'])->whereIn('network', ['facebook', 'instagram', 'youtube', 'x']);
         Route::delete('social/providers/{provider}/connections', [SocialConnectionsController::class, 'destroyProvider']);
         // What stops working if a connection is disconnected (the disconnect panel).
         Route::get('integrations/{kind}/{id}/dependents', [IntegrationDependentsController::class, 'show'])
