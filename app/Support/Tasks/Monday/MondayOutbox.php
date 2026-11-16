@@ -40,6 +40,13 @@ final class MondayOutbox
         if (self::$suppressed > 0 || ($kinds === [] && $update === null) || ! $this->linked($task)) {
             return;
         }
+        // On a branch or company board a Monday board was merged into (2026-11-16), only the
+        // tasks that came from Monday go back to it; the branch board's own work stays here.
+        $board = $task->relationLoaded('board') ? $task->board : $task->board()->withoutGlobalScopes()->first();
+        if (! in_array($board?->kind, [\App\Models\TaskBoard::KIND_CUSTOM, \App\Models\TaskBoard::KIND_USER], true)
+            && ! str_starts_with((string) $task->external_ref, 'monday:')) {
+            return;
+        }
         if ($update !== null) {
             if (! str_starts_with((string) $update->external_ref, 'monday:')) {
                 MondayOutboxEntry::query()->create([
