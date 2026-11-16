@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
@@ -230,11 +231,22 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
   @override
   void initState() {
     super.initState();
-    if (_canView) _loadDevices();
+    if (_canView) {
+      _loadDevices();
+      // A machine coming online or going quiet, or a new screenshot: the
+      // devices and the chosen one's filmstrip re-read quietly; the picked
+      // frame and a live view are kept.
+      _feed = LiveChanges.of(widget.api).subscribe({'monitoring_devices'}, (_) {
+        if (!_loadingDevices && !_loadingShots) return _loadDevices(quiet: true);
+      }, active: LiveChanges.visible(this));
+    }
   }
+
+  LiveSubscription? _feed;
 
   @override
   void dispose() {
+    _feed?.cancel();
     _watchTimer?.cancel();
     _frameTimer?.cancel();
     _controlTimer?.cancel();
@@ -242,15 +254,18 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     super.dispose();
   }
 
-  Future<void> _loadDevices() async {
-    setState(() {
-      _loadingDevices = _devices.isEmpty;
-      _devicesError = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps what is shown.
+  Future<void> _loadDevices({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loadingDevices = _devices.isEmpty;
+        _devicesError = null;
+      });
+    }
 
     final response = await widget.api.get('/monitoring/devices');
 
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     if (!response.ok) {
       setState(() {
@@ -277,7 +292,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     });
 
     final deviceId = _selectedDeviceId;
-    if (deviceId != null) await _loadShots(deviceId);
+    if (deviceId != null) await _loadShots(deviceId, quiet: quiet);
   }
 
   void _selectDevice(String id) {
@@ -309,7 +324,9 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     if (target != null) _selectDevice(target['id'] as String);
   }
 
-  Future<void> _loadShots(String deviceId) async {
+  /// [quiet]: a live re-read; no spinner, a failure keeps the filmstrip,
+  /// and the frame being looked at stays picked while it is still there.
+  Future<void> _loadShots(String deviceId, {bool quiet = false}) async {
     // Captured before any `await` — nothing between here and the increment
     // can race it, so every later check in this call is comparing against
     // whichever fetch (this one, or a newer one) is actually current.
@@ -332,10 +349,12 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
       return;
     }
 
-    setState(() {
-      _loadingShots = true;
-      _shotsError = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loadingShots = true;
+        _shotsError = null;
+      });
+    }
 
     final response = await widget.api.get('/monitoring/screenshots', {
       'device_id': deviceId,
@@ -346,6 +365,7 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     // was in flight — its answer, whenever it lands, is not allowed to
     // touch state a newer selection already owns.
     if (!mounted || generation != _loadGeneration) return;
+    if (quiet && !response.ok) return;
 
     if (!response.ok) {
       setState(() {
@@ -356,11 +376,12 @@ class _DesktopMonitoringTabState extends State<DesktopMonitoringTab> {
     }
 
     final shots = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
+    final kept = quiet && shots.any((s) => s['id'] == _heroId);
 
     setState(() {
       _loadingShots = false;
       _shots = shots;
-      _heroId = shots.isEmpty ? null : shots.first['id'] as String?;
+      if (!kept) _heroId = shots.isEmpty ? null : shots.first['id'] as String?;
     });
 
     await _fetchBytes(shots, generation);

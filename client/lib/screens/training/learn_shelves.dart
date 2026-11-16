@@ -2,6 +2,7 @@ import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -90,22 +91,33 @@ class _LearnShelvesState extends State<LearnShelves> {
   void initState() {
     super.initState();
     _load();
+    // Something assigned to me, published, or my own result landing from
+    // another device: the shelves re-read; an open guide or test is kept.
+    _live = LiveChanges.of(widget.api).subscribe({'training'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _assigned.isEmpty && _library.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the shelves on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _assigned.isEmpty && _library.isEmpty;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/training/learn');
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;

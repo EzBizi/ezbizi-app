@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/camera_watch.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
@@ -106,18 +107,35 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
   @override
   void initState() {
     super.initState();
-    if (_canView) _load();
+    if (_canView) {
+      _load();
+      // A camera added, renamed or its bridge checking in: re-read quietly.
+      _live = LiveChanges.of(widget.api).subscribe({'monitoring_cameras'}, (_) {
+        if (!_loading) return _load(quiet: true);
+      }, active: LiveChanges.visible(this));
+    }
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _cameras.isEmpty;
-      _error = null;
-    });
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the cameras on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _cameras.isEmpty;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/monitoring/cameras');
 
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;
