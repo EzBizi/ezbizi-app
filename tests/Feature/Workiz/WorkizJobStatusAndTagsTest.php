@@ -81,6 +81,30 @@ class WorkizJobStatusAndTagsTest extends TestCase
         Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['status'] === 'done pending approval');
     }
 
+    /** Automations 11-16: the source goes up by the branch's own id, the mirror and audit follow; an unknown name is refused. */
+    public function test_a_source_goes_up_by_the_branchs_own_id_and_an_unknown_one_is_refused(): void
+    {
+        Http::fake([
+            'api.workiz.com/crm/api/v2/adgroups*' => Http::response(['data' => [['id' => 'AG-1', 'name' => 'LS Ads'], ['id' => 'AG-2', 'name' => 'PPC']]]),
+            'api.workiz.com/crm/api/v2/jobs/JOB-1' => Http::response(array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1'])),
+        ]);
+
+        $this->inTenant($this->t['org'], fn () => $this->writer()->setSource($this->job, 'ppc'));
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['adGroupId'] === 'AG-2');
+        $this->assertSame('ppc', $this->inTenant($this->t['org'], fn () => $this->job->fresh()->job_source));
+        $audit = json_decode((string) \Illuminate\Support\Facades\DB::table('audit_events')->where('action', 'workiz.job_source_set')->value('metadata'), true);
+        $this->assertSame(['from' => 'LS Ads', 'to' => 'ppc'], [ 'from' => $audit['from'] ?? null, 'to' => $audit['to'] ?? null]);
+
+        try {
+            $this->inTenant($this->t['org'], fn () => $this->writer()->setSource($this->job, 'Billboard'));
+            $this->fail('an unknown source must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('no job source "Billboard"', $e->getMessage());
+        }
+        Http::assertSentCount(3);
+    }
+
     public function test_workizs_own_refusal_is_thrown_as_it_reads(): void
     {
         Http::fake(['api.workiz.com/crm/api/v2/jobs/JOB-1' => Http::response(['message' => 'Must assign technician to perform this action'], 400)]);
