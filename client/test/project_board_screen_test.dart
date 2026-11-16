@@ -22,7 +22,8 @@ void main() {
     var over = 500;
     final api = ApiClient(
       client: MockClient((request) async {
-        requests.add(request);
+        // The live feed's own reads (every 10 s) are not the board's.
+        if (!request.url.path.endsWith('/changes')) requests.add(request);
         final path = request.url.path;
         if (path.endsWith('/me')) {
           return _json({

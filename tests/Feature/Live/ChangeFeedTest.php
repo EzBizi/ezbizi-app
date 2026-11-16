@@ -4,6 +4,8 @@ namespace Tests\Feature\Live;
 
 use App\Models\Customer;
 use App\Models\Job;
+use App\Models\Lead;
+use App\Models\LeadConversation;
 use App\Support\Live\ChangeFeed;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -96,6 +98,24 @@ class ChangeFeedTest extends TestCase
         // No jobs permission: no jobs, even when asked for.
         $this->signedInAs($noJobs);
         $this->assertSame([], $this->feed($since)['changes']);
+    }
+
+    public function test_a_message_landing_on_a_lead_is_that_leads_change(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $lead = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->id, 'franchise_id' => $t['franchise']->id, 'source' => Lead::SOURCE_WEBSITE_BOOKING,
+            'remote_id' => uniqid(), 'contact_name' => 'Dana', 'phone' => '+12035550100', 'status' => 'new', 'received_at' => now(),
+        ]));
+        $this->signedInAs($t['admin']);
+        $since = $this->feed(null, 'leads')['cursor'];
+
+        // A webhook storing a message touches no lead column.
+        $this->inTenant($t['org'], fn () => LeadConversation::create([
+            'organization_id' => $t['org']->id, 'lead_id' => $lead->id, 'remote_id' => 'c-1',
+            'channel' => 'MESSAGE', 'participant' => 'CONSUMER', 'occurred_at' => now(), 'text' => 'Are you coming?',
+        ]));
+        $this->assertSame([['type' => 'leads', 'id' => $lead->id, 'deleted' => false]], $this->feed($since, 'leads')['changes']);
     }
 
     public function test_more_than_a_batch_says_reload(): void

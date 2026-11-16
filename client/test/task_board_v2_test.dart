@@ -426,8 +426,8 @@ void main() {
       find.descendant(of: cell, matching: find.text('Stuck')),
       findsOneWidget,
     );
-    final fill = tester.widget<Material>(
-      find.ancestor(of: cell, matching: find.byType(Material)).first,
+    final fill = tester.widget<ColoredBox>(
+      find.ancestor(of: cell, matching: find.byType(ColoredBox)).first,
     );
     expect(fill.color, const Color(0xFFC53B3B));
 

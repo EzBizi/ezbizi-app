@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/job_money.dart';
+import '../core/live_changes.dart';
 import '../core/job_status.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -118,8 +119,16 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _live = Timer.periodic(const Duration(seconds: 60), (_) => _refresh());
+    // A job saved anywhere (Workiz sync, webhook, automation) within ~10 s.
+    _feed = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      (_) => _refresh(),
+      active: LiveChanges.visible(this),
+    );
     _load();
   }
+
+  LiveSubscription? _feed;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -143,6 +152,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _live?.cancel();
+    _feed?.cancel();
     _debounce?.cancel();
     _search.dispose();
     super.dispose();
