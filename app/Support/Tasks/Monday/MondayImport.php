@@ -744,12 +744,17 @@ final class MondayImport
      */
     private function layout(TaskBoard $board, array $b): void
     {
+        // A branch or company board a Monday board was merged into (Jose, 2026-11-16) keeps its own
+        // order, colours, groups and statuses: Monday's are only added where missing.
+        $mirror = in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true);
         $groups = $b['groups'] ?? [];
         foreach (array_values($groups) as $i => $g) {
             $group = $this->group($board, $g['name'], $g['colour'] ?? null);
-            $group->forceFill(array_filter(['colour' => $g['colour'] ?? null, 'position' => $i + 1], fn ($v) => $v !== null))->save();
+            if ($mirror) {
+                $group->forceFill(array_filter(['colour' => $g['colour'] ?? null, 'position' => $i + 1], fn ($v) => $v !== null))->save();
+            }
         }
-        if ($groups !== []) {
+        if ($groups !== [] && $mirror) {
             $names = array_map(fn ($g) => mb_strtolower(trim($g['name'])), $groups);
             foreach ($board->groups()->get() as $i => $group) {
                 if (! in_array(mb_strtolower($group->name), $names, true)) {
@@ -769,7 +774,7 @@ final class MondayImport
         // A board whose status came from the wrong column (the PM boards' Area, before
         // 2026-11-13) keeps those labels as statuses nobody is on: they go once unused, and only
         // when they are another Monday column's labels and not the status column's own.
-        if (! empty($b['statuses'])) {
+        if (! empty($b['statuses']) && $mirror) {
             $own = array_map(fn ($s) => mb_strtolower($s['label']), $b['statuses']);
             $others = [];
             foreach ($b['columns'] ?? [] as $c) {
@@ -789,7 +794,7 @@ final class MondayImport
 
         foreach (array_values($b['columns'] ?? []) as $i => $c) {
             $column = $this->column($board, $c['title'], $c['type'], (array) ($c['settings'] ?? []));
-            if ($column->position !== $i + 1) {
+            if ($mirror && $column->position !== $i + 1) {
                 $column->forceFill(['position' => $i + 1])->save();
             }
         }
@@ -823,7 +828,7 @@ final class MondayImport
      */
     private function folder(TaskBoard $board, ?array $path): void
     {
-        if ($path === null || $path === [] || $board->folder_id !== null) {
+        if ($path === null || $path === [] || $board->folder_id !== null || ! in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true)) {
             return;
         }
         $parent = null;
@@ -920,7 +925,14 @@ final class MondayImport
     private function column(TaskBoard $board, string $title, string $type = 'text', array $settings = []): TaskColumn
     {
         $type = in_array($type, TaskColumn::TYPES, true) ? $type : 'text';
-        $found = $board->columns()->get()->first(fn (TaskColumn $c) => mb_strtolower($c->name) === mb_strtolower($title));
+        $all = $board->columns()->get();
+        $found = $all->first(fn (TaskColumn $c) => mb_strtolower($c->name) === mb_strtolower($title));
+        if ($found !== null && $found->type !== $type && ! in_array($board->kind, [TaskBoard::KIND_CUSTOM, TaskBoard::KIND_USER], true)) {
+            // A branch board's own column of that name and another type stays as it is: Monday's
+            // is "<name> (Monday)" beside it (MondayBoardMerge names it so).
+            $title = mb_substr($title, 0, 240).' (Monday)';
+            $found = $all->first(fn (TaskColumn $c) => mb_strtolower($c->name) === mb_strtolower($title));
+        }
         if ($found === null) {
             $this->counts['columns made']++;
 
