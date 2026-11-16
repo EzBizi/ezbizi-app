@@ -1485,6 +1485,188 @@ void main() {
     expect(find.textContaining('CONSUMER'), findsNothing);
     expect(find.textContaining('ADVERTISER'), findsNothing);
   });
+
+  // Design lead-header A (Jose, 2026-11-16: "this is still terrible ui-ux
+  // ... lots of wasted space and things all around").
+  group('the header, design lead-header A', () {
+    const details = {
+      'address': '14 Orchard Ln, Doylestown, PA 18901',
+      'zip': '18901',
+      'account': 'A1 Chimney - Bucks County',
+      'google_status': 'Active',
+    };
+    const reading = {
+      'scope': 'wants the fireplace swept and checked before the holidays',
+      'availability': 'weekday mornings',
+      'deadline': 'before Dec 20',
+      'source':
+          'Our fireplace smokes. Can you sweep and check it before the '
+          'holidays? Weekday mornings are best.',
+    };
+    const summary =
+        'Smoky fireplace; wants it swept and checked before the holidays.';
+
+    Future<void> pumpFull(WidgetTester tester, Size size) => _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: size,
+      company: const {'id': 'co-1', 'name': 'A-1 Chimney'},
+      email: 'dana.whitfield@example.com',
+      details: details,
+      reading: reading,
+      classification: 'BOOK',
+      summary: summary,
+      starrable: true,
+      onNote: (_) async => null,
+      viewers: const ['Gino Russo-Fernandez'],
+      customer: const {
+        'id': 'cu-1',
+        'name': 'Marcus Bell',
+        'number': 'C-03394',
+        'jobs_total': 1,
+        'jobs': <Map>[],
+      },
+    );
+
+    testWidgets('the facts are a grid on the right, each with its copy button', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1200, 900));
+
+      final facts = find.byKey(const ValueKey('thread-facts'));
+      expect(find.byKey(const ValueKey('thread-columns')), findsOneWidget);
+      // Its own column on the right half, beside what they asked.
+      expect(tester.getTopLeft(facts).dx, greaterThan(1200 / 2));
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('lead-asked'))).dx,
+        lessThan(tester.getTopLeft(facts).dx),
+      );
+
+      for (final (row, copy) in const [
+        ('fact-phone', 'copy-phone'),
+        ('fact-email', 'copy-email'),
+        ('fact-address', 'copy-address'),
+      ]) {
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey(row)),
+            matching: find.byKey(ValueKey(copy)),
+          ),
+          findsOneWidget,
+          reason: '$row carries $copy',
+        );
+      }
+      // One label column: every row's label starts at the same x, and every
+      // value at the same x after it.
+      final labels = {
+        for (final l in const ['Phone', 'Email', 'Address', 'Job', 'Branch', 'Source'])
+          tester
+              .getTopLeft(find.descendant(of: facts, matching: find.text(l)))
+              .dx,
+      };
+      expect(labels, hasLength(1), reason: 'labels share one column');
+      final values = {
+        tester.getTopLeft(find.byKey(const ValueKey('lead-address'))).dx,
+        tester.getTopLeft(find.byKey(const ValueKey('details-service'))).dx,
+        tester.getTopLeft(find.byKey(const ValueKey('details-branch'))).dx,
+      };
+      expect(values, hasLength(1), reason: 'values share one column');
+
+      // Company, branch and source each said once.
+      expect(find.text('A-1 Chimney'), findsOneWidget);
+      expect(find.text('Connecticut'), findsOneWidget);
+      expect(find.text('Google Ads'), findsOneWidget);
+      expect(find.textContaining('Fireplace chimney ·'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('fact-source')),
+          matching: find.byKey(const ValueKey('lead-account')),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('what they asked says the customer and the AI once', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1200, 900));
+
+      final card = find.byKey(const ValueKey('lead-asked'));
+      expect(card, findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.text(summary)),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Looks like work to book'), findsOneWidget);
+      // The AI line already says the scope, so the customer's part adds
+      // only when and by when.
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('reading-said'))).data,
+        'weekday mornings · before Dec 20',
+      );
+      expect(find.textContaining(reading['scope']!), findsNothing);
+      expect(find.textContaining('Smoky fireplace'), findsOneWidget);
+    });
+
+    test('sameGist: a restatement is the same, a new fact is not', () {
+      expect(sameGist(reading['scope']!, summary), isTrue);
+      expect(sameGist('needs a new damper and a cap', summary), isFalse);
+    });
+
+    testWidgets('the chips sit in one row beside the name', (tester) async {
+      await pumpFull(tester, const Size(1200, 900));
+
+      final rows = {
+        for (final k in const [
+          'copy-name',
+          'thread-company',
+          'thread-status',
+          'thread-star',
+          'lead-viewers',
+          'note-add',
+        ])
+          tester.getCenter(find.byKey(ValueKey(k))).dy.round(),
+      };
+      expect(rows, hasLength(1), reason: 'one row: $rows');
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('thread-company'))).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(const ValueKey('status-moves'))).dy,
+        ),
+      );
+    });
+
+    testWidgets('a phone at 390 opens every piece without overflow', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(390, 844));
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('thread-details-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      for (final k in const [
+        'thread-facts',
+        'lead-asked',
+        'lead-customer',
+        'copy-phone',
+        'copy-email',
+        'copy-address',
+        'thread-company',
+        'note-add',
+      ]) {
+        expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+        expect(
+          tester.getRect(find.byKey(ValueKey(k))).right,
+          lessThanOrEqualTo(390),
+          reason: k,
+        );
+      }
+    });
+  });
 }
 
 final _sent = <String>[];
@@ -1528,6 +1710,9 @@ Future<void> _pump(
   Map<String, dynamic>? offer,
   String? proofread,
   Map<String, dynamic>? reading,
+  String? classification,
+  String? summary,
+  bool starrable = false,
 }) async {
   _sent.clear();
   _booked.clear();
@@ -1835,9 +2020,12 @@ Future<void> _pump(
             'email': ?email,
             'credit': ?credit,
             'reading': ?reading,
+            'classification': ?classification,
+            'summary': ?summary,
             if (offer != null) 'lead_type': 'Reschedule',
           },
           onStatusChanged: (_) async {},
+          onStar: starrable ? (_) async => null : null,
           onRead: onRead,
           onNote: onNote,
           session: session,

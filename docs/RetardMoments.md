@@ -3,6 +3,10 @@
 Jose's name for it (2026-11-13): every mistake the deploy desk made, so it is never made twice.
 Newest first. Each entry: what happened, what it cost, the rule that stops it.
 
+## 2026-11-16 — Meta: told Jose to pay for two tenants' WhatsApp
+- **What:** I read "Missing valid payment method" in EzBizi's WhatsApp Manager and told Jose to add a card to the A1 Chimney and EverDoors accounts. Both WABAs are owned by their own businesses (`ownership_type` CLIENT_OWNED). EzBizi's view was the partner's view. A test send from A1 Chimney was delivered.
+- **Rule:** before telling anyone to pay, read `owner_business_info`/`ownership_type` on the WABA. A tenant's billing is the tenant's, never Jose's.
+
 ## 2026-11-16 — Reports: a filtered phpunit run voided my own full gate
 - **What:** while the 0.0.0577 P&L gate ran on `ezbizi_testing_reports`, I started a one-test `--filter` run on the same schema. Its migrate dropped the tables under the gate: 4245 "table doesn't exist" errors.
 - **Cost:** a 100-minute gate thrown away; the P&L SHA reached the desk ~2 hours late.

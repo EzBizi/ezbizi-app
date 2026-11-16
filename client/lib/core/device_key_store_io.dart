@@ -17,7 +17,22 @@ import 'dart:io';
 /// config dir. Null in production.
 Directory? debugStoreDirOverride;
 
+/// Test seam that stands in for APPDATA/HOME, set once for the whole run by
+/// test/flutter_test_config.dart. Kept apart from [debugStoreDirOverride]
+/// because tests reset that one to null in tearDown, and the next test then
+/// wrote the REAL %APPDATA%\ezbizi: on 2026-11-16 the full suite kept
+/// replacing the live app's monitoring device key on the desk PC.
+Directory? debugConfigRootOverride;
+
+/// Every real per-user path resolved while running under `flutter test`.
+/// The test config fails the run when this is not empty.
+final List<String> debugRealPathsUnderTest = [];
+
 Directory _configDir() {
+  final testRoot = debugConfigRootOverride;
+  if (testRoot != null) {
+    return Directory('${testRoot.path}${Platform.pathSeparator}ezbizi');
+  }
   final env = Platform.environment;
   String? root;
   if (Platform.isWindows) {
@@ -33,7 +48,9 @@ Directory _configDir() {
   // the system temp dir. That degrades to per-run identity (the old behaviour),
   // never crashes. Given a real config dir, the key persists across restarts.
   final base = root ?? Directory.systemTemp.path;
-  return Directory('$base${Platform.pathSeparator}ezbizi');
+  final dir = Directory('$base${Platform.pathSeparator}ezbizi');
+  if (env['FLUTTER_TEST'] == 'true') debugRealPathsUnderTest.add(dir.path);
+  return dir;
 }
 
 File _file(String key) {
