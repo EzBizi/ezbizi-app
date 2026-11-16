@@ -3023,6 +3023,10 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
             // list, so it is the last thing that should require scrolling to
             // reach.
             Expanded(
+              // Keyed: the search field above it comes and goes with the
+              // collapse, and an unkeyed sibling shift remounted this whole
+              // list (and its scroll view) on every toggle.
+              key: const ValueKey('sidebar-list'),
               // Nothing matched is the state that matters more than the happy
               // path: a sidebar with no modules in it and no explanation is
               // indistinguishable from a broken one. So it names what was
@@ -3238,44 +3242,53 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
 
     // Collapsed has one right width and dragging it would be a fight with the
     // toggle. The handle only exists when there is a width to change.
-    if (!expanded || widget.onResized == null) return sidebar;
-
+    //
+    // The Stack itself is ALWAYS there. Returning the bare sidebar when
+    // collapsed changed the root widget type, so every toggle threw the whole
+    // subtree away and mounted a new one: the old and new list both held the
+    // rail's scroll controller for a frame, `_MoreBelow` read
+    // `controller.position` (`positions.single`) and threw "Too many
+    // elements", and the column painted grey until the next click rebuilt it
+    // (Jose 11-16, 0.0.0575; client_issues 01a1e4ea).
+    final resizable = expanded && widget.onResized != null;
     return Stack(
       children: [
         sidebar,
-        Positioned(
-          top: 0,
-          bottom: 0,
-          // Straddles the border rather than sitting beside it, so the cursor
-          // changes where the eye says the edge is.
-          right: -3,
-          width: 7,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.resizeLeftRight,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onHorizontalDragStart: (_) => setState(() => _dragWidth = width),
-              onHorizontalDragUpdate: (d) => setState(() {
-                _dragWidth = ((_dragWidth ?? width) + d.delta.dx).clamp(
-                  NavigationSidebar.minWidth,
-                  NavigationSidebar.maxWidth,
-                );
-              }),
-              onHorizontalDragEnd: (_) {
-                final settled = _dragWidth;
-                setState(() => _dragWidth = null);
-                if (settled != null) widget.onResized!(settled);
-              },
-              // Double-click puts it back, because a resize handle without one
-              // means somebody who has dragged it somewhere odd has to find
-              // their way back by feel.
+        if (resizable)
+          Positioned(
+            top: 0,
+            bottom: 0,
+            // Straddles the border rather than sitting beside it, so the cursor
+            // changes where the eye says the edge is.
+            right: -3,
+            width: 7,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeLeftRight,
               child: GestureDetector(
-                onDoubleTap: () => widget.onResized!(220),
                 behavior: HitTestBehavior.translucent,
+                onHorizontalDragStart: (_) =>
+                    setState(() => _dragWidth = width),
+                onHorizontalDragUpdate: (d) => setState(() {
+                  _dragWidth = ((_dragWidth ?? width) + d.delta.dx).clamp(
+                    NavigationSidebar.minWidth,
+                    NavigationSidebar.maxWidth,
+                  );
+                }),
+                onHorizontalDragEnd: (_) {
+                  final settled = _dragWidth;
+                  setState(() => _dragWidth = null);
+                  if (settled != null) widget.onResized!(settled);
+                },
+                // Double-click puts it back, because a resize handle without one
+                // means somebody who has dragged it somewhere odd has to find
+                // their way back by feel.
+                child: GestureDetector(
+                  onDoubleTap: () => widget.onResized!(220),
+                  behavior: HitTestBehavior.translucent,
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -3479,6 +3492,10 @@ Widget _rail(
   String query = '',
 }) {
   return NavigationRail(
+    // A fresh rail per state, so it does not run its own extend animation.
+    // The column around it already snapped to its new width, and the rail
+    // animating its labels inside 80px overflowed every frame of a collapse.
+    key: ValueKey(expanded),
     backgroundColor: Colors.transparent,
     // null when an off-rail screen is showing, or when the OTHER rail holds the
     // selection. The assert allows it; a stale index would throw.
@@ -3565,7 +3582,8 @@ class _MoreBelowState extends State<_MoreBelow> {
     final scheme = Theme.of(context).colorScheme;
     // The list lays out after this row's first build, and a controller only
     // notifies on a scroll: look again once the list has its size.
-    if (!controller.hasClients || !controller.position.hasContentDimensions) {
+    if (controller.positions.length != 1 ||
+        !controller.positions.first.hasContentDimensions) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && controller.hasClients) setState(() {});
       });
@@ -3574,10 +3592,13 @@ class _MoreBelowState extends State<_MoreBelow> {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
+        // `positions`, never `position`: during a rebuild the controller can
+        // briefly hold two, and `position` throws on more than one.
+        final positions = controller.positions;
         final more =
-            controller.hasClients &&
-            controller.position.hasContentDimensions &&
-            controller.position.extentAfter > 8;
+            positions.length == 1 &&
+            positions.first.hasContentDimensions &&
+            positions.first.extentAfter > 8;
         if (!more) return const SizedBox.shrink();
 
         // The sidebar panel's own fill (see `color: scheme.surfaceContainerLow` above).
