@@ -3,6 +3,7 @@ import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/theme.dart';
 import '../../core/contracts.dart';
 import '../../core/files.dart';
@@ -111,17 +112,32 @@ class _ContractsTabState extends State<ContractsTab> {
   void initState() {
     super.initState();
     _load();
+    // A template published or archived elsewhere: read again quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'hr_contracts'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
 
-  Future<void> _load() async {
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
-    setState(() {
-      // A spinner only when there is nothing to keep — see AsyncBody. The
-      // refresh after publishing leaves the rows up.
-      _loading = _templates.isEmpty;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        // A spinner only when there is nothing to keep — see AsyncBody. The
+        // refresh after publishing leaves the rows up.
+        _loading = _templates.isEmpty;
+        _error = null;
+      });
+    }
 
     final answers = await Future.wait([
       widget.api.get('/hr/contracts'),
@@ -131,6 +147,7 @@ class _ContractsTabState extends State<ContractsTab> {
     if (!mounted || request != _request) return;
 
     final templates = answers[0];
+    if (quiet && !templates.ok) return;
     final catalogue = answers[1];
 
     setState(() {

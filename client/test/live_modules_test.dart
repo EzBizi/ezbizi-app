@@ -6,6 +6,13 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/customers/customer_detail_panel.dart';
 import 'package:ezbizi_client/screens/customers_screen.dart';
+import 'package:ezbizi_client/screens/fleet_screen.dart';
+import 'package:ezbizi_client/screens/hr/contracts_tab.dart';
+import 'package:ezbizi_client/screens/hr/invitations_tab.dart';
+import 'package:ezbizi_client/screens/hr/onboarding_tab.dart';
+import 'package:ezbizi_client/screens/hr/pto_tab.dart';
+import 'package:ezbizi_client/screens/hr/records_tab.dart';
+import 'package:ezbizi_client/screens/hr/work_hours_approval_tab.dart';
 import 'package:ezbizi_client/screens/inventory/item_list.dart';
 import 'package:ezbizi_client/screens/inventory/location_list.dart';
 import 'package:ezbizi_client/screens/inventory/order_list.dart';
@@ -432,6 +439,131 @@ void main() {
     },
   );
 
+  testWidgets('Fleet: a vehicle changed elsewhere re-reads the register and '
+      'General', (tester) async {
+    final s = await _pump(
+      tester,
+      permissions: [
+        'fleet_management.view',
+        'fleet_management.general.view',
+        'fleet_management.vehicles.view',
+      ],
+      handler: (r) => r.url.path.endsWith('/vehicles/summary')
+          ? _json(<String, dynamic>{})
+          : null,
+      home: (api, session) => FleetScreen(api: api, session: session),
+    );
+    final list = s.reads['/vehicles'] ?? 0;
+    final summary = s.reads['/vehicles/summary'] ?? 0;
+    await _tick(tester, s, 'vehicles', 'v-1');
+    expect(s.reads['/vehicles'], list + 1);
+    expect(s.reads['/vehicles/summary'], summary + 1);
+    await _tick(tester, s, 'people', 'u-1');
+    expect(
+      s.reads['/vehicles'],
+      list + 1,
+      reason: 'another type reads nothing',
+    );
+  });
+
+  testWidgets(
+    'Work Hours approvals: a clock-in elsewhere shows on the open day',
+    (tester) async {
+      var name = 'Pat Lin';
+      final s = await _pump(
+        tester,
+        permissions: ['work_hours.view', 'work_hours.approval.view'],
+        handler: (r) => r.url.path.endsWith('/hr/time-clock/approvals')
+            ? _json({
+                'data': {
+                  'date': '2026-10-21',
+                  'label': 'Tuesday, Oct 21',
+                  'counts': {'waiting': 1, 'approved': 0, 'no_shows': 0},
+                  'rows': [_approvalRow('u-1', name)],
+                },
+              })
+            : null,
+        home: (api, session) =>
+            WorkHoursApprovalTab(api: api, session: session),
+      );
+      expect(find.textContaining('Pat Lin'), findsWidgets);
+      name = 'Pat Lin-Moreno';
+      await _tick(tester, s, 'people', 'u-1');
+      expect(find.textContaining('Pat Lin-Moreno'), findsWidgets);
+      expect(
+        s.requests
+            .lastWhere((u) => u.path.endsWith('/approvals'))
+            .queryParameters['date'],
+        '2026-10-21',
+        reason: 'the open day, not today',
+      );
+    },
+  );
+
+  for (final (name, path, type, permissions, home)
+      in <
+        (
+          String,
+          String,
+          String,
+          List<String>,
+          Widget Function(ApiClient, Session),
+        )
+      >[
+        (
+          'HR Records',
+          '/hr/people',
+          'people',
+          ['hr.view', 'hr.records.view'],
+          (api, session) => RecordsTab(api: api, session: session),
+        ),
+        (
+          'HR Invitations',
+          '/hr/invitations',
+          'hr_invitations',
+          ['hr.view', 'hr.invitations.view'],
+          (api, session) => InvitationsTab(api: api, session: session),
+        ),
+        (
+          'HR Onboarding',
+          '/hr/onboardings',
+          'hr_invitations',
+          ['hr.view', 'hr.onboarding.view'],
+          (api, session) => OnboardingTab(api: api, session: session),
+        ),
+        (
+          'HR Contracts',
+          '/hr/contracts',
+          'hr_contracts',
+          ['hr.view', 'hr.contracts.view'],
+          (api, session) => ContractsTab(api: api, session: session),
+        ),
+        (
+          'Work Hours time off',
+          '/hr/pto',
+          'people',
+          ['work_hours.view', 'work_hours.pto.view'],
+          (api, session) => PtoTab(api: api, session: session),
+        ),
+      ]) {
+    testWidgets('$name: a change of its type re-reads it quietly', (
+      tester,
+    ) async {
+      final s = await _pump(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: permissions,
+        handler: (_) => null,
+        home: home,
+      );
+      final before = s.reads[path] ?? 0;
+      expect(before, greaterThan(0));
+      await _tick(tester, s, type, 'x-1');
+      expect(s.reads[path], before + 1);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+    });
+  }
+
   testWidgets('a change of another type reads nothing again', (tester) async {
     final s = await _pump(
       tester,
@@ -459,6 +591,7 @@ class _Server {
   List<Map<String, dynamic>> feed = const [];
   int cursor = 1;
   final Map<String, int> reads = {};
+  final List<Uri> requests = [];
   late ApiClient api;
 }
 
@@ -502,6 +635,7 @@ Future<_Server> _pump(
     client: MockClient((request) async {
       final path = request.url.path.replaceFirst('/api/v1', '');
       s.reads[path] = (s.reads[path] ?? 0) + 1;
+      s.requests.add(request.url);
       if (path == '/me') {
         return _json({
           'data': {..._me, 'permissions': permissions},
@@ -545,6 +679,30 @@ Future<void> _tick(
   LiveChanges.of(s.api).poll();
   await tester.pumpAndSettle();
 }
+
+Map<String, dynamic> _approvalRow(String id, String name) => {
+  'person': {'id': id, 'name': name, 'role': 'Technician'},
+  'shifts': [
+    {
+      'id': 's-$id',
+      'clocked_in': '8:00',
+      'clocked_out': '16:00',
+      'clocked_in_local': '2026-10-21 08:00',
+      'clocked_out_local': '2026-10-21 16:00',
+      'ended_by': 'person',
+      'edited': null,
+    },
+  ],
+  'worked_seconds': 8 * 3600,
+  'scheduled': {'start': '08:00', 'end': '16:00'},
+  'late_seconds': 0,
+  'early_seconds': 0,
+  'no_show': false,
+  'status': 'waiting',
+  'approved_by': null,
+  'approved_at': null,
+  'adjustments': <Object>[],
+};
 
 Map<String, dynamic> _reschedule(String customer) => {
   'area_id': 'a-mg',
