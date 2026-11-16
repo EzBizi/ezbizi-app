@@ -14,6 +14,9 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0577', date: '16 Nov 2026', items: [
+      'Task Board updates live: changes made in Monday or by colleagues appear within about 10 seconds without leaving the tab, and overdue timelines turn red',
+      'Task Board: Owner, Assigned and People columns show faces instead of names, like Monday; hover a face to see who it is',
+      'Web Management shortcodes read as words; the Ads budget says per day or per week in each cell',
       'Task Board: huge boards open fast, 50 tasks per group with Show more; group counts and totals cover every task',
       'Task Board: every column heading has a menu to hide or delete it; timeline dates are picked on one full calendar with two clicks; Kanban columns are a fixed width and scroll sideways',
       'Notifications: tabs, a search box, and unread rows highlighted',
