@@ -27,6 +27,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Invoice extends Model implements CarriesAutomationScope, StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'invoices';
+
     use HasUuids;
 
     public const STATUSES = ['draft', 'approved', 'sent', 'paid', 'void'];

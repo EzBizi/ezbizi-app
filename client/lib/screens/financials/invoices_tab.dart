@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/list_search.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/branch_options.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -155,10 +156,18 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     super.initState();
     if (widget.initialOpenId != null) widget.onOpened?.call();
     _load();
+    // An invoice paid online, sent or voided elsewhere: the list and
+    // its totals re-read quietly (filters, search and the open one kept).
+    _live = LiveChanges.of(widget.api).subscribe({'invoices'}, (_) {
+      return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -191,7 +200,8 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     ];
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final query = <String, Object>{
       'status': ?_status,
       'franchise_id': ?_branch,
@@ -203,7 +213,7 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
       query['to'] = formatCalendarDay(DateTime(first.year, first.month + 1, 0));
     }
     final r = await widget.api.get('/invoices', query.isEmpty ? null : query);
-    if (!mounted) return;
+    if (!mounted || (quiet && !r.ok)) return;
     setState(() {
       if (r.ok) {
         _rows = (r.body['data'] as List).cast<Map<String, dynamic>>();

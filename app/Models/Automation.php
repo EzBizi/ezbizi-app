@@ -23,6 +23,21 @@ class Automation extends Model implements CarriesAutomationScope
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'automations';
+
+    /** Filed where its scope is: a company, a branch, or the organization (ChangeFeed). */
+    public function changeFeedPlace(): array
+    {
+        return match ($this->scope_type) {
+            'company' => [$this->scope_id, null],
+            'franchise' => [null, $this->scope_id],
+            default => [null, null],
+        };
+    }
+
     use SoftDeletes;
 
     /** Auto-disable after this many consecutive failures (§5.5). */

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -172,7 +173,21 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     _loadReplyRule();
     _takeLink();
     DeepLinks.pending.addListener(_takeLink);
+    // A review or reply synced from Google, or a note added elsewhere: the
+    // list re-reads quietly and the open review in place (the reply being
+    // typed is its own box and is never touched).
+    _live = LiveChanges.of(widget.api).subscribe({'reviews'}, (batch) async {
+      if (!_loading) await _load(quiet: true);
+      final open = _open?['id'];
+      if (open != null &&
+          !_busy &&
+          (batch.reload || batch.touched('reviews').contains('$open'))) {
+        await _refresh();
+      }
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   /// A tapped notification about a review opens that review.
   void _takeLink() {
@@ -183,6 +198,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_takeLink);
     _draft.dispose();
     _note.dispose();
@@ -202,13 +218,16 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     return now.subtract(Duration(days: days));
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
-    setState(() {
-      _loading = _loaded.isEmpty;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _loaded.isEmpty;
+        _error = null;
+      });
+    }
 
     final from = _from;
     final response = await widget.api.get('/reviews', {
@@ -227,6 +246,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;
