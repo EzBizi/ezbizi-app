@@ -15,6 +15,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ComplaintNote extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A write here is its complaint's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['complaints', Complaint::class, 'complaint_id'];
+
     use HasUuids;
 
     public const UPDATED_AT = null;

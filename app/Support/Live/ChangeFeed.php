@@ -37,6 +37,19 @@ class ChangeFeed
         'people' => ['hr.view', 'work_hours.view'],
         'hr_invitations' => 'hr.view',
         'hr_contracts' => 'hr.contracts.view',
+        // Invoices (a payment, a line, a send are the invoice's change).
+        'invoices' => 'invoices.view',
+        'financial_bills' => 'financials.bills.view',
+        'financial_adjustments' => 'financials.bases.view',
+        // Calls (a voicemail is a call) and texts, written by provider webhooks.
+        'phone_calls' => 'phone.view',
+        'phone_messages' => 'phone.view',
+        'reviews' => 'reviews.view',
+        'complaints' => 'customer_experience.complaints.view',
+        // A rule, and its runs as the rule's change (last run, counts).
+        'automations' => 'automations.view',
+        'newsletters' => 'newsletter.view',
+        'qr_codes' => 'marketing.qr_codes.view',
     ];
 
     /**
@@ -45,6 +58,8 @@ class ChangeFeed
      */
     private const NARROW = [
         'people' => 'visiblePeople',
+        'phone_calls' => 'readableCalls',
+        'phone_messages' => 'readableMessages',
     ];
 
     /** One reply holds at most this many; more says reload. */
@@ -162,6 +177,35 @@ class ChangeFeed
         }
 
         return ['cursor' => $head, 'reload' => false, 'changes' => array_values($out)];
+    }
+
+    /** @param  string[]  $ids  @return string[] */
+    private static function readableCalls(User $user, array $ids): array
+    {
+        return self::onReadableLines(\App\Models\PhoneCall::class, $user, $ids);
+    }
+
+    private static function readableMessages(User $user, array $ids): array
+    {
+        return self::onReadableLines(\App\Models\PhoneMessage::class, $user, $ids);
+    }
+
+    /**
+     * Calls and texts are filed on a LINE, not a branch: the ones on lines the
+     * reader may open (PhoneNumberAccess, as GET phone/calls and phone/messages).
+     *
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $class
+     * @param  string[]  $ids
+     * @return string[]
+     */
+    private static function onReadableLines(string $class, User $user, array $ids): array
+    {
+        $lines = app(\App\Support\Phone\PhoneNumberAccess::class)->readable($user)->pluck('id')->all();
+
+        return $class::withoutGlobalScopes()
+            ->where('organization_id', $user->organization_id)
+            ->whereIn('id', $ids)->whereIn('number_id', $lines)
+            ->pluck('id')->map(fn ($id) => (string) $id)->all();
     }
 
     /**

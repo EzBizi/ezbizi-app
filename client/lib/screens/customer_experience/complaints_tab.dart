@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/branch_options.dart';
 import '../../core/deep_links.dart';
 import '../../core/phone_numbers.dart';
@@ -111,10 +112,20 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
   void initState() {
     super.initState();
     _load();
+    // A complaint logged, moved or noted elsewhere: page one re-reads
+    // quietly (the board, filters and the open one kept).
+    _live = LiveChanges.of(widget.api).subscribe({'complaints'}, (_) {
+      if (!_loading && !_loadingMore && _page == 1) {
+        return _load(quiet: true);
+      }
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _debounce?.cancel();
     _note.dispose();
     _search.dispose();
@@ -141,22 +152,26 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
     if (page > 1) 'page': '$page',
   };
 
-  Future<void> _load({bool more = false}) async {
+  /// [quiet]: a live re-read of page one; a failure keeps the rows.
+  Future<void> _load({bool more = false, bool quiet = false}) async {
     final request = ++_request;
     final page = more ? _page + 1 : 1;
 
-    setState(() {
-      if (more) {
-        _loadingMore = true;
-        _moreError = null;
-      } else {
-        _loading = _rows.isEmpty;
-        _error = null;
-      }
-    });
+    if (!quiet) {
+      setState(() {
+        if (more) {
+          _loadingMore = true;
+          _moreError = null;
+        } else {
+          _loading = _rows.isEmpty;
+          _error = null;
+        }
+      });
+    }
 
     final response = await widget.api.get('/complaints', _query(page));
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;

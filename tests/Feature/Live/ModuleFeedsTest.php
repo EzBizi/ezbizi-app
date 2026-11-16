@@ -3,12 +3,21 @@
 namespace Tests\Feature\Live;
 
 use App\Models\Assignment;
+use App\Models\Automation;
+use App\Models\Complaint;
+use App\Models\FinancialAdjustment;
 use App\Models\Franchise;
 use App\Models\InventoryIssue;
 use App\Models\InventoryLocation;
 use App\Models\InventoryPurchaseOrder;
 use App\Models\InventoryVendor;
 use App\Models\Invitation;
+use App\Models\Invoice;
+use App\Models\InvoicePayment;
+use App\Models\PhoneCall;
+use App\Models\PhoneConnection;
+use App\Models\PhoneMessage;
+use App\Models\PhoneNumber;
 use App\Models\PtoRequest;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -16,6 +25,7 @@ use App\Models\VehicleServiceVisit;
 use App\Support\Inventory\InventoryPurchaseOrderStatus;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -160,6 +170,83 @@ class ModuleFeedsTest extends TestCase
             'organization_id' => app(TenantContext::class)->id(), 'email' => bin2hex(random_bytes(3)).'@example.test',
             'assigned_franchise_id' => $f->id, 'token_hash' => hash('sha256', random_bytes(8)),
             'sent_at' => now(), 'expires_at' => now()->addWeek(),
+        ])->id);
+    }
+
+    public function test_invoices_and_a_payment_as_its_invoice(): void
+    {
+        $this->assertScoped('invoices', ['invoices.view'], fn (Franchise $f) => $this->invoice($f)->id);
+
+        // A payment landing (a webhook, a person) is the invoice's change.
+        $t = $this->provisionTenant('Gamma');
+        $invoice = $this->inTenant($t['org'], fn () => $this->invoice($t['franchise']));
+        $since = $this->cursor($t['admin'], 'invoices');
+        $this->inTenant($t['org'], fn () => InvoicePayment::create(['invoice_id' => $invoice->id, 'paid_on' => '2026-11-16',
+            'amount_cents' => 12500, 'method' => 'card']));
+        $this->assertSame([$invoice->id], $this->ids($t['admin'], 'invoices', $since));
+    }
+
+    private function invoice(Franchise $f): Invoice
+    {
+        return Invoice::query()->create([
+            'company_id' => $f->company_id, 'franchise_id' => $f->id, 'number' => 'INV-'.bin2hex(random_bytes(3)),
+            'issued_on' => today(), 'status' => 'sent', 'currency' => 'USD', 'bill_to_type' => 'customer',
+            'bill_to_name' => 'Pat Customer', 'subtotal_cents' => 12500, 'total_cents' => 12500,
+        ]);
+    }
+
+    public function test_financial_adjustments(): void
+    {
+        $this->assertScoped('financial_adjustments', ['financials.view', 'financials.bases.view'],
+            fn (Franchise $f) => FinancialAdjustment::create(['franchise_id' => $f->id, 'company_id' => $f->company_id,
+                'kind' => 'refund', 'date' => '2026-10-07', 'technician' => 'Bob', 'cents' => 2550])->id);
+    }
+
+    /** Calls and texts are filed on a line: the feed asks the Phone module's own "may you open this line". */
+    public function test_calls_and_texts_keep_to_the_lines_a_reader_may_open(): void
+    {
+        $this->assertScoped('phone_calls', ['phone.view'], fn (Franchise $f) => PhoneCall::query()->create([
+            'connection_id' => ($line = $this->line($f))->connection_id, 'number_id' => $line->id,
+            'twilio_sid' => 'CA'.bin2hex(random_bytes(16)), 'direction' => PhoneCall::DIRECTION_INBOUND,
+            'from_e164' => '+13055550100', 'to_e164' => $line->e164, 'status' => 'ringing',
+        ])->id);
+    }
+
+    public function test_texts_keep_to_the_lines_a_reader_may_open(): void
+    {
+        $this->assertScoped('phone_messages', ['phone.view'], fn (Franchise $f) => PhoneMessage::query()->create([
+            'connection_id' => ($line = $this->line($f))->connection_id, 'number_id' => $line->id,
+            'twilio_sid' => 'SM'.bin2hex(random_bytes(16)), 'direction' => 'inbound',
+            'from_e164' => '+13055550100', 'to_e164' => $line->e164, 'body' => 'Are you coming today?',
+        ])->id);
+    }
+
+    private function line(Franchise $f): PhoneNumber
+    {
+        // One account per company; both branches' lines hang off it.
+        $connection = PhoneConnection::query()->where('scope_type', PhoneConnection::SCOPE_COMPANY)
+            ->where('scope_id', $f->company_id)->first()
+            ?? PhoneConnection::factory()->create(['scope_type' => PhoneConnection::SCOPE_COMPANY, 'scope_id' => $f->company_id]);
+
+        return PhoneNumber::factory()->create([
+            'connection_id' => $connection->id, 'scope_type' => PhoneNumber::SCOPE_FRANCHISE, 'scope_id' => $f->id,
+            'e164' => '+1305'.random_int(2000000, 9999999),
+        ]);
+    }
+
+    public function test_complaints(): void
+    {
+        $this->assertScoped('complaints', ['customer_experience.view', 'customer_experience.complaints.view'],
+            fn (Franchise $f) => Complaint::create(['company_id' => $f->company_id, 'franchise_id' => $f->id,
+                'kind' => 'bad_review', 'source_type' => 'review', 'source_id' => (string) Str::uuid(), 'status' => 'new',
+                'rating' => 1, 'raised_at' => now()])->id);
+    }
+
+    public function test_automations_are_filed_where_their_scope_is(): void
+    {
+        $this->assertScoped('automations', ['automations.view'], fn (Franchise $f) => Automation::create([
+            'scope_type' => 'franchise', 'scope_id' => $f->id, 'name' => 'When a job is booked '.bin2hex(random_bytes(2)),
+            'trigger_key' => 'job.created', 'is_active' => false,
         ])->id);
     }
 }
