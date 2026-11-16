@@ -296,6 +296,21 @@ void main() {
     },
   );
 
+  testWidgets('a short Timeline bar wears its dates beside it, not clipped '
+      'inside', (tester) async {
+    await pumpBoard(tester);
+    await tester.tap(find.text('Timeline'));
+    await tester.pumpAndSettle();
+    final bar = find.byKey(const ValueKey('plan-bar-t1'));
+    expect(tester.getSize(bar).width, lessThan(96));
+    final label = find.byKey(const ValueKey('plan-bar-label-t1'));
+    expect(label, findsOneWidget);
+    expect(
+      tester.getTopLeft(label).dx,
+      greaterThan(tester.getTopRight(bar).dx),
+    );
+  });
+
   testWidgets(
     'Timeline draws the range as a bar and a drag moves it by whole days',
     (tester) async {

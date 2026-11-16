@@ -1680,25 +1680,21 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   /// A heading with its ⋯: the menu was there but only a tap on the name
   /// opened it, and Jose did not find it (2026-11-16).
-  Widget _headWithMore(Widget label, Key key, VoidCallback open) => Row(
-    children: [
-      Expanded(
-        child: Align(alignment: Alignment.centerLeft, child: label),
+  Widget _headWithMore(Widget label, Key key, VoidCallback open) =>
+      _HoverMore(label: label, more: _moreDots(key, open));
+
+  Widget _moreDots(Key key, VoidCallback open) => InkWell(
+    key: key,
+    onTap: open,
+    borderRadius: BorderRadius.circular(4),
+    child: Tooltip(
+      message: 'Column options',
+      child: Icon(
+        Icons.more_horiz,
+        size: 16,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
-      InkWell(
-        key: key,
-        onTap: open,
-        borderRadius: BorderRadius.circular(4),
-        child: Tooltip(
-          message: 'Column options',
-          child: Icon(
-            Icons.more_horiz,
-            size: 16,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    ],
+    ),
   );
 
   /// The box a built-in column's new name is typed into, under the
@@ -4444,6 +4440,21 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     return id;
   }
 
+  /// A card shows its first few filled columns, Monday's way; the rest
+  /// are a "+N more" and live in the task (hands-on QA 11-16: a card
+  /// with every column was taller than the screen).
+  static const _cardFieldCap = 4;
+  ({List<BoardColumn> shown, int more}) _cardFields(_Json t) {
+    final filled = [
+      for (final c in boardColumns(_board))
+        if (columnValue(t, c) != null) c,
+    ];
+    return (
+      shown: filled.take(_cardFieldCap).toList(),
+      more: (filled.length - _cardFieldCap).clamp(0, 1 << 20),
+    );
+  }
+
   Widget _card(BuildContext context, _Json t, {bool sub = false}) {
     final theme = Theme.of(context);
     final colours = _statusColours(context, _statusFor(_board, _statusOf(t)));
@@ -4549,33 +4560,41 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                   color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
-                            for (final c in boardColumns(_board))
-                              if (columnValue(t, c) != null)
-                                Text.rich(
-                                  TextSpan(
-                                    text: '${c.name}: ',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    children: [
-                                      WidgetSpan(
-                                        alignment: PlaceholderAlignment.middle,
-                                        child: ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                            maxWidth: 160,
-                                            maxHeight: 24,
-                                          ),
-                                          child: ColumnCell(
-                                            column: c,
-                                            value: columnValue(t, c),
-                                            people: _people,
-                                            formats: _formats,
-                                          ),
+                            for (final c in _cardFields(t).shown)
+                              Text.rich(
+                                TextSpan(
+                                  text: '${c.name}: ',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  children: [
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.middle,
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 160,
+                                          maxHeight: 24,
+                                        ),
+                                        child: ColumnCell(
+                                          column: c,
+                                          value: columnValue(t, c),
+                                          people: _people,
+                                          formats: _formats,
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
+                              ),
+                            if (_cardFields(t).more > 0)
+                              Text(
+                                '+${_cardFields(t).more} more',
+                                key: ValueKey('task-card-more-${t['id']}'),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             if ((t['about'] as Map?)?['label']
                                 case final String about when shown('about'))
                               Text(
@@ -5623,4 +5642,47 @@ class _SortArrowState extends State<SortArrow> {
       ),
     );
   }
+}
+
+/// A heading whose ⋯ shows on hover, drawn over the name's right end so a
+/// narrow column keeps its whole width for the name (hands-on QA 11-16:
+/// "OWNE", "ASS" at 80 px). It is always there to tap, only unseen.
+class _HoverMore extends StatefulWidget {
+  const _HoverMore({required this.label, required this.more});
+
+  final Widget label;
+  final Widget more;
+
+  @override
+  State<_HoverMore> createState() => _HoverMoreState();
+}
+
+class _HoverMoreState extends State<_HoverMore> {
+  bool _over = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _over = true),
+    onExit: (_) => setState(() => _over = false),
+    child: Stack(
+      alignment: Alignment.centerLeft,
+      children: [
+        Align(alignment: Alignment.centerLeft, child: widget.label),
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          child: Opacity(
+            opacity: _over ? 1 : 0,
+            child: Container(
+              alignment: Alignment.center,
+              color: _over ? Theme.of(context).colorScheme.surface : null,
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: widget.more,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }

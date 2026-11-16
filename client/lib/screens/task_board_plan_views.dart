@@ -512,10 +512,30 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
       }
 
       final barW = (to.difference(from).inDays + 1) * dayW;
+      final range = from == to ? _short(from) : '${_short(from)}–${_short(to)}';
+      // A short bar wore a clipped "Nov" (hands-on QA 11-16): its dates go
+      // beside it instead, as Monday does.
+      final outside = barW < 96;
       return SizedBox(
         height: rowH,
         child: Stack(
+          clipBehavior: Clip.none,
           children: [
+            if (outside)
+              Positioned(
+                left: x(from) + barW + 6,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Text(
+                    range,
+                    key: ValueKey('plan-bar-label-${t['id']}'),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               left: x(from),
               top: 6,
@@ -549,9 +569,7 @@ class _TaskBoardTimelineState extends State<TaskBoardTimeline> {
                     children: [
                       Expanded(
                         child: Text(
-                          from == to
-                              ? _short(from)
-                              : '${_short(from)}–${_short(to)}',
+                          outside ? '' : range,
                           maxLines: 1,
                           overflow: TextOverflow.clip,
                           style: theme.textTheme.labelSmall?.copyWith(
