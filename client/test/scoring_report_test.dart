@@ -322,6 +322,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byType(DateRangePanel), findsOneWidget);
+    // On a page of its own, over the cards (Jose, 2026-11-16).
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DateRangePanel), findsNothing);
 
     // The search field's row pushes the card below a phone's fold.
     await tester.ensureVisible(

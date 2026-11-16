@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 import 'calendar_day_field.dart';
+import 'side_panel.dart';
 
 /// Choosing the dates a report covers (UI queue 57; Jose, 2026-10-06: "From
 /// date to date / Or specific date / Week is confussing what week is it ? Etc
@@ -272,6 +273,37 @@ class DateRangeBar extends StatelessWidget {
   }
 }
 
+/// A phone's picker: the narrow panel on a page of its own over the report,
+/// the way every other picker opens on a phone (SearchPickerField), with
+/// "Show N days" always on screen. Null when it was closed without a choice.
+///
+/// It used to open in the page under its button, 70% of the screen high
+/// wherever the button sat. On Reports that ran under the bottom bar, so
+/// "Show N days" could not be reached and a tap on a quick choice only moved
+/// a highlight: "u click a custom date or the preselected dates and nothing
+/// happens" (Jose, 2026-11-16).
+Future<DateSpan?> pickDateSpan(
+  BuildContext context, {
+  required DateSpan initial,
+  required DateTime today,
+  required DisplayFormats formats,
+}) => showSidePanel<DateSpan>(
+  context,
+  builder: (panel) => SidePanel(
+    title: 'Dates',
+    scrollable: false,
+    child: DateRangePanel(
+      key: const Key('date-range-sheet'),
+      initial: initial,
+      today: today,
+      formats: formats,
+      narrow: true,
+      onApply: (span) => Navigator.of(panel).pop(span),
+      onCancel: () => Navigator.of(panel).pop(),
+    ),
+  ),
+);
+
 /// The picker, opened in the page under its button.
 class DateRangePanel extends StatefulWidget {
   const DateRangePanel({
@@ -294,7 +326,8 @@ class DateRangePanel extends StatefulWidget {
   /// same words, rather than sent to be refused.
   static const int maxDays = 92;
 
-  /// A phone: one month, the list over it, and the buttons at the foot.
+  /// A phone: one month, the list over it, and the buttons at the foot. A
+  /// quick choice is chosen with one tap, as the chips beside the button are.
   final bool narrow;
 
   @override
@@ -316,6 +349,9 @@ class _DateRangePanelState extends State<DateRangePanel> {
 
   late final _fromText = TextEditingController(text: widget.initial.fromKey);
   late final _toText = TextEditingController(text: widget.initial.toKey);
+
+  /// The From and To and the calendar, which Custom scrolls to on a phone.
+  final _calendar = GlobalKey();
 
   DateTime get _today => DateSpan.single(widget.today).from;
 
@@ -513,25 +549,31 @@ class _DateRangePanelState extends State<DateRangePanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: ListView(
-              children: [
-                ...presets,
-                const Divider(height: 1),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      fields,
-                      const SizedBox(height: 12),
-                      months,
-                      const SizedBox(height: 8),
-                      summary,
-                      ?warning,
-                    ],
+            // Not a lazy list: Custom scrolls to the calendar, and a list
+            // that has not built it cannot.
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ...presets,
+                  const Divider(height: 1),
+                  Padding(
+                    key: _calendar,
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        fields,
+                        const SizedBox(height: 12),
+                        months,
+                        const SizedBox(height: 8),
+                        summary,
+                        ?warning,
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const Divider(height: 1),
@@ -660,7 +702,11 @@ class _DateRangePanelState extends State<DateRangePanel> {
           preset.label,
           spanWords(preset.span(_today), _today, widget.formats),
           matched?.key == preset.key,
-          () => _choose(preset.span(_today)),
+          // A phone takes it at once: its dates are beside it already, and
+          // a second tap on a button below the fold read as nothing happening.
+          widget.narrow
+              ? () => widget.onApply(preset.span(_today))
+              : () => _choose(preset.span(_today)),
         ),
       const Divider(height: 9),
       row(
@@ -670,7 +716,17 @@ class _DateRangePanelState extends State<DateRangePanel> {
             ? '${spanWords(_span, _today, widget.formats)} · ${_span.days} days'
             : 'Pick on the calendar',
         custom,
-        () => setState(() => _anchor = null),
+        () {
+          setState(() => _anchor = null);
+          // On a phone the calendar is under the list: bring it up.
+          final calendar = _calendar.currentContext;
+          if (widget.narrow && calendar != null) {
+            Scrollable.ensureVisible(
+              calendar,
+              duration: const Duration(milliseconds: 200),
+            );
+          }
+        },
       ),
     ];
   }

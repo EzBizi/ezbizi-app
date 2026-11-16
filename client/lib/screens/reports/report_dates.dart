@@ -87,14 +87,31 @@ class _ReportDatesState extends State<ReportDates> {
     _set(next);
   }
 
-  /// The narrow panel fills the height it is given, and these tabs hold it
-  /// in a scrolling list, which gives none: Marketing, Meta and Thumbtack
-  /// drew nothing at all on a phone once the dates were opened (UI audit,
-  /// 2026-10-13). Most of a phone's height, then, and it scrolls inside.
-  static Widget _bounded(BuildContext context, Widget panel) =>
-      MediaQuery.sizeOf(context).width < 600
-      ? SizedBox(height: MediaQuery.sizeOf(context).height * 0.7, child: panel)
-      : panel;
+  bool get _phone => MediaQuery.sizeOf(context).width < 600;
+
+  /// A phone opens the dates on a page of their own ([pickDateSpan]). In the
+  /// page they had no height of their own to fill: 70% of the screen under
+  /// the button put "Show N days" beneath Reports' bottom bar, where no tap
+  /// reached it (Jose, 2026-11-16).
+  Future<void> _toggle() async {
+    if (!_phone) {
+      setState(() => _picking = !_picking);
+      return;
+    }
+    setState(() => _picking = true);
+    final span = await pickDateSpan(
+      context,
+      initial: _span,
+      today: widget.today,
+      formats: widget.formats,
+    );
+    if (!mounted) return;
+    if (span == null) {
+      setState(() => _picking = false);
+    } else {
+      _set(span);
+    }
+  }
 
   /// One tap for the common ranges (Jose, 2026-10-14: "add easy options to
   /// select 1 month - 1 week - yesterday - today, besides the custom").
@@ -131,7 +148,7 @@ class _ReportDatesState extends State<ReportDates> {
                 today: widget.today,
                 formats: widget.formats,
                 open: _picking,
-                onToggle: () => setState(() => _picking = !_picking),
+                onToggle: _toggle,
                 onPrevious: () => _move(-1),
                 onNext: _span.to.isBefore(widget.today) ? () => _move(1) : null,
               );
@@ -142,7 +159,7 @@ class _ReportDatesState extends State<ReportDates> {
                 today: widget.today,
                 formats: widget.formats,
                 open: _picking,
-                onToggle: () => setState(() => _picking = !_picking),
+                onToggle: _toggle,
                 onPrevious: () => _move(-1),
                 onNext: _span.to.isBefore(widget.today) ? () => _move(1) : null,
               );
@@ -203,23 +220,19 @@ class _ReportDatesState extends State<ReportDates> {
             today: widget.today,
             formats: widget.formats,
             open: _picking,
-            onToggle: () => setState(() => _picking = !_picking),
+            onToggle: _toggle,
             onPrevious: () => _move(-1),
             onNext: _span.to.isBefore(widget.today) ? () => _move(1) : null,
           ),
         ],
-        if (_picking) ...[
+        if (_picking && !_phone) ...[
           const SizedBox(height: 8),
-          _bounded(
-            context,
-            DateRangePanel(
-              initial: _span,
-              today: widget.today,
-              formats: widget.formats,
-              narrow: MediaQuery.sizeOf(context).width < 600,
-              onApply: _set,
-              onCancel: () => setState(() => _picking = false),
-            ),
+          DateRangePanel(
+            initial: _span,
+            today: widget.today,
+            formats: widget.formats,
+            onApply: _set,
+            onCancel: () => setState(() => _picking = false),
           ),
         ],
       ],
@@ -261,9 +274,5 @@ Widget reportSearch({
   required ValueChanged<String> onChanged,
 }) => SizedBox(
   width: 240,
-  child: ListSearch(
-    key: key,
-    hint: hint,
-    onChanged: onChanged,
-  ),
+  child: ListSearch(key: key, hint: hint, onChanged: onChanged),
 );
