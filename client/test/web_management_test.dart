@@ -440,6 +440,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Everdoors North'), findsNothing);
+    // Jose 11-16: the null choice reads as the company's own level, not as a gap.
+    expect(find.text('Company Level (A-1 Chimney)'), findsWidgets);
     // "Company · Branch", like every branch picker.
     await tester.tap(find.text('A-1 Chimney · A1 - Chimney MA').last);
     await tester.pumpAndSettle();
