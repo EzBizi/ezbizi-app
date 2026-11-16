@@ -20,6 +20,7 @@ import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'camera_view.dart';
+import 'dashcam_events_panel.dart';
 import 'note_card.dart';
 
 /// Camera Monitoring — the tile grid of connected cameras (spec §"Sub-project
@@ -292,6 +293,7 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
                 );
               },
             ),
+          DashcamEventsPanel(api: widget.api),
         ],
       ),
     );

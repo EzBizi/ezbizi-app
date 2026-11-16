@@ -1295,8 +1295,10 @@ class ActionRunner
 
         try {
             $bySms
-                ? app(LeadTexts::class)->send($subject, $text, automatic: true)
+                ? app(LeadTexts::class)->send($subject, $text, automatic: true, capped: true)
                 : $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
+        } catch (\App\Support\Phone\SmsCapped $capped) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
         }
@@ -2188,7 +2190,13 @@ class ActionRunner
             ];
         }
 
-        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true);
+        // A text to a person here is not capped; one to a customer is.
+        try {
+            $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true,
+                capped: ! str_starts_with(trim((string) ($action['to'] ?? '')), self::RECIPIENT_USER));
+        } catch (\App\Support\Phone\SmsCapped $capped) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
+        }
         if ($body === null) {
             // The customer said STOP: honouring it is correct, not a failure (sweep 11-13).
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
@@ -4254,7 +4262,11 @@ class ActionRunner
         [$actor] = $this->taskContext($automation);
 
         try {
-            app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor, automatic: true);
+            // A booking confirmation is always sent; other rule texts count toward the daily cap.
+            app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor,
+                automatic: true, capped: $event->event_key !== 'lead.booking_approved');
+        } catch (\App\Support\Phone\SmsCapped $capped) {
+            return ['type' => 'lead.text', 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $e) {
             return ['type' => 'lead.text', 'ok' => false, 'detail' => $e->getMessage()];
         }
