@@ -1793,6 +1793,16 @@ class SettingRegistry
                 help: 'A customer waiting this long for an answer turns their lead red and raises Reply overdue.',
             ),
             new SettingDefinition(
+                key: 'leads.automatic_texts_per_day',
+                min: 1,
+                label: 'Automatic texts to one customer per 24 hours',
+                type: SettingDefinition::TYPE_INT,
+                default: 2,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'The most texts your automations send one number in a day; more are skipped. Booking confirmations and texts a person sends are not counted against it.',
+            ),
+            new SettingDefinition(
                 key: 'leads.follow_up_hours',
                 min: 1,
                 label: 'Follow up a quiet customer after (hours)',
