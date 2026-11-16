@@ -783,6 +783,48 @@ void main() {
     expect(find.text('Dee'), findsNothing);
   });
 
+  // Ana, 2026-11-16: the people who only call out (Gino, Tiara, Ara) had no
+  // row. They get one, with what they placed, and it opens on those calls.
+  testWidgets(
+    'someone who only calls out has a row that opens on their calls',
+    (tester) async {
+      final out = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+      (out['people'] as List).add({
+        'person': 'Gino Russo',
+        'rang': 0,
+        'answered': 0,
+        'outbound': 1,
+        'new_client': 0,
+        'existing_client': 0,
+        'jobs': 0,
+        'avg_talk_seconds': null,
+        'in_calls': true,
+        'in_jobs': false,
+      });
+      (out['calls'] as List).add({
+        'id': 'ZE6alqhIALPyDUA',
+        'direction': 'Outbound',
+        'outcome': 'connected',
+        'started_at': '2026-09-16T18:00:00Z',
+        'from': '+15550002222',
+        'placed_by': 'Gino Russo',
+        'answered_by': null,
+        'recording_id': null,
+        'talk_seconds': null,
+        'rang': [],
+        'booked': false,
+      });
+      await _pump(tester, width: 1400, view: 'People', report: () => out);
+
+      expect(find.text('Outbound'), findsWidgets);
+      await tester.tap(find.text('Gino Russo'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Outbound 1'), findsOneWidget);
+      expect(find.text('Called by Gino Russo'), findsOneWidget);
+    },
+  );
+
   testWidgets('the cards run in the order Jose set', (tester) async {
     await _pump(tester, width: 1400);
 
