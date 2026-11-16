@@ -64,6 +64,42 @@ void main() {
     });
   }
 
+  // Mobile review 2026-11-13: on a phone a family drew as the desktop's
+  // fixed 240 x 168 card, its status lines ran out of the box, and the next
+  // row (Telegram) was painted over WhatsApp's status. A phone draws every
+  // family as a full-width row that grows with its lines.
+  testWidgets(
+    'on a phone a family is a full-width row and rows never overlap',
+    (tester) async {
+      await _pump(tester, 390);
+
+      final fb = tester.getRect(
+        find.byKey(const ValueKey('provider:facebook_page')),
+      );
+      expect(fb.width, greaterThan(300));
+      // Not the card's fixed 168 px box: a row as tall as its lines, so a
+      // longer status pushes the next row down instead of running under it.
+      expect(fb.height, lessThan(168), reason: 'A row, not the fixed card.');
+
+      final rects = [
+        for (final e
+            in find
+                .byWidgetPredicate(
+                  (w) =>
+                      w is InkWell &&
+                      w.key is ValueKey &&
+                      '${(w.key as ValueKey).value}'.startsWith('provider:'),
+                )
+                .evaluate())
+          tester.getRect(find.byWidget(e.widget)),
+      ]..sort((a, b) => a.top.compareTo(b.top));
+      for (var i = 1; i < rects.length; i++) {
+        expect(rects[i].top, greaterThanOrEqualTo(rects[i - 1].bottom - 0.5));
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('Confirm sends one family disconnect with the code', (
     tester,
   ) async {

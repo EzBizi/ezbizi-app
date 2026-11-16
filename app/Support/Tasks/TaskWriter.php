@@ -178,6 +178,11 @@ class TaskWriter
             }
 
             if (! $task->isDirty()) {
+                // A column value or owner lives in its own table: date the
+                // task anyway, so an open board's changes feed sees it.
+                if ($ownersChanged || ! empty($input['values'])) {
+                    Task::query()->whereKey($task->id)->update(['updated_at' => now()]);
+                }
                 if ($ownersChanged) {
                     $this->syncLinked($task, [], false, true, $actor);
                 }

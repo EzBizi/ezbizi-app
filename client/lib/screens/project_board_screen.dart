@@ -1584,10 +1584,94 @@ class _BoardSettingsState extends State<_BoardSettings> {
     );
   }
 
+  /// One column's row: its name, drag handle, Shown and coloured label.
+  /// Below 600 px the name takes a line of its own above the controls; beside
+  /// them it was squeezed to nothing, and the rows could not be told apart
+  /// (mobile review 2026-11-13).
+  Widget _columnRow(int i, Map<String, dynamic> c, {required bool phone}) {
+    final name = TextFormField(
+      key: ValueKey('project-board-column-name:${c['key']}'),
+      initialValue: '${c['label'] ?? ''}',
+      decoration: const InputDecoration(isDense: true),
+      onChanged: (v) => c['label'] = v,
+    );
+    final controls = [
+      const Text('Shown'),
+      Switch(
+        value: c['visible'] != false,
+        onChanged: (v) => setState(() => c['visible'] = v),
+      ),
+      Flexible(
+        child: Tooltip(
+          message:
+              'Draw each value as a coloured chip. Pick the colours under Label colours.',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Checkbox(
+                value: c['as_label'] == true,
+                onChanged: (v) => setState(() {
+                  c['as_label'] = v == true;
+                  if (v == true) {
+                    _labels.putIfAbsent('${c['key']}', () => []);
+                  }
+                }),
+              ),
+              const Flexible(
+                child: Text(
+                  'Show as coloured label',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ];
+    final handle = ReorderableDragStartListener(
+      index: i,
+      child: const Icon(Icons.drag_indicator),
+    );
+    final key = ValueKey('project-board-column:${c['key']}');
+    if (phone) {
+      return Padding(
+        key: key,
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                handle,
+                const SizedBox(width: 8),
+                Expanded(child: name),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 32),
+              child: Row(children: controls),
+            ),
+          ],
+        ),
+      );
+    }
+    return Row(
+      key: key,
+      children: [
+        handle,
+        const SizedBox(width: 8),
+        Expanded(child: name),
+        const SizedBox(width: 8),
+        ...controls,
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_ready) return const LinearProgressIndicator();
     final theme = Theme.of(context);
+    final phone = MediaQuery.sizeOf(context).width < 600;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1609,48 +1693,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
               }),
               children: [
                 for (final (i, c) in _columns.indexed)
-                  Row(
-                    key: ValueKey('project-board-column:${c['key']}'),
-                    children: [
-                      ReorderableDragStartListener(
-                        index: i,
-                        child: const Icon(Icons.drag_indicator),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextFormField(
-                          initialValue: '${c['label'] ?? ''}',
-                          decoration: const InputDecoration(isDense: true),
-                          onChanged: (v) => c['label'] = v,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('Shown'),
-                      Switch(
-                        value: c['visible'] != false,
-                        onChanged: (v) => setState(() => c['visible'] = v),
-                      ),
-                      Tooltip(
-                        message:
-                            'Draw each value as a coloured chip. Pick the colours under Label colours.',
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Checkbox(
-                              value: c['as_label'] == true,
-                              onChanged: (v) => setState(() {
-                                c['as_label'] = v == true;
-                                if (v == true) {
-                                  _labels.putIfAbsent('${c['key']}', () => []);
-                                }
-                              }),
-                            ),
-                            const Text('Show as coloured label'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                  _columnRow(i, c, phone: phone),
               ],
             ),
           ],
@@ -1757,9 +1800,12 @@ class _BoardSettingsState extends State<_BoardSettings> {
                           ],
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          'these (none chosen: tags do not matter)',
-                          style: theme.textTheme.bodySmall,
+                        // Flexible: on a phone it ran past the edge.
+                        Flexible(
+                          child: Text(
+                            'these (none chosen: tags do not matter)',
+                            style: theme.textTheme.bodySmall,
+                          ),
                         ),
                       ],
                     ),

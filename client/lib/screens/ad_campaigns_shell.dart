@@ -443,7 +443,9 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
                       '${label.toUpperCase()}'
                       '${sortBy == key ? (descending ? ' ↓' : ' ↑') : ''}',
                       style: head,
-                      textAlign: label == 'Budget / day' ? null : TextAlign.end,
+                      textAlign: label.startsWith('Budget')
+                          ? null
+                          : TextAlign.end,
                     ),
                   ),
           ),

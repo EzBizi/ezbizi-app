@@ -1,3 +1,5 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -24,7 +26,14 @@ class TabBarLike extends StatefulWidget {
     this.missing,
     this.tones,
     this.level,
+    this.wrap = false,
   });
+
+  /// On a desk (600 px and wider), wrap onto more lines instead of scrolling
+  /// sideways: for a row whose every chip must be on show at once, as the
+  /// hours review's websites (Jose, 2026-09-29: "on desktop you should just
+  /// be able to see all the websites"). Every other row scrolls.
+  final bool wrap;
 
   final List<(String, IconData)> labels;
   final int selected;
@@ -66,6 +75,9 @@ class _TabBarLikeState extends State<TabBarLike> {
   final _keys = <int, GlobalKey>{};
   bool _more = false;
 
+  /// Tabs lie before the left edge (the strip has been scrolled along).
+  bool _less = false;
+
   @override
   void initState() {
     super.initState();
@@ -93,7 +105,13 @@ class _TabBarLikeState extends State<TabBarLike> {
         _scroll.hasClients &&
         _scroll.position.hasContentDimensions &&
         _scroll.offset < _scroll.position.maxScrollExtent - 1;
-    if (more != _more && mounted) setState(() => _more = more);
+    final less = _scroll.hasClients && _scroll.offset > 1;
+    if ((more != _more || less != _less) && mounted) {
+      setState(() {
+        _more = more;
+        _less = less;
+      });
+    }
   }
 
   /// UI audit, 2026-10-08: on a phone the selected tab could sit past the
@@ -189,10 +207,10 @@ class _TabBarLikeState extends State<TabBarLike> {
         ),
     ];
 
-    // Sideways only on a phone, where a thumb swipes the strip. Anywhere wider
-    // the chips wrap: a mouse cannot drag a sideways strip, so on a desktop a
-    // chip past the edge was out of reach (Jose, 2026-09-29, on the hours
-    // review: "on desktop you should just be able to see all the websites").
+    // One strip at every width (desktop review 2026-11-13: Reports' 11 tabs
+    // wrapped onto two lines). It scrolls sideways and fades at whichever edge
+    // has tabs past it; on a desk the mouse drags it (shift+wheel turns it) and
+    // the chevron pages it, so no tab is out of reach (Jose 09-29).
     //
     // Underlined words sit apart on one line; a switch's segments share one
     // box, split by a line.
@@ -211,7 +229,7 @@ class _TabBarLikeState extends State<TabBarLike> {
             child: row,
           );
 
-    if (MediaQuery.sizeOf(context).width >= 600) {
+    if (widget.wrap && MediaQuery.sizeOf(context).width >= 600) {
       return rule(
         Padding(
           padding: padding,
@@ -230,26 +248,42 @@ class _TabBarLikeState extends State<TabBarLike> {
     // HR's Payroll sat off the edge unannounced. So the fade is wider, and a
     // chevron says the strip goes on and pages it along when tapped.
     final strip = rule(
-      ShaderMask(
-        blendMode: BlendMode.dstIn,
-        // Only the alpha counts under dstIn: opaque, then none past the edge.
-        shaderCallback: (bounds) => LinearGradient(
-          colors: [opaque, opaque, _more ? Colors.transparent : opaque],
-          stops: const [0, 0.72, 1],
-        ).createShader(bounds),
-        child: SingleChildScrollView(
-          controller: _scroll,
-          scrollDirection: Axis.horizontal,
-          padding: padding,
-          child: Row(
-            children: [
-              for (final chip in laid(chips))
-                Padding(
-                  padding: EdgeInsets.only(right: gap),
-                  child: chip,
-                ),
-              if (_more) const SizedBox.shrink(key: Key('tab-bar-more')),
-            ],
+      ScrollConfiguration(
+        behavior: ScrollConfiguration.of(
+          context,
+        ).copyWith(dragDevices: {...PointerDeviceKind.values}),
+        child: ShaderMask(
+          blendMode: BlendMode.dstIn,
+          // Only the alpha counts under dstIn: opaque, then none past the edge.
+          shaderCallback: (bounds) {
+            // A fixed 48 px fade at each edge that has tabs past it.
+            final w = bounds.width <= 0 ? 1.0 : bounds.width;
+            final f = (48 / w).clamp(0.0, 0.3);
+            return LinearGradient(
+              colors: [
+                _less ? Colors.transparent : opaque,
+                opaque,
+                opaque,
+                _more ? Colors.transparent : opaque,
+              ],
+              stops: [0, f, 1 - f, 1],
+            ).createShader(bounds);
+          },
+          child: SingleChildScrollView(
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            padding: padding,
+            child: Row(
+              children: [
+                if (_less) const SizedBox.shrink(key: Key('tab-bar-less')),
+                for (final chip in laid(chips))
+                  Padding(
+                    padding: EdgeInsets.only(right: gap),
+                    child: chip,
+                  ),
+                if (_more) const SizedBox.shrink(key: Key('tab-bar-more')),
+              ],
+            ),
           ),
         ),
       ),
