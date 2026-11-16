@@ -4366,6 +4366,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'updates on a device as off or paused. Raised once when it '
                             .'happens, not again until it is fixed and happens again.',
                     ),
+                    new TriggerDefinition(
+                        key: 'monitoring.camera_event',
+                        label: 'Dash cam event',
+                        description: 'A van\'s dash cam reported a driving event - harsh braking, '
+                            .'a collision, distraction, speeding - once per event, with the van '
+                            .'and who had its keys.',
+                    ),
                 ],
                 /*
                  * The four chips MonitoringScreen draws, in that order.

@@ -80,6 +80,9 @@ class LeadsFollowUpDue extends Command
                             // booking link (Jose, 2026-11-05: "send only one").
                             'not_booked_call' => AutomationEvent::query()->where('event_key', 'lead.call_not_booked')
                                 ->where('subject_id', $lead->getKey())->exists(),
+                            // The missed-call text already went: no went-quiet text after it (desk for Jose, 2026-11-16).
+                            'missed_call' => AutomationEvent::query()->where('event_key', 'lead.missed_call')
+                                ->where('subject_id', $lead->getKey())->exists(),
                             'hours_since_reply' => (int) $firstReply->occurred_at->diffInHours(now()),
                         ],
                     ]);

@@ -219,6 +219,8 @@ class AutomationEngineTest extends TestCase
 
     public function test_recovered_worker_never_repeats_an_ambiguous_sms_but_resumes_its_webhook(): void
     {
+        // Midday where the branch is: a customer text due at night waits for 8 AM (quiet hours, 2026-11-16).
+        \Illuminate\Support\Carbon::setTestNow('2026-11-17 17:00:00');
         $actions = [['type' => 'sms.send'], ['type' => 'webhook', 'url' => 'https://example.com/hook']];
         $rule = $this->automation('job.created', null, $actions);
         $mock = \Mockery::mock(OutboundWebhook::class);

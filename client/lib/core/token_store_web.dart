@@ -28,6 +28,15 @@ String? readItem(String key) {
   }
 }
 
+/// What survives the browser closing for [key]: localStorage only, because a
+/// sessionStorage copy is the "do not keep me signed in" one.
+Future<String?> readPersisted(String key) async {
+  final value = web.window.localStorage.getItem(key);
+  return (value == null || value.isEmpty) ? null : value;
+}
+
+void debugReset() {}
+
 void writeItem(String key, String? value, {bool persist = false}) {
   try {
     // Cleared from BOTH on the way out, whichever it was written to. Signing

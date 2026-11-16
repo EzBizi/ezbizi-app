@@ -752,8 +752,8 @@ class _LeadThreadState extends State<LeadThread> {
         // 2026-11-16: "next to the name").
         if (leadCompany(lead) case final company?)
           CompanyTag(company, key: const ValueKey('thread-company')),
-        if (src.sourceKey != null)
-          LeadSourceChip(src.sourceKey, key: const ValueKey('thread-source-chip')),
+        // The source's chip is the Source fact's, so it is said once
+        // (design lead-header A, Jose 2026-11-16).
         leadStatusPill(lead['status'], key: const ValueKey('thread-status')),
         if (leadAiHolds(lead, 'status'))
           AiMark(
@@ -813,16 +813,16 @@ class _LeadThreadState extends State<LeadThread> {
           radius: 16,
         ),
         const SizedBox(width: 10),
-        Expanded(flex: 2, child: marks),
+        // The chips take what the actions leave, so they stay one row
+        // (design lead-header A); they wrapped at 2/5 of the width.
+        Expanded(child: marks),
         if (!narrow) ...[
           const SizedBox(width: 12),
-          // Wraps under itself rather than push the row past its edge.
-          Flexible(
-            flex: 3,
-            child: Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: _actions(lead),
-            ),
+          // As wide as its buttons, at most under half the header; it wraps
+          // under itself rather than push the row past its edge.
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: width * 0.45),
+            child: _actions(lead),
           ),
         ],
       ],
@@ -932,16 +932,15 @@ class _LeadThreadState extends State<LeadThread> {
     return chip;
   }
 
-  /// Design 161: one wrapping line of labelled facts, each field once and
-  /// only when it has something; a phone shows Phone and Job, then More.
+  /// Design lead-header A (Jose, 2026-11-16: "lots of wasted space and
+  /// things all around"): the lead's facts as a grid, a label column and a
+  /// value with its copy button, each field once and only when it has
+  /// something. Branch and source live here, not in a loose line under it.
   Widget _facts(
     ThemeData theme,
     Map<String, dynamic> lead,
-    LeadSourceFields src, {
-    required String? company,
-    required String line,
-    required bool narrow,
-  }) {
+    LeadSourceFields src,
+  ) {
     final quiet = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
@@ -949,23 +948,34 @@ class _LeadThreadState extends State<LeadThread> {
       fontWeight: FontWeight.w700,
       color: theme.colorScheme.onSurfaceVariant,
     );
-    final all = !narrow || _showDetails;
 
-    Widget fact(String label, Widget value, {Key? key}) => Row(
+    Widget row(String label, Widget value, {required Key key}) => Padding(
       key: key,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: labelStyle),
-        const SizedBox(width: 4),
-        Flexible(child: value),
-      ],
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: _factLabelWidth,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(label, style: labelStyle),
+            ),
+          ),
+          Expanded(child: value),
+        ],
+      ),
     );
-    Widget text(String v, {Key? key}) => Text(
+    Widget text(String v, {Key? key, int lines = 1}) => Text(
       v,
       key: key,
-      maxLines: 1,
+      maxLines: lines,
       overflow: TextOverflow.ellipsis,
       style: theme.textTheme.bodySmall,
+    );
+    // A value and its copy button, the button right after the words.
+    Widget copyable(Widget value, Widget copy) => Row(
+      children: [Flexible(child: value), copy],
     );
 
     final phone = lead['phone'] as String?;
@@ -980,15 +990,12 @@ class _LeadThreadState extends State<LeadThread> {
         d != null &&
         widget.session?.me?.can('scheduling.availability.view') == true;
     final reading = (lead['reading'] as Map?)?.cast<String, dynamic>();
-    final said = [
-      for (final k in const ['scope', 'availability', 'deadline'])
-        if (reading?[k] is String) reading![k] as String,
-    ].join(' · ');
     final suggest = ((reading?['suggest'] as Map?) ?? const {}).cast<String, dynamic>();
     final where = [
       ?address,
       if (zip != null && !(address ?? '').contains(zip)) 'ZIP $zip',
     ].join(' · ');
+    final showsPhone = showsNumberLine(lead);
 
     final availability = TextButton(
       key: const ValueKey('check-availability'),
@@ -1005,47 +1012,52 @@ class _LeadThreadState extends State<LeadThread> {
       ),
     );
 
-    final children = <Widget>[
-      if (showsNumberLine(lead))
-        fact(
-          'Phone',
-          Row(
-            mainAxisSize: MainAxisSize.min,
+    // "Use (516) 404-1690?" on the row it would change; anything else the
+    // customer wrote differently sits on the Address row.
+    List<Widget> offers(bool Function(String field) here) => [
+      if (widget.onStatusChanged != null)
+        for (final MapEntry(:key, :value) in suggest.entries)
+          if (here(key))
+            ActionChip(
+              key: ValueKey('reading-use-$key'),
+              visualDensity: VisualDensity.compact,
+              avatar: const Icon(Icons.auto_awesome, size: 14),
+              tooltip: 'The customer wrote a different $key. Tap to use it.',
+              label: Text('Use $value?'),
+              onPressed: () => _useReading(key),
+            ),
+    ];
+    bool onPhoneRow(String f) => f == 'phone' && showsPhone;
+    bool onEmailRow(String f) => f == 'email' && src.email != null;
+    Widget withOffers(Widget value, List<Widget> chips) => chips.isEmpty
+        ? value
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Flexible(child: text(formatPhoneNumber(phone))),
-              _copyButton(
-                phone!,
-                key: const ValueKey('copy-phone'),
-                what: 'Number',
-              ),
+              value,
+              Wrap(spacing: 6, runSpacing: 4, children: chips),
             ],
-          ),
+          );
+
+    // Address: what Google checked, else what they wrote, then the ZIP's
+    // AI mark, the offers and Check availability on a line under it.
+    final addressExtras = <Widget>[
+      if (checked == null &&
+          zip != null &&
+          leadAiHolds(lead, 'postal_code') &&
+          lead['postal_code'] == zip)
+        const AiMark(
+          key: ValueKey('lead-ai-zip'),
+          tooltip:
+              'ZIP filled in by AI from what the customer said. '
+              'Edit it to change it.',
         ),
-      if (all && src.email != null)
-        fact(
-          'Email',
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: SelectableText(src.email!, style: theme.textTheme.bodySmall),
-              ),
-              _copyButton(
-                src.email!,
-                key: const ValueKey('copy-email'),
-                what: 'Email',
-              ),
-            ],
-          ),
-        ),
-      if (all && !named && d?['name'] is String)
-        fact('Name', text('${d!['name']}')),
-      if (all && checked != null)
-        fact(
-          'Address',
-          Row(
+      ...offers((f) => !onPhoneRow(f) && !onEmailRow(f)),
+      if (mayCheck) availability,
+    ];
+    final Widget? addressValue = checked != null
+        ? Row(
             key: const ValueKey('lead-address-checked'),
-            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 Icons.verified_outlined,
@@ -1057,7 +1069,7 @@ class _LeadThreadState extends State<LeadThread> {
                 child: Tooltip(
                   message:
                       'Checked with Google. The customer wrote: ${address ?? ''}',
-                  child: text(checked),
+                  child: text(checked, lines: 2),
                 ),
               ),
               _copyButton(
@@ -1065,83 +1077,133 @@ class _LeadThreadState extends State<LeadThread> {
                 key: const ValueKey('copy-address'),
                 what: 'Address',
               ),
-              if (mayCheck) ...[const SizedBox(width: 4), availability],
             ],
+          )
+        : where.isNotEmpty
+        ? copyable(
+            text(where, key: const ValueKey('lead-address'), lines: 2),
+            _copyButton(
+              where,
+              key: const ValueKey('copy-address'),
+              what: 'Address',
+            ),
+          )
+        : null;
+
+    final service = humaniseService(lead['service'] as String?);
+    final source = lead['source'] as String?;
+    final branch = (lead['franchise'] as Map?)?['name'] as String?;
+    // A website enquiry's useful place is the host it came from (Jose,
+    // 2026-09-23), as leadHeaderLine words it.
+    final site = const {
+      'website_chat',
+      'website_form',
+      'website_booking',
+    }.contains(source)
+        ? (lead['site'] as String?)
+        : null;
+    final sourceBits = <Widget>[
+      if (src.sourceKey != null)
+        LeadSourceChip(src.sourceKey, key: const ValueKey('thread-source-chip'))
+      else
+        // A lead with no source is Google's (Local Services), as sourceWord
+        // says it.
+        Text(sourceWord(source), style: theme.textTheme.bodySmall),
+      if (d != null) ..._factPills(lead, d),
+    ];
+
+    final rows = <Widget>[
+      if (showsPhone)
+        row(
+          'Phone',
+          withOffers(
+            copyable(
+              text(formatPhoneNumber(phone)),
+              _copyButton(
+                phone!,
+                key: const ValueKey('copy-phone'),
+                what: 'Number',
+              ),
+            ),
+            offers(onPhoneRow),
           ),
-        )
-      else if (all && where.isNotEmpty)
-        fact(
+          key: const ValueKey('fact-phone'),
+        ),
+      if (src.email != null)
+        row(
+          'Email',
+          withOffers(
+            copyable(
+              SelectableText(
+                src.email!,
+                maxLines: 1,
+                style: theme.textTheme.bodySmall,
+              ),
+              _copyButton(
+                src.email!,
+                key: const ValueKey('copy-email'),
+                what: 'Email',
+              ),
+            ),
+            offers(onEmailRow),
+          ),
+          key: const ValueKey('fact-email'),
+        ),
+      if (!named && d?['name'] is String)
+        row('Name', text('${d!['name']}'), key: const ValueKey('fact-name')),
+      if (addressValue != null || addressExtras.isNotEmpty)
+        row(
           'Address',
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              text(where, key: const ValueKey('lead-address')),
-              _copyButton(
-                where,
-                key: const ValueKey('copy-address'),
-                what: 'Address',
-              ),
-              // Only when the ZIP shown is the one AI wrote.
-              if (zip != null &&
-                  leadAiHolds(lead, 'postal_code') &&
-                  lead['postal_code'] == zip) ...[
-                const SizedBox(width: 4),
-                const AiMark(
-                  key: ValueKey('lead-ai-zip'),
-                  tooltip:
-                      'ZIP filled in by AI from what the customer said. '
-                      'Edit it to change it.',
-                ),
-              ],
-              if (mayCheck) ...[
-                Text(' · ', style: quiet),
-                availability,
-              ],
-            ],
-          ),
-        )
-      else if (all && mayCheck)
-        availability,
+          withOffers(addressValue ?? const SizedBox.shrink(), addressExtras),
+          key: const ValueKey('fact-address'),
+        ),
       if (src.jobType != null)
-        fact(
+        row(
           'Job',
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: text(src.jobType!, key: const ValueKey('details-job')),
-              ),
-              // The JOB-56691 part when there is one, else the whole line.
-              _copyButton(
-                RegExp(r'^JOB-\S+').stringMatch(src.jobType!) ?? src.jobType!,
-                key: const ValueKey('copy-job'),
-                what: 'Job number',
-              ),
-            ],
+          copyable(
+            text(src.jobType!, key: const ValueKey('details-job')),
+            // The JOB-56691 part when there is one, else the whole line.
+            _copyButton(
+              RegExp(r'^JOB-\S+').stringMatch(src.jobType!) ?? src.jobType!,
+              key: const ValueKey('copy-job'),
+              what: 'Job number',
+            ),
           ),
+          key: const ValueKey('fact-job'),
         ),
-      // The reply reader (Jose, 2026-11-13): what the customer's last
-      // message said, with the message itself behind it.
-      if (all && reading?['source'] is String && said.isNotEmpty)
-        fact(
-          'Customer said',
-          Tooltip(
-            message: '${reading!['source']}',
-            child: text(said, key: const ValueKey('reading-said')),
-          ),
+      // Google's service, when the Job row does not already say it.
+      if (service != null &&
+          service.toLowerCase() != src.jobType?.toLowerCase())
+        row(
+          src.jobType == null ? 'Job' : 'Service',
+          text(service, key: const ValueKey('details-service')),
+          key: const ValueKey('fact-service'),
         ),
-      if (all && widget.onStatusChanged != null)
-        for (final MapEntry(:key, :value) in suggest.entries)
-          ActionChip(
-            key: ValueKey('reading-use-$key'),
-            visualDensity: VisualDensity.compact,
-            avatar: const Icon(Icons.auto_awesome, size: 14),
-            tooltip: 'The customer wrote a different $key. Tap to use it.',
-            label: Text('Use $value?'),
-            onPressed: () => _useReading(key),
+      if (branch != null && branch.isNotEmpty)
+        row(
+          'Branch',
+          text(branch, key: const ValueKey('details-branch')),
+          key: const ValueKey('fact-branch'),
+        ),
+      if (site != null && site.isNotEmpty)
+        row(
+          'Website',
+          text(site, key: const ValueKey('details-site')),
+          key: const ValueKey('fact-site'),
+        ),
+      if (sourceBits.isNotEmpty)
+        row(
+          'Source',
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: sourceBits,
           ),
-      if (all && src.adName != null)
-        fact(
+          key: const ValueKey('fact-source'),
+        ),
+      if (src.adName != null)
+        row(
           'Via ad',
           Tooltip(
             message: [
@@ -1151,28 +1213,145 @@ class _LeadThreadState extends State<LeadThread> {
             ].join('\n'),
             child: text(src.adName!, key: const ValueKey('details-ad')),
           ),
+          key: const ValueKey('fact-ad'),
         ),
-      if (all && src.handle != null)
-        fact('Handle', text(src.handle!, key: const ValueKey('details-handle'))),
-      if (all && d != null) ..._factPills(lead, d),
-      if (all && line.isNotEmpty)
-        Text(line, style: quiet, maxLines: 1, overflow: TextOverflow.ellipsis),
-      if (all && hasFormAnswers(_formLead))
-        _foldLink(
-          theme,
-          key: const ValueKey('form-answers-toggle'),
-          label: 'Form answers',
-          open: _formOpen,
-          onTap: () => setState(() => _formOpen = !_formOpen),
+      if (src.handle != null)
+        row(
+          'Handle',
+          text(src.handle!, key: const ValueKey('details-handle')),
+          key: const ValueKey('fact-handle'),
+        ),
+      if (hasFormAnswers(_formLead))
+        Padding(
+          padding: const EdgeInsets.only(top: 2, left: _factLabelWidth),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: _foldLink(
+              theme,
+              key: const ValueKey('form-answers-toggle'),
+              label: 'Form answers',
+              open: _formOpen,
+              onTap: () => setState(() => _formOpen = !_formOpen),
+            ),
+          ),
         ),
     ];
 
-    return Wrap(
+    return Column(
       key: const ValueKey('thread-facts'),
-      spacing: 14,
-      runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: children,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: rows.isEmpty
+          ? [Text('No contact details yet.', style: quiet)]
+          : rows,
+    );
+  }
+
+  /// The grid's label column.
+  static const double _factLabelWidth = 64;
+
+  /// Design lead-header A: what the customer wants, said once. The AI's
+  /// one line leads; from the customer's last message only what it adds
+  /// (when, by when), and its scope only when the AI line does not already
+  /// say it - the customer's own words are the thread under the header.
+  Widget? _askedCard(ThemeData theme, Map<String, dynamic> lead) {
+    final classification = lead['classification'] as String?;
+    // `summary` is Grok's read only where a classification exists: on a
+    // website lead without one it held the host (leadHeaderLine).
+    final summary = classification == null
+        ? null
+        : (lead['summary'] as String?)?.trim();
+    final hasSummary = summary != null && summary.isNotEmpty;
+    final reading = (lead['reading'] as Map?)?.cast<String, dynamic>();
+    final heard = reading?['source'] is String;
+    final scope = reading?['scope'] as String?;
+    final said = !heard
+        ? ''
+        : [
+            if (scope != null && !(hasSummary && sameGist(scope, summary)))
+              scope,
+            for (final k in const ['availability', 'deadline'])
+              if (reading?[k] is String) reading![k] as String,
+          ].join(' · ');
+    if (classification == null && !hasSummary && said.isEmpty) return null;
+
+    final scheme = theme.colorScheme;
+    return Container(
+      key: const ValueKey('lead-asked'),
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'What they asked',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              // What it looks like, read by a model, beside what somebody
+              // decided.
+              if (classification != null)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome, size: 12, color: scheme.primary),
+                    const SizedBox(width: 3),
+                    Text(
+                      'Looks like ${classificationWord(classification)}',
+                      key: const ValueKey('classification-line'),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          if (hasSummary)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                summary,
+                key: const ValueKey('lead-summary'),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          // The reply reader (Jose, 2026-11-13): what the customer's last
+          // message said, with the message itself behind it.
+          if (said.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Tooltip(
+                message: '${reading!['source']}',
+                child: Text(
+                  said,
+                  key: const ValueKey('reading-said'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: hasSummary
+                      ? theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        )
+                      : theme.textTheme.bodyMedium,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1291,20 +1470,90 @@ class _LeadThreadState extends State<LeadThread> {
     await showSidePanel<void>(context, builder: (_) => panel);
   }
 
+  /// From this header width the facts are a column of their own on the
+  /// right (design lead-header A); narrower, they follow the moves.
+  static const double _twoColumnsFrom = 720;
+
+  /// Design lead-header A, desktop: on the left where the lead stands, what
+  /// they asked and who they already are; on the right the facts grid.
+  Widget _headerBody(
+    ThemeData theme,
+    Map<String, dynamic> lead,
+    LeadSourceFields src,
+    double width,
+  ) {
+    final facts = _facts(theme, lead, src);
+    if (width < _twoColumnsFrom) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.onStatusChanged != null) _movesRow(lead, width),
+          Padding(padding: const EdgeInsets.only(top: 10), child: facts),
+          ?_askedCard(theme, lead),
+          ..._follows(theme, lead, src),
+        ],
+      );
+    }
+    final right = (width * 0.4).clamp(300.0, 440.0);
+    final left = width - right - 20;
+    return Row(
+      key: const ValueKey('thread-columns'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.onStatusChanged != null) _movesRow(lead, left),
+              ?_askedCard(theme, lead),
+              ..._follows(theme, lead, src),
+            ],
+          ),
+        ),
+        const SizedBox(width: 20),
+        SizedBox(
+          width: right,
+          child: Padding(padding: const EdgeInsets.only(top: 6), child: facts),
+        ),
+      ],
+    );
+  }
+
+  /// Under what they asked: the form's answers when opened, Google's
+  /// credit, the existing customer and the booked job.
+  List<Widget> _follows(
+    ThemeData theme,
+    Map<String, dynamic> lead,
+    LeadSourceFields src,
+  ) => [
+    if (_formOpen && hasFormAnswers(_formLead))
+      FormAnswersSection(
+        lead: _formLead,
+        skipping: [
+          leadTitle(lead),
+          ?src.phone,
+          ?(lead['phone'] as String?),
+          ?src.email,
+        ],
+      ),
+    if (lead['credit'] is Map) _creditLine(theme, lead['credit'] as Map),
+    if (_customer != null) _customerCard(theme, _customer!),
+    if (lead['job'] is Map)
+      _bookedLine(
+        theme,
+        lead['job'] as Map,
+        matched: lead['job_matched_by'] == 'phone',
+      ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final lead = _lead;
     final narrow = MediaQuery.sizeOf(context).width < 600;
-    final company = leadCompany(lead);
     final src = LeadSourceFields.from(lead, _loaded);
-    // The company is on screen as its tag, so the line does not say it again.
-    // Without the source's word: its chip says it (design 161, one chip).
-    final line = leadHeaderLine(
-      lead,
-      company: company == null,
-      withSource: src.sourceKey == null,
-    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1335,10 +1584,11 @@ class _LeadThreadState extends State<LeadThread> {
                     _phoneBar(theme, lead, src)
                   else
                     _nameRow(theme, lead, src, narrow: narrow, width: box.maxWidth),
-                  if (!narrow && widget.onStatusChanged != null)
+                  // Scrolled back, a desktop keeps the moves under the name.
+                  if (!narrow && folded && widget.onStatusChanged != null)
                     _movesRow(lead, box.maxWidth),
                   if (!folded) ...[
-                    if (narrow)
+                    if (narrow) ...[
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: _nameRow(
@@ -1350,65 +1600,15 @@ class _LeadThreadState extends State<LeadThread> {
                           withName: false,
                         ),
                       ),
-                    Padding(
-                      padding: EdgeInsets.only(top: narrow ? 6 : 10),
-                      child: _facts(
-                        theme,
-                        lead,
-                        src,
-                        company: company,
-                        line: line,
-                        narrow: narrow,
-                      ),
-                    ),
-                    if (_formOpen && hasFormAnswers(_formLead))
-                      FormAnswersSection(
-                        lead: _formLead,
-                        skipping: [
-                          leadTitle(lead),
-                          ?src.phone,
-                          ?(lead['phone'] as String?),
-                          ?src.email,
-                        ],
-                      ),
-                    // What it looks like, read by a model, beside what
-                    // somebody decided. Only when a reading exists.
-                    if (lead['classification'] is String)
+                      ?_askedCard(theme, lead),
                       Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                        [
-                          'Looks like ${classificationWord(lead['classification'] as String)}',
-                          if ((lead['summary'] as String?)?.isNotEmpty == true)
-                            lead['summary'] as String,
-                        ].join(' · '),
-                        key: const ValueKey('classification-line'),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          fontStyle: FontStyle.italic,
-                        ),
+                        padding: const EdgeInsets.only(top: 8),
+                        child: _facts(theme, lead, src),
                       ),
-                      ),
-                    if (lead['credit'] is Map)
-                      _creditLine(theme, lead['credit'] as Map),
+                      ..._follows(theme, lead, src),
+                    ] else
+                      _headerBody(theme, lead, src, box.maxWidth),
                     if (!narrow) ...working,
-                    // As wide as what it says, not the pane (2026-11-11).
-                    if (_customer != null)
-                      narrow
-                          ? _customerCard(theme, _customer!)
-                          : Align(
-                              alignment: AlignmentDirectional.centerStart,
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 720),
-                                child: _customerCard(theme, _customer!),
-                              ),
-                            ),
-                    if (lead['job'] is Map)
-                      _bookedLine(
-                        theme,
-                        lead['job'] as Map,
-                        matched: lead['job_matched_by'] == 'phone',
-                      ),
                   ],
                   // What somebody is in the middle of stays on a phone
                   // whether the details are open or not.
@@ -3565,6 +3765,19 @@ String leadHeaderLine(
     if (withSource) sourceWord(source),
     if (place != null && place.isNotEmpty) place,
   ].join(' · ');
+}
+
+/// True when [a]'s words are mostly in [b]: the AI's line already says what
+/// the customer did, so the lead header says it once (design lead-header A).
+bool sameGist(String a, String b) {
+  Set<String> words(String s) => {
+    for (final w in s.toLowerCase().split(RegExp(r'[^a-z0-9]+')))
+      if (w.length > 3) w,
+  };
+  final mine = words(a);
+  if (mine.isEmpty) return a.trim().toLowerCase() == b.trim().toLowerCase();
+  final theirs = words(b);
+  return mine.where(theirs.contains).length / mine.length >= 0.6;
 }
 
 /// Where the enquiry came from, in words. `local_services` is Google Ads;
