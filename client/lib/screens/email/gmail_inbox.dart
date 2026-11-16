@@ -1222,47 +1222,51 @@ class _GmailInboxState extends State<GmailInbox> {
       child: Row(
         children: [
           for (final (id, label, icon) in _categories)
-            InkWell(
-              key: ValueKey('email-category-$id'),
-              onTap: () => _selectCategory(id),
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: compact ? 12 : 18,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      width: 3,
-                      color: _category == id ? scheme.primary : scheme.surface,
-                    ),
+            // Mobile review 2026-11-13, P4: these sat under the module's
+            // underlined tabs as a second underline. An inner row is pills.
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: InkWell(
+                key: ValueKey('email-category-$id'),
+                onTap: () => _selectCategory(id),
+                customBorder: const StadiumBorder(),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 40),
+                  padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16),
+                  decoration: ShapeDecoration(
+                    shape: const StadiumBorder(),
+                    color: _category == id
+                        ? scheme.primaryContainer
+                        : Colors.transparent,
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      icon,
-                      size: 18,
-                      color: _category == id
-                          ? scheme.primary
-                          : scheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      label,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: _category == id ? scheme.primary : null,
+                  child: Row(
+                    children: [
+                      Icon(
+                        icon,
+                        size: 18,
+                        color: _category == id
+                            ? scheme.onPrimaryContainer
+                            : scheme.onSurfaceVariant,
                       ),
-                    ),
-                    if ((_countFor(id) ?? 0) > 0) ...[
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 8),
                       Text(
-                        '${_countFor(id)}',
-                        key: ValueKey('email-category-count-$id'),
-                        style: theme.textTheme.labelSmall,
+                        label,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: _category == id
+                              ? scheme.onPrimaryContainer
+                              : null,
+                        ),
                       ),
+                      if ((_countFor(id) ?? 0) > 0) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          '${_countFor(id)}',
+                          key: ValueKey('email-category-count-$id'),
+                          style: theme.textTheme.labelSmall,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),

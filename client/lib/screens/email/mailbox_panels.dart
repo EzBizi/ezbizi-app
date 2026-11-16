@@ -1191,9 +1191,9 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
         _error =
             'EzBizi could not open the $label sign-in window. On the web that '
             'is usually the browser blocking new windows for this site — allow '
-            'them and press the button again. On the desktop and phone apps '
-            'this is not built yet; connect the address from a browser and it '
-            'stays connected everywhere.';
+            'them and press the button again. In the desktop and phone apps, '
+            'connect the address from a browser instead; it then stays '
+            'connected everywhere.';
       });
 
       return;

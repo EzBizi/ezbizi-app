@@ -188,7 +188,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.byType(CircularProgressIndicator),
+      find.byKey(const Key('loading-skeleton')),
       findsOneWidget,
       reason: 'A retry after a failed first fetch has nothing to keep.',
     );

@@ -319,7 +319,10 @@ class _TechnicianRosterState extends State<TechnicianRoster> {
       color: theme.colorScheme.onSurfaceVariant,
     );
 
+    // Mobile review 2026-11-13, P9: stretched, so every card is the full
+    // row; a centred Column shrank each to its own text.
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final r in rows)
           Card(
