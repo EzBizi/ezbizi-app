@@ -805,10 +805,6 @@ class SocialPostsController extends Controller
      */
     private function tiktokChoices(Request $request, Collection $connections): array
     {
-        if (! Publishers::tiktokIsAudited()) {
-            return [];
-        }
-
         $choices = [];
 
         foreach ($connections as $connection) {
@@ -817,6 +813,23 @@ class SocialPostsController extends Controller
             }
 
             $key = 'tiktok.'.$connection->getKey();
+
+            // Profile (Direct Post) or the creator's inbox, chosen per post.
+            // No answer keeps the installation's default (Publishers::for).
+            $mode = data_get($request->validate([
+                $key.'.mode' => ['sometimes', 'nullable', 'string', 'in:direct,inbox'],
+            ]), $key.'.mode');
+
+            if ($mode === 'inbox' || ($mode === null && ! Publishers::tiktokIsAudited())) {
+                // TikTok ignores privacy, interactions and disclosure for a
+                // draft: the creator sets them in the app.
+                if ($mode !== null) {
+                    $choices[$connection->getKey()] = ['mode' => $mode];
+                }
+
+                continue;
+            }
+
             $data = $request->validate([
                 $key.'.privacy_level' => ['required', 'string', 'in:PUBLIC_TO_EVERYONE,MUTUAL_FOLLOW_FRIENDS,FOLLOWER_OF_CREATOR,SELF_ONLY'],
                 $key.'.allow_comment' => ['sometimes', 'boolean'],
@@ -846,7 +859,7 @@ class SocialPostsController extends Controller
                 ]);
             }
 
-            $choices[$connection->getKey()] = [
+            $choices[$connection->getKey()] = array_filter(['mode' => $mode]) + [
                 'privacy_level' => $chosen['privacy_level'],
                 'allow_comment' => filter_var($chosen['allow_comment'] ?? false, FILTER_VALIDATE_BOOLEAN),
                 'allow_duet' => filter_var($chosen['allow_duet'] ?? false, FILTER_VALIDATE_BOOLEAN),
@@ -1015,6 +1028,20 @@ class SocialPostsController extends Controller
         };
     }
 
+    /** The TikTok target went (or goes) to the inbox: its own mode, else the installation's. */
+    private function inboxTarget(SocialPostTarget $target, ?SocialConnection $connection): bool
+    {
+        if ($connection?->providerEnum() !== SocialProvider::TikTok) {
+            return false;
+        }
+
+        return match ($target->options['mode'] ?? null) {
+            'inbox' => true,
+            'direct' => false,
+            default => ! Publishers::tiktokIsAudited(),
+        };
+    }
+
     private function presentTarget(SocialPostTarget $target, ?SocialConnection $connection): array
     {
         return [
@@ -1025,6 +1052,9 @@ class SocialPostsController extends Controller
             'provider' => $connection?->provider,
             'provider_label' => $connection?->providerLabel(),
             'status' => $target->status,
+            // What "sent" meant, when it is not the profile: TikTok's inbox.
+            'status_label' => $this->inboxTarget($target, $connection) && $target->status === SocialPostTarget::STATUS_SENT
+                ? 'Sent to TikTok inbox' : null,
             'failure' => $target->failure,
             'sent_at' => $target->sent_at?->toIso8601String(),
             'url' => $target->url,

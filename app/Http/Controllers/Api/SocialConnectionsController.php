@@ -174,7 +174,11 @@ class SocialConnectionsController extends Controller
                 'posting_note' => Publishers::postingNoteFor($c->providerEnum()),
                 // TikTok Direct Post: the composer must ask privacy, interactions
                 // and disclosure for this account (GET .../tiktok-creator).
-                'asks_tiktok_choices' => $c->providerEnum() === SocialProvider::TikTok && Publishers::tiktokIsAudited(),
+                // Every TikTok account now asks: profile or inbox, per post.
+                'asks_tiktok_choices' => $c->providerEnum() === SocialProvider::TikTok,
+                // Which of the two the composer starts on: the installation's default.
+                'tiktok_mode' => $c->providerEnum() !== SocialProvider::TikTok ? null
+                    : (Publishers::tiktokIsAudited() ? 'direct' : 'inbox'),
                 // The composer's limit and pre-flight caution come from the
                 // same rules that refuse at publish (review 2026-11-09 C4).
                 // Only for a network that posts: Mailchimp, Workiz and the rest
