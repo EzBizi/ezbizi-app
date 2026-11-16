@@ -46,10 +46,11 @@ trait FakesMonday
             str_contains($query, 'workspaces(') => ['workspaces' => [['id' => '1']]],
             str_contains($query, 'folders(') => ['folders' => $this->monday['folders'] ?? []],
             str_contains($query, 'next_items_page') => ['next_items_page' => ['cursor' => null, 'items' => []]],
-            str_contains($query, 'items_page') => ['boards' => [['items_page' => ['cursor' => null, 'items' => array_map(
+            str_contains($query, 'items_page') => ['boards' => [['items_page' => ['cursor' => null, 'items' => array_values(array_map(
                 fn ($i) => ['id' => $i['id'], 'updated_at' => $i['updated_at'], 'subitems' => array_map(fn ($s) => ['id' => $s['id'], 'updated_at' => $s['updated_at']], $i['subitems'] ?? [])],
-                $boards[(string) $vars['b'][0]]['items'] ?? [],
-            )]]]],
+                // Monday's __last_updated__ filter, by the day (greater_than_or_equals ["EXACT", "Y-m-d"]).
+                array_filter($boards[(string) $vars['b'][0]]['items'] ?? [], fn ($i) => ! isset($vars['d'][1]) || substr((string) $i['updated_at'], 0, 10) >= $vars['d'][1]),
+            ))]]]],
             str_contains($query, 'items(ids:$i) { id board') => ['items' => array_values(array_filter(array_map(
                 fn ($i) => in_array((string) $i['id'], array_map('strval', $vars['i']), true) ? ['id' => $i['id'], 'board' => ['id' => $i['_board']]] : null,
                 $allItems(),

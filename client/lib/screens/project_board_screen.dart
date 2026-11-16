@@ -217,12 +217,31 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     });
   }
 
-  void _resize(int column, double width) {
+  /// Widths by column KEY, so a width dragged on one sub-tab lands on the
+  /// same column on every other (Jose, 2026-11-16); the Action column
+  /// shifted every position. Old position-keyed saves still read on
+  /// Unscheduled, where they were made.
+  Map<int, double> _widths(List<String> keys) {
+    final saved = widget.session.me?.preferences['lists.column_widths'];
+    final byKey = saved is Map ? saved : const {};
+    final legacy = _tab == 'unscheduled'
+        ? widget.session.me?.listColumnWidths('project-board') ?? const {}
+        : const <int, double>{};
+    final out = <int, double>{};
+    for (var i = 0; i < keys.length; i++) {
+      final w = byKey['project-board-col:${keys[i]}'];
+      final width = w is num ? w.toDouble() : legacy[i];
+      if (width != null) out[i] = width;
+    }
+    return out;
+  }
+
+  void _resize(String key, double width) {
     final all = {
       if (widget.session.me?.preferences['lists.column_widths']
           case final Map saved)
         ...saved,
-      'project-board:$column': width.roundToDouble(),
+      'project-board-col:$key': width.roundToDouble(),
     };
     widget.session.setPreference('lists.column_widths', all);
     setState(() {});
@@ -892,6 +911,17 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         if (c['visible'] != false && (_money || !_moneyKeys.contains(c['key'])))
           c,
     ];
+    // A first Action column where the sub-tab has an action (Jose,
+    // 2026-11-16); every sub-tab is otherwise the same table.
+    final Widget Function(Map<String, dynamic>)? action = switch (_tab) {
+      'unscheduled' => _readyButton,
+      'ready_to_schedule' => _proposalCell,
+      _ => null,
+    };
+    final keys = [
+      if (action != null) '_action',
+      for (final c in columns) '${c['key']}',
+    ];
 
     // The sub-tabs stay drawn while a sub-tab loads or fails.
     return Column(
@@ -1035,28 +1065,23 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                   if (_totals case final t?) _totalsStrip(t),
                   _fill(
                     (height) => ListTable(
+                      key: ValueKey('project-board-table:$_tab'),
                       // Fills the window down to its bottom edge: rows scroll
                       // inside, so the headings and the sideways bar never
                       // move, also as more rows load (Jose, 2026-11-16).
                       height: height,
                       footer: _more(),
                       // Dragged widths, per person on every device (Jose,
-                      // 2026-11-10). ponytail: by column position; a
-                      // reordered column keeps the slot's width.
-                      widths:
-                          widget.session.me?.listColumnWidths(
-                            'project-board',
-                          ) ??
-                          const {},
-                      onResize: _resize,
+                      // 2026-11-10), by column key.
+                      widths: _widths(keys),
+                      onResize: (i, w) => _resize(keys[i], w),
                       rowKey: (i) =>
                           ValueKey('project-board-job:${rows[i]['id']}'),
                       onTap: (i) => _open(rows[i]),
                       columns: [
                         // First, so the button is on screen before any
                         // sideways scroll (Jose, 2026-11-16: "Ready to sch").
-                        if (_tab == 'unscheduled')
-                          const ListColumn('Action', flex: 4),
+                        if (action != null) const ListColumn('Action', flex: 4),
                         for (final c in columns)
                           ListColumn(
                             '${c['label'] ?? c['key']}',
@@ -1069,15 +1094,12 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                                 : null,
                             sorted: _sortKey == c['key'] ? _sortDesc : null,
                           ),
-                        if (_tab == 'ready_to_schedule')
-                          const ListColumn('Schedule', flex: 3),
                       ],
                       rows: [
                         for (final row in rows)
                           [
-                            if (_tab == 'unscheduled') _readyButton(row),
+                            if (action != null) action(row),
                             for (final c in columns) _cell(row, c),
-                            if (_tab == 'ready_to_schedule') _proposalCell(row),
                           ],
                       ],
                     ),
@@ -1143,6 +1165,10 @@ class _BoardSettingsState extends State<_BoardSettings> {
   List<Map<String, dynamic>> _users = const [];
   List<String> _repairColours = const [];
   final Set<String> _readyNeeds = {};
+
+  /// Roles that can be picked as Technician (Jose, 2026-11-16).
+  List<String> _knownRoles = const [];
+  List<String> _techRoles = [];
   final _warnDays = TextEditingController();
   final _badDays = TextEditingController();
   bool _ready = false;
@@ -1199,6 +1225,15 @@ class _BoardSettingsState extends State<_BoardSettings> {
       ];
       _repairColours = [
         for (final c in (options['repair_colours'] as List?) ?? const []) '$c',
+      ];
+      _knownRoles = [
+        for (final r in (options['roles'] as List?) ?? const []) '$r',
+      ];
+      _techRoles = [
+        for (final r
+            in (byKey['project_board.technician_roles'] as List?) ??
+                const ['Technician', 'Local Manager'])
+          '$r',
       ];
       _readyNeeds
         ..clear()
@@ -1549,10 +1584,94 @@ class _BoardSettingsState extends State<_BoardSettings> {
     );
   }
 
+  /// One column's row: its name, drag handle, Shown and coloured label.
+  /// Below 600 px the name takes a line of its own above the controls; beside
+  /// them it was squeezed to nothing, and the rows could not be told apart
+  /// (mobile review 2026-11-13).
+  Widget _columnRow(int i, Map<String, dynamic> c, {required bool phone}) {
+    final name = TextFormField(
+      key: ValueKey('project-board-column-name:${c['key']}'),
+      initialValue: '${c['label'] ?? ''}',
+      decoration: const InputDecoration(isDense: true),
+      onChanged: (v) => c['label'] = v,
+    );
+    final controls = [
+      const Text('Shown'),
+      Switch(
+        value: c['visible'] != false,
+        onChanged: (v) => setState(() => c['visible'] = v),
+      ),
+      Flexible(
+        child: Tooltip(
+          message:
+              'Draw each value as a coloured chip. Pick the colours under Label colours.',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Checkbox(
+                value: c['as_label'] == true,
+                onChanged: (v) => setState(() {
+                  c['as_label'] = v == true;
+                  if (v == true) {
+                    _labels.putIfAbsent('${c['key']}', () => []);
+                  }
+                }),
+              ),
+              const Flexible(
+                child: Text(
+                  'Show as coloured label',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ];
+    final handle = ReorderableDragStartListener(
+      index: i,
+      child: const Icon(Icons.drag_indicator),
+    );
+    final key = ValueKey('project-board-column:${c['key']}');
+    if (phone) {
+      return Padding(
+        key: key,
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                handle,
+                const SizedBox(width: 8),
+                Expanded(child: name),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 32),
+              child: Row(children: controls),
+            ),
+          ],
+        ),
+      );
+    }
+    return Row(
+      key: key,
+      children: [
+        handle,
+        const SizedBox(width: 8),
+        Expanded(child: name),
+        const SizedBox(width: 8),
+        ...controls,
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_ready) return const LinearProgressIndicator();
     final theme = Theme.of(context);
+    final phone = MediaQuery.sizeOf(context).width < 600;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1574,48 +1693,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
               }),
               children: [
                 for (final (i, c) in _columns.indexed)
-                  Row(
-                    key: ValueKey('project-board-column:${c['key']}'),
-                    children: [
-                      ReorderableDragStartListener(
-                        index: i,
-                        child: const Icon(Icons.drag_indicator),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextFormField(
-                          initialValue: '${c['label'] ?? ''}',
-                          decoration: const InputDecoration(isDense: true),
-                          onChanged: (v) => c['label'] = v,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('Shown'),
-                      Switch(
-                        value: c['visible'] != false,
-                        onChanged: (v) => setState(() => c['visible'] = v),
-                      ),
-                      Tooltip(
-                        message:
-                            'Draw each value as a coloured chip. Pick the colours under Label colours.',
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Checkbox(
-                              value: c['as_label'] == true,
-                              onChanged: (v) => setState(() {
-                                c['as_label'] = v == true;
-                                if (v == true) {
-                                  _labels.putIfAbsent('${c['key']}', () => []);
-                                }
-                              }),
-                            ),
-                            const Text('Show as coloured label'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                  _columnRow(i, c, phone: phone),
               ],
             ),
           ],
@@ -1651,22 +1729,22 @@ class _BoardSettingsState extends State<_BoardSettings> {
           ],
           _labelValues,
         ),
-        _card(
-          'tabs',
-          'Sub-tabs',
-          'What puts a job on each sub-tab: its status, its tags, and its scheduled date. A sub-tab with no status chosen lists nothing.',
-          [
-            for (final (key, name, _) in _tabs)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
+        // One card per sub-tab (Jose, 2026-11-16: "separated in their own
+        // boxes"); each Save writes every sub-tab's rules, as before.
+        for (final (key, name, _) in _tabs)
+          KeyedSubtree(
+            key: ValueKey('project-board-tab-card:$key'),
+            child: _card(
+              'tabs:$key',
+              name,
+              'What puts a job on $name: its status, its tags, and its scheduled date. No status chosen lists nothing.',
+              [
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Expanded(
-                          child: Text(name, style: theme.textTheme.titleSmall),
-                        ),
+                        const Spacer(),
                         DropdownMenu<String>(
                           enableFilter: true,
                           requestFocusOnTap: true,
@@ -1722,9 +1800,12 @@ class _BoardSettingsState extends State<_BoardSettings> {
                           ],
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          'these (none chosen: tags do not matter)',
-                          style: theme.textTheme.bodySmall,
+                        // Flexible: on a phone it ran past the edge.
+                        Flexible(
+                          child: Text(
+                            'these (none chosen: tags do not matter)',
+                            style: theme.textTheme.bodySmall,
+                          ),
                         ),
                       ],
                     ),
@@ -1742,23 +1823,53 @@ class _BoardSettingsState extends State<_BoardSettings> {
                     ),
                   ],
                 ),
-              ),
-          ],
-          () => {
-            'project_board.tabs': {
-              for (final (key, _, _) in _tabs)
-                key: {
-                  'statuses': _statuses[key]!,
-                  if (_tabTags[key]!.isNotEmpty) ...{
-                    'tags': _tabTags[key]!,
-                    'tags_mode': _anyTag[key] == true ? 'any' : 'all',
-                  },
-                  if (_tabNoTags[key]!.isNotEmpty)
-                    'tags_none': _tabNoTags[key]!,
-                  if (_scheduled[key] != null) 'scheduled': _scheduled[key]!,
+              ],
+              () => {
+                'project_board.tabs': {
+                  for (final (key, _, _) in _tabs)
+                    key: {
+                      'statuses': _statuses[key]!,
+                      if (_tabTags[key]!.isNotEmpty) ...{
+                        'tags': _tabTags[key]!,
+                        'tags_mode': _anyTag[key] == true ? 'any' : 'all',
+                      },
+                      if (_tabNoTags[key]!.isNotEmpty)
+                        'tags_none': _tabNoTags[key]!,
+                      if (_scheduled[key] != null)
+                        'scheduled': _scheduled[key]!,
+                    },
                 },
-            },
-          },
+              },
+            ),
+          ),
+        _card(
+          'tech_roles',
+          'Roles that can be picked as Technician',
+          'The technician picker lists only active users holding one of these roles.',
+          [
+            Wrap(
+              key: const Key('project-board-tech-roles'),
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final r in {..._knownRoles, ..._techRoles})
+                  FilterChip(
+                    key: ValueKey('project-board-tech-role:$r'),
+                    label: Text(r),
+                    selected: _techRoles.any(
+                      (t) => t.toLowerCase() == r.toLowerCase(),
+                    ),
+                    onSelected: (on) => setState(() {
+                      _techRoles.removeWhere(
+                        (t) => t.toLowerCase() == r.toLowerCase(),
+                      );
+                      if (on) _techRoles.add(r);
+                    }),
+                  ),
+              ],
+            ),
+          ],
+          () => {'project_board.technician_roles': _techRoles},
         ),
         _card(
           'parts',

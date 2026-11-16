@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
 import '../../core/files.dart';
@@ -139,57 +141,77 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
       key: const ValueKey('tour-financials-bills'),
       padding: const EdgeInsets.all(16),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Bills',
-                style: Theme.of(context).textTheme.titleMedium,
+        // Below 600 the title gets its own line and the controls wrap under
+        // it: in one row they squeezed it to "Bill / s" (phone review
+        // 2026-11-13, item 5).
+        if (MediaQuery.sizeOf(context).width < 600) ...[
+          Text('Bills', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ListSearch(
+                key: const Key('financials-bills-search'),
+                controller: _search,
+                onChanged: _searched,
+                hint: 'Place, period or line',
               ),
-            ),
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 240),
-                child: TextField(
+              if (_canEdit) ...[
+                OutlinedButton(
+                  onPressed: () => _open(),
+                  child: const Text('Type one in'),
+                ),
+                FilledButton.icon(
+                  icon: _reading
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.photo_camera_outlined),
+                  label: const Text('Read a photo'),
+                  onPressed: _reading ? null : _read,
+                ),
+              ],
+            ],
+          ),
+        ] else
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Bills',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              Flexible(
+                child: ListSearch(
                   key: const Key('financials-bills-search'),
                   controller: _search,
                   onChanged: _searched,
-                  // bodyMedium for the text and the hint, as the dense pickers draw:
-                  // 53 points tall, as they are; the theme's 16-point hint makes 56.
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    hintText: 'Place, period or line',
-                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(
-                        context,
-                      ).inputDecorationTheme.hintStyle?.color,
-                    ),
-                  ),
+                  hint: 'Place, period or line',
                 ),
               ),
-            ),
-            if (_canEdit) ...[
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: () => _open(),
-                child: const Text('Type one in'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                icon: _reading
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.photo_camera_outlined),
-                label: const Text('Read a photo'),
-                onPressed: _reading ? null : _read,
-              ),
+              if (_canEdit) ...[
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () => _open(),
+                  child: const Text('Type one in'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  icon: _reading
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.photo_camera_outlined),
+                  label: const Text('Read a photo'),
+                  onPressed: _reading ? null : _read,
+                ),
+              ],
             ],
-          ],
-        ),
+          ),
         const SizedBox(height: 4),
         const Text(
           "A photo of a period's bills is read into lines; it is saved once they add up to its total.",

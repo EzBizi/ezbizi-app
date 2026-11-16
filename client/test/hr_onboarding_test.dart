@@ -907,7 +907,19 @@ void main() {
         matching: find.widgetWithText(ChoiceChip, 'Onboarding'),
       ),
     );
-    await _tap(tester, find.byIcon(Icons.chevron_right).first);
+    await _tap(
+      tester,
+      // Not the tab strip's "More tabs" chevron.
+      find
+          .byElementPredicate(
+            (e) =>
+                e.widget is Icon &&
+                (e.widget as Icon).icon == Icons.chevron_right &&
+                e.findAncestorWidgetOfExactType<IconButton>()?.key !=
+                    const Key('tab-bar-chevron'),
+          )
+          .first,
+    );
 
     // The same form, so there is one renderer for these answers and one place
     // that decides a sensitive value is masked.

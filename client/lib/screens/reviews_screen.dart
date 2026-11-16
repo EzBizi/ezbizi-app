@@ -817,7 +817,10 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             _tile(
               theme,
               key: 'average',
-              label: 'Average rating',
+              // Named with its period: the all-time average elsewhere on Customer
+              // Experience read as a second, different rating (desktop review
+              // 2026-11-13, Top 7).
+              label: 'Average rating this month',
               value: average == null ? '—' : '${avg(average)} / 5',
               sub: averageSub,
               info:

@@ -1,3 +1,4 @@
+import '../../widgets/module_page_header.dart';
 import '../../widgets/list_search.dart';
 import 'dart:typed_data';
 
@@ -142,19 +143,21 @@ class _ServiceListState extends State<ServiceList> {
             ? '1 service in the catalogue.'
             : '$_total in the catalogue.',
         action: canCreate
-            ? Refused(
-                reason: refused,
-                child: FilledButton.icon(
-                  key: const ValueKey('tour-services-add'),
-                  onPressed: refused == null
-                      ? () => setState(() {
-                          _adding = true;
-                          _selectedId = null;
-                          _open = null;
-                        })
-                      : null,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add service'),
+            ? ModuleAction(
+                child: Refused(
+                  reason: refused,
+                  child: FilledButton.icon(
+                    key: const ValueKey('tour-services-add'),
+                    onPressed: refused == null
+                        ? () => setState(() {
+                            _adding = true;
+                            _selectedId = null;
+                            _open = null;
+                          })
+                        : null,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add service'),
+                  ),
                 ),
               )
             : null,

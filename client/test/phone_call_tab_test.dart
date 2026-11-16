@@ -122,6 +122,24 @@ void main() {
   /// A fresh CallTab with the preference already set is exactly the state of
   /// coming back to the tab, which is why the test is written this way round
   /// rather than by tapping the pin and rebuilding.
+  testWidgets('with the customer pane open the history keeps 260 px', (
+    tester,
+  ) async {
+    // Desktop review 2026-11-13, Top 8: ~170 px cut names and numbers; the
+    // customer pane gives the width back first.
+    await _pump(
+      tester,
+      size: const Size(900, 900),
+      preferences: const {'phone.customer_panel_pinned': true},
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getRect(find.byKey(const Key('phone-call-history'))).width,
+      greaterThanOrEqualTo(260),
+    );
+  });
+
   testWidgets('a pinned customer panel is still pinned on the way back', (
     tester,
   ) async {

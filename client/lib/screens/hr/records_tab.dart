@@ -185,7 +185,7 @@ class _RecordsTabState extends State<RecordsTab> {
           label: [
             pathOf(f.companyId),
             f.name,
-          ].where((part) => part.isNotEmpty).join(' › '),
+          ].where((part) => part.isNotEmpty).join(' · '),
         ),
     ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     return rows;

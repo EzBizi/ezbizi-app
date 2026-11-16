@@ -261,8 +261,18 @@ void main() {
     expect(find.text('OWNER'), findsOneWidget);
     expect(find.text('ASSIGNED'), findsOneWidget);
     final person = find.byKey(const ValueKey('task-creator-t1'));
+    // A person who made it is a face; the name is its label and hover card.
     expect(
       find.descendant(of: person, matching: find.text('Maya Lopez')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: person,
+        matching: find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.label == 'Maya Lopez',
+        ),
+      ),
       findsOneWidget,
     );
     final rule = find.byKey(const ValueKey('task-creator-t2'));
@@ -270,8 +280,14 @@ void main() {
       find.descendant(of: rule, matching: find.text('New lead follow-up')),
       findsOneWidget,
     );
-    // The assigned cell keeps the assignee.
-    expect(find.text('Omar'), findsOneWidget);
+    // The assigned cell keeps the assignee, as a face.
+    expect(find.text('Omar'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Semantics && (w.properties.label ?? '').contains('Omar'),
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets('files go as files[] beside an optional body, chosen ones '

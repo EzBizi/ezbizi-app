@@ -1,4 +1,6 @@
+import '../core/theme.dart';
 import '../core/deep_links.dart';
+import '../widgets/module_page_header.dart';
 import '../widgets/list_search.dart';
 import 'dart:async';
 
@@ -332,16 +334,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   // number the screen has already been told is wrong.
                   onImported: _load,
                 ),
-                Refused(
-                  // The server decides in the end. This decides what is OFFERED,
-                  // and a control that cannot be used stays on screen saying why
-                  // rather than going dark or disappearing.
-                  reason: refused,
-                  child: FilledButton.icon(
-                    key: const ValueKey('tour-customers-add'),
-                    onPressed: refused == null ? _create : null,
-                    icon: const Icon(Icons.person_add_outlined, size: 18),
-                    label: const Text('Add customer'),
+                // Desktop review 2026-11-13, D3: header right, as every module.
+                ModuleAction(
+                  child: Refused(
+                    // The server decides in the end. This decides what is OFFERED,
+                    // and a control that cannot be used stays on screen saying why
+                    // rather than going dark or disappearing.
+                    reason: refused,
+                    child: FilledButton.icon(
+                      key: const ValueKey('tour-customers-add'),
+                      onPressed: refused == null ? _create : null,
+                      icon: const Icon(Icons.person_add_outlined, size: 18),
+                      label: const Text('Add customer'),
+                    ),
                   ),
                 ),
               ],
@@ -390,7 +395,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
       child: Wrap(
         key: const ValueKey('tour-customers-segments'),
         spacing: 6,
@@ -414,7 +424,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        12,
+      ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           // On a phone the search takes the line and the two pickers split the
@@ -952,7 +967,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final groups = <String, List<Map<String, dynamic>>>{};
 
     for (final customer in customers) {
-      final name = '${customer['name'] ?? ''}';
+      // From the first letter or digit, as the server sorts (desktop review
+      // 2026-11-13): "'Bob" files under B, not under "#".
+      final name = '${customer['name'] ?? ''}'.replaceFirst(
+        RegExp(r'^[^\p{L}\p{N}]+', unicode: true),
+        '',
+      );
       final first = name.isEmpty ? '' : name[0].toUpperCase();
       final letter = _unaccented[first] ?? first;
       final key = RegExp(r'^[A-Z]$').hasMatch(letter) ? letter : '#';

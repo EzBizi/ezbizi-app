@@ -44,6 +44,10 @@ class Job extends Model implements StatesRetention
     use HasFactory;
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'jobs';
     use SoftDeletes;
     /*
      * Photographs, invoices from a supplier, a signed worksheet.

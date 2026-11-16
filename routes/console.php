@@ -67,6 +67,8 @@ Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('Americ
 // command above. Two sweeps deleting from one table on different rules is a bug
 // waiting for the night they disagree.
 Schedule::command('ezbizi:expire-data')->dailyAt('03:50');
+// The live feed (GET changes) only needs the last minutes; keep a day.
+Schedule::command('ezbizi:prune-change-events')->hourlyAt(11)->withoutOverlapping(30);
 
 // A sudden jump in errors, crashes or freezes from one app version (2026-10-15).
 Schedule::command('ezbizi:check-client-issues')->everyTenMinutes()->withoutOverlapping(5);
@@ -195,9 +197,11 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
 // Monday → Task Board for the boards imported from Monday (desk, 11-12): the changed items every ten
-// minutes, every item nightly (a reply does not always move its item's updated_at). Read only.
+// minutes (Monday's date filter, since each board's cursor), webhooks in between.
 Schedule::command('ezbizi:monday-sync')->everyTenMinutes()->withoutOverlapping(20);
-Schedule::command('ezbizi:monday-sync --full')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
+// Nightly: every board listed (a subitem-only change can miss Monday's date filter); only changed items are read.
+// Both run in the slow lane (2026-11-16: the poll took ~4 min of a 5-min fast slot and the slot timed out).
+Schedule::command('ezbizi:monday-sync --scan')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
 // Task Board → Monday while both are in use (Jose, 11-13): the outbox, every minute.
 Schedule::command('ezbizi:monday-push')->everyMinute()->withoutOverlapping(10);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
@@ -523,7 +527,7 @@ Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlap
  */
 foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event) {
     $slow = (bool) preg_match(
-        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog)(\s|\'|$)/',
+        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog|monday-sync)(\s|\'|$)/',
         (string) $event->command,
     );
     $event->when(function () use ($slow) {

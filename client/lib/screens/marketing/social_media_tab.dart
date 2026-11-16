@@ -4,6 +4,8 @@ import 'dart:async';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
+
+import '../../widgets/list_search.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
@@ -21,7 +23,6 @@ import '../../core/timestamps.dart';
 import '../../widgets/disconnect_panel.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
-import '../../widgets/list_search.dart';
 import '../../widgets/list_table.dart';
 import '../../widgets/social_network_mark.dart';
 import '../../widgets/refused.dart';
@@ -1345,21 +1346,11 @@ class _PostsDashboard extends StatelessWidget {
             _ => _shortDay(day),
           };
 
-    final field = TextField(
+    final field = ListSearch(
       key: const Key('social-posts-search'),
       controller: search,
       onChanged: onSearch,
-      // bodyMedium for the text and the hint, as the dense pickers draw:
-      // 53 points tall, as they are; the theme's 16-point hint makes 56.
-      style: Theme.of(context).textTheme.bodyMedium,
-      decoration: InputDecoration(
-        isDense: true,
-        prefixIcon: const Icon(Icons.search, size: 18),
-        hintText: 'What it said, who or where',
-        hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
-        ),
-      ),
+      hint: 'What it said, who or where',
     );
     final newPost = onNew == null
         ? null
