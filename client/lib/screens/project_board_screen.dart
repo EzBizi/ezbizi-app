@@ -217,12 +217,31 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     });
   }
 
-  void _resize(int column, double width) {
+  /// Widths by column KEY, so a width dragged on one sub-tab lands on the
+  /// same column on every other (Jose, 2026-11-16); the Action column
+  /// shifted every position. Old position-keyed saves still read on
+  /// Unscheduled, where they were made.
+  Map<int, double> _widths(List<String> keys) {
+    final saved = widget.session.me?.preferences['lists.column_widths'];
+    final byKey = saved is Map ? saved : const {};
+    final legacy = _tab == 'unscheduled'
+        ? widget.session.me?.listColumnWidths('project-board') ?? const {}
+        : const <int, double>{};
+    final out = <int, double>{};
+    for (var i = 0; i < keys.length; i++) {
+      final w = byKey['project-board-col:${keys[i]}'];
+      final width = w is num ? w.toDouble() : legacy[i];
+      if (width != null) out[i] = width;
+    }
+    return out;
+  }
+
+  void _resize(String key, double width) {
     final all = {
       if (widget.session.me?.preferences['lists.column_widths']
           case final Map saved)
         ...saved,
-      'project-board:$column': width.roundToDouble(),
+      'project-board-col:$key': width.roundToDouble(),
     };
     widget.session.setPreference('lists.column_widths', all);
     setState(() {});
@@ -892,6 +911,17 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         if (c['visible'] != false && (_money || !_moneyKeys.contains(c['key'])))
           c,
     ];
+    // A first Action column where the sub-tab has an action (Jose,
+    // 2026-11-16); every sub-tab is otherwise the same table.
+    final Widget Function(Map<String, dynamic>)? action = switch (_tab) {
+      'unscheduled' => _readyButton,
+      'ready_to_schedule' => _proposalCell,
+      _ => null,
+    };
+    final keys = [
+      if (action != null) '_action',
+      for (final c in columns) '${c['key']}',
+    ];
 
     // The sub-tabs stay drawn while a sub-tab loads or fails.
     return Column(
@@ -1035,28 +1065,23 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                   if (_totals case final t?) _totalsStrip(t),
                   _fill(
                     (height) => ListTable(
+                      key: ValueKey('project-board-table:$_tab'),
                       // Fills the window down to its bottom edge: rows scroll
                       // inside, so the headings and the sideways bar never
                       // move, also as more rows load (Jose, 2026-11-16).
                       height: height,
                       footer: _more(),
                       // Dragged widths, per person on every device (Jose,
-                      // 2026-11-10). ponytail: by column position; a
-                      // reordered column keeps the slot's width.
-                      widths:
-                          widget.session.me?.listColumnWidths(
-                            'project-board',
-                          ) ??
-                          const {},
-                      onResize: _resize,
+                      // 2026-11-10), by column key.
+                      widths: _widths(keys),
+                      onResize: (i, w) => _resize(keys[i], w),
                       rowKey: (i) =>
                           ValueKey('project-board-job:${rows[i]['id']}'),
                       onTap: (i) => _open(rows[i]),
                       columns: [
                         // First, so the button is on screen before any
                         // sideways scroll (Jose, 2026-11-16: "Ready to sch").
-                        if (_tab == 'unscheduled')
-                          const ListColumn('Action', flex: 4),
+                        if (action != null) const ListColumn('Action', flex: 4),
                         for (final c in columns)
                           ListColumn(
                             '${c['label'] ?? c['key']}',
@@ -1069,15 +1094,12 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                                 : null,
                             sorted: _sortKey == c['key'] ? _sortDesc : null,
                           ),
-                        if (_tab == 'ready_to_schedule')
-                          const ListColumn('Schedule', flex: 3),
                       ],
                       rows: [
                         for (final row in rows)
                           [
-                            if (_tab == 'unscheduled') _readyButton(row),
+                            if (action != null) action(row),
                             for (final c in columns) _cell(row, c),
-                            if (_tab == 'ready_to_schedule') _proposalCell(row),
                           ],
                       ],
                     ),

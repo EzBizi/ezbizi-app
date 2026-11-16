@@ -76,7 +76,7 @@ void main() {
           'meta': {
             'total': 100,
             'last_page': 2,
-            'counts': {'unscheduled': 100},
+            'counts': {'unscheduled': 100, 'scheduled': 100},
             'places': <dynamic>[],
             'columns': [
               for (final k in keys) {'key': k, 'label': k, 'visible': true},
@@ -104,6 +104,11 @@ void main() {
     await tester.pumpAndSettle();
     return session;
   }
+
+  Finder tab(String label) => find.descendant(
+    of: find.byKey(const Key('project-board-tabs')),
+    matching: find.textContaining(RegExp('^$label( ·|\$)')),
+  );
 
   Finder sidewaysBar() => find.byWidgetPredicate(
     (w) => w is Scrollbar && w.thumbVisibility == true,
@@ -141,6 +146,71 @@ void main() {
     expect(button.left, greaterThanOrEqualTo(0));
     expect(button.right, lessThan(1440));
     expect(find.textContaining('+3 more'), findsWidgets);
+  });
+
+  // Jose, 2026-11-16: every sub-tab behaves like Unscheduled.
+  testWidgets('every sub-tab has resize, the fixed bar and its Action', (
+    tester,
+  ) async {
+    await app(tester);
+    const tabs = {
+      'Unscheduled': 'unscheduled',
+      'Ready to Schedule': 'ready_to_schedule',
+      'Scheduled': 'scheduled',
+      'In Progress': 'in_progress',
+      'Done Waiting Payment': 'done_waiting_payment',
+      'Complete': 'complete',
+    };
+    for (final MapEntry(key: label, value: key) in tabs.entries) {
+      await tester.tap(tab(label));
+      await tester.pumpAndSettle();
+      final table = find.byKey(ValueKey('project-board-table:$key'));
+      expect(table, findsOneWidget, reason: label);
+      expect(
+        find.descendant(
+          of: table,
+          matching: find.byKey(const Key('list-resize-0')),
+        ),
+        findsOneWidget,
+        reason: label,
+      );
+      final bar = find.descendant(of: table, matching: sidewaysBar());
+      expect(bar, findsWidgets, reason: label);
+      expect(tester.getRect(bar.first).bottom, lessThanOrEqualTo(900));
+      final hasAction = key == 'unscheduled' || key == 'ready_to_schedule';
+      expect(
+        find.descendant(of: table, matching: find.text('ACTION')),
+        hasAction ? findsOneWidget : findsNothing,
+        reason: label,
+      );
+      if (key == 'ready_to_schedule') {
+        expect(
+          find.byKey(const ValueKey('project-board-proposal:j-1-0')),
+          findsOneWidget,
+        );
+        // First column: left of the first data column's heading.
+        expect(
+          tester.getRect(find.text('ACTION')).left,
+          lessThan(tester.getRect(find.text('NUMBER')).left),
+        );
+      }
+    }
+  });
+
+  testWidgets('a width is saved by column key, not position', (tester) async {
+    final session = await app(tester);
+    await tester.tap(tab('Scheduled'));
+    await tester.pumpAndSettle();
+    final g = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('list-resize-0'))),
+      kind: PointerDeviceKind.mouse,
+    );
+    await g.moveBy(const Offset(40, 0));
+    await g.up();
+    await tester.pumpAndSettle();
+    final saved =
+        session.me!.preferences['lists.column_widths'] as Map? ?? const {};
+    expect(saved.keys, contains('project-board-col:number'));
   });
 
   testWidgets('a middle-button drag pans sideways', (tester) async {
