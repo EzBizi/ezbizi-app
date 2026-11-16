@@ -3859,7 +3859,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       letterSpacing: 0.6,
       color: theme.colorScheme.onSurfaceVariant,
     );
-    Text h(String s) => Text(s.toUpperCase(), style: style, maxLines: 1);
+    // Cut with an ellipsis, the whole name on hover: an 80 px person column
+    // read "REVIE" (QA 11-16, #27).
+    Text h(String s) => Text(
+      s.toUpperCase(),
+      style: style,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
     Widget b(String key, double width) => _resizable(
       key,
       _cell(
