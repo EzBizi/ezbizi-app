@@ -297,13 +297,8 @@ class ProjectBoardController extends Controller
         ]);
         $place = $this->settingsFor($user);
         $settings = app(SettingsResolver::class);
-        $list = collect(self::repairEntries($settings->get('project_board.repair_tags', $place)));
-        // A first change starts from the tags already working as repair teams, so none drop off the column.
-        if ($list->isEmpty()) {
-            $list = Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())->whereNotNull('tags')->pluck('tags')
-                ->flatten()->map(fn ($t) => trim((string) $t))->filter(fn ($t) => self::isRepairTeam($t))->unique(fn ($t) => self::tagKey($t))
-                ->map(fn ($t) => ['name' => $t, 'phone' => null, 'user_id' => null])->values();
-        }
+        // A first change starts from the teams already there, so none drop off the column.
+        $list = $this->repairList($user, $place);
         $key = self::tagKey($in['name']);
         $to = trim((string) ($in['to'] ?? '')) ?: trim($in['name']);
         $outcomes = match ($in['op']) {
@@ -320,6 +315,47 @@ class ProjectBoardController extends Controller
 
         return response()->json(['data' => ['outcomes' => (object) $outcomes,
             'list' => self::repairEntries($settings->get('project_board.repair_tags', $place))]]);
+    }
+
+    /**
+     * GET /api/v1/project-board/repair-teams: the list the Settings card
+     * shows (Jose, 2026-11-16: "it should already show the existing repair
+     * team - contractors"), in each tag's Workiz colour. Reads only: nothing
+     * is saved and no Workiz account is called.
+     */
+    public function repairTeamList(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_board.view') && $user->hasPermission('jobs.view'),
+            Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+        $list = $this->repairList($user, $this->settingsFor($user));
+        $colours = app(WorkizTagColours::class);
+
+        return response()->json(['data' => ['list' => $list->all(),
+            'tag_colours' => (object) collect(ViewScope::forUser($user)->switchedOnFranchiseIds())
+                ->reduce(fn (array $c, string $f) => $c + $colours->for($f, $list->pluck('name')->all()), [])]]);
+    }
+
+    /**
+     * The company's saved list; before its first change, the repair-team and
+     * contractor tags already there: on the Workiz accounts' tag lists and on
+     * jobs, inside the view.
+     *
+     * @return Collection<int, array{name: string, phone: ?string, user_id: ?string}>
+     */
+    private function repairList(User $user, Model $place): Collection
+    {
+        $saved = collect(self::repairEntries(app(SettingsResolver::class)->get('project_board.repair_tags', $place)));
+        if ($saved->isNotEmpty()) {
+            return $saved;
+        }
+        $view = ViewScope::forUser($user);
+        $colours = app(WorkizTagColours::class);
+
+        return collect($view->switchedOnFranchiseIds())->flatMap(fn (string $f) => array_column($colours->definitions($f), 'name'))
+            ->merge(Job::query()->whereIn('franchise_id', $view->franchiseIds())->whereNotNull('tags')->pluck('tags')->flatten())
+            ->map(fn ($t) => trim((string) $t))->filter(fn ($t) => self::isRepairTeam($t))->unique(fn ($t) => self::tagKey($t))
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)->map(fn ($t) => ['name' => $t, 'phone' => null, 'user_id' => null])->values();
     }
 
     /** @return list<string> the company and every company under it */

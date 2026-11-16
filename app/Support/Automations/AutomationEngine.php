@@ -135,6 +135,7 @@ class AutomationEngine
                     // the others act now, and a redelivery cannot run them twice.
                     $due = $event->occurred_at->copy()->addMinutes((int) $automation->delay_minutes
                         + self::replySpread($version, $event, (int) $automation->delay_minutes));
+                    $due = self::outsideQuietHours($due, $version, $event, $scope);
                     if ($due->isFuture()) {
                         $dueAt = $dueAt === null || $due->lt($dueAt) ? $due : $dueAt;
                         continue;
@@ -572,6 +573,40 @@ class AutomationEngine
      * twice the wait, the same for an event every time it is looked at (so a
      * redelivery does not move it). Every other rule waits exactly as set.
      */
+    /** Events a customer just started, answered at once at any hour: their own message, their booking. */
+    private const ANSWERS_THE_CUSTOMER = ['lead.received', 'lead.customer_replied', 'lead.booking_approved'];
+
+    /**
+     * No automatic text to a customer between 9 PM and 8 AM where the branch
+     * is (desk for Jose, 2026-11-16: "no text at 3 AM"): a rule that would
+     * text then waits for 8 AM. Same answer every visit, so the wait holds.
+     *
+     * @param  array<string, mixed>  $scope
+     */
+    public static function outsideQuietHours(\Carbon\CarbonInterface $due, AutomationVersion $version, AutomationEvent $event, array $scope): \Carbon\CarbonInterface
+    {
+        $texts = collect((array) $version->actions)->contains(fn ($a) => in_array($a['type'] ?? null, ['reply', 'lead.text', 'book_by_chat'], true)
+            || (in_array($a['type'] ?? null, ['sms.send', 'whatsapp.send'], true)
+                && ! str_starts_with(trim((string) ($a['to'] ?? $a['to_field'] ?? '')), 'user:')
+                && ! str_starts_with(trim((string) ($a['to'] ?? $a['to_field'] ?? '')), 'branch_managers:')));
+        if (! $texts || in_array($event->event_key, self::ANSWERS_THE_CUSTOMER, true)) {
+            return $due;
+        }
+        $place = match ($scope['type'] ?? null) {
+            'franchise' => \App\Models\Franchise::query()->find($scope['id'] ?? null),
+            'company' => \App\Models\Company::query()->find($scope['id'] ?? null),
+            default => null,
+        };
+        $zone = (string) ($place !== null ? app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $place)
+            : \App\Support\Settings\SettingsResolver::forOrganization('timezone'));
+        $local = \Carbon\CarbonImmutable::instance($due)->setTimezone($zone ?: 'America/New_York');
+        if ($local->hour >= 8 && $local->hour < 21) {
+            return $due;
+        }
+
+        return ($local->hour < 8 ? $local : $local->addDay())->setTime(8, 0)->utc();
+    }
+
     private static function replySpread(AutomationVersion $version, AutomationEvent $event, int $delay): int
     {
         if ($delay <= 0 || ! collect((array) $version->actions)->contains(fn ($a) => ($a['type'] ?? null) === 'publish_reply')) {

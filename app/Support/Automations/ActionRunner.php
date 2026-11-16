@@ -534,6 +534,7 @@ class ActionRunner
             'inspection_report.workiz' => $this->putInspectionReportOnWorkiz($subject),
             'workiz.job_update' => $this->updateWorkizJob($action, $subject),
             'job.set' => $this->setJob($action, $event, $subject),
+            'job.source_from_dialed' => $this->sourceFromDialed($automation),
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
@@ -1051,6 +1052,19 @@ class ActionRunner
      * after five weeks while four people were reading it fine. `ok()` is false
      * only when NOTHING left the building.
      */
+    /** Jose, 2026-11-16: a job's source from the line its client dialed, in EzBizi and Workiz. */
+    private function sourceFromDialed(?Automation $automation): array
+    {
+        $type = 'job.source_from_dialed';
+        if ($automation === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step runs only as part of a saved rule.'];
+        }
+        [$changed, $refused] = app(\App\Support\Jobs\SourceFromDialed::class)->apply($automation);
+
+        return ['type' => $type, 'ok' => $refused === [], 'skipped' => $changed === 0 && $refused === [],
+            'detail' => trim("Changed the source of {$changed} job".($changed === 1 ? '' : 's').'. '.implode(' ', $refused))];
+    }
+
     private function sendReport(array $action, AutomationEvent $event, ?Automation $automation): array
     {
         $type = 'report.send';
@@ -1281,8 +1295,10 @@ class ActionRunner
 
         try {
             $sent = $bySms
-                ? app(LeadTexts::class)->send($subject, $text, automatic: true)
+                ? app(LeadTexts::class)->send($subject, $text, automatic: true, capped: true)
                 : $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
+        } catch (\App\Support\Phone\SmsCapped $capped) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
         }
@@ -1290,7 +1306,7 @@ class ActionRunner
         // "Automatic · <rule>" on the thread, and Leads › Recovery holds the lead
         // a win-back text went to, so a reply to it is answered (Jose, 2026-11-16).
         if ($automation !== null) {
-            $sent instanceof \App\Models\LeadConversation &&$sent->forceFill(['automation_name' => mb_substr((string) $automation->name, 0, 150)])->saveQuietly();
+            $sent instanceof \App\Models\LeadConversation && $sent->forceFill(['automation_name' => mb_substr((string) $automation->name, 0, 150)])->saveQuietly();
             if (\App\Http\Controllers\Api\LeadsRecoveryController::isRecovery($automation)) {
                 $subject->forceFill(['recovery_at' => now()])->saveQuietly();
             }
@@ -2183,7 +2199,13 @@ class ActionRunner
             ];
         }
 
-        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true);
+        // A text to a person here is not capped; one to a customer is.
+        try {
+            $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true,
+                capped: ! str_starts_with(trim((string) ($action['to'] ?? '')), self::RECIPIENT_USER));
+        } catch (\App\Support\Phone\SmsCapped $capped) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
+        }
         if ($body === null) {
             // The customer said STOP: honouring it is correct, not a failure (sweep 11-13).
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
@@ -4249,7 +4271,11 @@ class ActionRunner
         [$actor] = $this->taskContext($automation);
 
         try {
-            app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor, automatic: true);
+            // A booking confirmation is always sent; other rule texts count toward the daily cap.
+            app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor,
+                automatic: true, capped: $event->event_key !== 'lead.booking_approved');
+        } catch (\App\Support\Phone\SmsCapped $capped) {
+            return ['type' => 'lead.text', 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $e) {
             return ['type' => 'lead.text', 'ok' => false, 'detail' => $e->getMessage()];
         }

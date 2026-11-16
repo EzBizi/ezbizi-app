@@ -1891,8 +1891,21 @@ void _conversationRowTests() {
       connections: _connected,
     );
 
+    // Design lead-header A (2026-11-16): the header's facts grid says the
+    // service, the source and the branch, each once.
     expect(
-      find.text('Fireplace chimney · Google Ads · Connecticut'),
+      tester.widget<Text>(find.byKey(const ValueKey('details-service'))).data,
+      'Fireplace chimney',
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('details-branch'))).data,
+      'Connecticut',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('fact-source')),
+        matching: find.text('Google Ads'),
+      ),
       findsOneWidget,
     );
     expect(find.textContaining('home inspector'), findsNothing);
@@ -1910,7 +1923,8 @@ void _conversationRowTests() {
       connections: _connected,
     );
 
-    expect(find.text('Google Ads · Connecticut'), findsOneWidget);
+    expect(find.byKey(const ValueKey('fact-service')), findsNothing);
+    expect(find.byKey(const ValueKey('fact-branch')), findsOneWidget);
     expect(find.textContaining('No service'), findsNothing);
   });
 

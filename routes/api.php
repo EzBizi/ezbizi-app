@@ -1027,6 +1027,7 @@ Route::prefix('v1')
         Route::apiResource('jobs', JobsController::class);
         Route::get('project-board/jobs', [ProjectBoardController::class, 'jobs']);
         Route::patch('project-board/jobs/{job}/repair-team', [ProjectBoardController::class, 'repairTeam']);
+        Route::get('project-board/repair-teams', [ProjectBoardController::class, 'repairTeamList']);
         Route::post('project-board/repair-teams', [ProjectBoardController::class, 'repairTeams']);
         Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
         Route::patch('project-board/jobs/{job}/proposal', [ProjectBoardController::class, 'updateProposal']);
@@ -3363,6 +3364,8 @@ Route::prefix('v1')
         // background beat, so all four routes stay in THIS idle-bearing group —
         // see CamerasController's docblock.
         Route::get('monitoring/cameras', [MonitoringCamerasController::class, 'index']);
+        Route::get('monitoring/dashcam-events', [App\Http\Controllers\Api\Monitoring\DashcamEventsController::class, 'index']);
+        Route::post('monitoring/dashcam-events/{id}/clip-url', [App\Http\Controllers\Api\Monitoring\DashcamEventsController::class, 'clipUrl'])->middleware('throttle:60,1,dashcam-clip');
         Route::post('monitoring/cameras', [MonitoringCamerasController::class, 'store']);
         Route::patch('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'update']);
         Route::delete('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'destroy']);

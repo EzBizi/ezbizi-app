@@ -17,6 +17,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class FieldAlert extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** An alert raised or acknowledged is its technician's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['field', User::class, 'user_id'];
+
     use HasUuids;
 
     public const SOS = 'sos';

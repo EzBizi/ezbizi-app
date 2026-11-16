@@ -6,6 +6,17 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/customer_experience/complaints_tab.dart';
 import 'package:ezbizi_client/screens/email/gmail_inbox.dart';
+import 'package:ezbizi_client/screens/field/dashboard_tab.dart';
+import 'package:ezbizi_client/screens/field/recordings_tab.dart';
+import 'package:ezbizi_client/screens/field/route_tab.dart';
+import 'package:ezbizi_client/screens/monitoring/camera_monitoring_tab.dart';
+import 'package:ezbizi_client/screens/monitoring/desktop_monitoring_tab.dart';
+import 'package:ezbizi_client/screens/monitoring/lighting_tab.dart';
+import 'package:ezbizi_client/screens/training/dashboard_list.dart';
+import 'package:ezbizi_client/screens/training/learn_shelves.dart';
+import 'package:ezbizi_client/screens/training/settings_tab.dart';
+import 'package:ezbizi_client/screens/web/seo_tab.dart';
+import 'package:ezbizi_client/screens/web/widgets_tab.dart';
 import 'package:ezbizi_client/screens/google_campaigns_view.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:ezbizi_client/screens/customers/memberships_dashboard.dart';
@@ -403,6 +414,107 @@ void main() {
               ? _json({'data': <dynamic>[], 'meta': <String, dynamic>{}})
               : null,
           (api, session) => GmailInbox(api: api, session: session),
+        ),
+        (
+          'Field dashboard',
+          '/field/dashboard',
+          'field',
+          ['field.view', 'field.dashboard.view'],
+          (r) => r.url.path.endsWith('/field/dashboard')
+              ? _json({
+                  'data': {'people': <dynamic>[], 'alerts': <dynamic>[]},
+                })
+              : null,
+          (api, session) => FieldDashboardTab(api: api, canAcknowledge: true),
+        ),
+        (
+          'Field route',
+          '/field/route',
+          'field',
+          ['field.view', 'field.route.view'],
+          (r) => r.url.path.endsWith('/field/route')
+              ? _json({
+                  'data': {'stops': <dynamic>[], 'unroutable': <dynamic>[]},
+                })
+              : null,
+          (api, session) => FieldRouteTab(api: api, meId: 'u-1'),
+        ),
+        (
+          'Field recordings',
+          '/field/recordings',
+          'field',
+          ['field.view', 'field.recordings.view'],
+          (_) => null,
+          (api, session) =>
+              FieldRecordingsTab(api: api, canListen: true, canKeep: true),
+        ),
+        (
+          'Training learn',
+          '/training/learn',
+          'training',
+          ['training.view'],
+          (r) => r.url.path.endsWith('/training/learn')
+              ? _json({'assigned': <dynamic>[], 'library': <dynamic>[]})
+              : null,
+          (api, session) => LearnShelves(api: api, session: session),
+        ),
+        (
+          'Training dashboard',
+          '/training/dashboard',
+          'training',
+          ['training.view', 'training.monitor'],
+          (r) => r.url.path.endsWith('/training/dashboard')
+              ? _json({'data': <dynamic>[], 'summary': <String, dynamic>{}})
+              : null,
+          (api, session) => TrainingDashboard(api: api, session: session),
+        ),
+        (
+          'Training settings',
+          '/training/guides',
+          'training',
+          ['training.view', 'training.manage'],
+          (_) => null,
+          (api, session) => TrainingSettingsTab(api: api, session: session),
+        ),
+        (
+          'Monitoring desktop',
+          '/monitoring/devices',
+          'monitoring_devices',
+          ['monitoring.view', 'monitoring.screenshots.view'],
+          (_) => null,
+          (api, session) => DesktopMonitoringTab(api: api, session: session),
+        ),
+        (
+          'Monitoring lighting',
+          '/monitoring/devices',
+          'monitoring_devices',
+          ['monitoring.view', 'monitoring.lighting.view'],
+          (_) => null,
+          (api, session) => LightingTab(api: api, session: session),
+        ),
+        (
+          'Monitoring cameras',
+          '/monitoring/cameras',
+          'monitoring_cameras',
+          ['monitoring.view', 'monitoring.cameras.view'],
+          (_) => null,
+          (api, session) => CameraMonitoringTab(api: api, session: session),
+        ),
+        (
+          'Web Management sites (SEO)',
+          '/web/sites',
+          'web_sites',
+          ['web_management.view', 'web_management.seo.view'],
+          (_) => null,
+          (api, session) => SeoTab(api: api, session: session),
+        ),
+        (
+          'Web Management sites (Widgets)',
+          '/web/sites',
+          'web_sites',
+          ['web_management.view', 'web_management.widgets.view'],
+          (_) => null,
+          (api, session) => WidgetsTab(api: api, session: session),
         ),
       ]) {
     testWidgets('$name: a change of its type re-reads it quietly', (

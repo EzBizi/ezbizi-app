@@ -66,13 +66,23 @@ class ChangeFeed
         'ad_schedules' => ['ads_performance.view', 'ads_manager.view'],
         // An inbox: new mail (the watcher's mark), seen, dealt with, snoozed.
         'mailboxes' => ['email.view', 'email.inbox.view'],
+        // A technician: where they are, their alerts and recordings.
+        'field' => ['field.dashboard.view', 'field.map.view', 'field.route.view', 'field.recordings.view'],
+        // Guides, tests, assignments; an attempt or progress is its guide's or test's.
+        'training' => ['training.view', 'training.monitor', 'training.manage'],
+        // A machine (online, offline, a new screenshot), a floor plan, a camera or its site.
+        'monitoring_devices' => 'monitoring.view',
+        'monitoring_floor_plans' => ['monitoring.map.view', 'monitoring.general.view'],
+        'monitoring_cameras' => 'monitoring.cameras.view',
+        // A site (connected, quiet, edited), its values and widgets.
+        'web_sites' => 'web_management.view',
     ];
 
     /**
      * Types read through InventoryVisibility: a company's own rows (no
      * branch) are seen by people holding one of its branches as well.
      */
-    private const SOFT_REACH = ['inventory', 'services', 'service_taxonomy'];
+    private const SOFT_REACH = ['inventory', 'services', 'service_taxonomy', 'training'];
 
     /**
      * Types whose rows are not filed on a branch (a person is assigned, not
@@ -85,6 +95,8 @@ class ChangeFeed
         'membership_promotions' => 'readablePromotions',
         'social_posts' => 'readableSocialPosts',
         'mailboxes' => 'readableMailboxes',
+        'field' => 'visibleFieldPeople',
+        'monitoring_devices' => 'visibleDevices',
     ];
 
     /** One reply holds at most this many; more says reload. */
@@ -326,6 +338,40 @@ class ChangeFeed
     {
         return \App\Models\Franchise::withoutGlobalScopes()->whereIn('id', $franchises)
             ->pluck('company_id')->filter()->unique()->values()->all();
+    }
+
+    /**
+     * Technicians the reader may follow: HR's rule (ScopeReach), and
+     * themselves (FieldTracking::visiblePeople, against reach).
+     *
+     * @param  string[]  $ids
+     * @return string[]
+     */
+    private static function visibleFieldPeople(User $user, array $ids): array
+    {
+        $others = self::visiblePeople($user, $ids);
+
+        return in_array((string) $user->getKey(), $ids, true)
+            ? array_values(array_unique([...$others, (string) $user->getKey()]))
+            : $others;
+    }
+
+    /**
+     * Machines of people the reader may see (Monitoring's rule, ScopeReach).
+     *
+     * @param  string[]  $ids
+     * @return string[]
+     */
+    private static function visibleDevices(User $user, array $ids): array
+    {
+        return \App\Models\MonitoredDevice::withoutGlobalScopes()
+            ->where('organization_id', $user->organization_id)
+            ->whereIn('id', $ids)
+            ->whereIn('user_id', User::withoutGlobalScopes()
+                ->where('organization_id', $user->organization_id)
+                ->where(fn ($q) => app(\App\Support\Access\ScopeReach::class)->constrainToVisiblePeople($q, $user))
+                ->select('id'))
+            ->pluck('id')->map(fn ($id) => (string) $id)->all();
     }
 
     /** Null for somebody who reaches the whole organization. */

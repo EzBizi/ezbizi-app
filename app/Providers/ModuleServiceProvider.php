@@ -1414,6 +1414,16 @@ class ModuleServiceProvider extends ServiceProvider
                             .'brought in line there.',
                         executionType: 'job.set',
                     ),
+                    // Jose, 2026-11-16: "when number dialed is PPC it should change the source to PPC".
+                    new ActionDefinition(
+                        key: 'job.source_from_dialed',
+                        label: 'Set job sources from the line dialed',
+                        description: 'Every job booked since the rule was made (last 48 hours) whose client dialed a line '
+                            .'listed in Settings › Lists › Job source by line dialed gets that source, in Workiz first and then '
+                            .'in EzBizi, with the line in the job\'s history. Run it on a schedule.',
+                        executionType: 'job.source_from_dialed',
+                        subjectBound: false,
+                    ),
                     // Jose, 2026-10-21: through Workiz's writer.
                     new ActionDefinition(
                         key: 'job.workiz_update',
@@ -4357,6 +4367,13 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Windows reported the antivirus, firewall or '
                             .'updates on a device as off or paused. Raised once when it '
                             .'happens, not again until it is fixed and happens again.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'monitoring.camera_event',
+                        label: 'Dash cam event',
+                        description: 'A van\'s dash cam reported a driving event - harsh braking, '
+                            .'a collision, distraction, speeding - once per event, with the van '
+                            .'and who had its keys.',
                     ),
                 ],
                 /*

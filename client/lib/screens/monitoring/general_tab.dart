@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
@@ -275,11 +276,27 @@ class _GeneralTabState extends State<GeneralTab> {
   @override
   void initState() {
     super.initState();
-    if (_canView) _loadPlans();
+    if (_canView) {
+      _loadPlans();
+      // A plan drawn or assigned elsewhere, or a desk's machine changing:
+      // the plans and the open one re-read; never while it is being edited.
+      _live = LiveChanges.of(widget.api).subscribe(
+        {'monitoring_floor_plans', 'monitoring_devices'},
+        (_) async {
+          if (_editing || _loadingPlans) return;
+          final id = _selectedPlanId;
+          await Future.wait([_loadPlans(), if (id != null) _loadPlan(id)]);
+        },
+        active: LiveChanges.visible(this),
+      );
+    }
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _pollTimer?.cancel();
     super.dispose();
   }

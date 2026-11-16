@@ -60,6 +60,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MonitoringScreenshot extends Model implements HoldsPersonalData
 {
     use BelongsToTenant, HasFactory, HasUuids;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A capture is its machine's change on the live feed (the filmstrip moves). */
+    protected static array $changeParent = ['monitoring_devices', MonitoredDevice::class, 'device_id'];
+
 
     protected $table = 'monitoring_screenshots';
 
