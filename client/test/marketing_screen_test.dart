@@ -5368,41 +5368,51 @@ void _jose1116Tests() {
       );
       await _pumpSocial(tester, (request) async {
         final path = request.url.path;
-        if (path.endsWith('/social/connections/conn-1/instagram-comments')) {
+        if (path.endsWith('/social/comments')) {
           return _json({
-            'data': {
-              'account': {'id': 'ig-1', 'username': 'everdoors'},
-              'posts': [
-                {
-                  'id': 'm-1',
-                  'caption': 'Our new oak door',
-                  'comments': [
-                    {
-                      'id': 'c-old',
-                      'text': 'Answered already',
-                      'username': 'ann',
-                      'timestamp': '2026-11-01T10:00:00+0000',
-                      'hidden': false,
-                      'replies': [
-                        {'id': 'r1', 'text': 'Thanks!', 'username': 'everdoors'},
-                      ],
-                    },
-                    {
-                      'id': 'c-new',
-                      'text': 'How much is it?',
-                      'username': 'bob',
-                      'timestamp': '2026-11-15T10:00:00+0000',
-                      'hidden': false,
-                      'replies': [],
-                    },
-                  ],
-                },
-              ],
-            },
+            'data': [
+              {
+                'id': 'c-old',
+                'network': 'instagram',
+                'connection_id': 'conn-1',
+                'account': 'Everdoors',
+                'post': {'id': 'm-1', 'text': 'Our new oak door'},
+                'author': 'ann',
+                'text': 'Answered already',
+                'timestamp': '2026-11-01T10:00:00+0000',
+                'hidden': false,
+                'replies': [
+                  {'id': 'r1', 'text': 'Thanks!', 'author': 'everdoors'},
+                ],
+                'actions': ['reply', 'hide'],
+                'unavailable': {},
+              },
+              {
+                'id': 'c-new',
+                'network': 'instagram',
+                'connection_id': 'conn-1',
+                'account': 'Everdoors',
+                'post': {'id': 'm-1', 'text': 'Our new oak door'},
+                'author': 'bob',
+                'text': 'How much is it?',
+                'timestamp': '2026-11-15T10:00:00+0000',
+                'hidden': false,
+                'replies': [],
+                'actions': ['reply', 'hide'],
+                'unavailable': {},
+              },
+            ],
+            'sources': [
+              {
+                'connection_id': 'conn-1',
+                'network': 'instagram',
+                'account': 'Everdoors',
+                'error': null,
+              },
+            ],
           });
         }
-        if (path.contains('/instagram-comments/') &&
-            path.endsWith('/replies')) {
+        if (path.contains('/comments/') && path.endsWith('/replies')) {
           replies.add('$path ${jsonDecode(request.body)['message']}');
           return _json({
             'data': {'id': 'r2'},
@@ -5443,8 +5453,123 @@ void _jose1116Tests() {
       await tester.tap(find.byKey(const Key('social-comment-send-c-new')));
       await tester.pumpAndSettle();
       expect(replies, [
-        '/api/v1/social/connections/conn-1/instagram-comments/c-new/replies '
+        '/api/v1/social/connections/conn-1/comments/instagram/c-new/replies '
             'It is \$900.',
+      ]);
+    });
+
+    testWidgets('Comments merges all four networks and draws only the '
+        'actions each row supports', (tester) async {
+      Map<String, dynamic> row(
+        String id,
+        String network,
+        String at,
+        List<String> actions, [
+        Map<String, String> unavailable = const {},
+      ]) => {
+        'id': id,
+        'network': network,
+        'connection_id': 'conn-1',
+        'account': 'Everdoors',
+        'post': {'id': 'p', 'text': 'A post'},
+        'author': 'someone',
+        'text': 'Comment on $network',
+        'timestamp': at,
+        'hidden': false,
+        'replies': [],
+        'actions': actions,
+        'unavailable': unavailable,
+      };
+      final hidden = <String>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_facebookPage, _pinterestBoard],
+        tabs: const [..._allTabs, 'marketing.comments.view'],
+      );
+      await _pumpSocial(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/social/comments')) {
+          return _json({
+            'data': [
+              row('fb-1', 'facebook', '2026-11-12T10:00:00Z', [], {
+                'reply':
+                    'Facebook needs the manage-engagement permission to reply or hide.',
+                'hide':
+                    'Facebook needs the manage-engagement permission to reply or hide.',
+              }),
+              row('ig-1', 'instagram', '2026-11-13T10:00:00Z', [
+                'reply',
+                'hide',
+              ]),
+              row('yt-1', 'youtube', '2026-11-14T10:00:00Z', [
+                'reply',
+                'hide',
+              ]),
+              row('x-1', 'x', '2026-11-15T10:00:00Z', ['reply'], {
+                'hide': 'X needs moderation permission to hide replies.',
+              }),
+            ],
+            'sources': [
+              {
+                'connection_id': 'conn-9',
+                'network': 'x',
+                'account': 'Second X',
+                'error': 'Too Many Requests',
+              },
+            ],
+          });
+        }
+        if (path.endsWith('/hide')) {
+          hidden.add(path);
+          return _json({
+            'data': {'hidden': true},
+          });
+        }
+        return inner(request);
+      });
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Comments'));
+      await tester.pumpAndSettle();
+
+      for (final n in ['facebook', 'instagram', 'youtube', 'x']) {
+        expect(find.text('Comment on $n'), findsOneWidget);
+      }
+      // Newest first across networks.
+      expect(
+        tester.getTopLeft(find.text('Comment on x')).dy,
+        lessThan(tester.getTopLeft(find.text('Comment on facebook')).dy),
+      );
+      // The failing network is a note; the others still show.
+      expect(find.text('Second X (X): Too Many Requests'), findsOneWidget);
+
+      Finder action(String key) => find.byKey(Key(key));
+      expect(action('social-comment-replybtn-fb-1'), findsNothing);
+      expect(action('social-comment-hide-fb-1'), findsNothing);
+      expect(
+        find.text(
+          'Facebook needs the manage-engagement permission to reply or hide.',
+        ),
+        findsOneWidget,
+      );
+      expect(action('social-comment-replybtn-ig-1'), findsOneWidget);
+      expect(action('social-comment-hide-ig-1'), findsOneWidget);
+      expect(action('social-comment-replybtn-yt-1'), findsOneWidget);
+      expect(action('social-comment-hide-yt-1'), findsOneWidget);
+      expect(action('social-comment-replybtn-x-1'), findsOneWidget);
+      expect(action('social-comment-hide-x-1'), findsNothing);
+      expect(
+        find.text('X needs moderation permission to hide replies.'),
+        findsOneWidget,
+      );
+      for (final id in ['fb-1', 'ig-1', 'yt-1', 'x-1']) {
+        expect(action('social-comment-delete-$id'), findsNothing);
+      }
+
+      await tester.ensureVisible(action('social-comment-hide-yt-1'));
+      await tester.tap(action('social-comment-hide-yt-1'));
+      await tester.pumpAndSettle();
+      expect(hidden, [
+        '/api/v1/social/connections/conn-1/comments/youtube/yt-1/hide',
       ]);
     });
   });
