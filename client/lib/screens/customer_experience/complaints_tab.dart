@@ -113,12 +113,26 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
     super.initState();
     _load();
     // A complaint logged, moved or noted elsewhere: page one re-reads
-    // quietly (the board, filters and the open one kept).
-    _live = LiveChanges.of(widget.api).subscribe({'complaints'}, (_) {
-      if (!_loading && !_loadingMore && _page == 1) {
-        return _load(quiet: true);
-      }
+    // quietly (the board, filters and the open one kept), and the open one
+    // re-reads in place (its notes and history; the note being typed kept).
+    _live = LiveChanges.of(widget.api).subscribe({'complaints'}, (batch) async {
+      final open = _open?['id'];
+      await Future.wait([
+        if (!_loading && !_loadingMore && _page == 1) _load(quiet: true),
+        if (open != null &&
+            (batch.reload || batch.changedOf('complaints').contains(open)))
+          _refreshOpen('$open'),
+      ]);
     }, active: LiveChanges.visible(this));
+  }
+
+  /// The open complaint read again quietly; skipped mid-write, and a
+  /// failure keeps what is shown.
+  Future<void> _refreshOpen(String id) async {
+    if (_busy) return;
+    final response = await widget.api.get('/complaints/$id');
+    if (!mounted || !response.ok || _busy || _open?['id'] != id) return;
+    _take(response);
   }
 
   LiveSubscription? _live;

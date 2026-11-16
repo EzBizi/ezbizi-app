@@ -108,8 +108,29 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   @override
   void didUpdateWidget(covariant VehicleIdentityCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.vehicle != widget.vehicle) _fill(widget.vehicle);
+    // A live re-read (somebody else's edit) fills the fields only when
+    // nothing is typed here; a different vehicle always fills.
+    if (oldWidget.vehicle != widget.vehicle &&
+        (oldWidget.vehicle['id'] != widget.vehicle['id'] ||
+            (!_busy && _typed == _loadedForm))) {
+      _fill(widget.vehicle);
+    }
   }
+
+  /// What the form holds, to tell an edit in progress from a filled form.
+  String get _typed => [
+    for (final c in [
+      _year, _make, _model, _trim, _plate, _plateState, _vin, _colour,
+      _odometer, _nextServiceOn, _nextServiceMiles, _registrationExpiresOn,
+      _inspectionExpiresOn, _tollDeviceNumber, _tollPlan, _tollFlatRate,
+      _odometerReadOn, _notes, _counterparty, _startedOn,
+    ])
+      c.text,
+    _bodyType, _fuelType, _status, _companyId, _franchiseId, _kind,
+  ].join('\u0001');
+
+  /// [_typed] as last filled from the server.
+  String _loadedForm = '';
 
   @override
   void dispose() {
@@ -184,6 +205,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
     _franchiseId = franchise?['id'] as String?;
     _kind = fleetMap(row['ownership'])?['kind'] as String?;
     if (_startedOn.text.isEmpty) _startedOn.text = fleetToday();
+    _loadedForm = _typed;
   }
 
   List<FranchiseSummary> get _places => _me.franchisesOf(_companyId);
@@ -290,8 +312,12 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
       return;
     }
 
-    setState(() => _busy = false);
-    widget.onChanged(Map<String, dynamic>.from(response.data as Map));
+    final saved = Map<String, dynamic>.from(response.data as Map);
+    setState(() {
+      _busy = false;
+      _fill(saved);
+    });
+    widget.onChanged(saved);
   }
 
   Future<void> _delete() async {
