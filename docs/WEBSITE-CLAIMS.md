@@ -3679,3 +3679,20 @@ LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1
 `/download/` links id6805979795.
 Desk not asked: this run is unattended and `SendMessage` reached no `ezbizi-99`. No do-not row re-measured today;
 the 11-13 answers stand as recorded (scheduling row inverted, unwritten). No sentence moves.
+
+## 2026-11-15: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` still 0.0.0575 at `441470f79`; the only commit since is `c8a265eb6` (Monday: a
+blank Monday status is Not started), merged, not released, staff-side. No WP page modified since the 11-13 privacy
+edit (page 8, `post_modified_gmt` 2026-11-14 00:07). All 10 live pages contain their WP post_content as text. www
+`/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`.
+
+**Method note for the next run** (the comparison reads DIFF on every page until both are applied): drop the
+`<!-- wp:html -->` / `<!-- /wp:html -->` lines from post_content, and strip ` decoding="async"` from the live HTML
+(WordPress adds it to every `<img>`), then compare whitespace-stripped. Run on the websites box with
+`sudo -u ezbizi_ftp /opt/plesk/php/8.4/bin/php /usr/local/bin/wp --path=/var/www/vhosts/ezbizi.com/httpdocs`.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+Desk not asked: production has not moved since the 11-14 audit, so there is no diff to ask about. The 11-13 answers
+stand as recorded (scheduling row inverted, unwritten). No sentence moves.
