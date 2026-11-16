@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Franchise;
+use App\Support\Jobs\DialedLines;
 use App\Support\Phone\NumberNames;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Reports\ReportView;
@@ -32,7 +33,7 @@ use Throwable;
 class JobsReportController extends Controller
 {
     /** How far before a job its client's call can be (a call Friday, booked Monday). */
-    private const CALL_DAYS = 7;
+    private const CALL_DAYS = DialedLines::CALL_DAYS;
 
     /** A Workiz job with no EzBizi copy this soon after it came in is being copied (1-3 minutes); later it is a stall. */
     private const SYNC_MINUTES = 15;
@@ -144,71 +145,12 @@ class JobsReportController extends Controller
      */
     private function dialed(Collection $jobs, string $from, RingCentralCallLog $calls): array
     {
-        // A Workiz call tied to the job says it outright.
-        // called_at is the Workiz account's wall clock, as the job's own is. Oldest call wins, as it always has.
-        $dialed = DB::table('workiz_calls')->where('direction', 'inbound')->whereNotNull('to_number')
-            ->whereIn('job_remote_id', $jobs->pluck('v2_id')->filter()->all())->orderByDesc('called_at')
-            ->get(['job_remote_id', 'to_number', 'called_at'])
-            ->mapWithKeys(fn (object $c) => [$c->job_remote_id => [$c->to_number, $c->called_at]])->all();
-        $byJob = [];
-        foreach ($jobs as $j) {
-            if ($j->v2_id !== null && isset($dialed[$j->v2_id])) {
-                $byJob[$j->workiz_id] = $dialed[$j->v2_id];
-            }
-        }
-
-        if (! $calls->configured()) {
-            return [$byJob, false];
-        }
-        try {
-            $zone = ReportView::zone();
-            // A day further back: a branch's Workiz clock can run behind the organization's.
-            $log = $calls->forPeriod(CarbonImmutable::parse($from, $zone)->subDays(self::CALL_DAYS + 1), CarbonImmutable::now($zone));
-        } catch (Throwable $e) {
-            report($e);
-
-            return [$byJob, false];
-        }
-
-        // A Workiz call tied to the job wins; else the client's last call in before it.
-        return [$byJob + self::lastCallIn($log, $jobs, ReportView::zone()), true];
+        return app(DialedLines::class)->forJobs($jobs, CarbonImmutable::parse($from, ReportView::zone()), ReportView::zone());
     }
 
-    /**
-     * Workiz job id => [the line its client last called (from either phone on the job) before
-     * the job was booked (Workiz's wall clock, read in the job's ->clock, else its branch's
-     * zone), within CALL_DAYS, and when, on that same clock].
-     * $log newest first, as forPeriod gives it.
-     *
-     * @param  list<array<string, mixed>>  $log
-     * @param  Collection<int, object>  $jobs
-     * @return array<string, array{0: string, 1: string}>
-     */
+    /** The rule lives in DialedLines; kept here for its callers. */
     public static function lastCallIn(array $log, Collection $jobs, string $zone): array
     {
-        $byPhone = [];
-        foreach ($log as $call) {
-            if (($phone = NumberNames::lastTen($call['from'] ?? null)) !== null && ($call['to_number'] ?? null) !== null) {
-                $byPhone[$phone][] = [strtotime((string) $call['started_at']), (string) $call['to_number']];
-            }
-        }
-        $byJob = [];
-        foreach ($jobs as $j) {
-            $booked = CarbonImmutable::parse((string) $j->created_at, $tz = ($j->clock ?? null) ?: ($j->timezone ?: $zone))->getTimestamp();
-            $last = null;
-            foreach (array_unique(array_filter([NumberNames::lastTen($j->phone), NumberNames::lastTen($j->phone2 ?? null)])) as $phone) {
-                foreach ($byPhone[$phone] ?? [] as [$at, $number]) {
-                    if ($at <= $booked + 300 && $at >= $booked - self::CALL_DAYS * 86400) {
-                        $last = $last !== null && $last[0] >= $at ? $last : [$at, $number];
-                        break;
-                    }
-                }
-            }
-            if ($last !== null) {
-                $byJob[$j->workiz_id] = [$last[1], CarbonImmutable::createFromTimestamp($last[0], $tz)->format('Y-m-d H:i:s')];
-            }
-        }
-
-        return $byJob;
+        return DialedLines::lastCallIn($log, $jobs, $zone);
     }
 }

@@ -1198,6 +1198,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
   List<Map<String, dynamic>> _repairTeams = [];
   List<Map<String, dynamic>> _users = const [];
   List<String> _repairColours = const [];
+
+  /// The team whose Delete is waiting for its confirmation, in the card.
+  String? _deletingTeam;
   final Set<String> _readyNeeds = {};
 
   /// Roles that can be picked as Technician (Jose, 2026-11-16).
@@ -1228,9 +1231,10 @@ class _BoardSettingsState extends State<_BoardSettings> {
   }
 
   Future<void> _read() async {
-    final (r, o) = await (
+    final (r, o, t) = await (
       widget.api.get('/settings', widget.scope),
       widget.api.get('/project-board/options'),
+      widget.api.get('/project-board/repair-teams'),
     ).wait;
     if (!mounted) return;
     final byKey = {
@@ -1247,10 +1251,18 @@ class _BoardSettingsState extends State<_BoardSettings> {
       _knownTags = [
         for (final t in (options['tags'] as List?) ?? const []) '$t',
       ];
-      _tagColours = jobTagColours({'tag_colours': options['tag_colours']});
+      // The teams already there, before the company's first change too
+      // (Jose, 2026-11-16), in their Workiz colours.
+      final teams = t.ok && t.data is Map ? t.data as Map : const {};
+      _tagColours = {
+        ...jobTagColours({'tag_colours': teams['tag_colours']}),
+        ...jobTagColours({'tag_colours': options['tag_colours']}),
+      };
       _repairTeams = [
         for (final t
-            in (byKey['project_board.repair_tags'] as List?) ?? const [])
+            in (teams['list'] as List?) ??
+                (byKey['project_board.repair_tags'] as List?) ??
+                const [])
           t is Map ? Map<String, dynamic>.from(t) : {'name': '$t'},
       ];
       _users = [
@@ -1413,14 +1425,69 @@ class _BoardSettingsState extends State<_BoardSettings> {
                   alignment: Alignment.centerLeft,
                   child: Tag('${t['name']}', colour: _tagColours[t['name']]),
                 ),
-                subtitle: Text(
-                  [
-                    if ('${t['phone'] ?? ''}'.isNotEmpty) '${t['phone']}',
-                    ?userName(t['user_id']),
-                  ].join(' · '),
+                subtitle: _deletingTeam == t['name']
+                    ? Text(
+                        'Delete ${t['name']} from every Workiz account?',
+                        style: TextStyle(color: theme.colorScheme.error),
+                      )
+                    : Text(
+                        [
+                          if ('${t['phone'] ?? ''}'.isNotEmpty) '${t['phone']}',
+                          ?userName(t['user_id']),
+                        ].join(' · '),
+                      ),
+                trailing: Wrap(
+                  spacing: 4,
+                  children: _deletingTeam == t['name']
+                      ? [
+                          TextButton(
+                            key: ValueKey(
+                              'project-board-repair-team-keep:${t['name']}',
+                            ),
+                            onPressed: () =>
+                                setState(() => _deletingTeam = null),
+                            child: const Text('Keep'),
+                          ),
+                          FilledButton(
+                            key: ValueKey(
+                              'project-board-repair-team-confirm:${t['name']}',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: theme.colorScheme.error,
+                              foregroundColor: theme.colorScheme.onError,
+                            ),
+                            onPressed: _saving != null
+                                ? null
+                                : () => _sendRepairTeam({
+                                    'op': 'delete',
+                                    'name': t['name'],
+                                  }),
+                            child: const Text('Delete'),
+                          ),
+                        ]
+                      : [
+                          TextButton(
+                            key: ValueKey(
+                              'project-board-repair-team-rename:${t['name']}',
+                            ),
+                            onPressed: _saving != null
+                                ? null
+                                : () => _editRepairTeam(t),
+                            child: const Text('Rename'),
+                          ),
+                          TextButton(
+                            key: ValueKey(
+                              'project-board-repair-team-remove:${t['name']}',
+                            ),
+                            onPressed: _saving != null
+                                ? null
+                                : () => setState(
+                                    () => _deletingTeam = '${t['name']}',
+                                  ),
+                            child: const Text('Delete'),
+                          ),
+                        ],
                 ),
-                trailing: const Icon(Icons.edit_outlined, size: 18),
-                onTap: _saving != null ? null : () => _editRepairTeam(t),
               ),
             Align(
               alignment: Alignment.centerLeft,
@@ -1444,10 +1511,18 @@ class _BoardSettingsState extends State<_BoardSettings> {
           _RepairTeamPanel(team: team, users: _users, colours: _repairColours),
     );
     if (body == null || !mounted) return;
+    await _sendRepairTeam(body);
+  }
+
+  /// One add, rename or delete, here and on every Workiz account.
+  Future<void> _sendRepairTeam(Map<String, Object?> body) async {
     setState(() => _saving = 'repair');
     final r = await widget.api.post('/project-board/repair-teams', body);
     if (!mounted) return;
-    setState(() => _saving = null);
+    setState(() {
+      _saving = null;
+      _deletingTeam = null;
+    });
     if (!r.ok) {
       ScaffoldMessenger.of(
         context,
