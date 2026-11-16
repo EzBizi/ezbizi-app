@@ -363,6 +363,27 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertSame(['Outbound', 'connected', '+12125550000'], [$connected['direction'], $connected['outcome'], $connected['from']]);
     }
 
+    /**
+     * Ana, 2026-11-16: the people who only call out (Gino, Tiara, Ara) had no
+     * row, because a row came only from a call that rang someone. Their calls
+     * are counted as placed, and they are not inbound calls. The rows are A-1's
+     * stored day 2026-11-13, numbers masked.
+     */
+    public function test_a_person_who_only_calls_out_has_a_row_with_their_calls_placed(): void
+    {
+        $calls = [
+            ['id' => 'ZE6alqhIALPyDUA', 'direction' => 'Outbound', 'started_at' => '2026-11-13T22:02:36.780Z', 'from' => '+15550001111', 'to_number' => '+15550002222', 'caller_label' => 'Gino Russo', 'queue' => 'JOSHUA ELLIS', 'result' => 'Call connected', 'rang' => [], 'answered_by' => null, 'talk_seconds' => null, 'duration' => 215, 'recording_id' => '3686736266017'],
+            ['id' => 'ZD1V-1ksKvseDUA', 'direction' => 'Outbound', 'started_at' => '2026-11-13T17:58:19.898Z', 'from' => '+15550001111', 'to_number' => '+15550003333', 'caller_label' => 'Gino Russo', 'queue' => null, 'result' => 'Wrong Number', 'rang' => [], 'answered_by' => null, 'talk_seconds' => null, 'duration' => 1, 'recording_id' => null],
+        ];
+
+        $day = app(CallReconciliation::class)->forRange($calls, [], '2026-11-13', '2026-11-13');
+
+        $gino = array_column($day['people'], null, 'person')['Gino Russo'] ?? null;
+        $this->assertNotNull($gino);
+        $this->assertSame([2, 0, 0], [$gino['outbound'], $gino['rang'], $gino['answered']]);
+        $this->assertSame([0, 2], [$day['totals']['calls'], $day['totals']['outbound']]);
+    }
+
     // ── new versus existing ──────────────────────────────────────
 
     /** The split is the queue the caller chose, not a guess from their number. */

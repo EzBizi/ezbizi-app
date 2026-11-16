@@ -76,7 +76,7 @@ final class CallReconciliation
      * @return array{
      *     day: string,
      *     totals: array{calls: int, answered: int, reached_nobody: int, new_client: int, existing_client: int, jobs: int, avg_talk_seconds: ?int},
-     *     people: list<array{person: string, rang: int, answered: int, new_client: int, existing_client: int, jobs: int, avg_talk_seconds: ?int, in_calls: bool, in_jobs: bool}>
+     *     people: list<array{person: string, rang: int, answered: int, outbound: int, new_client: int, existing_client: int, jobs: int, avg_talk_seconds: ?int, in_calls: bool, in_jobs: bool}>
      * }
      */
     public function forDay(array $calls, array $jobs, string $day): array
@@ -135,6 +135,17 @@ final class CallReconciliation
             fn (array $call) => ($call['direction'] ?? 'Inbound') === 'Outbound' && ($call['result'] ?? null) === 'Call connected',
         ));
         $calls = array_values(array_filter($calls, fn (array $call) => ($call['direction'] ?? 'Inbound') === 'Inbound'));
+
+        // The calls each person PLACED (Ana, 2026-11-16: the people who only
+        // call out had no row, since a row came only from a call that rang
+        // someone). RingCentral names the extension owner as the caller.
+        $placed = [];
+        foreach ([...$unansweredOut, ...$connectedOut] as $call) {
+            $who = $this->canonical($call['caller_label'] ?? null);
+            if ($who !== null) {
+                $placed[$who] = ($placed[$who] ?? 0) + 1;
+            }
+        }
 
         $booked = $this->jobsCreatedBetween($jobs, $from, $to);
 
@@ -317,6 +328,7 @@ final class CallReconciliation
         $names = array_values(array_unique(array_merge(
             array_keys($rang),
             array_keys($answered),
+            array_keys($placed),
             array_keys($made),
         )));
 
@@ -329,6 +341,7 @@ final class CallReconciliation
                 'person' => $name,
                 'rang' => $rang[$name] ?? 0,
                 'answered' => $answered[$name] ?? 0,
+                'outbound' => $placed[$name] ?? 0,
                 'new_client' => $new[$name] ?? 0,
                 // Of those new-client calls they answered, the ones booked:
                 // the booking rate's top (Trey, 2026-11-04).
@@ -353,7 +366,7 @@ final class CallReconciliation
                 // and all this holds is one day of calls, so somebody who books
                 // jobs without answering phones - a normal way to work - must
                 // not be flagged as a mismatch.
-                'in_calls' => isset($rang[$name]) || isset($answered[$name]),
+                'in_calls' => isset($rang[$name]) || isset($answered[$name]) || isset($placed[$name]),
                 // On Workiz's team list, or booked a job in the window: someone
                 // who takes existing clients books nothing and still has an
                 // account (Christine Malana, 2026-11-04).
@@ -381,6 +394,7 @@ final class CallReconciliation
                 'not_booked' => $notBooked,
                 'needs_attention' => array_sum($attention),
                 'outbound_unanswered' => count($unansweredOut),
+                'outbound' => count($unansweredOut) + count($connectedOut),
 
                 'avg_talk_seconds' => array_sum($talkCalls) > 0
                     ? (int) round(array_sum($talkSeconds) / array_sum($talkCalls))

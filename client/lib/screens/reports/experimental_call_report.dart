@@ -580,13 +580,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       );
     }
 
-    // Only people the phones rang: someone who only created Workiz jobs
+    // Only people on the phones: someone who only created Workiz jobs
     // (a technician, the office) is an empty row here (2026-11-04, 18 of 48).
+    // Calling out counts (Ana, 2026-11-16: Gino, Tiara, Ara had no row).
     final people = [
       for (final row in (report['people'] as List? ?? const []))
         if (row is Map &&
             (((row['rang'] as num?) ?? 0) > 0 ||
-                ((row['answered'] as num?) ?? 0) > 0))
+                ((row['answered'] as num?) ?? 0) > 0 ||
+                ((row['outbound'] as num?) ?? 0) > 0))
           row.cast<String, dynamic>(),
     ];
 
@@ -1909,6 +1911,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       numeric: true,
       group: 'Phone',
     ),
+    // Calls they placed, any result (Ana, 2026-11-16).
+    (
+      key: 'outbound',
+      label: 'Outbound',
+      flex: 2,
+      numeric: true,
+      group: 'Phone',
+    ),
     (key: 'new_client', label: 'New', flex: 2, numeric: true, group: 'Sales'),
     (key: 'booked', label: 'Booked', flex: 2, numeric: true, group: 'Sales'),
     (
@@ -2482,11 +2492,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final theme = Theme.of(context);
 
     final all = calls.where((call) {
-      if (call['answered_by'] == name) return true;
+      if (call['answered_by'] == name || call['placed_by'] == name) return true;
 
       return ((call['rang'] as List?) ?? const []).contains(name);
     }).toList();
-    String answerOf(Map<String, dynamic> c) => c['answered_by'] == name
+    String answerOf(Map<String, dynamic> c) => _isOutbound(c)
+        ? 'outbound'
+        : c['answered_by'] == name
         ? 'answered'
         : c['answered_by'] == null
         ? 'missed'
@@ -2569,6 +2581,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ('answered', 'Answered'),
                   ('not_answered', 'Not answered'),
                   ('missed', 'Missed'),
+                  ('outbound', 'Outbound'),
                 ],
                 answerOf,
                 _answerFilter,
@@ -3435,6 +3448,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     ),
                   ),
                   TextSpan(text: ' · ${_cell(person, 'answer_rate')}'),
+                  TextSpan(text: ' · ${person['outbound'] ?? 0} outbound'),
                 ],
               ),
               style: theme.textTheme.bodyMedium,
