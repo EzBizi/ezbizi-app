@@ -59,19 +59,25 @@ String _compile(String expr, Map<String, Map> byName, [int depth = 0]) =>
     });
 
 /// The columns a board shows, in its order. Hidden ones are left out.
+/// Parsed once per columns list: every cell of every row asks (freeze
+/// 11-16). A board's columns are replaced, never edited in place.
+final _columnMemo = Expando<List<BoardColumn>>('boardColumns');
+
 List<BoardColumn> boardColumns(Map<String, dynamic>? board) {
+  final raw = board?['columns'];
+  if (raw is! List) return _parseColumns(const []);
+  return _columnMemo[raw] ??= List.unmodifiable(_parseColumns(raw));
+}
+
+List<BoardColumn> _parseColumns(List columns) {
   final rows =
-      (board?['columns'] as List? ?? const [])
-          .whereType<Map>()
-          .where((c) => c['hidden'] != true)
-          .toList()
-        ..sort(
-          (a, b) => ((a['position'] as num?) ?? 0).compareTo(
-            (b['position'] as num?) ?? 0,
-          ),
-        );
+      columns.whereType<Map>().where((c) => c['hidden'] != true).toList()..sort(
+        (a, b) => ((a['position'] as num?) ?? 0).compareTo(
+          (b['position'] as num?) ?? 0,
+        ),
+      );
   final byName = {
-    for (final c in (board?['columns'] as List? ?? const []).whereType<Map>())
+    for (final c in columns.whereType<Map>())
       '${c['name'] ?? ''}'.trim().toLowerCase(): c,
   };
   return [
@@ -130,13 +136,26 @@ Object? columnValue(Map<String, dynamic> task, BoardColumn c) =>
 /// MIN, MAX, SUM, AVERAGE, LEN, UPPER, LOWER, LEFT, RIGHT. An empty value
 /// counts 0 in sums and "" in text. Null when it does not parse, divides by
 /// 0 or names an unknown function.
+final _formulaToken = RegExp(
+  r'\s+|\{[^}]+\}|"(?:[^"]|"")*"|\d+(?:\.\d+)?|[A-Za-z_][A-Za-z_0-9]*|<=|>=|<>|[-+*/()&=<>,]',
+);
+
+/// Tokens per formula, so a cell does not re-lex it on every build.
+final _formulaTokens = <String, List<String>?>{};
+
+List<String>? _tokensOf(String compiled) =>
+    _formulaTokens.putIfAbsent(compiled, () {
+      final all = _formulaToken.allMatches(compiled).map((m) => m[0]!).toList();
+      if (all.join() != compiled) return null;
+      final tokens = List<String>.unmodifiable(
+        all.where((t) => t.trim().isNotEmpty),
+      );
+      return tokens.isEmpty ? null : tokens;
+    });
+
 Object? evalFormula(String compiled, Map values) {
-  final tokens = RegExp(
-    r'\s+|\{[^}]+\}|"(?:[^"]|"")*"|\d+(?:\.\d+)?|[A-Za-z_][A-Za-z_0-9]*|<=|>=|<>|[-+*/()&=<>,]',
-  ).allMatches(compiled).map((m) => m[0]!).toList();
-  if (tokens.join() != compiled) return null;
-  tokens.removeWhere((t) => t.trim().isEmpty);
-  if (tokens.isEmpty) return null;
+  final tokens = _tokensOf(compiled);
+  if (tokens == null) return null;
   var i = 0;
   var bad = false;
 

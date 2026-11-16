@@ -14,6 +14,8 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(version: '0.0.0576', date: '16 Nov 2026', items: [
+      'Task Board no longer freezes the app on big boards: rows draw as you scroll',
+      'Monday state boards can be merged into their branch boards, and sync follows the merged board',
       'Project Management: the table fills the screen with its own scrollbars, so they stay put as more jobs load; the Ready to schedule button is in a first column called Action; hold the mouse wheel button and drag to scroll sideways; long Required lists show two items and +N more',
       'Monday sync: a status cleared on Monday shows as Not started',
     ]),
