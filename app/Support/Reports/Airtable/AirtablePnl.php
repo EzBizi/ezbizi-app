@@ -114,7 +114,7 @@ final class AirtablePnl
         $weeks = [];
 
         foreach ($rows as $row) {
-            $week = trim((string) ($row['Week'] ?? ''));
+            $week = self::text($row['Week'] ?? null);
 
             if ($week !== '' && ! in_array($week, $weeks, true)) {
                 $weeks[] = $week;
@@ -126,6 +126,17 @@ final class AirtablePnl
         usort($weeks, fn ($x, $y) => self::startOf($x) <=> self::startOf($y));
 
         return $weeks;
+    }
+
+    /**
+     * A cell as text, or '' when it is not text. Airtable sends a formula that
+     * failed as {"error": "#ERROR!"} (A-1's Invoices System › Weekly Data,
+     * 2026-11-16: the summary row), and a linked or lookup field as a list.
+     * Neither is a week or a label, and casting one threw for the whole request.
+     */
+    private static function text(mixed $cell): string
+    {
+        return is_scalar($cell) ? trim((string) $cell) : '';
     }
 
     /** "28 Sep - 4 Oct" as a sortable day; a start after next week is last year's. */
@@ -161,7 +172,7 @@ final class AirtablePnl
     {
         $inWeek = array_values(array_filter(
             $rows,
-            static fn (array $row): bool => trim((string) ($row['Week'] ?? '')) === $week,
+            static fn (array $row): bool => self::text($row['Week'] ?? null) === $week,
         ));
 
         $categories = [];
@@ -173,7 +184,7 @@ final class AirtablePnl
             $lines = 0;
 
             foreach ($inWeek as $row) {
-                $label = trim((string) ($row[$name] ?? ''));
+                $label = self::text($row[$name] ?? null);
                 $amount = $row[$name.' Amount'] ?? null;
 
                 if ($label === '' || ! is_numeric($amount)) {
@@ -291,7 +302,7 @@ final class AirtablePnl
     private function statedNet(array $rows): ?float
     {
         foreach ($rows as $row) {
-            if (self::marker((string) ($row['Income'] ?? '')) === self::NET && is_numeric($row['Income Amount'] ?? null)) {
+            if (self::marker(self::text($row['Income'] ?? null)) === self::NET && is_numeric($row['Income Amount'] ?? null)) {
                 return (float) $row['Income Amount'];
             }
         }

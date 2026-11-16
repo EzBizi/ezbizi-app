@@ -35,6 +35,24 @@ class AirtablePnlTest extends TestCase
         $this->assertSame(['6 Jul - 12 Jul', '28 Sep - 4 Oct', '19 Oct - 25 Oct'], (new AirtablePnl)->weeks($rows));
     }
 
+    /**
+     * A-1's Invoices System › Weekly Data, 2026-11-16: the summary row's Week
+     * is a formula that failed, and Airtable sends it as an object. Cast to a
+     * string it threw "Array to string conversion" and the whole request
+     * 500'd, on every P&L open while the tab probed this base for a default.
+     */
+    public function test_a_week_cell_that_is_not_text_is_skipped_not_fatal(): void
+    {
+        $rows = [
+            ['Royalties Payment' => 7500, 'Marketing Expenses' => 59667.09, 'Total Jobs' => 1116, 'Week' => ['error' => '#ERROR!'], 'Total' => 149501.9],
+            ['Create Invoice' => true, 'Royalties Payment' => 0, 'Marketing Expenses' => 1640.78, 'Total Jobs' => 28, 'Company Name' => ['rec58idDvpvx6W8tb'], 'Invoices' => ['rec9YgO1hwwfTJaPt'], 'Invoice Date' => '2026-11-08', 'Week' => '2 Nov - 8 Nov', 'Total' => 5686.15],
+        ];
+        $pnl = new AirtablePnl;
+
+        $this->assertSame(['2 Nov - 8 Nov'], $pnl->weeks($rows));
+        $this->assertSame('2 Nov - 8 Nov', $pnl->week($rows, '2 Nov - 8 Nov')['week']);
+    }
+
     public function test_it_reproduces_a_real_week_the_sheet_already_answered(): void
     {
         $week = (new AirtablePnl)->week($this->realWeek(), self::WEEK);
