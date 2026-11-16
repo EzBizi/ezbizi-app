@@ -13,6 +13,10 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0576', date: '16 Nov 2026', items: [
+      'Project Management: the table fills the screen with its own scrollbars, so they stay put as more jobs load; the Ready to schedule button is in a first column called Action; hold the mouse wheel button and drag to scroll sideways; long Required lists show two items and +N more',
+      'Monday sync: a status cleared on Monday shows as Not started',
+    ]),
     VersionRelease(version: '0.0.0575', date: '14 Nov 2026', items: [
       'Monday import: Project Management boards take their status from Job Status; re-runs never add a file twice; Monday automations find their people the same way the import does',
     ]),
