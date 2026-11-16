@@ -43,6 +43,10 @@ final class FacebookOAuth implements SocialOAuth
         // listening are read back (MetaLeadForms::catchUp); Meta refuses
         // leadgen_forms without it.
         'pages_manage_ads',
+        // Reading, replying to and hiding comments on Page posts
+        // (FacebookPageComments).
+        'pages_read_user_content',
+        'pages_manage_engagement',
     ];
 
     /**
@@ -72,6 +76,12 @@ final class FacebookOAuth implements SocialOAuth
             'provider' => 'facebook_page',
             'scopes' => ['pages_show_list', 'business_management', 'instagram_basic', 'instagram_manage_comments'],
         ],
+        'comments' => [
+            'label' => 'Facebook comments',
+            'description' => 'Comments on your Page posts in Marketing › Comments, with reply and hide.',
+            'provider' => 'facebook_page',
+            'scopes' => ['pages_show_list', 'business_management', 'pages_read_engagement', 'pages_read_user_content', 'pages_manage_engagement'],
+        ],
         'ads' => [
             'label' => 'Ad accounts',
             'description' => 'Spend and results in Reports, pausing and re-budgeting campaigns, and lead-ad forms into Leads.',
@@ -85,6 +95,7 @@ final class FacebookOAuth implements SocialOAuth
         'pages' => 'pages_manage_posts',
         'messenger' => 'pages_messaging',
         'instagram' => 'instagram_basic',
+        'comments' => 'pages_manage_engagement',
         'ads' => 'ads_read',
     ];
 
