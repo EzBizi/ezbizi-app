@@ -253,6 +253,19 @@ void main() {
     expect(opened, ['insurance_expiring=1', 'insurance_expiring=1']);
   });
 
+  testWidgets('an empty register is the shared EmptyState, not a lone line', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      healthBody: {'empty': true, 'sentence': 'No vehicles in the register.'},
+    );
+
+    expect(find.byKey(const ValueKey('fleet-general-empty')), findsOneWidget);
+    expect(find.text('No vehicles in the register.'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Add vehicle'), findsOneWidget);
+  });
+
   testWidgets('no warnings is one sentence', (tester) async {
     await pump(tester, warningRows: const []);
 
