@@ -484,6 +484,13 @@ class ActionRunner
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Not connected: '.$notConnected];
         }
 
+        // The enquiry is gone before its queued run: a RingCentral call lead
+        // withdrawn when Google's copy arrived (prod 11-15, five a day). That
+        // copy raises its own event, so this one is a skip, not a failure.
+        if ($subject === null && $event->subject_type === Lead::class) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Skipped: the enquiry was removed as a duplicate before this ran.'];
+        }
+
         return match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject, $automation),

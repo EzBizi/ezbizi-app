@@ -628,7 +628,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * predate that and for two stamps that are genuinely equal.
      */
     /** "Hi Mark" or "Hi there", as leads.greeting_named / _unnamed say. */
-    public static function greeting(?string $first, ?string $organizationId = null): string
+    public static function greetingFor(?string $first, ?string $organizationId = null): string
     {
         return $first === null
             ? (string) SettingsResolver::forOrganization('leads.greeting_unnamed', $organizationId)
@@ -732,7 +732,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     {
         $first = self::firstNameOf($this->contact_name);
 
-        return $first === null ? 'Thank you' : self::greeting($first, $this->organization_id).', thank you';
+        return $first === null ? 'Thank you' : self::greetingFor($first, $this->organization_id).', thank you';
     }
 
     /**

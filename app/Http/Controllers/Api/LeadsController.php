@@ -611,7 +611,7 @@ class LeadsController extends Controller
         )->map(fn ($t) => [
             'name' => (string) ($t['label'] ?? $t),
             'text' => strtr((string) ($t['value'] ?? $t), [
-                '{{greeting}}' => Lead::greeting($first, $lead->organization_id),
+                '{{greeting}}' => Lead::greetingFor($first, $lead->organization_id),
                 '{{company}}' => (string) ($lead->company?->name ?? request()->user()->organization->name),
                 '{{missing}}' => $missingText,
                 '{{availability}}' => str_contains((string) ($t['value'] ?? ''), '{{availability}}')
