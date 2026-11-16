@@ -7,6 +7,7 @@ import '../../widgets/list_table.dart';
 
 import '../../core/api_client.dart';
 import '../../core/job_money.dart';
+import '../../core/phone_numbers.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
 
@@ -1382,7 +1383,7 @@ class _ReportBuilderState extends State<ReportBuilder> {
           for (final row in rows)
             [
               for (final column in columns)
-                Text(_cell(row[column['key']], column['type'])),
+                Text(_cell(row[column['key']], column['type'], column['key'])),
             ],
           if (total != null && columns.isNotEmpty)
             [
@@ -1438,8 +1439,12 @@ class _ReportBuilderState extends State<ReportBuilder> {
 
   static bool _isNumber(Object? type) => type == 'integer' || type == 'money';
 
-  String _cell(Object? value, Object? type) {
+  String _cell(Object? value, Object? type, [Object? key]) {
     if (value == null) return '—';
+    // A phone written as a number (Jose, 2026-11-16); export keeps the digits.
+    if ('${key ?? ''}'.endsWith('phone')) {
+      return formatPhoneNumber(toE164('$value') ?? '$value');
+    }
     return switch (type) {
       'money' when value is num => formatMoney(value.round()),
       'boolean' => value == true ? 'Yes' : 'No',

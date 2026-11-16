@@ -291,6 +291,15 @@ class PreferenceRegistry
                 'help' => 'Click the pin on the customer panel to change it.',
             ],
 
+            // Reports: every tab's table headings stay on screen while the
+            // rows scroll, or scroll away (Jose, 2026-11-16).
+            'reports.pin_headings' => [
+                'label' => 'Keep report table headings on screen',
+                'type' => 'bool',
+                'default' => true,
+                'help' => 'Click the pin beside the headings of any report table to change it.',
+            ],
+
             'web.widgets.list_width' => [
                 'label' => 'Website list width',
                 'type' => 'int',

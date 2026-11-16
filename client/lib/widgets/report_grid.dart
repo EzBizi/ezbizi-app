@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import 'heading_pin.dart';
 
 /// One column of a [ReportGrid].
 class GridColumn {
@@ -107,6 +108,8 @@ class ReportGrid extends StatelessWidget {
       fontWeight: FontWeight.w700,
     );
     final bold = body.copyWith(fontWeight: FontWeight.w800);
+    // The pin sits in the first heading, so that column makes room for it.
+    final pin = HeadingPin.maybeOf(context) == null ? 0.0 : 28.0;
 
     // Each column as wide as its widest text, within reason.
     double measure(String text, TextStyle style) {
@@ -121,7 +124,9 @@ class ReportGrid extends StatelessWidget {
     final natural = [
       for (final (i, c) in columns.indexed)
         (math.max(
-                  measure(c.label, head) + (c.help == null ? 0 : 18),
+                  measure(c.label, head) +
+                      (c.help == null ? 0 : 18) +
+                      (i == 0 ? pin : 0),
                   [
                     for (final r in rows) measure(r[i].text, body),
                     if (total != null) measure(total![i].text, bold),
@@ -187,60 +192,72 @@ class ReportGrid extends StatelessWidget {
             : InkWell(onTap: () => onTap!(tap), child: row);
       }
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          line0(colour: scheme.surfaceContainerHighest, [
-            for (final (j, i) in cols.indexed)
-              SizedBox(
-                width: widths[j],
-                height: _rowHeight,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: _pad),
-                  child: Align(
-                    alignment: columns[i].numeric
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft,
-                    child: Tooltip(
-                      message: columns[i].help ?? '',
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              columns[i].label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: head,
-                            ),
+      // The headings stay at the top of the page while the rows pass under
+      // them, if pinned (Jose, 2026-11-16).
+      return PinnableHeading(
+        heading: line0(colour: scheme.surfaceContainerHighest, [
+          for (final (j, i) in cols.indexed)
+            SizedBox(
+              width: widths[j],
+              height: _rowHeight,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: _pad),
+                child: Align(
+                  alignment: columns[i].numeric
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (first && j == 0) const HeadingPinButton(),
+                      Flexible(
+                        child: Tooltip(
+                          message: columns[i].help ?? '',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  columns[i].label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: head,
+                                ),
+                              ),
+                              if (columns[i].help != null) ...[
+                                const SizedBox(width: 4),
+                                Icon(
+                                  Icons.info_outline,
+                                  size: 14,
+                                  color: theme.colorScheme.outline,
+                                ),
+                              ],
+                            ],
                           ),
-                          if (columns[i].help != null) ...[
-                            const SizedBox(width: 4),
-                            Icon(
-                              Icons.info_outline,
-                              size: 14,
-                              color: theme.colorScheme.outline,
-                            ),
-                          ],
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
-          ]),
-          for (final (r, row) in rows.indexed)
-            line0(tap: r, [
-              for (final (j, i) in cols.indexed)
-                cell(i, row[i], widths[j], isTotal: false),
-            ]),
-          if (total != null)
-            line0(colour: scheme.primaryContainer.withValues(alpha: .45), [
-              for (final (j, i) in cols.indexed)
-                cell(i, total![i], widths[j], isTotal: true),
-            ]),
-        ],
+            ),
+        ]),
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (r, row) in rows.indexed)
+              line0(tap: r, [
+                for (final (j, i) in cols.indexed)
+                  cell(i, row[i], widths[j], isTotal: false),
+              ]),
+            if (total != null)
+              line0(colour: scheme.primaryContainer.withValues(alpha: .45), [
+                for (final (j, i) in cols.indexed)
+                  cell(i, total![i], widths[j], isTotal: true),
+              ]),
+          ],
+        ),
       );
     }
 

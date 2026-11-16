@@ -116,6 +116,9 @@ class DailyTextsTest extends TestCase
         // Not a job created, here as in every report (audit, 2026-11-10: only the daily texts left it out).
         $this->inTenant($this->t['org'], fn () => WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => 'JOB-3', 'job_source' => 'PPC',
             'status' => 'Submitted', 'booked_at' => '2026-10-20 12:00:00', 'payload' => ['Tags' => ['Paid – Estimated']], 'synced_at' => now()]));
+        // Nor is Workiz's $0 copy of a finished job, whatever its tag (Jose, 2026-11-16).
+        $this->inTenant($this->t['org'], fn () => WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => 'JOB-4', 'job_source' => 'PPC',
+            'status' => 'done pending approval', 'booked_at' => '2026-10-20 13:00:00', 'payload' => ['Tags' => [' ⁠🔴 Free – Estimated'], 'JobTotalPrice' => 0], 'synced_at' => now()]));
 
         $text = $this->text('ppc');
 

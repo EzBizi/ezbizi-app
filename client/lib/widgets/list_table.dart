@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import 'heading_pin.dart';
 import 'list_filters.dart';
 import 'side_panel.dart';
 
@@ -507,6 +508,8 @@ class ListTable extends StatelessWidget {
                 i,
                 Row(
                   children: [
+                    // Nothing outside Reports (see HeadingPin).
+                    if (i == 0) const HeadingPinButton(),
                     Expanded(
                       child: InkWell(
                         key: columns[i].onSort == null
@@ -574,6 +577,12 @@ class ListTable extends StatelessWidget {
           child: child,
         );
 
+        // Inside Reports the header may stay on screen while the page scrolls
+        // the rows (HeadingPin, Jose 2026-11-16); a table with a height keeps
+        // its header already. Elsewhere the layout is as it was.
+        final floats =
+            wide && height == null && HeadingPin.maybeOf(context) != null;
+
         // Rows (and the header) for columns [from, to), one per row. Used
         // whole, or split in two when the first column stays put.
         Widget half(int from, int to, {required bool lazy}) {
@@ -590,6 +599,12 @@ class ListTable extends StatelessWidget {
                     for (var r = 0; r < rows.length; r++) rowOf(r, from, to),
                   ],
                 );
+          if (floats && !lazy) {
+            return PinnableHeading(
+              heading: headerBox(headerRow(from, to)),
+              body: rowsWidget,
+            );
+          }
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
@@ -620,32 +635,44 @@ class ListTable extends StatelessWidget {
           Widget item(Object it) =>
               it is int ? row(it) : _groupHeader(context, s, it as _GroupItem);
 
-          content = Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
-            children: [
-              if (wide)
-                headerBox(headerRow(0, columns.length))
-              else if (selectable)
-                headerBox(
-                  Row(
-                    children: [
-                      headerRow(0, 0).children.first,
-                      Text('Select all', style: theme.textTheme.bodySmall),
-                    ],
-                  ),
-                ),
-              if (lazy)
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: items.length,
-                    itemBuilder: (context, i) => item(items[i]),
+          content = floats
+              ? PinnableHeading(
+                  heading: headerBox(headerRow(0, columns.length)),
+                  body: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [for (final it in items) item(it)],
                   ),
                 )
-              else
-                for (final it in items) item(it),
-            ],
-          );
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
+                  children: [
+                    if (wide)
+                      headerBox(headerRow(0, columns.length))
+                    else if (selectable)
+                      headerBox(
+                        Row(
+                          children: [
+                            headerRow(0, 0).children.first,
+                            Text(
+                              'Select all',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (lazy)
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: items.length,
+                          itemBuilder: (context, i) => item(items[i]),
+                        ),
+                      )
+                    else
+                      for (final it in items) item(it),
+                  ],
+                );
         } else {
           // One vertical scroll drives both halves when lazy is off; with a
           // height, each half is one scroll view kept in step.

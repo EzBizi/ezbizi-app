@@ -1003,6 +1003,10 @@ class Me {
   bool get phoneCustomerPanelPinned =>
       preferences['phone.customer_panel_pinned'] == true;
 
+  /// Whether report tables keep their headings on screen while their rows
+  /// scroll. On unless switched off (Jose, 2026-11-16).
+  bool get reportHeadingsPinned => preferences['reports.pin_headings'] != false;
+
   /// The two pane widths on Web Management → Widgets.
   ///
   /// Clamped on read for the same reason [navigationWidth] is: a value stored

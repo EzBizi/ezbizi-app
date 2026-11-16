@@ -14,7 +14,9 @@ import '../widgets/ad_schedule.dart';
 import '../widgets/dashboard_chart.dart';
 import '../widgets/date_range_picker.dart';
 import '../widgets/report_grid.dart';
+import '../widgets/heading_pin.dart';
 import 'reports/report_dates.dart';
+import 'reports/report_range.dart';
 
 /// What the Google Ads accounts spent, and what came back for it.
 ///
@@ -299,6 +301,19 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
 
   LiveSubscription? _live;
 
+  DateSpan? _shared;
+
+  /// Another tab moved the shared range: read the figures for it.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final span = ReportRange.maybeOf(context)?.span;
+    if (span == _shared) return;
+    final moved = _shared != null;
+    _shared = span;
+    if (moved && _selected != null) _loadReport();
+  }
+
   @override
   void dispose() {
     _live?.cancel();
@@ -316,6 +331,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   /// conversions are attributed late, and "the last 30 days" is a question
   /// about settled figures, not about a day still in progress.
   (DateTime, DateTime) _window() {
+    // Inside Reports, the range every tab shares (Jose, 2026-11-16).
+    final shared = context.getInheritedWidgetOfExactType<ReportRange>()?.span;
+    if (shared != null) return (shared.from, shared.to);
     if (_ranges[_range].days == null && _custom != null) {
       return (_custom!.start, _custom!.end);
     }
@@ -838,7 +856,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             ],
           ),
         ),
-        PinnedHeaderSliver(
+        // Pinned unless this person unpinned the headings (Jose, 2026-11-16).
+        HeadingPin.sliver(
+          context,
           child: SizedBox(
             height: _headerHeight,
             child: _campaignHeader(theme, rows),
@@ -910,6 +930,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
               today: DateSpan.single(DateTime.now()).from,
               formats: widget.session.me?.display ?? DisplayFormats.fallback,
               onChanged: (span) {
+                final shared = ReportRange.maybeOf(context);
+                if (shared != null) return shared.onChanged(span);
                 setState(() {
                   _custom = DateTimeRange(start: span.from, end: span.to);
                   _range = _ranges.length - 1;
@@ -1437,6 +1459,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                               ? MainAxisAlignment.end
                               : MainAxisAlignment.start,
                           children: [
+                            if (c.key == 'name') const HeadingPinButton(),
                             Flexible(
                               child: Text(
                                 c.label,
