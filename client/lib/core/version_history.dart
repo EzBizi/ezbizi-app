@@ -13,6 +13,21 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0577', date: '16 Nov 2026', items: [
+      'Task Board: huge boards open fast, 50 tasks per group with Show more; group counts and totals cover every task',
+      'Task Board: every column heading has a menu to hide or delete it; timeline dates are picked on one full calendar with two clicks; Kanban columns are a fixed width and scroll sideways',
+      'Notifications: tabs, a search box, and unread rows highlighted',
+      'Financials: unticked checkbox cells show an empty box you can click',
+      'Web Management: the Branch picker says Company Level (A-1 Chimney) instead of No branch',
+      'Leads: the company tag sits next to the name',
+      'Memberships › Promotions: filters in one card with searchable pickers, the count and message beside them, Send always in sight',
+      'Communication › Numbers lists again; P&L shows Try again instead of waiting forever',
+      'The Add / New button sits at the top right in Jobs, Customers, Reports, Automations, Inventory, Fleet, HR Contracts and Services',
+      'Phone: a bottom bar with four modules and More, cleaner tabs and tiles, and the company name no longer runs under Clock Out',
+      'Customer Experience: Google Business listings show their city; ratings say which period they cover',
+      'A screen that hits an error shows a card instead of a black app',
+      'Monday sync runs in the background lane and reads only what changed',
+    ]),
     VersionRelease(version: '0.0.0576', date: '16 Nov 2026', items: [
       'Task Board no longer freezes the app on big boards: rows draw as you scroll',
       'Monday state boards can be merged into their branch boards, and sync follows the merged board',
