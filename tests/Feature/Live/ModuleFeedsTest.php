@@ -8,8 +8,12 @@ use App\Models\Complaint;
 use App\Models\FinancialAdjustment;
 use App\Models\Franchise;
 use App\Models\InventoryIssue;
+use App\Models\InventoryItem;
 use App\Models\InventoryLocation;
 use App\Models\InventoryPurchaseOrder;
+use App\Models\InventoryPurchaseOrderLine;
+use App\Models\InventorySale;
+use App\Models\InventorySaleLine;
 use App\Models\InventoryVendor;
 use App\Models\Invitation;
 use App\Models\Invoice;
@@ -23,6 +27,8 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleServiceVisit;
 use App\Support\Inventory\InventoryPurchaseOrderStatus;
+use App\Support\Inventory\InventorySalePaymentStatus;
+use App\Support\Inventory\InventorySaleStatus;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -112,6 +118,37 @@ class ModuleFeedsTest extends TestCase
                 'number' => 'IS-'.bin2hex(random_bytes(4)), 'issued_on' => '2026-11-16',
             ])->id;
         });
+    }
+
+    /** A line added or edited on its own (a receive, a fulfilment) is its order's change. */
+    public function test_a_line_is_its_orders_change(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $f = $t['franchise'];
+        [$po, $sale, $item] = $this->inTenant($t['org'], function () use ($f) {
+            $vendor = InventoryVendor::create(['company_id' => $f->company_id, 'franchise_id' => $f->id, 'name' => 'Supply Co']);
+
+            return [
+                InventoryPurchaseOrder::create(['company_id' => $f->company_id, 'franchise_id' => $f->id, 'vendor_id' => $vendor->id,
+                    'number' => 'PO-1', 'status' => InventoryPurchaseOrderStatus::Draft]),
+                InventorySale::create(['company_id' => $f->company_id, 'franchise_id' => $f->id, 'number' => 'SO-1',
+                    'status' => InventorySaleStatus::Open, 'payment_status' => InventorySalePaymentStatus::Unpaid]),
+                InventoryItem::factory()->create(['company_id' => $f->company_id]),
+            ];
+        });
+        $branch = $this->userWithRole($t, 'Branch', ['inventory.view', 'inventory.orders.view'], onlyAt: $f);
+
+        $since = $this->cursor($t['admin'], 'inventory_orders');
+        $this->inTenant($t['org'], fn () => InventoryPurchaseOrderLine::create(['purchase_order_id' => $po->id, 'item_id' => $item->id, 'qty_ordered' => 2]));
+        $this->assertSame([$po->id], $this->ids($branch, 'inventory_orders', $since), 'a PO line: its order, filed where the order is');
+
+        $since = $this->cursor($t['admin'], 'inventory_orders');
+        $line = $this->inTenant($t['org'], fn () => InventorySaleLine::create(['sale_id' => $sale->id, 'item_id' => $item->id, 'qty_ordered' => 1]));
+        $this->assertSame([$sale->id], $this->ids($branch, 'inventory_orders', $since), 'a sale line: its sale');
+
+        $since = $this->cursor($t['admin'], 'inventory_orders');
+        $this->inTenant($t['org'], fn () => $line->update(['qty_fulfilled' => 1]));
+        $this->assertSame([$sale->id], $this->ids($t['admin'], 'inventory_orders', $since), 'a line fulfilled later: its sale again');
     }
 
     public function test_inventory_locations(): void

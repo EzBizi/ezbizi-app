@@ -23,6 +23,11 @@ class InventorySaleLine extends Model implements StatesRetention
     }
 
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A line is its sale's change on the live feed (RecordsParentChanges): the Orders tab lists sales. */
+    protected static array $changeParent = ['inventory_orders', InventorySale::class, 'sale_id'];
+
     use HasUuids;
 
     protected function casts(): array
