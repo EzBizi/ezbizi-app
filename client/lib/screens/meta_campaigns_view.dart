@@ -93,6 +93,15 @@ class _MetaCampaignsViewState
 
   /// Every visible row, depth-first, with its depth.
   @override
+  bool isActive((Map<String, dynamic>, int) row) => row.$1['status'] == 'ACTIVE';
+
+  @override
+  int depthOf((Map<String, dynamic>, int) row) => row.$2;
+
+  @override
+  Map<String, dynamic> mapOf((Map<String, dynamic>, int) row) => row.$1;
+
+  @override
   List<(Map<String, dynamic>, int)> visibleRows() {
     final out = <(Map<String, dynamic>, int)>[];
     void walk(List<Map<String, dynamic>> nodes, int depth) {
@@ -125,7 +134,7 @@ class _MetaCampaignsViewState
     setState(() => node['status'] = status);
 
     final response = await widget.api.post('/meta-ads/status', {
-      'connection_id': account,
+      'connection_id': connectionOf(node),
       'object_id': node['id'],
       'status': status,
     });
@@ -155,7 +164,7 @@ class _MetaCampaignsViewState
       context,
       builder: (_) => _BudgetPanel(
         api: widget.api,
-        connectionId: account!,
+        connectionId: connectionOf(node),
         node: node,
         days: days,
       ),

@@ -6,6 +6,7 @@ import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/ad_schedule.dart';
+import '../widgets/date_range_picker.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/list_search.dart';
 import '../widgets/open_destination.dart';
@@ -32,12 +33,8 @@ abstract class AdCampaignsView extends StatefulWidget {
   final Widget sourceSwitch;
 }
 
-const _ranges = <int, String>{
-  1: 'Today',
-  7: 'Last 7 days',
-  30: 'Last 30 days',
-  90: 'Last 90 days',
-};
+/// The picker's value for "All accounts" (Jose, 2026-11-16).
+const allAdAccounts = '*all*';
 
 double adNumber(dynamic v) => (v as num?)?.toDouble() ?? 0;
 
@@ -96,11 +93,37 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
   /// Runs inside the setState that switches the account.
   void onAccountChanged() {}
 
+  /// On, as opposed to paused or removed: Inactive is its own folded group
+  /// (Jose, 2026-11-16: "paused ones are hidden by default").
+  bool isActive(R row);
+
+  /// A row under another (an ad set under its campaign) goes where its
+  /// campaign goes.
+  int depthOf(R row) => 0;
+
+  /// The campaign map a row stands for, for the Account column.
+  Map<String, dynamic> mapOf(R row);
+
   // ── State ──────────────────────────────────────────────────────────────
 
   List<Map<String, dynamic>>? accounts;
   String? account;
-  int days = 30;
+
+  /// Reports' own range: presets and From/To (Jose, 2026-11-16).
+  DateSpan span = RangePreset.standard
+      .firstWhere((p) => p.key == 'last_30')
+      .span(DateTime.now());
+  bool picking = false;
+  int get days => span.days;
+
+  /// Every account's campaigns in one list.
+  bool get all => account == allAdAccounts;
+
+  /// The account a row belongs to: its own in All, else the one chosen.
+  String connectionOf(Map<String, dynamic> row) =>
+      '${row['connection_id'] ?? account}';
+
+  bool showInactive = false;
 
   List<Map<String, dynamic>>? campaigns;
 
@@ -154,20 +177,19 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
   Future<void> load({bool quiet = false}) async {
     final id = account;
     if (id == null) return;
-    final days = this.days;
+    final span = this.span;
     if (!quiet) {
       setState(() {
         loading = true;
         error = null;
       });
     }
-    final to = DateTime.now();
     final response = await widget.api.get(campaignsPath, {
-      'connection_id': id,
-      'from': formatCalendarDay(to.subtract(Duration(days: days - 1))),
-      'to': formatCalendarDay(to),
+      if (id == allAdAccounts) 'all': '1' else 'connection_id': id,
+      'from': span.fromKey,
+      'to': span.toKey,
     });
-    if (!mounted || account != id || this.days != days) return;
+    if (!mounted || account != id || this.span != span) return;
     setState(() {
       loading = false;
       if (!response.ok) {
@@ -178,13 +200,30 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
         ((response.body['data'] as Map?)?['campaigns'] as List? ?? const [])
             .cast<Map>(),
       );
+      // In All, an ad set or ad is changed on its campaign's account.
+      void stamp(Map node, Object? connection) {
+        node['connection_id'] ??= connection;
+        for (final child in (node['children'] as List? ?? const [])) {
+          stamp(child as Map, node['connection_id']);
+        }
+      }
+
+      if (id == allAdAccounts) {
+        for (final c in campaigns!) {
+          stamp(c, null);
+        }
+      }
     });
     await loadSchedules();
   }
 
   Future<void> loadSchedules() async {
     final id = account;
-    if (id == null) return;
+    // ponytail: no schedules in All; open the account to schedule.
+    if (id == null || all) {
+      setState(() => schedules = const {});
+      return;
+    }
     final response = await widget.api.get('/ad-schedules', {
       'connection_id': id,
     });
@@ -205,7 +244,7 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
     final changed = await editAdSchedule(
       context,
       api: widget.api,
-      connectionId: account!,
+      connectionId: connectionOf(c),
       objectId: '${c['id']}',
       objectName: titleOf(c),
       schedule: schedules['${c['id']}'],
@@ -215,7 +254,9 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
   }
 
   /// The clock chip that opens the campaign's on/off schedule.
-  Widget scheduleChip(Map<String, dynamic> c) => Align(
+  Widget scheduleChip(Map<String, dynamic> c) => all
+      ? const SizedBox.shrink()
+      : Align(
     alignment: AlignmentDirectional.centerStart,
     child: AdScheduleChip(
       key: ValueKey('$keyPrefix-schedule-${c['id']}'),
@@ -283,6 +324,24 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _filters(),
+        if (picking)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: DateRangePanel(
+              initial: span,
+              today: DateTime.now(),
+              formats: widget.session.me?.display ?? DisplayFormats.fallback,
+              narrow: phone,
+              onApply: (span) {
+                setState(() {
+                  this.span = span;
+                  picking = false;
+                });
+                load();
+              },
+              onCancel: () => setState(() => picking = false),
+            ),
+          ),
         const SizedBox(height: 12),
         if (loading)
           const Expanded(child: Center(child: CircularProgressIndicator()))
@@ -316,6 +375,11 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
               value: account,
               isDense: true,
               options: [
+                SearchOption(
+                  value: allAdAccounts,
+                  label: 'All accounts',
+                  detail: '${accounts!.length} accounts',
+                ),
                 for (final a in accounts!)
                   SearchOption(
                     value: '${a['connection_id']}',
@@ -333,21 +397,13 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
               },
             ),
           ),
-        PopupMenuButton<int>(
+        DateRangeBar(
           key: rangeKey,
-          initialValue: days,
-          onSelected: (days) {
-            setState(() => this.days = days);
-            load();
-          },
-          itemBuilder: (_) => [
-            for (final e in _ranges.entries)
-              PopupMenuItem(value: e.key, child: Text(e.value)),
-          ],
-          child: Chip(
-            label: Text(_ranges[days]!),
-            avatar: const Icon(Icons.date_range, size: 18),
-          ),
+          span: span,
+          today: DateTime.now(),
+          formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          open: picking,
+          onToggle: () => setState(() => picking = !picking),
         ),
         ListSearch(
           key: _searchKeys[keyPrefix],
@@ -426,6 +482,11 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
 
     Widget header() => Row(
       children: [
+        if (all)
+          SizedBox(
+            width: _accountWidth - headerStart,
+            child: Text('ACCOUNT', style: head),
+          ),
         Expanded(child: Text(tableHeading, style: head)),
         for (final (label, key, width) in columns)
           SizedBox(
@@ -456,9 +517,8 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
       clipBehavior: Clip.antiAlias,
       child: LayoutBuilder(
         builder: (context, box) {
-          final width = box.maxWidth < tableMinWidth
-              ? tableMinWidth
-              : box.maxWidth;
+          final least = tableMinWidth + (all ? _accountWidth : 0);
+          final width = box.maxWidth < least ? least : box.maxWidth;
           return SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: SizedBox(
@@ -473,12 +533,21 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
                   Expanded(
                     child: rows.isEmpty
                         ? Center(child: Text(_emptyText))
-                        : ListView.separated(
-                            key: tableKey,
-                            itemCount: rows.length,
-                            separatorBuilder: (_, _) =>
-                                const Divider(height: 1),
-                            itemBuilder: (_, i) => tableRow(rows[i], theme),
+                        : Builder(
+                            builder: (context) {
+                              final items = _grouped(
+                                rows,
+                                (r) => _withAccount(r, tableRow(r, theme)),
+                                theme,
+                              );
+                              return ListView.separated(
+                                key: tableKey,
+                                itemCount: items.length,
+                                separatorBuilder: (_, _) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (_, i) => items[i],
+                              );
+                            },
                           ),
                   ),
                 ],
@@ -493,10 +562,87 @@ abstract class AdCampaignsState<W extends AdCampaignsView, R> extends State<W> {
   Widget _cards(ThemeData theme) {
     final rows = visibleRows();
     if (rows.isEmpty) return Center(child: Text(_emptyText));
-    return ListView.builder(
+    return ListView(
       key: ValueKey('$keyPrefix-ads-cards'),
-      itemCount: rows.length,
-      itemBuilder: (_, i) => card(rows[i], theme),
+      children: _grouped(
+        rows,
+        (r) => all
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+                    child: Text(
+                      '${mapOf(r)['account'] ?? ''}',
+                      style: theme.textTheme.labelSmall,
+                    ),
+                  ),
+                  card(r, theme),
+                ],
+              )
+            : card(r, theme),
+        theme,
+      ),
     );
+  }
+
+  static const double _accountWidth = 200;
+
+  /// The Account column, in All only.
+  Widget _withAccount(R row, Widget child) => !all
+      ? child
+      : Row(
+          children: [
+            SizedBox(
+              width: _accountWidth,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 12, right: 8),
+                child: Text(
+                  depthOf(row) == 0 ? '${mapOf(row)['account'] ?? ''}' : '',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            Expanded(child: child),
+          ],
+        );
+
+  /// Active first; Inactive (paused or removed) folded under its count.
+  /// Searching opens the fold: a fold that hides a match is the defect.
+  List<Widget> _grouped(
+    List<R> rows,
+    Widget Function(R) draw,
+    ThemeData theme,
+  ) {
+    final active = <R>[];
+    final inactive = <R>[];
+    var on = true;
+    for (final r in rows) {
+      if (depthOf(r) == 0) on = isActive(r);
+      (on ? active : inactive).add(r);
+    }
+    final open = showInactive || needle.isNotEmpty;
+    final count = inactive.where((r) => depthOf(r) == 0).length;
+
+    return [
+      for (final r in active) draw(r),
+      if (inactive.isNotEmpty)
+        InkWell(
+          key: ValueKey('$keyPrefix-inactive'),
+          onTap: () => setState(() => showInactive = !showInactive),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(open ? Icons.expand_less : Icons.expand_more, size: 18),
+                const SizedBox(width: 6),
+                Text('Inactive ($count)', style: theme.textTheme.titleSmall),
+              ],
+            ),
+          ),
+        ),
+      if (open) for (final r in inactive) draw(r),
+    ];
   }
 }
