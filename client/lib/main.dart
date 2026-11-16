@@ -2075,6 +2075,11 @@ class _HomeShellState extends State<HomeShell> {
        * No `leading` is set on this layout, so Scaffold supplies the button
        * that opens it.
        */
+      // Mobile review 2026-11-13, P7 (preview §3 A): on a phone, four
+      // modules one tap away at the bottom, and More opens the drawer.
+      bottomNavigationBar: MediaQuery.sizeOf(context).width < 600
+          ? _bottomBar(destinations)
+          : null,
       drawer: wide
           ? null
           : _navigationDrawer(
@@ -2168,8 +2173,15 @@ class _HomeShellState extends State<HomeShell> {
   /// Design 161 T1: one toolbar slot per module, filled by its screen.
   final Map<String, ValueNotifier<Widget?>> _toolbars = {};
 
+  /// D3: one primary-action slot per module, header right ([ModuleAction]).
+  final Map<String, ValueNotifier<Widget?>> _actions = {};
+
   Widget _titled(Destination destination) {
     final toolbar = _toolbars.putIfAbsent(
+      destination.id,
+      () => ValueNotifier<Widget?>(null),
+    );
+    final action = _actions.putIfAbsent(
       destination.id,
       () => ValueNotifier<Widget?>(null),
     );
@@ -2179,9 +2191,10 @@ class _HomeShellState extends State<HomeShell> {
         // UI queue 67: a phone's browser hears about the app on every page;
         // a computer, once, on the Dashboard. Both draw nothing otherwise.
         PhoneAppBanner(session: widget.session),
-        ValueListenableBuilder<Widget?>(
-          valueListenable: toolbar,
-          builder: (context, bar, _) => ModulePageHeader(
+        ListenableBuilder(
+          listenable: Listenable.merge([toolbar, action]),
+          builder: (context, _) => ModulePageHeader(
+            actions: [?action.value],
             title: destination.label,
             subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
             // UI queue 81: the walkthrough and the how-to video, as A1 Tools
@@ -2192,7 +2205,7 @@ class _HomeShellState extends State<HomeShell> {
               api: widget.api,
               session: widget.session,
             ),
-            toolbar: bar,
+            toolbar: toolbar.value,
           ),
         ),
         TourOffer(
@@ -2203,9 +2216,53 @@ class _HomeShellState extends State<HomeShell> {
         if (destination.id == 'dashboard')
           PhoneAppCard(session: widget.session),
         Expanded(
-          child: ModuleToolbarScope(slot: toolbar, child: destination.screen),
+          child: ModuleToolbarScope(
+            slot: toolbar,
+            action: action,
+            child: destination.screen,
+          ),
         ),
       ],
+    );
+  }
+
+  /// The modules a field team uses all day, in order, when this person has
+  /// them; the rest of the four come from the top of their own sidebar.
+  static const _barFirst = ['jobs', 'scheduling', 'leads', 'phone'];
+
+  Widget _bottomBar(List<Destination> destinations) {
+    final byId = {for (final d in destinations) d.id: d};
+    final slots = <Destination>[for (final id in _barFirst) ?byId[id]];
+    for (final d in destinations) {
+      if (slots.length >= 4) break;
+      if (!slots.contains(d)) slots.add(d);
+    }
+    final at = _rail == _Rail.modules
+        ? slots.indexWhere((d) => d.id == _selected)
+        : -1;
+    return Builder(
+      builder: (context) => NavigationBar(
+        key: const Key('phone-bottom-bar'),
+        height: 64,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        selectedIndex: at < 0 ? slots.length : at,
+        onDestinationSelected: (i) => i == slots.length
+            ? Scaffold.of(context).openDrawer()
+            : _show(_Rail.modules, slots[i].id),
+        destinations: [
+          for (final d in slots)
+            NavigationDestination(
+              icon: Icon(d.icon),
+              label: d.label,
+              tooltip: d.label,
+            ),
+          const NavigationDestination(
+            key: Key('phone-bottom-more'),
+            icon: Icon(Icons.menu),
+            label: 'More',
+          ),
+        ],
+      ),
     );
   }
 

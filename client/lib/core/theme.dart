@@ -886,3 +886,32 @@ abstract final class SourceColours {
     return table[key] ?? ToneColours.table(brightness)[Tone.neutral]!;
   }
 }
+
+/// The side margin of a page's content: 16 on a phone, 24 above (mobile
+/// review 2026-11-13, P6: Jobs and Customers used 16, Settings 24, so the
+/// title, the chips and the list did not line up on a phone).
+abstract final class Gutter {
+  static const double phone = 16;
+  static const double wide = 24;
+
+  static double of(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600 ? phone : wide;
+}
+
+/// A tag colour that came from outside the app (a Workiz job tag), kept on
+/// the theme's side of two rules (desktop review 2026-11-13, D5): no purple,
+/// so a magenta "DEPOSIT RECEIVED" draws in the theme's `tertiary`; and red
+/// only for problems, so a red label that is not a fault ("RESCHEDULE"
+/// beside a green Done) draws amber. Greys and every other hue pass through.
+Color tagColour(BuildContext context, Color colour) {
+  final hsl = HSLColor.fromColor(colour);
+  if (hsl.saturation < 0.25) return colour;
+  final hue = hsl.hue;
+  if (hue >= 250 && hue < 340) {
+    return Theme.of(context).colorScheme.tertiary;
+  }
+  if (hue >= 340 || hue < 15) {
+    return ToneColours.of(context, Tone.caution).fill;
+  }
+  return colour;
+}

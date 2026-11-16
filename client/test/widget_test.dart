@@ -458,17 +458,17 @@ void main() {
     );
     await tester.pump();
 
-    // First load: nothing to preserve, so the spinner is the honest thing to
-    // draw. If this ever stops holding, the isEmpty target is pointed at
+    // First load: nothing to preserve, so the loading rows are the honest
+    // thing to draw (a skeleton since the mobile review of 2026-11-13, P2). If this ever stops holding, the isEmpty target is pointed at
     // something that is never empty and the screen shows a false empty state.
     expect(loads, 1);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byKey(const Key('loading-skeleton')), findsOneWidget);
     expect(find.text('Jobs'), findsNothing);
 
     gate.complete();
     await tester.pumpAndSettle();
 
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byKey(const Key('loading-skeleton')), findsNothing);
     expect(find.text('Jobs'), findsOneWidget);
 
     // Now the refresh, through the same _load() every write on this screen
@@ -479,7 +479,7 @@ void main() {
 
     expect(loads, 2, reason: 'The refresh did not actually re-request.');
     expect(
-      find.byType(CircularProgressIndicator),
+      find.byKey(const Key('loading-skeleton')),
       findsNothing,
       reason: 'A refresh blanked a screen that already had a row on it.',
     );
