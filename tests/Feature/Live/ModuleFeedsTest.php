@@ -5,9 +5,11 @@ namespace Tests\Feature\Live;
 use App\Models\AdSchedule;
 use App\Models\Assignment;
 use App\Models\Automation;
+use App\Models\CameraSite;
 use App\Models\Complaint;
 use App\Models\Customer;
 use App\Models\Estimate;
+use App\Models\FieldPresence;
 use App\Models\FinancialAdjustment;
 use App\Models\InspectionDefinition;
 use App\Models\InspectionDefinitionVersion;
@@ -30,6 +32,9 @@ use App\Models\MailboxGrant;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\MessageSeen;
+use App\Models\MonitoredDevice;
+use App\Models\MonitoringFloorPlan;
+use App\Models\MonitoringScreenshot;
 use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Models\PhoneMessage;
@@ -41,9 +46,13 @@ use App\Models\Service;
 use App\Models\SocialConnection;
 use App\Models\SocialPost;
 use App\Models\SocialPostTarget;
+use App\Models\TrainingAttempt;
+use App\Models\TrainingGuide;
+use App\Models\TrainingTest;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleServiceVisit;
+use App\Models\WebSite;
 use App\Support\Inventory\InventoryPurchaseOrderStatus;
 use App\Support\Inventory\InventorySalePaymentStatus;
 use App\Support\Inventory\InventorySaleStatus;
@@ -484,6 +493,104 @@ class ModuleFeedsTest extends TestCase
         $this->assertSame([], $this->ids($branch, 'mailboxes', $since), 'a poll that found nothing is not news');
         $this->inTenant($t['org'], fn () => Mailbox::query()->find($mine->id)->forceFill(['watch_mark' => '98765'])->save());
         $this->assertSame([$mine->id], $this->ids($branch, 'mailboxes', $since), 'new mail is');
+    }
+
+    /** A technician is assigned, not filed: the feed asks ScopeReach, and a technician always follows themselves. */
+    public function test_field_keeps_to_the_technicians_a_reader_may_see(): void
+    {
+        $this->assertScoped('field', ['field.view', 'field.dashboard.view'], function (Franchise $f) {
+            $tech = $this->personAt($f);
+            FieldPresence::create(['user_id' => $tech->id, 'latitude' => 25.76, 'longitude' => -80.19, 'last_seen_at' => now(),
+                'anchor_latitude' => 25.76, 'anchor_longitude' => -80.19, 'anchored_at' => now()]);
+
+            return $tech->id;
+        });
+
+        $t = $this->provisionTenant('Gamma');
+        $me = $this->userWithRole($t, 'Tech', ['field.recordings.view'], onlyAt: $t['franchise']);
+        $since = $this->cursor($me, 'field');
+        $this->inTenant($t['org'], fn () => FieldPresence::create(['user_id' => $me->id, 'latitude' => 25.76, 'longitude' => -80.19, 'last_seen_at' => now(),
+                'anchor_latitude' => 25.76, 'anchor_longitude' => -80.19, 'anchored_at' => now()]));
+        $this->assertSame([$me->id], $this->ids($me, 'field', $since), 'their own');
+    }
+
+    private function personAt(Franchise $f): User
+    {
+        $person = User::factory()->create(['name' => 'Tech '.bin2hex(random_bytes(2))]);
+        Assignment::create(['organization_id' => $person->organization_id, 'user_id' => $person->id, 'assigned_franchise_id' => $f->id]);
+
+        return $person;
+    }
+
+    public function test_training_and_an_attempt_as_its_test(): void
+    {
+        $this->assertScoped('training', ['training.view', 'training.manage'],
+            fn (Franchise $f) => TrainingGuide::factory()->create(['company_id' => $f->company_id, 'franchise_id' => $f->id])->id);
+
+        $t = $this->provisionTenant('Gamma');
+        $test = $this->inTenant($t['org'], fn () => TrainingTest::factory()->create(['company_id' => $t['company']->id, 'franchise_id' => $t['franchise']->id]));
+        $since = $this->cursor($t['admin'], 'training');
+        $this->inTenant($t['org'], fn () => TrainingAttempt::create(['user_id' => $t['admin']->id, 'test_id' => $test->id,
+            'answers' => [], 'score' => 90, 'passed' => true, 'taken_at' => now()]));
+        $this->assertSame([$test->id], $this->ids($t['admin'], 'training', $since));
+    }
+
+    /** A machine is its user's: ScopeReach. A beat that only stamps last_seen is not news. */
+    public function test_monitoring_devices_keep_to_the_people_a_reader_may_see(): void
+    {
+        $this->assertScoped('monitoring_devices', ['monitoring.view'],
+            fn (Franchise $f) => MonitoredDevice::factory()->create(['user_id' => $this->personAt($f)->id])->id);
+
+        $t = $this->provisionTenant('Gamma');
+        $device = $this->inTenant($t['org'], fn () => MonitoredDevice::factory()->create(['user_id' => $t['admin']->id]));
+        $since = $this->cursor($t['admin'], 'monitoring_devices');
+        $this->inTenant($t['org'], fn () => MonitoredDevice::query()->find($device->id)->forceFill([
+            'last_seen_at' => now()->addMinute(), 'ip_address' => '10.0.0.9', 'specs' => ['ram' => 16],
+        ])->save());
+        $this->assertSame([], $this->ids($t['admin'], 'monitoring_devices', $since), 'a heartbeat is not news');
+        $this->inTenant($t['org'], fn () => MonitoringScreenshot::factory()->create(['device_id' => $device->id, 'user_id' => $t['admin']->id]));
+        $this->assertSame([$device->id], $this->ids($t['admin'], 'monitoring_devices', $since), 'a capture is');
+    }
+
+    public function test_floor_plans_are_filed_where_they_are_assigned(): void
+    {
+        $this->assertScoped('monitoring_floor_plans', ['monitoring.view', 'monitoring.map.view'],
+            fn (Franchise $f) => MonitoringFloorPlan::create(['name' => 'Office '.bin2hex(random_bytes(2)),
+                'assigned_company_id' => $f->company_id, 'assigned_franchise_id' => $f->id, 'layout' => ['nodes' => []]])->id);
+    }
+
+    public function test_camera_sites(): void
+    {
+        $this->assertScoped('monitoring_cameras', ['monitoring.view', 'monitoring.cameras.view'],
+            fn (Franchise $f) => CameraSite::create(['company_id' => $f->company_id, 'franchise_id' => $f->id,
+                'name' => 'Shop '.bin2hex(random_bytes(2))])->id);
+    }
+
+    /** A plugin fetch stamps last_seen_at every few minutes: not news. */
+    public function test_web_sites(): void
+    {
+        $this->assertScoped('web_sites', ['web_management.view'], fn (Franchise $f) => WebSite::forceCreate([
+            'company_id' => $f->company_id, 'franchise_id' => $f->id, 'host' => bin2hex(random_bytes(4)).'.example.test', 'label' => 'Site',
+            'token_hash' => hash('sha256', random_bytes(8)),
+        ])->id);
+
+        $t = $this->provisionTenant('Gamma');
+        $site = $this->inTenant($t['org'], fn () => WebSite::forceCreate(['company_id' => $t['company']->id, 'host' => 'gamma.example.test', 'label' => 'Gamma',
+            'token_hash' => hash('sha256', 'gamma')]));
+        $since = $this->cursor($t['admin'], 'web_sites');
+        $this->inTenant($t['org'], fn () => WebSite::query()->find($site->id)->forceFill(['last_seen_at' => now()])->save());
+        $this->assertSame([], $this->ids($t['admin'], 'web_sites', $since));
+    }
+
+    /** Kept tabs hold many types at once: asking every one is answered, not refused for length. */
+    public function test_a_client_may_ask_every_type_at_once(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $all = implode(',', array_keys(\App\Support\Live\ChangeFeed::TYPES));
+        $this->assertGreaterThan(200, strlen($all), 'the old cap refused this');
+        $since = $this->cursor($t['admin'], $all);
+        $vehicle = $this->inTenant($t['org'], fn () => Vehicle::factory()->create(['company_id' => $t['company']->id, 'franchise_id' => $t['franchise']->id]));
+        $this->assertContains($vehicle->id, $this->ids($t['admin'], $all, $since));
     }
 
     private function inbox(string $franchiseId, string $address, ?array $grant): Mailbox

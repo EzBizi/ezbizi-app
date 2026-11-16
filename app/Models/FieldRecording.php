@@ -17,6 +17,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class FieldRecording extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A recording made, transcribed or flagged is its technician's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['field', User::class, 'user_id'];
+
     use HasUuids;
 
     /** Ninety days, unless a manager flagged it (an incident, a training example). */
