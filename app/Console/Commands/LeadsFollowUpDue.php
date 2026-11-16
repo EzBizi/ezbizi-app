@@ -75,7 +75,7 @@ class LeadsFollowUpDue extends Command
                             'kind' => $lead->kind(),
                             'contact_name' => $lead->contact_name,
                             'first_name' => $first,
-                            'greeting' => Lead::greeting($first),
+                            'greeting' => Lead::greetingFor($first),
                             // The after-call text already went, so a rule can stay at one
                             // booking link (Jose, 2026-11-05: "send only one").
                             'not_booked_call' => AutomationEvent::query()->where('event_key', 'lead.call_not_booked')

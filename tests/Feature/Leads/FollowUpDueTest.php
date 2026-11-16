@@ -97,6 +97,9 @@ class FollowUpDueTest extends TestCase
         $this->assertCount(1, $events);
         $this->assertSame($quiet->id, $events[0]->subject_id);
         $this->assertSame('Hi Dana', $events[0]->payload['after']['greeting']);
+        // ActionRunner reads {{greeting}} off the lead before the payload: a Lead
+        // method named greeting() was called as a relation and threw (health 11-16).
+        $this->assertNull($quiet->getAttribute('greeting'));
         $this->assertSame('ls_text', $events[0]->payload['after']['kind']);
         $this->assertFalse($events[0]->payload['after']['not_booked_call']);
 
