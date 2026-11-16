@@ -2376,8 +2376,8 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 
   /// Read what this TikTok account allows, for its panel. Asked fresh on
   /// every tick: TikTok's guidelines want the current answer, not a cached one.
-  Future<void> _askTikTok(String id) async {
-    final choice = TikTokChoice();
+  Future<void> _askTikTok(String id, String mode) async {
+    final choice = TikTokChoice(mode: mode);
     _tiktok[id] = choice;
 
     final response = await widget.api.get(
@@ -2573,7 +2573,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
                                   ? _picked.add(account.id)
                                   : _picked.remove(account.id);
                               if (on && account.asksTikTokChoices) {
-                                _askTikTok(account.id);
+                                _askTikTok(account.id, account.tiktokMode);
                               } else if (!on) {
                                 _tiktok.remove(account.id);
                               }
@@ -2611,8 +2611,9 @@ class _ComposeColumnState extends State<_ComposeColumn> {
             // Publish. "Sent" and "sent, but you must go and finish it in
             // TikTok" are different enough that learning it afterwards is
             // learning it too late.
+            // A TikTok account's block says where its post goes instead.
             for (final account in widget.connections)
-              if (account.postingNote != null)
+              if (account.postingNote != null && !account.asksTikTokChoices)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
@@ -4666,6 +4667,7 @@ class _SocialConnection {
     this.cannotPublishBecause,
     this.postingNote,
     this.asksTikTokChoices = false,
+    this.tiktokMode = 'direct',
     this.status = 'connected',
     this.statusReason,
     this.lastCheckedAt,
@@ -4700,6 +4702,9 @@ class _SocialConnection {
   /// for this account on every post (TikTokPostChoices).
   final bool asksTikTokChoices;
 
+  /// Where a TikTok post starts: `direct` or `inbox`, the server's default.
+  final String tiktokMode;
+
   /// The health check's verdict: connected, broken or revoked, with why and
   /// when it last looked (review 2026-11-09 A24).
   final String status;
@@ -4733,6 +4738,7 @@ class _SocialConnection {
       cannotPublishBecause: json['cannot_publish_because'] as String?,
       postingNote: json['posting_note'] as String?,
       asksTikTokChoices: json['asks_tiktok_choices'] as bool? ?? false,
+      tiktokMode: json['tiktok_mode'] as String? ?? 'direct',
       status: json['status'] as String? ?? 'connected',
       statusReason: json['status_reason'] as String?,
       lastCheckedAt: DateTime.tryParse('${json['last_checked_at'] ?? ''}'),
@@ -4861,7 +4867,12 @@ class _SentTarget {
     this.provider,
     this.id,
     this.canDelete = false,
+    this.statusLabel,
   });
+
+  /// The server's word for a sent target that is not on the profile:
+  /// "Sent to TikTok inbox". Null otherwise.
+  final String? statusLabel;
 
   /// For Try again, which names the target in its path.
   final String? id;
@@ -4895,6 +4906,7 @@ class _SentTarget {
       provider: json['provider'] as String?,
       id: json['id'] as String?,
       canDelete: json['can_delete'] as bool? ?? false,
+      statusLabel: json['status_label'] as String?,
     );
   }
 }
@@ -6011,6 +6023,11 @@ class _TargetLine extends StatelessWidget {
         Tone.bad,
         Icons.error_outline,
       ),
+      _ when target.statusLabel != null => (
+        '${target.statusLabel}. Finish it in the $network app.',
+        Tone.ok,
+        Icons.edit_note,
+      ),
       _ when drafts != null => (
         'In your $network drafts. Finish it in the $network app.',
         Tone.ok,
@@ -6439,6 +6456,9 @@ class _AgendaRow extends StatelessWidget {
 /// The account's posting note when [target] went to its drafts, not live.
 String? _draftsFor(_SentTarget target, List<_SocialConnection> connections) {
   if (target.status != 'sent') return null;
+  if (target.statusLabel case final String label) return label;
+  // A TikTok post chose its own way in; no label means it went to the profile.
+  if (target.provider == 'tiktok') return null;
 
   for (final connection in connections) {
     if (connection.id == target.connectionId) return connection.postingNote;

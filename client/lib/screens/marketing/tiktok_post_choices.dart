@@ -40,6 +40,13 @@ class TikTokCreator {
 /// stitch start off, disclosure is asked every time. Nothing here is
 /// pre-filled on the person's behalf.
 class TikTokChoice {
+  TikTokChoice({this.mode = 'direct'});
+
+  /// `direct` posts to the profile; `inbox` sends a draft to the account's
+  /// TikTok inbox for the creator to finish in the app.
+  String mode;
+  bool get toInbox => mode == 'inbox';
+
   TikTokCreator? creator;
   String? loadError;
   String? privacy;
@@ -52,6 +59,8 @@ class TikTokChoice {
 
   /// Why this account stops Publish, or null.
   String? refusal(String account, Duration? length) {
+    // A draft asks nothing: the creator chooses in the TikTok app.
+    if (toInbox) return null;
     final c = creator;
     if (loadError != null) return '$account: $loadError';
     if (c == null) return 'Asking TikTok what $account allows.';
@@ -72,7 +81,8 @@ class TikTokChoice {
   }
 
   /// The same choices for a JSON body, as `tiktok: {<id>: {...}}`.
-  Map<String, Object> json() => {
+  Map<String, Object> json() => toInbox ? {'mode': mode} : {
+    'mode': mode,
     'privacy_level': privacy ?? '',
     'allow_comment': comment,
     'allow_duet': duet,
@@ -83,7 +93,8 @@ class TikTokChoice {
   };
 
   /// The multipart fields for `tiktok[<id>]`.
-  Map<String, String> fields(String id) => {
+  Map<String, String> fields(String id) => toInbox ? {'tiktok[$id][mode]': mode} : {
+    'tiktok[$id][mode]': mode,
     'tiktok[$id][privacy_level]': privacy ?? '',
     'tiktok[$id][allow_comment]': comment ? '1' : '0',
     'tiktok[$id][allow_duet]': duet ? '1' : '0',
@@ -125,16 +136,61 @@ class TikTokPostChoices extends StatelessWidget {
     final theme = Theme.of(context);
     final creator = choice.creator;
 
-    if (creator == null) {
-      return Text(
-        choice.loadError ?? 'Asking TikTok what $account allows…',
-        style: theme.textTheme.bodySmall,
-      );
-    }
-
     void set(VoidCallback change) {
       change();
       onChanged();
+    }
+
+    // Profile or inbox, chosen per post, drawn above everything else.
+    final where = SegmentedButton<String>(
+      key: ValueKey('tiktok-mode-$account'),
+      segments: const [
+        ButtonSegment(value: 'direct', label: Text('Post to profile')),
+        ButtonSegment(
+          value: 'inbox',
+          label: Text('Send to TikTok inbox as a draft'),
+        ),
+      ],
+      selected: {choice.mode},
+      showSelectedIcon: false,
+      onSelectionChanged:
+          enabled ? (v) => set(() => choice.mode = v.first) : null,
+    );
+
+    if (choice.toInbox) {
+      return Column(
+        key: ValueKey('tiktok-choices-$account'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('TikTok: $account', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          where,
+          const SizedBox(height: 8),
+          Text(
+            "TikTok sends it to the account's inbox; finish posting in the "
+            'TikTok app.',
+            key: ValueKey('tiktok-inbox-note-$account'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (creator == null) {
+      return Column(
+        key: ValueKey('tiktok-choices-$account'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          where,
+          const SizedBox(height: 8),
+          Text(
+            choice.loadError ?? 'Asking TikTok what $account allows…',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+      );
     }
 
     Widget tick(String label, bool value, bool off, void Function(bool) to) =>
@@ -157,6 +213,8 @@ class TikTokPostChoices extends StatelessWidget {
           'Posting to TikTok as ${creator.nickname}',
           style: theme.textTheme.titleSmall,
         ),
+        const SizedBox(height: 8),
+        where,
         const SizedBox(height: 8),
         SearchPickerField<String>(
           key: ValueKey('tiktok-privacy-$account'),

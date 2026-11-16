@@ -2240,6 +2240,48 @@ void main() {
       expect(_publishRefusal(tester), isNull);
     });
 
+    testWidgets('TikTok offers profile or inbox; the inbox hides privacy', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(canEdit: true, connections: const [_tiktokDirect]),
+        pickMedia: () async =>
+            PickedBytes('sweep.mp4', List<int>.filled(2048, 7)),
+      );
+      await _openCompose(tester);
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-7')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'Attach a picture or video'),
+      );
+      await tester.pumpAndSettle();
+
+      // Both ways in are offered; the profile starts with its privacy picker.
+      expect(find.text('Post to profile'), findsOneWidget);
+      expect(find.text('Send to TikTok inbox as a draft'), findsOneWidget);
+      expect(find.byKey(const ValueKey('tiktok-privacy-ezbizi_us')),
+          findsOneWidget);
+
+      await tester.tap(find.text('Send to TikTok inbox as a draft'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('tiktok-privacy-ezbizi_us')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('tiktok-disclose-ezbizi_us')),
+          findsNothing);
+      expect(find.widgetWithText(CheckboxListTile, 'Comment'), findsNothing);
+      expect(
+        find.text(
+          "TikTok sends it to the account's inbox; finish posting in the "
+          'TikTok app.',
+        ),
+        findsOneWidget,
+      );
+      // Nothing to choose for a draft, so nothing blocks Publish.
+      expect(_publishRefusal(tester), isNull);
+    });
+
     testWidgets('a network with no detour says nothing rather than reassuring', (
       tester,
     ) async {
