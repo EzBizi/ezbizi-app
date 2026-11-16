@@ -112,7 +112,12 @@ void main() {
     tester,
   ) async {
     final now = DateTime.now().toUtc();
-    Map<String, dynamic> row(String id, DateTime at, {String? kind, bool read = false}) => {
+    Map<String, dynamic> row(
+      String id,
+      DateTime at, {
+      String? kind,
+      bool read = false,
+    }) => {
       'id': id,
       'source': 'automation',
       'title': 'Row $id',
@@ -151,6 +156,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Row b'), findsNothing);
     expect(find.text('Row c'), findsOneWidget);
+
+    // Unread rows are tinted, read ones are not (Jose, 2026-11-16).
+    ListTile tile(String id) =>
+        tester.widget(find.byKey(ValueKey('notification-row-$id')));
+    expect(tile('c').tileColor, isNotNull);
+    await tester.tap(find.byKey(const Key('notifications-unread-only')));
+    await tester.pumpAndSettle();
+    expect(tile('b').tileColor, isNull);
+
+    // The search narrows the list.
+    await tester.enterText(
+      find.byKey(const Key('notifications-search')).first,
+      'row c',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Row c'), findsOneWidget);
+    expect(find.text('Row a'), findsNothing);
   });
 
   testWidgets('a notification wears the icon of its module and says when', (
@@ -233,80 +255,86 @@ void main() {
     expect(record, 'lead-1');
   });
 
-  testWidgets('clicking its desktop toast does exactly what tapping its row does', (
-    tester,
-  ) async {
-    // Jose, 2026-09-29: "clicking on notification on desktop does nothing, it
-    // should lead to whatever it's warning about". The plugin delivered the
-    // click; nothing was listening. The toast carries the notification's id,
-    // and the click must mark it read and go where the row goes — module,
-    // filter AND record — without the panel ever being opened.
-    final opened = <String>[];
-    final posted = <String>[];
-    String? filter;
-    String? record;
+  testWidgets(
+    'clicking its desktop toast does exactly what tapping its row does',
+    (tester) async {
+      // Jose, 2026-09-29: "clicking on notification on desktop does nothing, it
+      // should lead to whatever it's warning about". The plugin delivered the
+      // click; nothing was listening. The toast carries the notification's id,
+      // and the click must mark it read and go where the row goes — module,
+      // filter AND record — without the panel ever being opened.
+      final opened = <String>[];
+      final posted = <String>[];
+      String? filter;
+      String? record;
 
-    await _pumpWithItem(
-      tester,
-      item: {
-        'id': 'n1',
-        'source': 'automation',
-        'title': 'New Live Chat Lead',
-        'body': null,
-        'subject': {'type': 'Lead', 'id': 'lead-1'},
-        'meta': {'module': 'leads', 'filter': 'website_chat'},
-        'read_at': null,
-        'created_at': '2026-09-16T12:00:00+00:00',
-      },
-      onOpenModule: (m, f, r) {
-        opened.add(m);
-        filter = f;
-        record = r;
-      },
-      posted: posted,
-    );
+      await _pumpWithItem(
+        tester,
+        item: {
+          'id': 'n1',
+          'source': 'automation',
+          'title': 'New Live Chat Lead',
+          'body': null,
+          'subject': {'type': 'Lead', 'id': 'lead-1'},
+          'meta': {'module': 'leads', 'filter': 'website_chat'},
+          'read_at': null,
+          'created_at': '2026-09-16T12:00:00+00:00',
+        },
+        onOpenModule: (m, f, r) {
+          opened.add(m);
+          filter = f;
+          record = r;
+        },
+        posted: posted,
+      );
 
-    // What the OS delivers on a click, with the payload the toast was shown with.
-    OsNotifications.onClick?.call('n1');
-    await tester.pumpAndSettle();
+      // What the OS delivers on a click, with the payload the toast was shown with.
+      OsNotifications.onClick?.call('n1');
+      await tester.pumpAndSettle();
 
-    expect(opened, ['leads']);
-    expect(filter, 'website_chat');
-    expect(record, 'lead-1');
-    expect(posted, contains(endsWith('/notifications/n1/read')));
-  });
+      expect(opened, ['leads']);
+      expect(filter, 'website_chat');
+      expect(record, 'lead-1');
+      expect(posted, contains(endsWith('/notifications/n1/read')));
+    },
+  );
 
-  testWidgets('clicking the "N new notifications" toast opens the panel that holds them', (
-    tester,
-  ) async {
-    // The summary toast carries no id: its answer is the list. Asserted by the
-    // row's title appearing, which only the open panel draws — and by nothing
-    // having navigated, so this cannot pass by accident through the path above.
-    final opened = <String>[];
+  testWidgets(
+    'clicking the "N new notifications" toast opens the panel that holds them',
+    (tester) async {
+      // The summary toast carries no id: its answer is the list. Asserted by the
+      // row's title appearing, which only the open panel draws — and by nothing
+      // having navigated, so this cannot pass by accident through the path above.
+      final opened = <String>[];
 
-    await _pumpWithItem(
-      tester,
-      item: {
-        'id': 'n3',
-        'source': 'automation',
-        'title': 'New Live Chat Lead',
-        'body': null,
-        'subject': {'type': 'Lead', 'id': 'lead-1'},
-        'meta': {'module': 'leads', 'filter': 'website_chat'},
-        'read_at': null,
-        'created_at': '2026-09-16T12:00:00+00:00',
-      },
-      onOpenModule: (m, f, r) => opened.add(m),
-    );
+      await _pumpWithItem(
+        tester,
+        item: {
+          'id': 'n3',
+          'source': 'automation',
+          'title': 'New Live Chat Lead',
+          'body': null,
+          'subject': {'type': 'Lead', 'id': 'lead-1'},
+          'meta': {'module': 'leads', 'filter': 'website_chat'},
+          'read_at': null,
+          'created_at': '2026-09-16T12:00:00+00:00',
+        },
+        onOpenModule: (m, f, r) => opened.add(m),
+      );
 
-    expect(find.text('New Live Chat Lead'), findsNothing, reason: 'Precondition: the panel is closed.');
+      expect(
+        find.text('New Live Chat Lead'),
+        findsNothing,
+        reason: 'Precondition: the panel is closed.',
+      );
 
-    OsNotifications.onClick?.call(null);
-    await tester.pumpAndSettle();
+      OsNotifications.onClick?.call(null);
+      await tester.pumpAndSettle();
 
-    expect(find.text('New Live Chat Lead'), findsOneWidget);
-    expect(opened, isEmpty);
-  });
+      expect(find.text('New Live Chat Lead'), findsOneWidget);
+      expect(opened, isEmpty);
+    },
+  );
 
   testWidgets('a notification about nothing openable navigates nowhere', (
     tester,
@@ -348,39 +376,56 @@ void main() {
   // subject is the MAILBOX; meta.record names the message, and that is what
   // must reach the Email screen — at desktop and at phone width.
   for (final width in [1280.0, 390.0]) {
-    testWidgets('a new-email notification hands Email that message (${width.toInt()}px)', (
-      tester,
-    ) async {
-      await tester.binding.setSurfaceSize(Size(width, 800));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      addTearDown(() => DeepLinks.pending.value = null);
-      final opened = <String>[];
+    testWidgets(
+      'a new-email notification hands Email that message (${width.toInt()}px)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(Size(width, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        addTearDown(() => DeepLinks.pending.value = null);
+        final opened = <String>[];
 
-      await _pumpWithItem(tester, item: _email, onOpenModule: (m, f, r) => opened.add(m));
+        await _pumpWithItem(
+          tester,
+          item: _email,
+          onOpenModule: (m, f, r) => opened.add(m),
+        );
 
-      await tester.tap(find.byIcon(Icons.notifications_none));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('New email'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.notifications_none));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('New email'));
+        await tester.pumpAndSettle();
 
-      expect(opened, ['email']);
-      final link = DeepLinks.take('email');
-      expect(link?.type, 'email_message');
-      expect(link?.id, 'msg-123');
-      expect(link?.mailbox, 'info@a1.test');
-      expect(DeepLinks.take('email'), isNull, reason: 'taken once, not reopened on rebuild');
-    });
+        expect(opened, ['email']);
+        final link = DeepLinks.take('email');
+        expect(link?.type, 'email_message');
+        expect(link?.id, 'msg-123');
+        expect(link?.mailbox, 'info@a1.test');
+        expect(
+          DeepLinks.take('email'),
+          isNull,
+          reason: 'taken once, not reopened on rebuild',
+        );
+      },
+    );
   }
 
-  testWidgets('tapping a phone push opens what it is about, like its row', (tester) async {
+  testWidgets('tapping a phone push opens what it is about, like its row', (
+    tester,
+  ) async {
     // The runner forwards the push's notification_id on this channel.
     addTearDown(() => DeepLinks.pending.value = null);
     final opened = <String>[];
-    await _pumpWithItem(tester, item: _email, onOpenModule: (m, f, r) => opened.add(m));
+    await _pumpWithItem(
+      tester,
+      item: _email,
+      onOpenModule: (m, f, r) => opened.add(m),
+    );
 
     await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
       'com.ezbizi.app/notification_tap',
-      const StandardMethodCodec().encodeMethodCall(const MethodCall('tapped', 'n9')),
+      const StandardMethodCodec().encodeMethodCall(
+        const MethodCall('tapped', 'n9'),
+      ),
       (_) {},
     );
     await tester.pumpAndSettle();
@@ -389,39 +434,48 @@ void main() {
     expect(DeepLinks.take('email')?.id, 'msg-123');
   });
 
-  testWidgets('a cold-start push tap, before the first fetch lands, still opens its record', (
-    tester,
-  ) async {
-    // Android, 2026-10-12: from a stopped app the tap opened the PANEL — the
-    // lookup ran against the still-empty list while the first fetch was out.
-    addTearDown(() => DeepLinks.pending.value = null);
-    final opened = <String>[];
-    final api = ApiClient(
-      client: MockClient((request) async {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-        if (request.method == 'POST') return _json({'data': {}});
-        return _json({'data': [_email], 'meta': {'unread': 1}});
-      }),
-    );
+  testWidgets(
+    'a cold-start push tap, before the first fetch lands, still opens its record',
+    (tester) async {
+      // Android, 2026-10-12: from a stopped app the tap opened the PANEL — the
+      // lookup ran against the still-empty list while the first fetch was out.
+      addTearDown(() => DeepLinks.pending.value = null);
+      final opened = <String>[];
+      final api = ApiClient(
+        client: MockClient((request) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          if (request.method == 'POST') return _json({'data': {}});
+          return _json({
+            'data': [_email],
+            'meta': {'unread': 1},
+          });
+        }),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: EzBiziTheme.light(),
-        home: Scaffold(
-          appBar: AppBar(
-            actions: [NotificationBell(api: api, onOpenModule: (m, f, r) => opened.add(m))],
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            appBar: AppBar(
+              actions: [
+                NotificationBell(
+                  api: api,
+                  onOpenModule: (m, f, r) => opened.add(m),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-    OsNotifications.onClick?.call('n9'); // first fetch still in flight
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 60));
-    }
+      );
+      OsNotifications.onClick?.call('n9'); // first fetch still in flight
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
 
-    expect(opened, ['email']);
-    expect(DeepLinks.take('email')?.id, 'msg-123');
-  });
+      expect(opened, ['email']);
+      expect(DeepLinks.take('email')?.id, 'msg-123');
+    },
+  );
 
   testWidgets('a row leads with whose it is, like the push', (tester) async {
     // Jose, 2026-10-22: "EzBizi - Company - Branch", then what happened,
@@ -439,9 +493,13 @@ void main() {
     expect(find.text('New email'), findsOneWidget);
   });
 
-  testWidgets('a link for another module waits for that module', (tester) async {
+  testWidgets('a link for another module waits for that module', (
+    tester,
+  ) async {
     addTearDown(() => DeepLinks.pending.value = null);
-    DeepLinks.open(const DeepLink(module: 'email', type: 'email_message', id: 'm'));
+    DeepLinks.open(
+      const DeepLink(module: 'email', type: 'email_message', id: 'm'),
+    );
 
     expect(DeepLinks.take('leads'), isNull);
     expect(DeepLinks.take('email')?.id, 'm');
@@ -449,42 +507,62 @@ void main() {
 
   // Jose, 2026-10-05: "an option turn notifications on or off (individually
   // for each user, something they can inside the notification button sidebar)".
-  testWidgets("the panel holds each person's own Alert me switch, and it saves", (
+  testWidgets(
+    "the panel holds each person's own Alert me switch, and it saves",
+    (tester) async {
+      final patches = <Object?>[];
+      await _pumpWithSession(
+        tester,
+        preferences: {},
+        items: () => [],
+        patches: patches,
+      );
+
+      await tester.tap(find.byIcon(Icons.notifications_none));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('notification-settings')));
+      await tester.pumpAndSettle();
+
+      final alertMe = find.widgetWithText(SwitchListTile, 'Alert me');
+      expect(
+        tester.widget<SwitchListTile>(alertMe).value,
+        isTrue,
+        reason: 'Never touched means on, or every existing user goes silent.',
+      );
+
+      await tester.tap(alertMe);
+      await tester.pumpAndSettle();
+
+      expect(patches, [
+        {
+          'preferences': {'notifications.alerts': false},
+        },
+      ]);
+      expect(tester.widget<SwitchListTile>(alertMe).value, isFalse);
+    },
+  );
+
+  testWidgets('a person can choose to hear only from one company', (
     tester,
   ) async {
-    final patches = <Object?>[];
-    await _pumpWithSession(tester, preferences: {}, items: () => [], patches: patches);
-
-    await tester.tap(find.byIcon(Icons.notifications_none));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('notification-settings')));
-    await tester.pumpAndSettle();
-
-    final alertMe = find.widgetWithText(SwitchListTile, 'Alert me');
-    expect(tester.widget<SwitchListTile>(alertMe).value, isTrue,
-        reason: 'Never touched means on, or every existing user goes silent.');
-
-    await tester.tap(alertMe);
-    await tester.pumpAndSettle();
-
-    expect(patches, [
-      {
-        'preferences': {'notifications.alerts': false},
-      },
-    ]);
-    expect(tester.widget<SwitchListTile>(alertMe).value, isFalse);
-  });
-
-  testWidgets('a person can choose to hear only from one company', (tester) async {
     // Bar, 2026-10-22: "only the Everdoors notifications".
     final patches = <Object?>[];
-    await _pumpWithSession(tester, preferences: {}, items: () => [], patches: patches);
+    await _pumpWithSession(
+      tester,
+      preferences: {},
+      items: () => [],
+      patches: patches,
+    );
 
     await tester.tap(find.byIcon(Icons.notifications_none));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('notification-settings')));
     await tester.pumpAndSettle();
-    expect(find.text('All companies'), findsOneWidget, reason: 'nobody has chosen: all');
+    expect(
+      find.text('All companies'),
+      findsOneWidget,
+      reason: 'nobody has chosen: all',
+    );
 
     await tester.tap(find.text('Notify me about'));
     await tester.pumpAndSettle();
@@ -502,37 +580,53 @@ void main() {
 
   // Jose, 2026-11-13: the panel shows only notifications; the gear opens the
   // settings, which include an on/off per module.
-  testWidgets('the panel holds only notifications; the gear opens per-module settings', (
+  testWidgets(
+    'the panel holds only notifications; the gear opens per-module settings',
+    (tester) async {
+      final patches = <Object?>[];
+      await _pumpWithSession(
+        tester,
+        preferences: {},
+        items: () => [],
+        patches: patches,
+      );
+
+      await tester.tap(find.byIcon(Icons.notifications_none));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Alert me'),
+        findsNothing,
+        reason: 'settings are behind the gear',
+      );
+
+      await tester.tap(find.byKey(const Key('notification-settings')));
+      await tester.pumpAndSettle();
+      expect(find.text('Notification settings'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('notification-module-leads')));
+      await tester.pumpAndSettle();
+
+      expect(patches, [
+        {
+          'preferences': {
+            'notifications.muted_modules': ['leads'],
+          },
+        },
+      ]);
+    },
+  );
+
+  testWidgets('with alerts on, a new notification pops up (the control)', (
     tester,
   ) async {
-    final patches = <Object?>[];
-    await _pumpWithSession(tester, preferences: {}, items: () => [], patches: patches);
-
-    await tester.tap(find.byIcon(Icons.notifications_none));
-    await tester.pumpAndSettle();
-    expect(find.text('Alert me'), findsNothing, reason: 'settings are behind the gear');
-
-    await tester.tap(find.byKey(const Key('notification-settings')));
-    await tester.pumpAndSettle();
-    expect(find.text('Notification settings'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('notification-module-leads')));
-    await tester.pumpAndSettle();
-
-    expect(patches, [
-      {
-        'preferences': {
-          'notifications.muted_modules': ['leads'],
-        },
-      },
+    expect(await _popUpsAfterAnArrival(tester, alerts: true), [
+      'New Live Chat Lead',
     ]);
   });
 
-  testWidgets('with alerts on, a new notification pops up (the control)', (tester) async {
-    expect(await _popUpsAfterAnArrival(tester, alerts: true), ['New Live Chat Lead']);
-  });
-
-  testWidgets('with alerts off, the same notification does not pop up', (tester) async {
+  testWidgets('with alerts off, the same notification does not pop up', (
+    tester,
+  ) async {
     // Same arrival, same bell, one preference different. Without the control
     // above, this would pass just as well if pop-ups had stopped working.
     expect(await _popUpsAfterAnArrival(tester, alerts: false), isEmpty);
@@ -598,7 +692,12 @@ Future<void> _pumpWithSession(
             'role': {'id': 'role-1', 'name': 'Administrator'},
             'permissions': <String>[],
             'modules': [
-              {'key': 'leads', 'label': 'Leads', 'available': true, 'reachable': true},
+              {
+                'key': 'leads',
+                'label': 'Leads',
+                'available': true,
+                'reachable': true,
+              },
             ],
             'preferences': preferences,
             'organization': {
@@ -641,7 +740,9 @@ Future<void> _pumpWithSession(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        appBar: AppBar(actions: [NotificationBell(api: api, session: session)]),
+        appBar: AppBar(
+          actions: [NotificationBell(api: api, session: session)],
+        ),
       ),
     ),
   );
@@ -732,7 +833,11 @@ const _email = {
   'meta': {
     'module': 'email',
     'filter': null,
-    'record': {'type': 'email_message', 'id': 'msg-123', 'mailbox': 'info@a1.test'},
+    'record': {
+      'type': 'email_message',
+      'id': 'msg-123',
+      'mailbox': 'info@a1.test',
+    },
   },
   'read_at': null,
   'created_at': '2026-10-12T12:00:00+00:00',
@@ -800,7 +905,9 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(appBar: AppBar(actions: [NotificationBell(api: api)])),
+      home: Scaffold(
+        appBar: AppBar(actions: [NotificationBell(api: api)]),
+      ),
     ),
   );
 
