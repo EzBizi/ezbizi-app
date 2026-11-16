@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../widgets/list_table.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/job_money.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
@@ -288,10 +289,19 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     _loadAccounts();
     _accountSearch.addListener(() => setState(() {}));
     _campaignSearch.addListener(() => setState(() {}));
+    // A schedule flipped or set elsewhere: its on/off column re-reads. The
+    // report is Google's, read live and cached; it is not asked again here.
+    _live = LiveChanges.of(widget.api).subscribe({'ad_schedules'}, (_) {
+      final id = _selected;
+      if (id != null) return _loadSchedules(id);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _accountSearch.dispose();
     _campaignSearch.dispose();
     _tableBody.dispose();

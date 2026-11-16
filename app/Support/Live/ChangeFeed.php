@@ -60,6 +60,12 @@ class ChangeFeed
         'inspection_reports' => 'inspection.reports.view',
         'services' => 'services.view',
         'service_taxonomy' => 'services.view',
+        // A post and its pages (sent, failed, approved); Marketing's Posts pane.
+        'social_posts' => ['marketing.dashboard.view', 'marketing.compose.view', 'marketing.calendar.view'],
+        // An ad on/off schedule, flipped by the minute applier.
+        'ad_schedules' => ['ads_performance.view', 'ads_manager.view'],
+        // An inbox: new mail (the watcher's mark), seen, dealt with, snoozed.
+        'mailboxes' => ['email.view', 'email.inbox.view'],
     ];
 
     /**
@@ -77,6 +83,8 @@ class ChangeFeed
         'phone_calls' => 'readableCalls',
         'phone_messages' => 'readableMessages',
         'membership_promotions' => 'readablePromotions',
+        'social_posts' => 'readableSocialPosts',
+        'mailboxes' => 'readableMailboxes',
     ];
 
     /** One reply holds at most this many; more says reload. */
@@ -265,6 +273,52 @@ class ChangeFeed
         return $promotions
             ->filter(fn ($p) => array_diff(array_map('strval', (array) $p->franchise_ids), array_keys($mine)) === [])
             ->map(fn ($p) => (string) $p->id)->values()->all();
+    }
+
+    /**
+     * Posts with a page the reader reaches (SocialConnectionAccess, its
+     * organization-view arm: answered from reach, not from the view).
+     *
+     * @param  string[]  $ids
+     * @return string[]
+     */
+    private static function readableSocialPosts(User $user, array $ids): array
+    {
+        if ($user->canActOnOrganization($user->organization)) {
+            return $ids;
+        }
+        $access = app(\App\Support\Social\SocialConnectionAccess::class);
+        $connections = \App\Models\SocialConnection::withoutGlobalScopes()
+            ->where('organization_id', $user->organization_id)
+            ->whereIn('id', \App\Models\SocialPostTarget::withoutGlobalScopes()
+                ->whereIn('social_post_id', $ids)->select('social_connection_id'))
+            ->get();
+        $branchCompanies = $user->reachableFranchises()->pluck('company_id')->all();
+        $open = $connections->filter(fn ($c) => match ($c->scope_type) {
+            \App\Models\SocialConnection::SCOPE_ORGANIZATION => true,
+            \App\Models\SocialConnection::SCOPE_COMPANY => $access->reaches($user, $c)
+                || in_array($c->scope_id, $branchCompanies, true),
+            default => $access->reaches($user, $c),
+        })->modelKeys();
+
+        return \App\Models\SocialPostTarget::withoutGlobalScopes()
+            ->whereIn('social_post_id', $ids)->whereIn('social_connection_id', $open)
+            ->distinct()->pluck('social_post_id')->map(fn ($id) => (string) $id)->all();
+    }
+
+    /**
+     * Inboxes the reader may open: grant and reach, or given by name
+     * (MailboxAccess::readable, as GET email/inbox asks).
+     *
+     * @param  string[]  $ids
+     * @return string[]
+     */
+    private static function readableMailboxes(User $user, array $ids): array
+    {
+        $readable = app(\App\Support\Email\MailboxAccess::class)->readable($user)
+            ->map(fn ($m) => (string) $m->getKey())->all();
+
+        return array_values(array_intersect($ids, $readable));
     }
 
     /** @param  string[]  $franchises  @return string[] */
