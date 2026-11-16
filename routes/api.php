@@ -2559,6 +2559,8 @@ Route::prefix('v1')
         // Managing a post after Publish: from the Dashboard's side panel or Compose.
         Route::middleware('permission:marketing.dashboard.view,marketing.compose.view')->group(function () {
             Route::patch('social/posts/{post}', [SocialPostsController::class, 'update']);
+            Route::post('social/posts/{post}/media', [SocialPostsController::class, 'media']);
+            Route::get('social/posts/{post}/media', [SocialPostsController::class, 'mediaFile']);
             Route::delete('social/posts/{post}', [SocialPostsController::class, 'cancel']);
             Route::post('social/posts/{post}/targets/{target}/dismiss', [SocialPostsController::class, 'dismiss']);
             Route::delete('social/posts/{post}/targets/{target}/remote', [SocialPostsController::class, 'deleteRemote']);

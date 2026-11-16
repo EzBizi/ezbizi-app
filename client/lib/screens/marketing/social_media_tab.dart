@@ -3,12 +3,14 @@ import 'dart:async';
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 
 import '../../widgets/list_search.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import 'clock_label.dart';
+import 'comments_inbox_tab.dart';
 import 'connection_setup.dart';
 import 'instagram_comments_panel.dart';
 import 'qr_codes_tab.dart';
@@ -91,6 +93,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     ('compose', 'Compose', Icons.edit_outlined),
     ('calendar', 'Calendar', Icons.calendar_month_outlined),
     ('accounts', 'Accounts', Icons.link_outlined),
+    ('comments', 'Comments', Icons.forum_outlined),
     ('qr_codes', 'QR Codes', Icons.qr_code_2_outlined),
   ];
 
@@ -110,6 +113,26 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
 
   List<_SocialNetwork> _providers = const [];
   List<_SocialConnection> _connections = const [];
+
+  /// Unreplied comments across the accounts, for the Comments tab's badge.
+  int _unreplied = 0;
+
+  List<CommentSource> get _commentSources => [
+    for (final c in _connections)
+      if (CommentsInbox.hasComments(c.provider))
+        (id: c.id, name: c.displayName, provider: c.provider),
+  ];
+
+  Future<void> _countComments() async {
+    if (!_mayOpen('comments') || _commentSources.isEmpty) return;
+    final read = await CommentsInbox.load(widget.api, _commentSources);
+    if (mounted) {
+      setState(
+        () => _unreplied = read.comments.where((c) => c.unreplied).length,
+      );
+    }
+  }
+
   List<_SentPost> _posts = const [];
   String? _loadError;
   Timer? _poll;
@@ -240,6 +263,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     });
 
     _watchPending();
+    unawaited(_countComments());
     await _loadFiltered();
   }
 
@@ -436,6 +460,12 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
         child: _PostDetail(
           post: post,
           connections: _connections,
+          // The words and the picture, edited in place before it goes out
+          // (Jose, 2026-11-16).
+          api: _canPost ? widget.api : null,
+          pickMedia: widget.pickMedia,
+          canEditLibrary: _canPost,
+          onSaved: _canPost ? _loadPosts : null,
           // The panel closes and the composer follows the account, the same
           // moment a new post gets.
           onRetry: _canPost
@@ -728,11 +758,22 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
           labels: [for (final pane in shown) (pane.$2, pane.$3)],
           selected: shown.indexWhere((p) => p.$1 == current),
           onSelected: (i) => setState(() => _tab = shown[i].$1),
+          // The unreplied comments, as a count beside Comments.
+          missing: [
+            for (final pane in shown) pane.$1 == 'comments' ? _unreplied : 0,
+          ],
         ),
         const Divider(height: 1),
         Expanded(
           child: current == 'qr_codes'
               ? QrCodesTab(api: widget.api, session: widget.session)
+              : current == 'comments'
+              ? CommentsInbox(
+                  api: widget.api,
+                  sources: _commentSources,
+                  canAnswer: _canPost,
+                  onUnreplied: (n) => setState(() => _unreplied = n),
+                )
               : current != 'accounts'
               ? _PostsPane(
                   api: widget.api,
@@ -3706,6 +3747,43 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
   /// The posts on the days drawn, from the server's date range.
   List<_SentPost> _range = const [];
 
+  /// The day whose list is open under the week (Jose, 2026-11-16: "if i
+  /// click on the day it should show me the list"); null when none is.
+  DateTime? _day;
+
+  /// Every post that day, read on its own: a day can hold fifty, more than
+  /// the month's read is sure to carry. Null while it loads.
+  List<_SentPost>? _dayPosts;
+  final TextEditingController _dayQuery = TextEditingController();
+
+  @override
+  void dispose() {
+    _dayQuery.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showDay(DateTime day) async {
+    setState(() {
+      _day = day;
+      _dayPosts = null;
+      _dayQuery.clear();
+    });
+    final api = widget.api;
+    if (api == null) {
+      setState(() => _dayPosts = _postsByDay(widget.posts)[day] ?? const []);
+      return;
+    }
+    final response = await api.get('/social/posts', {
+      'from': formatCalendarDay(day),
+      'to': formatCalendarDay(day),
+    });
+    if (!mounted || _day != day) return;
+    final posts = response.ok
+        ? _SocialMediaTabState._readPosts(response)
+        : const <_SentPost>[];
+    setState(() => _dayPosts = _postsByDay(posts)[day] ?? const []);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -3765,6 +3843,7 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
       formats: widget.formats,
       onOpen: widget.onOpen,
       onDay: widget.onDay,
+      onShowDay: _showDay,
     );
     final month = _MonthCard(
       month: _month,
@@ -3778,6 +3857,22 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _WeekCard(entries: entries),
+        if (_day != null) ...[
+          const SizedBox(height: 12),
+          _DayList(
+            day: _day!,
+            posts: _dayPosts,
+            query: _dayQuery,
+            formats: widget.formats,
+            onOpen: widget.onOpen,
+            onCompose:
+                widget.onDay == null ||
+                    _day!.isBefore(_CalendarsColumn._dateOnly(DateTime.now()))
+                ? null
+                : () => widget.onDay!(_day!),
+            onClose: () => setState(() => _day = null),
+          ),
+        ],
         const SizedBox(height: 12),
         if (widget.fill) Expanded(child: month) else month,
       ],
@@ -3819,6 +3914,11 @@ class _WeekCard extends StatelessWidget {
                 children: [
                   for (var i = 0; i < 7; i++)
                     _DayCell(
+                      key: Key('week-day-${monday.add(Duration(days: i)).day}'),
+                      onTap: entries.tapFor(
+                        monday.add(Duration(days: i)),
+                        today,
+                      ),
                       height: 88,
                       theme: theme,
                       label: '${monday.add(Duration(days: i)).day}',
@@ -3957,15 +4057,175 @@ class _MonthCard extends StatelessWidget {
     final date = DateTime(month.year, month.month, day);
     return _DayCell(
       key: Key('month-day-$day'),
-      onTap: entries.onDay == null || date.isBefore(today)
-          ? null
-          : () => entries.onDay!(date),
+      onTap: entries.tapFor(date, today),
       theme: theme,
       square: height == null,
       height: height,
       label: '$day',
       highlight: date == today,
       entries: entries.on(date),
+    );
+  }
+}
+
+/// Every post on one day, inline under the week: time, network, status and
+/// its first words. Scrolls, and a long day gets a search box. A row opens
+/// the same Post panel.
+class _DayList extends StatelessWidget {
+  const _DayList({
+    required this.day,
+    required this.posts,
+    required this.query,
+    required this.formats,
+    required this.onOpen,
+    required this.onClose,
+    this.onCompose,
+  });
+
+  final DateTime day;
+  final List<_SentPost>? posts;
+  final TextEditingController query;
+  final DisplayFormats formats;
+  final void Function(_SentPost)? onOpen;
+  final VoidCallback onClose;
+  final VoidCallback? onCompose;
+
+  /// More than this, and the list gets a search box.
+  static const searchFrom = 8;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final all = posts;
+
+    return DashboardCard(
+      key: const Key('social-day-list'),
+      title:
+          '${shortWeekdays[day.weekday - 1]} ${day.day} '
+          '${shortMonths[day.month - 1]}'
+          '${all == null ? '' : ' · ${all.length} post${all.length == 1 ? '' : 's'}'}',
+      icon: Icons.view_list_outlined,
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: query,
+        builder: (context, value, _) {
+          if (all == null) {
+            return const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final term = value.text.trim().toLowerCase();
+          final shown = term.isEmpty
+              ? all
+              : [
+                  for (final p in all)
+                    if (p.body.toLowerCase().contains(term) ||
+                        p.targets.any(
+                          (t) => t.account.toLowerCase().contains(term),
+                        ))
+                      p,
+                ];
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  if (all.length > searchFrom)
+                    Expanded(
+                      child: ListSearch(
+                        key: const Key('social-day-search'),
+                        controller: query,
+                        hint: 'Search this day',
+                        onClear: query.clear,
+                      ),
+                    )
+                  else
+                    const Spacer(),
+                  if (onCompose != null)
+                    TextButton.icon(
+                      key: const Key('social-day-compose'),
+                      onPressed: onCompose,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('New post'),
+                    ),
+                  IconButton(
+                    key: const Key('social-day-close'),
+                    tooltip: 'Close',
+                    onPressed: onClose,
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              if (shown.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(
+                    all.isEmpty ? 'No posts this day.' : 'Nothing matches.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: ListView.builder(
+                    key: const Key('social-day-rows'),
+                    shrinkWrap: true,
+                    itemCount: shown.length,
+                    itemBuilder: (context, i) => _dayRow(context, shown[i]),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _dayRow(BuildContext context, _SentPost post) {
+    final theme = Theme.of(context);
+    final when = post.when;
+    final (status, tone) = _statusOf(post);
+    final networks = {
+      for (final t in post.targets)
+        if (t.provider != null) t.provider!,
+    };
+
+    return InkWell(
+      key: Key('social-day-post-${post.id}'),
+      onTap: onOpen == null ? null : () => onOpen!(post),
+      mouseCursor: onOpen == null ? null : SystemMouseCursors.click,
+      borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 64,
+              child: Text(
+                when == null ? '' : _clockShort(when, formats),
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            for (final n in networks.take(3)) ...[
+              SocialNetworkMark(network: n, size: 18),
+              const SizedBox(width: 4),
+            ],
+            const SizedBox(width: 4),
+            StatusPill(status, tone: tone, dense: true),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                post.preview,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -4038,7 +4298,7 @@ class _WeekdayHeader extends StatelessWidget {
   }
 }
 
-class _DayCell extends StatelessWidget {
+class _DayCell extends StatefulWidget {
   const _DayCell({
     super.key,
     required this.theme,
@@ -4063,14 +4323,32 @@ class _DayCell extends StatelessWidget {
   final List<Widget> entries;
 
   @override
+  State<_DayCell> createState() => _DayCellState();
+}
+
+/// Hover tints a day that does something and shows the pointer (Jose,
+/// 2026-11-16: "so it feels more interactive and you know you can click
+/// them"). The theme's own hover colour, so it reads in light and dark.
+class _DayCellState extends State<_DayCell> {
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
+    final theme = widget.theme;
+    final label = widget.label;
+    final highlight = widget.highlight;
+    final onTap = widget.onTap;
+    final height = widget.height;
+    final base = widget.empty
+        ? theme.colorScheme.surface
+        : highlight
+        ? theme.colorScheme.primary.withValues(alpha: 0.12)
+        : theme.colorScheme.surfaceContainerLowest;
     final box = Container(
       decoration: BoxDecoration(
-        color: empty
-            ? theme.colorScheme.surface
-            : highlight
-            ? theme.colorScheme.primary.withValues(alpha: 0.12)
-            : theme.colorScheme.surfaceContainerLowest,
+        color: _hover && onTap != null
+            ? Color.alphaBlend(theme.hoverColor, base)
+            : base,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: highlight ? theme.colorScheme.primary : theme.dividerColor,
@@ -4089,7 +4367,7 @@ class _DayCell extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      label!,
+                      label,
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontWeight: highlight
                             ? FontWeight.w700
@@ -4099,7 +4377,7 @@ class _DayCell extends StatelessWidget {
                             : theme.colorScheme.onSurface,
                       ),
                     ),
-                    ...entries,
+                    ...widget.entries,
                   ],
                 ),
               ),
@@ -4110,10 +4388,15 @@ class _DayCell extends StatelessWidget {
       padding: const EdgeInsets.only(right: 3, bottom: 3),
       child: onTap == null
           ? box
-          : InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(8),
-              child: box,
+          : MouseRegion(
+              cursor: SystemMouseCursors.click,
+              onEnter: (_) => setState(() => _hover = true),
+              onExit: (_) => setState(() => _hover = false),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onTap,
+                child: box,
+              ),
             ),
     );
 
@@ -4121,7 +4404,7 @@ class _DayCell extends StatelessWidget {
       return SizedBox(height: height, child: padded);
     }
 
-    if (square) {
+    if (widget.square) {
       return AspectRatio(aspectRatio: 1, child: padded);
     }
 
@@ -5185,10 +5468,35 @@ class _PostOutcome extends StatelessWidget {
 }
 
 /// A post opened from the calendar: what went out, then every account.
-class _PostDetail extends StatelessWidget {
+/// Google's photo rules for a post, the same as
+/// GoogleBusinessProfilePublisher::refusesImage on the server: JPG or PNG,
+/// 10 KB to 5 MB, at least 250 x 250. Null when the picture passes.
+String? gbpRefusesImage(String name, List<int> bytes) {
+  final dot = name.lastIndexOf('.');
+  final ext = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
+  if (!const ['jpg', 'jpeg', 'png'].contains(ext)) {
+    return 'Google Business Profile takes a JPG or PNG picture.';
+  }
+  if (bytes.length < 10 * 1024 || bytes.length > 5 * 1024 * 1024) {
+    return 'Google Business Profile takes a picture from 10 KB to 5 MB; '
+        'this one is ${(bytes.length / 1024).round()} KB.';
+  }
+  final data = Uint8List.fromList(bytes);
+  final info = img.findDecoderForData(data)?.startDecode(data);
+  if (info == null || info.width < 250 || info.height < 250) {
+    return 'Google Business Profile takes a picture at least 250 x 250 pixels.';
+  }
+  return null;
+}
+
+class _PostDetail extends StatefulWidget {
   const _PostDetail({
     required this.post,
     required this.connections,
+    this.api,
+    this.pickMedia,
+    this.canEditLibrary = false,
+    this.onSaved,
     this.onRetry,
     this.onEdit,
     this.onCancel,
@@ -5204,6 +5512,13 @@ class _PostDetail extends StatelessWidget {
   final _SentPost post;
   final List<_SocialConnection> connections;
 
+  /// The words and picture are edited here, in place, while nothing has gone
+  /// out (Jose, 2026-11-16). Null [api] or [onSaved] draws them read-only.
+  final ApiClient? api;
+  final Future<PickedBytes?> Function()? pickMedia;
+  final bool canEditLibrary;
+  final VoidCallback? onSaved;
+
   /// Approve (true) or disapprove (false) one listing's draft; null without
   /// the right to post.
   final void Function(_SentTarget, bool approve)? onDecide;
@@ -5214,10 +5529,168 @@ class _PostDetail extends StatelessWidget {
   final void Function(_SentTarget)? onDeleteRemote;
 
   @override
+  State<_PostDetail> createState() => _PostDetailState();
+}
+
+class _PostDetailState extends State<_PostDetail> {
+  late final TextEditingController _text = TextEditingController(
+    text: widget.post.body,
+  );
+
+  /// The picture as stored, read for the preview; null while unread or none.
+  List<int>? _stored;
+
+  /// A new picture, picked here: an upload or a library item.
+  PickedBytes? _picked;
+  String? _libraryId;
+  bool _removed = false;
+  bool _saving = false;
+  String? _error;
+
+  _SentPost get post => widget.post;
+
+  /// The server's rule (assertStillScheduled with awaiting): nothing has gone
+  /// out, and at least one account is still waiting for its time or a yes.
+  bool get _unsent =>
+      post.targets.isNotEmpty &&
+      post.targets.every(
+        (t) => const [
+          'scheduled',
+          'awaiting_approval',
+          'failed',
+        ].contains(t.status),
+      ) &&
+      post.targets.any(
+        (t) => t.status == 'scheduled' || t.status == 'awaiting_approval',
+      );
+
+  bool get _editable => _unsent && widget.api != null && widget.onSaved != null;
+
+  bool get _toGoogle =>
+      post.targets.any((t) => t.provider == 'google_business_profile');
+
+  /// The tightest limit among the accounts it goes to; null when none has one.
+  int? get _limit {
+    final limits = [
+      for (final t in post.targets)
+        if (_bodyLimits[t.provider] != null) _bodyLimits[t.provider]!,
+    ];
+    if (limits.isEmpty) return null;
+    return limits.reduce((a, b) => a < b ? a : b);
+  }
+
+  bool get _dirty => _text.text != post.body || _picked != null || _removed;
+
+  @override
+  void initState() {
+    super.initState();
+    _text.addListener(() => setState(() {}));
+    final api = widget.api;
+    if (post.hasMedia && api != null) {
+      api.getBytes('/social/posts/${post.id}/media').then((bytes) {
+        if (mounted) setState(() => _stored = bytes);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _take(PickedBytes picked, {String? libraryId}) {
+    final refused = _toGoogle
+        ? gbpRefusesImage(picked.name, picked.bytes)
+        : null;
+    setState(() {
+      _error = refused;
+      if (refused != null) return;
+      _picked = picked;
+      _libraryId = libraryId;
+      _removed = false;
+    });
+  }
+
+  Future<void> _upload() async {
+    final picked = await widget.pickMedia?.call();
+    if (picked != null && mounted) _take(picked);
+  }
+
+  Future<void> _fromLibrary() async {
+    final api = widget.api!;
+    final item = await showMediaLibraryPanel(
+      context,
+      api: api,
+      pickMedia: widget.pickMedia ?? () async => null,
+      canEdit: widget.canEditLibrary,
+    );
+    if (item == null || !mounted) return;
+    final bytes = await api.getBytes('/social/library/${item['id']}/file');
+    if (bytes == null || !mounted) return;
+    _take(
+      PickedBytes('${item['name'] ?? ''}', bytes),
+      libraryId: '${item['id']}',
+    );
+  }
+
+  /// Words through PATCH, the picture through its own call; both audited by
+  /// the server as social.post_edited. True when everything saved.
+  Future<bool> _save() async {
+    final api = widget.api!;
+    final limit = _limit;
+    if (limit != null && _lengthOf(_text.text) > limit) {
+      setState(() => _error = 'At most $limit characters for these accounts.');
+      return false;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final calls = <Future<ApiResponse> Function()>[
+      if (_text.text != post.body)
+        () => api.patch('/social/posts/${post.id}', {'body': _text.text}),
+      if (_picked != null && _libraryId != null)
+        () => api.post('/social/posts/${post.id}/media', {
+          'library_item': _libraryId,
+        }),
+      if (_picked != null && _libraryId == null)
+        () => api.postFile(
+          '/social/posts/${post.id}/media',
+          'media',
+          _picked!.name,
+          _picked!.bytes,
+        ),
+      if (_removed)
+        () => api.post('/social/posts/${post.id}/media', {'remove': true}),
+    ];
+    for (final call in calls) {
+      final response = await call();
+      if (!mounted) return false;
+      if (!response.ok) {
+        setState(() {
+          _saving = false;
+          _error = response.reason;
+        });
+        return false;
+      }
+    }
+    setState(() => _saving = false);
+    widget.onSaved!();
+    return true;
+  }
+
+  Future<void> _approve(_SentTarget target) async {
+    // Approve sends what is stored, so an edit is saved first.
+    if (_editable && _dirty && !await _save()) return;
+    widget.onDecide!(target, true);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // The server's rule: editable and cancellable only while every account
-    // is still waiting for its time.
+    // The server's rule: rescheduling and cancelling only while every
+    // account is still waiting for its time.
     final waiting =
         post.targets.isNotEmpty &&
         post.targets.every((t) => t.status == 'scheduled');
@@ -5225,42 +5698,42 @@ class _PostDetail extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Quote(post: post),
+        if (_editable) _editor(theme) else _Quote(post: post),
         if (post.author != null) ...[
           const SizedBox(height: 6),
           Text('By ${post.author}', style: theme.textTheme.bodySmall),
         ],
-        if (waiting && (onEdit != null || onCancel != null)) ...[
+        if (waiting && (widget.onEdit != null || widget.onCancel != null)) ...[
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (onEdit != null)
+              if (widget.onEdit != null)
                 OutlinedButton.icon(
                   key: const Key('social-post-edit'),
-                  onPressed: onEdit,
+                  onPressed: widget.onEdit,
                   icon: const Icon(Icons.edit_outlined, size: 18),
                   label: const Text('Edit or reschedule'),
                 ),
-              if (onCancel != null)
+              if (widget.onCancel != null)
                 TextButton.icon(
                   key: const Key('social-post-cancel'),
-                  onPressed: onCancel,
+                  onPressed: widget.onCancel,
                   icon: const Icon(Icons.cancel_outlined, size: 18),
                   label: const Text('Cancel post'),
                 ),
             ],
           ),
         ],
-        if (onRetryAll != null &&
+        if (widget.onRetryAll != null &&
             post.targets.where((t) => t.status == 'failed').length > 1) ...[
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
             child: OutlinedButton.icon(
               key: const Key('social-post-retry-all'),
-              onPressed: onRetryAll,
+              onPressed: widget.onRetryAll,
               icon: const Icon(Icons.refresh, size: 18),
               label: Text(
                 'Retry all failed '
@@ -5269,7 +5742,7 @@ class _PostDetail extends StatelessWidget {
             ),
           ),
         ],
-        if (onDecide != null)
+        if (widget.onDecide != null)
           for (final target in post.targets)
             if (target.status == 'awaiting_approval') ...[
               const SizedBox(height: 10),
@@ -5281,12 +5754,14 @@ class _PostDetail extends StatelessWidget {
                   Text(target.account, style: theme.textTheme.bodyMedium),
                   FilledButton(
                     key: Key('social-approve-${target.id}'),
-                    onPressed: () => onDecide!(target, true),
+                    onPressed: _saving ? null : () => _approve(target),
                     child: const Text('Approve'),
                   ),
                   TextButton(
                     key: Key('social-disapprove-${target.id}'),
-                    onPressed: () => onDecide!(target, false),
+                    onPressed: _saving
+                        ? null
+                        : () => widget.onDecide!(target, false),
                     child: const Text('Disapprove'),
                   ),
                 ],
@@ -5296,13 +5771,138 @@ class _PostDetail extends StatelessWidget {
         for (final target in post.targets)
           _TargetLine(
             target: target,
-            drafts: _draftsFor(target, connections),
-            onRetry: onRetry == null ? null : () => onRetry!(target),
-            onDismiss: onDismiss == null ? null : () => onDismiss!(target),
-            onDeleteRemote: onDeleteRemote == null
+            drafts: _draftsFor(target, widget.connections),
+            onRetry: widget.onRetry == null
                 ? null
-                : () => onDeleteRemote!(target),
+                : () => widget.onRetry!(target),
+            onDismiss: widget.onDismiss == null
+                ? null
+                : () => widget.onDismiss!(target),
+            onDeleteRemote: widget.onDeleteRemote == null
+                ? null
+                : () => widget.onDeleteRemote!(target),
           ),
+      ],
+    );
+  }
+
+  /// The whole text in a field, its count against the tightest network, and
+  /// the picture with Upload / From library / Remove.
+  Widget _editor(ThemeData theme) {
+    final limit = _limit;
+    final count = _lengthOf(_text.text);
+    final over = limit != null && count > limit;
+    final shown = _picked?.bytes ?? (_removed ? null : _stored);
+    final hasPicture = _picked != null || (post.hasMedia && !_removed);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          key: const Key('social-post-text'),
+          controller: _text,
+          minLines: 4,
+          maxLines: null,
+          keyboardType: TextInputType.multiline,
+          decoration: const InputDecoration(labelText: 'Post'),
+        ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            limit == null ? '$count' : '$count / $limit',
+            key: const Key('social-post-count'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: over ? theme.colorScheme.error : null,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (hasPicture)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              key: const Key('social-post-image'),
+              height: 160,
+              color: theme.colorScheme.surfaceContainerHighest,
+              alignment: Alignment.center,
+              child: shown == null
+                  ? Icon(
+                      Icons.image_outlined,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    )
+                  : Image.memory(
+                      Uint8List.fromList(shown),
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => Icon(
+                        Icons.broken_image_outlined,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+            ),
+          ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (widget.pickMedia != null)
+              OutlinedButton.icon(
+                key: const Key('social-post-upload'),
+                onPressed: _saving ? null : _upload,
+                icon: const Icon(Icons.upload_outlined, size: 18),
+                label: Text(hasPicture ? 'Replace picture' : 'Add picture'),
+              ),
+            OutlinedButton.icon(
+              key: const Key('social-post-library'),
+              onPressed: _saving ? null : _fromLibrary,
+              icon: const Icon(Icons.photo_library_outlined, size: 18),
+              label: const Text('From library'),
+            ),
+            if (hasPicture)
+              TextButton.icon(
+                key: const Key('social-post-remove-image'),
+                onPressed: _saving
+                    ? null
+                    : () => setState(() {
+                        _picked = null;
+                        _libraryId = null;
+                        _removed = post.hasMedia;
+                        _error = null;
+                      }),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: const Text('Remove picture'),
+              ),
+          ],
+        ),
+        if (_toGoogle)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Google takes a JPG or PNG, 10 KB to 5 MB, at least 250 x 250.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              _error!,
+              key: const Key('social-post-error'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.tonal(
+            key: const Key('social-post-save'),
+            onPressed: _saving || !_dirty || over ? null : _save,
+            child: Text(_saving ? 'Saving…' : 'Save'),
+          ),
+        ),
       ],
     );
   }
@@ -5525,7 +6125,23 @@ class _DayEntries {
     required this.formats,
     required this.onOpen,
     this.onDay,
+    this.onShowDay,
   });
+
+  /// Open the day's list of every post.
+  final void Function(DateTime)? onShowDay;
+
+  /// A day with posts opens its list; an empty one from today on starts a
+  /// post there (review 2026-11-09 A23); otherwise nothing.
+  VoidCallback? tapFor(DateTime day, DateTime today) {
+    final show = onShowDay;
+    if (show != null && (byDay[day]?.isNotEmpty ?? false)) {
+      return () => show(day);
+    }
+    final compose = onDay;
+    if (compose == null || day.isBefore(today)) return null;
+    return () => compose(day);
+  }
 
   final Map<DateTime, List<_SentPost>> byDay;
   final String? outlined;
@@ -5557,6 +6173,7 @@ class _DayEntries {
             padding: const EdgeInsets.only(top: 2),
             child: Text(
               '+${posts.length - _room} more',
+              key: Key('day-more-${day.month}-${day.day}'),
               style: Theme.of(context).textTheme.labelSmall,
             ),
           ),
