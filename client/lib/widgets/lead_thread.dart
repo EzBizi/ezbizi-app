@@ -2466,6 +2466,12 @@ class _LeadThreadState extends State<LeadThread> {
               onPressed: () => _decideBooking('decline'),
               child: const Text('Decline'),
             ),
+            // Jose, 2026-11-16: another window, giving the asked-for one back.
+            OutlinedButton(
+              key: const ValueKey('booking-move'),
+              onPressed: () => _moveBooking(hm),
+              child: const Text('Another date…'),
+            ),
           ] else
             Text(
               '${status == 'approved' ? 'Approved' : 'Declined'}$by',
@@ -2601,6 +2607,50 @@ class _LeadThreadState extends State<LeadThread> {
         ],
       ),
     );
+  }
+
+  /// "Another date…": the area's open windows; the one picked is booked and
+  /// approved, the asked-for one given back (Jose, 2026-11-16).
+  Future<void> _moveBooking(String Function(Object?) hm) async {
+    final id = widget.lead['id'];
+    final days = await widget.api.get('/leads/$id/booking/days');
+    if (!mounted) return;
+    final open = [
+      if (days.ok && days.data is List)
+        for (final d in days.data as List)
+          for (final w in (d as Map)['windows'] as List) (date: '${d['date']}', start: '${(w as Map)['start_time']}', end: '${w['end_time']}'),
+    ];
+    if (open.isEmpty) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(days.ok ? 'No open window in the next weeks.' : days.message)),
+      );
+      return;
+    }
+    final pick = await showSidePanel<({String date, String start, String end})>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Another date',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final o in open)
+            ListTile(
+              key: ValueKey('booking-move-${o.date}-${o.start}'),
+              onTap: () => Navigator.pop(context, o),
+              title: Text([
+                if (DateTime.tryParse(o.date) case final d?) '${longWeekdays[d.weekday - 1]}, ${shortMonths[d.month - 1]} ${d.day}',
+                '${hm(o.start)} - ${hm(o.end)}',
+              ].join(' · ')),
+            ),
+        ]),
+      ),
+    );
+    if (pick == null || !mounted) return;
+    final response = await widget.api.post('/leads/$id/booking/move', {'date': pick.date, 'start_time': pick.start});
+    if (!mounted) return;
+    if (response.ok && response.data is Map) {
+      setState(() => _booking = Map<String, dynamic>.from(response.data as Map));
+    } else {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(response.message)));
+    }
   }
 
   Future<void> _decideBooking(String decision) async {

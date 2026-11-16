@@ -15,6 +15,7 @@ use App\Models\ServiceAreaZip;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Models\WebBooking;
+use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
 use App\Models\WorkizJob;
 use App\Services\Leads\CallTranscripts;
 use App\Services\Leads\LeadInsights;
@@ -309,7 +310,8 @@ class LeadsController extends Controller
         // canReply() is the channel's, so its two column rules are restated:
         // a Google lead must be a text, and a connected source must still be.
         if ($request->boolean('overdue')) {
-            $query->where('leads.status', Lead::STATUS_NEW)
+            // Or an online booking still waiting on Approve / Decline (Jose, 2026-11-16).
+            $query->where(fn ($query) => $query->whereIn('leads.id', Lead::pendingBookings()->select('lead_id'))->orWhere(fn ($query) => $query->where('leads.status', Lead::STATUS_NEW)
                 ->whereNotIn('leads.source', Lead::SOURCES_NO_REPLY_OWED)
                 ->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
                 ->where('leads.last_contact_at', '<=', now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes')))
@@ -320,7 +322,7 @@ class LeadsController extends Controller
                 // A form: until a note says somebody called back (Lead::awaitsCallback).
                 ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_WEBSITE_FORM)
                     ->orWhereNull('leads.note_updated_at')
-                    ->orWhereColumn('leads.note_updated_at', '<', 'leads.last_contact_at'));
+                    ->orWhereColumn('leads.note_updated_at', '<', 'leads.last_contact_at'))));
         }
 
         // Asked the price or a day on a call, nothing booked (Jose, 2026-10-12,
@@ -897,6 +899,48 @@ class LeadsController extends Controller
         }
 
         return response()->json(['data' => $this->presentBooking($booking, $lead)]);
+    }
+
+    /** GET leads/{lead}/booking/days: the open windows of the booking's area, as the website widget offers them. */
+    public function bookingDays(Lead $lead): JsonResponse
+    {
+        $this->authorize('view', $lead);
+        $booking = WebBooking::query()->where('lead_id', $lead->getKey())->firstOrFail();
+
+        return response()->json(['data' => $booking->serviceArea === null ? []
+            : app(WebEnquiriesController::class)->bookingOpen($booking->serviceArea, $lead->organization)]);
+    }
+
+    /**
+     * POST leads/{lead}/booking/move {date, start_time}: "Another date" (Jose,
+     * 2026-11-16: "choose another date, freeing the reserved spot"). The one
+     * row moves, so the old seat is given back as the new one is taken; then
+     * it is approved exactly as Approve does, with the new window in the text.
+     */
+    public function moveBooking(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        $data = $request->validate(['date' => ['required', 'date_format:Y-m-d'], 'start_time' => ['required', 'date_format:H:i']]);
+        $booking = WebBooking::query()->where('lead_id', $lead->getKey())->firstOrFail();
+
+        if ($booking->status !== WebBooking::PENDING) {
+            return response()->json(['message' => 'This request was already answered.'], 409);
+        }
+        if ($lead->job_id !== null) {
+            return response()->json(['message' => 'This customer already has a job booked. Nothing was sent.'], 409);
+        }
+
+        $window = collect($booking->serviceArea === null ? []
+            : app(WebEnquiriesController::class)->bookingOpen($booking->serviceArea, $lead->organization))
+            ->firstWhere('date', $data['date'])['windows'] ?? [];
+        $window = collect($window)->firstWhere('start_time', $data['start_time']);
+        if ($window === null) {
+            throw ValidationException::withMessages(['start_time' => 'That window is no longer open. Pick another.']);
+        }
+
+        $booking->forceFill(['date' => $data['date'], 'start_time' => $window['start_time'], 'end_time' => $window['end_time']])->save();
+
+        return $this->decideBooking($request, $lead, 'approve');
     }
 
     /** What the Book panel would have sent for a chat hold, filled from the chat. */
