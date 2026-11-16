@@ -35,6 +35,7 @@ import '../widgets/list_toolbar.dart';
 import '../widgets/mention_field.dart';
 import 'task_board_move.dart';
 import 'task_board_people.dart';
+import 'task_board_pinned.dart';
 import 'task_board_person_card.dart';
 import 'task_board_plan_views.dart';
 import 'task_board_sidebar.dart';
@@ -443,6 +444,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     DeepLinks.pending.removeListener(_takeLink);
     _rangeFocus.dispose();
     _tableScroll.dispose();
+    _sideways.dispose();
     _columnSearch.dispose();
     HardwareKeyboard.instance.removeHandler(_dragKey);
     _newTitle.dispose();
@@ -1189,43 +1191,43 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   Widget _bulkBar(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
+    return Material(
       key: const Key('task-bulk-bar'),
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Wrap(
-        spacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text(
-            '${_picked.length} selected',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSecondaryContainer,
+      elevation: 6,
+      color: theme.colorScheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '${_picked.length} selected',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.onSecondaryContainer,
+              ),
             ),
-          ),
-          for (final (op, label) in const [
-            ('move', 'Move'),
-            ('copy', 'Copy'),
-            ('duplicate', 'Duplicate'),
-            ('status', 'Status'),
-            ('assign', 'Assign'),
-            ('delete', 'Delete'),
-          ])
+            for (final (op, label) in const [
+              ('move', 'Move'),
+              ('copy', 'Copy'),
+              ('duplicate', 'Duplicate'),
+              ('status', 'Status'),
+              ('assign', 'Assign'),
+              ('delete', 'Delete'),
+            ])
+              TextButton(
+                key: ValueKey('task-bulk-$op'),
+                onPressed: () => _bulk(op),
+                child: Text(label),
+              ),
             TextButton(
-              key: ValueKey('task-bulk-$op'),
-              onPressed: () => _bulk(op),
-              child: Text(label),
+              key: const Key('task-bulk-clear'),
+              onPressed: () => setState(_picked.clear),
+              child: const Text('Clear'),
             ),
-          TextButton(
-            key: const Key('task-bulk-clear'),
-            onPressed: () => setState(_picked.clear),
-            child: const Text('Clear'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -3236,17 +3238,26 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   Widget _tableView(BuildContext context, {required bool cards}) {
     final list = _tableList(context, cards: cards);
     if (cards) return list;
-    return LayoutBuilder(
-      builder: (context, box) {
-        // 32: page padding; 2: the group box's border.
-        final need = 34 + _fixedWidth;
-        if (box.maxWidth >= need) return list;
-        return SingleChildScrollView(
+    // The bulk bar floats over the rows' foot, Monday's way: put above the
+    // table it pushed every row down under the pointer (QA 11-16, #28).
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        SidewaysScroll(
           key: const Key('tasks-table-scroll'),
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(width: need, height: box.maxHeight, child: list),
-        );
-      },
+          controller: _sideways,
+          // 32: page padding; 2: the group box's border.
+          contentWidth: 34 + _fixedWidth,
+          child: list,
+        ),
+        if (_picked.isNotEmpty)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 16,
+            child: Center(child: _bulkBar(context)),
+          ),
+      ],
     );
   }
 
@@ -3257,10 +3268,15 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       controller: _tableScroll,
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+          // Room under the last group for the floating bulk bar.
+          padding: EdgeInsets.fromLTRB(
+            16,
+            10,
+            16,
+            _picked.isNotEmpty && !cards ? 96 : 24,
+          ),
           sliver: SliverMainAxisGroup(
             slivers: [
-              if (_picked.isNotEmpty && !cards) box(_bulkBar(context)),
               for (final (i, g) in _shownGroups().indexed)
                 // The walkthrough's last step points at the first group.
                 i == 0
@@ -3819,7 +3835,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       context,
       SizedBox(
         height: 30,
-        child: Row(
+        child: PinnedRow(
+          sideways: _sideways,
+          stretch: false,
+          edge: theme.dividerColor,
           children: [
             const SizedBox(width: 6),
             SizedBox(
@@ -3844,7 +3863,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             if (shown('about')) blank(_w('about')),
             if (shown('updates')) blank(_w('updates')),
             if (_canEdit) blank(_widths.add),
-            const Spacer(),
           ],
         ),
       ),
@@ -3859,7 +3877,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       letterSpacing: 0.6,
       color: theme.colorScheme.onSurfaceVariant,
     );
-    Text h(String s) => Text(s.toUpperCase(), style: style, maxLines: 1);
+    // Cut with an ellipsis, the whole name on hover: an 80 px person column
+    // read "REVIE" (QA 11-16, #27).
+    Text h(String s) => Text(
+      s.toUpperCase(),
+      style: style,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
     Widget b(String key, double width) => _resizable(
       key,
       _cell(
@@ -3880,8 +3905,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       context,
       SizedBox(
         height: 28,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: PinnedRow(
+          sideways: _sideways,
+          edge: theme.dividerColor,
           children: [
             const SizedBox(width: 6),
             _resizable(
@@ -3929,7 +3955,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                   ),
                 ),
               ),
-            const Spacer(),
           ],
         ),
       ),
@@ -3954,8 +3979,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             : (d) => _rowRightClick(t, d.globalPosition),
         child: SizedBox(
           height: 38,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          // The colour strip and the Task cell stay put when the row
+          // scrolls sideways (QA 11-16, #26).
+          child: PinnedRow(
+            sideways: _sideways,
+            edge: theme.dividerColor,
             children: [
               Container(
                 width: 6,
@@ -4175,7 +4203,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 ),
               // Under the headings' +, so every column lines up.
               if (_canEdit) SizedBox(width: _widths.add),
-              const Spacer(),
             ],
           ),
         ),
@@ -4478,6 +4505,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   // ── Row drag: Esc cancels, the list scrolls near its edges ─────────
 
   final _tableScroll = ScrollController();
+
+  /// The table's sideways scroll, read by every row's [PinnedRow].
+  final _sideways = ScrollController();
   final _tableKey = GlobalKey(debugLabel: 'task-table');
 
   /// Esc was pressed during this drag: nothing it is dropped on moves.
