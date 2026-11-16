@@ -2597,8 +2597,10 @@ class _WidgetCard extends StatelessWidget {
      * across the row — which is the part that reads as uniform rather than
      * the outlines matching.
      */
+    // Mobile review 2026-11-13, P9: on a phone every card takes the full
+    // row, so a list of them is one width rather than ragged.
     return SizedBox(
-      width: 260,
+      width: MediaQuery.sizeOf(context).width < 600 ? double.infinity : 260,
       height: MediaQuery.textScalerOf(context).scale(132),
       child: Card(
         margin: EdgeInsets.zero,
