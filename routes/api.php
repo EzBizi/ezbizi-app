@@ -1036,6 +1036,7 @@ Route::prefix('v1')
         Route::get('task-boards', [TaskBoardsController::class, 'index']);
         Route::get('task-boards/{taskBoard}', [TaskBoardsController::class, 'show']);
         Route::get('task-boards/{taskBoard}/group-tasks', [TaskBoardsController::class, 'groupTasks']);
+        Route::get('task-boards/{taskBoard}/changes', [TaskBoardsController::class, 'changes']);
         // Custom boards and members, monday-style (inbox 0120).
         Route::post('task-boards', [TaskBoardsController::class, 'store']);
         Route::patch('task-boards/{taskBoard}', [TaskBoardsController::class, 'update']);

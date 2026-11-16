@@ -591,7 +591,11 @@ class ColumnCell extends StatelessWidget {
     this.onFilter,
     this.tasks,
     this.onAddFile,
+    this.taskDone = false,
   });
+
+  /// The task's status is a done one: its timeline is never overdue.
+  final bool taskDone;
 
   /// Searches customers and jobs for a link column's card.
   final ApiClient? api;
@@ -920,7 +924,7 @@ class ColumnCell extends StatelessWidget {
           style: text == null || text.isEmpty ? muted : null,
         );
       case 'timeline':
-        return TimelinePill(value: v, formats: formats);
+        return TimelinePill(value: v, formats: formats, done: taskDone);
       case 'number':
       case 'currency':
       case 'formula':
@@ -2282,6 +2286,11 @@ class InlineCellEditor extends StatefulWidget {
 
   final ApiClient? api;
 
+  /// How many cells are open for editing right now. A board's live refresh
+  /// patches rows in place but holds back inserts and removals while one is
+  /// open, so the row under the editor stays the row being edited.
+  static final editing = ValueNotifier<int>(0);
+
   @override
   State<InlineCellEditor> createState() => _InlineCellEditorState();
 }
@@ -2296,15 +2305,47 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
   bool get _inPlace =>
       const {'text', 'number', 'currency'}.contains(widget.column.type);
 
+  /// The value this cell last sent, and whether the value under it moved to
+  /// something else while it was open (a remote change: Monday, a colleague).
+  Object? _sent;
+  bool _elsewhere = false;
+
+  static bool _same(Object? a, Object? b) =>
+      a == b || jsonEncode(a) == jsonEncode(b);
+
   void _start() {
     setState(() => _editing = true);
+    InlineCellEditor.editing.value++;
     if (!_inPlace) _card.show();
   }
 
   void _stop() {
     if (!mounted || !_editing) return;
     if (_card.isShowing) _card.hide();
-    setState(() => _editing = false);
+    InlineCellEditor.editing.value--;
+    setState(() {
+      _editing = false;
+      _elsewhere = false;
+      _sent = null;
+    });
+  }
+
+  @override
+  void didUpdateWidget(InlineCellEditor old) {
+    super.didUpdateWidget(old);
+    // The editor keeps what the person typed; the marker says the saved
+    // value under it changed meanwhile.
+    if (_editing &&
+        !_same(widget.value, old.value) &&
+        !_same(widget.value, _sent)) {
+      _elsewhere = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_editing) InlineCellEditor.editing.value--;
+    super.dispose();
   }
 
   Widget _editor() => CallbackShortcuts(
@@ -2312,25 +2353,48 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
     child: TapRegion(
       groupId: this,
       onTapOutside: (_) => Future.microtask(_stop),
-      child: ColumnEditor(
-        api: widget.api,
-        column: widget.column,
-        value: widget.value,
-        people: widget.people,
-        formats: widget.formats,
-        autofocus: true,
-        onDone: () => Future.microtask(_stop),
-        onChanged: (v) {
-          widget.onChanged(v);
-          // A timeline is two days: stay open for the second.
-          if (widget.column.type != 'timeline' &&
-              widget.column.type != 'datetime' &&
-              !_inPlace) {
-            _stop();
-          }
-        },
+      child: Stack(
+        clipBehavior: Clip.none,
+        fit: StackFit.passthrough,
+        children: [
+          _columnEditor(),
+          if (_elsewhere)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: Tooltip(
+                message: 'Changed elsewhere; saving keeps yours',
+                child: Icon(
+                  key: const Key('cell-changed-elsewhere'),
+                  Icons.sync_problem,
+                  size: 14,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ),
+        ],
       ),
     ),
+  );
+
+  Widget _columnEditor() => ColumnEditor(
+    api: widget.api,
+    column: widget.column,
+    value: widget.value,
+    people: widget.people,
+    formats: widget.formats,
+    autofocus: true,
+    onDone: () => Future.microtask(_stop),
+    onChanged: (v) {
+      _sent = v;
+      widget.onChanged(v);
+      // A timeline is two days: stay open for the second.
+      if (widget.column.type != 'timeline' &&
+          widget.column.type != 'datetime' &&
+          !_inPlace) {
+        _stop();
+      }
+    },
   );
 
   /// What a copied cell carries: text as typed, anything else as JSON so a
@@ -2565,11 +2629,15 @@ class TimelinePill extends StatelessWidget {
     required this.value,
     required this.formats,
     this.now,
+    this.done = false,
   });
 
   final Object? value;
   final DisplayFormats formats;
   final DateTime? now;
+
+  /// The task is done: an end date in the past is finished, not late.
+  final bool done;
 
   @override
   Widget build(BuildContext context) {
@@ -2588,10 +2656,14 @@ class TimelinePill extends StatelessWidget {
     final to = DateTime.parse('${v['to']}').add(const Duration(days: 1));
     final at = now ?? DateTime.now();
     final total = to.difference(from).inMinutes;
-    final done = total <= 0
+    final elapsed = total <= 0
         ? 1.0
         : (at.difference(from).inMinutes / total).clamp(0.0, 1.0);
     final back = theme.colorScheme.onSurfaceVariant;
+    // Monday: an open task whose end date has passed wears red.
+    final day = DateTime(at.year, at.month, at.day);
+    // [to] is the midnight after the last day: late from that midnight on.
+    final overdue = !done && !to.isAfter(day);
     return Center(
       child: Container(
         height: 22,
@@ -2604,9 +2676,13 @@ class TimelinePill extends StatelessWidget {
           children: [
             FractionallySizedBox(
               key: const Key('timeline-elapsed'),
-              widthFactor: done,
+              widthFactor: elapsed,
               heightFactor: 1,
-              child: Container(color: theme.colorScheme.primary),
+              child: Container(
+                color: overdue
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.primary,
+              ),
             ),
             Center(
               child: Padding(
@@ -2616,7 +2692,7 @@ class TimelinePill extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: labelInk(back),
+                    color: labelInk(overdue ? theme.colorScheme.error : back),
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                   ),
