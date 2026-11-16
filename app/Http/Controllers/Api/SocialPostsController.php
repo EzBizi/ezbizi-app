@@ -501,7 +501,9 @@ class SocialPostsController extends Controller
     public function update(Request $request, SocialPost $post): JsonResponse
     {
         $user = $this->mayManage($request);
-        $this->assertStillScheduled($user, $post);
+        // A post waiting for approval has not gone out either (Jose,
+        // 2026-11-16): its words are edited here, and Approve sends them.
+        $this->assertStillScheduled($user, $post, orAwaiting: true);
 
         $data = $request->validate([
             'body' => ['sometimes', 'nullable', 'string', 'max:'.self::MAX_BODY],
@@ -551,6 +553,83 @@ class SocialPostsController extends Controller
             'scheduled_for' => $post->scheduled_for,
             'targets' => $post->targets->map(fn (SocialPostTarget $t) => $this->presentTarget($t, $t->connection))->all(),
         ]]);
+    }
+
+    /**
+     * POST social/posts/{post}/media: add, replace or remove the picture of a
+     * post nothing has sent yet (scheduled or waiting for approval). Multipart
+     * `media`, or `library_item`, or `remove=1`. A post going to a Business
+     * Profile listing takes only what Google takes (refusesImage).
+     */
+    public function media(Request $request, SocialPost $post): JsonResponse
+    {
+        $user = $this->mayManage($request);
+        $this->assertStillScheduled($user, $post, orAwaiting: true);
+        $this->limits->assertUploadArrived($request, 'media');
+
+        $data = $request->validate([
+            'media' => ['nullable', 'file', 'mimes:'.implode(',', SocialMediaKind::extensions()), 'max:'.$this->limits->maxKilobytes()],
+            'library_item' => ['nullable', 'string'],
+            'remove' => ['nullable', 'boolean'],
+        ], [
+            'media.mimes' => 'Social networks take pictures and video: '.implode(', ', SocialMediaKind::extensions()).'.',
+            'media.max' => $this->limits->tooLargeMessage(),
+        ]);
+
+        $file = $request->file('media');
+        [$oldPath, $oldDisk] = [$post->media_path, $post->media_disk];
+
+        if ($file === null && ($data['library_item'] ?? null) === null) {
+            if (! ($data['remove'] ?? false)) {
+                throw ValidationException::withMessages(['media' => 'Pick a picture, or remove the one it has.']);
+            }
+            if (trim((string) $post->body) === '') {
+                throw ValidationException::withMessages(['media' => 'A post with no words needs its picture. Write something first.']);
+            }
+            $post->forceFill(['media_path' => null, 'media_disk' => null]);
+        } else {
+            if ($file !== null) {
+                $bytes = (string) file_get_contents($file->getRealPath());
+                $extension = strtolower($file->getClientOriginalExtension());
+            } else {
+                $item = NewsletterAccess::visible(SocialLibraryItem::query(), $user)->find($data['library_item'])
+                    ?? throw ValidationException::withMessages(['library_item' => 'That picture is no longer in the library for this view.']);
+                $bytes = (string) $this->files->contents($item->path, $item->disk);
+                $extension = strtolower(pathinfo($item->path, PATHINFO_EXTENSION));
+            }
+
+            $toGoogle = $post->targets()->with('connection')->get()
+                ->contains(fn (SocialPostTarget $t) => $t->connection?->providerEnum() === SocialProvider::GoogleBusinessProfile);
+            if ($toGoogle && ($why = GoogleBusinessProfilePublisher::refusesImage($bytes, $extension)) !== null) {
+                throw ValidationException::withMessages(['media' => $why]);
+            }
+
+            $disk = $this->files->defaultDisk();
+            $post->forceFill([
+                'media_disk' => $disk,
+                'media_path' => $this->files->putContents($bytes, $this->files->directoryFor('social', $user->organization_id), $extension, $disk),
+            ]);
+        }
+
+        $this->audit->logChange('social.post_edited', $post, $user);
+        $post->save();
+        if ($oldPath !== null) {
+            $this->files->delete($oldPath, $oldDisk);
+        }
+
+        return response()->json(['data' => ['id' => $post->getKey(), 'has_media' => $post->media_path !== null]]);
+    }
+
+    /** GET social/posts/{post}/media: the post's picture, for the side panel's preview. */
+    public function mediaFile(Request $request, SocialPost $post): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $user = $request->user();
+        abort_unless($post->media_path !== null && $post->targets()->with('connection')->get()->contains(
+            fn (SocialPostTarget $t) => $t->connection !== null && $this->access->inView($user, $t->connection),
+        ), Status::HTTP_NOT_FOUND);
+
+        return $this->files->serve($post->media_path, $post->media_disk, PostPayload::mimeForExtension(
+            pathinfo($post->media_path, PATHINFO_EXTENSION)), basename($post->media_path), 'inline');
     }
 
     /** DELETE social/posts/{post}: cancel a post nobody has received yet. */
@@ -624,8 +703,12 @@ class SocialPostsController extends Controller
     }
 
     /** Every account of the post in view, and every one still waiting for its time. */
-    private function assertStillScheduled(User $user, SocialPost $post): void
+    private function assertStillScheduled(User $user, SocialPost $post, bool $orAwaiting = false): void
     {
+        $unsent = $orAwaiting
+            ? [SocialPostTarget::STATUS_SCHEDULED, SocialPostTarget::STATUS_AWAITING_APPROVAL]
+            : [SocialPostTarget::STATUS_SCHEDULED];
+
         $targets = $post->targets()->with('connection')->get();
 
         abort_if($targets->isEmpty() || $targets->contains(
@@ -635,8 +718,8 @@ class SocialPostsController extends Controller
         // A failed account (refused at compose) is not "going out": it does not
         // pin the rest of the post, and cancelling takes it with the post.
         if ($targets->contains(fn (SocialPostTarget $t) => ! in_array(
-            $t->status, [SocialPostTarget::STATUS_SCHEDULED, SocialPostTarget::STATUS_FAILED], true,
-        )) || ! $targets->contains(fn (SocialPostTarget $t) => $t->status === SocialPostTarget::STATUS_SCHEDULED)) {
+            $t->status, [...$unsent, SocialPostTarget::STATUS_FAILED], true,
+        )) || ! $targets->contains(fn (SocialPostTarget $t) => in_array($t->status, $unsent, true))) {
             throw ValidationException::withMessages([
                 'post' => 'This post has already started going out, so it can no longer be edited or cancelled.',
             ]);

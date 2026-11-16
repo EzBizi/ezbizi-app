@@ -227,6 +227,7 @@
                 "Compose",
                 "Calendar",
                 "Accounts",
+                "Comments",
                 "QR Codes"
             ],
             "within": {
@@ -234,6 +235,7 @@
                 "Compose": "Social Media Management",
                 "Calendar": "Social Media Management",
                 "Accounts": "Social Media Management",
+                "Comments": "Social Media Management",
                 "QR Codes": "Social Media Management"
             }
         },
@@ -564,6 +566,7 @@
         "leads.workiz.view",
         "marketing.accounts.view",
         "marketing.calendar.view",
+        "marketing.comments.view",
         "marketing.compose.view",
         "marketing.dashboard.view",
         "marketing.edit",

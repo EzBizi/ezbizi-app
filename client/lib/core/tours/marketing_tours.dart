@@ -23,7 +23,8 @@ const Map<String, Tour> marketingTours = {
         anchor: 'tour-marketing-social-panes',
         title: 'Social Media Management',
         body:
-            'Dashboard, Compose, Calendar, Accounts and QR Codes, as your role '
+            'Dashboard, Compose, Calendar, Accounts, Comments and QR Codes, as '
+            'your role '
             'allows.',
       ),
       TourStep(
@@ -150,6 +151,19 @@ const Map<String, Tour> marketingTours = {
         body:
             'The networks not connected here yet, and whether each is ready. '
             'One that is not says why.',
+      ),
+    ],
+  ),
+  'marketing/Social Media Management/Comments': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'social-comments-inbox',
+        title: 'Comments',
+        body:
+            'Every comment on your connected accounts, newest first, with the '
+            'post it is on. Filter by account, unreplied or hidden; Reply and '
+            'Hide work right here.',
       ),
     ],
   ),
