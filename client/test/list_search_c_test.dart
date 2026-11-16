@@ -278,6 +278,28 @@ void main() {
     expect(find.text('No bill matches "zzz".'), findsOneWidget);
   });
 
+  testWidgets('Financials › Bills on a phone: the title keeps one line', (
+    tester,
+  ) async {
+    // Phone review 2026-11-13, item 5: the buttons squeezed it to "Bill / s".
+    final server = _Server({
+      '/financials/bills': (_) => {'data': <Object>[]},
+    });
+    final session = await server.session(tester, const [
+      'financials.view',
+      'financials.edit',
+    ]);
+    await _pump(
+      tester,
+      FinancialBillsTab(api: server.api, me: session.me!),
+      size: const Size(390, 844),
+    );
+
+    final title = find.text('Bills');
+    expect(title, findsOneWidget);
+    expect(tester.getSize(title).height, lessThan(30));
+  });
+
   testWidgets('Financials › adjustments: q is sent and rows narrow', (
     tester,
   ) async {
