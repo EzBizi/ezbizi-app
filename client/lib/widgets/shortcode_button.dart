@@ -32,32 +32,54 @@ class _ShortcodeButtonState extends State<ShortcodeButton> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return OutlinedButton.icon(
-      onPressed: () async {
-        await Clipboard.setData(ClipboardData(text: widget.code));
+    // Desktop review D9: "[ezbizi_address_line1]" is a developer's token.
+    // The button reads "Address line 1"; the tooltip names the code it copies.
+    return Tooltip(
+      message: 'Copies ${widget.code}',
+      child: OutlinedButton.icon(
+        onPressed: () async {
+          await Clipboard.setData(ClipboardData(text: widget.code));
 
-        if (!mounted) return;
+          if (!mounted) return;
 
-        setState(() => _copied = true);
-        await Future<void>.delayed(const Duration(milliseconds: 1200));
+          setState(() => _copied = true);
+          await Future<void>.delayed(const Duration(milliseconds: 1200));
 
-        if (mounted) setState(() => _copied = false);
-      },
-      icon: Icon(_copied ? Icons.check : Icons.copy_outlined, size: 15),
-      label: Text(
-        _copied ? 'Copied' : (widget.label ?? widget.code),
-        style: TextStyle(
-          fontFamily: widget.label == null ? 'monospace' : null,
-          fontSize: 12,
+          if (mounted) setState(() => _copied = false);
+        },
+        icon: Icon(_copied ? Icons.check : Icons.copy_outlined, size: 15),
+        label: Text(
+          _copied ? 'Copied' : (widget.label ?? shortcodeLabel(widget.code)),
+          style: const TextStyle(fontSize: 12),
         ),
-      ),
-      style: OutlinedButton.styleFrom(
-        foregroundColor:
-            _copied ? theme.colorScheme.primary : theme.colorScheme.outline,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _copied
+              ? theme.colorScheme.primary
+              : theme.colorScheme.outline,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        ),
       ),
     );
   }
+}
+
+/// `[ezbizi_address_line1]` -> "Address line 1": what a shortcode is, in
+/// words. Anything that is not an `[ezbizi_…]` code comes back unchanged.
+String shortcodeLabel(String code) {
+  final match = RegExp(
+    r'^\[ezbizi_([a-z0-9_]+)(?:\s+preset="([^"]*)")?\]$',
+  ).firstMatch(code.trim());
+  if (match == null) return code;
+  final words = match
+      .group(1)!
+      .replaceAllMapped(RegExp(r'([a-z])(\d)'), (m) => '${m[1]} ${m[2]}')
+      .split('_')
+      .where((w) => w.isNotEmpty)
+      .join(' ');
+  if (words.isEmpty) return code;
+  final name = '${words[0].toUpperCase()}${words.substring(1)}';
+  final preset = match.group(2);
+  return preset == null || preset.isEmpty ? name : '$name · $preset';
 }
 
 /// A field with its shortcode beside it, or beneath it when there is no room.
@@ -68,10 +90,13 @@ Widget withShortcode(Widget input, String code, {Widget? trailing}) {
   // A control that belongs to the field (SEO's "Not needed" toggle) sits
   // beside the chip, so it stays on the field's row (Jose, 2026-11-09).
   final chip = trailing == null
-      ? ShortcodeButton(code: code)
+      ? ShortcodeButton(code: code, label: 'Copy code')
       : Row(
           mainAxisSize: MainAxisSize.min,
-          children: [ShortcodeButton(code: code), trailing],
+          children: [
+            ShortcodeButton(code: code, label: 'Copy code'),
+            trailing,
+          ],
         );
 
   return LayoutBuilder(
