@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../widgets/cell_tap.dart';
+import '../widgets/lazy_menu_anchor.dart';
 import '../widgets/range_calendar.dart';
 import 'package:flutter/services.dart';
 
@@ -714,7 +716,7 @@ class ColumnCell extends StatelessWidget {
       case 'status':
         final picked = _option(column, v);
         final fill = picked?.colour ?? blankLabel(theme);
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             Builder(
               builder: (context) => LabelBlocks(
@@ -748,9 +750,9 @@ class ColumnCell extends StatelessWidget {
           ],
           onOpen: () => onMenu?.call(true),
           onClose: () => onMenu?.call(false),
-          builder: (context, menu, _) => Material(
+          builder: (context, menu, _) => ColoredBox(
             color: fill,
-            child: InkWell(
+            child: CellTap(
               key: ValueKey('column-cell-${column.id}'),
               onTap: onChanged == null
                   ? null
@@ -773,7 +775,7 @@ class ColumnCell extends StatelessWidget {
       case 'dropdown':
         final picked = _option(column, v);
         final fill = picked?.colour;
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             for (final o in column.options)
               if (!o.retired || o.id == v)
@@ -790,7 +792,7 @@ class ColumnCell extends StatelessWidget {
               ),
             ..._optionTools(theme, (id) => onChanged?.call(id)),
           ],
-          builder: (context, menu, _) => InkWell(
+          builder: (context, menu, _) => CellTap(
             key: ValueKey('column-cell-${column.id}'),
             onTap: onChanged == null
                 ? null
@@ -818,7 +820,7 @@ class ColumnCell extends StatelessWidget {
         );
       case 'people':
         final ids = [for (final id in (v as List?) ?? const []) '$id'];
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             for (final p in people.entries)
               CheckboxMenuButton(
@@ -836,7 +838,7 @@ class ColumnCell extends StatelessWidget {
                 child: Text(p.value),
               ),
           ],
-          builder: (context, menu, _) => InkWell(
+          builder: (context, menu, _) => CellTap(
             key: ValueKey('column-cell-${column.id}'),
             onTap: onChanged == null
                 ? null
@@ -853,7 +855,7 @@ class ColumnCell extends StatelessWidget {
         );
       case 'tags':
         final ids = [for (final id in (v as List?) ?? const []) '$id'];
-        return MenuAnchor(
+        return LazyMenuAnchor(
           menuChildren: [
             for (final o in column.options)
               if (!o.retired || ids.contains(o.id))
@@ -873,7 +875,7 @@ class ColumnCell extends StatelessWidget {
                 ),
             ..._optionTools(theme, (id) => onChanged?.call([...ids, ?id])),
           ],
-          builder: (context, menu, _) => InkWell(
+          builder: (context, menu, _) => CellTap(
             key: ValueKey('column-cell-${column.id}'),
             onTap: onChanged == null
                 ? null
@@ -2484,6 +2486,17 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
     if (_editing && _inPlace) {
       return KeyedSubtree(key: key, child: _editor());
     }
+    final cell = CellTap(
+      key: key,
+      onTap: _editing ? null : _start,
+      onSecondaryTapDown: _editing ? null : (d) => _menu(d.globalPosition),
+      child: SizedBox.expand(
+        child: Align(alignment: Alignment.centerLeft, child: widget.child),
+      ),
+    );
+    // The card's portal only while editing: one per cell on every row was
+    // most of a big board's build (Task Board lag, 11-16).
+    if (!_editing) return CompositedTransformTarget(link: _link, child: cell);
     return CompositedTransformTarget(
       link: _link,
       child: OverlayPortal(
@@ -2504,14 +2517,7 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
             ),
           ),
         ),
-        child: InkWell(
-          key: key,
-          onTap: _editing ? null : _start,
-          onSecondaryTapDown: _editing ? null : (d) => _menu(d.globalPosition),
-          child: SizedBox.expand(
-            child: Align(alignment: Alignment.centerLeft, child: widget.child),
-          ),
-        ),
+        child: cell,
       ),
     );
   }
