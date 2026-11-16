@@ -42,6 +42,12 @@ Rows rewritten are `_elementor_data`, `_yoast_wpseo_metadesc`,
   "…Rhode Island, New Jersey and Pennsylvania";
 - the "Maine (80 towns)" and "Ohio (82 towns)" sections of /service-areas/.
 
+- on www, the counts "8 states" → "6 states" and "1,426 towns" → "1,264 towns"
+  (header badge, hero, map label, titles, descriptions) on posts 18, 36, 58,
+  2164, 3220 and 4370, plus their Yoast indexable rows. Undo is `uncount.php`
+  (the reverse replace), which restore.sh runs before www2/www. The original
+  descriptions of indexables 8 and 46 are in `www/yoast-indexable-8-46.tsv`.
+
 Private pages drop out of the Yoast sitemap on their own.
 
 Left as is: the photo credit "Boston_and_Maine_6211" (a railroad name in a
