@@ -40,6 +40,10 @@ use Illuminate\Support\Collection;
 class Customer extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES). */
+    protected static string $changeType = 'customers';
 
     /** @use HasFactory<CustomerFactory> */
     use HasFactory;

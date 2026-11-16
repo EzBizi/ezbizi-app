@@ -3586,6 +3586,9 @@ Route::prefix('v1')
         // The release on its way, for the bar in What's been built (Jose 11-12).
         Route::get('release/upcoming', [\App\Http\Controllers\Api\StaffReleaseStatusController::class, 'upcoming']);
 
+        // The app-wide live feed: ids changed since a cursor (ChangeFeed).
+        Route::get('changes', [\App\Http\Controllers\Api\ChangesController::class, 'index']);
+
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)
         Route::get('me', function (Request $request) {
