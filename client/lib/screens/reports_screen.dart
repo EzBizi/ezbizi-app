@@ -28,6 +28,7 @@ import 'reports/jobs_report.dart';
 import 'reports/report_run_view.dart';
 import 'reports/report_workspace.dart';
 import 'reports/work_hours_report_panel.dart';
+import '../widgets/heading_pin.dart';
 
 /// Reports (spec `docs/superpowers/specs/2026-09-10-reports-design.md`).
 ///
@@ -100,6 +101,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// is also the honest shape: building and running are different jobs, and
   /// the chips say so before anybody clicks.
   int _chip = 0;
+
+  /// The pin on every tab's table headings, held here so the tabs answer to
+  /// one choice; saved as `reports.pin_headings` (Jose, 2026-11-16).
+  bool? _headingsPinned;
 
   SavedReportSummary? _open;
   String? _confirming;
@@ -356,12 +361,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             if (!ownPadding) const SizedBox(height: 12),
             Expanded(
-              child: ownPadding
-                  ? _body(context, constraints)
-                  : Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: _body(context, constraints),
-                    ),
+              child: HeadingPin(
+                pinned:
+                    _headingsPinned ??
+                    widget.session.me?.reportHeadingsPinned ??
+                    true,
+                onChanged: (pinned) {
+                  setState(() => _headingsPinned = pinned);
+                  // Not awaited: the screen is already right, and a write the
+                  // server refuses comes back through Session's refresh.
+                  widget.session.setPreference('reports.pin_headings', pinned);
+                },
+                child: ownPadding
+                    ? _body(context, constraints)
+                    : Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: _body(context, constraints),
+                      ),
+              ),
             ),
           ],
         );

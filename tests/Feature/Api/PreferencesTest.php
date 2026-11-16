@@ -151,6 +151,22 @@ class PreferencesTest extends TestCase
         $this->assertSame('board', $data['marketing.social.posts_view']);
     }
 
+    /** Jose 2026-11-16: report headings pinned unless this person unpins them, and it lasts. */
+    public function test_report_headings_start_pinned_and_an_unpin_comes_back_on_me(): void
+    {
+        $before = $this->as()->getJson('/api/v1/me/preferences')->assertOk()->json('data');
+        $this->assertTrue($before['reports.pin_headings']);
+
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['reports.pin_headings' => false],
+        ])->assertOk();
+
+        $this->app['auth']->forgetGuards();
+
+        $me = $this->as()->getJson('/api/v1/me')->assertOk()->json('data');
+        $this->assertFalse($me['preferences']['reports.pin_headings']);
+    }
+
     /** Jose 2026-10-26: Compose's listings stay expanded or collapsed per person. */
     public function test_the_compose_listings_expansion_is_remembered(): void
     {

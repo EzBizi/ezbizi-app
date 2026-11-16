@@ -925,6 +925,58 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'Report Builder'), findsNothing);
     expect(find.widgetWithText(ChoiceChip, 'Performance'), findsNothing);
   });
+
+  // Jose, 2026-11-16: a pin in a report table's headings, pinned until this
+  // person unpins it, and remembered for them.
+  testWidgets(
+    'the headings start pinned and an unpin is saved for this person',
+    (tester) async {
+      final saved = <Object?>[];
+      await _pumpReports(
+        tester,
+        permissions: const ['reports.view', 'reports.jobs.view'],
+        onRequest: (request) {
+          if (request.url.path.endsWith('/me/preferences')) {
+            saved.add(jsonDecode(request.body));
+            return _json({'data': {}});
+          }
+          if (request.url.path.endsWith('/reports/jobs')) {
+            return _json({
+              'data': {
+                'rows': [
+                  {
+                    'id': 'J1',
+                    'serial': 'J1',
+                    'client': 'Ann Lee',
+                    'source': 'LS Ads',
+                    'status': 'Submitted',
+                    'total': 300.5,
+                  },
+                ],
+                'count': 1,
+                'total': 300.5,
+              },
+            });
+          }
+          return null;
+        },
+      );
+
+      final pin = find.byKey(const ValueKey('heading-pin'));
+      expect(pin, findsOneWidget);
+      expect(find.byIcon(Icons.push_pin), findsOneWidget);
+
+      await tester.tap(pin);
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.push_pin_outlined), findsOneWidget);
+      expect(saved, [
+        {
+          'preferences': {'reports.pin_headings': false},
+        },
+      ]);
+    },
+  );
 }
 
 /// Somebody who may read reports and not build them.

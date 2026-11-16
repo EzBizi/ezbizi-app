@@ -13,6 +13,7 @@ import '../widgets/ad_schedule.dart';
 import '../widgets/dashboard_chart.dart';
 import '../widgets/date_range_picker.dart';
 import '../widgets/report_grid.dart';
+import '../widgets/heading_pin.dart';
 import 'reports/report_dates.dart';
 
 /// What the Google Ads accounts spent, and what came back for it.
@@ -809,7 +810,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             ],
           ),
         ),
-        PinnedHeaderSliver(
+        // Pinned unless this person unpinned the headings (Jose, 2026-11-16).
+        HeadingPin.sliver(
+          context,
           child: SizedBox(
             height: _headerHeight,
             child: _campaignHeader(theme, rows),
@@ -1408,6 +1411,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                               ? MainAxisAlignment.end
                               : MainAxisAlignment.start,
                           children: [
+                            if (c.key == 'name') const HeadingPinButton(),
                             Flexible(
                               child: Text(
                                 c.label,
