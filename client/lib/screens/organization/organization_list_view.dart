@@ -834,6 +834,7 @@ class _NodePageState extends State<_NodePage> {
         ),
         TabBarLike(
           key: const ValueKey('org-page-tabs'),
+          level: TabLevel.secondary,
           labels: const [
             ('Details', Icons.edit_note_outlined),
             ('Settings', Icons.tune_outlined),
