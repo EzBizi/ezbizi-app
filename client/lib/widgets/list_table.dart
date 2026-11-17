@@ -253,9 +253,14 @@ class ListColumn {
     this.namedWhenStacked = true,
     this.onSort,
     this.sorted,
+    this.frame,
   });
 
   final String label;
+
+  /// Wraps the drawn heading, e.g. to drag it to another place (Project
+  /// Management, Jose 2026-11-17: "Just let me drag them").
+  final Widget Function(Widget heading)? frame;
 
   /// Given, the header is a button that sorts by this column (Jose,
   /// 2026-11-10: "clicking the column orders it"). The list does the
@@ -511,45 +516,47 @@ class ListTable extends StatelessWidget {
                     // Nothing outside Reports (see HeadingPin).
                     if (i == 0) const HeadingPinButton(),
                     Expanded(
-                      child: InkWell(
-                        key: columns[i].onSort == null
-                            ? null
-                            : Key('list-sort-$i'),
-                        onTap: columns[i].onSort,
-                        child: Row(
-                          mainAxisAlignment: columns[i].center
-                              ? MainAxisAlignment.center
-                              : columns[i].end
-                              ? MainAxisAlignment.end
-                              : MainAxisAlignment.start,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                columns[i].label.toUpperCase(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: columns[i].center
-                                    ? TextAlign.center
-                                    : columns[i].end
-                                    ? TextAlign.end
-                                    : null,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  letterSpacing: 0.8,
-                                  fontWeight: FontWeight.w700,
-                                  color: columns[i].sorted == null
-                                      ? theme.colorScheme.onSurfaceVariant
-                                      : theme.colorScheme.onSurface,
+                      child: (columns[i].frame ?? (Widget h) => h)(
+                        InkWell(
+                          key: columns[i].onSort == null
+                              ? null
+                              : Key('list-sort-$i'),
+                          onTap: columns[i].onSort,
+                          child: Row(
+                            mainAxisAlignment: columns[i].center
+                                ? MainAxisAlignment.center
+                                : columns[i].end
+                                ? MainAxisAlignment.end
+                                : MainAxisAlignment.start,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  columns[i].label.toUpperCase(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: columns[i].center
+                                      ? TextAlign.center
+                                      : columns[i].end
+                                      ? TextAlign.end
+                                      : null,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    letterSpacing: 0.8,
+                                    fontWeight: FontWeight.w700,
+                                    color: columns[i].sorted == null
+                                        ? theme.colorScheme.onSurfaceVariant
+                                        : theme.colorScheme.onSurface,
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (columns[i].sorted case final desc?)
-                              Icon(
-                                desc
-                                    ? Icons.arrow_downward
-                                    : Icons.arrow_upward,
-                                size: 14,
-                              ),
-                          ],
+                              if (columns[i].sorted case final desc?)
+                                Icon(
+                                  desc
+                                      ? Icons.arrow_downward
+                                      : Icons.arrow_upward,
+                                  size: 14,
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

@@ -1050,6 +1050,16 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'In the order shown. A column without Financials hides its amounts anyway.',
             ),
+            // Jose, 2026-11-17: "we need to set up list of supplier". Each
+            // {id, name, address, phone, kind: order|pickup}: a supplier parts
+            // are ordered from, or a same-day pickup store.
+            new SettingDefinition(
+                key: 'project_board.suppliers', label: 'Project Management: suppliers',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Where parts are ordered from, and the same-day pickup stores.',
+            ),
             // Jose, 2026-11-10: "the settings need to be updated to manage all
             // of these new columns".
             new SettingDefinition(
