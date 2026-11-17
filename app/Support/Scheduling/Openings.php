@@ -8,6 +8,7 @@ use App\Models\ServiceAreaDailyLimit;
 use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaScheduledSlot;
 use App\Models\ServiceAreaSlot;
+use App\Models\Franchise;
 use App\Models\WebBooking;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -186,6 +187,7 @@ final class Openings
             ? []
             : $this->franchiseBooked($area, $from, $from->addDays($days));
 
+        $latest = self::latestWindows($area);
         $out = [];
 
         for ($i = 0; $i < $days; $i++) {
@@ -245,6 +247,18 @@ final class Openings
             // limit — is handed to the windows EARLIEST FIRST, so no two
             // windows advertise the same last spot. A1 distributes its day
             // headroom the same way.
+            // A window starting after the day's latest is never offered (Jose,
+            // 2026-11-17: Fridays end at 12-3 PM). It stays listed, so what is
+            // booked in it still shows; it only offers nothing.
+            $cut = $latest[$date->dayOfWeek] ?? null;
+            foreach ($windows as &$window) {
+                $window['late'] = $cut !== null && $window['start_time'] > $cut;
+                if ($window['late']) {
+                    $window['remaining'] = 0;
+                }
+            }
+            unset($window);
+
             $dayCap = array_sum(array_column($windows, 'capacity'));
             if (isset($areaLimits[$date->dayOfWeek])) {
                 $dayCap = min($dayCap, (int) $areaLimits[$date->dayOfWeek]);
@@ -557,6 +571,21 @@ final class Openings
     }
 
     /** Whether anybody has stated any capacity for this area at all. */
+    /**
+     * Weekday => latest window start ("HH:MM"): the area's own, else the
+     * scheduling.latest_window setting for its branch.
+     *
+     * @return array<int, string>
+     */
+    public static function latestWindows(ServiceArea $area): array
+    {
+        $map = $area->latest_windows
+            ?? (($f = Franchise::find($area->franchise_id)) ? app(SettingsResolver::class)->get('scheduling.latest_window', $f) : []);
+
+        return collect((array) $map)->filter(fn ($t) => is_string($t) && preg_match('/^\d\d:\d\d$/', $t))
+            ->mapWithKeys(fn ($t, $d) => [(int) $d => $t])->all();
+    }
+
     public static function hasCapacity(ServiceArea $area): bool
     {
         if ($area->shares_with_id !== null) {
