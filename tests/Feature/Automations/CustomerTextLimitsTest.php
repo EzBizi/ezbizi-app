@@ -82,6 +82,22 @@ class CustomerTextLimitsTest extends TestCase
         });
     }
 
+    /** Jose, 2026-11-17: five calls in two minutes, five texts and five bells. One a caller an hour. */
+    public function test_a_caller_raises_one_missed_call_an_hour(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $make = fn (string $id) => \App\Models\Lead::create(['organization_id' => $t['org']->id, 'source' => \App\Models\Lead::SOURCE_LOCAL_SERVICES,
+                'remote_id' => $id, 'contact_name' => 'Pat', 'lead_type' => 'PHONE_CALL', 'status' => \App\Models\Lead::STATUS_NEW, 'received_at' => now()]);
+            [$one, $other] = [$make('a'), $make('b')];
+            $this->assertTrue(\App\Support\Leads\RingCentralLeadCalls::firstMissedThisHour($one));
+            $this->assertFalse(\App\Support\Leads\RingCentralLeadCalls::firstMissedThisHour($one), 'the second call in the hour');
+            $this->assertTrue(\App\Support\Leads\RingCentralLeadCalls::firstMissedThisHour($other), 'another caller');
+            $this->travel(61)->minutes();
+            $this->assertTrue(\App\Support\Leads\RingCentralLeadCalls::firstMissedThisHour($one), 'an hour on');
+        });
+    }
+
     public function test_a_number_gets_two_automatic_texts_a_day_and_a_capped_send_is_refused(): void
     {
         $t = $this->provisionTenant('Alpha');
