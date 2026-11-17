@@ -5,11 +5,14 @@ namespace Tests\Feature\Tasks;
 use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Models\TaskBoardMember;
 use App\Models\TaskUpdate;
 use App\Models\User;
+use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\Concerns\FakesMonday;
 use Tests\TestCase;
@@ -120,6 +123,27 @@ class MondaySyncTest extends TestCase
         $this->assertSame(3, $this->inTenant($this->tenant['org'], fn () => Task::query()->whereNotNull('external_ref')->count()));
     }
 
+    /** Nehorai, CT GM, 11-17: joined after the import; his branch board refused his tasks. */
+    public function test_someone_who_joins_later_gets_the_branch_boards_monday_shares_with_them(): void
+    {
+        $branch = $this->inTenant($this->tenant['org'], function () {
+            $b = app(TaskBoards::class)->ensureFor($this->tenant['franchise']);
+            $b->forceFill(['external_ref' => 'monday:200'])->saveQuietly();
+
+            return $b;
+        });
+        $nehorai = $this->userWithRole($this->tenant, 'Member', ['tasks.view', 'tasks.edit'], 'nehorai@ezbizi.test');
+        $this->monday['users'][] = ['id' => '2', 'name' => 'Nehorai Maamari', 'email' => 'nehorai@ezbizi.test'];
+        $this->monday['boards'] = ['200' => $this->mondayBoard('200', 'Connecticut', [$this->mondayItem('21', 'Call back', '2026-11-12T12:00:00Z', ['people' => ['2']])])
+            + ['subscribers' => [['id' => '2']]]];
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->artisan('ezbizi:monday-sync')->assertSuccessful();
+
+        $this->assertSame('member', $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()
+            ->where('board_id', $branch->id)->where('user_id', $nehorai->id)->value('role')));
+        $this->assertSame([$nehorai->id], $this->task('21')->owners->pluck('user_id')->all());
+    }
+
     /**
      * 2026-11-16: the poll listed every item of 39 boards (88k) every ten
      * minutes, ~4 min, and a 5-min scheduler slot timed out. A pass with
@@ -171,7 +195,7 @@ class MondaySyncTest extends TestCase
             $task = $this->task('11');
             $task->board->members()->create(['organization_id' => $this->tenant['org']->id, 'user_id' => $ana->id, 'role' => 'member']);
             app(TaskWriter::class)->update($task, ['assignee_user_ids' => [$ana->id]], $this->jose);
-            $task->forceFill(['created_by_automation_id' => (string) \Illuminate\Support\Str::uuid()])->saveQuietly();
+            $task->forceFill(['created_by_automation_id' => (string) Str::uuid()])->saveQuietly();
         });
 
         Carbon::setTestNow('2026-11-12 12:05:00');
