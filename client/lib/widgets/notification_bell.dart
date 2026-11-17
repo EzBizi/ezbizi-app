@@ -1038,12 +1038,41 @@ class _NotificationSettingsState extends State<NotificationSettings> {
               ),
             ),
         ],
+        // Jose, 2026-11-17: parts late and part reminders.
+        if (modules.any((m) => m.key == 'project_board')) ...[
+          const Divider(height: 24),
+          Text(
+            'Project Management',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          for (final MapEntry(key: kind, value: label)
+              in projectNotificationKinds.entries)
+            SwitchListTile(
+              key: ValueKey('notification-kind-$kind'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              value: !mutedKinds.contains(kind),
+              title: Text(label),
+              onChanged: (on) => _save(
+                'notifications.muted_kinds',
+                on
+                    ? mutedKinds.where((k) => k != kind).toList()
+                    : [...mutedKinds, kind],
+              ),
+            ),
+        ],
       ],
     );
   }
 }
 
 /// NotificationDispatcher::KINDS on the server — keep the two in step.
+/// Project Management's kinds, NotificationDispatcher::KINDS too.
+const projectNotificationKinds = {
+  'project_board.part_late': 'A part is 3 days late',
+  'project_board.part_reminder': 'A part reminder is due',
+};
+
 const taskNotificationKinds = {
   'task.assigned': 'Assigned to me',
   'task.mentioned': 'Mentioned',

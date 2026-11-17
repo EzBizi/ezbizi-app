@@ -303,6 +303,7 @@
             "label": "Project Management",
             "parent": null,
             "tabs": [
+                "Dashboard",
                 "Unscheduled",
                 "Ready to Schedule",
                 "Scheduled",

@@ -29,12 +29,13 @@ class JobPart extends Model implements StatesRetention
     public const LATE_AFTER_DAYS = 3;
 
     protected $fillable = ['organization_id', 'job_id', 'kind', 'item', 'quantity', 'price_minor', 'delivery_on', 'inventory_item_id', 'position',
-        'supplier', 'destination', 'ordered_at', 'received_at'];
+        'supplier', 'destination', 'ordered_at', 'received_at', 'remind_at', 'remind_note', 'reminded_at', 'late_notified_at'];
 
     protected function casts(): array
     {
         return ['quantity' => 'integer', 'price_minor' => 'integer', 'delivery_on' => 'date', 'position' => 'integer',
-            'supplier' => 'array', 'ordered_at' => 'datetime', 'received_at' => 'datetime'];
+            'supplier' => 'array', 'ordered_at' => 'datetime', 'received_at' => 'datetime',
+            'remind_at' => 'datetime', 'reminded_at' => 'datetime', 'late_notified_at' => 'datetime'];
     }
 
     public static function retention(): RetentionPolicy
@@ -48,7 +49,12 @@ class JobPart extends Model implements StatesRetention
             'price_minor' => $this->price_minor, 'delivery_on' => $this->delivery_on?->toDateString(),
             'inventory_item_id' => $this->inventory_item_id, 'supplier' => $this->supplier, 'destination' => $this->destination,
             'ordered_at' => $this->ordered_at?->toIso8601String(), 'received_at' => $this->received_at?->toIso8601String(),
-            'late' => $this->isLate()];
+            'late' => $this->isLate(), 'remind_at' => $this->remind_at?->toIso8601String(), 'remind_note' => $this->remind_note];
+    }
+
+    public function job(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Job::class);
     }
 
     /** Ordered or picked up, not received, for three days or more. */

@@ -322,6 +322,33 @@ class TasksController extends Controller
     }
 
     /**
+     * GET tasks/{task}/same-caller: another open task in this task's group,
+     * made in the last 3 days, for the phone number this one carries (its
+     * last 10 digits, in the title or any column). A dispatcher adding a
+     * complaint the AI already filed is told so (desk for Jose, 11-17).
+     */
+    public function sameCaller(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+        $text = $task->title.' '.$task->values()->whereNotNull('value_text')->pluck('value_text')->implode(' ');
+        preg_match_all('/\+?[\d\s().-]{10,}/', $task->sensitive ? '' : $text, $runs);
+        $ten = collect($runs[0])->map(fn ($r) => preg_replace('/\D/', '', $r))->first(fn ($d) => strlen($d) >= 10);
+        if ($ten === null) {
+            return response()->json(['data' => null]);
+        }
+        $ten = substr($ten, -10);
+        $digits = fn (string $col) => "REGEXP_REPLACE(COALESCE({$col}, ''), '[^0-9]', '') LIKE ?";
+        $other = Task::query()->where('board_id', $task->board_id)->where('group_id', $task->group_id)
+            ->whereKeyNot($task->id)->whereNull('completed_at')->whereNull('parent_task_id')->where('sensitive', false)
+            ->where('created_at', '>=', now()->subDays(3))
+            ->where(fn ($q) => $q->whereRaw($digits('title'), ['%'.$ten.'%'])
+                ->orWhereHas('values', fn ($v) => $v->whereRaw($digits('value_text'), ['%'.$ten.'%'])))
+            ->with('board:id,name')->latest()->first();
+
+        return response()->json(['data' => $other === null ? null : self::presentLink($other)]);
+    }
+
+    /**
      * GET task-search?q=: tasks on every board this person can see, by
      * title, for the one-box Link picker (Jose 11-17). `records` lists the
      * leads, customers and jobs it finds by name, phone or number, each as

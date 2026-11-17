@@ -73,6 +73,60 @@ class ProjectBoardController extends Controller
     }
 
     /**
+     * PATCH /api/v1/project-board/parts/{part}/reminder: set, move or clear
+     * a part's reminder from the Dashboard (Jose, 2026-11-17: "reschedule
+     * reminders").
+     */
+    public function partReminder(Request $request, JobPart $part): JsonResponse
+    {
+        $job = Job::query()->findOrFail($part->job_id);
+        $this->editable($request, $job);
+        $in = $request->validate([
+            'remind_at' => ['present', 'nullable', 'date'],
+            'remind_note' => ['nullable', 'string', 'max:160'],
+        ]);
+        $part->remind_at = filled($in['remind_at']) ? Carbon::parse($in['remind_at']) : null;
+        if (array_key_exists('remind_note', $in)) {
+            $part->remind_note = filled($in['remind_note']) ? trim($in['remind_note']) : null;
+        }
+        $part->reminded_at = null;
+        $part->save();
+        app(AuditLogger::class)->log('job.part_reminder_set', $job, ['part_id' => $part->id], actor: $request->user());
+
+        return response()->json(['data' => $part->present()]);
+    }
+
+    /**
+     * GET /api/v1/project-board/dashboard (Jose, 2026-11-17): how many items
+     * and jobs are waiting for parts, the late parts, and the reminders, over
+     * the jobs in the viewer's reach.
+     */
+    public function dashboard(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_board.view') && $user->hasPermission('jobs.view'),
+            Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+        $franchises = ViewScope::forUser($user)->franchiseIds();
+        $parts = fn () => JobPart::query()->whereHas('job', fn (Builder $q) => $q->whereIn('franchise_id', $franchises));
+        $waiting = fn () => $parts()->where('kind', '!=', 'stock')->whereNull('received_at');
+        $row = fn (JobPart $p) => $p->present() + [
+            'job_id' => $p->job_id,
+            'job_number' => $p->job?->number,
+            'customer' => $p->job?->customer?->name,
+        ];
+        $with = ['job:id,number,customer_id,franchise_id', 'job.customer:id,name'];
+
+        return response()->json(['data' => [
+            'waiting_items' => $waiting()->count(),
+            'waiting_jobs' => $waiting()->distinct()->count('job_id'),
+            'late' => $waiting()->where('ordered_at', '<=', now()->subDays(JobPart::LATE_AFTER_DAYS))
+                ->with($with)->orderBy('ordered_at')->limit(100)->get()->map($row)->values(),
+            'reminders' => $parts()->whereNotNull('remind_at')->with($with)->orderBy('remind_at')->limit(100)->get()
+                ->map(fn (JobPart $p) => $row($p) + ['due' => $p->remind_at->lte(now())])->values(),
+        ]]);
+    }
+
+    /**
      * GET /api/v1/project-board/jobs/{job}/work-order: the job's work order
      * as a PDF for the crew (Jose, 2026-11-17). Amounts only for a reader
      * with Financials.
@@ -109,8 +163,15 @@ class ProjectBoardController extends Controller
                 $listed[] = (string) $file->original_name;
             }
         }
+        // Workiz's own photos (most of a job's pictures): fetched from
+        // Workiz's file host only, images only, so the crew sees them.
         foreach (WorkizExtras::files($payload) as $f) {
-            $listed[] = (string) $f['name'];
+            $data = count($photos) < 9 ? WorkOrderPdf::fetchPhoto((string) $f['url']) : null;
+            if ($data !== null) {
+                $photos[] = ['name' => (string) $f['name'], 'data' => $data];
+            } else {
+                $listed[] = (string) $f['name'];
+            }
         }
 
         $pdf = WorkOrderPdf::render([
@@ -754,6 +815,8 @@ class ProjectBoardController extends Controller
             'parts.*.supplier_id' => ['nullable', 'string', 'max:64'],
             'parts.*.destination' => ['nullable', 'in:warehouse,customer,supplier'],
             'parts.*.received' => ['nullable', 'boolean'],
+            'parts.*.remind_at' => ['nullable', 'date'],
+            'parts.*.remind_note' => ['nullable', 'string', 'max:160'],
             'parts.*.item' => ['required', 'string', 'max:160'],
             'parts.*.quantity' => ['required', 'integer', 'min:1', 'max:100000'],
             'parts.*.price_minor' => ['nullable', 'integer', 'min:0', 'max:100000000000'],
@@ -785,8 +848,14 @@ class ProjectBoardController extends Controller
                     'supplier' => $supplier,
                     'destination' => $away ? ($p['destination'] ?? null) : null,
                     // The three-day clock starts when it stops being in stock.
-                    'ordered_at' => $away ? ($old !== null && $old->kind !== 'stock' && $old->ordered_at ? $old->ordered_at : now()) : null,
+                    'ordered_at' => $ordered = $away ? ($old !== null && $old->kind !== 'stock' && $old->ordered_at ? $old->ordered_at : now()) : null,
                     'received_at' => $away && ($p['received'] ?? false) ? ($old?->received_at ?? now()) : null,
+                    // Told once that it was late, for this order.
+                    'late_notified_at' => $ordered !== null && $old?->ordered_at?->equalTo($ordered) ? $old->late_notified_at : null,
+                    // A manual reminder (Jose, 2026-11-17); a new time is sent anew.
+                    'remind_at' => $remind = filled($p['remind_at'] ?? null) ? Carbon::parse($p['remind_at']) : null,
+                    'remind_note' => filled($p['remind_note'] ?? null) ? trim($p['remind_note']) : null,
+                    'reminded_at' => $remind !== null && $old?->remind_at?->equalTo($remind) ? $old->reminded_at : null,
                 ]);
             }
         });

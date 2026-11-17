@@ -3984,7 +3984,8 @@ class ActionRunner
         // A call with no record (a missed call): the caller's lead, by phone, so
         // the task opens it (Jose 11-17). The newest lead with that number.
         if ($record === null && ($digits = substr(preg_replace('/\D/', '', (string) ($event->payload['from'] ?? $event->payload['phone'] ?? '')), -10)) !== '' && strlen($digits) === 10) {
-            $record = Lead::query()->where('phone_digits', $digits)->latest('received_at')->first();
+            // Leads keep the country code: 1 + ten digits, as prod's rows read (11-17).
+            $record = Lead::query()->whereIn('phone_digits', [$digits, '1'.$digits])->latest('received_at')->first();
             $about = $record === null ? false : 'lead';
         }
 

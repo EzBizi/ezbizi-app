@@ -189,6 +189,17 @@ void main() {
             },
           });
         }
+        if (path == '/tasks/t1/same-caller') {
+          return json({
+            'data': {
+              'id': 't2',
+              'title': 'Complaint: late tech',
+              'board_id': 'b1',
+              'board_name': 'Ohio projects',
+            },
+          });
+        }
+        if (path.endsWith('/same-caller')) return json({'data': null});
         final m = RegExp(r'^/tasks/(t\d)$').firstMatch(path);
         if (m != null && request.method == 'PATCH') {
           final body = jsonDecode(request.body) as Map;
@@ -256,5 +267,19 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
     expect(patches.last, contains(r'One\nTwo'));
+  });
+
+  testWidgets('a phone another open task has says so and opens it', (
+    tester,
+  ) async {
+    await pumpBoard(tester);
+    await tester.tap(find.byKey(const ValueKey('column-cell-edit-c-notes')).first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(EditableText).last, '(732) 555-0101');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('An open task for this caller already exists'), findsOneWidget);
+    expect(find.textContaining('Complaint: late tech'), findsOneWidget);
+    expect(find.text('Open it'), findsOneWidget);
   });
 }
