@@ -5,10 +5,10 @@ namespace App\Support\Reports;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Services\Ads\AdsCost;
-use App\Support\Social\SocialProvider;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
 use App\Support\Settings\Lists\BusinessLists;
+use App\Support\Social\SocialProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -195,7 +195,10 @@ final class MarketingReport
 
         $codes = self::locationCodes();
         $code = fn (SocialConnection $a) => mb_strtolower(trim(Str::afterLast((string) $a->display_name, ' - ')));
-        $here = $accounts->filter(fn ($a) => in_array($code($a), $codes[mb_strtolower(trim((string) $branch->name))] ?? [], true))->values();
+        // Codes key on the branch name, which another company can share (Everdoors · Connecticut took
+        // AngiSweep - CT on prod, 11-16): only a branch that books this source takes its accounts.
+        $books = ReportJobs::jobs((string) $branch->id)->where('j.job_source', $source)->exists();
+        $here = ! $books ? collect() : $accounts->filter(fn ($a) => in_array($code($a), $codes[mb_strtolower(trim((string) $branch->name))] ?? [], true))->values();
         $nowhere = $accounts->reject(fn ($a) => in_array($code($a), array_merge(...array_values($codes ?: [[]])), true))->values();
 
         $pick = fn (array $cost) => in_array($channel, ['lsa', 'ppc'], true)
@@ -306,7 +309,7 @@ final class MarketingReport
 
         $rows = DB::table('leads')
             ->join('social_connections', 'social_connections.id', '=', 'leads.connection_id')
-            ->whereRaw(\App\Models\SocialConnection::BRANCH_SQL.' = ?', [$branch->getKey()])
+            ->whereRaw(SocialConnection::BRANCH_SQL.' = ?', [$branch->getKey()])
             ->where('leads.is_test', false)
             ->where('leads.source', 'local_services')
             ->whereBetween('leads.received_at', [$from.' 00:00:00', $to.' 23:59:59'])
