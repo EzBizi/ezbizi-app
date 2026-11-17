@@ -222,7 +222,7 @@ final class RingCentralLeadCalls
                 // 2026-10-16: menu hang-ups excluded, voicemails included).
                 if (($outcome === self::MISSED || $outcome === self::VOICEMAIL)
                     && $times[$i]->gte(CarbonImmutable::now()->subMinutes((int) SettingsResolver::forOrganization('leads.announce_minutes', $lead->organization_id)))) {
-                    $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $times[$i])]);
+                    RingCentralLeadCalls::firstMissedThisHour($lead) && $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $times[$i])]);
                 }
                 // A new caller is a new lead like any other source's (UI-UX
                 // parity audit, 2026-11-06): never a repeat call, a menu
@@ -288,7 +288,7 @@ final class RingCentralLeadCalls
         // Held back while it was live: told now that it ended unanswered.
         if ($was === self::WORDS[self::IN_PROGRESS] && ($outcome === self::MISSED || $outcome === self::VOICEMAIL)
             && $at->gte(CarbonImmutable::now()->subMinutes((int) SettingsResolver::forOrganization('leads.announce_minutes', $lead->organization_id)))) {
-            $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $at)]);
+            RingCentralLeadCalls::firstMissedThisHour($lead) && $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $at)]);
         }
     }
 
@@ -582,5 +582,15 @@ final class RingCentralLeadCalls
     private function leadFor(string $digits, CarbonImmutable $at): ?Lead
     {
         return CallerLead::find($digits, $at);
+    }
+
+    /**
+     * One missed-call event per caller per hour (Jose, 2026-11-17: a caller
+     * who rang five times in two minutes got five texts and every admin five
+     * bells). Atomic, so calls in one sync and parallel runs share it.
+     */
+    public static function firstMissedThisHour(Lead $lead): bool
+    {
+        return \Illuminate\Support\Facades\Cache::add('lead-missed-call:'.$lead->getKey(), 1, now()->addHour());
     }
 }
