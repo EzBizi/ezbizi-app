@@ -142,6 +142,17 @@ class MondaySyncTest extends TestCase
         $this->assertSame('member', $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()
             ->where('board_id', $branch->id)->where('user_id', $nehorai->id)->value('role')));
         $this->assertSame([$nehorai->id], $this->task('21')->owners->pluck('user_id')->all());
+
+        // Removed here by an admin: the next pass does not put him back, and Monday's silence removes nobody.
+        $row = $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()->where('board_id', $branch->id)->where('user_id', $nehorai->id)->value('id'));
+        $this->signedInAs($this->tenant['admin'])->deleteJson("/api/v1/task-boards/{$branch->id}/members/{$row}")->assertNoContent();
+        $other = $this->userWithRole($this->tenant, 'Kept', ['tasks.view'], 'kept@ezbizi.test');
+        $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()->create(['organization_id' => $this->tenant['org']->id, 'board_id' => $branch->id, 'user_id' => $other->id, 'role' => 'member']));
+        Carbon::setTestNow('2026-11-12 12:20:00');
+        $this->artisan('ezbizi:monday-sync', ['--full' => true])->assertSuccessful();
+        $roles = $this->inTenant($this->tenant['org'], fn () => TaskBoardMember::query()->where('board_id', $branch->id)->pluck('role', 'user_id')->all());
+        $this->assertArrayNotHasKey($nehorai->id, $roles);
+        $this->assertArrayHasKey($other->id, $roles);
     }
 
     /**
