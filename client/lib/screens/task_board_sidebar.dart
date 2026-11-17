@@ -904,11 +904,11 @@ class _BoardTreeState extends State<BoardTree> {
 
     final rows = <Widget>[
       if (personal >= 0 && matches(personal))
-        board(personal, label: 'My Board'),
+        board(personal, label: 'Personal Task Board'),
       if (mine.any(matches)) header('My boards'),
       for (final i in mine)
         if (matches(i)) board(i),
-      ...group('shared', 'Shared with me', asHeader: true, [
+      ...group('shared', 'Team boards', asHeader: true, [
         for (final i in shared)
           if (matches(i)) board(i, from: _owner(boards[i])),
       ]),
@@ -918,7 +918,7 @@ class _BoardTreeState extends State<BoardTree> {
         asHeader: true,
         _folderRows(context, null, 0, (i, x) => board(i, indent: x), matches),
       ),
-      ...group('companies', 'Companies', asHeader: true, companyRows),
+      ...group('companies', 'All markets', asHeader: true, companyRows),
       ...group('everyone', "Everyone's boards", asHeader: true, [
         for (final person in names)
           ...group(

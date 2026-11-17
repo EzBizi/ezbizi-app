@@ -49,17 +49,19 @@ const Map<String, Tour> tabTours = {
     // 2: Task Board v2 (UI queue 84) - the picker, columns, statuses.
     // 3: design 178 - Calendar, Timeline, Formula, number formats, footers,
     // pinned headings, branch tasks on the company board.
-    version: 3,
+    // 4: the sidebar's names (11-18 staff memo): Personal Task Board, Team
+    // boards, All markets.
+    version: 4,
     steps: [
       TourStep(
         anchor: 'tasks-boards',
         title: 'Your boards',
-        since: 3,
+        since: 4,
         body:
-            "Pick a board here. My board is yours alone; each company's "
-            "board and its franchises' sit under the company, with how many "
-            "open tasks are yours. A company's board also shows its "
-            "branches' tasks, each marked with its branch.",
+            'Pick a board here. Your Personal Task Board is yours alone; '
+            'Team boards are the boards shared with you. Under All markets, '
+            "each company's board shows every one of its markets' tasks "
+            'together, each marked with its market.',
       ),
       TourStep(
         anchor: 'tasks-view',

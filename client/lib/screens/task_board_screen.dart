@@ -2399,7 +2399,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               if (mine != null)
                 ButtonSegment(
                   value: mine,
-                  label: label('My Board'),
+                  label: label('Personal Task Board'),
                   icon: const Icon(Icons.person_outline, size: 18),
                 ),
               if (company != null)
