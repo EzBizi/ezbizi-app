@@ -75,6 +75,25 @@ class TaskRollUpAndLinksTest extends TestCase
             ->assertStatus(422)->assertJsonPath('errors.status_id.0', 'The board this task is on has no status called Waiting parts.');
     }
 
+    /** Jose 11-17: one box finds a task on any board; the row carries its links. */
+    public function test_task_search_spans_visible_boards_and_a_row_carries_its_links(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $a = $this->task($tenant, $this->board($tenant, 'company', $tenant['company']->id), 'Sweep the Gilbert chimney');
+        $b = $this->task($tenant, $this->board($tenant, 'franchise', $tenant['franchise']->id), 'Call Gilbert back');
+        $admin = $tenant['admin'];
+
+        $found = $this->signedInAs($admin)->getJson('/api/v1/task-search?q=gilbert')->assertOk()->json('data');
+        $this->assertEqualsCanonicalizing([$a->id, $b->id], array_column($found, 'id'));
+        $this->assertNotEmpty(array_filter(array_column($found, 'board_name')));
+        $this->signedInAs($admin)->getJson('/api/v1/task-search?q=g')->assertStatus(422);
+        $this->assertSame([], $this->signedInAs($admin)->getJson('/api/v1/task-search?q=%25%25')->assertOk()->json('data'));
+
+        $this->signedInAs($admin)->postJson("/api/v1/tasks/{$a->id}/links", ['linked_task_id' => $b->id])->assertCreated();
+        $row = $this->signedInAs($admin)->getJson("/api/v1/tasks/{$a->id}")->assertOk()->json('data');
+        $this->assertSame([$b->id], array_column($row['links'], 'id'));
+    }
+
     public function test_linked_tasks_show_each_other_and_share_done_and_reopen(): void
     {
         $tenant = $this->provisionTenant('Alpha');

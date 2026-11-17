@@ -204,10 +204,8 @@ void main() {
     );
     await tester.tap(cell);
     await tester.pumpAndSettle();
-    final field = find.descendant(
-      of: find.byKey(const ValueKey('column-cell-edit-c1')),
-      matching: find.byType(TextField),
-    );
+    // Text edits in the cell's card (Jose 11-17).
+    final field = find.byType(TextField).last;
     await tester.enterText(field, 'mine');
     await tester.pump();
 
