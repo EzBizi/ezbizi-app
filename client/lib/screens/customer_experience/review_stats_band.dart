@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+import '../../widgets/side_panel.dart';
 
 /// Review stats beside the reply queue (design 154 #7): the ratings
 /// histogram, an average gauge, and who wrote the replies, from GET /reviews
@@ -17,6 +18,7 @@ class ReviewStatsBand extends StatelessWidget {
     this.toDraft = 0,
     this.drafting = false,
     this.onSendWindow,
+    this.compact = false,
   });
 
   final Map<String, dynamic> stats;
@@ -29,6 +31,9 @@ class ReviewStatsBand extends StatelessWidget {
   /// Opens the rules whose wait paces the replies; null when Automations is
   /// not this person's.
   final VoidCallback? onSendWindow;
+
+  /// A phone (design 195): one tappable line; the whole band opens beside.
+  final bool compact;
 
   Map<int, int> get _histogram {
     final raw = stats['histogram'];
@@ -62,6 +67,52 @@ class ReviewStatsBand extends StatelessWidget {
     final published = _reply('published');
     final rate = total == 0 ? null : (published * 100 / total).round();
     final scheme = theme.colorScheme;
+
+    if (compact) {
+      return InkWell(
+        key: const ValueKey('review-stats-line'),
+        onTap: () => showSidePanel<void>(
+          context,
+          builder: (_) => SidePanel(
+            title: 'Reviews at a glance',
+            child: ReviewStatsBand(
+              stats: stats,
+              toDraft: toDraft,
+              drafting: drafting,
+              onDraftAll: onDraftAll,
+              onSendWindow: onSendWindow,
+            ),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 12, 4),
+          child: Row(
+            children: [
+              Text(
+                average == null ? '— ★' : '${average.toStringAsFixed(1)} ★',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  [
+                    '$total rated',
+                    if (rate != null) '$rate% replied',
+                    if (toDraft > 0) '$toDraft to draft',
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      );
+    }
 
     final bars = Column(
       key: const ValueKey('cx-histogram'),

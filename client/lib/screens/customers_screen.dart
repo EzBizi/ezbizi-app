@@ -331,69 +331,77 @@ class _CustomersScreenState extends State<CustomersScreen> {
     required String? refused,
     required bool wide,
   }) {
+    // Desktop review 2026-11-13, D3: header right, as every module.
+    final add = ModuleAction(
+      child: Refused(
+        // The server decides in the end. This decides what is OFFERED,
+        // and a control that cannot be used stays on screen saying why
+        // rather than going dark or disappearing.
+        reason: refused,
+        child: FilledButton.icon(
+          key: const ValueKey('tour-customers-add'),
+          onPressed: refused == null ? _create : null,
+          icon: const Icon(Icons.person_add_outlined, size: 18),
+          label: const Text('Add customer'),
+        ),
+      ),
+    );
+
     return HeaderAboveList(
       header: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PanelHeader(
-            note: (_loading || _error != null)
-                ? 'Shared across the organization — the $label tag shows who is accountable.'
-                : _customers.length < _total
-                ? 'Showing ${_customers.length} of ${formatCount(_total)} shared across the '
-                      'organization. The $label tag shows who is accountable.'
-                // ponytail: _total is the filtered count, so it names the rows shown, not the org.
-                : '${formatCount(_total)} ${_total == 1 ? 'customer' : 'customers'} · shared across the organization. '
-                      'The $label tag shows who is accountable for each relationship.',
-            // A Wrap rather than a Row: on a narrow window — and on a phone, which
-            // is coming — three controls side by side either overflow or squeeze
-            // the labels out. They fall onto a second line instead, in the same
-            // order.
-            action: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                // Deliberately a plain outlined button with no icon. Every icon
-                // that reads as "duplicates" -- merge arrows, a copy glyph --
-                // promises the one thing this does not do: nothing here merges
-                // anything, ever (§5.2), and a control that looks like a merge
-                // button is a worse lie than a wordy one.
-                OutlinedButton(
-                  key: const ValueKey('tour-customers-duplicates'),
-                  onPressed: _duplicates,
-                  child: const Text('Possible duplicates'),
-                ),
-                // Transfer sits before the primary action rather than after it,
-                // so "Add customer" stays the last and most prominent thing in
-                // the header.
-                DataTransfer(
-                  api: widget.api,
-                  session: widget.session,
-                  resource: 'customers',
-                  // An import writes rows this list is showing, so it has to be
-                  // read again — otherwise the count in the note above is a
-                  // number the screen has already been told is wrong.
-                  onImported: _load,
-                ),
-                // Desktop review 2026-11-13, D3: header right, as every module.
-                ModuleAction(
-                  child: Refused(
-                    // The server decides in the end. This decides what is OFFERED,
-                    // and a control that cannot be used stays on screen saying why
-                    // rather than going dark or disappearing.
-                    reason: refused,
-                    child: FilledButton.icon(
-                      key: const ValueKey('tour-customers-add'),
-                      onPressed: refused == null ? _create : null,
-                      icon: const Icon(Icons.person_add_outlined, size: 18),
-                      label: const Text('Add customer'),
-                    ),
+          // Design 195: on a phone the note's count is the list's own, and
+          // its three buttons are in the search line's ⋯.
+          // In the shell [add] is lifted into the module header.
+          if (_phone(context))
+            add
+          else
+            PanelHeader(
+              note: (_loading || _error != null)
+                  ? 'Shared across the organization — the $label tag shows who is accountable.'
+                  : _customers.length < _total
+                  ? 'Showing ${_customers.length} of ${formatCount(_total)} shared across the '
+                        'organization. The $label tag shows who is accountable.'
+                  // ponytail: _total is the filtered count, so it names the rows shown, not the org.
+                  : '${formatCount(_total)} ${_total == 1 ? 'customer' : 'customers'} · shared across the organization. '
+                        'The $label tag shows who is accountable for each relationship.',
+              // A Wrap rather than a Row: on a narrow window — and on a phone, which
+              // is coming — three controls side by side either overflow or squeeze
+              // the labels out. They fall onto a second line instead, in the same
+              // order.
+              action: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // Deliberately a plain outlined button with no icon. Every icon
+                  // that reads as "duplicates" -- merge arrows, a copy glyph --
+                  // promises the one thing this does not do: nothing here merges
+                  // anything, ever (§5.2), and a control that looks like a merge
+                  // button is a worse lie than a wordy one.
+                  OutlinedButton(
+                    key: const ValueKey('tour-customers-duplicates'),
+                    onPressed: _duplicates,
+                    child: const Text('Possible duplicates'),
                   ),
-                ),
-              ],
+                  // Transfer sits before the primary action rather than after it,
+                  // so "Add customer" stays the last and most prominent thing in
+                  // the header.
+                  DataTransfer(
+                    api: widget.api,
+                    session: widget.session,
+                    resource: 'customers',
+                    // An import writes rows this list is showing, so it has to be
+                    // read again — otherwise the count in the note above is a
+                    // number the screen has already been told is wrong.
+                    onImported: _load,
+                  ),
+                  add,
+                ],
+              ),
             ),
-          ),
           if (wide) _segmentChips(context),
           _filters(context, me, wide: wide),
         ],
@@ -457,14 +465,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
 
   Widget _filters(BuildContext context, Me me, {required bool wide}) {
-    final franchises = me.franchisesInView;
-    final label = me.organization.franchiseLabel;
-
-    String counted(String word, String key) {
-      final n = _segmentCounts[key];
-      return n == null ? word : '$word (${formatCount(n)})';
-    }
-
     return Padding(
       padding: EdgeInsets.fromLTRB(
         Gutter.of(context),
@@ -478,142 +478,234 @@ class _CustomersScreenState extends State<CustomersScreen> {
           // next one; at a fixed 160 they left a gap on the right and cut
           // "Everyone (13)" to "Everyone (1…".
           final half = wide ? 220.0 : (constraints.maxWidth - 12) / 2;
+          final search = ListSearch(
+            key: const ValueKey('tour-customers-search'),
+            controller: _search,
+            hint: 'Name, email, phone or number',
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _load(),
+            onClear: () {
+              _search.clear();
+              _load();
+            },
+          );
+
+          // Design 195 (phone 4): search, Filters and ⋯ on one line; the
+          // pickers are in Filters, Possible duplicates and Import / Export
+          // in the ⋯.
+          if (_phone(context)) {
+            final set = [
+              _segment != null,
+              _franchiseId != null,
+              _tag != null,
+            ].where((on) => on).length;
+            return Row(
+              children: [
+                Expanded(child: search),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: const ValueKey('customers-filters'),
+                  onPressed: () => _openFilters(me),
+                  child: Text(set == 0 ? 'Filters' : 'Filters · $set'),
+                ),
+                DataTransfer(
+                  api: widget.api,
+                  session: widget.session,
+                  resource: 'customers',
+                  onImported: _load,
+                  menu: true,
+                  extra: [
+                    MenuItemButton(
+                      key: const ValueKey('tour-customers-duplicates'),
+                      onPressed: _duplicates,
+                      child: const Text('Possible duplicates'),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          }
 
           return Wrap(
             spacing: 12,
             runSpacing: 12,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SizedBox(
-                width: wide ? 360 : constraints.maxWidth,
-                child: ListSearch(
-                  key: const ValueKey('tour-customers-search'),
-                  controller: _search,
-                  hint: 'Name, email, phone or number',
-                  onChanged: (_) => setState(() {}),
-                  onSubmitted: (_) => _load(),
-                  onClear: () {
-                    _search.clear();
-                    _load();
-                  },
-                ),
+              SizedBox(width: wide ? 360 : constraints.maxWidth, child: search),
+              ..._pickers(
+                me,
+                half: half,
+                full: constraints.maxWidth,
+                wide: wide,
               ),
-              // The chips' choice, as a picker where three chips would wrap.
-              if (!wide)
-                SizedBox(
-                  width: half,
-                  child: SearchPickerField<String?>(
-                    value: _segment,
-                    label: 'Show',
-                    options: [
-                      SearchOption<String?>(
-                        value: null,
-                        label: counted('Everyone', 'all'),
-                      ),
-                      SearchOption<String?>(
-                        value: 'repeat',
-                        label: counted('Repeat customers', 'repeat'),
-                      ),
-                      SearchOption<String?>(
-                        value: 'none',
-                        label: counted('No jobs yet', 'none'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _segment = value);
-                      _load();
-                    },
-                  ),
-                ),
-              // Narrowing, not a boundary — customers are shared, see the
-              // controller. One franchise is no choice, so no picker.
-              if (franchises.length > 1)
-                SizedBox(
-                  width: half,
-                  child: SearchPickerField<String?>(
-                    key: const ValueKey('tour-customers-franchise'),
-                    value: _franchiseId,
-                    label: label,
-                    options: [
-                      SearchOption<String?>(
-                        value: null,
-                        label:
-                            'All ${label.toLowerCase()}${label.toLowerCase().endsWith('ch') ? 'es' : 's'}',
-                      ),
-                      for (final b in branchOptionsInView(me))
-                        SearchOption<String?>(value: b.id, label: b.label),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _franchiseId = value);
-                      _load();
-                    },
-                  ),
-                ),
-              if (_knownTags.isNotEmpty || _tag != null)
-                SizedBox(
-                  width: half,
-                  child: SearchPickerField<String?>(
-                    key: const ValueKey('customers-tag-filter'),
-                    value: _tag,
-                    label: 'Tag',
-                    options: [
-                      const SearchOption<String?>(
-                        value: null,
-                        label: 'Any tag',
-                      ),
-                      for (final t in _knownTags)
-                        SearchOption<String?>(value: t, label: t),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _tag = value);
-                      _load();
-                    },
-                  ),
-                ),
-              // Wherever the list is drawn WITHOUT column headers, the same
-              // sort is offered here in words (UI/UX, 2026-09-28). The rule is
-              // "no headers -> this picker", not a width: below the table's
-              // breakpoint there is no table, and at a desk with a record
-              // docked the table becomes the 380px sidebar list, which has no
-              // headers either. Keyed on width alone, a docked record left no
-              // way to change the sort at all.
-              //
-              // A full line on a phone -- "Created, newest first" does not fit
-              // in half of one -- and a fixed width beside the search at a desk.
-              if (!wide || _openId != null)
-                SizedBox(
-                  width: wide ? 260 : constraints.maxWidth,
-                  child: SearchPickerField<String>(
-                    value: '$_sort:${_ascending ? 'asc' : 'desc'}',
-                    label: 'Sort',
-                    options: [
-                      for (final (key, up, down) in _sortWords(label))
-                        for (final ascending
-                            in _firstDirection(key)
-                                ? [true, false]
-                                : [false, true])
-                          SearchOption<String>(
-                            value: '$key:${ascending ? 'asc' : 'desc'}',
-                            label: ascending ? up : down,
-                          ),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      final [key, direction] = value.split(':');
-                      setState(() {
-                        _sort = key;
-                        _ascending = direction == 'asc';
-                      });
-                      _load();
-                    },
-                  ),
-                ),
             ],
           );
         },
       ),
     );
   }
+
+  static bool _phone(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600;
+
+  /// Show, the branch, Tag and Sort. Beside the search at a desk; on a phone
+  /// in the Filters panel, where [changed] redraws the panel.
+  List<Widget> _pickers(
+    Me me, {
+    required double half,
+    required double full,
+    required bool wide,
+    VoidCallback? changed,
+  }) {
+    final franchises = me.franchisesInView;
+    final label = me.organization.franchiseLabel;
+
+    String counted(String word, String key) {
+      final n = _segmentCounts[key];
+      return n == null ? word : '$word (${formatCount(n)})';
+    }
+
+    return [
+      // The chips' choice, as a picker where three chips would wrap.
+      if (!wide)
+        SizedBox(
+          width: half,
+          child: SearchPickerField<String?>(
+            value: _segment,
+            label: 'Show',
+            options: [
+              SearchOption<String?>(
+                value: null,
+                label: counted('Everyone', 'all'),
+              ),
+              SearchOption<String?>(
+                value: 'repeat',
+                label: counted('Repeat customers', 'repeat'),
+              ),
+              SearchOption<String?>(
+                value: 'none',
+                label: counted('No jobs yet', 'none'),
+              ),
+            ],
+            onChanged: (value) {
+              setState(() => _segment = value);
+              _load();
+              changed?.call();
+            },
+          ),
+        ),
+      // Narrowing, not a boundary — customers are shared, see the
+      // controller. One franchise is no choice, so no picker.
+      if (franchises.length > 1)
+        SizedBox(
+          width: half,
+          child: SearchPickerField<String?>(
+            key: const ValueKey('tour-customers-franchise'),
+            value: _franchiseId,
+            label: label,
+            options: [
+              SearchOption<String?>(
+                value: null,
+                label:
+                    'All ${label.toLowerCase()}${label.toLowerCase().endsWith('ch') ? 'es' : 's'}',
+              ),
+              for (final b in branchOptionsInView(me))
+                SearchOption<String?>(value: b.id, label: b.label),
+            ],
+            onChanged: (value) {
+              setState(() => _franchiseId = value);
+              _load();
+              changed?.call();
+            },
+          ),
+        ),
+      if (_knownTags.isNotEmpty || _tag != null)
+        SizedBox(
+          width: half,
+          child: SearchPickerField<String?>(
+            key: const ValueKey('customers-tag-filter'),
+            value: _tag,
+            label: 'Tag',
+            options: [
+              const SearchOption<String?>(value: null, label: 'Any tag'),
+              for (final t in _knownTags)
+                SearchOption<String?>(value: t, label: t),
+            ],
+            onChanged: (value) {
+              setState(() => _tag = value);
+              _load();
+              changed?.call();
+            },
+          ),
+        ),
+      // Wherever the list is drawn WITHOUT column headers, the same
+      // sort is offered here in words (UI/UX, 2026-09-28). The rule is
+      // "no headers -> this picker", not a width: below the table's
+      // breakpoint there is no table, and at a desk with a record
+      // docked the table becomes the 380px sidebar list, which has no
+      // headers either. Keyed on width alone, a docked record left no
+      // way to change the sort at all.
+      //
+      // A full line on a phone -- "Created, newest first" does not fit
+      // in half of one -- and a fixed width beside the search at a desk.
+      if (!wide || _openId != null)
+        SizedBox(
+          width: wide ? 260 : full,
+          child: SearchPickerField<String>(
+            value: '$_sort:${_ascending ? 'asc' : 'desc'}',
+            label: 'Sort',
+            options: [
+              for (final (key, up, down) in _sortWords(label))
+                for (final ascending
+                    in _firstDirection(key) ? [true, false] : [false, true])
+                  SearchOption<String>(
+                    value: '$key:${ascending ? 'asc' : 'desc'}',
+                    label: ascending ? up : down,
+                  ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              final [key, direction] = value.split(':');
+              setState(() {
+                _sort = key;
+                _ascending = direction == 'asc';
+              });
+              _load();
+              changed?.call();
+            },
+          ),
+        ),
+    ];
+  }
+
+  Future<void> _openFilters(Me me) => showSidePanel<void>(
+    context,
+    builder: (_) => StatefulBuilder(
+      builder: (context, setPanel) => SidePanel(
+        title: 'Filters',
+        actions: [
+          FilledButton(
+            key: const ValueKey('customers-filters-done'),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Done'),
+          ),
+        ],
+        child: LayoutBuilder(
+          builder: (context, box) => Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: _pickers(
+              me,
+              half: box.maxWidth,
+              full: box.maxWidth,
+              wide: false,
+              changed: () => setPanel(() {}),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 
   /// Each sortable column in words, ascending then descending. The same keys
   /// the table headers send, so a phone and a desk sort the same list the same
