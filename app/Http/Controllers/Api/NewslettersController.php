@@ -219,6 +219,7 @@ class NewslettersController extends Controller
 
         $row = $this->findInView($user, $newsletter, lock: true);
         $this->assertMayWrite($user, $row);
+        $this->assertCurrentRevision($request, $row);
         $data = $this->validated($request);
 
         /*
@@ -246,9 +247,31 @@ class NewslettersController extends Controller
         }
 
         $this->applySchedule($request, $row, $data['scheduled_for'] ?? null);
+        $row->revision = (int) $row->revision + 1;
         $row->save();
 
         return response()->json(['data' => $this->present($row->fresh(['audience', 'sends']))]);
+    }
+
+    /**
+     * Optimistic concurrency: a request that names the revision it was built
+     * on is refused when the row has moved on, so a stale tab cannot overwrite
+     * newer work. A request without one (an older client) is let through.
+     */
+    private function assertCurrentRevision(Request $request, Newsletter $row): void
+    {
+        $sent = $request->input('revision');
+        if ($sent === null || $sent === '') {
+            return;
+        }
+
+        if (! is_numeric($sent) || (int) $sent !== (int) $row->revision) {
+            abort(response()->json([
+                'message' => 'This newsletter changed in another tab or by someone else. '
+                    .'Reload to see the newest version; your edits are kept here.',
+                'revision' => (int) $row->revision,
+            ], Status::HTTP_CONFLICT));
+        }
     }
 
     public function destroy(Request $request, string $newsletter): JsonResponse
@@ -292,7 +315,7 @@ class NewslettersController extends Controller
         $user = $this->mayView($request);
         $row = $this->findInView($user, $newsletter);
 
-        return response()->json(['data' => ['html' => $this->htmlFor($row)]]);
+        return response()->json(['data' => ['html' => $this->htmlFor($row), 'revision' => (int) $row->revision]]);
     }
 
     /**
@@ -309,12 +332,41 @@ class NewslettersController extends Controller
         // Who it goes to, counted the way the send picks them (review
         // 2026-11-09 A32); null for a list Mailchimp holds, whose addresses
         // EzBizi does not have.
-        $customers = $row->audience?->kind === \App\Models\NewsletterAudience::KIND_CUSTOMERS;
+        $customers = $row->audience?->kind === NewsletterAudience::KIND_CUSTOMERS;
+
+        $recipients = $customers ? count(SendNewsletter::people($row)) : null;
+        $connection = $this->sendingConnection($user, $row);
+        $sender = NewsletterSenders::for($connection?->providerEnum());
 
         return response()->json(['data' => [
             'checks' => $this->checks($user, $row),
-            'recipients' => $customers ? count(\App\Jobs\SendNewsletter::people($row)) : null,
+            'recipients' => $recipients,
+            // Kept as the name for older clients; `audience_detail` is the full answer.
             'audience' => $row->audience?->name,
+            'audience_detail' => $row->audience === null ? null : [
+                'id' => $row->audience->getKey(),
+                'name' => $row->audience->name,
+                'kind' => $row->audience->kind,
+                'provider' => 'mailchimp',
+                'list_id' => $row->audience->mailchimp_list_id,
+                // Mailchimp's member total is not fetched here (no live call
+                // in a read), and it is never the eligible count either way.
+                'members' => null,
+                // EzBizi cannot see a Mailchimp list's subscribed/cleaned
+                // status, so for a provider list the eligible count is unknown.
+                'eligible' => $recipients,
+                'eligible_state' => $customers ? 'known' : 'unknown',
+                'resolved_at' => now()->toIso8601String(),
+            ],
+            'sender' => [
+                'account' => $connection?->display_name,
+                'from_name' => $connection !== null && $sender !== null ? $sender->fromName($connection, $row) : null,
+                'from_address' => $connection !== null && $sender !== null ? $sender->fromAddress($connection, $row) : null,
+            ],
+            'revision' => (int) $row->revision,
+            'test_current' => $row->last_test_revision !== null
+                && (int) $row->last_test_revision === (int) $row->revision,
+            'scheduled_timezone' => $row->scheduled_timezone ?? ViewTimezone::forUser($user),
         ]]);
     }
 
@@ -339,6 +391,7 @@ class NewslettersController extends Controller
         ]);
 
         $row = $this->findInView($user, $newsletter);
+        $this->assertCurrentRevision($request, $row);
         $failed = array_values(array_filter($this->checks($user, $row), fn (array $c) => ! $c['ok']));
         if ($failed !== []) {
             throw ValidationException::withMessages(['email' => $failed[0]['label'].': '.$failed[0]['detail']]);
@@ -357,7 +410,19 @@ class NewslettersController extends Controller
 
         $this->audit->log('newsletter.test_sent', $row, ['to' => $data['email']], actor: $user);
 
-        return response()->json(['data' => ['sent_to' => $data['email']]]);
+        // "accepted": Mailchimp took the request. Whether it reached the inbox
+        // is Mailchimp's to report, so it is never called delivered.
+        $row->forceFill([
+            'last_test_revision' => (int) $row->revision,
+            'last_test_to' => (string) $data['email'],
+            'last_test_at' => now(),
+            'last_test_result' => 'accepted',
+        ])->save();
+
+        return response()->json(['data' => [
+            'sent_to' => $data['email'],
+            'last_test' => $this->lastTest($row),
+        ]]);
     }
 
     /** @return list<array{key: string, ok: bool, label: string, detail: string}> */
@@ -521,6 +586,7 @@ class NewslettersController extends Controller
 
         $row = $this->findInView($user, $newsletter, lock: true);
         $this->assertMayWrite($user, $row);
+        $this->assertCurrentRevision($request, $row);
 
         if (in_array($row->status, [Newsletter::STATUS_SENT, Newsletter::STATUS_SCHEDULED, Newsletter::STATUS_SENDING], true)
             || $row->sends()->whereIn('status', [NewsletterSend::STATUS_QUEUED, NewsletterSend::STATUS_SENDING])->exists()) {
@@ -817,6 +883,20 @@ class NewslettersController extends Controller
                 'sent_at' => $send->sent_at?->toIso8601String(),
             ],
             'created_at' => $n->created_at?->toIso8601String(),
+            'updated_at' => $n->updated_at?->toIso8601String(),
+            'revision' => (int) ($n->revision ?? 1),
+            'last_test' => $this->lastTest($n),
+        ];
+    }
+
+    /** @return array{revision: int, to: string, at: ?string, result: string}|null */
+    private function lastTest(Newsletter $n): ?array
+    {
+        return $n->last_test_revision === null ? null : [
+            'revision' => (int) $n->last_test_revision,
+            'to' => (string) $n->last_test_to,
+            'at' => $n->last_test_at?->toIso8601String(),
+            'result' => (string) $n->last_test_result,
         ];
     }
 }
