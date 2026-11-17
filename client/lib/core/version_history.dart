@@ -13,6 +13,15 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0580', date: '17 Nov 2026', items: [
+      'On a phone, Jobs, Customers and CX Reviews start the list much higher: search, Filters and a menu share one toolbar line',
+      'On a phone, module headers keep their full title, and the Communication › Phone tabs and the HR Day to Year range fit on one line',
+      'Task Board on a phone: search has its own line and New task is back on the toolbar',
+      'Inspection › Generated Reports on a phone: open one report at a time, with Back to the list',
+      'Leads: when a filter hides every lead, the list says No leads match these filters',
+      'Fleet: each vehicle card says how many fields are missing',
+      'Task Board: Recurring Tasks and Guidelines groups are teal and brown instead of purple, and the colour picker no longer offers purple',
+    ]),
     VersionRelease(version: '0.0.0579', date: '16 Nov 2026', items: [
       'Leads: What they asked gets More and Less when the AI summary is cut short, and in a short window the lead header folds its details behind one Details line',
       'Reports: pin the heading row on any table (your choice is remembered)',
