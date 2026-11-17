@@ -664,8 +664,9 @@ void main() {
     builtins!['updates'] = {'label': 'Updates', 'visible': false};
     await pump(tester);
 
-    expect(find.text('SUMMARY'), findsWidgets);
-    expect(find.text('ABOUT'), findsNothing);
+    // About is "Linked" on every board (Jose 11-17); its board name is on hover.
+    expect(find.text('LINKED'), findsWidgets);
+    expect(find.text('SUMMARY'), findsNothing);
     expect(find.text('UPDATES'), findsNothing);
     expect(find.text('CREATED'), findsNothing);
     expect(find.byKey(const ValueKey('task-created-t1')), findsNothing);
@@ -676,7 +677,7 @@ void main() {
   ) async {
     await pump(tester);
 
-    for (final h in ['OWNER', 'STATUS', 'DUE', 'ABOUT', 'UPDATES']) {
+    for (final h in ['OWNER', 'STATUS', 'DUE', 'LINKED', 'UPDATES']) {
       expect(find.text(h), findsWidgets, reason: h);
     }
     expect(find.text('CREATED'), findsNothing);
@@ -705,9 +706,9 @@ void main() {
     builtins = customised();
     await pump(tester);
 
-    await tester.tap(find.byKey(const ValueKey('builtin-head-about')).first);
+    await tester.tap(find.byKey(const ValueKey('builtin-head-due')).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('builtin-rename-about')));
+    await tester.tap(find.byKey(const ValueKey('builtin-rename-due')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('builtin-name')), 'Notes');
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -715,7 +716,7 @@ void main() {
 
     sent(log.single, 'PATCH', '/task-boards/b-1', {
       'builtin_columns': {
-        'about': {'label': 'Notes'},
+        'due': {'label': 'Notes'},
       },
     });
     expect(find.text('NOTES'), findsWidgets);
@@ -729,9 +730,9 @@ void main() {
     refuseBoardPatch = true;
     await pump(tester);
 
-    await tester.tap(find.byKey(const ValueKey('builtin-head-about')).first);
+    await tester.tap(find.byKey(const ValueKey('builtin-head-due')).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('builtin-rename-about')));
+    await tester.tap(find.byKey(const ValueKey('builtin-rename-due')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('builtin-name')), 'Notes');
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -739,7 +740,7 @@ void main() {
 
     expect(find.text('That column name is not allowed here.'), findsOneWidget);
     expect(find.byKey(const Key('builtin-name')), findsOneWidget);
-    expect(find.text('SUMMARY'), findsWidgets);
+    expect(find.text('DUE'), findsWidgets);
   });
 
   testWidgets('Hide sends visible false, and the toolbar Hide shows it again', (
@@ -858,7 +859,7 @@ void main() {
     canEdit = false;
     await pump(tester);
 
-    expect(find.text('SUMMARY'), findsWidgets);
+    expect(find.text('LINKED'), findsWidgets);
     expect(find.byKey(const ValueKey('builtin-head-about')), findsNothing);
     expect(find.byKey(const Key('list-toolbar-hide')), findsNothing);
   });
