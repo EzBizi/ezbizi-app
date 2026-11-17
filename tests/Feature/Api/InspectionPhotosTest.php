@@ -138,6 +138,43 @@ class InspectionPhotosTest extends TestCase
         $this->signedInAs($tech)->get('/api/v1/attachments/'.$photoId)->assertOk();
     }
 
+    /**
+     * A report's photograph is held by the report's franchise rule too
+     * (authorization sweep, 2026-11-17). GET attachments/{id} relies on
+     * InspectionReportPolicy::view alone; before the policy applied reach, a
+     * sibling company holding inspection.view opened the photo with 200 while
+     * GET inspections/reports/{id} refused the same person with 404.
+     */
+    public function test_a_sibling_company_cannot_open_a_report_photograph(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+        $seeded = $this->seedOffered($tenant, $tech, screens: $this->photoScreen());
+
+        $runId = $this->startRun($tech, $seeded);
+        $photoId = $this->uploadPhoto($tech, $runId)->json('data.id');
+        $this->signedInAs($tech)->patchJson("/api/v1/inspections/runs/{$runId}", [
+            'answers' => ['damage' => [$photoId]],
+        ])->assertOk();
+        $this->signedInAs($tech)->postJson("/api/v1/inspections/runs/{$runId}/submit")->assertOk();
+        $this->inTenant($tenant['org'], fn () => $this->assertSame('inspection_reports', Attachment::findOrFail($photoId)->attachable_type));
+
+        $siblingFranchise = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $company = \App\Models\Company::create(['organization_id' => $tenant['org']->id, 'name' => 'Alpha Sibling Co']);
+
+            return \App\Models\Franchise::create(['organization_id' => $tenant['org']->id, 'company_id' => $company->id, 'name' => 'Alpha Sibling F']);
+        });
+        $sideways = $this->userWithRole($tenant, 'Sibling Inspector', [
+            'inspection.view', 'inspection.reports.view',
+        ], 'sibling@alpha.test', $siblingFranchise);
+
+        $refused = $this->signedInAs($sideways)->get('/api/v1/attachments/'.$photoId)->getStatusCode();
+        $this->assertContains($refused, [403, 404], "sibling company got {$refused} for a report photograph");
+
+        // The control: the same file is served to somebody whose view holds the franchise.
+        $this->signedInAs($tenant['admin'])->get('/api/v1/attachments/'.$photoId)->assertOk();
+    }
+
     // ── the frozen report ────────────────────────────────────────
 
     public function test_nobody_can_upload_a_photo_onto_a_report(): void
