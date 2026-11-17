@@ -456,6 +456,28 @@ class ProjectBoardTest extends TestCase
         $this->signedInAs($beta['admin'])->get("/api/v1/project-board/jobs/{$id}/work-order")->assertNotFound();
     }
 
+    /** The job's Workiz photos print on the work order, fetched from Workiz's file host only. */
+    public function test_a_workiz_photo_is_fetched_from_workiz_only_and_shrunk(): void
+    {
+        $img = imagecreatetruecolor(2400, 1600);
+        ob_start();
+        imagepng($img);
+        $png = (string) ob_get_clean();
+        \Illuminate\Support\Facades\Http::fake([
+            'st.sendajob.com/*' => \Illuminate\Support\Facades\Http::response($png, 200, ['Content-Type' => 'image/png']),
+            '*' => \Illuminate\Support\Facades\Http::response($png, 200, ['Content-Type' => 'image/png']),
+        ]);
+
+        $data = \App\Support\ProjectBoard\WorkOrderPdf::fetchPhoto('https://st.sendajob.com/a/b.jpg');
+        $this->assertNotNull($data);
+        $this->assertStringStartsWith('data:image/jpeg;base64,', $data);
+        $this->assertSame(1200, imagesx(imagecreatefromstring(base64_decode(substr($data, 23)))));
+
+        $this->assertNull(\App\Support\ProjectBoard\WorkOrderPdf::fetchPhoto('https://evil.example/b.jpg'), 'Not Workiz: never fetched.');
+        $this->assertNull(\App\Support\ProjectBoard\WorkOrderPdf::fetchPhoto('http://st.sendajob.com/b.jpg'), 'https only.');
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
     public function test_the_work_order_page_names_where_each_part_is_picked_up(): void
     {
         $html = \App\Support\ProjectBoard\WorkOrderPdf::html([

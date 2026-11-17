@@ -163,8 +163,15 @@ class ProjectBoardController extends Controller
                 $listed[] = (string) $file->original_name;
             }
         }
+        // Workiz's own photos (most of a job's pictures): fetched from
+        // Workiz's file host only, images only, so the crew sees them.
         foreach (WorkizExtras::files($payload) as $f) {
-            $listed[] = (string) $f['name'];
+            $data = count($photos) < 9 ? WorkOrderPdf::fetchPhoto((string) $f['url']) : null;
+            if ($data !== null) {
+                $photos[] = ['name' => (string) $f['name'], 'data' => $data];
+            } else {
+                $listed[] = (string) $f['name'];
+            }
         }
 
         $pdf = WorkOrderPdf::render([

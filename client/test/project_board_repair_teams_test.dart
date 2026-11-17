@@ -113,6 +113,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // Last of eight tabs since the Dashboard (2026-11-17): scrolled to first.
+    await tester.ensureVisible(find.text('Settings').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Settings').first);
     await tester.pumpAndSettle();
 

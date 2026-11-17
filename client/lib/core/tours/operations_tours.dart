@@ -881,7 +881,25 @@ const Map<String, Tour> operationsTours = {
     ],
   ),
   // ── Project Management (project_board, Jose 2026-11-06) ──────────────
+  // The Dashboard is the first tab since 2026-11-17.
   'project_board': Tour(
+    version: 2,
+    steps: [
+      TourStep(
+        anchor: 'project-board-tabs',
+        title: 'Sub-tabs',
+        body:
+            'Dashboard first: what waits for parts, what is late, and your reminders. Then a tab per job stage.',
+      ),
+      TourStep(
+        anchor: 'project-board-dashboard',
+        title: 'Parts at a glance',
+        body:
+            'Items and jobs waiting for parts, parts 3 days late in red, and reminders you can move or clear.',
+      ),
+    ],
+  ),
+  'project_board/Unscheduled': Tour(
     version: 1,
     steps: [
       TourStep(
