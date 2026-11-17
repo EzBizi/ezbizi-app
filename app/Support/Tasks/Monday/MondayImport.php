@@ -273,7 +273,9 @@ final class MondayImport
         $have = TaskBoardMember::query()->where('board_id', $board->id)->pluck('role', 'user_id')->all();
         foreach ($members as $m) {
             $user = $this->person($m['email'] ?? null);
-            if ($user === null || ! $user->is_active || isset($have[$user->id])) {
+            // Add-only, and never someone an admin took off this board here (desk 11-17).
+            if ($user === null || ! $user->is_active || isset($have[$user->id])
+                || in_array($user->id, (array) ($board->builtin_columns['_removed'] ?? []), true)) {
                 continue;
             }
             $role = ($m['role'] ?? '') === 'owner' ? TaskBoardMember::OWNER : TaskBoardMember::MEMBER;

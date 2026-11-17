@@ -2,22 +2,32 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Console\Commands\PurgeDeletedTaskBoards;
 use App\Models\Assignment;
+use App\Models\Automation;
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\PhonePresence;
 use App\Models\Task;
 use App\Models\TaskBoard;
+use App\Models\TaskBoardFolder;
 use App\Models\TaskBoardMember;
 use App\Models\TaskColumn;
+use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\TaskLink;
 use App\Models\TaskStatus;
 use App\Models\User;
+use App\Support\Notes\NoteActivity;
 use App\Support\Scoping\OwnedScope;
+use App\Support\Tasks\SensitiveTasks;
 use App\Support\Tasks\TaskBoards;
+use App\Support\Time\ViewTimezone;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -115,16 +125,16 @@ class TaskBoardsController extends Controller
      * Boards deleted in the last 30 days that this person could restore,
      * listed under Archived with the day they go for good.
      *
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * @return Collection<int, array<string, mixed>>
      */
-    private function deleted(User $user): \Illuminate\Support\Collection
+    private function deleted(User $user): Collection
     {
         return $this->boards->visibleTo($user)->onlyTrashed()
-            ->where('deleted_at', '>=', now()->subDays(\App\Console\Commands\PurgeDeletedTaskBoards::DAYS))
+            ->where('deleted_at', '>=', now()->subDays(PurgeDeletedTaskBoards::DAYS))
             ->get()->filter(fn (TaskBoard $b) => $this->canRestore($user, $b))
             ->map(fn (TaskBoard $b) => ['id' => $b->id, 'kind' => $b->kind, 'name' => $b->name, 'archived' => true,
                 'deleted' => true, 'open_tasks' => 0, 'section' => null, 'owner' => null, 'can_edit' => false,
-                'restore_until' => $b->deleted_at->copy()->addDays(\App\Console\Commands\PurgeDeletedTaskBoards::DAYS)->toDateString()])
+                'restore_until' => $b->deleted_at->copy()->addDays(PurgeDeletedTaskBoards::DAYS)->toDateString()])
             ->values();
     }
 
@@ -151,7 +161,7 @@ class TaskBoardsController extends Controller
         $user = $request->user();
         $board = $this->boards->visibleTo($user)->onlyTrashed()->findOrFail($id);
         abort_unless($this->canRestore($user, $board), 403, 'Only an owner of this board or an Administrator can do that.');
-        abort_if($board->deleted_at->lt(now()->subDays(\App\Console\Commands\PurgeDeletedTaskBoards::DAYS)), 404);
+        abort_if($board->deleted_at->lt(now()->subDays(PurgeDeletedTaskBoards::DAYS)), 404);
         $board->restore();
 
         return response()->json(['data' => ['id' => $board->id]]);
@@ -177,7 +187,7 @@ class TaskBoardsController extends Controller
         $cursor = now()->startOfSecond()->toIso8601String();
 
         // An API key (MCP) or the AI is never shown a sensitive task, not even its title.
-        $hidden = \App\Support\Tasks\SensitiveTasks::machineReader($user);
+        $hidden = SensitiveTasks::machineReader($user);
         // ?per_group=N: the first N top-level tasks of each group (and their
         // subtasks), with each group's full count and footers. A 24,713-task
         // board was a 20 MB reply (Jose, 2026-11-16). Absent: every task.
@@ -208,11 +218,11 @@ class TaskBoardsController extends Controller
             ->orderBy('created_at')
             ->get();
 
-        $unread = \App\Support\Notes\NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
+        $unread = NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
             $tasks->concat($rolled)->map(fn (Task $t) => (string) $t->id)->all(), (string) $user->id);
         $present = fn (Task $t) => TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0];
         $assignable = $this->boards->assignable($taskBoard);
-        $withPhoto = \App\Models\User::query()->whereIn('id', $assignable->pluck('id'))
+        $withPhoto = User::query()->whereIn('id', $assignable->pluck('id'))
             ->whereNotNull('avatar_path')->pluck('id')->mapWithKeys(fn ($id) => [(string) $id => true])->all();
 
         return response()->json(['data' => [
@@ -307,7 +317,7 @@ class TaskBoardsController extends Controller
         $numbers = $board->columns->where('type', 'number')->pluck('id')->all();
         $sums = [];
         if ($numbers !== []) {
-            $found = \App\Models\TaskColumnValue::query()
+            $found = TaskColumnValue::query()
                 ->join('tasks', 'tasks.id', '=', 'task_column_values.task_id')
                 ->where('tasks.board_id', $board->id)
                 ->whereNull('tasks.deleted_at')
@@ -358,13 +368,13 @@ class TaskBoardsController extends Controller
         $this->authorize('view', $taskBoard);
         $input = $request->validate(['since' => ['required', 'string', 'max:64']]);
         try {
-            $since = \Carbon\CarbonImmutable::parse($input['since'])->setTimezone(config('app.timezone'));
+            $since = CarbonImmutable::parse($input['since'])->setTimezone(config('app.timezone'));
         } catch (\Throwable) {
             throw ValidationException::withMessages(['since' => 'Not a time.']);
         }
         $cursor = now()->startOfSecond();
         $user = $request->user();
-        $hidden = \App\Support\Tasks\SensitiveTasks::machineReader($user);
+        $hidden = SensitiveTasks::machineReader($user);
         $sources = $this->boards->rolledUpBoards($user, $taskBoard)->keyBy('id');
         $boardIds = [$taskBoard->id, ...$sources->keys()->all()];
 
@@ -379,7 +389,7 @@ class TaskBoardsController extends Controller
         // Gone from this reader: deleted, or (for an API key) made sensitive.
         [$gone, $live] = $rows->partition(fn (Task $t) => $t->trashed() || ($hidden && $t->sensitive));
 
-        $unread = \App\Support\Notes\NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
+        $unread = NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
             $live->map(fn (Task $t) => (string) $t->id)->values()->all(), (string) $user->id);
         $tasks = $live->map(function (Task $t) use ($unread, $sources, $taskBoard) {
             $row = TasksController::present($t) + ['unread_notes' => $unread[(string) $t->id] ?? 0];
@@ -417,14 +427,14 @@ class TaskBoardsController extends Controller
             'limit' => ['sometimes', 'integer', 'min:1', 'max:500'],
         ]);
         $user = $request->user();
-        $hidden = \App\Support\Tasks\SensitiveTasks::machineReader($user);
+        $hidden = SensitiveTasks::machineReader($user);
         $group = (string) ($input['group_id'] ?? '');
         $page = $this->groupPages($taskBoard, $hidden, (int) ($input['limit'] ?? 50), (int) ($input['offset'] ?? 0), $group)[$group]
             ?? ['count' => 0, 'shown' => 0, 'has_more' => false, 'ids' => [], 'footers' => (object) []];
         $tasks = $this->ownTasks($taskBoard, $hidden)
             ->where(fn ($q) => $q->whereIn('id', $page['ids'])->orWhereIn('parent_task_id', $page['ids']))
             ->get();
-        $unread = \App\Support\Notes\NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
+        $unread = NoteActivity::unreadCounts('task', 'task_updates', 'task_id',
             $tasks->map(fn (Task $t) => (string) $t->id)->all(), (string) $user->id);
 
         return response()->json([
@@ -499,7 +509,7 @@ class TaskBoardsController extends Controller
             'builtin_columns.*' => ['array:label,visible'],
             'builtin_columns.*.label' => ['sometimes', 'string', 'min:1', 'max:60'],
             'builtin_columns.*.visible' => ['sometimes', 'boolean:strict'],
-            'folder_id' => ['sometimes', 'nullable', 'uuid', fn ($a, $v, $fail) => $v === null || \App\Models\TaskBoardFolder::query()->whereKey($v)->exists() ?: $fail('That folder is not in this organization.')],
+            'folder_id' => ['sometimes', 'nullable', 'uuid', fn ($a, $v, $fail) => $v === null || TaskBoardFolder::query()->whereKey($v)->exists() ?: $fail('That folder is not in this organization.')],
             'colour' => ['sometimes', 'nullable', TaskBoardFoldersController::COLOUR],
             'position' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000'],
             'column_order' => ['sometimes', 'array', 'max:300'],
@@ -591,14 +601,14 @@ class TaskBoardsController extends Controller
         abort_unless($this->boards->assignable($taskBoard)->contains('id', $user->id), 404);
 
         $user->loadMissing('role:id,name');
-        $state = \App\Models\PhonePresence::query()->where('user_id', $user->id)->value('state');
+        $state = PhonePresence::query()->where('user_id', $user->id)->value('state');
 
         return response()->json(['data' => [
             'id' => $user->id,
             'name' => $user->name,
             'has_avatar' => $user->avatar_path !== null,
             'role_name' => $user->role?->name,
-            'timezone' => $tz = \App\Support\Time\ViewTimezone::forUser($user),
+            'timezone' => $tz = ViewTimezone::forUser($user),
             // Worked out here: the client has no zone database.
             'local_time' => now($tz)->format('g:i A T'),
             'presence' => $state,
@@ -622,6 +632,11 @@ class TaskBoardsController extends Controller
             throw ValidationException::withMessages(['user_id' => 'That person is already on this board.']);
         }
 
+        $cols = (array) ($taskBoard->builtin_columns ?? []);
+        if (in_array($input['user_id'], (array) ($cols['_removed'] ?? []), true)) {
+            $cols['_removed'] = array_values(array_diff($cols['_removed'], [$input['user_id']]));
+            $taskBoard->forceFill(['builtin_columns' => $cols])->save();
+        }
         $member = $taskBoard->members()->create([
             'organization_id' => $taskBoard->organization_id,
             'user_id' => $input['user_id'],
@@ -655,6 +670,10 @@ class TaskBoardsController extends Controller
         DB::transaction(function () use ($taskBoard, $member) {
             $this->keepAnOwner($taskBoard, $member);
             $member->delete();
+            // Desk 11-17: a removal here outlives Monday's list; the sync never re-adds them.
+            $cols = (array) ($taskBoard->builtin_columns ?? []);
+            $cols['_removed'] = array_values(array_unique([...(array) ($cols['_removed'] ?? []), $member->user_id]));
+            $taskBoard->forceFill(['builtin_columns' => $cols])->save();
         });
 
         return response()->noContent();
@@ -679,7 +698,7 @@ class TaskBoardsController extends Controller
     /** Task rules (on or off) whose current version is conditioned on `board_id eq` this board. */
     private function automationsOn(TaskBoard $board): int
     {
-        return \App\Models\Automation::query()
+        return Automation::query()
             ->where('trigger_key', 'like', 'task.%')
             ->with('activeVersion:id,conditions')
             ->get(['id', 'active_version_id'])
