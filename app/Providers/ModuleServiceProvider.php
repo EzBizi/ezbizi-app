@@ -4335,8 +4335,17 @@ class ModuleServiceProvider extends ServiceProvider
                 // downloading a machine's files is its own authority, neither
                 // watching the screen nor driving it — see FilesController
                 // (2026-10-01-monitoring-files).
-                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'map.manage', 'control', 'files.view', 'lighting.manage'],
+                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'map.manage', 'control', 'files.view', 'lighting.manage', 'unmonitored'],
+                // Jose, 2026-11-17: a role whose own PCs are NOT screen-monitored
+                // ("Lead Managers should not be desktop monitored as they may
+                // handle financial information"). Read by
+                // ScreenMonitoringExemption; implies no monitoring.view. The
+                // exemption is the grant, so every role stays monitored until
+                // ticked, with no backfill.
+                passiveActions: ['unmonitored'],
+                actionDescriptions: ['unmonitored' => 'Their PCs still show online with their specs. Screen views and remote control are refused at once; the PC itself stops capturing at its next app restart. Administrators are always monitored.'],
                 actionLabels: [
+                    'unmonitored' => 'Their own PC is not screen-monitored',
                     'specs.view' => "See each PC's hardware details",
                     'cameras.manage' => 'Set up cameras and camera sites',
                     'map.manage' => 'Edit the floor plan and who owns each PC',

@@ -823,8 +823,17 @@ class _RolePageState extends State<_RolePage> {
   /// a permission too (`ModuleAvailability::isPermissionAvailable`), so an
   /// action this build has never heard of still counts as being inside its own
   /// module rather than being invisible to the tab above it.
-  Iterable<String> _keysUnder(String moduleKey) =>
-      _held.where((key) => key.startsWith('$moduleKey.'));
+  Iterable<String> _keysUnder(String moduleKey) => _held.where(
+    (key) => key.startsWith('$moduleKey.') && !_passiveKeys.contains(key),
+  );
+
+  /// Grants done TO the holder (PermissionAction.passive): they neither open
+  /// a module nor close with it.
+  late final Set<String> _passiveKeys = {
+    for (final m in widget.catalogue.modules)
+      for (final a in m.actions)
+        if (a.passive) a.key,
+  };
 
   /// The inboxes this role holds under this module.
   ///
@@ -1017,7 +1026,10 @@ class _RolePageState extends State<_RolePage> {
         }
 
         _blocked = null;
-        _held.removeWhere((key) => key.startsWith('${module.key}.'));
+        _held.removeWhere(
+          (key) =>
+              key.startsWith('${module.key}.') && !_passiveKeys.contains(key),
+        );
         // With the tab gone the inboxes under it grant nothing, so they go too
         // rather than being left as rows the server would refuse.
         _inboxes.removeAll(widget.inboxes.under(module.key).map((i) => i.id));
@@ -1073,6 +1085,7 @@ class _RolePageState extends State<_RolePage> {
           _held.removeWhere(
             (key) =>
                 key.startsWith('${module.key}.') &&
+                !_passiveKeys.contains(key) &&
                 widget.catalogue.mayGrant(key),
           );
 
@@ -1101,8 +1114,9 @@ class _RolePageState extends State<_RolePage> {
       _held.add(action.key);
 
       // Granting anything grants the tab it lives on. "May edit a customer but
-      // cannot open Customers" is the other impossible state.
-      if (viewKey != null) _held.add(viewKey);
+      // cannot open Customers" is the other impossible state. Not a passive
+      // grant: being monitored opens nothing.
+      if (viewKey != null && !action.passive) _held.add(viewKey);
     });
   }
 
@@ -1249,7 +1263,7 @@ class _RolePageState extends State<_RolePage> {
 
   /// What they can do there, not counting the tabs: the column of that name.
   Iterable<PermissionAction> _doActions(PermissionModule module) =>
-      module.actions.where((a) => !a.tab);
+      module.actions.where((a) => !a.tab && !a.passive);
 
   /// The box in "What they can do", for this role or the one beside it.
   ///
@@ -1919,9 +1933,30 @@ class _RolePageState extends State<_RolePage> {
                 ),
               ],
               for (final action in module.actions.where(
-                (a) => !a.tab && shown(a),
+                (a) => !a.tab && !a.passive && shown(a),
               ))
                 _actionRow(context, module, action, muted, live, constraints),
+              // Done TO them, whether or not they open the module (Jose,
+              // 2026-11-17: "Lead Managers should not be desktop monitored").
+              if (module.actions.any((a) => a.passive && shown(a))) ...[
+                _grantHeading(
+                  theme,
+                  'About them',
+                  'Applies to this role even if it cannot open '
+                      '${module.label}.',
+                ),
+                for (final action in module.actions.where(
+                  (a) => a.passive && shown(a),
+                ))
+                  _actionRow(
+                    context,
+                    module,
+                    action,
+                    muted,
+                    live,
+                    constraints,
+                  ),
+              ],
             ],
           ),
         ),
