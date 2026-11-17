@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -118,6 +119,9 @@ void main() {
             'data': [
               {'id': 'x9', 'title': 'Chimney sweep', 'board_id': 'b2', 'board_name': 'NJ'},
             ],
+            'records': [
+              {'type': 'lead', 'id': 'l1', 'label': 'Ann Chimney', 'detail': '(732) 555-0101'},
+            ],
           });
         }
         if (path == '/tasks/t1/links' && request.method == 'POST') {
@@ -221,9 +225,14 @@ void main() {
     // A link: its title and its board as a chip.
     expect(find.text('Chimney sweep'), findsOneWidget);
     expect(find.text('NJ'), findsOneWidget);
-    // What a task is about is plain text, not link-blue.
-    final about = tester.widget<Text>(find.text('Catherine Gilbert'));
-    expect(about.style?.color, isNull);
+    // What a task is about opens it, with its type beside it (Jose 11-17).
+    expect(find.text('Customer'), findsOneWidget);
+    DeepLinks.pending.value = null;
+    await tester.tap(find.text('Catherine Gilbert'));
+    await tester.pump();
+    expect(DeepLinks.pending.value?.module, 'customers');
+    expect(DeepLinks.pending.value?.id, 'cu1');
+    DeepLinks.pending.value = null;
     // Nothing yet: a quiet + Link.
     expect(find.text('+ Link'), findsOneWidget);
   });
@@ -241,5 +250,29 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('task-link-pick-x9')));
     await tester.pumpAndSettle();
     expect(patches, [jsonEncode({'linked_task_id': 'x9'})]);
+  });
+
+  testWidgets('the same box links a lead, which the task is then about', (
+    tester,
+  ) async {
+    await pumpBoard(tester);
+    await tester.tap(find.text('+ Link'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('task-link-search')), '5550101');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(find.text('Lead · (732) 555-0101'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('task-link-record-lead-l1')));
+    await tester.pumpAndSettle();
+    expect(
+      patches.last,
+      jsonEncode([
+        't1',
+        {
+          'about': {'type': 'lead', 'id': 'l1'},
+        },
+      ]),
+    );
+    expect(find.byKey(const Key('task-link-about')), findsOneWidget);
   });
 }

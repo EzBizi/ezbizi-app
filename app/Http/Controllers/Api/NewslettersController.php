@@ -13,6 +13,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Newsletter\BlockRenderer;
 use App\Support\Newsletter\NewsletterAccess;
 use App\Support\Newsletter\NewsletterIdentity;
+use App\Support\Newsletter\NewsletterImages;
 use App\Support\Newsletter\NewsletterSenders;
 use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Scoping\OwnedScope;
@@ -436,6 +437,7 @@ class NewslettersController extends Controller
         $sendHtml = $this->renderer->withFooter($this->bodyFor($row),
             NewsletterIdentity::footer($row) + ['unsubscribe_url' => '*|UNSUB|*']);
         $badLinks = $this->badLinks($sendHtml);
+        $badImages = app(NewsletterImages::class)->problems((array) ($row->blocks ?? []), $row->html_override);
 
         $check = fn (string $key, bool $ok, string $label, string $detail) => compact('key', 'ok', 'label', 'detail');
 
@@ -458,6 +460,11 @@ class NewslettersController extends Controller
             $check('links', $badLinks === [], 'Links',
                 $badLinks === [] ? 'Every link and image is a full web address.'
                     : 'Fix: '.implode(', ', array_slice($badLinks, 0, 3))),
+            // Every picture loads for the recipient: https, and an EzBizi-hosted
+            // one still exists (newsletter P0). Names the block to fix.
+            $check('images', $badImages === [], 'Pictures',
+                $badImages === [] ? 'Every picture is a public https address a recipient can load.'
+                    : implode(' ', array_slice($badImages, 0, 3))),
         ];
     }
 

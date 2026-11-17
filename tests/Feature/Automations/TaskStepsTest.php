@@ -101,6 +101,26 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Jose 11-17: a missed-call task opens the caller's lead; no lead, nothing linked. */
+    public function test_a_task_from_a_call_is_about_the_callers_lead(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $lead = \App\Models\Lead::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'franchise_id' => $t['franchise']->id,
+                'source' => 'website_form', 'remote_id' => 'call-1', 'status' => 'NEW', 'received_at' => now(), 'contact_name' => 'Ann', 'phone_digits' => '3055550101']);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $call = fn (string $from) => new AutomationEvent(['event_key' => 'reports.call.missed', 'payload' => ['from' => $from],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+
+            app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Call back'], $call('+1 (305) 555-0101'), null, automation: $rule);
+            app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Call stranger'], $call('+13055550199'), null, automation: $rule);
+
+            $this->assertSame(['lead', $lead->id], [Task::query()->where('title', 'Call back')->value('about_type'), Task::query()->where('title', 'Call back')->value('about_id')]);
+            $this->assertNull(Task::query()->where('title', 'Call stranger')->value('about_type'));
+        });
+    }
+
     public function test_a_rule_moves_a_task_to_a_group_on_its_own_board_only(): void
     {
         $t = $this->provisionTenant('Alpha');
@@ -203,6 +223,58 @@ class TaskStepsTest extends TestCase
             $this->assertTrue($blank['ok'], $blank['detail']);
             $this->assertStringContainsString('Area "Massachusetts"', $blank['detail']);
             $this->assertFalse(Task::query()->where('title', 'Missed Massachusetts')->sole()->values()->where('column_id', $col->id)->exists());
+        });
+    }
+
+    /** Desk for Jose, 2026-11-17: a dispatcher's complaint and the AI's are one task; the AI adds an update. */
+    public function test_a_phone_dedupe_finds_the_caller_in_a_column_and_adds_an_update(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $group = \App\Models\TaskGroup::query()->create(['board_id' => $board->id, 'name' => 'Customer Experience', 'position' => 9]);
+            $phoneCol = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Phone number', 'type' => 'text', 'position' => 1]);
+            $mine = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'Angry about the chimney', 'group' => 'Customer Experience',
+                'values' => [$phoneCol->id => '(305) 555-0123']], $t['admin']);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.call_complaint', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = new AutomationEvent(['event_key' => 'lead.call_complaint', 'payload' => ['after' => ['phone' => '+13055550123', 'summary' => 'Wants the manager']],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+            $step = ['type' => 'task.create', 'title' => '{{summary}}', 'assignee' => 'user:'.$t['admin']->id, 'group' => 'Customer Experience',
+                'dedupe' => '{{phone}}', 'dedupe_days' => 3, 'on_duplicate' => 'comment', 'duplicate_note' => 'AI review also flagged this call: {{summary}}'];
+
+            $made = app(ActionRunner::class)->run($step, $event, null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $this->assertSame(1, Task::query()->count(), 'no second task');
+            $this->assertStringContainsString('AI review also flagged this call: Wants the manager', (string) $mine->updates()->value('body'));
+
+            $mine->forceFill(['created_at' => now()->subDays(4)])->saveQuietly();
+            app(ActionRunner::class)->run($step, $event, null, automation: $rule);
+            $this->assertSame(2, Task::query()->count(), 'an older one is not the same complaint');
+        });
+    }
+
+    /** Desk for Jose, 2026-11-17: the caller replied or booked, so the untouched call-back task closes itself. */
+    public function test_the_callers_untouched_call_back_task_is_closed_with_a_note(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $maker = Automation::create(['name' => 'Missed', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $open = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'NJ - PPC +13055550123'], $t['admin'], $maker->id);
+            $touched = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'NJ - PPC +13055550123 again', 'status' => 'Working on it'], $t['admin'], $maker->id);
+            $other = app(\App\Support\Tasks\TaskWriter::class)->create($board, ['title' => 'NJ - PPC +13055550999'], $t['admin'], $maker->id);
+            $rule = Automation::create(['name' => 'Close', 'trigger_key' => 'lead.customer_replied', 'is_active' => false, 'created_by' => $t['admin']->id]);
+
+            $done = app(ActionRunner::class)->run(['type' => 'task.complete_matching', 'board' => $board->id, 'made_by' => $maker->id,
+                'phone' => '{{phone}}', 'note' => 'Closed: the caller replied.'], new AutomationEvent(['event_key' => 'lead.customer_replied',
+                    'payload' => ['after' => ['phone' => '(305) 555-0123']]]), null, automation: $rule);
+
+            $this->assertTrue($done['ok'], $done['detail']);
+            $this->assertNotNull($open->fresh()->completed_at);
+            $this->assertSame('Closed: the caller replied.', $open->updates()->value('body'));
+            $this->assertNull($touched->fresh()->completed_at, 'a person already moved it');
+            $this->assertNull($other->fresh()->completed_at, 'another number');
         });
     }
 

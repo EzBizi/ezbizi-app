@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\Access\Refusal;
+use App\Support\Scoping\ViewScope;
 use Illuminate\Auth\Access\Response;
 
 /**
@@ -49,7 +50,23 @@ class RolePolicy
 
     public function create(User $user): bool
     {
-        return $user->hasPermission('roles.create');
+        return $user->hasPermission('roles.create') && $this->atOrganization($user);
+    }
+
+    /**
+     * Roles belong to the organization, so writing one needs the organization
+     * view and authority there (authz sweep, 2026-11-17: a franchise-scoped user
+     * edited and deleted roles; AGENTS.md: a company view cannot modify the
+     * organization).
+     */
+    private function atOrganization(User $user): bool
+    {
+        return ViewScope::forUser($user)->isOrganization() && $user->canActOnOrganization($user->organization);
+    }
+
+    private function notAtOrganization(): Response
+    {
+        return Response::deny('Roles belong to the whole organization. Switch to the organization view to change them.');
     }
 
     public function update(User $user, Role $role): Response
@@ -69,6 +86,10 @@ class RolePolicy
         // the special one.
         if (! $user->hasPermission('roles.edit')) {
             return Refusal::permission('change roles');
+        }
+
+        if (! $this->atOrganization($user)) {
+            return $this->notAtOrganization();
         }
 
         if ($role->isAdministrator()) {
@@ -91,6 +112,10 @@ class RolePolicy
 
         if (! $user->hasPermission('roles.delete')) {
             return Refusal::permission('delete roles');
+        }
+
+        if (! $this->atOrganization($user)) {
+            return $this->notAtOrganization();
         }
 
         if ($role->isAdministrator()) {

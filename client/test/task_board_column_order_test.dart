@@ -161,7 +161,7 @@ void main() {
                 },
               ],
               'groups': [
-                {'id': 'g1', 'name': 'Scheduled', 'colour': '#00C875'},
+                {'id': 'g1', 'name': 'Customer Relations - Natalie', 'colour': '#00C875', 'purpose': 'Every refund starts here.'},
               ],
               'tasks': tasks,
             },
@@ -241,6 +241,12 @@ void main() {
       x(tester, 'column-drag-c:c-mat') < x(tester, 'column-drag-owner'),
       isTrue,
     );
+  });
+
+  testWidgets('a role group says what it is for under its name', (tester) async {
+    await pumpBoard(tester);
+    expect(find.byKey(const ValueKey('group-purpose-g1')), findsOneWidget);
+    expect(find.text('Every refund starts here.'), findsOneWidget);
   });
 
   testWidgets('a picked row wears a tint across the whole row', (tester) async {
