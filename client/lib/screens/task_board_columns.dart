@@ -1625,7 +1625,7 @@ String statusesPath(String board, [String? id]) =>
 
 /// The colours a status or an option can be, as Monday offers them.
 const swatches = [
-  '#579BFC', '#00708F', '#A25DDC', '#7A4FB5', '#00C875', '#2F9A4C', //
+  '#579BFC', '#00708F', '#00A9B5', '#7F5347', '#00C875', '#2F9A4C', //
   '#FDAB3D', '#D9930D', '#E2445C', '#C53B3B', '#FF5AC4', '#8E9BA3',
 ];
 
