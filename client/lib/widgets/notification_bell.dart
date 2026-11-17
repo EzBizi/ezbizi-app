@@ -239,7 +239,18 @@ class _NotificationBellState extends State<NotificationBell>
   /// the screen, that they can dismiss", and of the drawn layouts, "2". Read
   /// from meta.alerts, every unread one, so an alert older than this page of
   /// notifications, sent while its person was signed out, still meets them.
-  late final _popups = AlertPopups(widget.api, onDismissed: _refresh);
+  late final _popups = AlertPopups(
+    widget.api,
+    onDismissed: _refresh,
+    onOpenSuggestion: widget.onOpenModule == null
+        ? null
+        : (id) => _go((
+            module: 'suggestions',
+            filter: null,
+            record: id,
+            link: DeepLink(module: 'suggestions', type: 'suggestion', id: id),
+          )),
+  );
 
   void _raiseAlerts(Object? open) {
     if (!mounted || open is! List) return;

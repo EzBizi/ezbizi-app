@@ -271,6 +271,8 @@ class SuggestionsController extends Controller
             'files' => $row->presentFiles(),
             'status' => $row->status,
             'decision_note' => $row->decision_note,
+            'progress' => $row->progress,
+            'release_version' => $row->release_version,
             'decided_at' => $row->decided_at?->toIso8601String(),
             'created_at' => $row->created_at?->toIso8601String(),
         ];

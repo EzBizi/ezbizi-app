@@ -119,12 +119,59 @@ class StaffSuggestionsController extends Controller
             $row->decision_note = $note;
             $row->decided_by = $request->user()?->getKey();
             $row->decided_at = now();
+            // An approval starts the progress bar; anything else clears it.
+            if ($input['status'] === Suggestion::STATUS_APPROVED) {
+                $row->progress ??= 'approved';
+            } else {
+                $row->progress = null;
+                $row->release_version = null;
+            }
             $row->save();
 
-            if (in_array($input['status'], Suggestion::ANNOUNCED, true)) {
+            // An approval pops up for the author from the model's own event
+            // (SuggestionAlerts); a denial is a plain notification.
+            if ($input['status'] === Suggestion::STATUS_DENIED) {
                 $this->tell($row);
             }
         });
+
+        return response()->json(['data' => $this->row($row->fresh([
+            'organization:id,name', 'author:id,name',
+        ]))]);
+    }
+
+    /**
+     * Move an approved suggestion along: approved, building, testing,
+     * releasing, live (Jose, 2026-11-17). The author sees it as a bar on
+     * their own suggestion. Silent to the bell: the approval already rang.
+     */
+    public function progress(Request $request, string $id): JsonResponse
+    {
+        $input = $request->validate([
+            'progress' => ['required', 'string', 'in:'.implode(',', Suggestion::PROGRESS)],
+            'release_version' => ['nullable', 'string', 'max:32', 'regex:/^v?\d+(\.\d+)*$/'],
+        ]);
+
+        /** @var Suggestion|null $row */
+        $row = Suggestion::query()->withoutGlobalScopes()->find($id);
+
+        if ($row === null) {
+            return response()->json(['message' => 'That suggestion no longer exists.'], 404);
+        }
+
+        if ($row->status !== Suggestion::STATUS_APPROVED) {
+            throw ValidationException::withMessages([
+                'progress' => 'Approve it first. Only an approved suggestion is on its way.',
+            ]);
+        }
+
+        $row->progress = $input['progress'];
+        if (array_key_exists('release_version', $input)) {
+            $row->release_version = filled($input['release_version'])
+                ? ltrim((string) $input['release_version'], 'v')
+                : null;
+        }
+        $row->save();
 
         return response()->json(['data' => $this->row($row->fresh([
             'organization:id,name', 'author:id,name',
@@ -194,6 +241,8 @@ class StaffSuggestionsController extends Controller
             'files' => $row->presentFiles(),
             'status' => $row->status,
             'decision_note' => $row->decision_note,
+            'progress' => $row->progress,
+            'release_version' => $row->release_version,
             'decided_at' => $row->decided_at?->toIso8601String(),
             'created_at' => $row->created_at?->toIso8601String(),
         ];
