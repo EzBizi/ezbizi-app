@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\AutomationMessage;
 use App\Models\User;
+use App\Notifications\EmailVerificationLink;
 use App\Notifications\PasswordResetLink;
 use App\Support\Mail\MailDispatcher;
 use Illuminate\Contracts\Queue\Job;
@@ -78,6 +79,19 @@ class MailWorkerReconnectTest extends TestCase
         $job = new SendQueuedNotifications(
             new AnonymousNotifiable,
             new PasswordResetLink(new User, 'token', now()->addHour()),
+            ['mail'],
+        );
+
+        $this->assertSame(3, $job->tries);
+        $this->assertSame([10, 60], $job->backoff());
+    }
+
+    public function test_a_signup_verification_is_retried_rather_than_lost_on_the_first_refusal(): void
+    {
+        // A 451 on 2026-11-16 lost one. Asserted on the job the worker runs.
+        $job = new SendQueuedNotifications(
+            new AnonymousNotifiable,
+            new EmailVerificationLink(new User, 'token', now()->addHour()),
             ['mail'],
         );
 
