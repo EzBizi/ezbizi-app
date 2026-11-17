@@ -134,7 +134,7 @@ final class MondayImport
 
             public function emitAfterCommit(string $eventKey, ?Model $subject = null, array $payload = []): void {}
         });
-        $this->writer = app()->make(TaskWriter::class);
+        $this->writer = app()->make(TaskWriter::class); $this->writer->quiet = true;
 
         DB::beginTransaction();
         try {
