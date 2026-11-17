@@ -108,6 +108,9 @@ class WatchMissedCallsTest extends TestCase
             $this->assertSame($tenant['franchise']->name, $w::branchOf('+12165550000', 'CLE - PPC'), 'the number\'s place wins');
             $this->assertSame('Ohio', $w::branchOf('+12165559999', 'CLE - PPC'));
             $this->assertNull($w::branchOf('+12165559999', 'Speedy'));
+            $this->assertNull($w::callersBranch('+13055550111'), 'nobody on record');
+            \App\Models\Customer::factory()->create(['phone' => '(305) 555-0111', 'owning_franchise_id' => $tenant['franchise']->id]);
+            $this->assertSame($tenant['franchise']->name, $w::callersBranch('+13055550111'), 'the customer\'s branch');
         });
     }
 
