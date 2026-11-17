@@ -13,14 +13,17 @@ use App\Models\PhoneConnection;
 use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
 use App\Models\ServiceArea;
+use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\ProjectBoardGlance;
 use App\Support\Jobs\ScheduleTexts;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -424,6 +427,90 @@ class ProjectBoardTest extends TestCase
         $post(['op' => 'delete', 'name' => 'KENNI REPAIR TEAM'])->assertOk()->assertJsonCount(1, 'data.list');
         // Only the list counts now: the job's KENNI tag is no longer its repair team.
         $this->assertNull($api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.repair_team'));
+    }
+
+    /**
+     * Jose, 2026-11-16: "it should already show the exisiting repair team -
+     * contractors". Before any change the card lists the repair tags on the
+     * Workiz tag lists and on jobs, never an ordinary tag or another
+     * tenant's, and reading it saves nothing and calls no Workiz account.
+     */
+    public function test_the_settings_card_lists_the_teams_already_there_without_saving_or_calling_workiz(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta');
+        $this->workizV2($alpha);
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            foreach (['CONTRACTOR: MIGUEL' => '#0059A0', 'REPAIR TEAM: ISRAEL' => '#BE2C2C', 'PAID - ESTIMATED' => '#37D34D'] as $name => $colour) {
+                WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'tag', 'remote_id' => 'TAG-'.Str::random(6),
+                    'payload' => ['name' => $name, 'color' => $colour], 'synced_at' => now()]);
+            }
+            $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['PAID - ESTIMATED', 'REPAIR TEAM: KENNI', 'repair team: israel']);
+        });
+        $this->inTenant($beta['org'], fn () => $this->job($beta['franchise'], 'J-9', 'Submitted', null, ['CONTRACTOR: SOMEONE ELSE']));
+        Http::fake();
+
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/repair-teams')->assertOk()
+            ->assertJsonPath('data.list', [
+                ['name' => 'CONTRACTOR: MIGUEL', 'phone' => null, 'user_id' => null],
+                ['name' => 'REPAIR TEAM: ISRAEL', 'phone' => null, 'user_id' => null],
+                ['name' => 'REPAIR TEAM: KENNI', 'phone' => null, 'user_id' => null],
+            ])
+            ->assertJsonPath('data.tag_colours', ['CONTRACTOR: MIGUEL' => '#0059A0', 'REPAIR TEAM: ISRAEL' => '#BE2C2C']);
+        Http::assertNothingSent();
+        $this->assertSame(0, DB::table('settings')->where('key', 'project_board.repair_tags')->count(), 'reading saves nothing');
+
+        // Once the company saved its list, that list is what the card shows.
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('project_board.repair_tags', $alpha['org'], [['name' => 'GAS CONTRACTOR']]));
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/repair-teams')->assertOk()
+            ->assertJsonPath('data.list', [['name' => 'GAS CONTRACTOR', 'phone' => null, 'user_id' => null]]);
+    }
+
+    /** Rename and Delete on a team that was only found, not yet saved, go through Workiz's tag calls like Add. */
+    public function test_renaming_and_deleting_an_existing_team_reach_every_workiz_account(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->workizV2($alpha);
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'tag', 'remote_id' => 'T1',
+                'payload' => ['id' => 'T1', 'name' => 'REPAIR TEAM: ISRAEL', 'color' => '#be2c2c'], 'synced_at' => now()]);
+            $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['CONTRACTOR: OMER']);
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        Http::fake([
+            'api.workiz.com/crm/api/v2/tags/*' => Http::response(['id' => 'T1', 'name' => 'REPAIR TEAM: ISRAEL R'], 200),
+            'api.workiz.com/crm/api/v2/tags' => Http::response(['data' => [['id' => 'T1', 'name' => 'REPAIR TEAM: ISRAEL', 'color' => '#be2c2c']]]),
+        ]);
+
+        $api->postJson('/api/v1/project-board/repair-teams', ['op' => 'update', 'name' => 'REPAIR TEAM: ISRAEL', 'to' => 'REPAIR TEAM: ISRAEL R'])->assertOk()
+            ->assertJsonPath('data.outcomes', ['Alpha F1' => 'renamed'])
+            ->assertJsonPath('data.list', [
+                ['name' => 'CONTRACTOR: OMER', 'phone' => null, 'user_id' => null],
+                ['name' => 'REPAIR TEAM: ISRAEL R', 'phone' => null, 'user_id' => null],
+            ]);
+        Http::assertSent(fn ($r) => $r->method() === 'PUT' && str_ends_with($r->url(), '/tags/T1') && $r['name'] === 'REPAIR TEAM: ISRAEL R');
+
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::fake([
+            'api.workiz.com/crm/api/v2/tags/*' => Http::response(null, 204),
+            'api.workiz.com/crm/api/v2/tags' => Http::response(['data' => [['id' => 'T1', 'name' => 'REPAIR TEAM: ISRAEL R', 'color' => '#be2c2c']]]),
+        ]);
+        $api->postJson('/api/v1/project-board/repair-teams', ['op' => 'delete', 'name' => 'REPAIR TEAM: ISRAEL R'])->assertOk()
+            ->assertJsonPath('data.outcomes', ['Alpha F1' => 'deleted'])
+            ->assertJsonPath('data.list', [['name' => 'CONTRACTOR: OMER', 'phone' => null, 'user_id' => null]]);
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_ends_with($r->url(), '/tags/T1'));
+    }
+
+    /** A Workiz v2 account on the tenant's franchise, so tag changes fan out to it. */
+    private function workizV2(array $tenant): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $c = new SocialConnection;
+            $c->forceFill(['organization_id' => $tenant['org']->id, 'scope_type' => SocialConnection::SCOPE_FRANCHISE, 'scope_id' => $tenant['franchise']->id,
+                'provider' => SocialProvider::Workiz->value, 'remote_id' => $tenant['franchise']->id, 'display_name' => 'Workiz']);
+            $c->connect(['api_token' => 'k', 'refresh_token' => 'k', 'api_version' => 'v2']);
+            $c->save();
+        });
     }
 
     /** Jose, 2026-11-10: YES schedules and confirms; NO offers the alternative; NO again, the PM calls. */

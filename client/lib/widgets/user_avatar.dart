@@ -61,6 +61,22 @@ class UserAvatar extends StatefulWidget {
 
   @override
   State<UserAvatar> createState() => _UserAvatarState();
+
+  /// What a list already knows about who has a photo, by user id: a face
+  /// with none is never asked for (hands-on QA 11-16: every face without a
+  /// photo logged a 404). A later true undoes an earlier false.
+  static void knownPhotos(Map<String, bool> hasPhoto) {
+    for (final MapEntry(key: id, value: has) in hasPhoto.entries) {
+      final path = '/users/$id/avatar';
+      if (!has) {
+        if (_UserAvatarState._cache.containsKey(path)) continue;
+        _UserAvatarState._cache[path] = Future.value(null);
+        _UserAvatarState._told.add(path);
+      } else if (_UserAvatarState._told.remove(path)) {
+        _UserAvatarState._cache.remove(path);
+      }
+    }
+  }
 }
 
 class _UserAvatarState extends State<UserAvatar> {
@@ -69,6 +85,9 @@ class _UserAvatarState extends State<UserAvatar> {
   // missing photo is cached too, as null, so it is not asked for again.
   // ponytail: never evicted; one small entry per person seen this session.
   static final Map<String, Future<Uint8List?>> _cache = {};
+
+  /// Paths [UserAvatar.knownPhotos] marked as having no photo.
+  static final Set<String> _told = {};
 
   Uint8List? _bytes;
   String? _path;

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'dart:typed_data';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -38,6 +39,11 @@ class _ReportsTabState extends State<ReportsTab> {
   List<Map<String, dynamic>> _hits = const [];
   String? _empty;
   String? _selectedId;
+
+  /// A phone shows the list or one report, never both (UI pass 11-16: the
+  /// list and the whole first report were stacked in one scroll).
+  bool _reading = false;
+  bool _stacked = false;
   Map<String, dynamic>? _open;
   String? _busy;
 
@@ -110,20 +116,46 @@ class _ReportsTabState extends State<ReportsTab> {
   void initState() {
     super.initState();
     _load();
+    // A report submitted or archived elsewhere: the list re-reads quietly;
+    // the open report is read again only when it is the one that changed.
+    _live = LiveChanges.of(widget.api).subscribe({'inspection_reports'}, (
+      batch,
+    ) {
+      if (_loading || _busy != null) return null;
+      final open = _selectedId;
+      return _load(
+        quiet: true,
+        reopen:
+            batch.reload ||
+            (open != null &&
+                batch.touched('inspection_reports').contains(open)),
+      );
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load({String? openId}) async {
+  /// [quiet]: a live re-read; a failure keeps the list on screen, and the
+  /// open report (and its photos) is read again only when [reopen].
+  Future<void> _load({
+    String? openId,
+    bool quiet = false,
+    bool reopen = true,
+  }) async {
     final request = ++_request;
-    setState(() {
-      _loading = _hits.isEmpty && _open == null;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _hits.isEmpty && _open == null;
+        _error = null;
+      });
+    }
 
     final query = <String, String>{
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
@@ -131,6 +163,7 @@ class _ReportsTabState extends State<ReportsTab> {
     };
     final list = await widget.api.get('/inspections/reports', query);
     if (!mounted || request != _request) return;
+    if (quiet && !list.ok) return;
 
     if (!list.ok) {
       setState(() {
@@ -162,7 +195,7 @@ class _ReportsTabState extends State<ReportsTab> {
     });
 
     if (keep != null) {
-      await _openReport(keep);
+      if (reopen || _open?['id']?.toString() != keep) await _openReport(keep);
     } else {
       setState(() => _open = null);
     }
@@ -342,13 +375,24 @@ class _ReportsTabState extends State<ReportsTab> {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final stacked = constraints.maxWidth < ReportsTab.stackBelow;
+                _stacked = stacked;
                 final list = _listPane();
                 final doc = _documentPane();
+                if (stacked && !_reading) return list;
                 if (stacked) {
-                  return ListView(
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(height: 240, child: list),
-                      SizedBox(height: 520, child: doc),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                        child: TextButton.icon(
+                          key: const Key('inspection-reports-back'),
+                          onPressed: () => setState(() => _reading = false),
+                          icon: const Icon(Icons.arrow_back, size: 18),
+                          label: const Text('All reports'),
+                        ),
+                      ),
+                      Expanded(child: doc),
                     ],
                   );
                 }
@@ -383,7 +427,8 @@ class _ReportsTabState extends State<ReportsTab> {
               itemBuilder: (context, index) {
                 final row = _hits[index];
                 return ListTile(
-                  selected: '${row['id']}' == _selectedId,
+                  // A phone's list opens nothing yet, so nothing is lit.
+                  selected: '${row['id']}' == _selectedId && !_stacked,
                   title: Text('${row['definition_name'] ?? ''}'),
                   subtitle: Text(
                     [
@@ -395,7 +440,10 @@ class _ReportsTabState extends State<ReportsTab> {
                   trailing: row['archived'] == true
                       ? const Tag('Archived')
                       : null,
-                  onTap: () => _openReport('${row['id']}'),
+                  onTap: () {
+                    setState(() => _reading = true);
+                    _openReport('${row['id']}');
+                  },
                 );
               },
             ),

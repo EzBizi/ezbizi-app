@@ -6,6 +6,8 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
+use App\Models\User;
+use App\Support\Ads\AllAccounts;
 use App\Services\Ads\CampaignPerformance;
 use App\Support\Audit\AuditLogger;
 use App\Support\Social\GoogleToken;
@@ -170,13 +172,18 @@ class AdsPerformanceController extends Controller
         $input = $request->validate([
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
-            'connection_id' => ['required', 'uuid'],
+            'connection_id' => ['required_without:everything', 'uuid'],
+            'everything' => ['sometimes', 'boolean'],
         ]);
 
         [$from, $to, $bad] = $this->window($input);
 
         if ($bad !== null) {
             return $bad;
+        }
+
+        if ($request->boolean('everything')) {
+            return $this->everything($user, $from, $to);
         }
 
         $manager = SocialConnection::query()
@@ -265,6 +272,41 @@ class AdsPerformanceController extends Controller
             'children_total' => count($children),
             'not_connected' => $unreadable,
             'canceled' => count($closed),
+            'from' => $from->format('Y-m-d'),
+            'to' => $to->format('Y-m-d'),
+        ]);
+    }
+
+    /**
+     * "Everything" (Jose, 2026-11-16: "picks company and sub companies google
+     * ads accs ... Combining a1chimney and angisweep"): every account in this
+     * view, the sub companies' included, each ONCE however many managers it
+     * sits under, read through Marketing › Ads' All accounts cache.
+     */
+    private function everything(User $user, Carbon $from, Carbon $to): JsonResponse
+    {
+        $rows = SocialConnection::query()
+            ->where('provider', SocialProvider::GoogleAds->value)
+            ->where('status', SocialConnection::STATUS_CONNECTED)
+            ->orderBy('display_name')
+            ->get()
+            ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c));
+        $managers = $rows->pluck('login_customer_id')->filter()->all();
+        $accounts = $rows
+            ->reject(fn (SocialConnection $c) => $c->is_manager || in_array((string) $c->remote_id, $managers, true))
+            ->unique(fn (SocialConnection $c) => preg_replace('/\D/', '', (string) $c->remote_id))
+            ->values();
+
+        $read = AllAccounts::read($accounts, 'rollup', $from, $to, fn (SocialConnection $c) => [
+            self::withLeads($c, $this->performance->forConnection($c, $from, $to, withCampaigns: false)['account'], $from, $to),
+        ]);
+
+        return response()->json([
+            'data' => $read['campaigns'],
+            'refused' => $read['refused'],
+            'children_total' => $accounts->count(),
+            'not_connected' => 0,
+            'canceled' => 0,
             'from' => $from->format('Y-m-d'),
             'to' => $to->format('Y-m-d'),
         ]);

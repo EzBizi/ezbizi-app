@@ -58,6 +58,10 @@ void main() {
         if (path.endsWith('/project-board/options')) {
           return _json({'data': <String, dynamic>{}});
         }
+        // A sort answers slowly, so a test can look at the table meanwhile.
+        if (request.url.queryParameters.containsKey('sort')) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+        }
         final page =
             int.tryParse(request.url.queryParameters['page'] ?? '') ?? 1;
         return _json({
@@ -83,7 +87,7 @@ void main() {
             ],
             'labels': <String, dynamic>{},
             'can_edit': false,
-            'sortable': <String>[],
+            'sortable': ['customer'],
           },
         });
       }),
@@ -230,6 +234,18 @@ void main() {
     await g.up();
     await tester.pumpAndSettle();
     expect(sideways(tester).pixels, closeTo(200, 1));
+  });
+
+  testWidgets('sorting keeps the rows on screen', (tester) async {
+    await app(tester);
+    final heading = find.text('CUSTOMER');
+    expect(heading, findsOneWidget);
+    await tester.tap(heading);
+    // The very next frame: rows still there, never a blank table.
+    await tester.pump();
+    expect(find.text('Person 1-0'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Person 1-'), findsWidgets);
   });
 }
 

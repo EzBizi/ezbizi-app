@@ -428,6 +428,25 @@ final class WorkizJobWriter
     }
 
     /**
+     * The job's source, by the branch's own name (GET /adgroups), as create()
+     * sends it (Automations, 2026-11-16: a call to "NJ - PPC" booked as "LS Ads"
+     * becomes PPC). A name the branch lacks is refused, never created. The
+     * mirror's job_source is set too, since the reports read it.
+     */
+    public function setSource(WorkizJob $mirror, string $source): WorkizJob
+    {
+        [$connection, $id] = $this->v2Job($mirror);
+        $adGroupId = $this->v2Id($connection, '/adgroups', $source)
+            ?? throw new RuntimeException('This branch\'s Workiz has no job source "'.$source.'".');
+        $from = $mirror->job_source;
+
+        $this->put($connection, $mirror, $id, ['adGroupId' => $adGroupId], 'workiz.job_source_set', ['from' => $from, 'to' => $source]);
+        $mirror->refresh()->forceFill(['job_source' => $source])->save();
+
+        return $mirror;
+    }
+
+    /**
      * The job's description, custom fields and all-day, as EzBizi holds them,
      * onto its Workiz copy (EzBizi master, 2026-10-27). The same three create()
      * sends; each measured on 2026-10-27 (all-day needs its end on a later day).

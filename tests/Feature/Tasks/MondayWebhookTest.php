@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Models\MondayOutboxEntry;
 use App\Models\SocialConnection;
 use App\Models\Task;
 use App\Models\User;
@@ -89,6 +90,25 @@ class MondayWebhookTest extends TestCase
 
         $this->assertTrue($this->done());
         $this->assertNotEmpty($this->mondayQueries, 'the item was read from Monday');
+    }
+
+    /** Loop guard (Jose 11-16, tasks made here go to Monday): an item born on Monday is not made back on Monday. */
+    public function test_an_item_made_on_monday_arrives_here_and_is_not_sent_back(): void
+    {
+        $this->monday['boards']['100'] = $this->mondayBoard('100', 'Jose Demasi', [
+            $this->mondayItem('11', 'Call the insurer', '2026-11-12T10:30:00Z', ['status' => 'Done']),
+            $this->mondayItem('12', 'Order the liner', '2026-11-12T10:30:00Z', []),
+        ]);
+        $jwt = MondayWebhookSignature::sign(['accountId' => 'acc1', 'userId' => 1, 'exp' => time() + 300], self::SECRET);
+
+        $this->postJson(self::URL, ['event' => ['type' => 'create_pulse', 'boardId' => 100, 'pulseId' => 12, 'userId' => 1]], ['Authorization' => $jwt])
+            ->assertOk()->assertJson(['queued' => 1]);
+
+        $this->inTenant($this->tenant['org'], function () {
+            $this->assertSame('Order the liner', Task::query()->where('external_ref', 'monday:12')->sole()->title);
+            $this->assertSame(0, MondayOutboxEntry::query()->count());
+        });
+        $this->artisan('ezbizi:monday-push')->assertSuccessful(); // FakesMonday fails the test on any mutation
     }
 
     /** The check this endpoint stands on: without it, any of these would move the task. */

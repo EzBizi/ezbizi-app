@@ -2,6 +2,7 @@ import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/job_money.dart';
 import '../../core/numbers.dart';
 import '../../core/session.dart';
@@ -13,6 +14,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/grouped_rows.dart';
 import '../../widgets/load_more.dart';
+import '../../widgets/module_page_header.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
@@ -101,10 +103,18 @@ class _EstimatesTabState extends State<EstimatesTab> {
   void initState() {
     super.initState();
     _load();
+    // An estimate written, sent or answered elsewhere: page one (and so the
+    // board, the counts and the totals) re-reads quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'estimates'}, (_) {
+      if (_page == 1 && !_fetching) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _openDirty.dispose();
     super.dispose();
@@ -112,15 +122,18 @@ class _EstimatesTabState extends State<EstimatesTab> {
 
   String? get _term => _search.text.trim().isEmpty ? null : _search.text.trim();
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
     final request = ++_request;
 
     setState(() {
       _loading = page == 1 && _rows.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final response = await widget.api.get('/estimates', {
@@ -130,6 +143,10 @@ class _EstimatesTabState extends State<EstimatesTab> {
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) {
+      setState(() => _fetching = false);
+      return;
+    }
 
     setState(() {
       _loading = false;
@@ -247,13 +264,17 @@ class _EstimatesTabState extends State<EstimatesTab> {
             children: [
               PanelHeader(
                 note: _note(),
-                action: Refused(
-                  reason: refused,
-                  child: FilledButton.icon(
-                    key: const ValueKey('estimate-new'),
-                    onPressed: refused == null ? () => _open('new') : null,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New estimate'),
+                // In the module header, on the right, as every tab's primary
+                // action (desktop review D3; UI pass 2026-11-17).
+                action: ModuleAction(
+                  child: Refused(
+                    reason: refused,
+                    child: FilledButton.icon(
+                      key: const ValueKey('estimate-new'),
+                      onPressed: refused == null ? () => _open('new') : null,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('New estimate'),
+                    ),
                   ),
                 ),
               ),
@@ -790,10 +811,29 @@ class _EstimatePanelState extends State<EstimatePanel> {
   void initState() {
     super.initState();
     _load();
+    // This estimate changed elsewhere (sent, accepted, its lines edited):
+    // read again in place, never over unsaved changes or mid-write.
+    if (!_isNew) {
+      _live = LiveChanges.of(widget.api).subscribe({'estimates'}, (batch) {
+        if (batch.reload || batch.changedOf('estimates').contains(widget.id)) {
+          return _refresh();
+        }
+      }, active: LiveChanges.visible(this));
+    }
+  }
+
+  LiveSubscription? _live;
+
+  Future<void> _refresh() async {
+    if (_loading || _busy || _dirty) return;
+    final response = await widget.api.get('/estimates/${widget.id}');
+    if (!mounted || !response.ok || _busy || _dirty) return;
+    setState(() => _take(Map<String, dynamic>.from(response.data as Map)));
   }
 
   @override
   void dispose() {
+    _live?.cancel();
     for (final line in _lines) {
       line.dispose();
     }

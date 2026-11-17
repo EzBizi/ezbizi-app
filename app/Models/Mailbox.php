@@ -65,6 +65,25 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Mailbox extends Model implements CarriesAutomationScope, HoldsSensitiveValues, StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES): the watcher moving `watch_mark` is new mail. Who may read it is grants, so the feed asks MailboxAccess (ChangeFeed::NARROW). */
+    protected static string $changeType = 'mailboxes';
+
+    /** The watcher's per-poll bookkeeping: not news to anybody reading (RecordsChanges). */
+    protected static array $changeFeedIgnores = [
+        'last_reached_at', 'watch_marked_at', 'watch_next_poll_at', 'watch_failures', 'send_checked_at',
+    ];
+
+    /**
+     * Filed on no place: an inbox given by name opens outside its holder's
+     * reach, so the feed asks MailboxAccess::readable alone (ChangeFeed).
+     */
+    public function changeFeedPlace(): array
+    {
+        return [null, null];
+    }
+
     use HasFactory;
     use HasUuids;
     use MasksSensitiveValues;

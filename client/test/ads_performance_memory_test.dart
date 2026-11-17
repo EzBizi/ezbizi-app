@@ -316,6 +316,9 @@ void main() {
     await open(tester, client(permissions: const ['ads_performance.view', 'ads_manager.manage']));
     tester.view.physicalSize = const Size(375, 1400);
     await tester.pumpAndSettle();
+    // Everything sits above it now (Jose, 2026-11-16).
+    await tester.ensureVisible(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
     await tester.pumpAndSettle();
 

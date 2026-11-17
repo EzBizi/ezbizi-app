@@ -92,6 +92,7 @@ use App\Http\Controllers\Api\LeadHiddenController;
 use App\Http\Controllers\Api\LeadOfficeHoursController;
 use App\Http\Controllers\Api\LeadPresenceController;
 use App\Http\Controllers\Api\LeadReplyTemplatesController;
+use App\Http\Controllers\Api\LeadsRecoveryController;
 use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\LeadSourcesController;
 use App\Http\Controllers\Api\LeadStatsController;
@@ -1026,6 +1027,7 @@ Route::prefix('v1')
         Route::apiResource('jobs', JobsController::class);
         Route::get('project-board/jobs', [ProjectBoardController::class, 'jobs']);
         Route::patch('project-board/jobs/{job}/repair-team', [ProjectBoardController::class, 'repairTeam']);
+        Route::get('project-board/repair-teams', [ProjectBoardController::class, 'repairTeamList']);
         Route::post('project-board/repair-teams', [ProjectBoardController::class, 'repairTeams']);
         Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
         Route::patch('project-board/jobs/{job}/proposal', [ProjectBoardController::class, 'updateProposal']);
@@ -1260,6 +1262,11 @@ Route::prefix('v1')
             // route constraint hides the call from ClientCallsRealRoutesTest (failed the 0.0.0478 precheck).
             Route::put('leads/office-hours/{scope}/{id}', [LeadOfficeHoursController::class, 'update']);
         });
+        // Leads › Manage › Recovery (Jose, 2026-11-16). Edits go through PATCH automations/{id}.
+        Route::middleware('permission:automations.view')->group(function () {
+            Route::get('leads/recovery', [LeadsRecoveryController::class, 'index']);
+            Route::post('leads/recovery/preview', [LeadsRecoveryController::class, 'preview']);
+        });
         Route::get('leads/reply-templates', [LeadReplyTemplatesController::class, 'index']);
         Route::put('leads/reply-templates/{company}', [LeadReplyTemplatesController::class, 'update']);
         Route::get('leads', [LeadsController::class, 'index']);
@@ -1280,6 +1287,9 @@ Route::prefix('v1')
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
         Route::get('leads/{lead}/workiz-choices', [LeadsController::class, 'workizChoices']);
         Route::post('leads/{lead}/google-credit', [LeadsController::class, 'requestCredit']);
+        // Another date (Jose, 2026-11-16): the area's open windows, then move and approve.
+        Route::get('leads/{lead}/booking/days', [LeadsController::class, 'bookingDays']);
+        Route::post('leads/{lead}/booking/move', [LeadsController::class, 'moveBooking']);
         Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
@@ -3354,6 +3364,8 @@ Route::prefix('v1')
         // background beat, so all four routes stay in THIS idle-bearing group —
         // see CamerasController's docblock.
         Route::get('monitoring/cameras', [MonitoringCamerasController::class, 'index']);
+        Route::get('monitoring/dashcam-events', [App\Http\Controllers\Api\Monitoring\DashcamEventsController::class, 'index']);
+        Route::post('monitoring/dashcam-events/{id}/clip-url', [App\Http\Controllers\Api\Monitoring\DashcamEventsController::class, 'clipUrl'])->middleware('throttle:60,1,dashcam-clip');
         Route::post('monitoring/cameras', [MonitoringCamerasController::class, 'store']);
         Route::patch('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'update']);
         Route::delete('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'destroy']);

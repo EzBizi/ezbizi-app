@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/address_lookup.dart';
 import '../../widgets/async_body.dart';
@@ -164,17 +165,33 @@ class _SeoTabState extends State<SeoTab> {
   void initState() {
     super.initState();
     _load();
+    // A site connecting or going quiet, or edited elsewhere: the rail
+    // re-reads quietly; the open site's boxes are their own.
+    _live = LiveChanges.of(widget.api).subscribe({'web_sites'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _sites.isEmpty;
-      _error = null;
-    });
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the sites on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _sites.isEmpty;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/web/sites');
 
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;
@@ -642,10 +659,19 @@ class _SiteTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        site['host'] as String,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
+                      // One line, shrunk to fit: in the narrow list column a
+                      // host broke mid-word ("acefireplaceservices.co / m"),
+                      // UI pass 2026-11-17.
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          site['host'] as String,
+                          maxLines: 1,
+                          softWrap: false,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       Text(

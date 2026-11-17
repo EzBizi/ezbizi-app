@@ -253,6 +253,32 @@ void main() {
     expect(find.text('Approved by Mia'), findsOneWidget);
   });
 
+  /// Jose, 2026-11-16: another window instead, the asked-for one given back.
+  testWidgets('Another date picks an open window and approves it', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      booking: const {
+        'date': '2026-10-11',
+        'start_time': '08:00',
+        'end_time': '11:00',
+        'status': 'pending',
+        'decided_by': null,
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('booking-move')));
+    await tester.pumpAndSettle();
+    expect(find.text('Monday, Oct 12 · 11:00 AM - 2:00 PM'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('booking-move-2026-10-12-11:00')));
+    await tester.pumpAndSettle();
+
+    expect(_booked.last, {'date': '2026-10-12', 'start_time': '11:00'});
+    expect(find.text('Requested: Monday, Oct 12 · 11:00 AM - 2:00 PM'), findsOneWidget);
+    expect(find.text('Approved by Mia'), findsOneWidget);
+  });
+
   /// Kayla Culbreth, 2026-10-27: booked in Workiz already, so no Approve that
   /// would text her the window she asked for instead of the one booked.
   testWidgets('a booking already booked as a job shows the job, not Approve', (
@@ -1459,6 +1485,300 @@ void main() {
     expect(find.textContaining('CONSUMER'), findsNothing);
     expect(find.textContaining('ADVERTISER'), findsNothing);
   });
+
+  // Design lead-header A (Jose, 2026-11-16: "this is still terrible ui-ux
+  // ... lots of wasted space and things all around").
+  group('the header, design lead-header A', () {
+    const details = {
+      'address': '14 Orchard Ln, Doylestown, PA 18901',
+      'zip': '18901',
+      'account': 'A1 Chimney - Bucks County',
+      'google_status': 'Active',
+    };
+    const reading = {
+      'scope': 'wants the fireplace swept and checked before the holidays',
+      'availability': 'weekday mornings',
+      'deadline': 'before Dec 20',
+      'source':
+          'Our fireplace smokes. Can you sweep and check it before the '
+          'holidays? Weekday mornings are best.',
+    };
+    const summary =
+        'Smoky fireplace; wants it swept and checked before the holidays.';
+
+    Future<void> pumpFull(WidgetTester tester, Size size) => _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      size: size,
+      company: const {'id': 'co-1', 'name': 'A-1 Chimney'},
+      email: 'dana.whitfield@example.com',
+      details: details,
+      reading: reading,
+      classification: 'BOOK',
+      summary: summary,
+      starrable: true,
+      onNote: (_) async => null,
+      viewers: const ['Gino Russo-Fernandez'],
+      customer: const {
+        'id': 'cu-1',
+        'name': 'Marcus Bell',
+        'number': 'C-03394',
+        'jobs_total': 1,
+        'jobs': <Map>[],
+      },
+    );
+
+    testWidgets('the facts are a grid on the right, each with its copy button', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1200, 900));
+
+      final facts = find.byKey(const ValueKey('thread-facts'));
+      expect(find.byKey(const ValueKey('thread-columns')), findsOneWidget);
+      // Its own column on the right half, beside what they asked.
+      expect(tester.getTopLeft(facts).dx, greaterThan(1200 / 2));
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('lead-asked'))).dx,
+        lessThan(tester.getTopLeft(facts).dx),
+      );
+
+      for (final (row, copy) in const [
+        ('fact-phone', 'copy-phone'),
+        ('fact-email', 'copy-email'),
+        ('fact-address', 'copy-address'),
+      ]) {
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey(row)),
+            matching: find.byKey(ValueKey(copy)),
+          ),
+          findsOneWidget,
+          reason: '$row carries $copy',
+        );
+      }
+      // One label column: every row's label starts at the same x, and every
+      // value at the same x after it.
+      final labels = {
+        for (final l in const ['Phone', 'Email', 'Address', 'Job', 'Branch', 'Source'])
+          tester
+              .getTopLeft(find.descendant(of: facts, matching: find.text(l)))
+              .dx,
+      };
+      expect(labels, hasLength(1), reason: 'labels share one column');
+      final values = {
+        tester.getTopLeft(find.byKey(const ValueKey('lead-address'))).dx,
+        tester.getTopLeft(find.byKey(const ValueKey('details-service'))).dx,
+        tester.getTopLeft(find.byKey(const ValueKey('details-branch'))).dx,
+      };
+      expect(values, hasLength(1), reason: 'values share one column');
+
+      // Company, branch and source each said once.
+      expect(find.text('A-1 Chimney'), findsOneWidget);
+      expect(find.text('Connecticut'), findsOneWidget);
+      expect(find.text('Google Ads'), findsOneWidget);
+      expect(find.textContaining('Fireplace chimney ·'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('fact-source')),
+          matching: find.byKey(const ValueKey('lead-account')),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('what they asked says the customer and the AI once', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1200, 900));
+
+      final card = find.byKey(const ValueKey('lead-asked'));
+      expect(card, findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.text(summary)),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Looks like work to book'), findsOneWidget);
+      // The AI line already says the scope, so the customer's part adds
+      // only when and by when.
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('reading-said'))).data,
+        'weekday mornings · before Dec 20',
+      );
+      expect(find.textContaining(reading['scope']!), findsNothing);
+      expect(find.textContaining('Smoky fireplace'), findsOneWidget);
+    });
+
+    test('sameGist: a restatement is the same, a new fact is not', () {
+      expect(sameGist(reading['scope']!, summary), isTrue);
+      expect(sameGist('needs a new damper and a cap', summary), isFalse);
+    });
+
+    testWidgets('the chips sit in one row beside the name', (tester) async {
+      await pumpFull(tester, const Size(1200, 900));
+
+      final rows = {
+        for (final k in const [
+          'copy-name',
+          'thread-company',
+          'thread-status',
+          'thread-star',
+          'lead-viewers',
+          'note-add',
+        ])
+          tester.getCenter(find.byKey(ValueKey(k))).dy.round(),
+      };
+      expect(rows, hasLength(1), reason: 'one row: $rows');
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('thread-company'))).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(const ValueKey('status-moves'))).dy,
+        ),
+      );
+    });
+
+    testWidgets('More appears only when the AI line is cut, and opens it', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1200, 900));
+      expect(find.byKey(const ValueKey('lead-summary')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('lead-summary-more')),
+        findsNothing,
+        reason: 'one line fits: nothing to open',
+      );
+
+      final long = List.filled(
+        12,
+        'Smoky fireplace that backs up into the living room when lit',
+      ).join('; ');
+      await _pump(
+        tester,
+        player: FakeRecordingPlayer(),
+        recordingGate: Completer()..complete(),
+        size: const Size(1200, 900),
+        details: details,
+        reading: reading,
+        classification: 'BOOK',
+        summary: long,
+      );
+      final text = find.byKey(const ValueKey('lead-summary'));
+      final more = find.byKey(const ValueKey('lead-summary-more'));
+      expect(more, findsOneWidget);
+      expect(find.descendant(of: more, matching: find.text('More')), findsOneWidget);
+      expect(tester.widget<Text>(text).maxLines, 3);
+      final cut = tester.getSize(text).height;
+
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: more, matching: find.text('Less')), findsOneWidget);
+      expect(tester.widget<Text>(text).maxLines, isNull);
+      expect(tester.getSize(text).height, greaterThan(cut));
+
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(text).maxLines, 3);
+      expect(tester.getSize(text).height, cut);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final size in const [Size(1440, 400), Size(390, 640)]) {
+      testWidgets('at ${size.width.toInt()}x${size.height.toInt()} the '
+          'thread keeps at least half the pane', (tester) async {
+        await pumpFull(tester, size);
+        expect(tester.takeException(), isNull);
+
+        final list = find.byKey(const ValueKey('thread-list'));
+        expect(list, findsOneWidget);
+        expect(
+          tester.getSize(list).height,
+          greaterThanOrEqualTo(size.height / 2),
+        );
+        // Who it is stays in view; the rest waits behind one control.
+        expect(find.text('Marcus Bell'), findsWidgets);
+        for (final k in const [
+          'lead-asked',
+          'thread-facts',
+          'lead-customer',
+        ]) {
+          expect(find.byKey(ValueKey(k)), findsNothing, reason: k);
+        }
+      });
+    }
+
+    testWidgets('a short desktop pane opens its details without overflow', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(1440, 400));
+      final toggle = find.byKey(const ValueKey('thread-short-details'));
+      expect(toggle, findsOneWidget);
+      expect(find.byKey(const ValueKey('status-moves')), findsNothing);
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      for (final k in const [
+        'status-moves',
+        'lead-asked',
+        'thread-facts',
+        'lead-customer',
+      ]) {
+        expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+      }
+      // Open, the details scroll inside their share of the pane.
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('thread-details-scroll')))
+            .height,
+        lessThanOrEqualTo(400 * 0.3),
+      );
+      expect(
+        tester.getSize(find.byKey(const ValueKey('thread-list'))).height,
+        greaterThan(0),
+      );
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('lead-asked')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a tall desktop pane draws no Details line', (tester) async {
+      await pumpFull(tester, const Size(1440, 900));
+      expect(find.byKey(const ValueKey('thread-short-details')), findsNothing);
+      expect(find.byKey(const ValueKey('lead-asked')), findsOneWidget);
+    });
+
+    testWidgets('a phone at 390 opens every piece without overflow', (
+      tester,
+    ) async {
+      await pumpFull(tester, const Size(390, 844));
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('thread-details-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      for (final k in const [
+        'thread-facts',
+        'lead-asked',
+        'lead-customer',
+        'copy-phone',
+        'copy-email',
+        'copy-address',
+        'thread-company',
+        'note-add',
+      ]) {
+        expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+        expect(
+          tester.getRect(find.byKey(ValueKey(k))).right,
+          lessThanOrEqualTo(390),
+          reason: k,
+        );
+      }
+    });
+  });
 }
 
 final _sent = <String>[];
@@ -1502,6 +1822,9 @@ Future<void> _pump(
   Map<String, dynamic>? offer,
   String? proofread,
   Map<String, dynamic>? reading,
+  String? classification,
+  String? summary,
+  bool starrable = false,
 }) async {
   _sent.clear();
   _booked.clear();
@@ -1587,6 +1910,35 @@ Future<void> _pump(
         offer = {...?offer, 'moved_at': '2026-10-28T12:00:00Z', 'can_move': false};
         return http.Response(
           jsonEncode({'data': {'job_id': 'j-1'}}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      if (request.url.path.endsWith('/booking/days')) {
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {
+                'date': '2026-10-12',
+                'windows': [
+                  {'start_time': '11:00', 'end_time': '14:00'},
+                ],
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/booking/move')) {
+        _booked.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response(
+          jsonEncode({
+            'data': {...?booking, 'date': '2026-10-12', 'start_time': '11:00', 'end_time': '14:00', 'status': 'approved', 'decided_by': 'Mia'},
+          }),
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -1780,9 +2132,12 @@ Future<void> _pump(
             'email': ?email,
             'credit': ?credit,
             'reading': ?reading,
+            'classification': ?classification,
+            'summary': ?summary,
             if (offer != null) 'lead_type': 'Reschedule',
           },
           onStatusChanged: (_) async {},
+          onStar: starrable ? (_) async => null : null,
           onRead: onRead,
           onNote: onNote,
           session: session,

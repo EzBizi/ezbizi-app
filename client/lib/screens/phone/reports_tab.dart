@@ -854,7 +854,13 @@ class _ReportTiles extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, box) {
         const gap = 10.0;
-        final across = (box.maxWidth / 170).floor().clamp(2, tiles.length);
+        // Rows as even as the count allows: at 1440 six fitted at 170 and
+        // "Not tagged" sat alone on a second row (Jose's equal-tile rule,
+        // UI pass 2026-11-17). 150 fits all seven; when they cannot share a
+        // row, they split evenly rather than leave one behind.
+        final fit = (box.maxWidth / 150).floor().clamp(2, tiles.length);
+        final rows = (tiles.length / fit).ceil();
+        final across = (tiles.length / rows).ceil();
         final width = (box.maxWidth - gap * (across - 1)) / across;
 
         return Wrap(

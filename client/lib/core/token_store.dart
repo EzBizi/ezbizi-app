@@ -52,12 +52,55 @@ class TokenStore {
     if (staff != null) store.writeItem(_staffKey, staff, persist: persist);
   }
 
-  /// Both, always. Signing out of one while the other lingers is how somebody
-  /// ends up believing they have left.
+  /// The kept ("keep me signed in") copy of the tenant token, read from the
+  /// keychain or localStorage itself rather than this process's memory.
+  /// Throws when the store cannot be read.
+  static Future<String?> persistedTenant() => store.readPersisted(_tenantKey);
+
+  /// Put [token] back in the kept store if it is no longer there.
+  ///
+  /// Jose, 2026-11-16: "every new update seem to log me out". The desktop's
+  /// token (row 801) was valid on the server and in use until the installer
+  /// closed the app; the restart found no `ezbizi.token` in the keychain file,
+  /// while the same file still held this install's phone_device_id from
+  /// 2026-09-10. So the key was dropped from disk WHILE the app ran on its
+  /// in-memory copy, and the next restart — an update — showed the sign-in
+  /// screen. Nothing compared the two, so the loss stayed silent for hours.
+  ///
+  /// Session calls this after each successful /me while the person chose to
+  /// stay signed in. Returns true when it had to write the token back, so the
+  /// caller can report it: whatever removed it is then caught in the act.
+  /// [stillWanted] is asked after the read, so a sign-out that lands while
+  /// the keychain is answering is never undone.
+  static Future<bool> keepTenant(
+    String token, {
+    required bool Function() stillWanted,
+  }) async {
+    final String? onDisk;
+    try {
+      onDisk = await store.readPersisted(_tenantKey);
+    } catch (_) {
+      // Cannot tell, so do nothing: rewriting on every unreadable answer
+      // would hide a broken keychain behind a stream of writes.
+      return false;
+    }
+    if (onDisk == token || !stillWanted()) return false;
+    store.writeItem(_tenantKey, token, persist: true);
+    return true;
+  }
+
+  /// Test seam: forget the loaded copy so [init] reads the store again.
+  static void debugReset() => store.debugReset();
+
+  /// The staff token only. A staff session ending (the Development tab's
+  /// token expiring, a staff restore failing) must not take the customer
+  /// session's kept token with it; [clear] is for ending both.
   static void dropStaff() {
     store.writeItem(_staffKey, null);
   }
 
+  /// Both, always. Signing out of one while the other lingers is how somebody
+  /// ends up believing they have left.
   static void clear() {
     store.writeItem(_tenantKey, null);
     store.writeItem(_staffKey, null);

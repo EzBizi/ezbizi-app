@@ -24,6 +24,11 @@ class InventorySaleFulfillment extends Model implements StatesRetention
     }
 
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A fulfilment is its sale's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['inventory_orders', InventorySale::class, 'sale_id'];
+
     use HasUuids;
 
     protected function casts(): array

@@ -103,25 +103,37 @@ final class MondayPush
     private function send(MondayOutboxEntry $entry, SocialConnection $connection): string
     {
         $task = Task::query()->withTrashed()->with(['board', 'statusRow'])->find($entry->task_id);
-        if ($task === null || $task->trashed() || $task->sensitive) {
+        $kinds = (array) $entry->kinds;
+        $itemId = $this->mondayId($task?->external_ref);
+        if ($task !== null && $task->trashed()) {
+            // Deleted here: archived on Monday (restorable there, as it is here).
+            if (in_array('delete', $kinds, true) && $itemId !== null) {
+                $this->writer->archiveItem($itemId);
+
+                return $this->close($entry, MondayOutboxEntry::SENT);
+            }
+
+            return $this->close($entry, MondayOutboxEntry::SUPERSEDED, 'The task is gone.');
+        }
+        if ($task === null || $task->sensitive) {
             return $this->close($entry, MondayOutboxEntry::SUPERSEDED, $task?->sensitive ? 'A sensitive task is not sent to Monday.' : 'The task is gone.');
         }
         $boardId = $this->mondayId($task->board?->external_ref);
         if ($boardId === null) {
             return $this->close($entry, MondayOutboxEntry::SUPERSEDED, 'The board no longer answers for a Monday board.');
         }
-        $kinds = (array) $entry->kinds;
-        $itemId = $this->mondayId($task->external_ref);
 
         if ($itemId === null) {
             if (! in_array('create', $kinds, true)) {
-                return $this->close($entry, MondayOutboxEntry::SUPERSEDED, 'The task is not on Monday.');
+                // An update or edit to a task whose making has not reached Monday yet waits for it.
+                return $this->creating($task) ? $this->defer($entry) : $this->close($entry, MondayOutboxEntry::SUPERSEDED, 'The task is not on Monday.');
             }
             $parent = $task->parent_task_id ? Task::query()->withTrashed()->find($task->parent_task_id) : null;
             if ($parent !== null && $this->mondayId($parent->external_ref) === null) {
-                $entry->forceFill(['available_at' => now()->addMinute()])->save(); // the parent goes first
-
-                return 'deferred';
+                // The parent goes first; a parent that will never be on Monday (a branch board's own
+                // task from before the merge) keeps its subtasks here too.
+                return $this->creating($parent) ? $this->defer($entry)
+                    : $this->close($entry, MondayOutboxEntry::SUPERSEDED, 'Its parent task is not on Monday.');
             }
             $itemId = $parent !== null
                 ? $this->writer->createSubitem($this->mondayId($parent->external_ref), $task->title)
@@ -290,6 +302,20 @@ final class MondayPush
 
         return array_values(array_map(fn ($id) => ['id' => (int) $this->mondayIds[$id], 'kind' => 'person'],
             array_filter($userIds, fn ($id) => isset($this->mondayIds[$id]))));
+    }
+
+    /** A making of the task is still on its way to Monday. */
+    private function creating(Task $task): bool
+    {
+        return MondayOutboxEntry::query()->where('task_id', $task->id)->where('state', MondayOutboxEntry::PENDING)
+            ->whereJsonContains('kinds', 'create')->exists();
+    }
+
+    private function defer(MondayOutboxEntry $entry): string
+    {
+        $entry->forceFill(['available_at' => now()->addMinute()])->save();
+
+        return 'deferred';
     }
 
     private function meta(string $boardId): array

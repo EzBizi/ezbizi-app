@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../widgets/list_table.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/job_money.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
@@ -13,7 +14,9 @@ import '../widgets/ad_schedule.dart';
 import '../widgets/dashboard_chart.dart';
 import '../widgets/date_range_picker.dart';
 import '../widgets/report_grid.dart';
+import '../widgets/heading_pin.dart';
 import 'reports/report_dates.dart';
+import 'reports/report_range.dart';
 
 /// What the Google Ads accounts spent, and what came back for it.
 ///
@@ -288,10 +291,32 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     _loadAccounts();
     _accountSearch.addListener(() => setState(() {}));
     _campaignSearch.addListener(() => setState(() {}));
+    // A schedule flipped or set elsewhere: its on/off column re-reads. The
+    // report is Google's, read live and cached; it is not asked again here.
+    _live = LiveChanges.of(widget.api).subscribe({'ad_schedules'}, (_) {
+      final id = _selected;
+      if (id != null) return _loadSchedules(id);
+    }, active: LiveChanges.visible(this));
+  }
+
+  LiveSubscription? _live;
+
+  DateSpan? _shared;
+
+  /// Another tab moved the shared range: read the figures for it.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final span = ReportRange.maybeOf(context)?.span;
+    if (span == _shared) return;
+    final moved = _shared != null;
+    _shared = span;
+    if (moved && _selected != null) _loadReport();
   }
 
   @override
   void dispose() {
+    _live?.cancel();
     _accountSearch.dispose();
     _campaignSearch.dispose();
     _tableBody.dispose();
@@ -306,6 +331,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   /// conversions are attributed late, and "the last 30 days" is a question
   /// about settled figures, not about a day still in progress.
   (DateTime, DateTime) _window() {
+    // Inside Reports, the range every tab shares (Jose, 2026-11-16).
+    final shared = context.getInheritedWidgetOfExactType<ReportRange>()?.span;
+    if (shared != null) return (shared.from, shared.to);
     if (_ranges[_range].days == null && _custom != null) {
       return (_custom!.start, _custom!.end);
     }
@@ -359,8 +387,25 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     if (onlyOne) _loadReport();
   }
 
+  /// "Everything": every account of the company and its sub companies, each
+  /// once (Jose, 2026-11-16: "Combining a1chimney and angisweep").
+  static const _everything = '*everything*';
+
+  /// The list as drawn: Everything above the managers, when there is more
+  /// than one account to combine.
+  List<Map<String, dynamic>> get _listed => [
+    if (_accounts.length > 1)
+      {
+        'connection_id': _everything,
+        'name': 'Everything',
+        'customer_id': 'company and sub companies, each account once',
+        'is_manager': true,
+      },
+    ..._accounts,
+  ];
+
   bool get _selectedIsManager {
-    final a = _accounts.where((a) => a['connection_id'] == _selected);
+    final a = _listed.where((a) => a['connection_id'] == _selected);
     return a.isNotEmpty && a.first['is_manager'] == true;
   }
 
@@ -399,7 +444,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     });
 
     final query = {
-      'connection_id': id,
+      if (id == _everything) 'everything': '1' else 'connection_id': id,
       'from': formatCalendarDay(from),
       'to': formatCalendarDay(to),
     };
@@ -625,8 +670,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     // either - "Hamden" and "8839813550" are both how somebody refers to it.
     final needle = _accountSearch.text.trim().toLowerCase();
     final shown = needle.isEmpty
-        ? _accounts
-        : _accounts
+        ? _listed
+        : _listed
               .where(
                 (a) =>
                     '${a['name']}'.toLowerCase().contains(needle) ||
@@ -705,7 +750,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   // load, and the only thing that makes it correct here is
                   // that somebody chose it knowing what it was.
                   subtitle: Text(
-                    a['is_manager'] == true
+                    id == _everything
+                        ? '${a['customer_id']}'
+                        : a['is_manager'] == true
                         ? '${a['customer_id']} - reads every account beneath it'
                         : '${a['customer_id']}',
                   ),
@@ -809,7 +856,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             ],
           ),
         ),
-        PinnedHeaderSliver(
+        // Pinned unless this person unpinned the headings (Jose, 2026-11-16).
+        HeadingPin.sliver(
+          context,
           child: SizedBox(
             height: _headerHeight,
             child: _campaignHeader(theme, rows),
@@ -881,6 +930,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
               today: DateSpan.single(DateTime.now()).from,
               formats: widget.session.me?.display ?? DisplayFormats.fallback,
               onChanged: (span) {
+                final shared = ReportRange.maybeOf(context);
+                if (shared != null) return shared.onChanged(span);
                 setState(() {
                   _custom = DateTimeRange(start: span.from, end: span.to);
                   _range = _ranges.length - 1;
@@ -1408,6 +1459,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                               ? MainAxisAlignment.end
                               : MainAxisAlignment.start,
                           children: [
+                            if (c.key == 'name') const HeadingPinButton(),
                             Flexible(
                               child: Text(
                                 c.label,

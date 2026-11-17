@@ -2808,4 +2808,23 @@ class AutomationEngineTest extends TestCase
         // code would be remote execution wearing a friendly name.
         $this->assertStringContainsString('Person moved franchise', $run->action_results[0]['detail']);
     }
+
+    /** Prod 11-15: a RingCentral call lead withdrawn for Google's copy before its queued run (5 failures a day). */
+    public function test_a_step_about_an_enquiry_that_is_gone_is_a_skip(): void
+    {
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'lead.call_not_booked',
+            'subject_type'    => \App\Models\Lead::class,
+            'subject_id'      => '01a1e146-7070-736f-97a1-5fed9c9aa138',
+            'payload'         => ['after' => ['phone' => '+15555550100']],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)->run(['type' => 'reply', 'message' => 'Hi'], $event, null));
+
+        $this->assertTrue($result['ok']);
+        $this->assertTrue($result['skipped'] ?? false, $result['detail']);
+    }
 }

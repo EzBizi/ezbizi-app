@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/list_table.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
@@ -103,10 +104,21 @@ class _OwnershipTabState extends State<OwnershipTab> {
     super.initState();
     _load();
     _refresh = Timer.periodic(OwnershipTab.refreshEvery, (_) => _load());
+    // Between the timed reads: a machine, a desk or a person changing.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'monitoring_devices', 'monitoring_floor_plans', 'people'},
+      (_) {
+        if (!_loading) return _load();
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _refresh?.cancel();
     super.dispose();
   }

@@ -197,7 +197,7 @@ const Map<String, Tour> reportsTours = {
       ),
     ],
   ),
-  'reports/Marketing': Tour(
+  'reports/Marketing Reports': Tour(
     version: 1,
     steps: [
       TourStep(

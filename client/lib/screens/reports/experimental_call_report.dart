@@ -13,6 +13,7 @@ import '../../widgets/call_correction.dart';
 import '../../widgets/call_text.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/heading_pin.dart';
 import '../../widgets/open_destination.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
@@ -1248,7 +1249,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             if (people.isEmpty)
               SliverToBoxAdapter(child: _nothing(context))
             else if (wide) ...[
-              PinnedHeaderSliver(
+              // Pinned unless this person unpinned the headings (Jose,
+              // 2026-11-16).
+              HeadingPin.sliver(
+                context,
                 child: SizedBox(height: 88, child: _headerRow(context)),
               ),
               SliverList.builder(
@@ -1657,7 +1661,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             ),
           ),
           if (box.maxWidth >= _tableRow)
-            PinnedHeaderSliver(child: _callsHeader(context)),
+            HeadingPin.sliver(context, child: _callsHeader(context)),
           SliverList.list(children: rows),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
@@ -2239,118 +2243,131 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       // Opaque on purpose: pinned, it scrolls over the rows beneath it, and a
       // transparent header would print the names through itself.
       color: theme.colorScheme.surface,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      // The pin over the empty corner above Person: the header's height is
+      // fixed, so it must take none (Jose, 2026-11-16).
+      child: Stack(
         children: [
-          Padding(
-            key: const ValueKey('tour-people-groups'),
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-            child: Row(
-              children: [
-                for (final (group, flex) in _groups())
-                  Expanded(
-                    flex: flex,
-                    child: group == null
-                        ? const SizedBox.shrink()
-                        : Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            padding: const EdgeInsets.only(bottom: 2),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: theme.colorScheme.outlineVariant,
-                                ),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  group.toUpperCase(),
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    letterSpacing: 0.6,
-                                    fontWeight: FontWeight.w700,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                if (group == 'Sales')
-                                  Tooltip(
-                                    message:
-                                        'Booking rate: booked out of the new-client calls they answered.',
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(left: 4),
-                                      child: Icon(
-                                        Icons.info_outline,
-                                        size: 13,
-                                        semanticLabel:
-                                            'Booking rate: booked out of the new-client calls they answered.',
-                                        color:
-                                            theme.colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                  ),
-                const SizedBox(width: 40),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(
-              children: [
-                for (final column in _columns())
-                  Expanded(
-                    flex: column.flex,
-                    child: InkWell(
-                      onTap: () => _sort(column.key),
-                      child: Row(
-                        mainAxisAlignment: column.numeric
-                            ? MainAxisAlignment.end
-                            : MainAxisAlignment.start,
-                        children: [
-                          // Two lines rather than run into the next title
-                          // ("RangAnswe…" at a laptop's width).
-                          Flexible(
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 6),
-                              child: Text(
-                                column.label,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: column.numeric
-                                    ? TextAlign.end
-                                    : TextAlign.start,
-                                style: theme.textTheme.labelLarge,
-                              ),
-                            ),
-                          ),
-
-                          // Only on the column actually in force. An arrow on
-                          // every header says nothing about which one is doing
-                          // the sorting.
-                          if (_sortBy == column.key)
-                            Icon(
-                              _ascending
-                                  ? Icons.arrow_upward
-                                  : Icons.arrow_downward,
-                              size: 14,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // Matches the chevron's slot in every row below.
-                const SizedBox(width: 40),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
+          _headerColumns(context),
+          const Positioned(left: 14, top: 2, child: HeadingPinButton()),
         ],
       ),
+    );
+  }
+
+  /// The group names over the column headings, of [_headerRow].
+  Widget _headerColumns(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          key: const ValueKey('tour-people-groups'),
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+          child: Row(
+            children: [
+              for (final (group, flex) in _groups())
+                Expanded(
+                  flex: flex,
+                  child: group == null
+                      ? const SizedBox.shrink()
+                      : Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.only(bottom: 2),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(
+                                color: theme.colorScheme.outlineVariant,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                group.toUpperCase(),
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  letterSpacing: 0.6,
+                                  fontWeight: FontWeight.w700,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              if (group == 'Sales')
+                                Tooltip(
+                                  message:
+                                      'Booking rate: booked out of the new-client calls they answered.',
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(left: 4),
+                                    child: Icon(
+                                      Icons.info_outline,
+                                      size: 13,
+                                      semanticLabel:
+                                          'Booking rate: booked out of the new-client calls they answered.',
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                ),
+              const SizedBox(width: 40),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              for (final column in _columns())
+                Expanded(
+                  flex: column.flex,
+                  child: InkWell(
+                    onTap: () => _sort(column.key),
+                    child: Row(
+                      mainAxisAlignment: column.numeric
+                          ? MainAxisAlignment.end
+                          : MainAxisAlignment.start,
+                      children: [
+                        // Two lines rather than run into the next title
+                        // ("RangAnswe…" at a laptop's width).
+                        Flexible(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Text(
+                              column.label,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: column.numeric
+                                  ? TextAlign.end
+                                  : TextAlign.start,
+                              style: theme.textTheme.labelLarge,
+                            ),
+                          ),
+                        ),
+
+                        // Only on the column actually in force. An arrow on
+                        // every header says nothing about which one is doing
+                        // the sorting.
+                        if (_sortBy == column.key)
+                          Icon(
+                            _ascending
+                                ? Icons.arrow_upward
+                                : Icons.arrow_downward,
+                            size: 14,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Matches the chevron's slot in every row below.
+              const SizedBox(width: 40),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+      ],
     );
   }
 
@@ -3232,7 +3249,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           SizedBox(
             height: 36,
             child: _cells([
-              heading('Date'),
+              // A person's calls are not pinned, so no pin there.
+              person
+                  ? heading('Date')
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [const HeadingPinButton(), heading('Date')],
+                    ),
               heading('Time'),
               const SizedBox.shrink(),
               heading('Caller'),

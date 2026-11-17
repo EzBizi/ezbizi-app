@@ -851,6 +851,8 @@ void main() {
     );
 
     expect(find.byTooltip('4 fields not filled in'), findsOneWidget);
+    // Readable without hover: a phone shows the words, not a bare number.
+    expect(find.text('4 missing'), findsOneWidget);
     expect(find.byTooltip('0 fields not filled in'), findsNothing);
     expect(find.byTooltip('1 field not filled in'), findsNothing);
   });

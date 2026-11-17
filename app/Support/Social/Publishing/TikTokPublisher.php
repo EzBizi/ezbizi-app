@@ -53,7 +53,15 @@ final class TikTokPublisher implements SocialPublisher
         $bytes = $post->bytes();
         $size  = strlen($bytes);
 
-        $init = $this->toDrafts
+        // The person's choice for this post (`mode` in the target's options);
+        // a post queued before the composer asked follows the installation.
+        $toDrafts = match ($post->options['mode'] ?? null) {
+            'inbox'  => true,
+            'direct' => false,
+            default  => $this->toDrafts,
+        };
+
+        $init = $toDrafts
             ? $this->initDraft($token, $size)
             : $this->initDirect($token, $post, $size);
 

@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../widgets/cell_tap.dart';
 import '../widgets/lazy_menu_anchor.dart';
+import '../widgets/panel_field.dart';
 import '../widgets/range_calendar.dart';
 import 'package:flutter/services.dart';
 
@@ -453,9 +455,17 @@ String formatCellPhone(String raw) {
 /// The inline "+ Add tag" row of a label or tags menu: typing a new one
 /// adds it to the column and picks it (Jose, 2026-11-09).
 class _AddOption extends StatefulWidget {
-  const _AddOption({required this.columnId, required this.onAdd});
+  const _AddOption({
+    required this.columnId,
+    required this.onAdd,
+    this.noun = 'tag',
+  });
 
   final String columnId;
+
+  /// "tag" under Tags, "label" under a label column (QA 11-16: a label
+  /// menu said "+ Add tag" over "Edit labels…").
+  final String noun;
   final Future<void> Function(String label) onAdd;
 
   @override
@@ -491,10 +501,10 @@ class _AddOptionState extends State<_AddOption> {
         key: ValueKey('column-option-new-${widget.columnId}'),
         controller: _text,
         enabled: !_busy,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           isDense: true,
-          hintText: '+ Add tag',
-          border: OutlineInputBorder(),
+          hintText: '+ Add ${widget.noun}',
+          border: const OutlineInputBorder(),
         ),
         onSubmitted: (_) => _submit(),
       ),
@@ -931,8 +941,11 @@ class ColumnCell extends StatelessWidget {
       case 'number':
       case 'currency':
       case 'formula':
+        // widthFactor 1: a cell's tight width still right-aligns it; a card's
+        // loose one no longer pushes "0.5" 100 px from its label (QA 11-16).
         return Align(
           alignment: Alignment.centerRight,
+          widthFactor: 1,
           child: Text(
             v == null ? '—' : formatColumnNumber(v, column),
             textAlign: TextAlign.right,
@@ -1048,6 +1061,7 @@ class ColumnCell extends StatelessWidget {
       const Divider(height: 8),
       _AddOption(
         columnId: column.id,
+        noun: column.type == 'tags' ? 'tag' : 'label',
         onAdd: (label) async {
           final id = await onAddOption!(label);
           if (id != null) picked(id);
@@ -1076,7 +1090,17 @@ class ColumnEditor extends StatefulWidget {
     this.api,
     this.onDone,
     this.autofocus = false,
+    this.framed = false,
+    this.flush,
   });
+
+  /// Drawn as a record panel's field (Jose, 2026-11-16): one 44-high box
+  /// for every type, a timeline or a day in a popover, and typing saved
+  /// after a pause, on leaving the box and when [flush] runs.
+  final bool framed;
+
+  /// The panel's unsaved-typing register, flushed when it closes.
+  final PanelFlush? flush;
 
   /// For a customer / job column's search; without it the field is read-only.
   final ApiClient? api;
@@ -1101,22 +1125,100 @@ class _ColumnEditorState extends State<ColumnEditor> {
       'number' ||
       'currency' => widget.value == null ? '' : _number(widget.value, null),
       'location' => '${(widget.value as Map?)?['address'] ?? ''}',
+      // Read as the table reads it, "(440) 555-0100" (hands-on QA 11-16).
+      'phone' => widget.value == null ? '' : formatCellPhone('${widget.value}'),
       _ => widget.value == null ? '' : '${widget.value}',
     },
   );
 
+  final _focus = FocusNode();
+
+  /// Typing in a panel box saves after this pause.
+  Timer? _pause;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.framed) {
+      _focus.addListener(() {
+        if (!_focus.hasFocus) _commitText();
+      });
+      widget.flush?.add(this, _flushNow);
+    }
+  }
+
+  /// What this box last sent while its saved value has not come back: the
+  /// panel closing and the box losing focus are one change, sent once.
+  Object? _sent;
+  bool _hasSent = false;
+
+  void _send(Object? v) {
+    if (_hasSent && jsonEncode(v) == jsonEncode(_sent)) return;
+    if (widget.framed) {
+      _sent = v;
+      _hasSent = true;
+    }
+    widget.onChanged?.call(v);
+  }
+
+  /// Saves what is still waiting on the typing pause, if anything.
+  void _flushNow() {
+    if (_pause == null) return;
+    _commitText();
+  }
+
+  @override
+  void didUpdateWidget(ColumnEditor old) {
+    super.didUpdateWidget(old);
+    // A saved value comes back: show it, unless somebody is typing here.
+    if (widget.framed && old.value != widget.value) _hasSent = false;
+    if (widget.framed && old.value != widget.value && !_focus.hasFocus) {
+      final shown = _shownText();
+      if (_text.text != shown) _text.text = shown;
+    }
+  }
+
+  String _shownText() => switch (widget.column.type) {
+    'number' ||
+    'currency' => widget.value == null ? '' : _number(widget.value, null),
+    'location' => '${(widget.value as Map?)?['address'] ?? ''}',
+    'phone' => widget.value == null ? '' : formatCellPhone('${widget.value}'),
+    _ => widget.value == null ? '' : '${widget.value}',
+  };
+
   @override
   void dispose() {
+    // Whatever is still typed goes with the panel.
+    _closing = true;
+    if (widget.framed) {
+      _flushNow();
+      widget.flush?.remove(this);
+    }
+    _pause?.cancel();
+    _focus.dispose();
     _text.dispose();
     super.dispose();
   }
 
   String? _invalid;
 
-  void _commitText() {
+  /// Torn down: a last flush may send, but not redraw.
+  bool _closing = false;
+
+  void _typed(String _) {
+    _pause?.cancel();
+    _pause = Timer(panelTypingPause, () => _commitText(quiet: true));
+  }
+
+  /// [quiet]: a pause in typing, which saves what is valid and says nothing
+  /// yet of what is not (half an email address).
+  void _commitText({bool quiet = false}) {
+    _pause?.cancel();
+    _pause = null;
     final typed = _text.text.trim();
     final bad = typed.isNotEmpty && !validColumnText(widget.column.type, typed);
-    if (bad != (_invalid != null)) {
+    if (quiet && bad) return;
+    if (bad != (_invalid != null) && mounted && !_closing) {
       setState(
         () => _invalid = bad
             ? switch (widget.column.type) {
@@ -1132,7 +1234,7 @@ class _ColumnEditorState extends State<ColumnEditor> {
     if (widget.column.type == 'number' || widget.column.type == 'currency') {
       final n = typed.isEmpty ? null : num.tryParse(typed);
       if (typed.isNotEmpty && n == null) return;
-      if (n != widget.value) widget.onChanged?.call(n);
+      if (n != widget.value) _send(n);
       widget.onDone?.call();
       return;
     }
@@ -1140,7 +1242,7 @@ class _ColumnEditorState extends State<ColumnEditor> {
       // Typed: an address; lat and lng come from an import or a map pick.
       final was = (widget.value as Map?)?['address'];
       if (typed != (was ?? '')) {
-        widget.onChanged?.call(
+        _send(
           typed.isEmpty ? null : {'address': typed, 'lat': null, 'lng': null},
         );
       }
@@ -1148,7 +1250,13 @@ class _ColumnEditorState extends State<ColumnEditor> {
       return;
     }
     final next = typed.isEmpty ? null : typed;
-    if (next != widget.value) widget.onChanged?.call(next);
+    // The box shows a phone formatted; left as shown, it is not a change.
+    final same =
+        next == widget.value ||
+        (widget.column.type == 'phone' &&
+            widget.value is String &&
+            next == formatCellPhone(widget.value as String));
+    if (!same) _send(next);
     widget.onDone?.call();
   }
 
@@ -1159,13 +1267,42 @@ class _ColumnEditorState extends State<ColumnEditor> {
     final key = ValueKey('column-editor-${c.id}');
 
     switch (c.type) {
+      case 'checkbox' when widget.framed:
+        return PanelFieldBox(
+          key: key,
+          icon: null,
+          readOnly: !editable,
+          onTap: editable
+              ? () => widget.onChanged!(widget.value != true)
+              : null,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: Checkbox(
+                  value: widget.value == true,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  onChanged: editable
+                      ? (b) => widget.onChanged!(b ?? false)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(widget.value == true ? 'Yes' : 'No'),
+            ],
+          ),
+        );
       case 'checkbox':
+        // The table's and the card's Checkbox, not a Switch (hands-on QA
+        // 11-16: one value, two controls).
         return Align(
           alignment: Alignment.centerLeft,
-          child: Switch(
+          child: Checkbox(
             key: key,
             value: widget.value == true,
-            onChanged: editable ? (b) => widget.onChanged!(b) : null,
+            onChanged: editable ? (b) => widget.onChanged!(b ?? false) : null,
           ),
         );
       case 'status':
@@ -1185,10 +1322,39 @@ class _ColumnEditorState extends State<ColumnEditor> {
           key: key,
           value: widget.value?.toString(),
           isDense: true,
+          contentPadding: widget.framed ? panelFieldPadding : null,
           hint: 'Not set',
           allowClear: true,
           options: options,
           onChanged: editable ? (v) => widget.onChanged!(v) : null,
+        );
+      case 'people' when widget.framed:
+        return MultiPickField(
+          key: key,
+          options: [for (final p in widget.people.entries) (p.key, p.value)],
+          selected: [
+            for (final id in (widget.value as List?) ?? const []) '$id',
+          ],
+          itemKey: (id) => ValueKey('column-editor-${c.id}-$id'),
+          onChanged: editable
+              ? (next) => widget.onChanged!(next.isEmpty ? null : next)
+              : null,
+        );
+      case 'tags' when widget.framed:
+        final ids = [
+          for (final id in (widget.value as List?) ?? const []) '$id',
+        ];
+        return MultiPickField(
+          key: key,
+          options: [
+            for (final o in c.options)
+              if (!o.retired || ids.contains(o.id)) (o.id, o.label),
+          ],
+          selected: ids,
+          itemKey: (id) => ValueKey('column-editor-${c.id}-$id'),
+          onChanged: editable
+              ? (next) => widget.onChanged!(next.isEmpty ? null : next)
+              : null,
         );
       case 'people':
         final ids = [
@@ -1278,6 +1444,7 @@ class _ColumnEditorState extends State<ColumnEditor> {
             focusNode: focus,
             decoration: InputDecoration(
               isDense: true,
+              contentPadding: widget.framed ? panelFieldPadding : null,
               border: const OutlineInputBorder(),
               hintText: 'Search customers and jobs',
               suffixIcon: label == null
@@ -1292,6 +1459,34 @@ class _ColumnEditorState extends State<ColumnEditor> {
                     ),
             ),
           ),
+        );
+      case 'date' when widget.framed:
+        return DayPopoverField(
+          key: key,
+          value: widget.value as String?,
+          formats: widget.formats,
+          onChanged: editable ? (d) => widget.onChanged!(d) : null,
+        );
+      case 'formula' when widget.framed:
+        return PanelFieldBox(
+          key: key,
+          icon: null,
+          readOnly: true,
+          child: Text(
+            widget.value == null ? '—' : formatColumnNumber(widget.value, c),
+          ),
+        );
+      case 'timeline' when widget.framed:
+        final range = widget.value is Map ? widget.value as Map : const {};
+        return RangePopoverField(
+          key: key,
+          from: range['from'] as String?,
+          to: range['to'] as String?,
+          onChanged: editable
+              ? (from, to) => widget.onChanged?.call(
+                  from == null ? null : {'from': from, 'to': to},
+                )
+              : null,
         );
       case 'date':
         return _DateEditor(
@@ -1319,6 +1514,34 @@ class _ColumnEditorState extends State<ColumnEditor> {
               : null,
         );
       default:
+        if (widget.framed) {
+          return TextField(
+            key: key,
+            controller: _text,
+            focusNode: _focus,
+            enabled: editable,
+            maxLines: c.type == 'long_text' ? 6 : 1,
+            minLines: 1,
+            keyboardType: switch (c.type) {
+              'number' || 'currency' => const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              'phone' => TextInputType.phone,
+              'email' => TextInputType.emailAddress,
+              'url' => TextInputType.url,
+              'long_text' => TextInputType.multiline,
+              _ => TextInputType.text,
+            },
+            decoration: panelFieldDecoration(
+              suffixText: c.type == 'number' ? c.unit : null,
+              prefixText: c.type == 'currency' ? '\$ ' : null,
+              hint: c.type == 'datetime' ? 'YYYY-MM-DD HH:MM' : null,
+              errorText: _invalid,
+            ),
+            onChanged: _typed,
+            onSubmitted: (_) => _commitText(),
+          );
+        }
         return TextField(
           key: key,
           controller: _text,
@@ -1402,7 +1625,7 @@ String statusesPath(String board, [String? id]) =>
 
 /// The colours a status or an option can be, as Monday offers them.
 const swatches = [
-  '#579BFC', '#00708F', '#A25DDC', '#7A4FB5', '#00C875', '#2F9A4C', //
+  '#579BFC', '#00708F', '#00A9B5', '#7F5347', '#00C875', '#2F9A4C', //
   '#FDAB3D', '#D9930D', '#E2445C', '#C53B3B', '#FF5AC4', '#8E9BA3',
 ];
 
@@ -2676,41 +2899,51 @@ class TimelinePill extends StatelessWidget {
     // [to] is the midnight after the last day: late from that midnight on.
     final overdue = !done && !to.isAfter(day);
     return Center(
-      child: Container(
-        height: 22,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: back,
-          borderRadius: BorderRadius.circular(11),
-        ),
-        child: Stack(
-          children: [
-            FractionallySizedBox(
-              key: const Key('timeline-elapsed'),
-              widthFactor: elapsed,
-              heightFactor: 1,
-              child: Container(
-                color: overdue
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.primary,
+      child: Tooltip(
+        message: label,
+        child: Container(
+          height: 22,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: back,
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Stack(
+            children: [
+              FractionallySizedBox(
+                key: const Key('timeline-elapsed'),
+                widthFactor: elapsed,
+                heightFactor: 1,
+                child: Container(
+                  color: overdue
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.primary,
+                ),
               ),
-            ),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: labelInk(overdue ? theme.colorScheme.error : back),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    // The short range, "11/16–20": the full one was cut to
+                    // "11/16/2026 –…" in a 120 px cell (hands-on QA 11-16).
+                    dateRangeLabel(
+                          [from, DateTime.parse('${v['to']}')],
+                          formats,
+                          short: true,
+                        ) ??
+                        label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: labelInk(overdue ? theme.colorScheme.error : back),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2754,13 +2987,45 @@ class LabelBar extends StatelessWidget {
 
 /// A group footer's date range: the earliest to the latest day in [days];
 /// null when there are none.
-String? dateRangeLabel(Iterable<DateTime> days, DisplayFormats formats) {
+/// [short] drops the year when both ends share one, for a footer's 104 px
+/// (hands-on QA 11-16: "11/16/2026…" was cut off).
+String? dateRangeLabel(
+  Iterable<DateTime> days,
+  DisplayFormats formats, {
+  bool short = false,
+}) {
   final list = days.toList()..sort();
   if (list.isEmpty) return null;
-  return list.first == list.last
-      ? formats.formatDate(list.first)
-      : '${formats.formatDate(list.first)} – ${formats.formatDate(list.last)}';
+  final (first, last) = (list.first, list.last);
+  if (short && first.year == last.year) {
+    if (first == last) return shortDate(first, formats);
+    // One month: its days run together, "11/16–21" (Monday's "Nov 16 - 21").
+    if (first.month == last.month) {
+      return switch (formats.dateFormat) {
+        'M/D/YYYY' => '${first.month}/${first.day}–${last.day}',
+        'D/M/YYYY' => '${first.day}–${last.day}/${first.month}',
+        _ =>
+          '${shortDate(first, formats)}–${last.day.toString().padLeft(2, '0')}',
+      };
+    }
+    return '${shortDate(first, formats)}–${shortDate(last, formats)}';
+  }
+  return first == last
+      ? formats.formatDate(first)
+      : '${formats.formatDate(first)} – ${formats.formatDate(last)}';
 }
+
+/// A day without its year, in the organization's order: "11/16", "16/11"
+/// or "11-16".
+String shortDate(
+  DateTime d,
+  DisplayFormats formats,
+) => switch (formats.dateFormat) {
+  'M/D/YYYY' => '${d.month}/${d.day}',
+  'D/M/YYYY' => '${d.day}/${d.month}',
+  _ =>
+    '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+};
 
 /// Every day a value covers, for a footer's range: a date, or a timeline's
 /// two ends.

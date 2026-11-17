@@ -64,18 +64,22 @@ class AsyncBody extends StatelessWidget {
 
     if (error != null) {
       return Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ErrorNote(error!),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: onRetry,
-                child: const Text('Try again'),
-              ),
-            ],
+        // Scrolls in a short pane: at 320 x 700 with large text the note and
+        // Try again were taller than a phone's list area (UI pass 11-16).
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ErrorNote(error!),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: onRetry,
+                  child: const Text('Try again'),
+                ),
+              ],
+            ),
           ),
         ),
       );

@@ -4,11 +4,15 @@ namespace Tests\Feature\WhatsApp;
 
 use App\Jobs\OnboardWhatsAppNumber;
 use App\Models\SocialConnection;
+use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
+use App\Support\Social\ConnectionChecks;
+use App\Support\Social\ConnectionSetup;
 use App\Support\Social\SocialOAuthGrant;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\WhatsAppCloud;
 use App\Support\Social\WhatsAppOAuth;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -20,8 +24,8 @@ use Tests\TestCase;
 /** A tenant connects its OWN WhatsApp number - Embedded Signup (2026-10-19). */
 class WhatsAppConnectTest extends TestCase
 {
-    use GivesAuthenticatorCodes;
     use BuildsTenants;
+    use GivesAuthenticatorCodes;
     use RefreshDatabase;
 
     private const PHONE_ID = '555000111';
@@ -170,7 +174,7 @@ class WhatsAppConnectTest extends TestCase
             : Http::response(['success' => true]));
 
         // Run as the queue runs it: no tenant in context (prod, 2026-10-29).
-        app(\App\Support\Tenancy\TenantContext::class)->forget();
+        app(TenantContext::class)->forget();
         (new OnboardWhatsAppNumber($connection->id, self::WABA))->handle();
 
         Http::assertNotSent(fn ($r) => str_contains($r->url(), '/register'));
@@ -323,6 +327,7 @@ class WhatsAppConnectTest extends TestCase
                     ? Http::response(['success' => $subscribed = true])
                     : Http::response(['data' => $subscribed ? [['whatsapp_business_api_data' => ['id' => 'a-meta-app-id']]] : []]),
                 str_contains($url, '/register') => Http::response(['success' => $registered = true]),
+                str_contains($url, '/'.self::WABA.'?') => Http::response(['owner_business_info' => ['id' => '42424242', 'name' => 'Acme Inc']]),
                 str_contains($url, '/'.self::PHONE_ID.'?') => Http::response([
                     'status' => $registered ? 'CONNECTED' : 'PENDING', 'is_on_biz_app' => false,
                     'verified_name' => 'Acme Plumbing', 'name_status' => 'NON_EXISTS', 'quality_rating' => 'UNKNOWN',
@@ -352,6 +357,45 @@ class WhatsAppConnectTest extends TestCase
         $this->assertFalse($lines['sending']['ok']);
         $this->assertStringContainsString('payment method', $lines['sending']['action']);
         $this->assertStringNotContainsString('SIP', $lines['sending']['action']);
+        // The tenant pays Meta itself (Jose, 2026-11-16): the fix opens ITS business's billing for this account.
+        $this->assertFalse($lines['billing']['ok']);
+        $this->assertSame('There is an error with the payment method.', $lines['billing']['detail']);
+        $this->assertSame('https://business.facebook.com/billing_hub/payment_settings/?asset_id='.self::WABA
+            .'&business_id=42424242&placement=whatsapp', $lines['billing']['url']);
+    }
+
+    public function test_a_send_meta_failed_for_payment_shows_on_the_billing_line_until_one_is_delivered(): void
+    {
+        [$t, $connection] = $this->seeded();
+        Http::fake(fn (Request $r) => match (true) {
+            str_contains($r->url(), '/debug_token') => Http::response(['data' => []]),
+            str_contains($r->url(), '/subscribed_apps') => Http::response(['data' => []]),
+            str_contains($r->url(), '/'.self::WABA.'?') => Http::response(['owner_business_info' => ['id' => '42424242', 'name' => 'Acme Inc']]),
+            default => Http::response(['status' => 'CONNECTED', 'health_status' => ['can_send_message' => 'AVAILABLE', 'entities' => []]]),
+        });
+        $send = fn (string $status, ?string $reason, string $at) => $this->inTenant($t['org'], fn () => WhatsAppMessage::query()->forceCreate([
+            'organization_id' => $t['org']->id, 'phone_number_id' => self::PHONE_ID, 'direction' => 'out',
+            'counterparty' => '13055550100', 'status' => $status, 'status_reason' => $reason, 'kind' => 'template', 'created_at' => $at,
+        ]));
+        $billing = fn () => collect($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/social/connections/'.$connection->id.'/whatsapp-health')->assertOk()->json('data'))->firstWhere('key', 'billing');
+
+        $send('failed', 'Business eligibility payment issue', '2026-11-16 10:00:00');
+        $line = $billing();
+        $this->assertFalse($line['ok']);
+        $this->assertStringContainsString('Business eligibility payment issue', $line['detail']);
+        $this->assertSame('Add a payment method in your Meta Business Manager › Billing.', $line['action']);
+        // What Integrations › WhatsApp draws: a failing check whose button opens the tenant's own billing.
+        $this->inTenant($t['org'], fn () => ConnectionSetup::readBack($connection->fresh()));
+        $check = ConnectionChecks::of($connection->fresh())['billing'];
+        $this->assertSame('fail', $check['state']);
+        $this->assertSame('https://business.facebook.com/billing_hub/payment_settings/?asset_id='.self::WABA
+            .'&business_id=42424242&placement=whatsapp', $check['fix']['url']);
+
+        $send('delivered', null, '2026-11-16 11:00:00');
+        $line = $billing();
+        $this->assertTrue($line['ok']);
+        $this->assertStringContainsString('Acme Inc', $line['detail']);
     }
 
     public function test_it_is_a_sending_account_gated_on_communication(): void

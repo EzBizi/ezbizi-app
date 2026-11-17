@@ -380,13 +380,25 @@ class _JobsScreenState extends State<JobsScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Offstage(offstage: _tab != 'jobs', child: _jobsTab(context)),
+              // Gated: offstage, the Jobs tab still handed "Add job" to the
+              // header, beside Estimates' own "New estimate" (UI pass
+              // 2026-11-17). Only the tab in front fills the slot.
+              Offstage(
+                offstage: _tab != 'jobs',
+                child: ModuleActionGate(
+                  active: _tab == 'jobs',
+                  child: _jobsTab(context),
+                ),
+              ),
               if (_seesEstimates)
                 Offstage(
                   offstage: _tab != 'estimates',
-                  child: _opened.contains('estimates')
-                      ? EstimatesTab(api: widget.api, session: widget.session)
-                      : const SizedBox.shrink(),
+                  child: ModuleActionGate(
+                    active: _tab == 'estimates',
+                    child: _opened.contains('estimates')
+                        ? EstimatesTab(api: widget.api, session: widget.session)
+                        : const SizedBox.shrink(),
+                  ),
                 ),
             ],
           ),
@@ -423,7 +435,8 @@ class _JobsScreenState extends State<JobsScreen> {
               // Option A of the Jobs filters gallery (Jose, 2026-11-13): money
               // tiles that filter, one status row, one toolbar, the rest in a
               // Filters panel, and what is on as removable chips.
-              PanelHeader(note: _note(me)),
+              // Design 195: a phone's count is the group line's.
+              if (!_phone(context)) PanelHeader(note: _note(me)),
               if (_seesMoney && _moneyTotals.isNotEmpty)
                 _moneyTiles(context, wide: wide),
               if (_statusChoices.isNotEmpty) _statusChips(context),
@@ -707,6 +720,64 @@ class _JobsScreenState extends State<JobsScreen> {
     required bool wide,
   }) {
     final n = _activeCount;
+    final add = ModuleAction(
+      child: Refused(
+        // Two refusals with different remedies; see _jobsTab.
+        reason: refused,
+        child: FilledButton.icon(
+          key: const ValueKey('tour-jobs-add'),
+          onPressed: refused == null ? _create : null,
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add job'),
+        ),
+      ),
+    );
+
+    // Design 195 (phone 4): search, Filters and ⋯ on one line. Upcoming /
+    // Past / All is in Filters and counts there; Export is in the ⋯.
+    if (_phone(context)) {
+      final count = n + (_when == 'upcoming' ? 0 : 1);
+      return Padding(
+        padding: EdgeInsets.fromLTRB(Gutter.of(context), 0, 4, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Row(
+          children: [
+            Expanded(
+              child: ListSearch(
+                key: const ValueKey('tour-jobs-search'),
+                controller: _search,
+                hint: 'Job, customer, phone…',
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _load(),
+                onClear: () {
+                  _search.clear();
+                  _load();
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              key: const Key('jobs-filters'),
+              onPressed: () => _openFilters(me),
+              child: Text(count == 0 ? 'Filters' : 'Filters · $count'),
+            ),
+            DataTransfer(
+              api: widget.api,
+              session: widget.session,
+              resource: 'jobs',
+              menu: true,
+            ),
+          ],
+            ),
+            // In the shell this is lifted into the header and draws nothing.
+            add,
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
         Gutter.of(context),
@@ -747,22 +818,14 @@ class _JobsScreenState extends State<JobsScreen> {
             resource: 'jobs',
           ),
           // Desktop review 2026-11-13, D3: header right, as every module.
-          ModuleAction(
-            child: Refused(
-              // Two refusals with different remedies; see _jobsTab.
-              reason: refused,
-              child: FilledButton.icon(
-                key: const ValueKey('tour-jobs-add'),
-                onPressed: refused == null ? _create : null,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add job'),
-              ),
-            ),
-          ),
+          add,
         ],
       ),
     );
   }
+
+  static bool _phone(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600;
 
   /// The money states the tiles do not carry.
   static const _panelMoney = {'unpaid', 'partial', 'credit'};
@@ -821,6 +884,20 @@ class _JobsScreenState extends State<JobsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_phone(this.context)) ...[
+                heading('When'),
+                FilterPills<String>(
+                  key: const Key('jobs-window'),
+                  padding: EdgeInsets.zero,
+                  selected: _when,
+                  onSelected: (value) => apply(() => _when = value),
+                  items: const [
+                    FilterPill('upcoming', 'Upcoming'),
+                    FilterPill('past', 'Past'),
+                    FilterPill('all', 'All'),
+                  ],
+                ),
+              ],
               if (_seesMoney) ...[
                 heading('Money'),
                 Wrap(

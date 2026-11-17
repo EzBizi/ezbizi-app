@@ -216,6 +216,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('workiz', 'Workiz'),
     // Answers to Memberships › Promotions texts (Jose, 2026-11-06).
     ('promotions', 'Promotions'),
+    // Every lead a Recovery text went to, whatever its source, so replies are
+    // answered (Jose, 2026-11-16). Not a source: never one of All's keys.
+    ('recovery', 'Recovery'),
   ];
 
   /// The rail tabs that hold several sources, each its own permission tick
@@ -255,7 +258,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// The same, for All, which never holds job applicants.
   Iterable<String> _allKeysOf(String source) =>
-      _keysOf(source).where((k) => k != 'job_applicant');
+      _keysOf(source).where((k) => k != 'job_applicant' && k != 'recovery');
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
   /// here: nothing else in the app draws a per-source mark, so these are the
@@ -280,6 +283,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // reply, and absent from the Unreplied filter. A ledger, not a message.
     Icons.assignment_outlined,
     Icons.campaign_outlined, // Promotions: answers to a promotion text
+    Icons.replay_outlined, // Recovery: leads a win-back text went to
   ];
 
   /// The sources this person was granted, with their icons - Jose,
@@ -2045,10 +2049,21 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget _empty(ThemeData theme) {
     final connected = _anyGoogleAds;
     final canConnect = _canConnect;
+    // UI pass 11-16: with Unreplied on, eight leads read "No enquiries yet".
+    final filtered =
+        _search.text.trim().isNotEmpty ||
+        _unreplied ||
+        _overdue ||
+        _followUp ||
+        _starred ||
+        _status.isNotEmpty ||
+        _foldedSet > 0;
 
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
+      child: Container(
+        // The text ran to the screen's edges on a phone.
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        constraints: const BoxConstraints(maxWidth: 420 + 48),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2060,7 +2075,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             const SizedBox(height: 12),
             Text(
               connected
-                  ? (_sourceLabel == null
+                  ? (filtered
+                        ? 'No leads match these filters'
+                        : _sourceLabel == null
                         ? 'No enquiries yet'
                         : 'No $_sourceLabel enquiries yet')
                   : 'No advertising account connected',
@@ -2331,6 +2348,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
         LeadSourceChip(src.sourceKey, key: ValueKey('source-badge-$id'))
       else
         _SourceBadge(leadSourceWord(lead), key: ValueKey('source-badge-$id')),
+        if (lead['recovery_at'] != null)
+          _SourceBadge('Recovery', key: ValueKey('recovery-badge-$id')),
       // The channel badge is drawn only when it says something the source
       // badge does not. "Call · Google" is two facts; a chat row read "Chat ·
       // Chat", one fact twice (UI/UX, 2026-09-08). The rule needs no list of

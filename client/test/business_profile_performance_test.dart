@@ -194,6 +194,36 @@ void main() {
     },
   );
 
+  // Jose, 2026-11-16: on a phone a tap on the picker's dates did nothing.
+  testWidgets('narrow: Custom opens the dates on a page, one tap takes one', (
+    tester,
+  ) async {
+    final fake = _Fake();
+    await _pumpView(tester, fake, size: const Size(390, 844));
+
+    await tester.tap(find.byKey(const ValueKey('gbp-performance-range')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Custom').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('date-range-sheet')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('date-preset-yesterday')));
+    await tester.pumpAndSettle();
+
+    // The panel's "today" is Google's last day, so its Yesterday is the day
+    // before that one.
+    final last = _yesterday();
+    final day = formatCalendarDay(
+      DateTime(last.year, last.month, last.day - 1),
+    );
+    expect(find.byKey(const Key('date-range-sheet')), findsNothing);
+    expect(
+      fake.performance.where((q) => q['from'] == day && q['to'] == day),
+      isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('no listings, and no numbers, each say so', (tester) async {
     await _pumpView(tester, _Fake()..noListings = true);
     expect(find.text('No listings yet'), findsOneWidget);

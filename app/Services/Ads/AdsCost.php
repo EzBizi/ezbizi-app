@@ -55,6 +55,17 @@ final class AdsCost
             ->get(), $from, $to, $activeOnly);
     }
 
+    /**
+     * The spend of the accounts given, in forBranch()'s shape. The caller picks them from the
+     * business's own lists (Reports' sub company sources), never from a request.
+     *
+     * @param  Collection<int, SocialConnection>  $accounts
+     */
+    public function forAccounts(Collection $accounts, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly = false): array
+    {
+        return $this->sum($accounts, $from, $to, $activeOnly);
+    }
+
     private function accounts(string $organizationId): Builder
     {
         return SocialConnection::query()->withoutGlobalScopes()

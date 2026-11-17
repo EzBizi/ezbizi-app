@@ -3,6 +3,14 @@
 Jose's name for it (2026-11-13): every mistake the deploy desk made, so it is never made twice.
 Newest first. Each entry: what happened, what it cost, the rule that stops it.
 
+## 2026-11-17 — PPC by number dialed: measured the wrong line and told Jose it was impossible
+- **What:** Jose asked to set source PPC when the number dialed is PPC. Automations measured Workiz `to_number` lines and Google Ads call assets, found every line mixed, and I told Jose it could not work and offered to buy tracking numbers. I also passed on an unmeasured claim ("PPC callers dial the website number"). Our own Reports › Jobs › Number dialed column already shows the RingCentral line names ("NJ - PPC", "CT - PPC").
+- **Rule:** before saying a field can't be derived, open the screen that already shows it. The RingCentral line name decides the dialed source. Only state a cause that someone measured.
+
+## 2026-11-16 — Meta: told Jose to pay for two tenants' WhatsApp
+- **What:** I read "Missing valid payment method" in EzBizi's WhatsApp Manager and told Jose to add a card to the A1 Chimney and EverDoors accounts. Both WABAs are owned by their own businesses (`ownership_type` CLIENT_OWNED). EzBizi's view was the partner's view. A test send from A1 Chimney was delivered.
+- **Rule:** before telling anyone to pay, read `owner_business_info`/`ownership_type` on the WABA. A tenant's billing is the tenant's, never Jose's.
+
 ## 2026-11-16 — Reports: a filtered phpunit run voided my own full gate
 - **What:** while the 0.0.0577 P&L gate ran on `ezbizi_testing_reports`, I started a one-test `--filter` run on the same schema. Its migrate dropped the tables under the gate: 4245 "table doesn't exist" errors.
 - **Cost:** a 100-minute gate thrown away; the P&L SHA reached the desk ~2 hours late.

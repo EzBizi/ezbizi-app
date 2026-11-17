@@ -324,12 +324,14 @@ void main() {
 
   /// Jose could not find People (UI queue 95, 7): on a phone it is a chip
   /// under the picker, not inside the menu.
-  testWidgets('on a phone People is a chip in the board header', (
+  testWidgets('on a phone People is in the toolbar ⋯, off the one line', (
     tester,
   ) async {
     await pump(tester, width: 400);
 
-    await tester.tap(find.byKey(const Key('tasks-people')));
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tasks-more-people')));
     await tester.pumpAndSettle();
     expect(find.text('Tobin Marsh'), findsOneWidget);
   });
@@ -390,6 +392,8 @@ void main() {
       'recipe as a rule limited to the board, switched on', (tester) async {
     await pump(tester, automations: true, kind: 'franchise');
 
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-automate')));
     await tester.pumpAndSettle();
     expect(
@@ -437,6 +441,8 @@ void main() {
   testWidgets('a status recipe stores the status by name', (tester) async {
     await pump(tester, automations: true, kind: 'franchise');
 
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-automate')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('board-rule-add')));
@@ -471,6 +477,8 @@ void main() {
       "permissions, scoped to the board's own place", (tester) async {
     await pump(tester, franchiseId: 'f-1');
 
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-automate')));
     await tester.pumpAndSettle();
     expect(find.text('No automations on this board yet.'), findsOneWidget);
@@ -497,7 +505,11 @@ void main() {
     // tasks.manage_members: can_manage, but not the owner, so no can_rename.
     await pump(tester, manage: true, owner: false);
 
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('tasks-automate')), findsNothing);
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-people')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('board-people-add')), findsOneWidget);
@@ -518,9 +530,13 @@ void main() {
       'Import adds one task per pasted line', (tester) async {
     await pump(tester, automations: true, kind: 'franchise');
 
-    expect(find.text('Automate · 1'), findsOneWidget);
     expect(find.text('Invite · 2'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('board-menu')));
+    await tester.pumpAndSettle();
+    expect(find.text('Automate · 1'), findsOneWidget);
     expect(find.byKey(const Key('tasks-integrate')), findsOneWidget);
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('tasks-new-more')));
     await tester.pumpAndSettle();

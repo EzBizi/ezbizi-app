@@ -47,6 +47,12 @@ class _GoogleCampaignsViewState
   bool keepAccount(Map account) => account['is_manager'] != true;
 
   @override
+  bool isActive(Map<String, dynamic> row) => row['status'] == 'ENABLED';
+
+  @override
+  Map<String, dynamic> mapOf(Map<String, dynamic> row) => row;
+
+  @override
   String get emptyTitle => 'No Google Ads account connected';
   @override
   String get emptyMessage =>
@@ -86,10 +92,12 @@ class _GoogleCampaignsViewState
   String titleOf(Map<String, dynamic> c) {
     final name = '${c['name']}';
     if (!name.startsWith('LocalServicesCampaign:')) return name;
-    final owner = accounts?.firstWhere(
-      (a) => a['connection_id'] == account,
-      orElse: () => const {},
-    )['name'];
+    final owner =
+        c['account'] ??
+        accounts?.firstWhere(
+          (a) => a['connection_id'] == connectionOf(c),
+          orElse: () => const {},
+        )['name'];
     return owner == null ? 'Local Services' : 'Local Services · $owner';
   }
 
@@ -125,7 +133,7 @@ class _GoogleCampaignsViewState
     );
     if (!ok || !mounted) return;
     final response = await widget.api.post('/ads-manager/google/status', {
-      'connection_id': account,
+      'connection_id': connectionOf(c),
       'campaign_id': c['id'],
       'status': on ? 'ENABLED' : 'PAUSED',
     });
@@ -149,7 +157,7 @@ class _GoogleCampaignsViewState
       context,
       builder: (_) => _AmountPanel(
         api: widget.api,
-        connectionId: account!,
+        connectionId: connectionOf(c),
         campaign: {...c, 'name': titleOf(c)},
         target: target,
         days: days,

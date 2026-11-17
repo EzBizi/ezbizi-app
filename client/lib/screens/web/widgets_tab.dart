@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/colour_field.dart';
 import '../../widgets/async_body.dart';
@@ -78,14 +79,28 @@ class _WidgetsTabState extends State<WidgetsTab> {
   void initState() {
     super.initState();
     _load();
+    // A site connecting or going quiet elsewhere: the rail re-reads
+    // quietly; the widget being edited is its own.
+    _live = LiveChanges.of(widget.api).subscribe({'web_sites'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; no spinner, a failure keeps the sites.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) setState(() => _loading = true);
 
     final response = await widget.api.get('/web/sites');
 
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;

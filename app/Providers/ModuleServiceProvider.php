@@ -3089,6 +3089,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('workiz', 'Workiz'),
                     // Answers to Memberships > Promotions texts (Jose, 2026-11-06).
                     new TabDefinition('promotions', 'Promotions'),
+                    // Leads a Recovery text went to, so their replies are answered (Jose, 2026-11-16).
+                    new TabDefinition('recovery', 'Recovery'),
                     // Private conversations kept from staff: sees, hides and unhides them (Jose, 2026-10-29).
                     new TabDefinition('hidden', 'Hidden', within: 'Manage'),
                 ],
@@ -4366,6 +4368,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'updates on a device as off or paused. Raised once when it '
                             .'happens, not again until it is fixed and happens again.',
                     ),
+                    new TriggerDefinition(
+                        key: 'monitoring.camera_event',
+                        label: 'Dash cam event',
+                        description: 'A van\'s dash cam reported a driving event - harsh braking, '
+                            .'a collision, distraction, speeding - once per event, with the van '
+                            .'and who had its keys.',
+                    ),
                 ],
                 /*
                  * The four chips MonitoringScreen draws, in that order.
@@ -4577,7 +4586,7 @@ class ModuleServiceProvider extends ServiceProvider
                     // Ad cost against jobs and profit (Jose, 2026-10-12); the
                     // server also asks for profit_loss.view, its profit being
                     // the P&L's margin.
-                    new TabDefinition('marketing', 'Marketing'),
+                    new TabDefinition('marketing', 'Marketing Reports'),
                     // Facebook ad spend by campaign, state and category.
                     new TabDefinition('meta', 'Meta'),
                     // Thumbtack lead spend by category and branch (2026-10-13).

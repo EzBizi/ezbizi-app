@@ -14,6 +14,7 @@ use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\SlotOffer;
+use App\Support\Leads\LsaQuote;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Web\BookingLink;
 use Carbon\CarbonImmutable;
@@ -559,7 +560,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         'marketing_consent_at', 'marketing_consent_text',
         'sms_consent_at', 'sms_consent_text', 'sms_consent_site', 'sms_consent_ip',
         'lead_type', 'category', 'service', 'locale', 'summary', 'site_host', 'note', 'note_by_user_id', 'note_updated_at', 'note_mentions',
-        'status', 'dispatcher', 'dispatcher_by_user_id', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'service_state', 'received_at', 'synced_at',
+        'status', 'dispatcher', 'dispatcher_by_user_id', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'service_state', 'received_at', 'synced_at', 'recovery_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
         'form_answers', 'form_name', 'form_submitted_at',
     ];
@@ -572,6 +573,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'referral' => 'array',
             'hidden_at' => 'datetime',
             'received_at' => 'datetime',
+            'recovery_at' => 'datetime',
             'synced_at' => 'datetime',
             'last_contact_at' => 'datetime',
             'reply_overdue_raised_at' => 'datetime',
@@ -632,7 +634,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * predate that and for two stamps that are genuinely equal.
      */
     /** "Hi Mark" or "Hi there", as leads.greeting_named / _unnamed say. */
-    public static function greeting(?string $first, ?string $organizationId = null): string
+    public static function greetingFor(?string $first, ?string $organizationId = null): string
     {
         return $first === null
             ? (string) SettingsResolver::forOrganization('leads.greeting_unnamed', $organizationId)
@@ -647,6 +649,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public function replyOverdue(bool $canReply): bool
     {
+        // An online booking nobody approved or declined stays overdue, whatever
+        // was said since (Jose, 2026-11-16: Marisha Baldwin read "Replied").
+        // ponytail: one indexed exists() per row; batch it if the list slows.
+        if (self::pendingBookings($this->organization_id)->where('lead_id', $this->getKey())->exists()) {
+            return true;
+        }
+
         if (in_array($this->source, self::SOURCES_NO_REPLY_OWED, true)) {
             return false;
         }
@@ -656,6 +665,18 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             && $this->last_contact_from === LeadConversation::FROM_CONSUMER
             && $this->last_contact_at !== null
             && $this->last_contact_at->lte(now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes', $this->organization_id)));
+    }
+
+    /**
+     * Booking requests still waiting on Approve or Decline, past the overdue
+     * minutes. Not once the lead has a job (Approve answers 409 then) or owes
+     * nothing (Completed, Lost, Not a lead): prod 11-16 had 24 such, from October.
+     */
+    public static function pendingBookings(?string $organizationId = null): \Illuminate\Database\Eloquent\Builder
+    {
+        return WebBooking::query()->where('status', WebBooking::PENDING)
+            ->where('created_at', '<=', now()->subMinutes((int) SettingsResolver::forOrganization('leads.reply_overdue_minutes', $organizationId)))
+            ->whereHas('lead', fn ($lead) => $lead->whereNull('job_id')->whereNotIn('status', self::STATUSES_NO_REPLY_OWED));
     }
 
     /**
@@ -719,6 +740,46 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * `{{source}}` is the wire value a condition compares (Jose, 2026-09-30: a
      * notification said "local_services"; "Local Services").
      */
+    /**
+     * Two spellings of one place (Jose, 2026-11-16: "1734 Hallman Dr, Blue
+     * Bell, PA 19422, USA" was offered "1734 Hallman Dr, Blue bell PA 19422"
+     * as a different address). Case, punctuation, spacing, a trailing country
+     * and Dr/Drive-style words are ignored, and a ZIP is its first five
+     * digits. Any other word more or less is a different address: a held one
+     * with "I am available tomorrow" after it still gets the clean offer.
+     */
+    public static function sameAddress(?string $a, ?string $b): bool
+    {
+        [$x, $y] = [self::addressWords($a), self::addressWords($b)];
+        if ($x === [] || $y === []) {
+            return $x === $y;
+        }
+
+        sort($x);
+        sort($y);
+
+        return $x === $y;
+    }
+
+    /** @return list<string> */
+    private static function addressWords(?string $address): array
+    {
+        $address = preg_replace('/(\d{5})-\d{4}/', '$1', mb_strtolower((string) $address));
+        $words = preg_split('/[^a-z0-9]+/', (string) $address, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $short = ['street' => 'st', 'drive' => 'dr', 'avenue' => 'ave', 'road' => 'rd', 'lane' => 'ln', 'court' => 'ct',
+            'boulevard' => 'blvd', 'place' => 'pl', 'circle' => 'cir', 'parkway' => 'pkwy', 'highway' => 'hwy', 'terrace' => 'ter',
+            'north' => 'n', 'south' => 's', 'east' => 'e', 'west' => 'w', 'apartment' => 'apt', 'suite' => 'ste'];
+        $out = [];
+        foreach ($words as $w) {
+            if (in_array($w, ['usa', 'us', 'united', 'states', 'america'], true)) {
+                continue;
+            }
+            $out[] = preg_match('/^(\d{5})\d{4}$/', $w, $m) ? $m[1] : ($short[$w] ?? $w);
+        }
+
+        return array_values(array_unique($out));
+    }
+
     /** "Mark" from "Mark Morrow"; null for a phone number or an initial. */
     public static function firstNameOf(?string $name): ?string
     {
@@ -736,7 +797,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     {
         $first = self::firstNameOf($this->contact_name);
 
-        return $first === null ? 'Thank you' : self::greeting($first, $this->organization_id).', thank you';
+        return $first === null ? 'Thank you' : self::greetingFor($first, $this->organization_id).', thank you';
     }
 
     /**
@@ -770,6 +831,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         return [
             'booking_link', 'company_name', 'lead_details', 'lead_headline', 'office_note', 'office_opens',
             'office_phone', 'offered_slot', 'photos_email', 'reply_headline', 'reply_preview', 'source_name', 'thank_you',
+            'price_list', 'open_windows', 'missing_info',
         ];
     }
 
@@ -780,11 +842,22 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public function getBookingLinkAttribute(): string
     {
+        $url = $this->bookingPage();
+
+        return $url === '' ? '' : BookingLink::forLead($this, $url);
+    }
+
+    /**
+     * The booking page `{{booking_link}}` points at, '' when it would be left out.
+     * Without minting a code, so Leads › Recovery's preview writes nothing.
+     */
+    public function bookingPage(): string
+    {
         $url = $this->brandSetting('leads.booking_url');
 
         // A page that can offer no day is worse than no link (Bar, 2026-10-21:
         // garage-door customers were sent links with no availability).
-        return $url === '' || ! $this->bookableOnline() ? '' : BookingLink::forLead($this, $url);
+        return $url === '' || ! $this->bookableOnline() ? '' : $url;
     }
 
     /**
@@ -825,6 +898,22 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             ->for((string) $this->postal_code, $today, RequestedWindow::from($said, $today));
 
         return $offer['label'] ?? '';
+    }
+
+    /** `{{price_list}}`, `{{open_windows}}`, `{{missing_info}}`: LsaQuote (Shoval, 2026-11-16). */
+    public function getPriceListAttribute(): string
+    {
+        return LsaQuote::prices($this);
+    }
+
+    public function getOpenWindowsAttribute(): string
+    {
+        return LsaQuote::windows($this);
+    }
+
+    public function getMissingInfoAttribute(): string
+    {
+        return LsaQuote::missing($this);
     }
 
     /** `{{office_phone}}`: the number a customer calls the branch on. */

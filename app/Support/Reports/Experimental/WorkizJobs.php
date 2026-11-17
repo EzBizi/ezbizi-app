@@ -877,6 +877,8 @@ final class WorkizJobs
 
                 'status' => $job['Status'] ?? null,
                 'tags' => $job['Tags'] ?? [],
+                // So ReportJobs::created knows Workiz's $0 copy of a finished job.
+                'total' => isset($job['JobTotalPrice']) && is_numeric($job['JobTotalPrice']) ? (float) $job['JobTotalPrice'] : null,
             ];
         }
 

@@ -102,6 +102,22 @@ class TaskMoveCopyBulkTest extends TestCase
         });
     }
 
+    public function test_bulk_status_takes_a_board_status_by_id_as_one_task_does(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $board = $this->board($tenant, 'franchise', $tenant['franchise']->id);
+        $one = $this->task($tenant, $board, 'One');
+        $two = $this->task($tenant, $board, 'Two');
+        $working = $this->inTenant($tenant['org'], fn () => $board->statuses()->where('name', 'Working on it')->firstOrFail());
+
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/tasks/bulk', ['ids' => [$one->id, $two->id], 'op' => 'status', 'status_id' => $working->id])
+            ->assertOk()->assertJsonPath('data.refused', [])->assertJsonCount(2, 'data.done');
+        $this->inTenant($tenant['org'], function () use ($one, $two, $working) {
+            $this->assertSame($working->id, $one->fresh()->status_id);
+            $this->assertSame($working->id, $two->fresh()->status_id);
+        });
+    }
+
     public function test_delete_is_soft_and_restore_brings_it_and_its_subtasks_back(): void
     {
         $tenant = $this->provisionTenant('Alpha');

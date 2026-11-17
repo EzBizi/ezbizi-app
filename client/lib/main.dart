@@ -2244,28 +2244,78 @@ class _HomeShellState extends State<HomeShell> {
     final at = _rail == _Rail.modules
         ? slots.indexWhere((d) => d.id == _selected)
         : -1;
-    return Builder(
-      builder: (context) => NavigationBar(
-        key: const Key('phone-bottom-bar'),
-        height: 64,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        selectedIndex: at < 0 ? slots.length : at,
-        onDestinationSelected: (i) => i == slots.length
-            ? Scaffold.of(context).openDrawer()
-            : _show(_Rail.modules, slots[i].id),
-        destinations: [
-          for (final d in slots)
-            NavigationDestination(
-              icon: Icon(d.icon),
-              label: d.label,
-              tooltip: d.label,
+    // One line under each icon at any width and text size (Jose,
+    // 2026-11-16: "Communicati / on" on iOS). NavigationBar cannot hold a
+    // label to one line, so the bar is drawn here: a short word, scaled
+    // down to fit its slot rather than wrapped.
+    final scheme = Theme.of(context).colorScheme;
+    Widget slot(int i, IconData icon, String label, String tip, Key? key) {
+      final on = i == at;
+      final ink = on ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
+      return Expanded(
+        child: Tooltip(
+          message: tip,
+          child: InkWell(
+            key: key,
+            onTap: () => i == slots.length
+                ? _scaffoldKey.currentState?.openDrawer()
+                : _show(_Rail.modules, slots[i].id),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 56,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: on ? scheme.secondaryContainer : null,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(icon, color: ink, size: 22),
+                ),
+                const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: ink,
+                        fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          const NavigationDestination(
-            key: Key('phone-bottom-more'),
-            icon: Icon(Icons.menu),
-            label: 'More',
           ),
-        ],
+        ),
+      );
+    }
+
+    return Material(
+      key: const Key('phone-bottom-bar'),
+      color: scheme.surfaceContainer,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            children: [
+              for (final (i, d) in slots.indexed)
+                slot(i, d.icon, barLabel(d.id, d.label), d.label, null),
+              slot(
+                slots.length,
+                Icons.menu,
+                'More',
+                'More',
+                const Key('phone-bottom-more'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -3652,3 +3702,13 @@ class _GroupHeading extends StatelessWidget {
     ),
   );
 }
+
+/// A module's name under its icon in the phone bar: one short word. The
+/// full name stays in the tooltip and the drawer.
+String barLabel(String id, String label) =>
+    const {
+      'phone': 'Comms',
+      'project_board': 'Projects',
+      'customer_experience': 'Experience',
+    }[id] ??
+    (label.length <= 10 ? label : label.split(' ').first);

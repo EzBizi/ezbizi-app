@@ -20,6 +20,11 @@ use Illuminate\Support\Facades\URL;
 class Membership extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES): filed on its branch. */
+    protected static string $changeType = 'memberships';
+
     use HasUuids;
 
     public const ENROLLMENTS = ['new', 'renewal'];
