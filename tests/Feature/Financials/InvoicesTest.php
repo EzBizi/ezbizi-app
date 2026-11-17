@@ -5,6 +5,8 @@ namespace Tests\Feature\Financials;
 use App\Mail\InvoiceMail;
 use App\Models\AirtableRecord;
 use App\Models\AutomationEvent;
+use App\Models\Company;
+use App\Models\FinancialChargeSheet;
 use App\Models\FinancialSource;
 use App\Models\Franchise;
 use App\Models\Invoice;
@@ -202,7 +204,7 @@ class InvoicesTest extends TestCase
                 ])->save();
             }
             foreach (['September royalties', 'October parts'] as $title) {
-                (new \App\Models\FinancialChargeSheet)->forceFill([
+                (new FinancialChargeSheet)->forceFill([
                     'organization_id' => $t['org']->id, 'period_from' => '2026-09-01', 'period_to' => '2026-09-30',
                     'title' => $title, 'columns' => [],
                 ])->save();
@@ -218,5 +220,32 @@ class InvoicesTest extends TestCase
         $as->getJson('/api/v1/invoices/sheets?q=royalties')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'September royalties');
         $as->getJson('/api/v1/invoices/sheets?q=')->assertOk()->assertJsonCount(2, 'data');
         $as->getJson('/api/v1/invoices/sheets')->assertOk()->assertJsonCount(2, 'data');
+    }
+
+    public function test_a_sibling_company_holding_every_invoice_tick_does_not_reach_another_companys_sheet(): void
+    {
+        Storage::fake(config('filesystems.default'));
+        $t = $this->provisionTenant('Alpha');
+        $as = $this->signedInAs($t['admin']);
+        $col = $as->putJson('/api/v1/invoices/charge-columns', ['columns' => [['name' => 'Royalties']]])->json('data.0.id');
+        $sheet = $as->postJson('/api/v1/invoices/sheets', ['period_from' => '2026-09-01', 'period_to' => '2026-09-30', 'company_id' => $t['company']->id])->assertCreated()->json('data');
+        $as->patchJson("/api/v1/invoices/sheets/{$sheet['id']}/rows", ['rows' => [['id' => $sheet['rows'][0]['id'], 'cells' => [$col => 1000]]]])->assertOk();
+
+        $sibling = $this->inTenant($t['org'], fn () => Company::create(['organization_id' => $t['org']->id, 'name' => 'Alpha Sibling']));
+        $branch = $this->inTenant($t['org'], fn () => Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $sibling->id, 'name' => 'Alpha Sibling F']));
+        $ticks = ['financials.view', 'invoices.view', 'invoices.create', 'invoices.edit', 'invoices.delete', 'invoices.approve', 'invoices.send'];
+        $sideways = $this->signedInAs($this->userWithRole($t, 'Sideways', $ticks, 'sideways@alpha.test', $branch));
+        $base = "/api/v1/invoices/sheets/{$sheet['id']}";
+
+        $sideways->postJson("{$base}/invoice")->assertNotFound();
+        $sideways->getJson($base)->assertNotFound();
+        $sideways->patchJson("{$base}/rows", ['rows' => [['id' => $sheet['rows'][0]['id'], 'jobs' => 1]]])->assertNotFound();
+        $sideways->deleteJson($base)->assertNotFound();
+        $this->assertSame([], $sideways->getJson('/api/v1/invoices/sheets')->assertOk()->json('data'));
+        $sideways->postJson('/api/v1/invoices/sheets', ['period_from' => '2026-09-01', 'period_to' => '2026-09-30', 'company_id' => $t['company']->id])->assertForbidden();
+        $this->inTenant($t['org'], fn () => $this->assertSame(0, Invoice::query()->count()));
+
+        // Control: the owning company's view still invoices it.
+        $this->signedInAs($t['admin'])->postJson("{$base}/invoice")->assertCreated()->assertJsonCount(1, 'data.made');
     }
 }
