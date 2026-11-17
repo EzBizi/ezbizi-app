@@ -221,6 +221,38 @@ class MondayPushTest extends TestCase
             'the 10-minute poll does not re-read an archived board');
     }
 
+    /**
+     * Desk 11-17: staff file most items on Monday. The sync's own write is
+     * checked by the board rules; the move goes back to Monday, and the bell
+     * goes to the item's Monday creator. The echo of that move changes nothing.
+     */
+    public function test_a_misfiled_item_from_monday_is_moved_and_the_move_goes_back(): void
+    {
+        $natalie = $this->userWithRole($this->tenant, 'CR', ['tasks.view', 'tasks.edit'], 'natalie@ezbizi.test');
+        $this->inTenant($this->tenant['org'], function () use ($natalie) {
+            $field = \App\Models\TaskGroup::create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Field Manager - Lucas', 'position' => 20]);
+            $cr = \App\Models\TaskGroup::create(['organization_id' => $this->tenant['org']->id, 'board_id' => $this->board->id, 'name' => 'Customer Relations - Natalie', 'position' => 21]);
+
+            // As MondayImport: one transaction, the outbox suppressed inside it,
+            // the Monday creator stamped after the create.
+            \Illuminate\Support\Facades\DB::transaction(fn () => \App\Support\Tasks\Monday\MondayOutbox::suppress(function () use ($field, $natalie) {
+                $t = app(TaskWriter::class)->create($this->board, ['title' => 'Refund for Gilbert', 'group_id' => $field->id], $this->jose);
+                $t->forceFill(['external_ref' => 'monday:77', 'created_by_user_id' => $natalie->id])->save();
+            }));
+
+            $task = Task::query()->where('external_ref', 'monday:77')->sole();
+            $this->assertSame($cr->id, $task->group_id);
+            $this->assertSame(['group'], MondayOutboxEntry::query()->where('task_id', $task->id)->sole()->kinds);
+            $this->assertSame('Moved to Customer Relations: refunds start there',
+                \App\Models\Notification::query()->where('user_id', $natalie->id)->where('title', 'like', 'Moved%')->value('title'));
+
+            // Monday echoes the move: same group, nothing more happens.
+            \Illuminate\Support\Facades\DB::transaction(fn () => \App\Support\Tasks\Monday\MondayOutbox::suppress(
+                fn () => app(TaskWriter::class)->update($task, ['group_id' => $cr->id], $this->jose)));
+            $this->assertSame(1, \App\Models\AuditEvent::query()->where('action', 'task.board_rule.moved')->count());
+        });
+    }
+
     public function test_what_the_monday_sync_writes_is_never_sent_back(): void
     {
         $this->inTenant($this->tenant['org'], fn () => \App\Support\Tasks\Monday\MondayOutbox::suppress(

@@ -434,6 +434,7 @@ class TaskWriter
                 Task::query()->whereKey($id)->update(['position' => $i]);
             }
             app(MondayOutbox::class)->record($task, ['group']);
+            $this->checkRules($task);
 
             return $task->refresh();
         });
