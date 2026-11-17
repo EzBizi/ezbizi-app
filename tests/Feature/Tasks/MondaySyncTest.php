@@ -163,6 +163,24 @@ class MondaySyncTest extends TestCase
         $this->assertSame('Done', $this->task('11')->statusRow->name, 'Monday changed again at 12:00: Monday wins');
     }
 
+    /** 2026-11-17: Monday's "assign creator" put Jose over Ana and Tiara on 22 missed-call tasks a rule made. */
+    public function test_a_rule_made_task_keeps_its_people_when_monday_names_only_our_api_user(): void
+    {
+        $ana = $this->userWithRole($this->tenant, 'Helper', ['tasks.view'], 'ana@ezbizi.test');
+        $this->inTenant($this->tenant['org'], function () use ($ana) {
+            $task = $this->task('11');
+            $task->board->members()->create(['organization_id' => $this->tenant['org']->id, 'user_id' => $ana->id, 'role' => 'member']);
+            app(TaskWriter::class)->update($task, ['assignee_user_ids' => [$ana->id]], $this->jose);
+            $task->forceFill(['created_by_automation_id' => (string) \Illuminate\Support\Str::uuid()])->saveQuietly();
+        });
+
+        Carbon::setTestNow('2026-11-12 12:05:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z', ['status' => 'Done'])]);
+
+        $this->assertSame('Done', $this->task('11')->statusRow->name, 'the status still syncs');
+        $this->assertSame([$ana->id], $this->task('11')->owners->pluck('user_id')->all(), 'the rule\'s person stays');
+    }
+
     public function test_a_board_imported_before_boards_were_marked_is_adopted(): void
     {
         $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('owner_user_id', $this->jose->id)->update(['external_ref' => null]));
