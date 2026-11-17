@@ -1,0 +1,134 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>195 · Lists on a phone: controls above the first row</title>
+<style>
+:root{--bg:#f6f8f9;--paper:#fff;--ink:#14191c;--muted:#5d6970;--line:#dde3e6;--pri:#00739a;--pric:#dff1f8;--offc:#eceff1;--okf:#e1f3e6;--oki:#1d6b36;--cauf:#fdf1cf;--caui:#7a5600}
+.dark{--bg:#0c1014;--paper:#151b20;--ink:#e8eef1;--muted:#93a1a8;--line:#26313a;--pri:#5fc8ea;--pric:#0f3443;--offc:#222b32;--okf:#143222;--oki:#8fd9a6;--cauf:#33290c;--caui:#ecc767}
+body{margin:0;font:14px/1.4 Inter,Segoe UI,Roboto,sans-serif;background:#e9edef;color:#14191c}
+.wrap{max-width:1240px;margin:0 auto;padding:24px 16px}h1{margin:0 0 4px}h2{margin:36px 0 6px;font-size:18px}.cap{color:#4c575d;margin:0 0 12px;max-width:900px}
+.rec{background:#00739a;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:8px}
+.lbl{font-size:11px;color:#4c575d;margin:0 0 4px;font-weight:600}
+.row3{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+/* gallery-local: pl- */
+.pl-ph{width:300px;height:600px;background:var(--bg);color:var(--ink);border:1px solid #cfd6da;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;position:relative;flex:none}
+.pl-top{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12px}
+.pl-org{border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-weight:600}
+.pl-sp{flex:1}
+.pl-ttl{display:flex;align-items:center;gap:6px;padding:10px 12px 4px}
+.pl-ttl b{font-size:18px}
+.pl-add{margin-left:auto;background:var(--pri);color:var(--paper);border-radius:16px;padding:4px 10px;font-size:12px;font-weight:600;white-space:nowrap}
+.pl-tabs{display:flex;gap:16px;padding:4px 12px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.pl-tabs span{padding:5px 0}.pl-tabs .on{color:var(--pri);border-bottom:2px solid var(--pri);font-weight:600}
+.pl-body{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.pl-ctl{padding:8px 12px 0;display:flex;flex-direction:column;gap:6px}
+.pl-l{display:flex;gap:6px;align-items:center}
+.pl-srch{flex:1;border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:6px 9px;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden}
+.pl-btn{border:1px solid var(--line);border-radius:10px;padding:5px 9px;font-size:12px;font-weight:600;color:var(--pri);white-space:nowrap}
+.pl-btn.on{background:var(--pric)}
+.pl-dots{font-weight:800;color:var(--muted);padding:0 4px}
+.pl-chips{display:flex;gap:5px;overflow:hidden;white-space:nowrap}
+.pl-chip{border:1px solid var(--line);border-radius:99px;padding:3px 9px;font-size:11.5px;font-weight:600}
+.pl-chip.on{background:var(--pric);color:var(--pri);border-color:transparent}
+.pl-note{font-size:11.5px;color:var(--muted)}
+.pl-grp{background:var(--offc);padding:4px 12px;font-size:11.5px;font-weight:700;color:var(--muted);display:flex;margin-top:8px}
+.pl-grp span:last-child{margin-left:auto;font-weight:500}
+.pl-r{padding:7px 12px;border-bottom:1px solid var(--line);font-size:12.5px}
+.pl-r .s{font-size:11px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.pl-r .s i{margin-left:auto;font-style:normal;background:var(--offc);border-radius:99px;padding:0 7px;font-weight:600;color:var(--ink)}
+.pl-r .s i.ok{background:var(--okf);color:var(--oki)}
+.pl-nav{display:flex;justify-content:space-around;border-top:1px solid var(--line);padding:6px 0 8px;font-size:10px;color:var(--muted)}
+.pl-nav .on{color:var(--pri);font-weight:700}
+.pl-strip{margin:8px 12px 0;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:12px;display:flex;gap:8px;align-items:center}
+.pl-strip b{font-size:14px}
+.pl-fab{position:absolute;bottom:52px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;box-shadow:0 2px 8px #0003}
+.pl-fold{position:absolute;right:8px;top:212px;font-size:10px;color:var(--caui);background:var(--cauf);border-radius:6px;padding:1px 6px}
+.pl-cut{border-top:2px dashed #e08a2b;margin:0}
+/* desktop */
+.pl-dk{width:880px;max-width:100%;background:var(--bg);color:var(--ink);border:1px solid #cfd6da;border-radius:10px;overflow:hidden;display:flex}
+.pl-side{width:150px;flex:none;border-right:1px solid var(--line);padding:10px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+.pl-side .on{color:var(--pri);font-weight:700}
+.pl-main{flex:1;min-width:0}
+.pl-rail{width:170px;flex:none;border-right:1px solid var(--line);padding:10px;font-size:12px;display:flex;flex-direction:column;gap:8px}
+.pl-rail .k{font-size:10.5px;font-weight:700;color:var(--muted)}
+.pl-tbl{display:grid;grid-template-columns:2fr 1.3fr 1fr .8fr;font-size:12px}
+.pl-tbl div{padding:6px 12px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-tbl .h{font-weight:700;color:var(--muted);font-size:11px}
+.pl-filters{padding:10px 12px;display:flex;flex-direction:column;gap:10px;font-size:12px}
+.pl-filters .k{font-size:10.5px;font-weight:700;color:var(--muted);margin-bottom:3px}
+.pl-filters .sel{border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:var(--paper)}
+.pl-show{margin:auto 12px 10px;background:var(--pri);color:var(--paper);text-align:center;border-radius:10px;padding:7px;font-weight:700;font-size:12.5px}
+</style></head><body><div class="wrap">
+<h1>195 · Lists on a phone: the controls above the first row</h1>
+<p class="cap">UI pass 11-16. On a 375 px phone, Jobs, Customers and Customer Experience › Reviews each put 4–7 rows of controls above the first row. The list starts below 70% of the screen. The <span style="color:#c06a10;font-weight:700">dashed orange line</span> marks where the first row starts today. Desktop has room, so options 1–3 change little; the phone options 4–6 are the real choice. Recommended: <b>1 + 4</b>. Every option keeps a search bar.</p>
+
+<h2>Today, at 375 (for comparison)</h2>
+<div class="row3" id="today"></div>
+
+<h2>1 · Desktop: as today <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Desktop has the room, so it keeps today's rows and every control in sight. Only the phone changes (option 4). Drawn as it is now, for comparison.</p>
+<div class="row3" id="d1"></div>
+
+<h2>2 · Desktop: a filter rail on the left</h2>
+<p class="cap">Every filter in a left column, always open. It costs about 170 px of table width on every visit, and it doesn't fit 1366 px laptops with the sidebar open.</p>
+<div class="row3" id="d2"></div>
+
+<h2>3 · Desktop: one toolbar line, the rest folded into ⋯</h2>
+<p class="cap">The Task Board approach: what fits stays on the line, everything else is in ⋯. It's very tidy, but on desktop it hides filters people use daily.</p>
+<div class="row3" id="d3"></div>
+
+<h2>4 · Phone: search + Filters + ⋯, then one line of status chips <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">There are two control lines at most. Line 1 is search, <b>Filters · n</b> (opens a Filters page in place, as Leads already does since design 171) and ⋯ (Export, Import, Possible duplicates, Draft all, Fetch new). Line 2 is the status chips as one line that scrolls sideways; Customers has none. The count sentence moves into the group line. Customer Experience's rating card becomes one tappable line. The first row starts at about 30% of the screen instead of 70%.</p>
+<div class="row3" id="p4"></div>
+
+<h2>5 · Phone: today's controls, scrolling away with the list</h2>
+<p class="cap">Nothing moves into a page: the controls scroll off as the list scrolls, and the search stays pinned. It looks the same as today at the top, so the first screen still shows almost no rows.</p>
+<div class="row3" id="p5"></div>
+
+<h2>6 · Phone: search only, with a floating Filters pill</h2>
+<p class="cap">The fewest controls: a single search line, and a Filters pill floating above the bottom bar. It shows the most rows, but the pill covers a row and is a new pattern in the app.</p>
+<div class="row3" id="p6"></div>
+</div>
+<script>
+const nav=(on)=>`<div class="pl-nav">${['Jobs','Scheduling','Leads','Comms','More'].map(n=>`<span class="${n===on?'on':''}">${n}</span>`).join('')}</div>`;
+const plTop=`<div class="pl-top"><span>☰</span><span class="pl-org">EzBizi Demo ⌃</span><span class="pl-sp"></span><span>🔍</span><span>🔔</span></div>`;
+const jobsRows=`<div class="pl-r">Annual sweep and safety report<div class="s">Marcus Whitfield · Ridgeline — Miami<i class="ok">Completed</i></div></div><div class="pl-r">Dryer vent blocked — callout<div class="s">Marcus Whitfield · Ridgeline — Miami<i>Scheduled</i></div></div><div class="pl-r">Cap replacement after storm<div class="s">Priya Raman · Ridgeline — Fort Lauderdale<i>Scheduled</i></div></div><div class="pl-r">Opener will not close<div class="s">Dana Ortiz · Northgate — Tampa<i>In progress</i></div></div><div class="pl-r">Liner camera inspection<div class="s">Arthur Lindqvist · Ridgeline — Fort Lauderdale<i>In progress</i></div></div><div class="pl-r">Spring snapped, door stuck<div class="s">Arthur Lindqvist · Northgate — Tampa<i>Scheduled</i></div></div><div class="pl-r">Chimney crown repair<div class="s">Rob T. · Ridgeline — Miami<i>Scheduled</i></div></div>`;
+const custRows=`<div class="pl-grp"><span>A</span><span></span></div><div class="pl-r">Arthur Lindqvist<div class="s">Ridgeline Chimney · Fort Lauderdale<i>2 jobs</i></div></div><div class="pl-grp"><span>D</span><span></span></div><div class="pl-r">Dana Ortiz<div class="s">Northgate Garage Doors · Tampa<i>1 job</i></div></div><div class="pl-grp"><span>M</span><span></span></div><div class="pl-r">Marcus Whitfield<div class="s">Ridgeline Chimney · Miami<i>4 jobs</i></div></div><div class="pl-r">Maya Chen<div class="s">Ridgeline Chimney · Miami<i>1 job</i></div></div><div class="pl-grp"><span>P</span><span></span></div><div class="pl-r">Priya Raman<div class="s">Ridgeline Chimney · Fort Lauderdale<i>2 jobs</i></div></div>`;
+const revRows=`<div class="pl-r">Rob T. ★★★★★<div class="s">Google · Ridgeline — Miami<i>Unanswered</i></div></div><div class="pl-r">Maya C. ★★★★☆<div class="s">Google · Ridgeline — Miami<i>Unanswered</i></div></div><div class="pl-r">Dana O. ★★★☆☆<div class="s">Google · Northgate — Tampa<i>Unanswered</i></div></div><div class="pl-r">Arthur L. ★★★★★<div class="s">Google · Ridgeline — Fort Lauderdale<i class="ok">Replied</i></div></div>`;
+const head=(t,add,tabs)=>`${plTop}<div class="pl-ttl"><b>${t}</b><span class="pl-note">ⓘ ?</span>${add?`<span class="pl-add">${add}</span>`:''}</div><div class="pl-tabs">${tabs.map((x,i)=>`<span class="${i?'':'on'}">${x}</span>`).join('')}</div>`;
+const ph=(dark,inner,on='')=>`<div class="pl-ph ${dark?'dark':''}">${inner}${nav(on)}</div>`;
+const chipsJobs=`<div class="pl-chips"><span class="pl-chip on">All 24</span><span class="pl-chip">● Scheduled 8</span><span class="pl-chip">● In progress 8</span><span class="pl-chip">Completed 8</span></div>`;
+function screens(kind,dark){
+ const jobsH=head('Jobs','+ Add job',['Jobs','Estimates']), custH=head('Customers','Add customer',['Customers','Memberships']), cxH=head('Customer Experience','',['Reviews','GBP Listings','GBP Perf…']);
+ const L=(lbl,html)=>`<div><p class="lbl">${lbl}${dark?' · dark':''}</p>${html}</div>`;
+ if(kind==='today') return [
+  L('Jobs',ph(dark,jobsH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-note">24 upcoming across the franchises you can reach.</div>${chipsJobs}<div class="pl-l"><span class="pl-srch">Job number, title, customer, pho…</span></div><div class="pl-l"><span class="pl-chip on">Upcoming</span><span class="pl-chip">Past</span><span class="pl-chip">All</span></div><div class="pl-l"><span class="pl-btn">⚙ Filters</span><span class="pl-btn">⤓ Export</span></div></div><hr class="pl-cut"><div class="pl-grp"><span>Not scheduled</span><span>24 jobs</span></div>${jobsRows}</div>`,'Jobs')),
+  L('Customers',ph(dark,custH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-note">13 customers · shared across the organization. The Franchise tag shows who is accountable.</div><div class="pl-l"><span class="pl-btn">Possible duplicates</span></div><div class="pl-l"><span class="pl-btn">⤒ Import</span><span class="pl-btn">⤓ Export</span></div><div class="pl-l"><span class="pl-srch">Name, email, phone or number</span></div><div class="pl-l"><span class="pl-btn" style="flex:1">Show: Everyone ▾</span><span class="pl-btn" style="flex:1">All franchises ▾</span></div><div class="pl-l"><span class="pl-btn" style="flex:1">Sort: Name, A to Z ▾</span></div></div><hr class="pl-cut">${custRows}</div>`)),
+  L('CX › Reviews',ph(dark,cxH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-l"><b style="font-size:18px">4.0 ★</b><span class="pl-note">3 rated · 0% replied · 0 drafts</span></div><div style="height:34px;background:var(--offc);border-radius:6px"></div><div class="pl-l"><span class="pl-btn on">Draft all 3</span></div><div class="pl-note" style="color:var(--pri)">Send window: each rule's wait · Edit</div><div class="pl-l"><span class="pl-srch">Name or what they said</span></div><div class="pl-l"><span class="pl-chip on">✓ Unanswered (3)</span><span class="pl-chip">1–2 stars</span></div><div class="pl-l"><span class="pl-chip">This week</span><span class="pl-btn">More filters</span></div><div class="pl-l"><span class="pl-btn on">⟳ Fetch new</span><span class="pl-btn">▤ ▥ ▦</span></div></div><hr class="pl-cut">${revRows}</div>`))];
+ if(kind==='p4') return [
+  L('Jobs',ph(dark,jobsH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-l"><span class="pl-srch">🔍 Job, customer, phone…</span><span class="pl-btn">Filters · 1</span><span class="pl-dots">⋯</span></div>${chipsJobs}</div><div class="pl-grp"><span>Not scheduled · upcoming</span><span>24 jobs</span></div>${jobsRows}</div>`,'Jobs')),
+  L('Customers',ph(dark,custH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-l"><span class="pl-srch">🔍 Name, email, phone…</span><span class="pl-btn">Filters</span><span class="pl-dots">⋯</span></div></div><div class="pl-grp"><span>13 customers · Name, A to Z</span><span></span></div>${custRows}</div>`)),
+  L('CX › Reviews',ph(dark,cxH+`<div class="pl-body"><div class="pl-strip"><b>4.0 ★</b><span class="pl-note">3 rated · 0% replied · 3 to draft</span><span style="margin-left:auto;color:var(--pri);font-weight:700">›</span></div><div class="pl-ctl"><div class="pl-l"><span class="pl-srch">🔍 Name or what they said</span><span class="pl-btn on">Filters · 1</span><span class="pl-dots">⋯</span></div><div class="pl-chips"><span class="pl-chip on">✓ Unanswered 3</span><span class="pl-chip">1–2 stars</span><span class="pl-chip">This week</span></div></div><div class="pl-grp"><span>Google Business Profile</span><span>4 reviews</span></div>${revRows}</div>`)),
+  L('Filters page (Jobs), in place',ph(dark,jobsH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-l"><b>← Filters</b><span class="pl-sp"></span><span class="pl-note" style="color:var(--pri)">Clear</span></div></div><div class="pl-filters"><div><div class="k">WHEN</div><div class="pl-l"><span class="pl-chip on">Upcoming</span><span class="pl-chip">Past</span><span class="pl-chip">All</span></div></div><div><div class="k">COMPANY · BRANCH</div><div class="sel">All branches ▾</div></div><div><div class="k">TECHNICIAN</div><div class="sel">Anyone ▾</div></div><div><div class="k">TYPE</div><div class="sel">Any type ▾</div></div></div><div class="pl-show">Show 24 jobs</div></div>`,'Jobs'))];
+ if(kind==='p5') return [
+  L('Jobs · at the top (same as today)',ph(dark,jobsH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-note">24 upcoming across the franchises you can reach.</div>${chipsJobs}<div class="pl-l"><span class="pl-srch">Job number, title, customer…</span></div><div class="pl-l"><span class="pl-chip on">Upcoming</span><span class="pl-chip">Past</span><span class="pl-chip">All</span></div><div class="pl-l"><span class="pl-btn">⚙ Filters</span><span class="pl-btn">⤓ Export</span></div></div><div class="pl-grp"><span>Not scheduled</span><span>24 jobs</span></div>${jobsRows}</div>`,'Jobs')),
+  L('Jobs · after a short scroll',ph(dark,jobsH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-l"><span class="pl-srch">🔍 Job number, title, customer…</span></div></div><div class="pl-grp"><span>Not scheduled</span><span>24 jobs</span></div>${jobsRows}${jobsRows}</div>`,'Jobs')),
+  L('Customers · after a short scroll',ph(dark,custH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-l"><span class="pl-srch">🔍 Name, email, phone or number</span></div></div>${custRows}${custRows}</div>`))];
+ if(kind==='p6') return [
+  L('Jobs',ph(dark,jobsH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-l"><span class="pl-srch">🔍 Job, customer, phone…</span></div></div><div class="pl-grp"><span>All · upcoming · not scheduled</span><span>24 jobs</span></div>${jobsRows}${jobsRows}</div><div class="pl-fab">⚙ Filters · 1</div>`,'Jobs')),
+  L('Customers',ph(dark,custH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-l"><span class="pl-srch">🔍 Name, email, phone…</span></div></div>${custRows}${custRows}</div><div class="pl-fab">⚙ Filters</div>`)),
+  L('CX › Reviews',ph(dark,cxH+`<div class="pl-body"><div class="pl-ctl"><div class="pl-l"><span class="pl-srch">🔍 Name or what they said</span></div></div>${revRows}${revRows}</div><div class="pl-fab">⚙ Filters · 1</div>`))];
+}
+const side=`<div class="pl-side"><span>Dashboard</span><span class="on">Jobs</span><span>Project Management</span><span>Scheduling</span><span>Customers</span><span>Leads</span></div>`;
+const tbl=`<div class="pl-tbl"><div class="h">JOB</div><div class="h">CUSTOMER</div><div class="h">BRANCH</div><div class="h">STATUS</div>${[['Annual sweep and safety report','Marcus Whitfield','Ridgeline · Miami','Completed'],['Dryer vent blocked — callout','Marcus Whitfield','Ridgeline · Miami','Scheduled'],['Cap replacement after storm','Priya Raman','Ridgeline · Fort Lauderdale','Scheduled'],['Opener will not close','Dana Ortiz','Northgate · Tampa','In progress'],['Liner camera inspection','Arthur Lindqvist','Ridgeline · Fort Lauderdale','In progress']].map(r=>r.map(c=>`<div>${c}</div>`).join('')).join('')}</div>`;
+const dhead=`<div class="pl-ttl" style="padding:12px 16px 6px"><b style="font-size:22px">Jobs</b><span class="pl-note">ⓘ ?</span><span class="pl-add">+ Add job</span></div><div class="pl-tabs" style="padding:0 16px"><span class="on">Jobs</span><span>Estimates</span></div>`;
+function desk(kind,dark){
+ let ctl='';
+ if(kind==='d1') ctl=`<div class="pl-ctl" style="padding:10px 16px"><div class="pl-l"><span class="pl-srch" style="min-width:230px;max-width:260px">🔍 Job number, title, customer, phone</span><span class="pl-chip on">All 24</span><span class="pl-chip">Scheduled 8</span><span class="pl-chip">In progress 8</span><span class="pl-chip">Completed 8</span><span class="pl-sp"></span><span class="pl-chip on">Upcoming</span><span class="pl-chip">Past</span><span class="pl-chip">All</span><span class="pl-btn">Filters</span><span class="pl-dots">⋯</span></div></div>`;
+ if(kind==='d3') ctl=`<div class="pl-ctl" style="padding:10px 16px"><div class="pl-l"><span class="pl-srch" style="min-width:230px;max-width:260px">🔍 Job number, title, customer, phone</span><span class="pl-btn">Status: All ▾</span><span class="pl-btn">Upcoming ▾</span><span class="pl-sp"></span><span class="pl-dots">⋯</span></div></div>`;
+ const main=kind==='d2'
+  ? `<div class="pl-rail"><div class="k">SEARCH</div><span class="pl-srch">🔍 Job, customer…</span><div class="k">STATUS</div><span class="pl-chip on">All 24</span><span class="pl-chip">Scheduled 8</span><span class="pl-chip">In progress 8</span><div class="k">WHEN</div><span class="pl-chip on">Upcoming</span><div class="k">COMPANY · BRANCH</div><span class="pl-btn">All branches ▾</span><span class="pl-btn">⤓ Export</span></div><div class="pl-main">${tbl}</div>`
+  : `<div class="pl-main">${ctl}${tbl}</div>`;
+ return `<div><p class="lbl">Desktop 1440${dark?' · dark':''}</p><div class="pl-dk ${dark?'dark':''}">${side}<div class="pl-main">${dhead}<div style="display:flex">${main}</div></div></div></div>`;
+}
+for(const id of ['today','p4','p5','p6']) document.getElementById(id).innerHTML=screens(id,false).join('')+(id==='p4'||id==='today'?screens(id,true).slice(0,3).join(''):screens(id,true).slice(0,1).join(''));
+for(const id of ['d1','d2','d3']) document.getElementById(id).innerHTML=desk(id,false)+(id==='d1'?desk(id,true):'');
+</script></body></html>

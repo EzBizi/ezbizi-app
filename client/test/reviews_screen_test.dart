@@ -55,8 +55,11 @@ void main() {
     );
     FlutterError.onError = previous;
 
-    expect(find.text('Fetch new'), findsOneWidget);
     expect(complaints.where((c) => c.contains('overflowed')), isEmpty);
+    // Design 195: on a phone Fetch new is in the search line's ⋯.
+    await tester.tap(find.byKey(const ValueKey('reviews-more')));
+    await tester.pumpAndSettle();
+    expect(find.text('Fetch new'), findsOneWidget);
   });
 
   testWidgets('Post reply is not offered while the box is empty', (
