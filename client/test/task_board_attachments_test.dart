@@ -276,8 +276,18 @@ void main() {
       findsOneWidget,
     );
     final rule = find.byKey(const ValueKey('task-creator-t2'));
+    // A rule's task was made by EzBizi (Jose 11-17): the mark, the rule on hover.
     expect(
       find.descendant(of: rule, matching: find.text('New lead follow-up')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: rule,
+        matching: find.byWidgetPredicate(
+          (w) => w is Tooltip && w.message == 'EzBizi · New lead follow-up',
+        ),
+      ),
       findsOneWidget,
     );
     // The assigned cell keeps the assignee, as a face.

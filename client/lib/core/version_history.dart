@@ -13,6 +13,21 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0584', date: '17 Nov 2026', items: [
+      'Task Board: whoever is given a task, by a person or an automation, gets a New task notification',
+    ]),
+    VersionRelease(version: '0.0.0583', date: '17 Nov 2026', items: [
+      'Automatic texts: a caller gets one sales text a day, not two. Not booked skips when the missed-call text went or the caller had a job in the last 30 days, and the missed-call text skips when they already got one',
+      'Several missed calls from one person within an hour send one text and one alert, not one per call',
+      'Jobs called in on a PPC line get the PPC source within 15 minutes',
+      'Automations: a rule that stopped after failures shows as stopped in the editor, and saving a fix switches it back on and runs the events it missed in the last day',
+      'Automations: a step that texts or emails a customer with no phone or email is skipped instead of failing, and a task date filled from a call time is accepted',
+      'Task Board: tasks created by an automation show EzBizi as the owner, with the rule name on hover',
+      'Jobs and Customers: the job panel and the customer record use the same header as a lead, with Booked by as its own fact',
+      'Notifications: a setting per kind of task notification, and bursts grouped into one',
+      'Web: two open tabs no longer overwrite each other sign-in every minute',
+      'Signup verification emails retry instead of being lost when the mail server times out',
+    ]),
     VersionRelease(version: '0.0.0582', date: '17 Nov 2026', items: [
       'Leads: a lead we texted after their call now shows Replied, not Awaiting reply',
     ]),

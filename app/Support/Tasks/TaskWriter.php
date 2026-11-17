@@ -22,6 +22,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Jobs\JobTechnicianSync;
+use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -104,7 +105,7 @@ class TaskWriter
             ]);
 
             if ($owners !== null) {
-                $this->syncOwners($task, $owners);
+                $this->syncOwners($task, $owners, $actor);
             }
 
             if (! empty($input['values'])) {
@@ -171,7 +172,7 @@ class TaskWriter
 
             $ownersChanged = $owners !== null && $owners !== $this->ownerIds($task);
             if ($ownersChanged) {
-                $this->syncOwners($task, $owners);
+                $this->syncOwners($task, $owners, $actor);
                 if (! $task->isDirty()) {
                     $this->audit->log('task.owners_changed', $task, metadata: ['assignee_user_ids' => $owners], actor: $actor);
                 }
@@ -314,6 +315,9 @@ class TaskWriter
 
     /** True while a change is being copied across a link: the copies do not copy on. */
     private bool $syncing = false;
+
+    /** The Monday mirror writes quietly: only EzBizi-origin changes ring a bell. */
+    public bool $quiet = false;
 
     /**
      * Copy what changed to every linked task. Status goes by name on the
@@ -588,8 +592,9 @@ class TaskWriter
     }
 
     /** @param  list<string>  $ids */
-    private function syncOwners(Task $task, array $ids): void
+    private function syncOwners(Task $task, array $ids, ?User $actor = null): void
     {
+        $had = TaskAssignee::query()->where('task_id', $task->id)->pluck('user_id')->all();
         TaskAssignee::query()->where('task_id', $task->id)->whereNotIn('user_id', $ids)->delete();
         foreach ($ids as $position => $id) {
             TaskAssignee::query()->updateOrCreate(
@@ -598,6 +603,34 @@ class TaskWriter
             );
         }
         $task->unsetRelation('owners');
+
+        // Jose 11-17: whoever is newly given a task hears about it, whether a
+        // person or a rule gave it; not the person who gave it to themselves,
+        // and not again for a linked twin.
+        $new = array_values(array_diff($ids, $had, [$actor?->getKey()]));
+        if ($new !== [] && ! $this->quiet && ! $this->syncing) {
+            DB::afterCommit(fn () => self::tellAssigned($task, $new));
+        }
+    }
+
+    /** @param  string[]  $userIds */
+    public static function tellAssigned(Task $task, array $userIds): int
+    {
+        // After commit a command may have left its tenant: tell in the task's.
+        $org = Organization::query()->withoutGlobalScopes()->find($task->organization_id);
+
+        return $org === null ? 0 : app(TenantContext::class)->run($org, function () use ($task, $userIds) {
+            $told = 0;
+            foreach (User::query()->whereKey($userIds)->get() as $user) {
+                $told += app(NotificationDispatcher::class)->dispatch(
+                    title: 'New task: '.$task->title,
+                    body: 'On '.($task->board?->name ?? 'the Task Board'),
+                    subject: $task, onlyTo: $user, kind: 'task.assigned',
+                );
+            }
+
+            return $told;
+        });
     }
 
     private function groupOn(TaskBoard $board, string $groupId): TaskGroup

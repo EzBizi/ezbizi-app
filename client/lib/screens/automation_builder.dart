@@ -1697,7 +1697,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   }
 
   /// Whether the rule being edited is switched on now. A new one is not.
-  bool get _isOn => widget.editing?['is_active'] == true;
+  // A rule EzBizi stopped after failures is off, whatever is_active says (Jose, 2026-11-17).
+  bool get _isOn =>
+      widget.editing?['is_active'] == true &&
+      widget.editing?['disabled_at'] == null;
 
   /// Save it. [turnOn] also switches it on: a new rule is created switched
   /// off by the server and then turned on, an edit carries `is_active`.
@@ -6403,7 +6406,9 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         // The button says no; this says why. A disabled control with no
         // explanation is the thing people file bugs about.
         ? (blocker ??
-              (turnOnBlocker != null && !_isOn
+              (widget.editing?['disabled_reason'] is String && !_isOn
+                  ? 'Stopped: ${widget.editing!['disabled_reason']} Turn it on after fixing it.'
+                  : turnOnBlocker != null && !_isOn
                   ? 'Turn on is greyed out until this is fixed: $turnOnBlocker'
                   : _isOn
                   ? 'Saving makes this the live version straight away.'

@@ -1377,6 +1377,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     return [
       t['title'],
       ..._ownerNames(t),
+      (t['created_by'] as Map?)?['type'] == 'automation'
+          ? 'EzBizi'
+          : (t['created_by'] as Map?)?['label'],
       _statusLabel(_board!, _statusOf(t)),
       (t['about'] as Map?)?['label'],
     ].any((v) => v is String && v.toLowerCase().contains(q));
@@ -4652,6 +4655,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         ),
       );
     }
+    // Jose 11-17: a rule's task was made by EzBizi; the rule is on hover.
+    if (madeBy['type'] == 'automation') {
+      return Center(
+        key: ValueKey('task-creator-${t['id']}'),
+        child: _automationOwner(t, mark: true),
+      );
+    }
     return Tooltip(
       key: ValueKey('task-creator-${t['id']}'),
       message: label,
@@ -5888,7 +5898,7 @@ class _TaskPanelState extends State<_TaskPanel> {
     final creatorLabel = _builtinLabel(widget.board, 'creator');
     final madeByText = madeBy?['label'] is String
         ? madeBy!['type'] == 'automation'
-              ? 'Automation "${madeBy['label']}"'
+              ? 'EzBizi · automation "${madeBy['label']}"'
               : '${madeBy['label']}'
         : null;
 

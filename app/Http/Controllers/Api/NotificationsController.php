@@ -338,6 +338,7 @@ class NotificationsController extends Controller
         Lead::class => 'leads',
         \App\Models\Job::class => 'jobs',
         \App\Models\Task::class => 'tasks',
+        \App\Models\TaskUpdate::class => 'tasks',
         TimeClockCorrectionRequest::class => 'work_hours',
         TimeClockDayApproval::class => 'work_hours',
         PtoRequest::class => 'work_hours',
@@ -395,6 +396,17 @@ class NotificationsController extends Controller
                 'type' => 'time_clock_day_approval',
                 'id' => (string) $notification->subject_id,
                 'date' => TimeClockDayApproval::query()->whereKey($notification->subject_id)->first()?->date?->toDateString(),
+            ];
+        }
+
+        // A mention or reply is about one update: open its task, at that update
+        // (Jose, 2026-11-17: "clicking on the notification should lead you to
+        // the board").
+        if ($notification->subject_type === \App\Models\TaskUpdate::class) {
+            return [
+                'type' => 'task',
+                'id' => (string) \App\Models\TaskUpdate::query()->whereKey($notification->subject_id)->value('task_id'),
+                'update' => (string) $notification->subject_id,
             ];
         }
 
