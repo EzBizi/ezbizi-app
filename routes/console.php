@@ -37,6 +37,8 @@ Schedule::command('ezbizi:check-connection-health')->dailyAt('06:40')->withoutOv
 Schedule::command('ezbizi:time-clock-approval-reminders')->everyFifteenMinutes()->withoutOverlapping(10);
 // Project Management: parts 3 days late, and part reminders due (Jose, 2026-11-17).
 Schedule::command('ezbizi:project-board-part-alerts')->everyFifteenMinutes()->withoutOverlapping(10);
+// Project Management client texts, each OFF until switched on (Jose, 2026-11-17).
+Schedule::command('ezbizi:project-board-client-messages')->everyFifteenMinutes()->withoutOverlapping(10);
 Schedule::command('ezbizi:pto-daily-triggers')->dailyAt('07:10')->withoutOverlapping(30);
 
 // Every RingCentral account's finished days kept for the reports, so a week or
