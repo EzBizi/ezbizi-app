@@ -2,6 +2,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/core/ui_strings.dart';
 import 'package:ezbizi_client/widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The module title block — approved as desktop layout 1 with mobile layout 5.
@@ -63,6 +64,67 @@ void main() {
 
     await _pump(tester, width: 380, withAction: true);
     expect(find.byIcon(Icons.refresh), findsOneWidget);
+  });
+
+  // UI pass 11-16: "Add customer" took the row and the title read "Custo…".
+  testWidgets('on a phone a wide action shrinks before the title is cut', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 375,
+            child: ModulePageHeader(
+              title: 'Fleet',
+              subtitle: 'Vehicles.',
+              actions: [
+                FilledButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add vehicle'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final title = tester.renderObject<RenderParagraph>(find.text('Fleet'));
+    expect(title.didExceedMaxLines, isFalse, reason: 'the title was cut');
+    final button = tester.getRect(find.byType(FilledButton));
+    expect(button.right, lessThanOrEqualTo(375));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('on a phone a long title puts the action on its own line', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 375,
+            child: ModulePageHeader(
+              title: 'Fleet Management',
+              actions: [
+                FilledButton(onPressed: () {}, child: const Text('Add')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final title = tester.getRect(find.text('Fleet Management'));
+    final button = tester.getRect(find.byType(FilledButton));
+    expect(button.top, greaterThanOrEqualTo(title.bottom));
+    expect(button.height, greaterThanOrEqualTo(36), reason: 'not shrunk');
   });
 
   test('a module this build has never heard of gets no subtitle', () {

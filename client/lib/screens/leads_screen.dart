@@ -2049,10 +2049,21 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget _empty(ThemeData theme) {
     final connected = _anyGoogleAds;
     final canConnect = _canConnect;
+    // UI pass 11-16: with Unreplied on, eight leads read "No enquiries yet".
+    final filtered =
+        _search.text.trim().isNotEmpty ||
+        _unreplied ||
+        _overdue ||
+        _followUp ||
+        _starred ||
+        _status.isNotEmpty ||
+        _foldedSet > 0;
 
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
+      child: Container(
+        // The text ran to the screen's edges on a phone.
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        constraints: const BoxConstraints(maxWidth: 420 + 48),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2064,7 +2075,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             const SizedBox(height: 12),
             Text(
               connected
-                  ? (_sourceLabel == null
+                  ? (filtered
+                        ? 'No leads match these filters'
+                        : _sourceLabel == null
                         ? 'No enquiries yet'
                         : 'No $_sourceLabel enquiries yet')
                   : 'No advertising account connected',

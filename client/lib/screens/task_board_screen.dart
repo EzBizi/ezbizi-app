@@ -2294,6 +2294,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _toolbar(context, phone: cards),
+                          // UI pass 11-16: on the toolbar line a phone's search
+                          // was 110 wide and read "Se…". Its own line instead.
+                          if (MediaQuery.sizeOf(context).width < 600)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                              child: _search(),
+                            ),
                           Expanded(
                             child: switch (_view) {
                               'kanban' => _kanbanView(context, narrow: cards),
@@ -2600,6 +2607,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// on a phone). Controls go left to right while they fit; the rest, and
   /// the board's own tools, are in the ⋯ at the end. A phone keeps the
   /// view, the search and New task on the line.
+  Widget _search() => ListSearch(
+    key: const Key('tasks-search'),
+    hint: 'Find a task',
+    onChanged: (v) => setState(() => _query = v),
+  );
+
   Widget _toolbar(BuildContext context, {required bool phone}) {
     final theme = Theme.of(context);
     final toolbar = _board == null ? null : _listToolbar();
@@ -2627,14 +2640,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             );
     }
 
-    final search = SizedBox(
-      width: phone ? 110 : 220,
-      child: ListSearch(
-        key: const Key('tasks-search'),
-        hint: phone ? 'Search' : 'Find a task',
-        onChanged: (v) => setState(() => _query = v),
-      ),
-    );
+    final search = SizedBox(width: phone ? 160 : 220, child: _search());
+    final searchOnLine = MediaQuery.sizeOf(context).width >= 600;
     final invite = _inviteButton();
 
     return LayoutBuilder(
@@ -2650,7 +2657,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             ),
             const [],
           ),
-          (search, const []),
+          if (searchOnLine) (search, const []),
           if (_canEdit) (_newTaskButton(compact: phone), [_newTaskItem()]),
           if (!phone) ...[
             for (final a in actions) (actionButton(a), [actionItem(a)]),

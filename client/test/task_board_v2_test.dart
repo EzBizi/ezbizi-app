@@ -1307,12 +1307,17 @@ void main() {
     }
   });
 
-  testWidgets('on a phone the line keeps the view, the search and New task', (
+  testWidgets('on a phone the line keeps the view and New task; the search '
+      'has its own full-width line (UI pass 11-16: it read "Se…")', (
     tester,
   ) async {
     await pump(tester, width: 390);
 
-    final row = tester.getCenter(find.byKey(const Key('tasks-search'))).dy;
+    final search = find.byKey(const Key('tasks-search'));
+    expect(search, findsOneWidget);
+    expect(tester.getSize(search).width, greaterThan(300));
+    final row = tester.getCenter(find.byKey(const Key('tasks-view-picker'))).dy;
+    expect(tester.getCenter(search).dy, greaterThan(row + 20));
     for (final key in ['tasks-view-picker', 'tasks-new-task', 'board-menu']) {
       final f = find.byKey(Key(key)).hitTestable();
       expect(f, findsOneWidget, reason: key);

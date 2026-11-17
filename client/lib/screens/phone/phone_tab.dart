@@ -85,21 +85,34 @@ class _PhoneTabState extends State<PhoneTab> {
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           child: Wrap(
             key: const ValueKey('tour-phone-sections'),
-            spacing: 8,
+            spacing: MediaQuery.sizeOf(context).width < 420 ? 6 : 8,
             runSpacing: 8,
             children: [
               for (var i = 0; i < _sections.length; i++)
                 ChoiceChip(
+                  visualDensity: MediaQuery.sizeOf(context).width < 420
+                      ? VisualDensity.compact
+                      : null,
+                  labelPadding: MediaQuery.sizeOf(context).width < 420
+                      ? const EdgeInsets.symmetric(horizontal: 4)
+                      : null,
+                  padding: MediaQuery.sizeOf(context).width < 420
+                      ? const EdgeInsets.symmetric(horizontal: 6)
+                      : null,
                   // Or the selected chip draws a tick ON TOP of the icon it
                   // already has, which is the house gate that caught this.
                   showCheckmark: false,
-                  avatar: Icon(
-                    _sections[i].$2,
-                    size: 16,
-                    color: i == _section
-                        ? theme.colorScheme.onSecondaryContainer
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
+                  // UI pass 11-16: with icons the four took two lines at
+                  // 375 and Voicemail sat alone; a phone drops the icons.
+                  avatar: MediaQuery.sizeOf(context).width < 420
+                      ? null
+                      : Icon(
+                          _sections[i].$2,
+                          size: 16,
+                          color: i == _section
+                              ? theme.colorScheme.onSecondaryContainer
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
                   label: Text(_sections[i].$1),
                   selected: i == _section,
                   onSelected: (_) => setState(() {
