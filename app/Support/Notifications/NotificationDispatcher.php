@@ -107,6 +107,12 @@ class NotificationDispatcher
         array $roleIds = [],
         array $userIds = [],
         bool $urgent = false,
+        /*
+         * What kind of event this is, e.g. `task.assigned` (KINDS). Lets each
+         * person switch a kind off, and groups a burst of the same kind on the
+         * same record into one row (Jose, 2026-11-17: task board coverage).
+         */
+        ?string $kind = null,
     ): int {
         if (! $this->allows($source, $subject, $inAppOnly)) {
             return 0;
@@ -120,6 +126,7 @@ class NotificationDispatcher
 
         $recipients = $this->withoutFlooded($recipients, $automationId);
         $recipients = $this->onlyThoseFollowing($recipients, $subject, $source, $eventId);
+        $recipients = $this->withoutMutedOrRepeatedKind($recipients, $kind, $subject, $title);
 
         if ($recipients->isEmpty()) {
             return 0;
@@ -560,6 +567,53 @@ class NotificationDispatcher
         }
 
         return $chain;
+    }
+
+    /**
+     * The kinds a person can switch off one by one, with the label shown in
+     * bell settings. Task Board's (Jose, 2026-11-17: "every aspect of task
+     * board is covered by notifications").
+     */
+    public const KINDS = [
+        'task.assigned' => 'Assigned to me',
+        'task.mentioned' => 'Mentioned',
+        'task.reply' => 'Replies on my tasks',
+        'task.status' => 'Status changes',
+        'task.due' => 'Due soon and overdue',
+        'task.subitem_assigned' => 'Subitems assigned',
+        'task.moved' => 'Moved to my group',
+        'task.file' => 'Files added',
+        'task.created' => 'New tasks on my boards',
+    ];
+
+    /** Minutes within which a repeat of one kind on one record is one row. */
+    private const KIND_BURST_MINUTES = 10;
+
+    private function withoutMutedOrRepeatedKind(Collection $recipients, ?string $kind, ?Model $subject, string $title): Collection
+    {
+        if ($kind === null || $recipients->isEmpty()) {
+            return $recipients;
+        }
+
+        $recipients = $recipients->reject(
+            fn (User $user) => in_array($kind, $user->preferences['notifications.muted_kinds'] ?? [], true)
+        )->values();
+
+        if ($subject === null || $recipients->isEmpty()) {
+            return $recipients;
+        }
+
+        // ponytail: grouped by subject+title, not a stored kind column; add one if two kinds share a title.
+        $already = Notification::query()
+            ->where('subject_type', $subject::class)
+            ->where('subject_id', $subject->getKey())
+            ->where('title', $title)
+            ->where('created_at', '>=', now()->subMinutes(self::KIND_BURST_MINUTES))
+            ->whereIn('user_id', $recipients->map->getKey()->all())
+            ->pluck('user_id')
+            ->all();
+
+        return $recipients->reject(fn (User $user) => in_array($user->getKey(), $already, true))->values();
     }
 
     /** The module a notification belongs to — the same reading the bell list uses. */

@@ -621,6 +621,37 @@ void main() {
     },
   );
 
+  testWidgets('each task notification kind can be switched off', (tester) async {
+    // Jose, 2026-11-17: task board coverage with a per-type toggle.
+    final patches = <Object?>[];
+    await _pumpWithSession(
+      tester,
+      preferences: {},
+      items: () => [],
+      patches: patches,
+    );
+
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('notification-settings')));
+    await tester.pumpAndSettle();
+
+    final mentioned = find.byKey(
+      const ValueKey('notification-kind-task.mentioned'),
+    );
+    await tester.ensureVisible(mentioned);
+    await tester.tap(mentioned);
+    await tester.pumpAndSettle();
+
+    expect(patches, [
+      {
+        'preferences': {
+          'notifications.muted_kinds': ['task.mentioned'],
+        },
+      },
+    ]);
+  });
+
   testWidgets('with alerts on, a new notification pops up (the control)', (
     tester,
   ) async {
@@ -700,6 +731,12 @@ Future<void> _pumpWithSession(
               {
                 'key': 'leads',
                 'label': 'Leads',
+                'available': true,
+                'reachable': true,
+              },
+              {
+                'key': 'tasks',
+                'label': 'Task Board',
                 'available': true,
                 'reachable': true,
               },
