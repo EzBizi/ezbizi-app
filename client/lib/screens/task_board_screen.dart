@@ -1730,6 +1730,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       MenuAnchor(
         menuChildren: [
           ..._sortItems(key),
+          ..._moveItems(key),
           // What a built-in column is for (Jose, 2026-11-12: "not sure where
           // those are managed").
           MenuItemButton(
@@ -1909,10 +1910,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// A column's header menu (Jose, 2026-11-09, Monday-style): edit it,
   /// change its type, move, hide or delete it, all from the header.
   Widget _columnHeader(BoardColumn c, Widget title) {
-    final raw = (_board!['columns'] as List? ?? const [])
-        .whereType<Map>()
-        .firstWhere((x) => '${x['id']}' == c.id, orElse: () => const {});
-    final at = (raw['position'] as num?)?.toInt() ?? 0;
     Future<void> patch(Map<String, dynamic> body) async {
       final r = await widget.api.patch(
         columnsPath('${_board!['id']}', c.id),
@@ -1957,16 +1954,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             ],
             child: Text('Type: ${columnTypeLabel(c.type)}'),
           ),
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.arrow_back, size: 18),
-            onPressed: () => patch({'position': (at - 1).clamp(0, 1000)}),
-            child: const Text('Move left'),
-          ),
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.arrow_forward, size: 18),
-            onPressed: () => patch({'position': at + 1}),
-            child: const Text('Move right'),
-          ),
+          ..._moveItems('c:${c.id}'),
           const Divider(height: 8),
           MenuItemButton(
             key: ValueKey('column-menu-hide-${c.id}'),
@@ -3664,7 +3652,37 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   /// A heading with a drag handle on its right edge (Jose, 2026-11-12).
   Widget _resizable(String key, Widget heading) => Stack(
     children: [
-      heading,
+      // Drag a heading onto another to put it there (Jose 11-17); Task stays first.
+      if (!_canEdit || key == 'task')
+        heading
+      else
+        DragTarget<String>(
+          onWillAcceptWithDetails: (d) => d.data != key,
+          onAcceptWithDetails: (d) => _placeColumn(d.data, key),
+          builder: (context, over, _) => Draggable<String>(
+            key: ValueKey('column-drag-$key'),
+            data: key,
+            axis: Axis.horizontal,
+            feedback: Material(
+              elevation: 4,
+              child: Opacity(opacity: 0.8, child: heading),
+            ),
+            childWhenDragging: Opacity(opacity: 0.4, child: heading),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: over.isEmpty
+                    ? null
+                    : Border(
+                        left: BorderSide(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 3,
+                        ),
+                      ),
+              ),
+              child: heading,
+            ),
+          ),
+        ),
       Positioned(
         right: 0,
         top: 0,
@@ -3882,18 +3900,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                     : const SizedBox.shrink(),
               ),
             ),
-            if (shown('creator')) blank(_w('creator')),
-            if (shown('owner')) blank(_w('owner')),
-            if (shown('status'))
+            ..._inOrder({
+            if (shown('creator')) 'creator': blank(_w('creator')),
+            if (shown('owner')) 'owner': blank(_w('owner')),
+            if (shown('status')) 'status':
               SizedBox(width: _w('status'), height: 30, child: statusBar()),
-            if (shown('created')) blank(_w('created')),
-            if (shown('due'))
+            if (shown('created')) 'created': blank(_w('created')),
+            if (shown('due')) 'due':
               dates(_w('due'), [
                 for (final t in tasks) ...daysOf(t['due_on']),
               ], const Key('due-footer')),
-            for (final c in columns) columnFooter(c),
-            if (shown('about')) blank(_w('about')),
-            if (shown('updates')) blank(_w('updates')),
+            for (final c in columns) 'c:${c.id}': columnFooter(c),
+            if (shown('about')) 'about': blank(_w('about')),
+            if (shown('updates')) 'updates': blank(_w('updates')),
+            }),
             if (_canEdit) blank(_widths.add),
           ],
         ),
@@ -3955,18 +3975,20 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 ),
               ),
             ),
-            if (shown('creator')) b('creator', _w('creator')),
-            if (shown('owner')) b('owner', _w('owner')),
-            if (shown('status')) b('status', _w('status')),
-            if (shown('created')) b('created', _w('created')),
-            if (shown('due')) b('due', _w('due')),
-            for (final c in boardColumns(_board))
+            ..._inOrder({
+            if (shown('creator')) 'creator': b('creator', _w('creator')),
+            if (shown('owner')) 'owner': b('owner', _w('owner')),
+            if (shown('status')) 'status': b('status', _w('status')),
+            if (shown('created')) 'created': b('created', _w('created')),
+            if (shown('due')) 'due': b('due', _w('due')),
+            for (final c in boardColumns(_board)) 'c:${c.id}':
               _resizable(
                 'c:${c.id}',
                 _cell(context, _w('c:${c.id}'), _columnHeader(c, h(c.name))),
               ),
-            if (shown('about')) b('about', _w('about')),
-            if (shown('updates')) b('updates', _w('updates')),
+            if (shown('about')) 'about': b('about', _w('about')),
+            if (shown('updates')) 'updates': b('updates', _w('updates')),
+            }),
             if (_canEdit)
               SizedBox(
                 width: _widths.add,
@@ -4009,7 +4031,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         onSecondaryTapDown: sub
             ? null
             : (d) => _rowRightClick(t, d.globalPosition),
-        child: SizedBox(
+        child: _pickTint(
+          context,
+          '${t['id']}',
+          SizedBox(
           height: 38,
           // The colour strip and the Task cell stay put when the row
           // scrolls sideways (QA 11-16, #26).
@@ -4073,9 +4098,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                   ),
                 ),
               ),
-              if (shown('creator'))
+              ..._inOrder({
+              if (shown('creator')) 'creator':
                 _cell(context, _w('creator'), _creatorCell(context, t)),
-              if (shown('owner'))
+              if (shown('owner')) 'owner':
                 _cell(
                   context,
                   _w('owner'),
@@ -4083,9 +4109,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                       ? _ownerMenu(t, _ownerFaces(t, owners))
                       : _ownerFaces(t, owners),
                 ),
-              if (shown('status'))
+              if (shown('status')) 'status':
                 SizedBox(width: _w('status'), child: _statusCell(context, t)),
-              if (shown('created'))
+              if (shown('created')) 'created':
                 _cell(
                   context,
                   _w('created'),
@@ -4095,7 +4121,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                     maxLines: 1,
                   ),
                 ),
-              if (shown('due'))
+              if (shown('due')) 'due':
                 _cell(
                   context,
                   _w('due'),
@@ -4113,7 +4139,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                     ),
                   ),
                 ),
-              for (final c in boardColumns(_board))
+              for (final c in boardColumns(_board)) 'c:${c.id}':
                 c.type == 'status'
                     ? _rangeCell(
                         t,
@@ -4186,7 +4212,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                           ),
                         ),
                       ),
-              if (shown('about'))
+              if (shown('about')) 'about':
                 _cell(
                   context,
                   _w('about'),
@@ -4211,7 +4237,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                     ),
                   ),
                 ),
-              if (shown('updates'))
+              if (shown('updates')) 'updates':
                 _cell(
                   context,
                   _w('updates'),
@@ -4233,13 +4259,113 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                           ],
                         ),
                 ),
+              }),
               // Under the headings' +, so every column lines up.
               if (_canEdit) SizedBox(width: _widths.add),
             ],
           ),
         ),
+        ),
       ),
     );
+  }
+
+  /// A picked task wears a tint across the whole row, the pinned Task cell
+  /// included (Jose 11-17); see-through, so status colours still show.
+  Widget _pickTint(BuildContext context, String id, Widget child) =>
+      !_picked.contains(id)
+      ? child
+      : Stack(
+          children: [
+            child,
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ColoredBox(
+                  key: ValueKey('task-picked-$id'),
+                  color: Theme.of(context).colorScheme.primary.withValues(
+                    alpha: 0.14,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+
+  /// [cells] in the board's saved column order (Jose 11-17: "reorder
+  /// columns... ideally by dragging them"); the map's order is the default.
+  List<Widget> _inOrder(Map<String, Widget> cells) => [
+    for (final k in _ordered(cells.keys.toList())) cells[k]!,
+  ];
+
+  List<String> _ordered(List<String> defaults) {
+    final saved = [
+      for (final k in (_board?['column_order'] as List? ?? const [])) '$k',
+    ];
+    final out = [for (final k in saved) if (defaults.contains(k)) k];
+    for (var i = 0; i < defaults.length; i++) {
+      if (out.contains(defaults[i])) continue;
+      // ponytail: a column the saved order never named sits after its default
+      // neighbour; O(n²) over a dozen columns.
+      out.insert(i == 0 ? 0 : out.indexOf(defaults[i - 1]) + 1, defaults[i]);
+    }
+    return out;
+  }
+
+  /// Every column the table draws, in order, keyed as the order saves them.
+  List<String> get _columnKeys {
+    bool shown(String key) => _builtinShown(_board, key);
+    return _ordered([
+      for (final k in const ['creator', 'owner', 'status', 'created', 'due'])
+        if (shown(k)) k,
+      for (final c in boardColumns(_board)) 'c:${c.id}',
+      for (final k in const ['about', 'updates'])
+        if (shown(k)) k,
+    ]);
+  }
+
+  /// Moves [key] to just before [before] (null: last), for everyone.
+  Future<void> _placeColumn(String key, String? before) async {
+    final keys = _columnKeys..remove(key);
+    final at = before == null ? -1 : keys.indexOf(before);
+    at < 0 ? keys.add(key) : keys.insert(at, key);
+    final was = _board!['column_order'];
+    setState(() => _board = {..._board!, 'column_order': keys});
+    final r = await widget.api.patch('/task-boards/${_board!['id']}', {
+      'column_order': keys,
+    });
+    if (!mounted || r.ok) return;
+    setState(() => _board = {..._board!, 'column_order': was});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.reason)));
+  }
+
+  /// One place left (-1) or right (+1).
+  Future<void> _moveColumn(String key, int by) async {
+    final keys = _columnKeys;
+    final at = keys.indexOf(key);
+    final to = at + by;
+    if (at < 0 || to < 0 || to >= keys.length) return;
+    await _placeColumn(key, by < 0 ? keys[to] : (to + 1 < keys.length ? keys[to + 1] : null));
+  }
+
+  List<Widget> _moveItems(String key) {
+    final keys = _columnKeys;
+    final at = keys.indexOf(key);
+    return [
+      MenuItemButton(
+        key: ValueKey('column-move-left-$key'),
+        leadingIcon: const Icon(Icons.chevron_left, size: 18),
+        onPressed: at > 0 ? () => _moveColumn(key, -1) : null,
+        child: const Text('Move left'),
+      ),
+      MenuItemButton(
+        key: ValueKey('column-move-right-$key'),
+        leadingIcon: const Icon(Icons.chevron_right, size: 18),
+        onPressed: at >= 0 && at < keys.length - 1
+            ? () => _moveColumn(key, 1)
+            : null,
+        child: const Text('Move right'),
+      ),
+    ];
   }
 
   /// Due, edited where it is like any date column.
@@ -4905,7 +5031,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     );
   }
 
-  Widget _card(BuildContext context, _Json t, {bool sub = false}) {
+  /// A picked task's card wears the row's tint too.
+  Widget _card(BuildContext context, _Json t, {bool sub = false}) =>
+      _pickTint(context, '${t['id']}', _cardBody(context, t, sub: sub));
+
+  Widget _cardBody(BuildContext context, _Json t, {bool sub = false}) {
     final theme = Theme.of(context);
     final colours = _statusColours(context, _statusFor(_board, _statusOf(t)));
     final late = _late(t, _board);
