@@ -1091,6 +1091,7 @@ Route::prefix('v1')
         Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
         Route::get('tasks/{task}/activity', [TasksController::class, 'activity']);
         Route::get('tasks/{task}/links', [TasksController::class, 'links']);
+        Route::get('tasks/{task}/same-caller', [TasksController::class, 'sameCaller']);
         Route::post('tasks/{task}/links', [TasksController::class, 'storeLink']);
         Route::delete('tasks/{task}/links/{linked}', [TasksController::class, 'destroyLink']);
 
