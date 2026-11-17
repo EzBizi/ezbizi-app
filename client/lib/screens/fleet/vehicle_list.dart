@@ -355,6 +355,7 @@ class VehicleList extends StatelessWidget {
             // (VehiclesController::missing), as HR's list counts a record.
             MissingCount(
               missing,
+              suffix: ' missing',
               tooltip:
                   '$missing ${missing == 1 ? 'field' : 'fields'} '
                   'not filled in',
