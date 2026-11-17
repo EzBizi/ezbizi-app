@@ -592,6 +592,7 @@
         "monitoring.map.view",
         "monitoring.screenshots.view",
         "monitoring.specs.view",
+        "monitoring.unmonitored",
         "monitoring.view",
         "newsletter.composer.view",
         "newsletter.create",

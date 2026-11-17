@@ -74,6 +74,15 @@ class PermissionCatalogue
      * @param  string[]  $keys
      * @return string[] sorted, unique
      */
+    /** Whether [key] is done to its holder rather than by them (ModuleDefinition::$passiveActions). */
+    public function isPassive(string $key): bool
+    {
+        $module = $this->registry->get($this->moduleOf($key));
+
+        return $module !== null
+            && in_array(substr($key, strlen($module->key) + 1), $module->passiveActions, true);
+    }
+
     public function withImpliedView(array $keys): array
     {
         $declared = $this->keys();
@@ -85,6 +94,12 @@ class PermissionCatalogue
             }
 
             $result[] = $key;
+
+            // A passive grant (done TO the holder) opens nothing.
+            if ($this->isPassive($key)) {
+                continue;
+            }
+
             // Guaranteed to exist: ModuleDefinition refuses a module without one.
             $result[] = $this->moduleOf($key).'.view';
         }
@@ -309,6 +324,8 @@ class PermissionCatalogue
                     // The tab this one sits inside, by its label, so the
                     // editor nests it the way the app draws it.
                     'within'    => $this->withinLabel($module, $action),
+                    // Done TO the holder: ticking it must not tick the module.
+                    'passive'   => in_array($action, $module->passiveActions, true),
                 ], $module->actions),
             ];
         }
