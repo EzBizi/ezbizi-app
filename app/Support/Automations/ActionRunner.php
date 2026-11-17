@@ -1715,8 +1715,11 @@ class ActionRunner
         $to = $this->contactFromStored($field, $event, 'phone', $subject);
 
         if (! is_string($to) || trim($to) === '') {
+            // A customer with no number is nothing to fix: skipped, not failed (sweep 11-17).
+            $skip = $field === self::RECIPIENT_CUSTOMER;
+
             return [
-                'type' => $type, 'ok' => false,
+                'type' => $type, 'ok' => $skip, 'skipped' => $skip,
                 'detail' => $field === self::RECIPIENT_CUSTOMER
                     ? $this->noCustomerContact('phone number')
                     : (str_starts_with($field, self::RECIPIENT_USER)
@@ -1837,8 +1840,10 @@ class ActionRunner
         $to = $this->emailRecipient($field, $event, $record);
 
         if (! is_string($to) || filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
+            $skip = ($to === null || $to === '') && $field === self::RECIPIENT_CUSTOMER;
+
             return [
-                'type' => $type, 'ok' => false,
+                'type' => $type, 'ok' => $skip, 'skipped' => $skip,
                 // Names the field, because "no address" and "that field held
                 // something that is not an address" send somebody to two
                 // different places - the rule, or the record.
@@ -2196,9 +2201,12 @@ class ActionRunner
         $body = trim($this->interpolate((string) ($action['body'] ?? ''), $event, $subject));
 
         if ($to === '' || $body === '') {
+            $skip = $to === '' && ($action['to'] ?? '') === self::RECIPIENT_CUSTOMER;
+
             return [
                 'type' => $type,
-                'ok' => false,
+                'ok' => $skip,
+                'skipped' => $skip,
                 'detail' => $to === ''
                     ? ($action['to'] ?? '') === self::RECIPIENT_CUSTOMER
                         ? $this->noCustomerContact('phone number')
