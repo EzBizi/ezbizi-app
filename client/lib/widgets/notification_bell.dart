@@ -433,6 +433,7 @@ class _NotificationBellState extends State<NotificationBell>
               id: recordId,
               mailbox: record?['mailbox'] as String?,
               date: record?['date'] as String?,
+              update: record?['update'] as String?,
             ),
     );
   }

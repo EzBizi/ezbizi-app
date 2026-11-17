@@ -498,6 +498,41 @@ void main() {
     expect(find.text('New email'), findsOneWidget);
   });
 
+  testWidgets('a task mention opens its board at the task and the update', (
+    tester,
+  ) async {
+    // Jose, 2026-11-17: "clicking on the notification should lead you to the
+    // board". The Task Board takes 'tasks', finds the board, opens the task.
+    addTearDown(() => DeepLinks.pending.value = null);
+    final opened = <String>[];
+    await _pumpWithItem(
+      tester,
+      item: {
+        'id': 'n-task',
+        'source': 'system',
+        'title': 'Ana mentioned you',
+        'body': null,
+        'subject': {'type': 'TaskUpdate', 'id': 'upd-1'},
+        'meta': {
+          'module': 'tasks',
+          'filter': null,
+          'record': {'type': 'task', 'id': 'task-1', 'update': 'upd-1'},
+        },
+        'read_at': null,
+        'created_at': '2026-11-17T12:00:00+00:00',
+      },
+      onOpenModule: (m, f, r) => opened.add(m),
+    );
+
+    OsNotifications.onClick?.call('n-task'); // a push or toast tap
+    await tester.pumpAndSettle();
+
+    expect(opened, ['tasks']);
+    final link = DeepLinks.take('tasks');
+    expect(link?.id, 'task-1');
+    expect(link?.update, 'upd-1');
+  });
+
   testWidgets('a link for another module waits for that module', (
     tester,
   ) async {
