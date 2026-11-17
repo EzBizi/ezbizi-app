@@ -395,6 +395,13 @@ final class MondayImport
         if ($parent !== null || $task->parent_task_id !== null) {
             unset($input['group']); // a subtask stays in its parent's group
         }
+        // A task a rule made carries the rule's people. Monday's own "assign
+        // creator" puts our API user (the connection's person) on the copy, and
+        // every later status sync brought that back over them (2026-11-17: Ana
+        // and Tiara replaced by Jose on 22 missed-call tasks).
+        if ($task->created_by_automation_id !== null && ($input['assignee_user_ids'] ?? null) === [$as->getKey()]) {
+            unset($input['assignee_user_ids']);
+        }
         $this->writer->update($task->load('board'), $input, $as);
         $this->taken($task->refresh(), $item);
         $this->counts['refreshed from monday']++;
