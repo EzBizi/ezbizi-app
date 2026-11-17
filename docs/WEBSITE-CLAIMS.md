@@ -3696,3 +3696,38 @@ Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbi
 LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
 Desk not asked: production has not moved since the 11-14 audit, so there is no diff to ask about. The 11-13 answers
 stand as recorded (scheduling row inverted, unwritten). No sentence moves.
+
+## 2026-11-16: 0.0.0576-0.0.0578 live, and `/privacy/` said EzBizi does not read YouTube comments
+
+Production web is 0.0.0578 (`/var/www/ezbizi-current` -> release `20261116235815-acbaeee3b`, 23:58 UTC);
+`/download/windows.json` still 0.0.0577 at `49ec335c1` (natives behind web at the time of the check).
+
+- **Edited WP page 8** (pre-edit copy `~/ezb-wp-bak-20261116/page8.html` on the websites box). `37bba8889` (in 0577)
+  added a Social Comments inbox: `GET social/comments` reads Facebook Page post comments, Instagram comments, YouTube
+  `commentThreads` and X `/mentions` live from each network, and offers reply/hide/delete, audited as
+  `social.comment_*` with the comment id only (nothing stored). And `YouTubeOAuth::SCOPES` has requested
+  `youtube.force-ssl` since `bac28e72d` (11-02, delete a video) — **the YouTube paragraph's "two permissions" was
+  false for two weeks and this check missed it**. The page said "two permissions", readonly "used once, when you
+  connect", and "We do not read your videos, comments, subscribers or analytics". Now: three permissions, force-ssl
+  for deleting a chosen video and reading/replying/hiding/deleting comments, "Comments are read each time the inbox
+  is opened and are not stored by EzBizi. We do not read your subscribers or analytics." The Connected social
+  accounts intro now names the Comments inbox (comments, replies, mentions; reply/hide/delete on request; activity
+  log records who and the comment's id). Live on bare and www after `wp-cache-purge`; forbidden-terms ok - 4.
+  **Triggers:** EzBizi storing comments, sending comment text to xAI (an AI reply draft), or any YouTube
+  subscriber/analytics read breaks these sentences. **Rule for next runs:** grep every `*OAuth.php` `SCOPES` against
+  the scopes `/privacy/` names; a scope count is a published claim.
+- Telematics (`482b9eb4b`, 0578): tables and dash cam events list, **no vendor wired** ("until Jose picks one"). The
+  day a vendor (Samsara, Motive, Smartcar...) is wired, re-read the location section: van positions are stored three
+  months and come from the customer's own vendor account.
+- 0578 also: Leads Recovery inbox, automatic-text quiet hours (9 PM-8 AM) and two a day, job source from the dialed
+  line (Workiz `setSource`, deliberately unpublished), WhatsApp payment-method health (tenant's own Meta billing),
+  desktop sign-in fix. No page names them; no new recipient.
+- www `/ezbizi-api.json` differed from the app's `/api/v1/openapi.json` at 00:08 UTC 11-17: the hourly copy (23:17)
+  predates the 0578 deploy (23:58); 6 new app paths (`/leads/recovery*`, `/leads/{lead}/booking/*`,
+  `/monitoring/dashcam-events*`). Self-heals on the next hourly run; not an open item unless it persists.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present; all 10 live pages contain their WP post_content (method of 11-15). Stores:
+Play `200`; Apple `resultCount` 1, 0.0.0559.
+Desk not asked: `SendMessage` cannot reach another session from an unattended run. Do-not rows measured from code
+only: no 7th publisher (the inbox reads/replies, it does not publish); Training, ring groups, LSA unchanged.
