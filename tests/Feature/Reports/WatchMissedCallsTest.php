@@ -96,6 +96,24 @@ class WatchMissedCallsTest extends TestCase
         $this->assertSame($tenant['company']->name, $payload['company']);
     }
 
+    /** 2026-11-17: Area on the missed-call task comes from the line's branch. */
+    public function test_a_line_names_its_branch_by_number_then_by_market(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $s = app(\App\Support\Settings\SettingsResolver::class);
+            $s->set('leads.line_markets', $tenant['org'], ['CLE' => 'Ohio']);
+            $s->set('leads.line_numbers', $tenant['org'], ['+12165550000' => 'franchise:'.$tenant['franchise']->id]);
+            $w = \App\Console\Commands\WatchMissedCalls::class;
+            $this->assertSame($tenant['franchise']->name, $w::branchOf('+12165550000', 'CLE - PPC'), 'the number\'s place wins');
+            $this->assertSame('Ohio', $w::branchOf('+12165559999', 'CLE - PPC'));
+            $this->assertNull($w::branchOf('+12165559999', 'Speedy'));
+            $this->assertNull($w::callersBranch('+13055550111'), 'nobody on record');
+            \App\Models\Customer::factory()->create(['phone' => '(305) 555-0111', 'owning_franchise_id' => $tenant['franchise']->id]);
+            $this->assertSame($tenant['franchise']->name, $w::callersBranch('+13055550111'), 'the customer\'s branch');
+        });
+    }
+
     public function test_a_call_just_before_midnight_is_read_after_it(): void
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 00:01', 'America/New_York'));

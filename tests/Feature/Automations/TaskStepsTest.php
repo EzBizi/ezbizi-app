@@ -184,6 +184,28 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Jose, 2026-11-17: Area blank on every missed-call task. A label picks the option; an unknown one is left blank and said. */
+    public function test_an_option_column_takes_a_label_and_leaves_an_unknown_one_blank(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $col = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Area', 'type' => 'status', 'position' => 1,
+                'settings' => ['options' => [['id' => 'o1', 'label' => 'Ohio', 'colour' => '#000000'], ['id' => 'o2', 'label' => 'Texas', 'colour' => '#000000']]]]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $run = fn (string $branch) => app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Missed '.$branch, 'assignee' => 'user:'.$t['admin']->id,
+                'values' => ['Area' => '{{branch}}']], new AutomationEvent(['event_key' => 'reports.call.missed', 'payload' => ['branch' => $branch],
+                    'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]), null, automation: $rule);
+
+            $this->assertTrue($run('ohio')['ok']);
+            $this->assertSame('o1', Task::query()->where('title', 'Missed ohio')->sole()->values()->where('column_id', $col->id)->value('value_text'));
+            $blank = $run('Massachusetts');
+            $this->assertTrue($blank['ok'], $blank['detail']);
+            $this->assertStringContainsString('Area "Massachusetts"', $blank['detail']);
+            $this->assertFalse(Task::query()->where('title', 'Missed Massachusetts')->sole()->values()->where('column_id', $col->id)->exists());
+        });
+    }
+
     public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
     {
         $t = $this->provisionTenant('Alpha');

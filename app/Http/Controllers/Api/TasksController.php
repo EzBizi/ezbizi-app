@@ -321,6 +321,22 @@ class TasksController extends Controller
             ->map(fn (Task $t) => self::presentLink($t))->values()->all()]);
     }
 
+    /**
+     * GET task-search?q=: tasks on every board this person can see, by
+     * title, for the one-box Link picker (Jose 11-17).
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']])['q']);
+        $boards = app(\App\Support\Tasks\TaskBoards::class)->visibleTo($request->user())->pluck('id');
+
+        return response()->json(['data' => Task::query()->whereIn('board_id', $boards)
+            ->whereNull('parent_task_id')->where('sensitive', false)
+            ->where('title', 'like', '%'.addcslashes($q, '%_\\').'%')
+            ->with('board:id,name')->latest('updated_at')->limit(20)->get()
+            ->map(fn (Task $t) => self::presentLink($t))->all()]);
+    }
+
     /** POST tasks/{task}/links {linked_task_id}: both must be visible to the person. */
     public function storeLink(Request $request, Task $task): JsonResponse
     {
@@ -436,6 +452,9 @@ class TasksController extends Controller
             'completed_at' => $task->completed_at?->toIso8601String(),
             'about' => $about ? ['type' => $task->about_type, 'id' => $task->about_id, 'label' => self::aboutLabel($about)] : null,
             'updates_count' => (int) ($task->updates_count ?? 0),
+            // The Linked cell (Jose 11-17). ponytail: a query per task; batch per board if it shows.
+            'links' => TaskLinks::of($task)->filter(fn (Task $t) => request()->user()?->can('view', $t))
+                ->map(fn (Task $t) => self::presentLink($t))->values()->all(),
             'created_by' => match (true) {
                 $task->created_by_automation_id !== null => [
                     'type' => 'automation',

@@ -84,7 +84,7 @@ class McpController
             'instructions' => 'EzBizi is a field-service CRM (leads, customers, jobs, scheduling, '
                 .'inventory, fleet, HR, phone, marketing, automations, reports). You act as the person '
                 .'who owns the API key, with exactly their permissions. Find an endpoint with '
-                .'list_endpoints, then call it with call_api. Start with GET me to see who you are, '
+                .'list_endpoints, then call it with call_api. Start with GET me to see who you are, the exact permissions you hold, '
                 .'which companies you can reach, and which modules are switched on.',
         ];
     }
@@ -182,6 +182,14 @@ class McpController
 
         $status = $response->getStatusCode();
         $result = ['status' => $status] + $this->shape((string) $response->getContent(), $args);
+
+        // A refusal for want of a permission is the ROLE's answer, not the key's
+        // (Rodrigo, 2026-11-17: a write key looked broken where his role lacked
+        // Ads view). Say where the ceiling is and how it moves.
+        if ($status === 403 && ! str_starts_with((string) ($result['body']['code'] ?? ''), 'api_key_')) {
+            $result['hint'] = "Refused by the role, not the key: a key can never do more than its owner's role. "
+                .'GET me lists `permissions` held; an administrator grants more in Roles & permissions.';
+        }
 
         return $this->text($this->json($result), isError: $status >= 400);
     }

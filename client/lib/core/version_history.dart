@@ -13,6 +13,15 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0586', date: '17 Nov 2026', items: [
+      'Task Board: a task an automation assigned keeps its people when Monday puts the connection user on it',
+      'Missed-call tasks get their Area from the line called, or from the caller lead or customer branch',
+      'Project Management: parts selector (In stock, Order from a supplier, Same-day pickup) with quantity, price, destination and Received; a part ordered 3+ days ago and not received turns red',
+      'Project Management: Settings › Suppliers list, and drag columns on every Project Management table',
+      'Project Management: a Work Order column with a PDF per job, including parts and pickup, photos, inspection reports, payment and the collect-payment rule',
+      'Jobs: marking a job done while money is still owed reminds the technician to confirm payment with the project manager before leaving',
+      'HR › Onboarding: hourly rate stages (for example after 90 days, \$28/hr) print on the contract, become dated pay rates, and the record shows the current and next rate',
+    ]),
     VersionRelease(version: '0.0.0585', date: '17 Nov 2026', items: [
       'Leads: calls to EverDoors RingCentral numbers are filed under Everdoors, not A-1 Chimney',
       'Leads › Manage › Phone lines: choose which company and branch each RingCentral number calls go to',

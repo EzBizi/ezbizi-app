@@ -3991,6 +3991,25 @@ class ActionRunner
                     }
                 }
             }
+            // A label for a column with options ("Ohio" for Area) is that option;
+            // a label the column lacks is left blank and said, never guessed (2026-11-17).
+            $unmatched = [];
+            foreach ($board->columns()->get() as $c) {
+                $options = $c->type === 'tags' ? [] : (array) $c->options();
+                foreach ($values as $name => $v) {
+                    if ($options === [] || mb_strtolower(trim((string) $name)) !== mb_strtolower(trim($c->name))
+                        || in_array($v, array_column($options, 'id'), true)) {
+                        continue;
+                    }
+                    $hit = collect($options)->first(fn ($o) => mb_strtolower(trim((string) ($o['label'] ?? ''))) === mb_strtolower(trim((string) $v)));
+                    if ($hit !== null) {
+                        $values[$name] = $hit['id'];
+                    } else {
+                        unset($values[$name]);
+                        $unmatched[] = "{$c->name} \"{$v}\"";
+                    }
+                }
+            }
             app(TaskWriter::class)->create($board, [
                 'title' => mb_substr($title, 0, 255),
                 'assignee_user_ids' => $owners->map->getKey()->all(),
@@ -4000,7 +4019,7 @@ class ActionRunner
                 'about_id' => $about === false ? null : $subject->getKey(),
             ], $actor, $automation?->getKey());
 
-            return 'Added the task "'.$title.'".';
+            return 'Added the task "'.$title.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');
         });
     }
 

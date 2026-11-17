@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -192,10 +194,9 @@ class TaskLinkPanel extends StatefulWidget {
 
 class _TaskLinkPanelState extends State<TaskLinkPanel> {
   List<_Json> _links = const [];
-  List<_Json> _boards = const [];
-  List<_Json> _tasks = const [];
-  String? _board;
-  String? _pick;
+  List<_Json> _found = const [];
+  final _query = TextEditingController();
+  Timer? _wait;
   String? _error;
 
   String get _id => widget.task['id'] as String;
@@ -204,11 +205,13 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
   void initState() {
     super.initState();
     _refresh();
-    widget.api.get('/task-boards').then((res) {
-      if (mounted && res.ok) {
-        setState(() => _boards = (res.body['data'] as List).cast<_Json>());
-      }
-    });
+  }
+
+  @override
+  void dispose() {
+    _wait?.cancel();
+    _query.dispose();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -219,31 +222,34 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
     }
   }
 
-  Future<void> _pickBoard(String? id) async {
-    setState(() {
-      _board = id;
-      _pick = null;
-      _tasks = const [];
+  /// One box across every board (Jose 11-17): type, see each task's board.
+  void _search(String q) {
+    _wait?.cancel();
+    if (q.trim().length < 2) return setState(() => _found = const []);
+    _wait = Timer(const Duration(milliseconds: 250), () async {
+      final res = await widget.api.get(
+        '/task-search?q=${Uri.encodeQueryComponent(q.trim())}',
+      );
+      if (!mounted || _query.text != q || !res.ok) return;
+      final linked = {for (final l in _links) l['id']};
+      setState(
+        () => _found = (res.body['data'] as List)
+            .cast<_Json>()
+            .where((t) => t['id'] != _id && !linked.contains(t['id']))
+            .toList(),
+      );
     });
-    if (id == null) return;
-    final res = await widget.api.get('/task-boards/$id');
-    if (!mounted || _board != id || !res.ok) return;
-    setState(
-      () => _tasks = ((res.body['data'] as Map)['tasks'] as List? ?? const [])
-          .cast<_Json>()
-          .where((t) => t['id'] != _id && t['parent_task_id'] == null)
-          .toList(),
-    );
   }
 
-  Future<void> _link() async {
+  Future<void> _link(String other) async {
     final res = await widget.api.post('/tasks/$_id/links', {
-      'linked_task_id': _pick,
+      'linked_task_id': other,
     });
     if (!mounted) return;
     if (!res.ok) return setState(() => _error = res.reason);
+    _query.clear();
     setState(() {
-      _pick = null;
+      _found = const [];
       _error = null;
     });
     await _refresh();
@@ -262,24 +268,16 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
     return SidePanel(
       title: 'Linked tasks',
       subtitle: taskTitle(widget.task),
-      actions: [
-        FilledButton(
-          key: const Key('task-link-go'),
-          onPressed: _pick == null ? null : _link,
-          child: const Text('Link'),
-        ),
-      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            _links.isEmpty
-                ? 'Not linked to any task. Done or reopened on one carries to the others.'
-                : 'Done or reopened on one carries to the others.',
+            'Linked tasks show each other, and marking one Done marks them all Done.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
+          const SizedBox(height: 8),
           for (final l in _links)
             Row(
               key: ValueKey('task-link-${l['id']}'),
@@ -293,28 +291,27 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
                 ),
               ],
             ),
-          const SizedBox(height: 16),
-          SearchPickerField<String>(
-            key: const Key('task-link-board'),
-            label: 'Board',
-            value: _board,
-            options: [
-              for (final b in _boards)
-                SearchOption(value: b['id'] as String, label: '${b['name']}'),
-            ],
-            onChanged: _pickBoard,
-          ),
           const SizedBox(height: 12),
-          SearchPickerField<String>(
-            key: const Key('task-link-task'),
-            label: 'Task',
-            value: _pick,
-            options: [
-              for (final t in _tasks)
-                SearchOption(value: t['id'] as String, label: taskTitle(t)),
-            ],
-            onChanged: _tasks.isEmpty ? null : (v) => setState(() => _pick = v),
+          TextField(
+            key: const Key('task-link-search'),
+            controller: _query,
+            onChanged: _search,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Find a task to link',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
           ),
+          for (final t in _found)
+            ListTile(
+              key: ValueKey('task-link-pick-${t['id']}'),
+              dense: true,
+              leading: const Icon(Icons.add_link, size: 18),
+              title: Text(taskTitle(t)),
+              subtitle: Text('${t['board_name'] ?? ''}'),
+              onTap: () => _link(t['id'] as String),
+            ),
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
