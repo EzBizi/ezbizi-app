@@ -50,16 +50,16 @@ class AutomaticRepliesDoNotCountAsAnsweredTest extends TestCase
         ]));
     }
 
-    private function say(Lead $lead, string $from, string $text, bool $automatic = false): void
+    private function say(Lead $lead, string $from, string $text, bool $automatic = false, string $channel = 'LIVECHAT'): void
     {
         static $n = 0;
         $n++;
 
-        $this->inTenant($lead->organization, function () use ($lead, $from, $text, $automatic, $n) {
+        $this->inTenant($lead->organization, function () use ($lead, $from, $text, $automatic, $n, $channel) {
             $thread = app(LeadThread::class);
 
             $thread->store($lead, 'row-'.$n, [
-                'channel' => 'LIVECHAT',
+                'channel' => $channel,
                 'participant' => $from,
                 'occurred_at' => now()->subMinutes(5)->addSeconds($n),
                 'text' => $text,
@@ -174,5 +174,26 @@ class AutomaticRepliesDoNotCountAsAnsweredTest extends TestCase
             $fresh->last_contact_from,
             'and the answered-or-not column still says the enquirer spoke last',
         );
+    }
+
+    /**
+     * A call is not a message waiting on an answer (Jose, 2026-11-17: an
+     * answered call, then our automatic "Not booked" text, read "Awaiting
+     * reply"). Our text after the call is the last word until they write.
+     */
+    public function test_our_automatic_text_after_a_call_answers_it(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $lead = $this->lead($t);
+
+        $this->say($lead, LeadConversation::FROM_CONSUMER, '', channel: 'PHONE_CALL');
+        $this->assertContains('Dana Whitfield', $this->unreplied($t));
+
+        $this->say($lead, LeadConversation::FROM_ADVERTISER, 'Book your visit here.', automatic: true, channel: 'SMS');
+        $this->assertNotContains('Dana Whitfield', $this->unreplied($t));
+
+        // And when they text back, they are owed a reply again.
+        $this->say($lead, LeadConversation::FROM_CONSUMER, 'What does it cost?', channel: 'SMS');
+        $this->assertContains('Dana Whitfield', $this->unreplied($t));
     }
 }
