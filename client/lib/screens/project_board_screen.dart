@@ -2880,6 +2880,7 @@ class _NotesPanelState extends State<_NotesPanel> {
             addRefusal: widget.addRefusal,
             workizNotes: _workiz,
             onAdded: (note) => setState(() => _notes = [note, ..._notes!]),
+            onChanged: (notes) => setState(() => _notes = notes),
           ),
   );
 }
