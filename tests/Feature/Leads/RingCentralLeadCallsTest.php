@@ -620,4 +620,53 @@ class RingCentralLeadCallsTest extends TestCase
             $this->assertSame($t['company']->id, $companyFor($conn(\App\Models\SocialConnection::SCOPE_COMPANY, $t['company']->id)));
         });
     }
+
+    /**
+     * Jose, 2026-11-17: the number the call came in on decides whose it is,
+     * before any line name. An unassigned number falls back and is logged.
+     */
+    public function test_an_assigned_number_decides_the_company_and_branch_before_the_name(): void
+    {
+        $t = $this->setUpTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $ed = Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']);
+            $edCt = Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $ed->id, 'name' => 'Connecticut']);
+            // The name says NJ - an A-1 market - and AngiSweep; the numbers say otherwise.
+            app(\App\Support\Settings\SettingsResolver::class)->set('leads.line_numbers', $t['org'], [
+                '+17320000201' => 'franchise:'.$edCt->id,
+                '+17320000202' => 'company:'.$ed->id,
+            ]);
+            $lines = ['+17320000201' => 'NJ - GMB', '+17320000202' => 'AngiSweep', '+17320000203' => 'NJ - GMB'];
+            \Illuminate\Support\Facades\Log::spy();
+
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('n1', '+15550000201', '2026-10-14T14:00:00Z', '+17320000201'),
+                self::rc('n2', '+15550000202', '2026-10-14T14:05:00Z', '+17320000202'),
+                self::rc('n3', '+15550000203', '2026-10-14T14:10:00Z', '+17320000203'),
+            ], $lines, $t['company']->id);
+
+            $by = Lead::query()->where('source', Lead::SOURCE_RINGCENTRAL)->get()->keyBy('remote_id');
+            $this->assertSame([$ed->id, $edCt->id], [$by['rc_n1']->company_id, $by['rc_n1']->franchise_id], 'a number given a branch');
+            $this->assertSame([$ed->id, null], [$by['rc_n2']->company_id, $by['rc_n2']->franchise_id], 'a number given a company');
+            $this->assertSame([$t['company']->id, $t['franchise']->id], [$by['rc_n3']->company_id, $by['rc_n3']->franchise_id], 'unassigned: by its name');
+            \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->withArgs(fn ($m) => str_contains($m, '+17320000203'))->once();
+        });
+    }
+
+    public function test_phone_lines_saves_and_clears_a_numbers_place(): void
+    {
+        $t = $this->setUpTenant();
+        $ed = $this->inTenant($t['org'], fn () => Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']));
+        $as = $this->signedInAs($t['admin']->fresh());
+
+        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17813855201', 'place' => 'company:'.$ed->id])->assertOk();
+        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17813855202', 'place' => 'company:01a0a0b8-5383-7315-9884-1524f0f2b81c'])
+            ->assertUnprocessable();
+        $read = fn () => $this->inTenant($t['org'], fn () => (array) app(\App\Support\Settings\SettingsResolver::class)->get('leads.line_numbers', $t['org']));
+        $this->assertSame(['+17813855201' => 'company:'.$ed->id], $read());
+
+        $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17813855201', 'place' => null])->assertOk();
+        $this->assertSame([], $read());
+    }
 }

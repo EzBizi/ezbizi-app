@@ -1261,6 +1261,9 @@ Route::prefix('v1')
             // No whereIn on {scope}: the controller's match() refuses any other scope, and a
             // route constraint hides the call from ClientCallsRealRoutesTest (failed the 0.0.0478 precheck).
             Route::put('leads/office-hours/{scope}/{id}', [LeadOfficeHoursController::class, 'update']);
+            // Leads › Manage › Phone lines (Jose, 2026-11-17): whose calls each RingCentral number takes.
+            Route::get('leads/phone-lines', [\App\Http\Controllers\Api\LeadPhoneLinesController::class, 'index']);
+            Route::put('leads/phone-lines', [\App\Http\Controllers\Api\LeadPhoneLinesController::class, 'update']);
         });
         // Leads › Manage › Recovery (Jose, 2026-11-16). Edits go through PATCH automations/{id}.
         Route::middleware('permission:automations.view')->group(function () {
