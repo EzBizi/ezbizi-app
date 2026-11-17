@@ -117,6 +117,11 @@ class LeadsRingCentralCalls extends Command
         if ($connection?->scope_type === SocialConnection::SCOPE_COMPANY) {
             return (string) $connection->scope_id;
         }
+        // A branch's account is its company's (Jose, 2026-11-17: EverDoors' own
+        // RingCentral, scoped to Everdoors Connecticut, was filed as A-1's).
+        if ($connection?->scope_type === SocialConnection::SCOPE_FRANCHISE) {
+            return \App\Models\Franchise::query()->whereKey($connection->scope_id)->value('company_id');
+        }
         $chosen = (string) (app(\App\Support\Settings\SettingsResolver::class)->get('leads.calls_company', $organization) ?? '');
         if ($chosen !== '' && Company::query()->whereKey($chosen)->exists()) {
             return $chosen;

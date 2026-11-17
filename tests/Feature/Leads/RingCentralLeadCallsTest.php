@@ -598,4 +598,26 @@ class RingCentralLeadCallsTest extends TestCase
             $this->assertSame([$t['company']->id, $t['franchise']->id], [$by['NJ - GMB']->company_id, $by['NJ - GMB']->franchise_id], 'a market line is unchanged');
         });
     }
+
+    /**
+     * Jose, 2026-11-17: whose call it is comes from the RingCentral account it
+     * was read through. EverDoors' own account is scoped to its Connecticut
+     * branch, and only a company scope was read, so its calls fell to A-1.
+     */
+    public function test_a_branch_scoped_ringcentral_account_files_under_that_branchs_company(): void
+    {
+        $t = $this->setUpTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $ed = Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']);
+            $edCt = Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $ed->id, 'name' => 'Connecticut']);
+            app(\App\Support\Settings\SettingsResolver::class)->set('leads.calls_company', $t['org'], $t['company']->id);
+            $conn = fn (string $type, string $id) => \App\Models\SocialConnection::create(['organization_id' => $t['org']->id,
+                'scope_type' => $type, 'scope_id' => $id, 'provider' => 'ringcentral', 'remote_id' => (string) random_int(1000000, 9999999), 'display_name' => 'RingCentral']);
+            $companyFor = fn ($c) => (fn () => self::companyFor($t['org'], $c))->call(new \App\Console\Commands\LeadsRingCentralCalls);
+
+            $this->assertSame($ed->id, $companyFor($conn(\App\Models\SocialConnection::SCOPE_FRANCHISE, $edCt->id)), 'the branch account is Everdoors\'');
+            $this->assertSame($t['company']->id, $companyFor($conn(\App\Models\SocialConnection::SCOPE_COMPANY, $t['company']->id)));
+        });
+    }
 }
