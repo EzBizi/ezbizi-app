@@ -13,6 +13,14 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0588', date: '17 Nov 2026', items: [
+      'Missed-call tasks close themselves when the caller replies to the text or books online',
+      'Complaints: a complaint already on the board gets the AI review as a note instead of a second task',
+      'Task Board: the sections are named Personal Task Board, Team boards and All markets',
+      'Newsletter: upload pictures straight from an image block (click, drop or paste; PNG, JPEG, GIF, WebP up to 2 MB), with Replace, Decorative, link, alignment and width; the pre-send check flags any picture a recipient could not load',
+      'Security: roles and organization-wide automations can only be changed from the organization view',
+      'Security: a charge sheet can only be seen or invoiced by people whose view covers the company it bills from',
+    ]),
     VersionRelease(version: '0.0.0587', date: '17 Nov 2026', items: [
       'Jobs: an address without a house number can no longer be booked',
       'Jobs: every 15 minutes, Workiz jobs with an incomplete address or a Friday start after noon alert whoever booked them and go on the branch task board',

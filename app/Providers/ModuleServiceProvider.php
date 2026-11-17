@@ -2754,6 +2754,13 @@ class ModuleServiceProvider extends ServiceProvider
                         executionType: 'task.create',
                     ),
                     new ActionDefinition(
+                        key: 'task.complete_matching',
+                        label: 'Close the call-back task for this number',
+                        description: 'Marks Done the untouched open tasks a rule made for this phone number, with a note.',
+                        executionType: 'task.complete_matching',
+                        subjectBound: false,
+                    ),
+                    new ActionDefinition(
                         key: 'task.assign',
                         label: 'Give the task to somebody',
                         description: 'Makes a person the owner of the task the rule fired on.',

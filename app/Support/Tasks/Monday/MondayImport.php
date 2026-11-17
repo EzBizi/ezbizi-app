@@ -399,7 +399,7 @@ final class MondayImport
         // creator" puts our API user (the connection's person) on the copy, and
         // every later status sync brought that back over them (2026-11-17: Ana
         // and Tiara replaced by Jose on 22 missed-call tasks).
-        if ($task->created_by_automation_id !== null && ($input['assignee_user_ids'] ?? null) === [$as->getKey()]) {
+        if ($task->created_by_automation_id !== null) { // and a lagging copy put Gino's predecessors back (21:05): Monday's People never override a rule's
             unset($input['assignee_user_ids']);
         }
         $this->writer->update($task->load('board'), $input, $as);

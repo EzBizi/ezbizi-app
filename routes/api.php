@@ -991,7 +991,7 @@ Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key'])
+    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key', 'bulk-read'])
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -1021,9 +1021,11 @@ Route::prefix('v1')
         // is a perfectly good uuid-shaped-nothing to a route that accepts any
         // id, and the failure is a 404 about a customer rather than a route
         // that was never reached.
-        Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
+        Route::get('customers/duplicates', [CustomersController::class, 'duplicates'])->middleware('throttle:60,1,customers-duplicates');
         Route::get('customers/tags', [CustomersController::class, 'tags']);
-        Route::apiResource('customers', CustomersController::class);
+        // Lists throttled per user (2026-11-17): the busiest client asked one list 39
+        // times in a minute over 14 days of nginx logs (p99.9 18). See config/bulk_read.php.
+        Route::apiResource('customers', CustomersController::class)->middlewareFor('index', 'throttle:120,1,customers-list');
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
         // Each branch's Workiz notes on the customer, read live, never copied.
         Route::get('customers/{customer}/workiz-notes', CustomerWorkizNotesController::class);
@@ -1032,9 +1034,9 @@ Route::prefix('v1')
         Route::get('jobs/book/options', [JobBookingController::class, 'options']);
         Route::post('jobs/book', [JobBookingController::class, 'store']);
         Route::post('jobs/{job}/book/workiz', [JobBookingController::class, 'retryWorkiz']);
-        Route::get('jobs/photos', JobPhotosController::class);
+        Route::get('jobs/photos', JobPhotosController::class)->middleware('throttle:120,1,jobs-photos');
         Route::get('jobs/{job}/performers', [JobsController::class, 'performers']);
-        Route::apiResource('jobs', JobsController::class);
+        Route::apiResource('jobs', JobsController::class)->middlewareFor('index', 'throttle:120,1,jobs-list');
         Route::get('project-board/jobs', [ProjectBoardController::class, 'jobs']);
         Route::patch('project-board/jobs/{job}/repair-team', [ProjectBoardController::class, 'repairTeam']);
         Route::get('project-board/repair-teams', [ProjectBoardController::class, 'repairTeamList']);
@@ -1099,13 +1101,14 @@ Route::prefix('v1')
         Route::post('tasks/{task}/copy', [TasksController::class, 'copy']);
         Route::post('tasks/{task}/suggest-label', [TasksController::class, 'suggestLabel']);
         Route::post('tasks/{id}/restore', [TasksController::class, 'restore']);
-        Route::get('task-search', [TasksController::class, 'search']);
+        Route::get('task-search', [TasksController::class, 'search'])->middleware('throttle:120,1,task-search');
         Route::get('tasks/{task}', [TasksController::class, 'show']);
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
         Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
         Route::get('tasks/{task}/activity', [TasksController::class, 'activity']);
         Route::get('tasks/{task}/links', [TasksController::class, 'links']);
+        Route::get('tasks/{task}/same-caller', [TasksController::class, 'sameCaller']);
         Route::post('tasks/{task}/links', [TasksController::class, 'storeLink']);
         Route::delete('tasks/{task}/links/{linked}', [TasksController::class, 'destroyLink']);
 
@@ -1270,7 +1273,7 @@ Route::prefix('v1')
         Route::get('leads/sources', [LeadSourcesController::class, 'index']);
         // Leads › Manage › Hidden (Jose, 2026-10-29): one grant sees, hides and unhides.
         Route::middleware('permission:'.Lead::HIDDEN_PERMISSION)->group(function () {
-            Route::get('leads/hidden', [LeadHiddenController::class, 'index']);
+            Route::get('leads/hidden', [LeadHiddenController::class, 'index'])->middleware('throttle:60,1,leads-hidden');
             Route::post('leads/hidden-numbers', [LeadHiddenController::class, 'hideNumberDirectly']);
             Route::delete('leads/hidden-numbers/{number}', [LeadHiddenController::class, 'unhideNumber']);
             Route::post('leads/{lead}/hide', [LeadHiddenController::class, 'hide']);
@@ -1288,12 +1291,12 @@ Route::prefix('v1')
         });
         // Leads › Manage › Recovery (Jose, 2026-11-16). Edits go through PATCH automations/{id}.
         Route::middleware('permission:automations.view')->group(function () {
-            Route::get('leads/recovery', [LeadsRecoveryController::class, 'index']);
+            Route::get('leads/recovery', [LeadsRecoveryController::class, 'index'])->middleware('throttle:60,1,leads-recovery');
             Route::post('leads/recovery/preview', [LeadsRecoveryController::class, 'preview']);
         });
         Route::get('leads/reply-templates', [LeadReplyTemplatesController::class, 'index']);
         Route::put('leads/reply-templates/{company}', [LeadReplyTemplatesController::class, 'update']);
-        Route::get('leads', [LeadsController::class, 'index']);
+        Route::get('leads', [LeadsController::class, 'index'])->middleware('throttle:120,1,leads-list');
         Route::get('leads/{lead}', [LeadsController::class, 'show']);
         Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
@@ -2570,6 +2573,8 @@ Route::prefix('v1')
             Route::post('newsletter/import/svg', [NewsletterImportController::class, 'svg']);
             Route::post('newsletter/import/artwork', [NewsletterImportController::class, 'artwork']);
             Route::post('newsletter/import/library/{item}', [NewsletterImportController::class, 'library']);
+            // A picture uploaded from the composer's image picker (P0, 2026-11-17).
+            Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
 
             Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
             Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);

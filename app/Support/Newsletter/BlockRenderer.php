@@ -79,10 +79,7 @@ class BlockRenderer
             'text'     => $this->row('<p style="margin:0;font-size:15px;line-height:1.55;'
                             .'color:#3a4650;text-align:'.$this->align($b).';">'
                             .nl2br($this->text($b)).'</p>'),
-            'image'    => $this->row('<img src="'.$this->esc($this->link((string) ($b['src'] ?? ''), ['http', 'https']))
-                            .'" alt="'.$this->esc((string) ($b['alt'] ?? ''))
-                            .'" width="'.(self::WIDTH - 40).'" style="display:block;width:100%;'
-                            .'max-width:100%;height:auto;border:0;">'),
+            'image'    => $this->image($b),
             'button'   => $this->row('<table role="presentation" cellpadding="0" cellspacing="0" '
                             .'align="'.$this->align($b).'"><tr><td style="background:#00708F;'
                             .'border-radius:6px;"><a href="'.$this->esc($this->link((string) ($b['url'] ?? ''), ['http', 'https', 'mailto', 'tel']))
@@ -180,6 +177,35 @@ class BlockRenderer
         $at = strripos($html, '</body>');
 
         return $at === false ? $html.$footer : substr($html, 0, $at).$footer.substr($html, $at);
+    }
+
+    /**
+     * An image block: optional displayed width (px, at most the content
+     * width), alignment, a link around it, and alt text, which is empty when
+     * the block is marked decorative so a screen reader skips it.
+     *
+     * @param array<string, mixed> $b
+     */
+    private function image(array $b): string
+    {
+        $max = self::WIDTH - 40;
+        $width = isset($b['width']) && is_numeric($b['width']) && (int) $b['width'] > 0 ? max(20, min($max, (int) $b['width'])) : $max;
+        $alt = ! empty($b['decorative']) ? '' : (string) ($b['alt'] ?? '');
+        $align = $this->align($b);
+        $margin = match ($align) {
+            'center' => 'margin:0 auto;',
+            'right' => 'margin:0 0 0 auto;',
+            default => '',
+        };
+        $img = '<img src="'.$this->esc($this->link((string) ($b['src'] ?? ''), ['http', 'https']))
+            .'" alt="'.$this->esc($alt).'" width="'.$width.'" style="display:block;'.$margin
+            .'width:'.($width === $max ? '100%' : $width.'px').';max-width:100%;height:auto;border:0;">';
+        $href = trim((string) ($b['href'] ?? ''));
+        if ($href !== '') {
+            $img = '<a href="'.$this->esc($this->link($href, ['http', 'https', 'mailto', 'tel'])).'">'.$img.'</a>';
+        }
+
+        return $this->row('<div style="text-align:'.$align.';">'.$img.'</div>');
     }
 
     private function row(string $inner): string

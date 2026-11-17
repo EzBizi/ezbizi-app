@@ -5,6 +5,8 @@ namespace App\Policies;
 use App\Models\Automation;
 use App\Models\User;
 use App\Support\Access\Refusal;
+use App\Support\Automations\EventScope;
+use App\Support\Scoping\ViewScope;
 use Illuminate\Auth\Access\Response;
 
 /**
@@ -40,6 +42,14 @@ class AutomationPolicy
 
     public function view(User $user, Automation $automation): Response
     {
+        // The list's own rule (AutomationsController::index): a rule that does
+        // not reach this view is not this view's to open (authz sweep, 2026-11-17).
+        $view = ViewScope::forUser($user);
+        if (! $view->isOrganization() && $automation->organization_id === $user->organization_id
+            && ! $automation->coversScope($view->type, $view->id, EventScope::chainFor($view->type, $view->id))) {
+            return Response::denyAsNotFound();
+        }
+
         return $this->may($user, $automation, 'automations.view', 'see this automation');
     }
 
@@ -53,12 +63,48 @@ class AutomationPolicy
     /** Editing a rule, and switching one on or off — both are `automations.edit`. */
     public function update(User $user, Automation $automation): Response
     {
-        return $this->may($user, $automation, 'automations.edit', 'change an automation');
+        return $this->mayWrite($user, $automation, 'automations.edit', 'change an automation');
     }
 
     public function delete(User $user, Automation $automation): Response
     {
-        return $this->may($user, $automation, 'automations.delete', 'delete an automation');
+        return $this->mayWrite($user, $automation, 'automations.delete', 'delete an automation');
+    }
+
+    /**
+     * A write needs the rule's own place in view (authz sweep, 2026-11-17): a
+     * franchise-scoped user edited and deleted organization-wide rules. An
+     * organization rule needs the organization view and authority there
+     * (AGENTS.md: a company view cannot modify the organization); a company
+     * rule needs that company's view or the organization's; a branch rule, a
+     * view covering that branch.
+     */
+    private function mayWrite(User $user, Automation $automation, string $permission, string $act): Response
+    {
+        $may = $this->may($user, $automation, $permission, $act);
+        if ($may->denied()) {
+            return $may;
+        }
+
+        // A rule this view cannot even open is answered as absent, as a read is.
+        $seen = $this->view($user, $automation);
+        if ($seen->denied()) {
+            return $seen;
+        }
+
+        $view = ViewScope::forUser($user);
+        $atOrganization = $view->isOrganization() && $user->canActOnOrganization($user->organization);
+
+        $reaches = match ($automation->scope_type) {
+            'company' => $atOrganization
+                || ($view->type === ViewScope::COMPANY && in_array($automation->scope_id, $view->companyIds(), true)),
+            'franchise' => $view->coversFranchise($automation->scope_id),
+            default => $atOrganization,
+        };
+
+        return $reaches
+            ? Response::allow()
+            : Response::deny('This automation runs beyond the place you are viewing. Change it from a view that covers where it runs.');
     }
 
     /**

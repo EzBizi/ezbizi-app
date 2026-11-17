@@ -44,7 +44,12 @@ enum BlockKind {
   /// who adds one and sees no change in the preview concludes the editor is
   /// broken rather than that they have not typed yet.
   Map<String, dynamic> blank() => switch (this) {
-    BlockKind.heading => {'type': 'heading', 'text': 'Heading', 'size': 24, 'align': 'left'},
+    BlockKind.heading => {
+      'type': 'heading',
+      'text': 'Heading',
+      'size': 24,
+      'align': 'left',
+    },
     BlockKind.text => {
       'type': 'text',
       'text': 'Write something here.',
@@ -203,10 +208,14 @@ class NewsletterEmail extends StatelessWidget {
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     buildDefaultDragHandles: false,
-                    onReorder: (from, to) => onReorder!(from, to > from ? to - 1 : to),
+                    onReorder: (from, to) =>
+                        onReorder!(from, to > from ? to - 1 : to),
                     children: [
                       for (var i = 0; i < blocks.length; i++)
-                        KeyedSubtree(key: ObjectKey(blocks[i]), child: _draggable(i, primary)),
+                        KeyedSubtree(
+                          key: ObjectKey(blocks[i]),
+                          child: _draggable(i, primary),
+                        ),
                     ],
                   ),
                 _dropAt(blocks.length, primary, _footer()),
@@ -430,19 +439,40 @@ class EmailBlockView extends StatelessWidget {
       color: EmailInk.rule,
       alignment: Alignment.center,
       child: Text(
-        src.isEmpty ? 'Image · add its address' : (block['alt'] as String? ?? src),
+        src.isEmpty
+            ? 'Image · upload or choose a picture'
+            : (block['alt'] as String? ?? src),
         style: const TextStyle(fontSize: 13, color: EmailInk.footerInk),
       ),
     );
 
     if (src.isEmpty) return plate;
 
-    return Image.network(
+    // Displayed width and alignment, as the renderer sends them.
+    final width = block['width'] is num && (block['width'] as num) > 0
+        ? (block['width'] as num).toDouble()
+        : null;
+    final picture = Image.network(
       src,
-      width: double.infinity,
+      width: width ?? double.infinity,
       fit: BoxFit.fitWidth,
-      semanticLabel: block['alt'] as String?,
+      semanticLabel: block['decorative'] == true
+          ? null
+          : block['alt'] as String?,
+      excludeFromSemantics: block['decorative'] == true,
       errorBuilder: (_, _, _) => plate,
+    );
+    if (width == null) return picture;
+    return Align(
+      alignment: switch (block['align']) {
+        'center' => Alignment.center,
+        'right' => Alignment.centerRight,
+        _ => Alignment.centerLeft,
+      },
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: width),
+        child: picture,
+      ),
     );
   }
 

@@ -2136,11 +2136,31 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     if (!mounted) return;
     if (res.ok) {
       _replace(res.body['data'] as _Json);
+      if (value is String && RegExp(r'\d').hasMatch(value)) {
+        await _checkCaller(res.body['data'] as _Json);
+      }
     } else {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(res.reason)));
     }
+  }
+
+  /// A phone number another open task in this group already has, from the
+  /// last 3 days (desk for Jose, 11-17: the AI files complaint calls too):
+  /// say so, and offer to open it to add an update there instead.
+  Future<void> _checkCaller(_Json task) async {
+    final res = await widget.api.get('/tasks/${task['id']}/same-caller');
+    final other = res.ok ? res.body['data'] : null;
+    if (!mounted || other is! Map) return;
+    _say(
+      'An open task for this caller already exists: "${other['title']}". '
+      'Add an update there instead?',
+      action: SnackBarAction(
+        label: 'Open it',
+        onPressed: () => _goToTask('${other['board_id']}', '${other['id']}'),
+      ),
+    );
   }
 
   Future<void> _setStatus(_Json task, String status) async {
@@ -2193,6 +2213,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     _addError = null;
     // The box stays open for the next one, as Monday's does.
     _replace(res.body['data'] as _Json);
+    if (RegExp(r'\d{3}.*\d{4}').hasMatch(title)) {
+      await _checkCaller(res.body['data'] as _Json);
+    }
   }
 
   /// The Gallery's "Go to task": false when this board's list lacks it.
@@ -2399,7 +2422,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               if (mine != null)
                 ButtonSegment(
                   value: mine,
-                  label: label('My Board'),
+                  label: label('Personal Task Board'),
                   icon: const Icon(Icons.person_outline, size: 18),
                 ),
               if (company != null)
