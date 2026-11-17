@@ -1,3 +1,5 @@
+import 'package:ezbizi_client/widgets/search_picker.dart';
+import 'package:ezbizi_client/core/job_money.dart';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -179,6 +181,30 @@ void main() {
     expect(find.byKey(const ValueKey('money-total-billed-USD')), findsNothing);
     expect(find.text('Chimney Sweep'), findsOneWidget, reason: 'the control');
   });
+
+  // Jose's PM rule (11-17): marking a job done with money owed reminds,
+  // and does not block, the save.
+  for (final (money, reminds) in [(_partial, true), (null, false)]) {
+    testWidgets('marking a job done ${reminds ? 'with' : 'without'} a balance '
+        '${reminds ? 'shows' : 'skips'} the payment rule', (tester) async {
+      await _open(tester, permissions: _money, detailMoney: money);
+      await tester.tap(find.text('Chimney Sweep'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byWidgetPredicate(
+          (w) => w is SearchPickerField<String> && w.label == 'Status',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Done').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(paymentRule), reminds ? findsOneWidget : findsNothing);
+    });
+  }
 
   // Was "the job opens with its money first". Queue 58 (Jose: "as
   // recommended") moved the money into the job's Money tab, which names the

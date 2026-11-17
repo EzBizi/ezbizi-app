@@ -523,6 +523,24 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       return;
     }
 
+    // Jose's PM rule (11-17): a reminder, not a block, when a job is marked
+    // done with money still owed.
+    final was = '${_row?['status'] ?? ''}';
+    final finished =
+        toneForJobStatus(_status) == Tone.ok ||
+        toneForJobStatus(_status) == Tone.review;
+    if (finished &&
+        _status != was &&
+        (JobMoney.of(_row?['money'])?.due ?? 0) > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          key: Key('job-payment-rule'),
+          duration: Duration(seconds: 12),
+          content: Text(paymentRule),
+        ),
+      );
+    }
+
     _done(true);
   }
 
