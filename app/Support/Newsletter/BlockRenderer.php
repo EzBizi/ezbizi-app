@@ -61,6 +61,59 @@ class BlockRenderer
             .'</table></td></tr></table></body></html>';
     }
 
+    /**
+     * The whole email for a newsletter's content: custom HTML (with the
+     * protected footer ensured) when it has one, else the blocks, and the
+     * preheader as hidden text at the top in both modes (P1a).
+     *
+     * @param  array<int, array<string, mixed>>  $blocks
+     * @param  array{company: string, address: string, unsubscribe_url: string}  $footer
+     */
+    public function document(array $blocks, ?string $htmlOverride, ?string $preheader, array $footer): string
+    {
+        $html = is_string($htmlOverride) && $htmlOverride !== ''
+            ? $this->withFooter($htmlOverride, $footer)
+            : $this->render($blocks, $footer);
+
+        return $this->withPreheader($html, $preheader);
+    }
+
+    /**
+     * The preheader: the line an inbox shows after the subject. Hidden in the
+     * body (every common client honours at least one of these properties),
+     * padded so the inbox does not pull the first visible words in after it.
+     */
+    public function withPreheader(string $html, ?string $preheader): string
+    {
+        $preheader = trim((string) $preheader);
+        if ($preheader === '') {
+            return $html;
+        }
+
+        $hidden = '<div data-ez-preheader="1" style="display:none;font-size:1px;line-height:1px;'
+            .'max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;color:transparent;">'
+            .$this->esc($preheader).str_repeat('&#847;&zwnj;&nbsp;', 30).'</div>';
+
+        if (preg_match('/<body\b[^>]*>/i', $html, $m, PREG_OFFSET_CAPTURE)) {
+            $at = $m[0][1] + strlen($m[0][0]);
+
+            return substr($html, 0, $at).$hidden.substr($html, $at);
+        }
+
+        return $hidden.$html;
+    }
+
+    /**
+     * One block on its own, as the rows it renders to. Preflight reads each
+     * block's links from this so a problem names the block it is in.
+     *
+     * @param  array<string, mixed>  $b
+     */
+    public function fragment(array $b): string
+    {
+        return $this->block($b);
+    }
+
     /** @param array<string, mixed> $b */
     private function block(array $b): string
     {
@@ -73,26 +126,23 @@ class BlockRenderer
         }
 
         return match ($type) {
-            'heading'  => $this->row('<h1 style="margin:0;font-size:'
-                            .$this->int($b, 'size', 24).'px;line-height:1.25;color:#060808;'
-                            .'text-align:'.$this->align($b).';">'.$this->text($b).'</h1>'),
-            'text'     => $this->row('<p style="margin:0;font-size:15px;line-height:1.55;'
-                            .'color:#3a4650;text-align:'.$this->align($b).';">'
-                            .nl2br($this->text($b)).'</p>'),
-            'image'    => $this->image($b),
-            'button'   => $this->row('<table role="presentation" cellpadding="0" cellspacing="0" '
-                            .'align="'.$this->align($b).'"><tr><td style="background:#00708F;'
-                            .'border-radius:6px;"><a href="'.$this->esc($this->link((string) ($b['url'] ?? ''), ['http', 'https', 'mailto', 'tel']))
-                            .'" style="display:inline-block;padding:11px 20px;color:#ffffff;'
-                            .'text-decoration:none;font-weight:600;font-size:15px;">'
-                            .$this->text($b).'</a></td></tr></table>'),
-            'divider'  => '<tr><td style="padding:8px 20px;"><table role="presentation" width="100%"'
+            'heading' => $this->row('<h1 style="margin:0;font-size:'
+                            .$this->int($b, 'size', 24).'px;line-height:'.$this->lineHeight($b, '1.25').';color:'
+                            .$this->color($b, 'color', '#060808').';'
+                            .'text-align:'.$this->align($b).';">'.$this->words($b).'</h1>', $b),
+            'text' => $this->row(($this->isRich($b) ? '<div' : '<p').' style="margin:0;font-size:'
+                            .$this->int($b, 'size', 15).'px;line-height:'.$this->lineHeight($b, '1.55').';'
+                            .'color:'.$this->color($b, 'color', '#3a4650').';text-align:'.$this->align($b).';">'
+                            .$this->words($b).($this->isRich($b) ? '</div>' : '</p>'), $b),
+            'image' => $this->image($b),
+            'button' => $this->button($b),
+            'divider' => '<tr><td style="padding:8px 20px;"><table role="presentation" width="100%"'
                             .' cellpadding="0" cellspacing="0"><tr><td style="border-top:1px solid'
                             .' #E9EDF1;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>',
-            'spacer'   => '<tr><td style="height:'.$this->int($b, 'height', 16).'px;font-size:0;'
+            'spacer' => '<tr><td style="height:'.$this->int($b, 'height', 16).'px;font-size:0;'
                             .'line-height:0;">&nbsp;</td></tr>',
-            'columns'  => $this->columns($b),
-            default    => '',
+            'columns' => $this->columns($b),
+            default => '',
         };
     }
 
@@ -108,7 +158,7 @@ class BlockRenderer
      * client that honours the query stacks, and one that does not gets the
      * side-by-side layout it can actually draw.
      *
-     * @param array<string, mixed> $b
+     * @param  array<string, mixed>  $b
      */
     private function columns(array $b): string
     {
@@ -121,9 +171,13 @@ class BlockRenderer
             return '';
         }
 
-        $width = (int) floor(100 / count($columns));
+        $widths = $this->columnWidths($b, count($columns));
+        $stack = ($b['stack'] ?? true) !== false;
+        $gap = isset($b['padding']) && is_numeric($b['padding']) ? max(0, min(40, (int) $b['padding'])) : null;
+        $index = 0;
 
-        $cells = implode('', array_map(function (array $column) use ($width) {
+        $cells = implode('', array_map(function (array $column) use ($widths, $stack, $gap, &$index) {
+            $width = $widths[$index++] ?? (int) floor(100 / max(1, count($widths)));
             /*
              * The composer has always saved a column as `{blocks: [...]}`, and
              * this read it as a bare list of blocks - so every column the
@@ -142,8 +196,8 @@ class BlockRenderer
                 return $this->block($child);
             }, array_values(array_filter($column, 'is_array'))));
 
-            return '<td class="ez-col" width="'.$width.'%" valign="top" '
-                .'style="width:'.$width.'%;"><table role="presentation" width="100%" '
+            return '<td'.($stack ? ' class="ez-col"' : '').' width="'.$width.'%" valign="top" '
+                .'style="width:'.$width.'%;'.($gap === null ? '' : 'padding:0 '.$gap.'px;').'"><table role="presentation" width="100%" '
                 .'cellpadding="0" cellspacing="0">'.$inner.'</table></td>';
         }, $columns));
 
@@ -184,7 +238,7 @@ class BlockRenderer
      * width), alignment, a link around it, and alt text, which is empty when
      * the block is marked decorative so a screen reader skips it.
      *
-     * @param array<string, mixed> $b
+     * @param  array<string, mixed>  $b
      */
     private function image(array $b): string
     {
@@ -205,12 +259,139 @@ class BlockRenderer
             $img = '<a href="'.$this->esc($this->link($href, ['http', 'https', 'mailto', 'tel'])).'">'.$img.'</a>';
         }
 
-        return $this->row('<div style="text-align:'.$align.';">'.$img.'</div>');
+        return $this->row('<div style="text-align:'.$align.';">'.$img.'</div>', $b);
     }
 
-    private function row(string $inner): string
+    /** @param array<string, mixed> $b */
+    private function row(string $inner, array $b = []): string
     {
-        return '<tr><td style="padding:14px 20px;">'.$inner.'</td></tr>';
+        $v = isset($b['spacing']) && is_numeric($b['spacing']) ? max(0, min(64, (int) $b['spacing'])) : 14;
+
+        return '<tr><td style="padding:'.$v.'px 20px;">'.$inner.'</td></tr>';
+    }
+
+    /**
+     * A button: label, link, its colours, and full width or its own width.
+     *
+     * @param  array<string, mixed>  $b
+     */
+    private function button(array $b): string
+    {
+        $full = ! empty($b['full_width']);
+        $bg = $this->color($b, 'background', '#00708F');
+        $fg = $this->color($b, 'color', '#ffffff');
+
+        return $this->row('<table role="presentation" cellpadding="0" cellspacing="0" '
+            .($full ? 'width="100%"' : 'align="'.$this->align($b).'"')
+            .'><tr><td style="background:'.$bg.';border-radius:6px;'.($full ? 'text-align:center;' : '').'">'
+            .'<a href="'.$this->esc($this->link((string) ($b['url'] ?? ''), ['http', 'https', 'mailto', 'tel']))
+            .'" style="display:'.($full ? 'block' : 'inline-block').';padding:11px 20px;color:'.$fg.';'
+            .'text-decoration:none;font-weight:600;font-size:15px;">'
+            .$this->text($b).'</a></td></tr></table>', $b);
+    }
+
+    /**
+     * Column widths in percent: equal, or 1:2 / 2:1 for two columns.
+     *
+     * @param  array<string, mixed>  $b
+     * @return list<int>
+     */
+    private function columnWidths(array $b, int $count): array
+    {
+        if ($count === 2) {
+            return match ($b['ratio'] ?? '') {
+                '1:2' => [33, 67],
+                '2:1' => [67, 33],
+                default => [50, 50],
+            };
+        }
+
+        return array_fill(0, max(1, $count), (int) floor(100 / max(1, $count)));
+    }
+
+    /** @param array<string, mixed> $b */
+    private function isRich(array $b): bool
+    {
+        return ($b['rich'] ?? false) === true;
+    }
+
+    /**
+     * A heading's or text's words. Plain text is escaped and line breaks
+     * kept. Text the composer formatted (`rich: true`) is escaped the same
+     * way and then only these tags are let back in: b, strong, i, em, ul, li,
+     * and a with an http(s)/mailto/tel href. Anything else stays as the
+     * visible characters it was typed as, and every tag is balanced so an
+     * unclosed bold cannot run into the rest of the email.
+     *
+     * @param  array<string, mixed>  $b
+     */
+    private function words(array $b): string
+    {
+        if (! $this->isRich($b)) {
+            return nl2br($this->text($b));
+        }
+
+        $s = $this->esc((string) ($b['text'] ?? ''));
+        $s = (string) preg_replace('#&lt;(/?)(b|strong|i|em|ul|li)&gt;#i', '<$1$2>', $s);
+        $s = (string) preg_replace_callback('#&lt;a href=&quot;(.*?)&quot;&gt;#i', fn (array $m) => '<a href="'
+            .$this->esc($this->link(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), ['http', 'https', 'mailto', 'tel']))
+            .'" style="color:#00708F;">', $s);
+        $s = str_ireplace('&lt;/a&gt;', '</a>', $s);
+        $s = (string) preg_replace('#\s*(</?(?:ul|li)>)\s*#i', '$1', $s);
+
+        return nl2br($this->balance($s));
+    }
+
+    /** Drops stray closing tags and closes anything left open. */
+    private function balance(string $html): string
+    {
+        $parts = preg_split('#(</?(?:b|strong|i|em|ul|li|a)\b[^>]*>)#i', $html, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [];
+        $open = [];
+        $out = '';
+        foreach ($parts as $part) {
+            if (! preg_match('#^<(/?)(b|strong|i|em|ul|li|a)\b#i', $part, $m)) {
+                $out .= $part;
+
+                continue;
+            }
+            $tag = strtolower($m[2]);
+            if ($m[1] === '') {
+                $open[] = $tag;
+                $out .= $part;
+
+                continue;
+            }
+            if (! in_array($tag, $open, true)) {
+                continue;
+            }
+            while (($top = array_pop($open)) !== null) {
+                $out .= '</'.$top.'>';
+                if ($top === $tag) {
+                    break;
+                }
+            }
+        }
+        while (($top = array_pop($open)) !== null) {
+            $out .= '</'.$top.'>';
+        }
+
+        return $out;
+    }
+
+    /** @param array<string, mixed> $b */
+    private function color(array $b, string $key, string $fallback): string
+    {
+        $v = (string) ($b[$key] ?? '');
+
+        return preg_match('/^#[0-9a-fA-F]{6}$/', $v) ? $v : $fallback;
+    }
+
+    /** @param array<string, mixed> $b */
+    private function lineHeight(array $b, string $fallback): string
+    {
+        $v = $b['line_height'] ?? null;
+
+        return is_numeric($v) && (float) $v >= 1 && (float) $v <= 2.5 ? (string) round((float) $v, 2) : $fallback;
     }
 
     /**
@@ -220,7 +401,7 @@ class BlockRenderer
      * sells into, so it is rendered here rather than being a block somebody can
      * delete. A tenant can style the rest; they cannot remove this.
      *
-     * @param array{company: string, address: string, unsubscribe_url: string} $f
+     * @param  array{company: string, address: string, unsubscribe_url: string}  $f
      */
     private function footer(array $f): string
     {

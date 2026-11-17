@@ -267,10 +267,10 @@ const Map<String, Tour> marketingTours = {
     steps: [
       TourStep(
         anchor: 'tour-newsletter-pick',
-        title: 'Which newsletter',
+        title: 'Campaign name',
         body:
-            'Pick the one to work on by its subject; each says whether it is a '
-            'draft, scheduled or sent. New starts another.',
+            'The internal name only your team sees; blank shows the subject. '
+            'The arrow goes back to every newsletter.',
       ),
       TourStep(
         anchor: 'tour-newsletter-delete',
@@ -279,17 +279,17 @@ const Map<String, Tour> marketingTours = {
       ),
       TourStep(
         anchor: 'tour-newsletter-blocks',
-        title: 'Add a block',
+        title: 'Add content',
         body:
             'A heading, text, an image, a button, columns, a divider or a '
-            'spacer, under the block you picked. Or write the HTML yourself.',
+            'spacer: click or drag it into the email. Or write the HTML yourself.',
       ),
       TourStep(
         anchor: 'tour-newsletter-email',
         title: 'What they will get',
         body:
-            'The email itself: click a block to change it where it sits. Server '
-            'preview shows the exact email that goes out.',
+            'The email itself: click a block to type in it; its settings open '
+            'on the right. Server preview shows the exact email that goes out.',
       ),
       TourStep(
         anchor: 'tour-newsletter-details',

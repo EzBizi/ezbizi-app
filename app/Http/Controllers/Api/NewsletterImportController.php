@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
+use App\Support\Newsletter\NewsletterAccess;
 use App\Support\Newsletter\SvgImporter;
 use App\Support\Scoping\OwnedScope;
 use App\Support\Scoping\ViewScope;
@@ -181,6 +182,114 @@ class NewsletterImportController extends Controller
             'url' => $this->publish($row, $bytes, $extension),
             'duplicate' => $duplicate,
         ]], $duplicate ? Status::HTTP_OK : Status::HTTP_CREATED);
+    }
+
+    /**
+     * GET /newsletter/images: the pictures in the media library of this view,
+     * for the newsletter picker (P1a). Same visibility as the library itself
+     * (an organization's pictures are seen down, a sibling company's never),
+     * but gated on newsletter permissions, so a newsletter-only role can pick
+     * a picture without being given Social Media.
+     */
+    public function images(Request $request): JsonResponse
+    {
+        $user = $this->mayWrite($request);
+        $items = NewsletterAccess::visible(SocialLibraryItem::query(), $user)->latest()->get()
+            ->filter(fn (SocialLibraryItem $i) => $i->kind() === 'image');
+
+        return response()->json(['data' => $items->map(fn (SocialLibraryItem $i) => [
+            'id' => $i->id,
+            'name' => $i->name,
+            'kind' => 'image',
+            'size' => $i->size,
+            'scope_type' => $i->scope_type,
+            'created_at' => $i->created_at?->toIso8601String(),
+        ])->values()->all()]);
+    }
+
+    /** GET /newsletter/images/{item}/file: a picker thumbnail. */
+    public function imageFile(Request $request, string $item): StreamedResponse
+    {
+        $user = $this->mayWrite($request);
+        $row = app(SocialLibraryController::class)->find($user, $item);
+        abort_unless($row->kind() === 'image', Status::HTTP_NOT_FOUND);
+
+        return $this->files->serve($row->path, $row->disk, $row->mime(), $row->name, 'inline');
+    }
+
+    /**
+     * POST /newsletter/images/crop: a cropped copy of a library picture for
+     * one image block (P1a). Non-destructive: the library original is never
+     * changed; the block keeps the original's address and the crop (aspect
+     * and focal point), and re-cropping always starts from the original.
+     *
+     * `src` must be the public address of a library picture visible in this
+     * view; `aspect` is original, 1:1, 4:3, 3:2 or 16:9; `focal_x`/`focal_y`
+     * (0-1) is the point the crop keeps centred.
+     */
+    public function crop(Request $request): JsonResponse
+    {
+        $user = $this->mayWrite($request);
+        $data = $request->validate([
+            'src' => ['required', 'string', 'max:2000'],
+            'aspect' => ['required', 'string', 'in:original,1:1,4:3,3:2,16:9'],
+            'focal_x' => ['nullable', 'numeric', 'between:0,1'],
+            'focal_y' => ['nullable', 'numeric', 'between:0,1'],
+        ]);
+
+        $name = basename((string) parse_url((string) $data['src'], PHP_URL_PATH));
+        $row = $name === '' ? null : NewsletterAccess::visible(SocialLibraryItem::query(), $user)
+            ->where('public_path', 'like', '%/'.addcslashes($name, '%_\\'))->first();
+        abort_if($row === null, Status::HTTP_NOT_FOUND, 'That picture is not in this view’s library.');
+
+        if ($data['aspect'] === 'original') {
+            return response()->json(['data' => ['url' => $data['src'], 'original_src' => $data['src']]]);
+        }
+
+        $bytes = $this->files->contents($row->path, $row->disk);
+        $image = $bytes === null ? false : @imagecreatefromstring($bytes);
+        $extension = $bytes === null ? null : $this->pictureExtension($bytes);
+        if ($image === false || $extension === null) {
+            throw ValidationException::withMessages(['src' => 'That picture could not be read to crop it.']);
+        }
+
+        [$w, $h] = [imagesx($image), imagesy($image)];
+        [$aw, $ah] = array_map('intval', explode(':', (string) $data['aspect']));
+        $cw = $w;
+        $ch = (int) round($w * $ah / $aw);
+        if ($ch > $h) {
+            $ch = $h;
+            $cw = (int) round($h * $aw / $ah);
+        }
+        $fx = (float) ($data['focal_x'] ?? 0.5);
+        $fy = (float) ($data['focal_y'] ?? 0.5);
+        $x = (int) max(0, min($w - $cw, round($fx * $w - $cw / 2)));
+        $y = (int) max(0, min($h - $ch, round($fy * $h - $ch / 2)));
+
+        $cropped = imagecrop($image, ['x' => $x, 'y' => $y, 'width' => max(1, $cw), 'height' => max(1, $ch)]);
+        if ($cropped === false) {
+            throw ValidationException::withMessages(['src' => 'That picture could not be cropped.']);
+        }
+        if (in_array($extension, ['png', 'webp', 'gif'], true)) {
+            imagesavealpha($cropped, true);
+        }
+        ob_start();
+        match ($extension) {
+            'jpg' => imagejpeg($cropped, null, 88),
+            'webp' => imagewebp($cropped),
+            'gif' => imagegif($cropped),
+            default => imagepng($cropped),
+        };
+        $out = (string) ob_get_clean();
+
+        $path = $this->files->putContents($out, $this->files->directoryFor('newsletter-artwork', (string) $row->organization_id), $extension);
+
+        return response()->json(['data' => [
+            'url' => rtrim((string) config('app.url'), '/')."/api/v1/newsletter/artwork/{$row->organization_id}/".basename($path),
+            'original_src' => $data['src'],
+            'width' => imagesx($cropped),
+            'height' => imagesy($cropped),
+        ]], Status::HTTP_CREATED);
     }
 
     /** The one public copy of a library picture, written the first time it is needed. */
