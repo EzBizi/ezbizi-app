@@ -1977,7 +1977,8 @@ class ActionRunner
         $tasks = Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
             ->where('status', Task::STATUS_NOT_STARTED)
             ->when(($action['made_by'] ?? '') !== '', fn ($q) => $q->where('created_by_automation_id', $action['made_by']))
-            ->whereRaw("REGEXP_REPLACE(COALESCE(title, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])->get();
+            ->where(fn ($q) => $q->whereRaw("REGEXP_REPLACE(COALESCE(title, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])
+                ->orWhereHas('values', fn ($v) => $v->whereRaw("REGEXP_REPLACE(COALESCE(value_text, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])))->get();
         if ($tasks->isEmpty()) {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'No untouched open task for this number.'];
         }
