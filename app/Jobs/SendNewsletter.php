@@ -10,6 +10,7 @@ use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
 use App\Support\Newsletter\BlockRenderer;
+use App\Support\Newsletter\NewsletterSections;
 use App\Support\Newsletter\NewsletterIdentity;
 use App\Support\Newsletter\NewsletterSenders;
 use App\Support\Newsletter\NewsletterSendFailed;
@@ -127,8 +128,8 @@ final class SendNewsletter implements ShouldQueue
         }
 
         $footer = NewsletterIdentity::footer($newsletter) + ['unsubscribe_url' => '*|UNSUB|*'];
-        $html = $renderer->document((array) ($newsletter->blocks ?? []), $newsletter->html_override,
-            $newsletter->preheader, $footer);
+        $html = $renderer->document(NewsletterSections::expand((array) ($newsletter->blocks ?? [])), $newsletter->html_override,
+            $newsletter->preheader, $footer, $newsletter->brand);
 
         try {
             $result = $sender->send($connection, $newsletter, $html, $this->people($newsletter));

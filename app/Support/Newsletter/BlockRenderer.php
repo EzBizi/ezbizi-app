@@ -34,31 +34,108 @@ class BlockRenderer
     private const WIDTH = 600;
 
     /**
+     * The applied brand (P1b) while a document renders: defaults for every
+     * block property a block does not set itself. Null: the house defaults.
+     *
+     * @var array<string, mixed>|null
+     */
+    private ?array $brand = null;
+
+    /** Per-block mobile rules collected while rendering (P1b). */
+    private string $mobileCss = '';
+
+    private int $counter = 0;
+
+    /**
      * @param  array<int, array<string, mixed>>  $blocks
      * @param  array{company: string, address: string, unsubscribe_url: string}  $footer
+     * @param  array<string, mixed>|null  $brand
      */
-    public function render(array $blocks, array $footer): string
+    public function render(array $blocks, array $footer, ?array $brand = null): string
     {
-        $body = implode('', array_map(fn (array $b) => $this->block($b), $blocks));
+        $this->brand = NewsletterBrandSettings::clean($brand);
+        $this->mobileCss = '';
+        $this->counter = 0;
 
-        return '<!DOCTYPE html>'
-            .'<html><head><meta charset="utf-8">'
-            .'<meta name="viewport" content="width=device-width,initial-scale=1">'
-            // Columns stack on a phone. The inline widths stay for clients that strip <style>.
-            .'<style>@media only screen and (max-width:620px){'
-            .'.ez-col{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box;}'
-            .'}</style>'
-            .'</head>'
-            .'<body style="margin:0;padding:0;background:#EDF1F4;">'
-            .'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            .'style="background:#EDF1F4;padding:18px 0;"><tr><td align="center">'
-            .'<table role="presentation" width="'.self::WIDTH.'" cellpadding="0" cellspacing="0" '
-            .'style="width:'.self::WIDTH.'px;max-width:100%;background:#ffffff;'
-            .'border-radius:6px;overflow:hidden;font-family:system-ui,-apple-system,'
-            .'\'Segoe UI\',sans-serif;">'
-            .$body
-            .$this->footer($footer)
-            .'</table></td></tr></table></body></html>';
+        try {
+            $body = implode('', array_map(fn (array $b) => $this->block($b), array_values(array_filter($blocks, 'is_array'))));
+            $page = $this->brandValue('background', '#EDF1F4');
+            $font = NewsletterBrandSettings::fontStack($this->brand['font'] ?? null);
+
+            return '<!DOCTYPE html>'
+                .'<html><head><meta charset="utf-8">'
+                .'<meta name="viewport" content="width=device-width,initial-scale=1">'
+                // Phones (P1b): the 600 table becomes the screen's width, pictures
+                // never overflow, long words and links wrap, columns stack unless
+                // a block turned stacking off, and each block's own mobile
+                // overrides apply. The inline widths stay for clients that strip <style>.
+                .'<style>@media only screen and (max-width:620px){'
+                .'.ez-col{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box;}'
+                .'.ez-wrap{width:100%!important;max-width:100%!important;}'
+                .'.ez-wrap img{max-width:100%!important;height:auto!important;}'
+                .'.ez-wrap td{word-break:break-word;overflow-wrap:anywhere;}'
+                .$this->mobileCss
+                .'}</style>'
+                .'</head>'
+                .'<body style="margin:0;padding:0;background:'.$page.';">'
+                .'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+                .'style="background:'.$page.';padding:18px 0;"><tr><td align="center">'
+                .'<table role="presentation" class="ez-wrap" width="'.self::WIDTH.'" cellpadding="0" cellspacing="0" '
+                .'style="width:'.self::WIDTH.'px;max-width:100%;background:#ffffff;'
+                .'border-radius:6px;overflow:hidden;font-family:'.$font.';">'
+                .$this->logo()
+                .$body
+                .$this->footer($footer)
+                .'</table></td></tr></table></body></html>';
+        } finally {
+            $this->brand = null;
+        }
+    }
+
+    /** The brand's logo across the top, when the applied brand has one. */
+    private function logo(): string
+    {
+        $src = trim((string) ($this->brand['logo_url'] ?? ''));
+        if ($src === '' || $this->link($src, ['https']) === '#') {
+            return '';
+        }
+
+        return '<tr><td style="padding:18px 20px 4px;text-align:center;"><img src="'.$this->esc($src)
+            .'" alt="'.$this->esc((string) ($this->brand['logo_alt'] ?? '')).'" width="160" '
+            .'style="display:inline-block;width:160px;max-width:100%;height:auto;border:0;"></td></tr>';
+    }
+
+    private function brandValue(string $key, string $fallback): string
+    {
+        $v = (string) ($this->brand[$key] ?? '');
+
+        return preg_match('/^#[0-9a-fA-F]{6}$/', $v) ? $v : $fallback;
+    }
+
+    /**
+     * The brand's defaults for a block, under the block's own values: a
+     * property the block sets wins, one it leaves out takes the brand's.
+     *
+     * @param  array<string, mixed>  $b
+     * @return array<string, mixed>
+     */
+    private function withBrand(array $b): array
+    {
+        if ($this->brand === null) {
+            return $b;
+        }
+        $defaults = match ((string) ($b['type'] ?? '')) {
+            'heading', 'text' => ['color' => $this->brand['text'] ?? null],
+            'button' => [
+                'background' => $this->brand['button_fill'] ?? $this->brand['primary'] ?? null,
+                'color' => $this->brand['button_text'] ?? null,
+                'full_width' => $this->brand['button_full_width'] ?? null,
+                'radius' => $this->brand['button_radius'] ?? null,
+            ],
+            default => [],
+        };
+
+        return $b + array_filter($defaults, fn ($v) => $v !== null);
     }
 
     /**
@@ -68,12 +145,13 @@ class BlockRenderer
      *
      * @param  array<int, array<string, mixed>>  $blocks
      * @param  array{company: string, address: string, unsubscribe_url: string}  $footer
+     * @param  array<string, mixed>|null  $brand
      */
-    public function document(array $blocks, ?string $htmlOverride, ?string $preheader, array $footer): string
+    public function document(array $blocks, ?string $htmlOverride, ?string $preheader, array $footer, ?array $brand = null): string
     {
         $html = is_string($htmlOverride) && $htmlOverride !== ''
             ? $this->withFooter($htmlOverride, $footer)
-            : $this->render($blocks, $footer);
+            : $this->render($blocks, $footer, $brand);
 
         return $this->withPreheader($html, $preheader);
     }
@@ -114,8 +192,67 @@ class BlockRenderer
         return $this->block($b);
     }
 
-    /** @param array<string, mixed> $b */
+    /**
+     * A block, with its mobile overrides (P1b) as a class the phone rules
+     * in <head> address. Every block renders as `<tr><td`, so the class goes
+     * on that cell.
+     *
+     * @param  array<string, mixed>  $b
+     */
     private function block(array $b): string
+    {
+        $html = $this->blockBody($this->withBrand($b));
+        $rules = $this->mobileRules($b);
+        if ($rules === [] || ! str_starts_with($html, '<tr><td')) {
+            return $html;
+        }
+        $class = 'ez-b'.(++$this->counter);
+        foreach ($rules as $rule) {
+            $this->mobileCss .= str_replace('%c', '.'.$class, $rule);
+        }
+
+        return '<tr><td class="'.$class.'"'.substr($html, 7);
+    }
+
+    /**
+     * The phone rules for a block's `mobile` overrides: font size, vertical
+     * padding, alignment, button width and hidden. Values are clamped like
+     * the desktop ones; `%c` stands for the block's class.
+     *
+     * @param  array<string, mixed>  $b
+     * @return list<string>
+     */
+    private function mobileRules(array $b): array
+    {
+        $m = $b['mobile'] ?? null;
+        if (! is_array($m) || $m === []) {
+            return [];
+        }
+        if (($m['hidden'] ?? false) === true) {
+            return ['%c{display:none!important;max-height:0!important;overflow:hidden!important;}'];
+        }
+        $rules = [];
+        if (isset($m['font_size']) && is_numeric($m['font_size']) && (int) $m['font_size'] >= 8 && (int) $m['font_size'] <= 96) {
+            $rules[] = '%c h1,%c p,%c div,%c a,%c li{font-size:'.(int) $m['font_size'].'px!important;}';
+        }
+        if (isset($m['padding']) && is_numeric($m['padding'])) {
+            $px = max(0, min(64, (int) $m['padding']));
+            $rules[] = '%c{padding-top:'.$px.'px!important;padding-bottom:'.$px.'px!important;}';
+        }
+        if (in_array($m['align'] ?? null, ['left', 'center', 'right'], true)) {
+            $rules[] = '%c,%c h1,%c p,%c div{text-align:'.$m['align'].'!important;}';
+        }
+        if (array_key_exists('button_full_width', $m) && is_bool($m['button_full_width'])) {
+            $rules[] = $m['button_full_width']
+                ? '%c table{width:100%!important;}%c a{display:block!important;text-align:center!important;}'
+                : '%c table{width:auto!important;}%c a{display:inline-block!important;}';
+        }
+
+        return $rules;
+    }
+
+    /** @param array<string, mixed> $b */
+    private function blockBody(array $b): string
     {
         $type = (string) ($b['type'] ?? '');
 
@@ -172,7 +309,9 @@ class BlockRenderer
         }
 
         $widths = $this->columnWidths($b, count($columns));
-        $stack = ($b['stack'] ?? true) !== false;
+        // The mobile override (P1b) wins over the older block-level switch.
+        $mobile = is_array($b['mobile'] ?? null) ? $b['mobile'] : [];
+        $stack = (array_key_exists('stack', $mobile) ? $mobile['stack'] : ($b['stack'] ?? true)) !== false;
         $gap = isset($b['padding']) && is_numeric($b['padding']) ? max(0, min(40, (int) $b['padding'])) : null;
         $index = 0;
 
@@ -280,10 +419,11 @@ class BlockRenderer
         $full = ! empty($b['full_width']);
         $bg = $this->color($b, 'background', '#00708F');
         $fg = $this->color($b, 'color', '#ffffff');
+        $radius = isset($b['radius']) && is_numeric($b['radius']) ? max(0, min(40, (int) $b['radius'])) : 6;
 
         return $this->row('<table role="presentation" cellpadding="0" cellspacing="0" '
             .($full ? 'width="100%"' : 'align="'.$this->align($b).'"')
-            .'><tr><td style="background:'.$bg.';border-radius:6px;'.($full ? 'text-align:center;' : '').'">'
+            .'><tr><td style="background:'.$bg.';border-radius:'.$radius.'px;'.($full ? 'text-align:center;' : '').'">'
             .'<a href="'.$this->esc($this->link((string) ($b['url'] ?? ''), ['http', 'https', 'mailto', 'tel']))
             .'" style="display:'.($full ? 'block' : 'inline-block').';padding:11px 20px;color:'.$fg.';'
             .'text-decoration:none;font-weight:600;font-size:15px;">'
@@ -335,7 +475,7 @@ class BlockRenderer
         $s = (string) preg_replace('#&lt;(/?)(b|strong|i|em|ul|li)&gt;#i', '<$1$2>', $s);
         $s = (string) preg_replace_callback('#&lt;a href=&quot;(.*?)&quot;&gt;#i', fn (array $m) => '<a href="'
             .$this->esc($this->link(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), ['http', 'https', 'mailto', 'tel']))
-            .'" style="color:#00708F;">', $s);
+            .'" style="color:'.$this->brandValue('link', '#00708F').';">', $s);
         $s = str_ireplace('&lt;/a&gt;', '</a>', $s);
         $s = (string) preg_replace('#\s*(</?(?:ul|li)>)\s*#i', '$1', $s);
 
@@ -407,6 +547,8 @@ class BlockRenderer
     {
         return '<tr><td style="padding:16px 20px;background:#F5F8FA;text-align:center;'
             .'font-size:11.5px;line-height:1.5;color:#5B6672;">'
+            .(trim((string) ($this->brand['footer_note'] ?? '')) !== ''
+                ? nl2br($this->esc(trim((string) $this->brand['footer_note']))).'<br><br>' : '')
             .$this->esc($f['company']).'<br>'.$this->esc($f['address']).'<br>'
             .'<a href="'.$this->esc($f['unsubscribe_url']).'" style="color:#5B6672;">'
             .'Unsubscribe from these emails</a>'

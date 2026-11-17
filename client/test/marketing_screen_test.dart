@@ -4988,6 +4988,146 @@ void main() {
       expect(state(), 'Saved');
     });
   });
+
+  group('newsletter P1b brand, saved sections and mobile styles', () {
+    setUp(() => NewsletterHistory.coalesce = Duration.zero);
+    tearDown(() => NewsletterHistory.coalesce = const Duration(milliseconds: 900));
+
+    const letter = {
+      'id': 'n-9',
+      'subject': 'Brandable',
+      'status': 'draft',
+      'audience': {'id': 'a-1', 'name': 'Customers', 'kind': 'customers'},
+      'blocks': [
+        {'type': 'heading', 'text': 'Hello', 'size': 28, 'align': 'left'},
+      ],
+    };
+
+    Future<({List<Map<String, dynamic>> saved, List<Map<String, dynamic>> brandPuts})> pump(
+      WidgetTester tester,
+    ) async {
+      final saved = <Map<String, dynamic>>[];
+      final brandPuts = <Map<String, dynamic>>[];
+      final inner = _handler(canEdit: true, newsletters: const [letter]);
+      await _pumpComposer(tester, (request) {
+        final path = request.url.path;
+        if (path.endsWith('/newsletter/brand')) {
+          if (request.method == 'PUT') {
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            brandPuts.add(body);
+            return Future.value(_json({'data': {'settings': body['settings'], 'may_edit': true}}));
+          }
+          return Future.value(_json({'data': {'settings': {'primary': '#00708F'}, 'may_edit': true}}));
+        }
+        if (path.endsWith('/newsletter/sections')) {
+          return Future.value(_json({
+            'data': [
+              {
+                'id': 's-1', 'name': 'Offer', 'version': 2, 'may_edit': true,
+                'blocks': [{'type': 'text', 'text': 'Saved words'}],
+              },
+            ],
+            'starters': [
+              {'key': 'booking-cta', 'name': 'Booking call to action', 'blocks': [{'type': 'heading', 'text': 'Ready?'}]},
+            ],
+          }));
+        }
+        if (request.method == 'PUT' && path.contains('/newsletters/')) {
+          saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return Future.value(_json({'data': {...letter, 'revision': saved.length + 1}}));
+        }
+        return inner(request);
+      });
+      await _toStep(tester, 'design');
+      return (saved: saved, brandPuts: brandPuts);
+    }
+
+    Future<void> settle(WidgetTester tester) async {
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Mobile switches the inspector to mobile overrides with inherited values and a reset', (tester) async {
+      final r = await pump(tester);
+      await tester.tap(find.byKey(const Key('newsletter-block-0')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-field-size')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-mobile-font_size')), findsNothing);
+
+      await tester.tap(find.text('Mobile'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-editing-mobile')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-field-size')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-mobile-inherited-font_size')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-mobile-reset-font_size')), findsNothing);
+
+      await tester.enterText(find.byKey(const ValueKey('newsletter-mobile-font_size')), '18');
+      await settle(tester);
+      final first = (r.saved.last['blocks'] as List).first as Map;
+      expect(first['mobile'], {'font_size': 18});
+      expect(first['size'], 28, reason: 'Desktop keeps its own size.');
+      expect(find.byKey(const ValueKey('newsletter-mobile-reset-font_size')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-mobile-inherited-font_size')), findsNothing);
+
+      // 320 is a choice too, and the canvas narrows to it.
+      await tester.tap(find.byKey(const ValueKey('newsletter-device-320')));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byKey(const Key('newsletter-email'))).width, lessThanOrEqualTo(320));
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-mobile-reset-font_size')));
+      await settle(tester);
+      expect(((r.saved.last['blocks'] as List).first as Map).containsKey('mobile'), isFalse);
+      expect(find.byKey(const ValueKey('newsletter-mobile-inherited-font_size')), findsOneWidget);
+    });
+
+    testWidgets('Saved inserts a copy as independent blocks and linked as a pinned reference', (tester) async {
+      final r = await pump(tester);
+      await tester.tap(find.descendant(of: find.byKey(const ValueKey('newsletter-left-tabs')), matching: find.text('Saved')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-saved-s-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-saved-booking-cta')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-saved-linked-booking-cta')), findsNothing,
+          reason: 'Starters are copies only.');
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-saved-copy-s-1')));
+      await settle(tester);
+      var blocks = r.saved.last['blocks'] as List;
+      expect(blocks.last, {'type': 'text', 'text': 'Saved words'});
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-inspector-close')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-saved-linked-s-1')));
+      await settle(tester);
+      blocks = r.saved.last['blocks'] as List;
+      expect((blocks.last as Map)['type'], 'section_ref');
+      expect((blocks.last as Map)['section_id'], 's-1');
+      expect((blocks.last as Map)['version'], 2);
+      expect(find.byKey(const ValueKey('newsletter-linked-section')), findsOneWidget);
+    });
+
+    testWidgets('Brand tab saves the company brand and applies it to the newsletter', (tester) async {
+      final r = await pump(tester);
+      await tester.tap(find.descendant(of: find.byKey(const ValueKey('newsletter-left-tabs')), matching: find.text('Brand')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-brand-panel')), findsOneWidget);
+
+      await tester.tap(find.descendant(
+        of: find.byKey(const ValueKey('newsletter-brand-button_fill')),
+        matching: find.byType(InkWell),
+      ).at(4));
+      await tester.enterText(find.byKey(const ValueKey('newsletter-brand-footer')), 'Family owned');
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-brand-save')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-brand-save')));
+      await tester.pumpAndSettle();
+      expect(r.brandPuts.single['settings'], {'primary': '#00708F', 'button_fill': '#B3261E', 'footer_note': 'Family owned'});
+      expect(find.text('Brand saved.'), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-brand-apply')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-brand-apply')));
+      await settle(tester);
+      expect(r.saved.last['brand'], {'primary': '#00708F', 'button_fill': '#B3261E', 'footer_note': 'Family owned'});
+    });
+  });
 }
 
 
