@@ -436,6 +436,49 @@ class ProjectBoardTest extends TestCase
         $this->assertFalse($late[1]['late'], 'Received: never late.');
     }
 
+    /** Jose, 2026-11-17: a job's work order for the crew, as a PDF. */
+    public function test_the_work_order_is_a_pdf_with_the_crews_facts_and_the_payment_rule(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta');
+        $id = $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']));
+        $api = $this->signedInAs($alpha['admin']);
+        $api->putJson("/api/v1/project-board/jobs/{$id}/parts", ['parts' => [
+            ['kind' => 'stock', 'item' => 'Flashing', 'quantity' => 2],
+        ]])->assertOk();
+
+        $response = $api->get("/api/v1/project-board/jobs/{$id}/work-order")->assertOk();
+        $this->assertSame('application/pdf', $response->headers->get('Content-Type'));
+        $this->assertStringStartsWith('%PDF', $response->getContent());
+        $this->assertContains('work_order', array_column($api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('meta.columns'), 'key'));
+
+        // Another organization's job is not there at all.
+        $this->signedInAs($beta['admin'])->get("/api/v1/project-board/jobs/{$id}/work-order")->assertNotFound();
+    }
+
+    public function test_the_work_order_page_names_where_each_part_is_picked_up(): void
+    {
+        $html = \App\Support\ProjectBoard\WorkOrderPdf::html([
+            'company' => 'A-1 Chimney', 'number' => 'J-1', 'workiz' => '7001', 'client' => 'Lena Park',
+            'address' => '1 Main St, Austin', 'phone' => '512-555-0100', 'phone_ext' => '12',
+            'technician' => 'Guy', 'repair_team' => 'KENNI REPAIR TEAM',
+            'parts' => [
+                ['item' => 'Cap', 'quantity' => 1, 'kind' => 'order', 'destination' => 'warehouse'],
+                ['item' => 'Liner', 'quantity' => 1, 'kind' => 'order', 'destination' => 'supplier',
+                    'supplier' => ['name' => 'Chimney Supply Co', 'address' => '12 Brick Rd']],
+            ],
+            'photos' => [], 'files' => ['roof.heic'], 'inspections' => ['Level 2 11/14/2026'],
+            'payment_date' => '11/02/2026 11:48 AM', 'money' => null,
+        ]);
+
+        $this->assertStringContainsString('512-555-0100 ext. 12', $html);
+        $this->assertStringContainsString('Warehouse pickup', $html);
+        $this->assertStringContainsString('Pick up at Chimney Supply Co, 12 Brick Rd', $html);
+        $this->assertStringContainsString('Inspection report: Level 2 11/14/2026', $html);
+        $this->assertStringContainsString(htmlspecialchars(\App\Support\ProjectBoard\WorkOrderPdf::PAYMENT_RULE, ENT_QUOTES), $html);
+        $this->assertStringNotContainsString('Remaining balance', $html, 'No Financials, no amounts.');
+    }
+
     /** Jose, 2026-11-17: "Just let me drag them" - one column order for everyone on the board. */
     public function test_a_dragged_column_order_is_the_boards_for_everyone(): void
     {

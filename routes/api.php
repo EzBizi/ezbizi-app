@@ -1031,6 +1031,7 @@ Route::prefix('v1')
         Route::post('project-board/repair-teams', [ProjectBoardController::class, 'repairTeams']);
         Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
         Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
+        Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
         Route::patch('project-board/jobs/{job}/proposal', [ProjectBoardController::class, 'updateProposal']);
         Route::post('project-board/jobs/{job}/ready', [ProjectBoardController::class, 'ready']);
         Route::get('project-board/options', [ProjectBoardController::class, 'options']);

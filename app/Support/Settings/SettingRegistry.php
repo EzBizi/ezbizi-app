@@ -1046,6 +1046,8 @@ class SettingRegistry
                     ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
                     ['key' => 'attachments', 'label' => 'Attachments', 'visible' => true, 'as_label' => false],
                     ['key' => 'notes', 'label' => 'Notes', 'visible' => true, 'as_label' => false],
+                    // Jose, 2026-11-17: the job's work order as a PDF for the crew.
+                    ['key' => 'work_order', 'label' => 'Work Order', 'visible' => true, 'as_label' => false],
                 ],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'In the order shown. A column without Financials hides its amounts anyway.',
