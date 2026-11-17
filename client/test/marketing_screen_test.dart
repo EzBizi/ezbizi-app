@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/files.dart';
