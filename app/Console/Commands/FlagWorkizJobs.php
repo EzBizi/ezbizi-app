@@ -57,7 +57,7 @@ class FlagWorkizJobs extends Command
                     }
                     // Workiz's JobDateTime is the account's own wall clock: no zone to convert.
                     $at = $w->scheduled_for ? Carbon::parse($w->getRawOriginal('scheduled_for')) : null;
-                    if ($checkFriday && $at && $at->isFriday() && $at->format('H:i') > '15:00' && $at->isFuture()) {
+                    if ($checkFriday && $at && $at->isFriday() && $at->format('H:i') > '12:00' && $at->isFuture()) {
                         $issues['late_friday'] = self::FRIDAY_RULE;
                     }
 

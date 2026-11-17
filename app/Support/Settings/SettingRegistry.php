@@ -1059,10 +1059,10 @@ class SettingRegistry
                 help: 'Every 15 minutes, a new or changed Workiz job with an incomplete address alerts whoever booked it and goes on the branch board.',
             ),
             new SettingDefinition(
-                key: 'jobs.flag_late_friday', label: 'Jobs: flag Friday jobs starting after the 12-3 window',
+                key: 'jobs.flag_late_friday', label: 'Jobs: flag Friday jobs in a window later than 12-3',
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
-                help: 'Every 15 minutes, a Workiz job starting after 3 PM on a Friday (branch time) alerts whoever booked it and goes on the branch board.',
+                help: 'Every 15 minutes, a Workiz job starting after noon on a Friday (later than the 12-3 window) (branch time) alerts whoever booked it and goes on the branch board.',
             ),
             new SettingDefinition(
                 key: 'project_board.repair_tags', label: 'Project Management: repair team and contractor tags',

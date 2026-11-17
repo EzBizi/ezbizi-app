@@ -61,12 +61,13 @@ class JobAddressFlagsTest extends TestCase
             $w = $mk('BAD', ['address' => 'Savin Ave', 'postal_code' => '06516', 'serial_id' => 101]);
             $w->job_id = $job->id;
             $w->save();
-            $mk('LATE', ['address' => '12 Savin Ave', 'postal_code' => '06516', 'serial_id' => 102, 'scheduled_for' => '2026-11-20 16:00:00']);
+            $mk('LATE', ['address' => '12 Savin Ave', 'postal_code' => '06516', 'serial_id' => 102, 'scheduled_for' => '2026-11-20 13:00:00']);
+            $mk('THREE', ['address' => '12 Savin Ave', 'postal_code' => '06516', 'serial_id' => 104, 'scheduled_for' => '2026-11-20 15:00:00']);
             // The controls: complete address, Friday inside the window.
             $mk('FINE', ['address' => '12 Savin Ave', 'postal_code' => '06516', 'serial_id' => 103, 'scheduled_for' => '2026-11-20 12:00:00']);
         });
 
-        $this->artisan('ezbizi:flag-workiz-jobs')->expectsOutputToContain('2 flags raised')->assertSuccessful();
+        $this->artisan('ezbizi:flag-workiz-jobs')->expectsOutputToContain('3 flags raised')->assertSuccessful();
         $this->artisan('ezbizi:flag-workiz-jobs')->expectsOutputToContain('0 flags raised')->assertSuccessful();
 
         $this->inTenant($alpha['org'], function () use ($booker) {
@@ -74,10 +75,11 @@ class JobAddressFlagsTest extends TestCase
             $this->assertSame([
                 'Job #101: Address needs fixing (no house number): "Savin Ave, 06516"',
                 'Job #102: Friday jobs must be in the 12–3 window or earlier; confirm with the field manager or move it.',
+                'Job #104: Friday jobs must be in the 12–3 window or earlier; confirm with the field manager or move it.',
             ], $titles);
             $task = Task::query()->where('title', 'like', 'Job #101:%')->firstOrFail();
             $this->assertSame(['job', true], [$task->about_type, $task->about_id !== null]);
-            $this->assertSame(2, Task::query()->where('title', 'like', 'Job #%')->count());
+            $this->assertSame(3, Task::query()->where('title', 'like', 'Job #%')->count());
         });
     }
 
