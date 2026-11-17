@@ -165,6 +165,25 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Health sweep 2026-11-17: "{{started_at}}" into a date column crashed every missed-call task. */
+    public function test_a_timestamp_into_a_date_column_is_that_day(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $col = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Date Received', 'type' => 'date', 'position' => 1]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = new AutomationEvent(['event_key' => 'reports.call.missed', 'payload' => ['started_at' => '2026-11-16T22:17:50.883Z'],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Missed', 'assignee' => 'user:'.$t['admin']->id,
+                'values' => ['Date Received' => '{{started_at}}']], $event, null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $this->assertSame('2026-11-16', (string) substr((string) Task::query()->sole()->values()->where('column_id', $col->id)->value('value_date'), 0, 10));
+        });
+    }
+
     public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
     {
         $t = $this->provisionTenant('Alpha');

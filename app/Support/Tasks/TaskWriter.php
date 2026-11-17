@@ -818,7 +818,7 @@ class TaskWriter
                 $row['value_number'] = $ok ? (float) $value : null;
                 break;
             case 'date':
-                $ok = is_string($value) && \DateTime::createFromFormat('!Y-m-d', $value)?->format('Y-m-d') === $value;
+                $ok = is_string($value) && (\DateTime::createFromFormat('!Y-m-d', $value) ?: null)?->format('Y-m-d') === $value;
                 $why = 'A date as YYYY-MM-DD.';
                 $row['value_date'] = $value;
                 break;
@@ -837,7 +837,7 @@ class TaskWriter
                 $row['value_text'] = $ok ? json_encode($ids) : null;
                 break;
             case 'timeline':
-                $day = fn ($d) => is_string($d) && \DateTime::createFromFormat('!Y-m-d', $d)?->format('Y-m-d') === $d;
+                $day = fn ($d) => is_string($d) && (\DateTime::createFromFormat('!Y-m-d', $d) ?: null)?->format('Y-m-d') === $d;
                 $ok = is_array($value) && $day($value['from'] ?? null) && $day($value['to'] ?? null) && $value['from'] <= $value['to'];
                 $why = 'A range as {from, to}, YYYY-MM-DD, from no later than to.';
                 $row['value_date'] = $ok ? $value['from'] : null;
