@@ -36,6 +36,10 @@ void main() {
     await tester.tap(find.text('Chimney sweep call'));
     await tester.pumpAndSettle();
 
+    // Save waits for a change (design 196): change another field, so the
+    // date rides along untouched.
+    await tester.enterText(find.widgetWithText(TextField, 'Description'), 'Two flues');
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
@@ -44,6 +48,25 @@ void main() {
     expect(sent, isNot('2026'), reason: 'The defect: the date truncated to its year.');
     expect(sent, startsWith('2026-09-24 08:00'),
         reason: 'The wall clock the job holds, offset stripped, digits kept.');
+  });
+
+  testWidgets('design 196: the record on a phone, status once, facts grid', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      detail: _datedDetail,
+      patches: [],
+      size: const Size(360, 800),
+    );
+    await tester.tap(find.text('Chimney sweep call'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull, reason: 'No overflow at 360.');
+    expect(find.byKey(const Key('job-status')), findsOneWidget);
+    expect(find.widgetWithText(InputDecorator, 'Status'), findsOneWidget,
+        reason: 'The status picker once; the Job tab no longer repeats it.');
+    expect(find.byKey(const ValueKey('fact-Job #')), findsOneWidget);
   });
 }
 

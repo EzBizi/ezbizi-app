@@ -164,7 +164,15 @@ void main() {
       await tester.tap(find.text('Crown inspection'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('J-1001 · Workiz #12345'), findsOneWidget);
+      // Design 196: the number under the title, Workiz's in the facts grid.
+      expect(find.text('J-1001'), findsWidgets);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('fact-Workiz')),
+          matching: find.text('#12345'),
+        ),
+        findsOneWidget,
+      );
     },
   );
 

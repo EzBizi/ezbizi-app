@@ -85,7 +85,15 @@ void main() {
 
     expect(dirty.value, isFalse,
         reason: 'Nothing was changed, so nothing is unsaved.');
+    expect(
+      tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save')).onPressed,
+      isNull,
+      reason: 'Design 196: Save waits for a change, and a click is not one.',
+    );
 
+    // Save another field, so the date rides along untouched.
+    await tester.enterText(find.widgetWithText(TextField, 'Description'), 'Two flues');
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
