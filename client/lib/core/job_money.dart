@@ -67,6 +67,11 @@ class JobMoney {
 }
 
 /// The money filter's choices, in the order the chips draw them.
+/// Mirrors App\Support\ProjectBoard\WorkOrderPdf::PAYMENT_RULE (Jose 11-17).
+const paymentRule =
+    "Don't leave the job site without confirmation of collected payment. "
+    'Reach out to the project manager so we can collect payment from the client.';
+
 const moneyStates = <(String, String, Tone?)>[
   ('unpaid', 'Unpaid', null),
   ('partial', 'Partly paid', null),
