@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Attachment;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\JobNote;
 use App\Models\JobPart;
@@ -14,6 +16,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Jobs\JobMoney;
 use App\Support\Jobs\ScheduleTexts;
 use App\Support\Jobs\WorkizExtras;
+use App\Support\ProjectBoard\WorkOrderPdf;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -67,6 +70,75 @@ class ProjectBoardController extends Controller
         $this->readyRequires = array_values((array) $settings->get('project_board.ready_requires', $place));
 
         return $place;
+    }
+
+    /**
+     * GET /api/v1/project-board/jobs/{job}/work-order: the job's work order
+     * as a PDF for the crew (Jose, 2026-11-17). Amounts only for a reader
+     * with Financials.
+     */
+    public function workOrder(Request $request, Job $job): Response
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_board.view') && $user->hasPermission('jobs.view'),
+            Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+        abort_unless(in_array($job->franchise_id, ViewScope::forUser($user)->franchiseIds(), true), Response::HTTP_NOT_FOUND);
+        $this->settingsFor($user);
+        // Whole rows: the work order needs the client's address and phone.
+        $job->load(['customer', 'franchise.company', 'workizJob', 'serviceArea', 'performedBy']);
+        $row = $this->unscheduled($job, $this->extras([$job->id]));
+        $payload = is_array($job->workizJob?->payload) ? $job->workizJob->payload : [];
+        $customer = $job->customer;
+        $address = filled($payload['Address'] ?? null)
+            ? trim(implode(', ', array_filter([$payload['Address'], $payload['City'] ?? null,
+                trim(($payload['State'] ?? '').' '.($payload['PostalCode'] ?? ''))])))
+            : $job->customer_address;
+        $money = $user->hasPermission('jobs.financials') ? (JobMoney::of([$job->id])[$job->id] ?? null) : null;
+        $usd = fn (?int $cents) => '$'.number_format(($cents ?? 0) / 100, 2);
+        // Up to nine photos on the page; the rest are listed by name.
+        $files = Attachment::query()->where('attachable_type', $job->getMorphClass())->where('attachable_id', $job->id)
+            ->orderBy('created_at')->get();
+        $photos = [];
+        $listed = [];
+        foreach ($files as $file) {
+            $isPhoto = str_starts_with((string) $file->mime, 'image/') && in_array($file->mime, ['image/jpeg', 'image/png', 'image/gif'], true);
+            $bytes = $isPhoto && count($photos) < 9 && ($file->size_bytes ?? 0) <= 4_000_000 ? $file->bytes() : null;
+            if ($bytes !== null) {
+                $photos[] = ['name' => (string) $file->original_name, 'data' => 'data:'.$file->mime.';base64,'.base64_encode($bytes)];
+            } else {
+                $listed[] = (string) $file->original_name;
+            }
+        }
+        foreach (WorkizExtras::files($payload) as $f) {
+            $listed[] = (string) $f['name'];
+        }
+
+        $pdf = WorkOrderPdf::render([
+            'company' => $job->franchise?->company?->name ?? $job->franchise?->name,
+            'number' => $job->number,
+            'workiz' => $job->workizJob?->serial_id === null ? null : (string) $job->workizJob->serial_id,
+            'client' => $customer?->name,
+            'address' => $address,
+            'phone' => filled($payload['Phone'] ?? null) ? (string) $payload['Phone'] : $customer?->phone,
+            'phone_ext' => filled($payload['PhoneExt'] ?? null) ? (string) $payload['PhoneExt'] : null,
+            'technician' => $row['technician'],
+            'repair_team' => $row['repair_team'],
+            'parts' => $row['parts'],
+            'photos' => $photos,
+            'files' => $listed,
+            'inspections' => InspectionReport::query()->where('job_id', $job->id)->whereNull('archived_at')->orderBy('submitted_at')
+                ->get(['definition_name', 'submitted_at'])
+                ->map(fn (InspectionReport $r) => trim($r->definition_name.' '.($r->submitted_at?->format('m/d/Y') ?? '')))->all(),
+            'payment_date' => $row['payment_date'] === null ? null : Carbon::parse($row['payment_date'])->format('m/d/Y g:i A'),
+            'money' => $money === null ? null : [
+                'total' => $usd($money['total']), 'paid' => $usd($money['paid']), 'remaining' => $usd($money['due']),
+            ],
+        ]);
+
+        return response($pdf, Response::HTTP_OK, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="Work order '.preg_replace('/[^A-Za-z0-9 #-]/', '', (string) $job->number).'.pdf"',
+        ]);
     }
 
     /**
