@@ -161,11 +161,15 @@ void main() {
 
     expect(find.textContaining('C-1001'), findsWidgets);
 
-    // The WHOLE subtitle, number first. The list row already reads
-    // "Everdoors · Connecticut" and so does the org name in the fixture, so
-    // asserting only the owner tag would pass against the row behind the panel
-    // and prove nothing about the panel. Only the panel prefixes the number.
-    expect(find.text('C-1001 · Everdoors · Connecticut'), findsOneWidget);
+    // Design 196: Company · Branch in the panel's facts grid. Scoped to the
+    // fact, because the list row behind the panel reads the same words.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('fact-Branch')),
+        matching: find.text('Everdoors · Connecticut'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Find an address'), findsOneWidget);
     expect(find.text('Street'), findsOneWidget);
     expect(find.text('Deactivate'), findsOneWidget);
@@ -248,7 +252,13 @@ void main() {
     await tester.tap(find.text('Alice Roofing'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('C-1001 · Workiz #4512, #4600'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('fact-Workiz')),
+        matching: find.text('#4512, #4600'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('with no Workiz client loaded there is no Workiz column', (

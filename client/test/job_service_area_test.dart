@@ -161,6 +161,12 @@ void main() {
 
       expect(find.byKey(const Key('job-service-area')), findsNothing);
 
+      // Save waits for a change (design 196).
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Description'),
+        'Two flues',
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
 
