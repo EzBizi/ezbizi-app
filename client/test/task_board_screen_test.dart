@@ -400,7 +400,7 @@ void main() {
           const Offset(160, 19),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Automation "Liner job booked"'), findsOneWidget);
+    expect(find.text('EzBizi · automation "Liner job booked"'), findsOneWidget);
     expect(find.text('Late'), findsOneWidget);
 
     // Activity: who changed what, from and to (Jose, 2026-11-09).

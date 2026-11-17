@@ -127,7 +127,9 @@ Object? columnValue(Map<String, dynamic> task, BoardColumn c) =>
       'last_updated' => {'at': task['updated_at'] ?? task['created_at']},
       'creation_log' => {
         'at': task['created_at'],
-        'by': (task['created_by'] as Map?)?['label'],
+        'by': (task['created_by'] as Map?)?['type'] == 'automation'
+            ? 'EzBizi'
+            : (task['created_by'] as Map?)?['label'],
       },
       _ when c.formula != null => evalFormula(
         c.formula!,
