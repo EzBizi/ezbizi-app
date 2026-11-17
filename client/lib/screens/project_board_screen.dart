@@ -1402,6 +1402,11 @@ class _BoardSettingsState extends State<_BoardSettings> {
   /// Suppliers and same-day pickup stores (Jose, 2026-11-17: "we need to set
   /// up list of supplier"): id, name, address, phone, kind.
   final List<_SupplierRow> _suppliers = [];
+
+  /// The texts to the client (Jose, 2026-11-17), each a switch, its wording
+  /// and when it was switched on; all OFF until he approves the wording.
+  final Map<String, ({bool on, String? since, TextEditingController text})>
+  _clientTexts = {};
   final Map<String, List<String>> _tabNoTags = {};
 
   /// The company's real job statuses and tags, most used first.
@@ -1444,6 +1449,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
     _badDays.dispose();
     for (final r in _suppliers) {
       r.dispose();
+    }
+    for (final t in _clientTexts.values) {
+      t.text.dispose();
     }
     super.dispose();
   }
@@ -1534,6 +1542,16 @@ class _BoardSettingsState extends State<_BoardSettings> {
         for (final t in (byKey['project_board.part_tags'] as List?) ?? const [])
           '$t',
       ];
+      final texts = (byKey['project_board.client_messages'] as Map?) ?? const {};
+      for (final (kind, _) in _clientTextKinds) {
+        final t = (texts[kind] as Map?) ?? const {};
+        _clientTexts[kind]?.text.dispose();
+        _clientTexts[kind] = (
+          on: t['on'] == true,
+          since: t['since'] as String?,
+          text: TextEditingController(text: t['text'] as String? ?? ''),
+        );
+      }
       for (final r in _suppliers) {
         r.dispose();
       }
@@ -1649,6 +1667,67 @@ class _BoardSettingsState extends State<_BoardSettings> {
         for (final r in _suppliers)
           if (r.name.text.trim().isNotEmpty) r.value,
       ],
+    },
+  );
+
+  static const _clientTextKinds = [
+    ('project_link', 'When a job reaches the board: the project link'),
+    ('scheduled', 'When it is scheduled (also sends the work order to the crew)'),
+    ('day_before', 'The day before the appointment'),
+    ('complete', 'When it is complete: thank you'),
+  ];
+
+  /// Each text to the client: its switch and wording (Jose, 2026-11-17).
+  /// Switching one on only reaches jobs from then on; replies land in Inbox.
+  Widget _clientTextsCard() => _card(
+    'client-texts',
+    'Texts to the client',
+    'Off until switched on. {client_first}, {company}, {date} and {link} '
+        'fill in. Replies land in Inbox.',
+    [
+      for (final (kind, label) in _clientTextKinds)
+        if (_clientTexts[kind] case final t?)
+          Padding(
+            key: ValueKey('project-board-client-text-$kind'),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SwitchListTile(
+                  key: ValueKey('project-board-client-text-on-$kind'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(label),
+                  value: t.on,
+                  onChanged: (on) => setState(
+                    () => _clientTexts[kind] = (
+                      on: on,
+                      // Only jobs from now on: never the backlog.
+                      since: on
+                          ? DateTime.now().toUtc().toIso8601String()
+                          : null,
+                      text: t.text,
+                    ),
+                  ),
+                ),
+                TextField(
+                  controller: t.text,
+                  minLines: 2,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+    ],
+    () => {
+      'project_board.client_messages': {
+        for (final MapEntry(key: kind, value: t) in _clientTexts.entries)
+          kind: {'on': t.on, 'since': t.since, 'text': t.text.text.trim()},
+      },
     },
   );
 
@@ -2289,6 +2368,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
         ),
         _repairCard(),
         _suppliersCard(),
+        _clientTextsCard(),
         _card(
           'ready',
           'Ready to schedule',

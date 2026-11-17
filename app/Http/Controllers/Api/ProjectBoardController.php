@@ -18,6 +18,7 @@ use App\Support\Jobs\ScheduleTexts;
 use App\Support\Jobs\WorkizExtras;
 use App\Support\ProjectBoard\WorkOrderPdf;
 use App\Support\Scoping\ViewScope;
+use App\Support\Tenancy\TenantContext;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Workiz\WorkizMirror;
@@ -30,6 +31,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -64,6 +66,13 @@ class ProjectBoardController extends Controller
     {
         $place = ViewScope::forUser($user)->settingsScope();
         $place = $place instanceof Franchise ? ($place->company ?? $user->organization) : $place;
+
+        return $this->settingsAt($place);
+    }
+
+    /** The same, read at [place] (a company or the organization). */
+    private function settingsAt(Model $place): Model
+    {
         $settings = app(SettingsResolver::class);
         $this->repairTags = array_values(array_filter(array_map(fn (array $e) => self::tagKey($e['name']),
             self::repairEntries($settings->get('project_board.repair_tags', $place)))));
@@ -138,6 +147,37 @@ class ProjectBoardController extends Controller
             Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
         abort_unless(in_array($job->franchise_id, ViewScope::forUser($user)->franchiseIds(), true), Response::HTTP_NOT_FOUND);
         $this->settingsFor($user);
+
+        return $this->workOrderResponse($job, $user->hasPermission('jobs.financials'));
+    }
+
+    /**
+     * GET /work-order/{job}?signature=…: the same work order by a signed link
+     * that lapses after 7 days, for a repair crew or contractor with no login
+     * (Jose, 2026-11-17: "send ... work order, repair crew or contractor").
+     * Opens this job's work order and nothing else; with the balance, since
+     * the crew collects it.
+     */
+    public function sharedWorkOrder(string $job): Response
+    {
+        $row = Job::query()->withoutGlobalScopes()->findOrFail($job);
+
+        return app(TenantContext::class)->run($row->organization, function () use ($row) {
+            $row = Job::query()->findOrFail($row->id);
+            $this->settingsAt($row->franchise?->company ?? $row->organization);
+
+            return $this->workOrderResponse($row, true);
+        });
+    }
+
+    /** A link to [job]'s work order that works without signing in, for 7 days. */
+    public static function workOrderLink(Job $job): string
+    {
+        return URL::temporarySignedRoute('work-order.shared', now()->addDays(7), ['job' => $job->id]);
+    }
+
+    private function workOrderResponse(Job $job, bool $withMoney): Response
+    {
         // Whole rows: the work order needs the client's address and phone.
         $job->load(['customer', 'franchise.company', 'workizJob', 'serviceArea', 'performedBy']);
         $row = $this->unscheduled($job, $this->extras([$job->id]));
@@ -147,7 +187,7 @@ class ProjectBoardController extends Controller
             ? trim(implode(', ', array_filter([$payload['Address'], $payload['City'] ?? null,
                 trim(($payload['State'] ?? '').' '.($payload['PostalCode'] ?? ''))])))
             : $job->customer_address;
-        $money = $user->hasPermission('jobs.financials') ? (JobMoney::of([$job->id])[$job->id] ?? null) : null;
+        $money = $withMoney ? (JobMoney::of([$job->id])[$job->id] ?? null) : null;
         $usd = fn (?int $cents) => '$'.number_format(($cents ?? 0) / 100, 2);
         // Up to nine photos on the page; the rest are listed by name.
         $files = Attachment::query()->where('attachable_type', $job->getMorphClass())->where('attachable_id', $job->id)

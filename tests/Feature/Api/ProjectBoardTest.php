@@ -588,6 +588,59 @@ class ProjectBoardTest extends TestCase
         $this->signedInAs($viewer)->postJson("/api/v1/project-board/inbox/{$board}", ['body' => 'Hi'])->assertForbidden();
     }
 
+    /**
+     * Jose, 2026-11-17: the client texts ship OFF; switched on, only a job
+     * after the switch gets one, once, from the branch line, noted on the
+     * job; the timeline and work-order links open only signed.
+     */
+    public function test_client_texts_are_off_until_switched_on_then_sent_once_to_new_jobs_only(): void
+    {
+        $twilio = new \App\Support\Phone\FakeTwilioGateway;
+        $this->app->instance(\App\Support\Phone\TwilioGateway::class, $twilio);
+        $alpha = $this->provisionTenant('Alpha');
+        $sends = fn () => collect($twilio->calls)->where('method', 'sendMessage')->map(fn ($c) => $c['args'][3])->values()->all();
+        [$old] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $c = \App\Models\PhoneConnection::factory()->create(['scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id, 'status' => \App\Models\PhoneConnection::STATUS_CONNECTED]);
+            \App\Models\PhoneNumber::factory()->create(['connection_id' => $c->id, 'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id])->forceFill(['sms_outbound_allowed' => true])->save();
+            $old = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->find($old)->customer->forceFill(['phone' => '+15125550101', 'name' => 'Lena Park'])->save();
+
+            return [$old];
+        });
+
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame([], $sends(), 'Every text ships OFF.');
+
+        $this->travel(1)->minutes();
+        $this->inTenant($alpha['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('project_board.client_messages', $alpha['org'], [
+            'project_link' => ['on' => true, 'since' => now()->toIso8601String(), 'text' => 'Hi {client_first}, see your project: {link}'],
+        ]));
+        $this->travel(1)->minutes();
+        $new = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $id = $this->job($alpha['franchise'], 'J-2', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->find($id)->customer->forceFill(['phone' => '+15125550102', 'name' => 'Omar Diaz'])->save();
+
+            return $id;
+        });
+
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertCount(1, $sends(), 'Once, and not to J-1 from before the switch.');
+        $this->assertStringStartsWith('Hi Omar, see your project: ', $sends()[0]);
+
+        // The link in it opens the client's page, signed only.
+        preg_match('#https?://\S+/api/v1/project/\S+#', $sends()[0], $m);
+        $this->get($m[0])->assertOk()->assertSee('Omar, your project', false);
+        $this->get(strtok($m[0], '?'))->assertForbidden();
+
+        // A crew's work order opens by its own signed link only.
+        $link = \App\Http\Controllers\Api\ProjectBoardController::workOrderLink(Job::query()->withoutGlobalScopes()->find($new));
+        $this->assertStringStartsWith('%PDF', $this->get($link)->assertOk()->getContent());
+        $this->get(strtok($link, '?'))->assertForbidden();
+    }
+
     /** Jose, 2026-11-17: "Just let me drag them" - one column order for everyone on the board. */
     public function test_a_dragged_column_order_is_the_boards_for_everyone(): void
     {

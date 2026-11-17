@@ -735,6 +735,15 @@ Route::get('v1/web/chat/avatar/{user}', [WebEnquiriesController::class, 'avatar'
     ->middleware('signed')
     ->name('web.chat.avatar');
 
+// Project Management (Jose, 2026-11-17): a crew's work order and a client's
+// project page, by signed links that lapse; no login.
+Route::get('v1/work-order/{job}', [ProjectBoardController::class, 'sharedWorkOrder'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('work-order.shared');
+Route::get('v1/project/{job}', [\App\Http\Controllers\Api\ProjectTimelineController::class, 'show'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('project.timeline');
+
 Route::post('v1/web/form', [WebEnquiriesController::class, 'submitForm'])
     ->middleware('throttle:web-enquiry')
     ->name('web.form.submit');
