@@ -148,6 +148,9 @@ class JobBookingController extends Controller
         ]);
         $franchise = Franchise::query()->findOrFail($input['franchise_id']);
         $this->authorize('create', [Job::class, $franchise]);
+        if (! isset($input['customer_id'])) {
+            \App\Support\Jobs\JobAddress::assertBookable($input['location']['address_line1'] ?? null, 'location.address_line1');
+        }
         $area = ServiceArea::query()->where('franchise_id', $franchise->id)->findOrFail($input['service_area_id']);
         if (isset($input['status']) && ! in_array($input['status'], Job::allowedStatuses($franchise), true)) {
             throw \Illuminate\Validation\ValidationException::withMessages(['status' => 'Not one of this organization\'s job statuses.']);

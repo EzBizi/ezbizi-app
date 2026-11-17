@@ -20,6 +20,7 @@ Artisan::command('inspire', function () {
  * Cheap to run often because it says each one ONCE — `went_quiet_at` is what
  * stops an hourly sweep becoming an hourly alert.
  */
+Schedule::command('ezbizi:flag-workiz-jobs')->everyFifteenMinutes()->withoutOverlapping(14);
 Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');

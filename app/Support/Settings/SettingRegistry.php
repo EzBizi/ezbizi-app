@@ -1051,6 +1051,19 @@ class SettingRegistry
             ),
             // Jose, 2026-11-10: "the settings need to be updated to manage all
             // of these new columns".
+            // ezbizi:flag-workiz-jobs (dispatchers, 2026-11-17): each check can be switched off.
+            new SettingDefinition(
+                key: 'jobs.flag_incomplete_address', label: 'Jobs: flag Workiz jobs with no house number, street or postal code',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Every 15 minutes, a new or changed Workiz job with an incomplete address alerts whoever booked it and goes on the branch board.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.flag_late_friday', label: 'Jobs: flag Friday jobs starting after the 12-3 window',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Every 15 minutes, a Workiz job starting after 3 PM on a Friday (branch time) alerts whoever booked it and goes on the branch board.',
+            ),
             new SettingDefinition(
                 key: 'project_board.repair_tags', label: 'Project Management: repair team and contractor tags',
                 type: SettingDefinition::TYPE_JSON,
