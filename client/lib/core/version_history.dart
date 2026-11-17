@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0581', date: '17 Nov 2026', items: [
+      'Marketing Reports: Angi Sweep Connecticut ad cost no longer also shows on Everdoors Connecticut; a sub company account named for a branch goes only to a branch that books that source',
+    ]),
     VersionRelease(version: '0.0.0580', date: '17 Nov 2026', items: [
       'On a phone, Jobs, Customers and CX Reviews start the list much higher: search, Filters and a menu share one toolbar line',
       'On a phone, module headers keep their full title, and the Communication › Phone tabs and the HR Day to Year range fit on one line',
