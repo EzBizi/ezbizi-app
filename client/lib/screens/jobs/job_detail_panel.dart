@@ -791,6 +791,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
             formats: _me.display,
             addRefusal: _editRefusal,
             onAdded: (note) => setState(() => _notes = [note, ..._notes]),
+            onChanged: (notes) => setState(() => _notes = notes),
             workizNotes: _row?['workiz_notes'] as String?,
           )
         else
