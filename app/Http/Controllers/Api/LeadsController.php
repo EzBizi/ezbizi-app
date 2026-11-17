@@ -1187,6 +1187,7 @@ class LeadsController extends Controller
                 ]);
             }
 
+            \App\Support\Jobs\JobAddress::assertCustomer($customer);
             $job = Job::create([
                 'franchise_id' => $franchise->getKey(),
                 'customer_id' => $customer->getKey(),
