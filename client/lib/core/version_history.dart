@@ -13,6 +13,26 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0587', date: '17 Nov 2026', items: [
+      'Jobs: an address without a house number can no longer be booked',
+      'Jobs: every 15 minutes, Workiz jobs with an incomplete address or a Friday start after noon alert whoever booked them and go on the branch task board',
+      'Scheduling: a latest booking window per weekday (Friday 12-3) applies to online booking, Check availability, reschedule offers and Another date',
+      'Task Board: notes and text cells edit in a readable card, and dates open a compact calendar',
+      'Task Board: the link column is called Linked on every board; link a task to another task, a lead, a customer or a job from one search, and missed-call tasks link the caller lead',
+      'Task Board: branch boards move a refund to Customer Relations, an approved refund to Accounting, a dispute or chargeback to the General Manager and a deposit job to the Project Manager group, and tell whoever made it',
+      'Jobs and Project Management: team notes can be edited or deleted by their author or an admin, and Workiz notes can be edited and saved back to Workiz',
+      'Leads › Phone lines lists each RingCentral account own numbers',
+      'AI connections: a refusal says it is the role limit and where to change it',
+    ]),
+    VersionRelease(version: '0.0.0586', date: '17 Nov 2026', items: [
+      'Task Board: a task an automation assigned keeps its people when Monday puts the connection user on it',
+      'Missed-call tasks get their Area from the line called, or from the caller lead or customer branch',
+      'Project Management: parts selector (In stock, Order from a supplier, Same-day pickup) with quantity, price, destination and Received; a part ordered 3+ days ago and not received turns red',
+      'Project Management: Settings › Suppliers list, and drag columns on every Project Management table',
+      'Project Management: a Work Order column with a PDF per job, including parts and pickup, photos, inspection reports, payment and the collect-payment rule',
+      'Jobs: marking a job done while money is still owed reminds the technician to confirm payment with the project manager before leaving',
+      'HR › Onboarding: hourly rate stages (for example after 90 days, \$28/hr) print on the contract, become dated pay rates, and the record shows the current and next rate',
+    ]),
     VersionRelease(version: '0.0.0585', date: '17 Nov 2026', items: [
       'Leads: calls to EverDoors RingCentral numbers are filed under Everdoors, not A-1 Chimney',
       'Leads › Manage › Phone lines: choose which company and branch each RingCentral number calls go to',

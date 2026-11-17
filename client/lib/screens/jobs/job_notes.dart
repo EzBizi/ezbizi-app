@@ -9,8 +9,13 @@ import '../../widgets/mention_field.dart';
 import '../../widgets/refused.dart';
 
 /// A job's notes (UI queue 122; option 1 and phone 4): the box on top, the
-/// notes under it, newest first. Append-only, as the server is: no edit, no
-/// delete, the next note corrects the last.
+/// notes under it, newest first. The one notes panel for a job, wherever its
+/// notes show: Jobs, Project Management.
+///
+/// Jose, 2026-11-17 ("i cannot edit notes on project management"): a note's
+/// author, or an administrator, may change or delete it, and it then reads
+/// "edited"; Workiz's own job notes are edited in place and written back to
+/// Workiz.
 ///
 /// The notes arrive with the job (`notes` on its detail). An added note is put
 /// at the top through [onAdded] without reloading the panel.
@@ -23,6 +28,7 @@ class JobNotes extends StatefulWidget {
     required this.draft,
     required this.formats,
     required this.onAdded,
+    this.onChanged,
     this.workizNotes,
     this.addRefusal,
     this.now,
@@ -37,8 +43,11 @@ class JobNotes extends StatefulWidget {
   final DisplayFormats formats;
   final ValueChanged<Map<String, dynamic>> onAdded;
 
-  /// Workiz's job notes, read only (Jose, 2026-11-10: they were in the
-  /// Notes column but not here).
+  /// The whole list after a note was edited or deleted here.
+  final ValueChanged<List<Map<String, dynamic>>>? onChanged;
+
+  /// Workiz's job notes (Jose, 2026-11-10: they were in the Notes column but
+  /// not here), editable since 2026-11-17.
   final String? workizNotes;
 
   /// Why this reader may not add one (`jobs.edit`), or null when they may.
@@ -56,6 +65,12 @@ class _JobNotesState extends State<JobNotes> {
   String? _error;
   final _mentions = MentionController();
 
+  /// Workiz's notes as last saved here, else as the job sent them.
+  late String? _workiz = widget.workizNotes;
+  TextEditingController? _workizEdit;
+  bool _workizSaving = false;
+  String? _workizError;
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +78,20 @@ class _JobNotesState extends State<JobNotes> {
     if (widget.notes.isNotEmpty) {
       widget.api.post('/note-reads', {'type': 'job', 'id': widget.jobId});
     }
+  }
+
+  @override
+  void didUpdateWidget(JobNotes old) {
+    super.didUpdateWidget(old);
+    if (old.workizNotes != widget.workizNotes && _workizEdit == null) {
+      _workiz = widget.workizNotes;
+    }
+  }
+
+  @override
+  void dispose() {
+    _workizEdit?.dispose();
+    super.dispose();
   }
 
   bool get _canAdd => widget.addRefusal == null && !_sending;
@@ -96,6 +125,137 @@ class _JobNotesState extends State<JobNotes> {
     _mentions.clear();
     setState(() => _sending = false);
     widget.onAdded(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  /// Saves Workiz's notes; a refusal keeps what was typed, open.
+  Future<void> _saveWorkiz() async {
+    final edit = _workizEdit;
+    if (edit == null || _workizSaving) return;
+    setState(() {
+      _workizSaving = true;
+      _workizError = null;
+    });
+    final response = await widget.api.put(
+      '/jobs/${widget.jobId}/workiz-notes',
+      // What was opened: Workiz refuses the write if its notes moved since.
+      {'text': edit.text, 'was': _workiz ?? ''},
+    );
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() {
+        _workizSaving = false;
+        _workizError = response.reason;
+      });
+      return;
+    }
+    final data = response.data;
+    setState(() {
+      _workizSaving = false;
+      _workiz = data is Map ? data['workiz_notes'] as String? : edit.text;
+      _workizEdit = null;
+    });
+    edit.dispose();
+  }
+
+  Future<String?> _changeNote(Map<String, dynamic> note, String? body) async {
+    final path = '/jobs/${widget.jobId}/notes/${note['id']}';
+    final response = body == null
+        ? await widget.api.delete(path)
+        : await widget.api.patch(path, {'body': body});
+    if (!mounted) return null;
+    if (!response.ok) return response.reason;
+    final next = [
+      for (final n in widget.notes)
+        if (n['id'] != note['id'])
+          n
+        else if (body != null && response.data is Map)
+          Map<String, dynamic>.from(response.data as Map),
+    ];
+    widget.onChanged?.call(next);
+    return null;
+  }
+
+  Widget _workizBlock(ThemeData theme, Color muted) {
+    final edit = _workizEdit;
+    final canEdit = widget.addRefusal == null;
+    return Container(
+      key: const Key('job-notes-workiz'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'FROM WORKIZ',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: muted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (edit == null && canEdit)
+                TextButton.icon(
+                  key: const Key('job-notes-workiz-edit'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: () => setState(
+                    () => _workizEdit = TextEditingController(text: _workiz),
+                  ),
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Edit'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (edit == null)
+            SelectableText(_workiz ?? '')
+          else ...[
+            TextField(
+              key: const Key('job-notes-workiz-box'),
+              controller: edit,
+              minLines: 3,
+              maxLines: 14,
+              keyboardType: TextInputType.multiline,
+              enabled: !_workizSaving,
+            ),
+            if (_workizError != null) ...[
+              const SizedBox(height: 8),
+              ErrorNote(_workizError!, key: const Key('job-notes-workiz-error')),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: _workizSaving
+                      ? null
+                      : () => setState(() {
+                          _workizEdit = null;
+                          _workizError = null;
+                          edit.dispose();
+                        }),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  key: const Key('job-notes-workiz-save'),
+                  onPressed: _workizSaving ? null : _saveWorkiz,
+                  child: Text(_workizSaving ? 'Saving…' : 'Save to Workiz'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -167,35 +327,11 @@ class _JobNotesState extends State<JobNotes> {
               ErrorNote(_error!, key: const Key('job-note-error')),
             ],
             const SizedBox(height: 16),
-            if (widget.workizNotes case final w?) ...[
-              Container(
-                key: const Key('job-notes-workiz'),
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.5,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'FROM WORKIZ · READ ONLY',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: muted,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    SelectableText(w),
-                  ],
-                ),
-              ),
+            if (_workiz != null || _workizEdit != null) ...[
+              _workizBlock(theme, muted),
               const SizedBox(height: 12),
             ],
-            if (widget.notes.isEmpty && widget.workizNotes == null)
+            if (widget.notes.isEmpty && _workiz == null)
               Text(
                 'No notes yet',
                 key: const Key('job-notes-empty'),
@@ -209,6 +345,9 @@ class _JobNotesState extends State<JobNotes> {
                   formats: widget.formats,
                   now: widget.now,
                   phone: phone,
+                  onChange: note['can_change'] == true && widget.addRefusal == null
+                      ? (body) => _changeNote(note, body)
+                      : null,
                 ),
           ],
         );
@@ -217,13 +356,14 @@ class _JobNotesState extends State<JobNotes> {
   }
 }
 
-class _NoteRow extends StatelessWidget {
+class _NoteRow extends StatefulWidget {
   const _NoteRow({
     super.key,
     required this.note,
     required this.formats,
     required this.phone,
     this.now,
+    this.onChange,
   });
 
   final Map<String, dynamic> note;
@@ -231,16 +371,126 @@ class _NoteRow extends StatelessWidget {
   final bool phone;
   final DateTime? now;
 
+  /// Saves new words, or deletes with null; answers a refusal, or null.
+  final Future<String?> Function(String? body)? onChange;
+
+  @override
+  State<_NoteRow> createState() => _NoteRowState();
+}
+
+class _NoteRowState extends State<_NoteRow> {
+  TextEditingController? _edit;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _edit?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run(String? body) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final refused = await widget.onChange!(body);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = refused;
+      if (refused == null) {
+        _edit?.dispose();
+        _edit = null;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final note = widget.note;
     final theme = Theme.of(context);
     final who = noteAuthor(note);
-    final when = noteWhen(note['created_at'], formats: formats, now: now);
-    final full = formatStamp(note['created_at'], '', formats: formats);
-    final body = SelectableText(
-      '${note['body'] ?? ''}',
-      style: theme.textTheme.bodyMedium,
-    );
+    final when = [
+      noteWhen(note['created_at'], formats: widget.formats, now: widget.now),
+      if (note['edited_at'] != null) 'edited',
+    ].join(' · ');
+    final full = formatStamp(note['created_at'], '', formats: widget.formats);
+    final edit = _edit;
+    final Widget body = edit == null
+        ? SelectableText(
+            '${note['body'] ?? ''}',
+            style: theme.textTheme.bodyMedium,
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                key: ValueKey('job-note-edit-${note['id']}'),
+                controller: edit,
+                minLines: 2,
+                maxLines: 10,
+                enabled: !_busy,
+                keyboardType: TextInputType.multiline,
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() {
+                            _edit = null;
+                            _error = null;
+                            edit.dispose();
+                          }),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    key: ValueKey('job-note-save-${note['id']}'),
+                    onPressed: _busy || edit.text.trim().isEmpty
+                        ? null
+                        : () => _run(edit.text.trim()),
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            ],
+          );
+    final menu = widget.onChange == null || edit != null
+        ? null
+        : MenuAnchor(
+            menuChildren: [
+              MenuItemButton(
+                key: ValueKey('job-note-edit-item-${note['id']}'),
+                leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+                onPressed: () => setState(
+                  () => _edit = TextEditingController(text: '${note['body']}'),
+                ),
+                child: const Text('Edit'),
+              ),
+              MenuItemButton(
+                key: ValueKey('job-note-delete-${note['id']}'),
+                leadingIcon: Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: theme.colorScheme.error,
+                ),
+                onPressed: () => _run(null),
+                child: const Text('Delete'),
+              ),
+            ],
+            builder: (context, controller, _) => IconButton(
+              key: ValueKey('job-note-menu-${note['id']}'),
+              tooltip: 'More',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.more_horiz, size: 18),
+              onPressed: () =>
+                  controller.isOpen ? controller.close() : controller.open(),
+            ),
+          );
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -252,22 +502,33 @@ class _NoteRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Tooltip(
-            message: full,
-            child: phone
-                ? Text(
-                    '$who · $when',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  )
-                : PersonCell(name: who, sub: when),
+          Row(
+            children: [
+              Expanded(
+                child: Tooltip(
+                  message: full,
+                  child: widget.phone
+                      ? Text(
+                          '$who · $when',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        )
+                      : PersonCell(name: who, sub: when),
+                ),
+              ),
+              ?menu,
+            ],
           ),
           const SizedBox(height: 6),
-          if (phone)
+          if (widget.phone)
             body
           else
             Padding(padding: const EdgeInsets.only(left: 42), child: body),
+          if (_error != null) ...[
+            const SizedBox(height: 6),
+            ErrorNote(_error!),
+          ],
         ],
       ),
     );

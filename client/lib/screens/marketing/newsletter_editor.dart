@@ -1770,27 +1770,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         _text(block, 'text', 'Words', lines: 4),
         _align(block),
       ],
-      BlockKind.image => [
-        // Keyed by each pick, so the field shows the address a pick wrote.
-        KeyedSubtree(
-          key: ValueKey('newsletter-image-src-$_picks'),
-          child: _text(block, 'src', 'Image address'),
-        ),
-        if (widget.api != null && widget.readOnlyBecause == null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                key: const ValueKey('newsletter-image-library'),
-                onPressed: () => _chooseFromLibrary(context, block),
-                icon: const Icon(Icons.photo_library_outlined, size: 18),
-                label: const Text('Choose picture'),
-              ),
-            ),
-          ),
-        _text(block, 'alt', 'Describe the picture'),
-      ],
+      BlockKind.image => _imageFields(context, block),
       BlockKind.button => [
         _text(block, 'text', 'Label'),
         _text(block, 'url', 'Where it goes'),
@@ -1948,31 +1928,112 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   /// How many pictures were chosen from the library; keys the address field.
   int _picks = 0;
 
+  /// The image block's inspector (newsletter P0, 2026-11-17): Upload images
+  /// and Browse library at once on an empty block; Replace on a full one
+  /// (cancelling keeps the picture); alt text or Decorative; link;
+  /// alignment; displayed width. Crop and focal point are not offered yet.
+  List<Widget> _imageFields(BuildContext context, Map<String, dynamic> block) {
+    final empty = '${block['src'] ?? ''}'.trim().isEmpty;
+    final decorative = block['decorative'] == true;
+    final editable = widget.api != null && widget.readOnlyBecause == null;
+    return [
+      if (editable)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              if (empty) ...[
+                FilledButton.icon(
+                  key: const ValueKey('newsletter-image-upload'),
+                  onPressed: () =>
+                      _chooseFromLibrary(context, block, upload: true),
+                  icon: const Icon(Icons.upload, size: 18),
+                  label: const Text('Upload images'),
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('newsletter-image-library'),
+                  onPressed: () => _chooseFromLibrary(context, block),
+                  icon: const Icon(Icons.photo_library_outlined, size: 18),
+                  label: const Text('Browse library'),
+                ),
+              ] else
+                OutlinedButton.icon(
+                  key: const ValueKey('newsletter-image-replace'),
+                  onPressed: () => _chooseFromLibrary(context, block),
+                  icon: const Icon(Icons.swap_horiz, size: 18),
+                  label: const Text('Replace'),
+                ),
+            ],
+          ),
+        ),
+      // Keyed by each pick, so the field shows the address a pick wrote.
+      KeyedSubtree(
+        key: ValueKey('newsletter-image-src-$_picks'),
+        child: _text(block, 'src', 'Image address'),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: SwitchListTile(
+          key: const ValueKey('newsletter-image-decorative'),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('Decorative'),
+          subtitle: const Text('Screen readers skip it; no description is sent'),
+          value: decorative,
+          onChanged: (v) {
+            setState(() => block['decorative'] = v);
+            widget.onChanged();
+          },
+        ),
+      ),
+      if (!decorative)
+        KeyedSubtree(
+          key: ValueKey('newsletter-image-alt-$_picks'),
+          child: _text(block, 'alt', 'Describe the picture (alt text)'),
+        ),
+      _text(block, 'href', 'Link (optional)'),
+      _align(block),
+      _number(block, 'width', 'Displayed width in pixels (up to 560; blank = full)'),
+    ];
+  }
+
   /// A picture from the media library, copied to an address an inbox can
   /// load (review 2026-11-09 A29), instead of a typed URL.
   Future<void> _chooseFromLibrary(
     BuildContext context,
-    Map<String, dynamic> block,
-  ) async {
+    Map<String, dynamic> block, {
+    bool upload = false,
+  }) async {
     final api = widget.api!;
     final item = await showMediaLibraryPanel(
       context,
       api: api,
       pickMedia: () async => null,
       canEdit: false,
+      uploadPath: '/newsletter/images',
+      initialKind: 'image',
+      uploadFirst: upload,
     );
+    // Cancelled: the block keeps the picture it had.
     if (item == null || !mounted) return;
-    final response = await api.post(
-      '/newsletter/import/library/${item['id']}',
-      const {},
-    );
-    if (!mounted) return;
-    final data = response.ok ? response.data : null;
-    final url = data is Map ? data['url'] as String? : null;
+    String? url = item['url'] as String?;
+    var reason = '';
+    if (url == null) {
+      final response = await api.post(
+        '/newsletter/import/library/${item['id']}',
+        const {},
+      );
+      if (!mounted) return;
+      final data = response.ok ? response.data : null;
+      url = data is Map ? data['url'] as String? : null;
+      reason = response.reason;
+    }
     if (url == null) {
       ScaffoldMessenger.maybeOf(
         this.context,
-      )?.showSnackBar(SnackBar(content: Text(response.reason)));
+      )?.showSnackBar(SnackBar(content: Text(reason)));
       return;
     }
     setState(() {

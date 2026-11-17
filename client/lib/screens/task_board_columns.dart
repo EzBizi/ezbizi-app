@@ -14,7 +14,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/api_client.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
-import '../widgets/calendar_day_field.dart';
 import '../widgets/colour_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
@@ -1544,13 +1543,17 @@ class _ColumnEditorState extends State<ColumnEditor> {
             onSubmitted: (_) => _commitText(),
           );
         }
-        return TextField(
+        final long = c.type == 'long_text';
+        final field = TextField(
           key: key,
           controller: _text,
           enabled: editable,
           autofocus: widget.autofocus,
-          maxLines: c.type == 'long_text' ? 6 : 1,
-          minLines: 1,
+          // Notes grow to show everything; a text cell wraps so the whole
+          // line is readable, and Enter still saves it.
+          maxLines: long ? 12 : (c.type == 'text' ? 4 : 1),
+          minLines: long ? 5 : 1,
+          textInputAction: long ? TextInputAction.newline : TextInputAction.done,
           keyboardType: switch (c.type) {
             'number' ||
             'currency' => const TextInputType.numberWithOptions(decimal: true),
@@ -1570,6 +1573,19 @@ class _ColumnEditorState extends State<ColumnEditor> {
           ),
           onSubmitted: (_) => _commitText(),
           onTapOutside: (_) => _commitText(),
+        );
+        if (!long) return field;
+        void save() {
+          _commitText();
+          widget.onDone?.call();
+        }
+
+        return CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.enter, control: true): save,
+            const SingleActivator(LogicalKeyboardKey.enter, meta: true): save,
+          },
+          child: field,
         );
     }
   }
@@ -1592,28 +1608,53 @@ class _DateEditor extends StatefulWidget {
 }
 
 class _DateEditorState extends State<_DateEditor> {
-  late final _controller = TextEditingController(text: widget.value ?? '');
-
+  /// A month grid, Today and Clear, closed by a pick (Jose 11-17: "i also
+  /// dont like when it opens massive tabs"); only as tall as the month.
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime.tryParse(widget.value ?? '');
+    String iso(DateTime d) =>
+        '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
+    void pick(DateTime? d) {
+      final v = d == null ? null : iso(d);
+      if (v != widget.value) widget.onChanged?.call(v);
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 300,
+          child: CalendarDatePicker(
+            key: const Key('cell-date-calendar'),
+            initialDate: day ?? today,
+            firstDate: DateTime(2000),
+            lastDate: DateTime(2100),
+            onDateChanged: widget.onChanged == null ? (_) {} : pick,
+          ),
+        ),
+        Row(
+          children: [
+            TextButton(
+              key: const Key('cell-date-today'),
+              onPressed: widget.onChanged == null ? null : () => pick(today),
+              child: const Text('Today'),
+            ),
+            const Spacer(),
+            TextButton(
+              key: const Key('cell-date-clear'),
+              onPressed: widget.onChanged == null || day == null
+                  ? null
+                  : () => pick(null),
+              child: const Text('Clear'),
+            ),
+          ],
+        ),
+      ],
+    );
   }
-
-  @override
-  Widget build(BuildContext context) => CalendarDayField(
-    controller: _controller,
-    formats: widget.formats,
-    dense: true,
-    enabled: widget.onChanged != null,
-    onChanged: (v) {
-      final day = v.isEmpty ? null : v;
-      if (day != widget.value &&
-          (day == null || RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(day))) {
-        widget.onChanged?.call(day);
-      }
-    },
-  );
 }
 
 // ── Setting a board up (UI queue 84) ─────────────────────────────
@@ -2534,8 +2575,10 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
 
   /// Typed in the cell; everything else in a card, which has the room for a
   /// calendar, a picker or a validation message.
+  /// Text and notes edit in the card too (Jose 11-17: "u cant even tell
+  /// what ur typing on notes"): a 38 px cell is no place to read a sentence.
   bool get _inPlace =>
-      const {'text', 'number', 'currency'}.contains(widget.column.type);
+      const {'number', 'currency'}.contains(widget.column.type);
 
   /// The value this cell last sent, and whether the value under it moved to
   /// something else while it was open (a remote change: Monday, a colleague).
@@ -2732,12 +2775,18 @@ class _InlineCellEditorState extends State<InlineCellEditor> {
           child: Align(
             alignment: Alignment.topLeft,
             child: Material(
+              key: const Key('cell-card'),
               elevation: 4,
               borderRadius: BorderRadius.circular(8),
               color: Theme.of(context).colorScheme.surface,
               child: Padding(
                 padding: const EdgeInsets.all(10),
-                child: SizedBox(width: 300, child: _editor()),
+                child: SizedBox(
+                  width: const {'text', 'long_text'}.contains(widget.column.type)
+                      ? 340
+                      : 300,
+                  child: _editor(),
+                ),
               ),
             ),
           ),

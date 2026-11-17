@@ -114,7 +114,7 @@ class NewsletterImportAndTestSendTest extends TestCase
         $checks = collect($this->signedInAs($t['admin'])->getJson(self::ENDPOINT."/{$id}/preflight")
             ->assertOk()->json('data.checks'))->keyBy('key');
 
-        $this->assertSame(['subject', 'account', 'from_name', 'audience', 'footer', 'links'], $checks->keys()->all());
+        $this->assertSame(['subject', 'account', 'from_name', 'audience', 'footer', 'links', 'images'], $checks->keys()->all());
         $this->assertTrue($checks['footer']['ok']);
         $this->assertTrue($checks['from_name']['ok']);
         $this->assertStringContainsString('list-1', $checks['audience']['detail']);

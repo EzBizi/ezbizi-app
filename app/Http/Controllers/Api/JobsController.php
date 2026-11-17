@@ -439,6 +439,7 @@ class JobsController extends Controller
         $customer = Customer::findOrFail($input['customer_id']);
 
         $this->authorize('create', [Job::class, $franchise]);
+        \App\Support\Jobs\JobAddress::assertCustomer($customer);
 
         $this->assertStatusAllowed($input['status'], $franchise);
         $this->assertPerformerReach($input['performed_by_user_id'] ?? null, $franchise);

@@ -33,6 +33,7 @@ import 'task_board_live.dart';
 import '../widgets/list_filters.dart';
 import '../widgets/list_toolbar.dart';
 import '../widgets/mention_field.dart';
+import '../widgets/open_destination.dart';
 import 'task_board_move.dart';
 import 'task_board_people.dart';
 import 'task_board_pinned.dart';
@@ -263,7 +264,7 @@ const _builtinHelp = {
   'created': 'Built in: the day the task was made.',
   'due': 'Built in: the day it is due. Late tasks show in red.',
   'about':
-      'Built in: the customer, job or lead the task is about. Set it in the task.',
+      'Built in: the tasks linked to this one, on any board; with none, the customer, job or lead it is about.',
   'updates': 'Built in: how many notes and replies the task has.',
 };
 
@@ -2398,7 +2399,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
               if (mine != null)
                 ButtonSegment(
                   value: mine,
-                  label: label('My Board'),
+                  label: label('Personal Task Board'),
                   icon: const Icon(Icons.person_outline, size: 18),
                 ),
               if (company != null)
@@ -3451,6 +3452,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   header,
+                  // A role group says what it is for (management's board rules, Jose 11-17).
+                  if (group['purpose'] case final String purpose)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Text(
+                        purpose,
+                        key: ValueKey('group-purpose-$fold'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                   if (!folded) ...[
                     // An empty group drew a full column-header row for nothing;
                     // but a board with no task at all keeps them, or there is
@@ -3986,7 +3999,29 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 'c:${c.id}',
                 _cell(context, _w('c:${c.id}'), _columnHeader(c, h(c.name))),
               ),
-            if (shown('about')) 'about': b('about', _w('about')),
+            if (shown('about')) 'about': _resizable(
+              'about',
+              _cell(
+                context,
+                _w('about'),
+                _builtinHead(
+                  'about',
+                  group,
+                  // One name on every board (Jose 11-17); a board's own
+                  // name for it shows on hover.
+                  Tooltip(
+                    message: _builtinLabel(_board, 'about'),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.link, size: 14),
+                        const SizedBox(width: 4),
+                        Flexible(child: h('Linked')),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
             if (shown('updates')) 'updates': b('updates', _w('updates')),
             }),
             if (_canEdit)
@@ -4216,26 +4251,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 _cell(
                   context,
                   _w('about'),
-                  CellTap(
-                    key: ValueKey('task-about-${t['id']}'),
-                    onTap: _canEdit ? () => _editAbout(t) : null,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        about ?? '—',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: about == null
-                            ? TextStyle(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              )
-                            : TextStyle(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                      ),
-                    ),
-                  ),
+                  _linkedCell(context, t, about),
                 ),
               if (shown('updates')) 'updates':
                 _cell(
@@ -4366,6 +4382,116 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         child: const Text('Move right'),
       ),
     ];
+  }
+
+  /// Linked (Jose 11-17): the first linked task, its board as a chip, one
+  /// click opens it; else what the task is about, as plain text; else a
+  /// quiet "+ Link". The rest of the links and linking live in the panel.
+  Widget _linkedCell(BuildContext context, _Json t, String? about) {
+    final theme = Theme.of(context);
+    final links = (t['links'] as List? ?? const []).whereType<Map>().toList();
+    final muted = TextStyle(color: theme.colorScheme.onSurfaceVariant);
+    final Widget body;
+    if (links.isNotEmpty) {
+      final first = links.first;
+      body = Row(
+        children: [
+          Flexible(
+            child: InkWell(
+              key: ValueKey('task-linked-open-${t['id']}'),
+              onTap: () => _goToTask('${first['board_id']}', '${first['id']}'),
+              child: Text(
+                '${first['title']}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              '${first['board_name'] ?? ''}${links.length > 1 ? ' +${links.length - 1}' : ''}',
+              maxLines: 1,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (about != null) {
+      // The lead, customer or job it is about: one click opens it (Jose 11-17).
+      final record = t['about'] as Map;
+      final open = _recordOpener(record);
+      body = Row(
+        children: [
+          Flexible(
+            child: InkWell(
+              key: ValueKey('task-about-open-${t['id']}'),
+              onTap: open,
+              child: Text(
+                about,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: open == null
+                    ? null
+                    : TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            recordTypeLabel('${record['type']}'),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      );
+    } else {
+      body = Text(_canEdit ? '+ Link' : '—', style: muted);
+    }
+    return CellTap(
+      key: ValueKey('task-about-${t['id']}'),
+      onTap: _canEdit ? () => _editAbout(t) : null,
+      child: Align(alignment: Alignment.centerLeft, child: body),
+    );
+  }
+
+  /// Opens a lead (with its thread), customer or job; null for a type the
+  /// app has no screen to open from here.
+  VoidCallback? _recordOpener(Map record) {
+    final id = '${record['id']}';
+    switch (record['type']) {
+      case 'lead':
+        final openLead = OpenDestination.leadOf(context);
+        return openLead == null ? null : () => openLead(id);
+      case 'customer' || 'job':
+        final module = '${record['type']}s';
+        return () => DeepLinks.open(
+          DeepLink(module: module, type: '${record['type']}', id: id),
+        );
+    }
+    return null;
+  }
+
+  /// Opens [taskId] on [boardId], switching boards when it is elsewhere.
+  Future<void> _goToTask(String boardId, String taskId) async {
+    final at = _boards.indexWhere((b) => b['id'] == boardId);
+    if (at >= 0 && _board?['id'] != boardId) await _open(at);
+    if (mounted) _openTaskById(taskId);
   }
 
   /// Due, edited where it is like any date column.

@@ -46,6 +46,64 @@ class JobNotesTest extends TestCase
         $this->signedInAs($alpha['admin'])->postJson("/api/v1/jobs/{$job}/notes", ['body' => '   '])->assertStatus(422);
     }
 
+    /** Jose, 2026-11-17: "i cannot edit notes". Its author, or an administrator; and it says "edited". */
+    public function test_a_note_is_changed_or_deleted_by_its_author_or_an_administrator_only(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $job = $this->aJob($alpha);
+        $shoval = $this->userWithRole($alpha, 'Project Manager', ['jobs.view', 'jobs.edit']);
+        $other = $this->userWithRole($alpha, 'Dispatcher', ['jobs.view', 'jobs.edit']);
+        $note = $this->signedInAs($shoval)->postJson("/api/v1/jobs/{$job}/notes", ['body' => 'Call 30 min before.'])
+            ->assertCreated()->assertJsonPath('data.can_change', true)->json('data.id');
+
+        $this->signedInAs($other)->patchJson("/api/v1/jobs/{$job}/notes/{$note}", ['body' => 'Mine now'])->assertForbidden();
+        $this->signedInAs($other)->getJson("/api/v1/jobs/{$job}")->assertJsonPath('data.notes.0.can_change', false);
+
+        $this->signedInAs($shoval)->patchJson("/api/v1/jobs/{$job}/notes/{$note}", ['body' => 'Call 1 hour before.'])
+            ->assertOk()->assertJsonPath('data.body', 'Call 1 hour before.');
+        $this->assertNotNull($this->signedInAs($shoval)->getJson("/api/v1/jobs/{$job}")->json('data.notes.0.edited_at'));
+
+        $this->signedInAs($alpha['admin'])->deleteJson("/api/v1/jobs/{$job}/notes/{$note}")->assertOk();
+        $this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs/{$job}")->assertJsonCount(0, 'data.notes');
+    }
+
+    /** Workiz's own job notes are edited here and written back to Workiz; a refusal says why. */
+    public function test_workiz_notes_are_written_back_to_workiz_and_a_refusal_keeps_ours(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $job = $this->aJob($alpha);
+        $fixture = require base_path('tests/Fixtures/workiz/v2_job.php');
+        \Illuminate\Support\Facades\Http::fake([
+            'api.workiz.com/crm/api/v2/jobs/JOB-1' => \Illuminate\Support\Facades\Http::sequence()
+                // Read before the write: still what the editor opened.
+                ->push(array_replace($fixture, ['id' => 'JOB-1', 'description' => 'Level 2 $149']))
+                ->push(array_replace($fixture, ['id' => 'JOB-1', 'description' => 'Level 2 $149, call 30 mins before']))
+                // Then an inspection link was appended in Workiz meanwhile.
+                ->push(array_replace($fixture, ['id' => 'JOB-1', 'description' => "Level 2 \$149, call 30 mins before\nReport: https://x"])),
+        ]);
+        $this->inTenant($alpha['org'], function () use ($alpha, $job, $fixture) {
+            $c = new \App\Models\SocialConnection;
+            $c->forceFill(['organization_id' => $alpha['org']->id, 'scope_type' => \App\Models\SocialConnection::SCOPE_FRANCHISE,
+                'scope_id' => $alpha['franchise']->id, 'provider' => \App\Support\Social\SocialProvider::Workiz->value,
+                'remote_id' => $alpha['franchise']->id, 'display_name' => 'NY']);
+            $c->connect(['api_token' => 'v2key_NY', 'refresh_token' => 'v2key_NY', 'api_version' => 'v2']);
+            $c->save();
+            \App\Models\WorkizJob::land($c, \App\Support\Workiz\WorkizV2::job(array_replace($fixture, ['id' => 'JOB-1', 'description' => 'Level 2 $149'])));
+            \App\Models\WorkizJob::query()->sole()->forceFill(['job_id' => $job])->save();
+        });
+        $api = $this->signedInAs($alpha['admin']);
+
+        $api->putJson("/api/v1/jobs/{$job}/workiz-notes", ['text' => 'Level 2 $149, call 30 mins before', 'was' => 'Level 2 $149'])
+            ->assertOk()->assertJsonPath('data.workiz_notes', 'Level 2 $149, call 30 mins before');
+        \Illuminate\Support\Facades\Http::assertSent(fn ($r) => $r->method() === 'PUT' && $r['description'] === 'Level 2 $149, call 30 mins before');
+        $api->getJson("/api/v1/jobs/{$job}")->assertJsonPath('data.workiz_notes', 'Level 2 $149, call 30 mins before');
+
+        $api->putJson("/api/v1/jobs/{$job}/workiz-notes", ['text' => 'Lost?', 'was' => 'Level 2 $149, call 30 mins before'])
+            ->assertStatus(422)->assertJsonPath('current', "Level 2 \$149, call 30 mins before\nReport: https://x");
+        \Illuminate\Support\Facades\Http::assertSentCount(3);
+        $api->getJson("/api/v1/jobs/{$job}")->assertJsonPath('data.workiz_notes', 'Level 2 $149, call 30 mins before');
+    }
+
     private function aJob(array $alpha): string
     {
         return $this->inTenant($alpha['org'], function () use ($alpha) {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/files.dart';
 import '../core/job_money.dart';
 import '../core/live_changes.dart';
 import '../core/job_status.dart';
@@ -580,6 +581,24 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     ).showSnackBar(SnackBar(content: Text(r.reason)));
   }
 
+  /// Downloads the job's work order (Jose, 2026-11-17).
+  Future<void> _workOrder(Map<String, dynamic> row) async {
+    final r = await widget.api.getBytesResponse(
+      '/project-board/jobs/${row['id']}/work-order',
+    );
+    if (!mounted) return;
+    final bytes = r.bytes;
+    if (!r.ok || bytes == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(
+        SnackBar(content: Text(r.message ?? 'The work order could not be made.')),
+      );
+      return;
+    }
+    Files.download('Work order ${row['number'] ?? row['id']}.pdf', bytes);
+  }
+
   /// The job's notes alone, in a side panel of their own.
   void _openNotes(Map<String, dynamic> row) => showSidePanel<void>(
     context,
@@ -746,6 +765,17 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
             onPressed: () => _open(row, tab: 'files'),
             icon: const Icon(Icons.attach_file, size: 18),
             label: Text('$n'),
+          ),
+        );
+      case 'work_order':
+        // Jose, 2026-11-17: the job's work order for the crew, as a PDF.
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: ValueKey('project-board-work-order:${row['id']}'),
+            onPressed: () => _workOrder(row),
+            icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+            label: const Text('PDF'),
           ),
         );
       case 'notes':
@@ -2880,6 +2910,7 @@ class _NotesPanelState extends State<_NotesPanel> {
             addRefusal: widget.addRefusal,
             workizNotes: _workiz,
             onAdded: (note) => setState(() => _notes = [note, ..._notes!]),
+            onChanged: (notes) => setState(() => _notes = notes),
           ),
   );
 }

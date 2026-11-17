@@ -401,6 +401,20 @@ class SchedulingAreasController extends Controller
      * "We are full until the 7th." Every day before the date is closed; null
      * clears it.
      */
+    public function latestWindows(Request $request, string $area): JsonResponse
+    {
+        $row = $this->reachable($request)->findOrFail($area);
+        $this->authorize('update', $row);
+        // Weekday => latest window start; null follows the branch setting (2026-11-17).
+        $data = $request->validate([
+            'latest_windows' => ['present', 'nullable', 'array'],
+            'latest_windows.*' => ['date_format:H:i'],
+        ]);
+        $row->update(['latest_windows' => $data['latest_windows']]);
+
+        return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
+    }
+
     public function availableFrom(Request $request, string $area): JsonResponse
     {
         $row = $this->reachable($request)->findOrFail($area);
@@ -755,6 +769,7 @@ class SchedulingAreasController extends Controller
             'radius_miles' => $area->radius_miles,
             'franchise_id' => $area->franchise_id,
             'available_from' => $area->available_from?->toDateString(),
+            'latest_windows' => $area->latest_windows === null ? null : (object) $area->latest_windows,
             'shares_with_id' => $area->shares_with_id,
             // weekday => jobs; absent is no limit. An object, not a list.
             'daily_limits' => (object) ServiceAreaDailyLimit::query()

@@ -321,6 +321,55 @@ class TasksController extends Controller
             ->map(fn (Task $t) => self::presentLink($t))->values()->all()]);
     }
 
+    /**
+     * GET task-search?q=: tasks on every board this person can see, by
+     * title, for the one-box Link picker (Jose 11-17). `records` lists the
+     * leads, customers and jobs it finds by name, phone or number, each as
+     * {type, id, label, detail}: what a task can be about, one click away.
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']])['q']);
+        $user = $request->user();
+        $like = '%'.addcslashes($q, '%_\\').'%';
+        $digits = preg_replace('/\D/', '', $q);
+        $boards = app(\App\Support\Tasks\TaskBoards::class)->visibleTo($user)->pluck('id');
+
+        $records = [];
+        $view = \App\Support\Scoping\ViewScope::forUser($user);
+        $byPhone = fn ($w, string $column) => strlen($digits) >= 4 ? $w->orWhere($column, 'like', '%'.$digits.'%') : $w;
+        if ($user->hasPermission('leads.view')) {
+            $view->constrainPlaces(Lead::query())
+                ->where(fn ($w) => $byPhone($w->where('contact_name', 'like', $like), 'phone_digits'))
+                ->latest()->limit(8)->get(['id', 'contact_name', 'phone'])
+                ->each(function (Lead $l) use (&$records) {
+                    $records[] = ['type' => 'lead', 'id' => $l->id, 'label' => $l->contact_name ?: 'A lead', 'detail' => $l->phone];
+                });
+        }
+        if ($user->hasPermission('customers.view')) {
+            // As the Customers search: organization-wide.
+            Customer::query()->where(fn ($w) => $byPhone($w->where('name', 'like', $like), 'phone'))
+                ->limit(8)->get(['id', 'name', 'phone'])
+                ->each(function (Customer $c) use (&$records) {
+                    $records[] = ['type' => 'customer', 'id' => $c->id, 'label' => $c->name ?: 'A customer', 'detail' => $c->phone];
+                });
+        }
+        if ($user->hasPermission('jobs.view')) {
+            Job::query()->whereIn('franchise_id', $view->franchiseIds())
+                ->where(fn ($w) => $w->where('number', 'like', $like)->orWhere('title', 'like', $like))
+                ->latest()->limit(8)->get(['id', 'number', 'title'])
+                ->each(function (Job $j) use (&$records) {
+                    $records[] = ['type' => 'job', 'id' => $j->id, 'label' => 'Job #'.$j->number, 'detail' => $j->title];
+                });
+        }
+
+        return response()->json(['data' => Task::query()->whereIn('board_id', $boards)
+            ->whereNull('parent_task_id')->where('sensitive', false)
+            ->where('title', 'like', $like)
+            ->with('board:id,name')->latest('updated_at')->limit(20)->get()
+            ->map(fn (Task $t) => self::presentLink($t))->all(), 'records' => $records]);
+    }
+
     /** POST tasks/{task}/links {linked_task_id}: both must be visible to the person. */
     public function storeLink(Request $request, Task $task): JsonResponse
     {
@@ -436,6 +485,9 @@ class TasksController extends Controller
             'completed_at' => $task->completed_at?->toIso8601String(),
             'about' => $about ? ['type' => $task->about_type, 'id' => $task->about_id, 'label' => self::aboutLabel($about)] : null,
             'updates_count' => (int) ($task->updates_count ?? 0),
+            // The Linked cell (Jose 11-17). ponytail: a query per task; batch per board if it shows.
+            'links' => TaskLinks::of($task)->filter(fn (Task $t) => request()->user()?->can('view', $t))
+                ->map(fn (Task $t) => self::presentLink($t))->values()->all(),
             'created_by' => match (true) {
                 $task->created_by_automation_id !== null => [
                     'type' => 'automation',
