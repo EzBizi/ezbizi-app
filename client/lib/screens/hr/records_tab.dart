@@ -1070,7 +1070,19 @@ class _PersonRecordState extends State<_PersonRecord> {
     'pay' => _DetailList(
       key: ValueKey('pay-$_version'),
       kind: _DetailKind.pay,
-      rows: _rows('pay_rates'),
+      // Which rate applies today and which stage comes next (Merav,
+      // 2026-11-17), named by the server; said on the row.
+      rows: [
+        for (final row in _rows('pay_rates'))
+          {
+            ...row,
+            '_when': row['id'] == _person['pay_rate_now']
+                ? 'Current rate'
+                : row['id'] == _person['pay_rate_next']
+                ? 'Next stage'
+                : null,
+          },
+      ],
       personId: widget.personId,
       api: widget.api,
       formats: widget.formats,
@@ -2670,6 +2682,7 @@ class _DetailKind {
     title: (row, _) =>
         '${row['amount']} ${_periods[row['period']] ?? row['period']}',
     subtitle: (row, formats) => _join([
+      row['_when']?.toString(),
       row['basis'] == 'salary' ? 'Salary' : 'Hourly',
       'from ${_date(row['effective_on'], formats)}',
       row['note']?.toString(),

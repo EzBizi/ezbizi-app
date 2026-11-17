@@ -644,6 +644,7 @@ final class DocumentRenderer
             // The document says one was given; the file is on the record.
             FieldType::FILE      => 'A file was provided and is attached to this record.',
             FieldType::CHECKLIST => ChecklistTable::summary($field, $value),
+            FieldType::RATE_STEPS => RateSteps::summary($value),
             default              => (string) $value,
         };
     }

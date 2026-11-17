@@ -390,6 +390,7 @@ class OnboardingDocuments
                     fn (string $item, array $row) => trim($item.'  ×'.$row['quantity'].'  '.$row['received']),
                     array_keys($items = \App\Support\Contracts\ChecklistTable::rows($value)), $items,
                 )),
+                $field->type === FieldType::RATE_STEPS => (string) \App\Support\Contracts\RateSteps::summary($value),
                 default => $value,
             }];
         }

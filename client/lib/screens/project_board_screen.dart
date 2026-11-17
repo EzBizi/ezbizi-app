@@ -55,6 +55,9 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   List<Map<String, dynamic>> _franchises = const [];
   List<Map<String, dynamic>> _columns = const [];
   Map<String, dynamic> _labels = const {};
+
+  /// The company's suppliers and same-day pickup stores (Settings).
+  List<Map<String, dynamic>> _suppliers = const [];
   Map<String, String> _scope = const {};
   Map<String, dynamic> _counts = const {};
 
@@ -227,6 +230,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       _franchises = _maps(meta['places']);
       _columns = _maps(meta['columns']);
       _labels = (meta['labels'] as Map?)?.cast<String, dynamic>() ?? const {};
+      _suppliers = _maps(meta['suppliers']);
       _canEditJobs = meta['can_edit'] == true;
       final days = (meta['status_days'] as Map?) ?? const {};
       _days = (
@@ -286,6 +290,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       builder: (panel) => _PartsPanel(
         customer: '${row['customer'] ?? ''}',
         parts: parts,
+        suppliers: _suppliers,
         formats: widget.session.me?.display ?? DisplayFormats.fallback,
       ),
     );
@@ -473,6 +478,108 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         ),
       ).then((_) => _load());
 
+  /// A heading that drags onto another to take its place, with Move left
+  /// and Move right beside it; one order for everyone on the board (Jose,
+  /// 2026-11-17: "Just let me drag them", like the Task Board).
+  Widget _dragHeading(String key, Widget heading) {
+    final visible = [
+      for (final c in _columns)
+        if (c['visible'] != false) '${c['key']}',
+    ];
+    final at = visible.indexOf(key);
+    return Row(
+      children: [
+        Expanded(
+          child: DragTarget<String>(
+            onWillAcceptWithDetails: (d) => d.data != key,
+            onAcceptWithDetails: (d) => _placeColumn(d.data, key),
+            builder: (context, over, _) => Draggable<String>(
+              key: ValueKey('project-board-column-drag-$key'),
+              data: key,
+              axis: Axis.horizontal,
+              feedback: Material(
+                elevation: 4,
+                child: Opacity(
+                  opacity: 0.85,
+                  child: SizedBox(width: 160, height: 40, child: heading),
+                ),
+              ),
+              childWhenDragging: Opacity(opacity: 0.4, child: heading),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: over.isEmpty
+                      ? null
+                      : Border(
+                          left: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 3,
+                          ),
+                        ),
+                ),
+                child: heading,
+              ),
+            ),
+          ),
+        ),
+        MenuAnchor(
+          menuChildren: [
+            MenuItemButton(
+              key: ValueKey('project-board-column-left-$key'),
+              leadingIcon: const Icon(Icons.chevron_left, size: 18),
+              onPressed: at > 0
+                  ? () => _placeColumn(key, visible[at - 1])
+                  : null,
+              child: const Text('Move left'),
+            ),
+            MenuItemButton(
+              key: ValueKey('project-board-column-right-$key'),
+              leadingIcon: const Icon(Icons.chevron_right, size: 18),
+              onPressed: at >= 0 && at < visible.length - 1
+                  ? () => _placeColumn(
+                      key,
+                      at + 2 < visible.length ? visible[at + 2] : null,
+                    )
+                  : null,
+              child: const Text('Move right'),
+            ),
+          ],
+          builder: (context, menu, _) => InkWell(
+            key: ValueKey('project-board-column-menu-$key'),
+            onTap: () => menu.isOpen ? menu.close() : menu.open(),
+            child: Icon(
+              Icons.more_vert,
+              size: 16,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Puts column [key] just before [before] (null: last), for everyone.
+  Future<void> _placeColumn(String key, String? before) async {
+    final was = _columns;
+    final moving = was.firstWhere((c) => c['key'] == key);
+    final rest = [
+      for (final c in was)
+        if (c['key'] != key) c,
+    ];
+    final at = before == null
+        ? -1
+        : rest.indexWhere((c) => c['key'] == before);
+    at < 0 ? rest.add(moving) : rest.insert(at, moving);
+    setState(() => _columns = rest);
+    final r = await widget.api.put('/project-board/column-order', {
+      'order': [for (final c in rest) '${c['key']}'],
+    });
+    if (!mounted || r.ok) return;
+    setState(() => _columns = was);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(r.reason)));
+  }
+
   /// The job's notes alone, in a side panel of their own.
   void _openNotes(Map<String, dynamic> row) => showSidePanel<void>(
     context,
@@ -509,18 +616,31 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
             if (p is Map) p,
         ];
         if (parts.isEmpty && !_canEditJobs) return null;
-        final order = parts.where((p) => p['kind'] == 'order').toList();
-        final stock = parts.length - order.length;
+        // Jose, 2026-11-17: in stock is green and done, ordered red, a
+        // same-day pickup yellow; three days ordered and not received is
+        // late, red like a lead.
+        bool open(Map p) => p['kind'] != 'stock' && p['received_at'] == null;
+        final order = parts.where((p) => p['kind'] == 'order' && open(p));
+        final pickup = parts.where((p) => p['kind'] == 'pickup' && open(p));
+        final late = parts.where((p) => p['late'] == true).length;
+        final ready = parts.length - order.length - pickup.length;
         final eta = [
           for (final p in order)
             ?DateTime.tryParse('${p['delivery_on'] ?? ''}'),
         ]..sort();
         final formats = widget.session.me?.display ?? DisplayFormats.fallback;
         final summary = [
-          if (order.isNotEmpty) '${order.length} to order',
+          if (late > 0) '$late late',
+          if (order.isNotEmpty) '${order.length} ordered',
           if (eta.isNotEmpty) 'ETA ${formats.formatDate(eta.last)}',
-          if (stock > 0) '$stock in stock',
+          if (pickup.isNotEmpty) '${pickup.length} to pick up',
+          if (ready > 0) '$ready ready',
         ].join(' · ');
+        final tone = late > 0 || order.isNotEmpty
+            ? Tone.bad
+            : pickup.isNotEmpty
+            ? Tone.caution
+            : Tone.ok;
         return InkWell(
           key: ValueKey('project-board-parts:${row['id']}'),
           onTap: _canEditJobs ? () => _editParts(row) : null,
@@ -530,10 +650,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                 ? (value == null
                       ? const Text('Add parts…')
                       : StatusPill('$value', tone: Tone.caution))
-                : StatusPill(
-                    summary,
-                    tone: order.isEmpty ? Tone.ok : Tone.caution,
-                  ),
+                : StatusPill(summary, tone: tone),
           ),
         );
       case 'status_days':
@@ -1155,6 +1272,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
                                 ? () => _sortBy('${c['key']}')
                                 : null,
                             sorted: _sortKey == c['key'] ? _sortDesc : null,
+                            // Jose, 2026-11-17: "Just let me drag them".
+                            frame: _canEditJobs
+                                ? (h) => _dragHeading('${c['key']}', h)
+                                : null,
                           ),
                       ],
                       rows: [
@@ -1215,6 +1336,10 @@ class _BoardSettingsState extends State<_BoardSettings> {
   final Map<String, List<String>> _tabTags = {};
   final Map<String, bool> _anyTag = {};
   List<String> _partTags = [];
+
+  /// Suppliers and same-day pickup stores (Jose, 2026-11-17: "we need to set
+  /// up list of supplier"): id, name, address, phone, kind.
+  final List<_SupplierRow> _suppliers = [];
   final Map<String, List<String>> _tabNoTags = {};
 
   /// The company's real job statuses and tags, most used first.
@@ -1255,6 +1380,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
     }
     _warnDays.dispose();
     _badDays.dispose();
+    for (final r in _suppliers) {
+      r.dispose();
+    }
     super.dispose();
   }
 
@@ -1344,6 +1472,15 @@ class _BoardSettingsState extends State<_BoardSettings> {
         for (final t in (byKey['project_board.part_tags'] as List?) ?? const [])
           '$t',
       ];
+      for (final r in _suppliers) {
+        r.dispose();
+      }
+      _suppliers
+        ..clear()
+        ..addAll([
+        for (final v in (byKey['project_board.suppliers'] as List?) ?? const [])
+          if (v is Map) _SupplierRow(Map<String, dynamic>.from(v)),
+      ]);
       // Job Status starts from the company's own statuses, not an empty list.
       final status = _labels['status'];
       if (status != null && status.isEmpty) {
@@ -1384,6 +1521,74 @@ class _BoardSettingsState extends State<_BoardSettings> {
         },
     },
   };
+
+  /// Where parts are ordered from (red on the board) and the same-day pickup
+  /// stores (yellow), offered in each part's Supplier box.
+  Widget _suppliersCard() => _card(
+    'suppliers',
+    'Suppliers',
+    'Where parts are ordered from, and the stores for a same-day pickup.',
+    [
+      for (final (i, r) in _suppliers.indexed)
+        Padding(
+          key: ValueKey('project-board-supplier-$i'),
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final (c, label, w) in [
+                (r.name, 'Name', 200.0),
+                (r.address, 'Address', 260.0),
+                (r.phone, 'Phone', 150.0),
+              ])
+                SizedBox(
+                  width: w,
+                  child: TextField(
+                    controller: c,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      labelText: label,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              SegmentedButton<String>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: 'order', label: Text('Order')),
+                  ButtonSegment(value: 'pickup', label: Text('Same-day pickup')),
+                ],
+                selected: {r.kind},
+                onSelectionChanged: (v) => setState(() => r.kind = v.first),
+              ),
+              IconButton(
+                tooltip: 'Remove',
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () =>
+                    setState(() => _suppliers.removeAt(i).dispose()),
+              ),
+            ],
+          ),
+        ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: const Key('project-board-supplier-add'),
+          onPressed: () => setState(() => _suppliers.add(_SupplierRow(const {}))),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add a supplier'),
+        ),
+      ),
+    ],
+    () => {
+      'project_board.suppliers': [
+        for (final r in _suppliers)
+          if (r.name.text.trim().isNotEmpty) r.value,
+      ],
+    },
+  );
 
   /// A titled card with its one-line explanation and its own Save.
   Widget _card(
@@ -2021,6 +2226,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
           () => {'project_board.part_tags': _partTags},
         ),
         _repairCard(),
+        _suppliersCard(),
         _card(
           'ready',
           'Ready to schedule',
@@ -2121,61 +2327,77 @@ const _newline = '\n';
 /// Time slots offered in the Ready to schedule questions; any other can be typed.
 const _slots = ['8 - 11 AM', '11 AM - 2 PM', '2 - 5 PM'];
 
-/// Editing a job's parts: rows of kind, item, quantity, price and (to order)
-/// delivery date. Pops the list to save, or null.
+/// The parts selector (Jose, 2026-11-10, and 2026-11-17): each part's
+/// item, quantity and price; In stock (green, done), Order from a supplier
+/// (red) or Same-day pickup at a store (yellow); where it goes; and
+/// Received once it is here. Pops the list to save, or null.
 class _PartsPanel extends StatefulWidget {
   const _PartsPanel({
     required this.customer,
     required this.parts,
     required this.formats,
+    this.suppliers = const [],
   });
 
   final String customer;
   final List<Map<String, dynamic>> parts;
   final DisplayFormats formats;
+  final List<Map<String, dynamic>> suppliers;
 
   @override
   State<_PartsPanel> createState() => _PartsPanelState();
 }
 
-class _PartsPanelState extends State<_PartsPanel> {
-  late final List<
-    ({
-      String kind,
-      TextEditingController item,
-      TextEditingController quantity,
-      TextEditingController price,
-      TextEditingController delivery,
-    })
-  >
-  _rows = [for (final p in widget.parts) _row(p)];
+/// One part being edited.
+class _PartRow {
+  _PartRow(Map<String, dynamic> p)
+    : id = p['id'] as String?,
+      kind = '${p['kind'] ?? 'stock'}',
+      was = p['supplier'] is Map
+          ? Map<String, dynamic>.from(p['supplier'] as Map)
+          : null,
+      supplierId = (p['supplier'] as Map?)?['id'] as String?,
+      destination = p['destination'] as String?,
+      received = p['received_at'] != null,
+      item = TextEditingController(text: '${p['item'] ?? ''}'),
+      quantity = TextEditingController(text: '${p['quantity'] ?? 1}'),
+      price = TextEditingController(
+        text: p['price_minor'] is num
+            ? ((p['price_minor'] as num) / 100).toStringAsFixed(2)
+            : '',
+      ),
+      delivery = TextEditingController(text: '${p['delivery_on'] ?? ''}');
 
-  ({
-    String kind,
-    TextEditingController item,
-    TextEditingController quantity,
-    TextEditingController price,
-    TextEditingController delivery,
-  })
-  _row(Map<String, dynamic> p) => (
-    kind: '${p['kind'] ?? 'order'}',
-    item: TextEditingController(text: '${p['item'] ?? ''}'),
-    quantity: TextEditingController(text: '${p['quantity'] ?? 1}'),
-    price: TextEditingController(
-      text: p['price_minor'] is num
-          ? ((p['price_minor'] as num) / 100).toStringAsFixed(2)
-          : '',
-    ),
-    delivery: TextEditingController(text: '${p['delivery_on'] ?? ''}'),
-  );
+  final String? id;
+  String kind;
+
+  /// The supplier as it was picked, for one that has left the list since.
+  final Map<String, dynamic>? was;
+  String? supplierId;
+  String? destination;
+  bool received;
+  final TextEditingController item;
+  final TextEditingController quantity;
+  final TextEditingController price;
+  final TextEditingController delivery;
+
+  void dispose() {
+    item.dispose();
+    quantity.dispose();
+    price.dispose();
+    delivery.dispose();
+  }
+}
+
+class _PartsPanelState extends State<_PartsPanel> {
+  late final List<_PartRow> _rows = [
+    for (final p in widget.parts) _PartRow(p),
+  ];
 
   @override
   void dispose() {
     for (final r in _rows) {
-      r.item.dispose();
-      r.quantity.dispose();
-      r.price.dispose();
-      r.delivery.dispose();
+      r.dispose();
     }
     super.dispose();
   }
@@ -2184,6 +2406,7 @@ class _PartsPanelState extends State<_PartsPanel> {
     for (final r in _rows)
       if (r.item.text.trim().isNotEmpty)
         {
+          'id': ?r.id,
           'kind': r.kind,
           'item': r.item.text.trim(),
           'quantity': int.tryParse(r.quantity.text.trim()) ?? 1,
@@ -2195,136 +2418,241 @@ class _PartsPanelState extends State<_PartsPanel> {
           },
           if (r.kind == 'order' && r.delivery.text.trim().isNotEmpty)
             'delivery_on': r.delivery.text.trim(),
+          if (r.kind != 'stock') ...{
+            'supplier_id': r.supplierId,
+            'destination': r.destination,
+            'received': r.received,
+          },
         },
   ];
 
-  @override
-  Widget build(BuildContext context) {
+  Map<String, dynamic>? _supplier(_PartRow r) {
+    for (final s in widget.suppliers) {
+      if (s['id'] == r.supplierId) return s;
+    }
+    return r.was != null && r.was!['id'] == r.supplierId ? r.was : null;
+  }
+
+  String _where(_PartRow r, Map<String, dynamic>? supplier) =>
+      switch (r.destination) {
+        'warehouse' => 'Work order: warehouse pickup.',
+        'customer' => "At the customer's location.",
+        'supplier' =>
+          supplier == null
+              ? 'Collected at the supplier.'
+              : 'Collected at ${[supplier['name'], supplier['address']].whereType<String>().join(', ')}.',
+        _ => '',
+      };
+
+  Widget _part(BuildContext context, int i, _PartRow r) {
+    final theme = Theme.of(context);
     InputDecoration box(String label) => InputDecoration(
       isDense: true,
       labelText: label,
       border: const OutlineInputBorder(),
     );
-    return SidePanel(
-      title: 'Parts',
-      subtitle: widget.customer,
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('project-board-parts-save'),
-          onPressed: () => Navigator.of(context).pop(_value),
-          child: const Text('Save'),
-        ),
-      ],
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final (i, r) in _rows.indexed)
-            Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SegmentedButton<String>(
-                            key: ValueKey('project-board-part-kind-$i'),
-                            showSelectedIcon: false,
-                            segments: const [
-                              ButtonSegment(
-                                value: 'order',
-                                label: Text('Need to order'),
-                              ),
-                              ButtonSegment(
-                                value: 'stock',
-                                label: Text('In stock'),
-                              ),
-                            ],
-                            selected: {r.kind},
-                            onSelectionChanged: (v) => setState(
-                              () => _rows[i] = (
-                                kind: v.first,
-                                item: r.item,
-                                quantity: r.quantity,
-                                price: r.price,
-                                delivery: r.delivery,
-                              ),
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Remove',
-                          icon: const Icon(Icons.close, size: 18),
-                          onPressed: () => setState(() => _rows.removeAt(i)),
-                        ),
-                      ],
+    final fill = ToneColours.of(context, switch (r.kind) {
+      'stock' => Tone.ok,
+      'pickup' => Tone.caution,
+      _ => Tone.bad,
+    }).fill;
+    final picked = _supplier(r);
+    final choices = [
+      for (final s in widget.suppliers)
+        if (s['kind'] == r.kind) s,
+    ];
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: ValueKey('project-board-part-item-$i'),
+                    controller: r.item,
+                    decoration: box('Item'),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Remove',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () => setState(() => _rows.removeAt(i).dispose()),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: r.quantity,
+                    keyboardType: TextInputType.number,
+                    decoration: box('Quantity'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: r.price,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
                     ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      key: ValueKey('project-board-part-item-$i'),
-                      controller: r.item,
-                      decoration: box('Item'),
+                    decoration: box('Price'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<String>(
+                key: ValueKey('project-board-part-kind-$i'),
+                showSelectedIcon: false,
+                style: ButtonStyle(
+                  backgroundColor: WidgetStateProperty.resolveWith(
+                    (states) =>
+                        states.contains(WidgetState.selected) ? fill : null,
+                  ),
+                ),
+                segments: const [
+                  ButtonSegment(value: 'stock', label: Text('In stock')),
+                  ButtonSegment(value: 'order', label: Text('Order')),
+                  ButtonSegment(
+                    value: 'pickup',
+                    label: Text('Same-day pickup'),
+                  ),
+                ],
+                selected: {r.kind},
+                onSelectionChanged: (v) => setState(() {
+                  r.kind = v.first;
+                  if (_supplier(r)?['kind'] != r.kind) r.supplierId = null;
+                  r.destination ??= r.kind == 'pickup'
+                      ? 'supplier'
+                      : 'warehouse';
+                }),
+              ),
+            ),
+            if (r.kind != 'stock') ...[
+              const SizedBox(height: 8),
+              SearchPickerField<String?>(
+                key: ValueKey('project-board-part-supplier-$i'),
+                value: r.supplierId,
+                label: r.kind == 'pickup' ? 'Pickup store' : 'Supplier',
+                hint: choices.isEmpty ? 'Add them in Settings' : 'Choose one',
+                isDense: true,
+                options: [
+                  for (final s in choices)
+                    SearchOption<String?>(
+                      value: '${s['id']}',
+                      label: '${s['name']}',
+                      detail: s['address'] as String?,
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: r.quantity,
-                            keyboardType: TextInputType.number,
-                            decoration: box('Quantity'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: r.price,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: box('Price'),
-                          ),
-                        ),
-                      ],
+                  if (picked != null &&
+                      !choices.any((s) => s['id'] == picked['id']))
+                    SearchOption<String?>(
+                      value: '${picked['id']}',
+                      label: '${picked['name']}',
+                      detail: 'No longer on the list',
                     ),
-                    if (r.kind == 'order') ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Delivery date',
-                        style: Theme.of(context).textTheme.labelLarge,
-                      ),
-                      const SizedBox(height: 4),
-                      CalendarDayField(
-                        controller: r.delivery,
-                        formats: widget.formats,
-                        dense: true,
-                      ),
-                    ],
+                ],
+                onChanged: (v) => setState(() => r.supplierId = v),
+              ),
+              const SizedBox(height: 8),
+              Text('Goes to', style: theme.textTheme.labelLarge),
+              const SizedBox(height: 4),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SegmentedButton<String>(
+                  key: ValueKey('project-board-part-where-$i'),
+                  showSelectedIcon: false,
+                  emptySelectionAllowed: true,
+                  segments: const [
+                    ButtonSegment(value: 'warehouse', label: Text('Warehouse')),
+                    ButtonSegment(
+                      value: 'customer',
+                      label: Text('Customer location'),
+                    ),
+                    ButtonSegment(value: 'supplier', label: Text('Supplier')),
                   ],
+                  selected: {?r.destination},
+                  onSelectionChanged: (v) => setState(
+                    () => r.destination = v.isEmpty ? null : v.first,
+                  ),
                 ),
               ),
-            ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              key: const Key('project-board-part-add'),
-              onPressed: () => setState(
-                () => _rows.add(_row(const {'kind': 'order', 'quantity': 1})),
+              if (_where(r, picked) case final where
+                  when where.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  where,
+                  key: ValueKey('project-board-part-where-line-$i'),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+              if (r.kind == 'order') ...[
+                const SizedBox(height: 8),
+                Text('Delivery date', style: theme.textTheme.labelLarge),
+                const SizedBox(height: 4),
+                CalendarDayField(
+                  controller: r.delivery,
+                  formats: widget.formats,
+                  dense: true,
+                ),
+              ],
+              CheckboxListTile(
+                key: ValueKey('project-board-part-received-$i'),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('Received'),
+                value: r.received,
+                onChanged: (v) => setState(() => r.received = v ?? false),
               ),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add a part'),
-            ),
-          ),
-        ],
+            ],
+          ],
+        ),
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) => SidePanel(
+    title: 'Parts',
+    subtitle: widget.customer,
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        key: const Key('project-board-parts-save'),
+        onPressed: () => Navigator.of(context).pop(_value),
+        child: const Text('Save'),
+      ),
+    ],
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, r) in _rows.indexed) _part(context, i, r),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: const Key('project-board-part-add'),
+            onPressed: () => setState(
+              () => _rows.add(_PartRow(const {'kind': 'order', 'quantity': 1})),
+            ),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add a part'),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Adding or changing one repair team / contractor: its name, (new) its
@@ -2554,4 +2882,37 @@ class _NotesPanelState extends State<_NotesPanel> {
             onAdded: (note) => setState(() => _notes = [note, ..._notes!]),
           ),
   );
+}
+
+/// One supplier in Settings while it is edited.
+class _SupplierRow {
+  _SupplierRow(Map<String, dynamic> v)
+    : id =
+          v['id'] as String? ??
+          's-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}',
+      kind = v['kind'] == 'pickup' ? 'pickup' : 'order',
+      name = TextEditingController(text: v['name'] as String? ?? ''),
+      address = TextEditingController(text: v['address'] as String? ?? ''),
+      phone = TextEditingController(text: v['phone'] as String? ?? '');
+
+  /// Kept across edits: a part points at its supplier by it.
+  final String id;
+  String kind;
+  final TextEditingController name;
+  final TextEditingController address;
+  final TextEditingController phone;
+
+  Map<String, Object?> get value => {
+    'id': id,
+    'name': name.text.trim(),
+    'address': address.text.trim().isEmpty ? null : address.text.trim(),
+    'phone': phone.text.trim().isEmpty ? null : phone.text.trim(),
+    'kind': kind,
+  };
+
+  void dispose() {
+    name.dispose();
+    address.dispose();
+    phone.dispose();
+  }
 }

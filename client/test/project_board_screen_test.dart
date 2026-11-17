@@ -282,6 +282,9 @@ void main() {
       'item': 'Stainless cap',
       'quantity': 1,
       'price_minor': null,
+      'supplier_id': null,
+      'destination': null,
+      'received': false,
     });
 
     // The company's names and order; a hidden column is not drawn.
