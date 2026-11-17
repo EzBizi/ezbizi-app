@@ -1733,6 +1733,17 @@ class SettingRegistry
                     .'line called "NJ - GMB". A line whose code is not here stays at company level.',
             ),
             new SettingDefinition(
+                key: 'leads.line_numbers',
+                label: 'Phone lines by number',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
+                help: 'Whose calls each RingCentral number takes, set in Leads › Manage › Phone lines: '
+                    .'{"+17813855201": "company:<id>"} or "franchise:<id>".',
+            ),
+            new SettingDefinition(
                 key: 'leads.line_brands',
                 label: 'Phone lines by brand',
                 type: SettingDefinition::TYPE_JSON,

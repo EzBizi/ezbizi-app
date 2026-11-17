@@ -129,6 +129,9 @@ final class RingCentralLeadCalls
         $settings = app(\App\Support\Settings\SettingsResolver::class);
         $markets = array_change_key_case((array) $settings->get('leads.line_markets', $org), CASE_UPPER);
         $brands = array_change_key_case((array) $settings->get('leads.line_brands', $org), CASE_UPPER);
+        // Jose, 2026-11-17: whose call it is comes from the number it came in
+        // on, assigned in Leads › Manage › Phone lines. Names are the fallback.
+        $assigned = (array) $settings->get('leads.line_numbers', $org);
         $existingQueue = (string) $settings->get('leads.existing_client_queue', $org) ?: null;
         // The map holds a branch id (Settings' place picker) or, for values
         // migrated before it existed, a branch name: both resolve.
@@ -157,11 +160,19 @@ final class RingCentralLeadCalls
                 continue;
             }
 
-            $line = (string) ($lineNames[(string) ($out ? $call['from'] : $call['to_number'])] ?? '');
-            $companyId = self::companyFor($line, $companies->all(), $markets, $brands) ?? $defaultCompanyId;
-            $branch = $franchises[$markets[self::market($line, $brands)] ?? ''] ?? null;
-            $franchiseId = $companyId === $defaultCompanyId ? $branch : ($branch === null ? null
-                : $branchNames->first(fn ($f) => $f->company_id === $companyId && $f->name === $branchNames->firstWhere('id', $branch)?->name)?->id);
+            $dialed = (string) ($out ? $call['from'] : $call['to_number']);
+            $line = (string) ($lineNames[$dialed] ?? '');
+            [$companyId, $franchiseId] = self::placeOf($assigned[$dialed] ?? null, $branchNames);
+            if ($companyId === null) {
+                // ponytail: one warning per number a day; a screen list if Jose wants one.
+                if ($dialed !== '' && \Illuminate\Support\Facades\Cache::add('rc-unassigned:'.$dialed, 1, now()->addDay())) {
+                    \Illuminate\Support\Facades\Log::warning("RingCentral number {$dialed} ({$line}) has no company in Leads › Manage › Phone lines; filed by its name and account.");
+                }
+                $companyId = self::companyFor($line, $companies->all(), $markets, $brands) ?? $defaultCompanyId;
+                $branch = $franchises[$markets[self::market($line, $brands)] ?? ''] ?? null;
+                $franchiseId = $companyId === $defaultCompanyId ? $branch : ($branch === null ? null
+                    : $branchNames->first(fn ($f) => $f->company_id === $companyId && $f->name === $branchNames->firstWhere('id', $branch)?->name)?->id);
+            }
 
             $customer = KnownCustomer::is(self::customerNumber($call));
             $outcome = $out ? self::OUTBOUND : self::outcome($call, $existingQueue, $customer);
@@ -498,6 +509,25 @@ final class RingCentralLeadCalls
     }
 
     /** "NJ - GMB" => "NJ"; "AngiSweep" => "ANGISWEEP". */
+    /**
+     * [company id, branch id] for an assignment "company:<id>" or
+     * "franchise:<id>"; [null, null] when unassigned or the place is gone.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    public static function placeOf(?string $place, \Illuminate\Support\Collection $branches): array
+    {
+        [$type, $id] = array_pad(explode(':', (string) $place, 2), 2, '');
+        if ($type === 'franchise' && ($f = $branches->firstWhere('id', $id)) !== null) {
+            return [(string) $f->company_id, (string) $f->id];
+        }
+        if ($type === 'company' && \App\Models\Company::query()->whereKey($id)->exists()) {
+            return [$id, null];
+        }
+
+        return [null, null];
+    }
+
     public static function market(string $line, array $brands = []): string
     {
         $parts = array_map(fn ($p) => strtoupper(trim($p)), explode(' - ', $line));
