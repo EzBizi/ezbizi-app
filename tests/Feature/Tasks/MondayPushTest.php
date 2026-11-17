@@ -250,6 +250,7 @@ class MondayPushTest extends TestCase
             \Illuminate\Support\Facades\DB::transaction(fn () => \App\Support\Tasks\Monday\MondayOutbox::suppress(
                 fn () => app(TaskWriter::class)->update($task, ['group_id' => $cr->id], $this->jose)));
             $this->assertSame(1, \App\Models\AuditEvent::query()->where('action', 'task.board_rule.moved')->count());
+            $this->assertSame(1, \App\Models\Notification::query()->where('user_id', $natalie->id)->where('title', 'like', 'Moved%')->count(), 'no second bell');
         });
     }
 
