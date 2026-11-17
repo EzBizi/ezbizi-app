@@ -1921,6 +1921,16 @@ class ActionRunner
      */
     public static function notBookedSkip(AutomationEvent $event, Lead $lead): ?string
     {
+        if ($event->event_key === 'lead.missed_call') {
+            // Desk for Jose, 2026-11-17: answered-not-booked by day, missed later the same day, is still one text.
+            $texted = \App\Models\AutomationRun::query()->where('started_at', '>=', now()->subDay())->where('status', 'succeeded')
+                ->whereIn('event_id', AutomationEvent::query()->whereIn('event_key', ['lead.call_not_booked', 'lead.follow_up_due', 'lead.missed_call'])
+                    ->where('subject_type', $lead->getMorphClass())->where('subject_id', $lead->getKey())->whereKeyNot($event->getKey())->select('id'))
+                ->get(['action_results'])->contains(fn ($r) => collect((array) $r->action_results)
+                    ->contains(fn ($a) => ($a['type'] ?? null) === 'reply' && ($a['ok'] ?? false) && ! ($a['skipped'] ?? false)));
+
+            return $texted ? 'This caller already had a text from us today.' : null;
+        }
         if (! in_array($event->event_key, ['lead.call_not_booked', 'lead.follow_up_due'], true)) {
             return null;
         }
@@ -3968,6 +3978,17 @@ class ActionRunner
                     $people ??= app(TaskBoards::class)->assignable($board)->pluck('id')->all();
                     $board->columns()->create(['organization_id' => $board->organization_id, 'name' => trim((string) $name),
                         'type' => in_array($value, $people, true) ? 'person' : 'text', 'position' => (int) $board->columns()->max('position') + 1]);
+                }
+            }
+            // A rule's timestamp ("{{started_at}}") into a date column is that day where the business is (2026-11-17: it crashed the task).
+            foreach ($board->columns()->where('type', 'date')->get() as $c) {
+                foreach ($values as $name => $v) {
+                    if (mb_strtolower(trim((string) $name)) === mb_strtolower(trim($c->name)) && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $v)) {
+                        try {
+                            $values[$name] = \Carbon\CarbonImmutable::parse((string) $v)->setTimezone((string) (\App\Support\Settings\SettingsResolver::forOrganization('timezone') ?: 'America/New_York'))->toDateString();
+                        } catch (\Throwable) {
+                        }
+                    }
                 }
             }
             app(TaskWriter::class)->create($board, [
