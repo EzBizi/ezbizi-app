@@ -67,6 +67,28 @@ void main() {
     expect(find.widgetWithText(InputDecorator, 'Status'), findsOneWidget,
         reason: 'The status picker once; the Job tab no longer repeats it.');
     expect(find.byKey(const ValueKey('fact-Job #')), findsOneWidget);
+    expect(find.byKey(const ValueKey('fact-Booked by')), findsNothing,
+        reason: 'booked_by null: unknown, so no row.');
+  });
+
+  testWidgets('design 196: who booked the job is a fact of its own', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      detail: {..._datedDetail, 'booked_by': 'Ana Ruiz'},
+      patches: [],
+    );
+    await tester.tap(find.text('Chimney sweep call'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('fact-Booked by')),
+        matching: find.text('Ana Ruiz'),
+      ),
+      findsOneWidget,
+    );
   });
 }
 
