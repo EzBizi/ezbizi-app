@@ -340,6 +340,9 @@ void main() {
       },
     );
 
+    // Design 195: on a phone it is in the search line's ⋯.
+    await tester.tap(find.byKey(const ValueKey('data-transfer-more')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Possible duplicates'));
     await tester.pumpAndSettle();
 
@@ -478,6 +481,9 @@ void main() {
       },
     );
 
+    // Design 195: on a phone the pickers are in Filters.
+    await tester.tap(find.byKey(const ValueKey('customers-filters')));
+    await tester.pumpAndSettle();
     // The only non-nullable picker on the screen; Show and the franchise
     // picker are String?.
     await tester.tap(find.byType(SearchPickerField<String>));
