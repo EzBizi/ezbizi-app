@@ -83,6 +83,8 @@ class WatchMissedCalls extends Command
                 'company' => $company,
                 // Which company's line it was, for a per-person company filter (2026-10-23).
                 'company_id' => $companyId,
+                // The branch the line belongs to: its number's place (Leads › Manage › Phone lines), else its market code.
+                'branch' => $tenant->run($organization, fn () => self::branchOf((string) $call['to_number'], (string) $line)),
                 'result' => $call['result'],
             ]));
 
@@ -103,5 +105,20 @@ class WatchMissedCalls extends Command
         }
 
         return null;
+    }
+
+    /** The branch name a dialed line belongs to, or null. */
+    public static function branchOf(string $number, string $line): ?string
+    {
+        $settings = \App\Support\Settings\SettingsResolver::class;
+        $branches = \App\Models\Franchise::query()->get(['id', 'name', 'company_id']);
+        [, $franchiseId] = \App\Support\Leads\RingCentralLeadCalls::placeOf((string) (((array) $settings::forOrganization('leads.line_numbers'))[$number] ?? ''), $branches);
+        if ($franchiseId !== null) {
+            return $branches->firstWhere('id', $franchiseId)?->name;
+        }
+        $markets = array_change_key_case((array) $settings::forOrganization('leads.line_markets'), CASE_UPPER);
+        $brands = array_change_key_case((array) $settings::forOrganization('leads.line_brands'), CASE_UPPER);
+
+        return $markets[\App\Support\Leads\RingCentralLeadCalls::market($line, $brands)] ?? null;
     }
 }
