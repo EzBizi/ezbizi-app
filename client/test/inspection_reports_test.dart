@@ -77,8 +77,30 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Level 2'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
     expect(find.text('Crown'), findsWidgets);
     expect(find.text('Sound'), findsWidgets);
+  });
+
+  // UI pass 11-16: a phone stacked the list over the whole first report in
+  // one scroll. It shows the list; a tap opens one report, Back returns.
+  testWidgets('on a phone the list and a report take turns', (tester) async {
+    await _pump(tester, width: 390, list: _hit(), show: _show);
+
+    expect(find.byKey(const Key('inspection-reports-list')), findsOneWidget);
+    expect(find.byKey(const Key('inspection-reports-document')), findsNothing);
+
+    await tester.tap(find.text('Level 1').first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('inspection-reports-list')), findsNothing);
+    expect(find.text('Crown'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('inspection-reports-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('inspection-reports-list')), findsOneWidget);
   });
 }
 
