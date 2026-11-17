@@ -1082,6 +1082,7 @@ Route::prefix('v1')
         Route::post('tasks/{task}/copy', [TasksController::class, 'copy']);
         Route::post('tasks/{task}/suggest-label', [TasksController::class, 'suggestLabel']);
         Route::post('tasks/{id}/restore', [TasksController::class, 'restore']);
+        Route::get('task-search', [TasksController::class, 'search']);
         Route::get('tasks/{task}', [TasksController::class, 'show']);
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
