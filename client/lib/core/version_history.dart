@@ -13,6 +13,16 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0585', date: '17 Nov 2026', items: [
+      'Leads: calls to EverDoors RingCentral numbers are filed under Everdoors, not A-1 Chimney',
+      'Leads › Manage › Phone lines: choose which company and branch each RingCentral number calls go to',
+      'Task Board: drag a column header to reorder columns (or Move left / Move right), saved per board for everyone',
+      'Task Board: selected rows are tinted across the whole row',
+      'Newsletter: three steps (Setup, Design, Review & schedule), pick your Mailchimp list directly, honest recipient counts, and two open tabs no longer overwrite each other',
+      'Suggestions: an approved suggestion shows its progress, and the author gets a pop-up when it is approved and when it is live',
+      'Roles › Monitoring: a role can be marked as not screen-monitored on their own PC',
+      'Project Management: clicking Notes opens only the notes panel, and Total, Paid and Remaining sit together',
+    ]),
     VersionRelease(version: '0.0.0584', date: '17 Nov 2026', items: [
       'Task Board: whoever is given a task, by a person or an automation, gets a New task notification',
     ]),
