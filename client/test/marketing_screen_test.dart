@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/email/message_html.dart';
+import 'package:ezbizi_client/screens/marketing/media_library_panel.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_blocks.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_import_panel.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_tab.dart';
@@ -26,6 +27,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image/image.dart' as img;
 import 'package:video_player/video_player.dart';
 
 /// Marketing — Newsletter and Social Media Management, both built.
@@ -4287,6 +4289,144 @@ void main() {
         (blocks.first as Map)['src'],
         'https://app.example/api/v1/newsletter/artwork/o/x.jpg',
       );
+    });
+
+    // Newsletter P0 (2026-11-17): upload from the composer's image picker.
+    group('image upload', () {
+      final png = img.encodePng(img.Image(width: 2, height: 2));
+      const artwork = 'https://app.example/api/v1/newsletter/artwork/o/new.png';
+      const uploaded = {
+        'id': 'up-1',
+        'name': 'van.png',
+        'kind': 'image',
+        'size': 70,
+        'scope_type': 'company',
+        'created_at': '2026-11-17T12:00:00Z',
+        'url': artwork,
+        'duplicate': false,
+      };
+
+      setUp(() {
+        libraryPickPicture = () async => PickedBytes('van.png', png);
+      });
+      tearDown(() {
+        libraryPickPicture = Files.pickImage;
+      });
+
+      Future<List<Map<String, dynamic>>> pumpWithImage(
+        WidgetTester tester,
+        Map<String, Object?> image,
+        Future<http.Response> Function() onUpload,
+      ) async {
+        final saved = <Map<String, dynamic>>[];
+        final draft = <String, Object?>{
+          ..._draft,
+          'blocks': [image],
+        };
+        final inner = _handler(canEdit: true, newsletters: [draft]);
+        await _pumpComposer(tester, (request) {
+          final path = request.url.path;
+          if (request.method == 'PUT') {
+            saved.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return Future.value(_json({'data': draft}));
+          }
+          if (path.endsWith('/social/library')) {
+            return Future.value(_json({'data': <Object>[]}));
+          }
+          if (path.endsWith('/newsletter/images')) return onUpload();
+          return inner(request);
+        });
+        await _toStep(tester, 'design');
+        await tester.tap(find.byKey(const Key('newsletter-block-0')));
+        await tester.pumpAndSettle();
+        return saved;
+      }
+
+      testWidgets('an empty image block offers Upload images; a finished upload is selected and inserted', (
+        tester,
+      ) async {
+        final saved = await pumpWithImage(
+          tester,
+          {'type': 'image', 'src': '', 'alt': ''},
+          () async => _json({'data': uploaded}, 201),
+        );
+
+        // The empty block shows the choices at once.
+        expect(find.byKey(const ValueKey('newsletter-image-upload')), findsOneWidget);
+        expect(find.byKey(const ValueKey('newsletter-image-library')), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('newsletter-image-library')));
+        await tester.pumpAndSettle();
+        // The picker itself has Upload images, and Pictures is the filter.
+        expect(find.byKey(const ValueKey('library-upload')), findsOneWidget);
+        expect(find.textContaining('up to 2 MB'), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('library-upload')));
+        await tester.pumpAndSettle();
+
+        // Selected without reopening, and Use it is enabled.
+        expect(find.byKey(const ValueKey('library-selected-up-1')), findsOneWidget);
+        final use = tester.widget<FilledButton>(find.byKey(const ValueKey('library-use')));
+        expect(use.onPressed, isNotNull);
+
+        await tester.tap(find.byKey(const ValueKey('library-use')));
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+
+        expect(((saved.last['blocks'] as List).first as Map)['src'], artwork);
+      });
+
+      testWidgets('a refused upload shows the reason and Retry sends it again', (tester) async {
+        var calls = 0;
+        await pumpWithImage(tester, {'type': 'image', 'src': '', 'alt': ''}, () async {
+          calls++;
+          return calls == 1
+              ? _json({
+                  'message': 'The given data was invalid.',
+                  'errors': {
+                    'file': ['That file is not a PNG, JPEG, GIF or WebP picture.'],
+                  },
+                }, 422)
+              : _json({'data': uploaded}, 201);
+        });
+
+        await tester.tap(find.byKey(const ValueKey('newsletter-image-upload')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('That file is not a PNG, JPEG, GIF or WebP picture.'), findsOneWidget);
+        expect(find.byKey(const ValueKey('library-selected-up-1')), findsNothing);
+
+        await tester.tap(find.byKey(const ValueKey('library-upload-retry-0')));
+        await tester.pumpAndSettle();
+
+        expect(calls, 2);
+        expect(find.text('That file is not a PNG, JPEG, GIF or WebP picture.'), findsNothing);
+        expect(find.byKey(const ValueKey('library-selected-up-1')), findsOneWidget);
+      });
+
+      testWidgets('cancelling Replace keeps the picture the block had', (tester) async {
+        const old = 'https://app.example/api/v1/newsletter/artwork/o/old.png';
+        final saved = await pumpWithImage(
+          tester,
+          {'type': 'image', 'src': old, 'alt': 'Old'},
+          () async => _json({'data': uploaded}, 201),
+        );
+
+        await tester.tap(find.byKey(const ValueKey('newsletter-image-replace')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('library-upload')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Cancel').last);
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+
+        expect(find.widgetWithText(TextFormField, old), findsOneWidget);
+        for (final body in saved) {
+          expect(((body['blocks'] as List).first as Map)['src'], old);
+        }
+      });
     });
 
     testWidgets('clicking a block edits it in place, and the edit autosaves', (tester) async {
