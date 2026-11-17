@@ -143,6 +143,7 @@ class ApiKeysAndMcpTest extends TestCase
         $refused = $this->callApi($cannot, ['method' => 'GET', 'path' => 'vehicles/summary']);
         $this->assertTrue($refused['isError'], $refused['content'][0]['text']);
         $this->assertSame(403, json_decode($refused['content'][0]['text'], true)['status']);
+        $this->assertStringContainsString('Refused by the role', json_decode($refused['content'][0]['text'], true)['hint']);
     }
 
     public function test_mcp_keeps_read_only_and_blocked_paths(): void
@@ -152,6 +153,7 @@ class ApiKeysAndMcpTest extends TestCase
 
         $write = $this->callApi($key, ['method' => 'PATCH', 'path' => 'me/preferences', 'body' => []]);
         $this->assertStringContainsString('api_key_read_only', $write['content'][0]['text']);
+        $this->assertArrayNotHasKey('hint', json_decode($write['content'][0]['text'], true));
 
         foreach (['staff/health', 'mcp', 'auth/logout', '../up'] as $path) {
             $this->assertStringStartsWith('Refused', $this->callApi($key, ['method' => 'GET', 'path' => $path])['content'][0]['text'], $path);

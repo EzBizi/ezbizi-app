@@ -1031,6 +1031,7 @@ Route::prefix('v1')
         Route::post('project-board/repair-teams', [ProjectBoardController::class, 'repairTeams']);
         Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
         Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
+        Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
         Route::patch('project-board/jobs/{job}/proposal', [ProjectBoardController::class, 'updateProposal']);
         Route::post('project-board/jobs/{job}/ready', [ProjectBoardController::class, 'ready']);
         Route::get('project-board/options', [ProjectBoardController::class, 'options']);
@@ -1083,6 +1084,7 @@ Route::prefix('v1')
         Route::post('tasks/{task}/copy', [TasksController::class, 'copy']);
         Route::post('tasks/{task}/suggest-label', [TasksController::class, 'suggestLabel']);
         Route::post('tasks/{id}/restore', [TasksController::class, 'restore']);
+        Route::get('task-search', [TasksController::class, 'search']);
         Route::get('tasks/{task}', [TasksController::class, 'show']);
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
