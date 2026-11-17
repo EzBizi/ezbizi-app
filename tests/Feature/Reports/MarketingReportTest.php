@@ -108,8 +108,10 @@ class MarketingReportTest extends TestCase
         $as->postJson('/api/v1/settings/lists/reports.locations/items', ['value' => ['branch' => 'Connecticut', 'code' => 'CT']])->assertSuccessful();
         $as->postJson('/api/v1/settings/lists/reports.locations/items', ['value' => ['branch' => 'New Jersey', 'code' => 'NJ']])->assertSuccessful();
 
-        $this->inTenant($t['org'], function () use ($t, $f, $nj) {
+        $elsewhere = $this->inTenant($t['org'], function () use ($t, $f, $nj) {
             $f->update(['name' => 'Connecticut']);
+            // Another company's Connecticut, which never books Angi Sweep (prod 11-16: Everdoors · Connecticut).
+            $everdoors = Franchise::create(['company_id' => Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors'])->id, 'name' => 'Connecticut']);
             $angi = Company::create(['organization_id' => $t['org']->id, 'name' => 'AngiSweep']);
             foreach (['AngiSweep - CT', 'AngiSweep - NJ', 'Angi Home Care LLC'] as $i => $name) {
                 $c = new SocialConnection;
@@ -122,10 +124,12 @@ class MarketingReportTest extends TestCase
             foreach ([$f, $f, $f, $nj] as $branch) {
                 $this->job($branch, ['job_source' => 'Angi Sweep', 'status' => 'Submitted', 'booked_at' => '2026-09-22 09:00:00']);
             }
+
+            return $everdoors;
         });
 
         $spend = ['AngiSweep - CT' => [10000, 20, 2.0], 'AngiSweep - NJ' => [5000, 9, 1.0], 'Angi Home Care LLC' => [8000, 40, 4.0]];
-        $rows = $this->inTenant($t['org'], fn () => app(MarketingReport::class)
+        $report = fn (Franchise $branch) => $this->inTenant($t['org'], fn () => app(MarketingReport::class)
             ->withCost(fn () => null)
             ->withAccountsCost(function ($accounts) use ($spend) {
                 $sum = ['cost_minor' => 0, 'clicks' => 0, 'conversions' => 0.0];
@@ -136,12 +140,14 @@ class MarketingReportTest extends TestCase
 
                 return ['lsa' => $sum, 'ppc' => ['cost_minor' => 0, 'clicks' => 0, 'conversions' => 0.0], 'accounts' => count($accounts), 'refused' => []];
             })
-            ->rows(Franchise::query()->find($f->id), '2026-09-21', '2026-09-27'));
-        $angi = collect($rows)->keyBy('source')['Angi Sweep'];
+            ->rows(Franchise::query()->find($branch->id), '2026-09-21', '2026-09-27'));
+        $angi = collect($report($f))->keyBy('source')['Angi Sweep'];
 
         // CT's own account, and three quarters of the one that names no branch; never NJ's.
         $this->assertSame([16000, 50, 5.0, 3], [$angi['cost_minor'], $angi['clicks'], $angi['conversions'], $angi['jobs_created']]);
         $this->assertStringContainsString('75% of Angi Home Care LLC', $angi['cost_note']);
+        // The other company's Connecticut shares the name, not the source: CT's account is counted once.
+        $this->assertNull(collect($report($elsewhere))->keyBy('source')->get('Angi Sweep')['cost_minor'] ?? null);
     }
 
     public function test_it_needs_the_profit_and_loss_permission(): void
