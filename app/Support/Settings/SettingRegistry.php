@@ -1052,6 +1052,22 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'In the order shown. A column without Financials hides its amounts anyway.',
             ),
+            // Jose, 2026-11-17: Project Management's client texts, each its
+            // own switch and wording, all OFF until he approves the wording.
+            // {client_first}, {company}, {date}, {link}. `since`: when it was
+            // switched on; only later jobs get it (ProjectBoardClientMessages).
+            new SettingDefinition(
+                key: 'project_board.client_messages', label: 'Project Management: texts to the client',
+                type: SettingDefinition::TYPE_JSON,
+                default: [
+                    'project_link' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, thank you for choosing {company}. Your project is underway, and you can see where it stands any time here: {link}'],
+                    'scheduled' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, your project with {company} is scheduled for {date}. See it here: {link}'],
+                    'day_before' => ['on' => false, 'since' => null, 'text' => 'Hi {client_first}, happy to remind you about your appointment tomorrow, {date}, to complete your project. Our repair crews are booked 7 to 14 days ahead, so moving it may take 1 to 2 weeks.'],
+                    'complete' => ['on' => false, 'since' => null, 'text' => 'Thank you for your business, {client_first}. It was a pleasure working on your project with {company}.'],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Each text to the client, its switch and its wording. Replies land in Project Management > Inbox.',
+            ),
             // Jose, 2026-11-17: "we need to set up list of supplier". Each
             // {id, name, address, phone, kind: order|pickup}: a supplier parts
             // are ordered from, or a same-day pickup store.

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/deep_links.dart';
 import '../core/files.dart';
 import '../core/job_money.dart';
 import '../core/live_changes.dart';
@@ -13,6 +14,7 @@ import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/calendar_day_field.dart';
 import '../widgets/colour_field.dart';
+import '../widgets/error_note.dart';
 import '../widgets/list_search.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/list_table.dart';
@@ -116,6 +118,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   }
 
   String _tab = _tabs.first.$1;
+
+  /// A tab of jobs, not Settings or the Dashboard.
+  bool get _isBoard =>
+      _tab != 'settings' && _tab != 'dashboard' && _tab != 'inbox';
   String? _franchise;
   final _search = TextEditingController();
   Timer? _debounce;
@@ -133,6 +139,10 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   bool get _money => widget.session.me?.can('jobs.financials') ?? false;
   bool get _canSet => widget.session.me?.can('organizations.edit') ?? false;
   List<(String, String, IconData)> get _shown => [
+    // Jose, 2026-11-17: parts waiting, late, and reminders.
+    ('dashboard', 'Dashboard', Icons.space_dashboard_outlined),
+    // The clients' texts, one thread per job (Jose, 2026-11-17).
+    ('inbox', 'Inbox', Icons.forum_outlined),
     ..._tabs,
     if (_canSet) ('settings', 'Settings', Icons.tune),
   ];
@@ -146,7 +156,16 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
     _feed = LiveChanges.of(
       widget.api,
     ).subscribe({'jobs'}, (_) => _refresh(), active: LiveChanges.visible(this));
+    _takeLink();
+    DeepLinks.pending.addListener(_takeLink);
     _load();
+  }
+
+  /// A part alert (late, or a reminder) opens the Dashboard (Jose, 2026-11-17).
+  void _takeLink() {
+    final link = DeepLinks.take('project_board');
+    if (link == null || link.type != 'job_part') return;
+    if (mounted) setState(() => _tab = 'dashboard');
   }
 
   LiveSubscription? _feed;
@@ -160,7 +179,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   /// spinner, so the scroll stays where it is. Skipped while the screen is
   /// hidden (another module, or a sub-tab off stage) or Settings is open.
   void _refresh() {
-    if (!mounted || _fetching || _tab == 'settings') return;
+    if (!mounted || _fetching || !_isBoard) return;
     if (!TickerMode.valuesOf(context).enabled) return;
     if (WidgetsBinding.instance.lifecycleState case final s?
         when s != AppLifecycleState.resumed) {
@@ -172,6 +191,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    DeepLinks.pending.removeListener(_takeLink);
     _live?.cancel();
     _feed?.cancel();
     _debounce?.cancel();
@@ -196,7 +216,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
       if (!quiet) _loading = true;
       _fetching = true;
     });
-    final tab = _tab == 'settings' ? _tabs.first.$1 : _tab;
+    final tab = _isBoard ? _tab : _tabs.first.$1;
     final franchise = _franchise;
     final q = _q;
     final response = await widget.api.get('/project-board/jobs', {
@@ -313,7 +333,7 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   /// the rest of the window. Short windows keep the page scroll.
   Widget _page_(BuildContext context, List<Widget> kids) {
     const pad = EdgeInsets.fromLTRB(16, 16, 16, 16);
-    if (_tab == 'settings' || !_fills(context)) {
+    if (!_isBoard || !_fills(context)) {
       return ListView(padding: pad, children: kids);
     }
     return Padding(
@@ -1144,7 +1164,19 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
             error: _error,
             onRetry: _load,
             child: _page_(context, [
-              if (_tab == 'settings')
+              if (_tab == 'inbox')
+                _ProjectInbox(
+                  api: widget.api,
+                  formats: widget.session.me?.display ?? DisplayFormats.fallback,
+                  canReply: _canEditJobs,
+                )
+              else if (_tab == 'dashboard')
+                _PartsDashboard(
+                  api: widget.api,
+                  formats: widget.session.me?.display ?? DisplayFormats.fallback,
+                  canEdit: _canEditJobs,
+                )
+              else if (_tab == 'settings')
                 _BoardSettings(
                   api: widget.api,
                   scope: _scope,
@@ -1370,6 +1402,11 @@ class _BoardSettingsState extends State<_BoardSettings> {
   /// Suppliers and same-day pickup stores (Jose, 2026-11-17: "we need to set
   /// up list of supplier"): id, name, address, phone, kind.
   final List<_SupplierRow> _suppliers = [];
+
+  /// The texts to the client (Jose, 2026-11-17), each a switch, its wording
+  /// and when it was switched on; all OFF until he approves the wording.
+  final Map<String, ({bool on, String? since, TextEditingController text})>
+  _clientTexts = {};
   final Map<String, List<String>> _tabNoTags = {};
 
   /// The company's real job statuses and tags, most used first.
@@ -1412,6 +1449,9 @@ class _BoardSettingsState extends State<_BoardSettings> {
     _badDays.dispose();
     for (final r in _suppliers) {
       r.dispose();
+    }
+    for (final t in _clientTexts.values) {
+      t.text.dispose();
     }
     super.dispose();
   }
@@ -1502,6 +1542,16 @@ class _BoardSettingsState extends State<_BoardSettings> {
         for (final t in (byKey['project_board.part_tags'] as List?) ?? const [])
           '$t',
       ];
+      final texts = (byKey['project_board.client_messages'] as Map?) ?? const {};
+      for (final (kind, _) in _clientTextKinds) {
+        final t = (texts[kind] as Map?) ?? const {};
+        _clientTexts[kind]?.text.dispose();
+        _clientTexts[kind] = (
+          on: t['on'] == true,
+          since: t['since'] as String?,
+          text: TextEditingController(text: t['text'] as String? ?? ''),
+        );
+      }
       for (final r in _suppliers) {
         r.dispose();
       }
@@ -1617,6 +1667,67 @@ class _BoardSettingsState extends State<_BoardSettings> {
         for (final r in _suppliers)
           if (r.name.text.trim().isNotEmpty) r.value,
       ],
+    },
+  );
+
+  static const _clientTextKinds = [
+    ('project_link', 'When a job reaches the board: the project link'),
+    ('scheduled', 'When it is scheduled (also sends the work order to the crew)'),
+    ('day_before', 'The day before the appointment'),
+    ('complete', 'When it is complete: thank you'),
+  ];
+
+  /// Each text to the client: its switch and wording (Jose, 2026-11-17).
+  /// Switching one on only reaches jobs from then on; replies land in Inbox.
+  Widget _clientTextsCard() => _card(
+    'client-texts',
+    'Texts to the client',
+    'Off until switched on. {client_first}, {company}, {date} and {link} '
+        'fill in. Replies land in Inbox.',
+    [
+      for (final (kind, label) in _clientTextKinds)
+        if (_clientTexts[kind] case final t?)
+          Padding(
+            key: ValueKey('project-board-client-text-$kind'),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SwitchListTile(
+                  key: ValueKey('project-board-client-text-on-$kind'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(label),
+                  value: t.on,
+                  onChanged: (on) => setState(
+                    () => _clientTexts[kind] = (
+                      on: on,
+                      // Only jobs from now on: never the backlog.
+                      since: on
+                          ? DateTime.now().toUtc().toIso8601String()
+                          : null,
+                      text: t.text,
+                    ),
+                  ),
+                ),
+                TextField(
+                  controller: t.text,
+                  minLines: 2,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+    ],
+    () => {
+      'project_board.client_messages': {
+        for (final MapEntry(key: kind, value: t) in _clientTexts.entries)
+          kind: {'on': t.on, 'since': t.since, 'text': t.text.text.trim()},
+      },
     },
   );
 
@@ -2257,6 +2368,7 @@ class _BoardSettingsState extends State<_BoardSettings> {
         ),
         _repairCard(),
         _suppliersCard(),
+        _clientTextsCard(),
         _card(
           'ready',
           'Ready to schedule',
@@ -2396,7 +2508,16 @@ class _PartRow {
             ? ((p['price_minor'] as num) / 100).toStringAsFixed(2)
             : '',
       ),
-      delivery = TextEditingController(text: '${p['delivery_on'] ?? ''}');
+      delivery = TextEditingController(text: '${p['delivery_on'] ?? ''}'),
+      remind = TextEditingController(
+        text: () {
+          final at = DateTime.tryParse('${p['remind_at'] ?? ''}')?.toLocal();
+          return at == null
+              ? ''
+              : at.toIso8601String().substring(0, 16).replaceFirst('T', ' ');
+        }(),
+      ),
+      remindNote = TextEditingController(text: p['remind_note'] as String?);
 
   final String? id;
   String kind;
@@ -2411,11 +2532,22 @@ class _PartRow {
   final TextEditingController price;
   final TextEditingController delivery;
 
+  /// A reminder on this part (Jose, 2026-11-17): `YYYY-MM-DD HH:MM`, local.
+  final TextEditingController remind;
+  final TextEditingController remindNote;
+
+  /// The reminder as the server takes it, UTC, or null.
+  String? get remindAt => DateTime.tryParse(
+    remind.text.trim().replaceFirst(' ', 'T'),
+  )?.toUtc().toIso8601String();
+
   void dispose() {
     item.dispose();
     quantity.dispose();
     price.dispose();
     delivery.dispose();
+    remind.dispose();
+    remindNote.dispose();
   }
 }
 
@@ -2452,6 +2584,11 @@ class _PartsPanelState extends State<_PartsPanel> {
             'supplier_id': r.supplierId,
             'destination': r.destination,
             'received': r.received,
+          },
+          if (r.remindAt case final at?) ...{
+            'remind_at': at,
+            if (r.remindNote.text.trim().isNotEmpty)
+              'remind_note': r.remindNote.text.trim(),
           },
         },
   ];
@@ -2634,6 +2771,20 @@ class _PartsPanelState extends State<_PartsPanel> {
                   dense: true,
                 ),
               ],
+              Text('Remind me', style: theme.textTheme.labelLarge),
+              const SizedBox(height: 4),
+              CalendarDayField(
+                key: ValueKey('project-board-part-remind-$i'),
+                controller: r.remind,
+                formats: widget.formats,
+                withTime: true,
+                dense: true,
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: r.remindNote,
+                decoration: box('Reminder note'),
+              ),
               CheckboxListTile(
                 key: ValueKey('project-board-part-received-$i'),
                 contentPadding: EdgeInsets.zero,
@@ -2945,5 +3096,542 @@ class _SupplierRow {
     name.dispose();
     address.dispose();
     phone.dispose();
+  }
+}
+
+/// Project Management › Dashboard (Jose, 2026-11-17): how many items and
+/// jobs are waiting for parts, the parts three days late (red, like a lead),
+/// and the reminders, each movable or clearable.
+class _PartsDashboard extends StatefulWidget {
+  const _PartsDashboard({
+    required this.api,
+    required this.formats,
+    required this.canEdit,
+  });
+
+  final ApiClient api;
+  final DisplayFormats formats;
+  final bool canEdit;
+
+  @override
+  State<_PartsDashboard> createState() => _PartsDashboardState();
+}
+
+class _PartsDashboardState extends State<_PartsDashboard> {
+  Map<String, dynamic>? _data;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final r = await widget.api.get('/project-board/dashboard');
+    if (!mounted) return;
+    setState(() {
+      if (r.ok && r.data is Map) {
+        _data = Map<String, dynamic>.from(r.data as Map);
+        _error = null;
+      } else {
+        _error = r.reason;
+      }
+    });
+  }
+
+  List<Map<String, dynamic>> _list(String key) => [
+    for (final m in (_data?[key] as List?) ?? const [])
+      if (m is Map) Map<String, dynamic>.from(m),
+  ];
+
+  String _when(Object? iso) {
+    final at = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+    if (at == null) return '';
+    return '${widget.formats.formatDate(at)} ${TimeOfDay.fromDateTime(at).format(context)}';
+  }
+
+  /// Moves a reminder to a new time, or clears it with null.
+  Future<void> _remind(Map<String, dynamic> part, String? at) async {
+    final r = await widget.api.patch(
+      '/project-board/parts/${part['id']}/reminder',
+      {'remind_at': at},
+    );
+    if (!mounted) return;
+    if (!r.ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(r.reason)));
+      return;
+    }
+    _load();
+  }
+
+  Future<void> _reschedule(Map<String, dynamic> part) async {
+    final at = await showSidePanel<String>(
+      context,
+      builder: (_) => _ReminderPanel(
+        item: '${part['item'] ?? ''}',
+        initial: part['remind_at'] as String?,
+        formats: widget.formats,
+      ),
+    );
+    if (at != null) await _remind(part, at);
+  }
+
+  Widget _tile(String key, String label, Object? n, Tone tone) {
+    final theme = Theme.of(context);
+    final c = ToneColours.of(context, tone);
+    return Container(
+      key: ValueKey('project-board-dashboard-$key'),
+      width: 200,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.fill,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${n ?? 0}',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              color: c.ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: c.ink)),
+        ],
+      ),
+    );
+  }
+
+  Widget _part(Map<String, dynamic> p, {Widget? trailing, String? when}) {
+    final supplier = (p['supplier'] as Map?)?['name'];
+    return ListTile(
+      key: ValueKey('project-board-dashboard-part-${p['id']}'),
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      title: Text('${p['item'] ?? ''}'),
+      subtitle: Text(
+        [
+          p['job_number'],
+          p['customer'],
+          supplier,
+          when,
+          p['remind_note'],
+        ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
+      ),
+      trailing: trailing,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_data == null) {
+      return _error == null
+          ? const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : ErrorNote(_error!);
+    }
+    final late = _list('late');
+    final reminders = _list('reminders');
+    final due = reminders.where((r) => r['due'] == true).length;
+
+    return Column(
+      key: const Key('project-board-dashboard'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _tile(
+              'items',
+              'Items waiting for parts',
+              _data!['waiting_items'],
+              Tone.caution,
+            ),
+            _tile(
+              'jobs',
+              'Jobs waiting for parts',
+              _data!['waiting_jobs'],
+              Tone.caution,
+            ),
+            _tile(
+              'late',
+              'Parts 3+ days late',
+              late.length,
+              late.isEmpty ? Tone.ok : Tone.bad,
+            ),
+            _tile(
+              'due',
+              'Reminders due',
+              due,
+              due == 0 ? Tone.ok : Tone.caution,
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Text('Late parts', style: theme.textTheme.titleMedium),
+        if (late.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('Nothing is late.'),
+          )
+        else
+          for (final p in late)
+            _part(
+              p,
+              when: 'ordered ${_when(p['ordered_at'])}',
+              trailing: const StatusPill('Late', tone: Tone.bad),
+            ),
+        const SizedBox(height: 20),
+        Text('Reminders', style: theme.textTheme.titleMedium),
+        if (reminders.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'No reminders. Set one on a part from its Part Status.',
+            ),
+          )
+        else
+          for (final p in reminders)
+            _part(
+              p,
+              when: _when(p['remind_at']),
+              trailing: Wrap(
+                spacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (p['due'] == true)
+                    const StatusPill('Due', tone: Tone.caution),
+                  if (widget.canEdit) ...[
+                    TextButton(
+                      key: ValueKey('project-board-remind-move-${p['id']}'),
+                      onPressed: () => _reschedule(p),
+                      child: const Text('Reschedule'),
+                    ),
+                    IconButton(
+                      key: ValueKey('project-board-remind-clear-${p['id']}'),
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () => _remind(p, null),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+/// A reminder's day and time; pops the ISO time, or null.
+class _ReminderPanel extends StatefulWidget {
+  const _ReminderPanel({
+    required this.item,
+    required this.formats,
+    this.initial,
+  });
+
+  final String item;
+  final String? initial;
+  final DisplayFormats formats;
+
+  @override
+  State<_ReminderPanel> createState() => _ReminderPanelState();
+}
+
+class _ReminderPanelState extends State<_ReminderPanel> {
+  late final _at = TextEditingController(
+    text: () {
+      final at = DateTime.tryParse(widget.initial ?? '')?.toLocal();
+      return at == null
+          ? ''
+          : at.toIso8601String().substring(0, 16).replaceFirst('T', ' ');
+    }(),
+  );
+
+  @override
+  void dispose() {
+    _at.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SidePanel(
+    title: 'Remind me',
+    subtitle: widget.item,
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        key: const Key('project-board-remind-save'),
+        onPressed: () {
+          final at = DateTime.tryParse(_at.text.trim().replaceFirst(' ', 'T'));
+          Navigator.of(context).pop(at?.toUtc().toIso8601String());
+        },
+        child: const Text('Save'),
+      ),
+    ],
+    child: CalendarDayField(
+      controller: _at,
+      label: 'When',
+      formats: widget.formats,
+      withTime: true,
+    ),
+  );
+}
+
+/// Project Management › Inbox (Jose, 2026-11-17: "Inbox separated like a
+/// Mini Leads inside Project Management that only shows these messages per
+/// client"): one thread per board job, the client's answers included, and a
+/// reply from the job's branch line.
+class _ProjectInbox extends StatefulWidget {
+  const _ProjectInbox({
+    required this.api,
+    required this.formats,
+    required this.canReply,
+  });
+
+  final ApiClient api;
+  final DisplayFormats formats;
+  final bool canReply;
+
+  @override
+  State<_ProjectInbox> createState() => _ProjectInboxState();
+}
+
+class _ProjectInboxState extends State<_ProjectInbox> {
+  List<Map<String, dynamic>>? _threads;
+  List<Map<String, dynamic>> _messages = const [];
+  String? _open;
+  String? _error;
+  String _q = '';
+  bool _sending = false;
+  final _draft = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _draft.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> _maps(Object? raw) => [
+    for (final m in raw is List ? raw : const [])
+      if (m is Map) Map<String, dynamic>.from(m),
+  ];
+
+  Future<void> _load() async {
+    final r = await widget.api.get(
+      '/project-board/inbox',
+      _q.isEmpty ? null : {'q': _q},
+    );
+    if (!mounted) return;
+    setState(() {
+      _threads = r.ok ? _maps(r.data) : const [];
+      _error = r.ok ? null : r.reason;
+    });
+  }
+
+  Future<void> _openThread(String jobId) async {
+    setState(() {
+      _open = jobId;
+      _messages = const [];
+    });
+    final r = await widget.api.get('/project-board/inbox/$jobId');
+    if (!mounted || _open != jobId) return;
+    setState(() => _messages = r.ok ? _maps(r.data) : const []);
+  }
+
+  Future<void> _reply() async {
+    final body = _draft.text.trim();
+    final job = _open;
+    if (body.isEmpty || job == null || _sending) return;
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    final r = await widget.api.post('/project-board/inbox/$job', {
+      'body': body,
+    });
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      if (r.ok && r.data is Map) {
+        _messages = [..._messages, Map<String, dynamic>.from(r.data as Map)];
+        _draft.clear();
+      } else {
+        _error = r.reason;
+      }
+    });
+    if (r.ok) _load();
+  }
+
+  String _when(Object? iso) {
+    final at = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+    if (at == null) return '';
+    return '${widget.formats.formatDate(at)} ${TimeOfDay.fromDateTime(at).format(context)}';
+  }
+
+  Widget _list(ThemeData theme) {
+    final threads = _threads ?? const [];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListSearch(
+          key: const Key('project-inbox-search'),
+          hint: 'Client, job number or words',
+          width: double.infinity,
+          onChanged: (v) {
+            _q = v.trim();
+            _load();
+          },
+        ),
+        const SizedBox(height: 8),
+        if (threads.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'No texts with the clients on the board yet. Their answers to '
+              'the scheduling texts show up here.',
+            ),
+          )
+        else
+          for (final t in threads)
+            ListTile(
+              key: ValueKey('project-inbox-thread-${t['job_id']}'),
+              selected: _open == t['job_id'],
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+              title: Text(
+                [t['customer'], t['job_number']]
+                    .where((s) => s != null && '$s'.isNotEmpty)
+                    .join(' · '),
+              ),
+              subtitle: Text(
+                '${t['last_body'] ?? ''}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: t['waiting'] == true
+                  ? const StatusPill('Waiting', tone: Tone.caution)
+                  : Text(_when(t['last_at']), style: theme.textTheme.bodySmall),
+              onTap: () => _openThread('${t['job_id']}'),
+            ),
+      ],
+    );
+  }
+
+  Widget _thread(ThemeData theme, {VoidCallback? back}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (back != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('project-inbox-back'),
+              onPressed: back,
+              icon: const Icon(Icons.arrow_back, size: 18),
+              label: const Text('All clients'),
+            ),
+          ),
+        for (final m in _messages)
+          Align(
+            alignment: m['direction'] == 'inbound'
+                ? Alignment.centerLeft
+                : Alignment.centerRight,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 420),
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: m['direction'] == 'inbound'
+                    ? theme.colorScheme.surfaceContainerHighest
+                    : theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText('${m['body'] ?? ''}'),
+                  Text(_when(m['at']), style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+          ),
+        if (widget.canReply) ...[
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('project-inbox-box'),
+            controller: _draft,
+            minLines: 2,
+            maxLines: 6,
+            enabled: !_sending,
+            decoration: const InputDecoration(
+              hintText: 'Text the client from the branch line…',
+            ),
+          ),
+          if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              key: const Key('project-inbox-send'),
+              onPressed: _sending ? null : _reply,
+              child: Text(_sending ? 'Sending…' : 'Send'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_threads == null) {
+      return const Padding(
+        padding: EdgeInsets.all(32),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return LayoutBuilder(
+      key: const Key('project-inbox'),
+      builder: (context, box) {
+        if (box.maxWidth < 860) {
+          return _open == null
+              ? _list(theme)
+              : _thread(theme, back: () => setState(() => _open = null));
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 340, child: _list(theme)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _open == null
+                  ? const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('Choose a client to read the texts.'),
+                    )
+                  : _thread(theme),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

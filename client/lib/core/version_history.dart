@@ -13,6 +13,16 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0589', date: '17 Nov 2026', items: [
+      'Project Management: a Dashboard tab with jobs and items waiting for parts, parts 3+ days late in red, and reminders per part; alerts for late parts and due reminders',
+      'Project Management: an Inbox with one conversation per client, replying from the branch line',
+      'Project Management: four client texts (project link, scheduled with the work order to the crew, day-before reminder, thank-you), each off until switched on in Settings',
+      'Project Management: work orders print the Workiz photos',
+      'Task Board: adding a task for a caller who already has an open one in that group offers to open it instead',
+      'Task Board: missed-call tasks link the caller lead, and Monday never changes the people an automation assigned',
+      'Security: admins are alerted when one person or API key opens an unusual number of customers, leads or jobs in 10 minutes, and busy list screens are rate-limited per person',
+      'Security: an email inbox outside your reach answers as not found, and inspection report photos follow the report access',
+    ]),
     VersionRelease(version: '0.0.0588', date: '17 Nov 2026', items: [
       'Missed-call tasks close themselves when the caller replies to the text or books online',
       'Complaints: a complaint already on the board gets the AI review as a note instead of a second task',

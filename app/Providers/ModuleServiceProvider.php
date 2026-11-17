@@ -1515,6 +1515,10 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Project Management',
                 actions: ['view'],
                 tabs: [
+                    // Jose, 2026-11-17: parts waiting, late, and reminders.
+                    new TabDefinition('dashboard', 'Dashboard', action: 'view'),
+                    // The clients' texts, one thread per job (Jose, 2026-11-17).
+                    new TabDefinition('inbox', 'Inbox', action: 'view'),
                     new TabDefinition('unscheduled', 'Unscheduled', action: 'view'),
                     new TabDefinition('ready_to_schedule', 'Ready to Schedule', action: 'view'),
                     new TabDefinition('scheduled', 'Scheduled', action: 'view'),
