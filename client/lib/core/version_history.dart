@@ -13,6 +13,14 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0579', date: '16 Nov 2026', items: [
+      'Leads: What they asked gets More and Less when the AI summary is cut short, and in a short window the lead header folds its details behind one Details line',
+      'Reports: pin the heading row on any table (your choice is remembered)',
+      'Reports › Jobs: a Without duplicates box next to Jobs created leaves out the Workiz copies and the PAID - ESTIMATED tags, and Marketing Reports shows the same count',
+      'Reports: Total now reads Gross, incl. tax, and phone numbers are formatted',
+      'Reports: one date range is kept across every Reports tab',
+      'Reports: the Marketing tab is now Marketing Reports, and Angi Sweep and Ace show their own ad cost and leads',
+    ]),
     VersionRelease(version: '0.0.0578', date: '16 Nov 2026', items: [
       'Leads › Manage › Recovery: switch on, edit, preview and scope the automatic win-back texts in one place',
       'Online booking requests stay Overdue until approved or declined, and Another date moves one to an open window and approves it',
