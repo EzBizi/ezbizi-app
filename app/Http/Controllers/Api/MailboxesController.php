@@ -829,6 +829,7 @@ class MailboxesController extends Controller
     {
         $user = $request->user();
 
+        abort_if($this->access->hidden($user, $mailbox), Response::HTTP_NOT_FOUND);
         $refusal = $this->access->manageRefusal($user, $mailbox, 'change who is notified about this inbox');
 
         if ($refusal !== null) {
@@ -867,6 +868,7 @@ class MailboxesController extends Controller
      */
     private function assertMayChoosePeople(User $user, Mailbox $mailbox): void
     {
+        abort_if($this->access->hidden($user, $mailbox), Response::HTTP_NOT_FOUND);
         $refusal = $this->access->manageRefusal($user, $mailbox, 'choose who can open this inbox');
 
         if ($refusal !== null) {
@@ -1148,6 +1150,7 @@ class MailboxesController extends Controller
 
     private function assertMayManage(User $user, Mailbox $mailbox, string $act): void
     {
+        abort_if($this->access->hidden($user, $mailbox), Response::HTTP_NOT_FOUND);
         $refusal = $this->access->manageRefusal($user, $mailbox, $act);
 
         abort_if($refusal !== null, Response::HTTP_FORBIDDEN, $refusal);
