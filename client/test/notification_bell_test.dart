@@ -687,6 +687,37 @@ void main() {
     ]);
   });
 
+  // Jose, 2026-11-17: Project Management's part alerts, each switchable.
+  testWidgets('a Project Management kind can be switched off', (tester) async {
+    final patches = <Object?>[];
+    await _pumpWithSession(
+      tester,
+      preferences: {},
+      items: () => [],
+      patches: patches,
+    );
+
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('notification-settings')));
+    await tester.pumpAndSettle();
+
+    final late = find.byKey(
+      const ValueKey('notification-kind-project_board.part_late'),
+    );
+    await tester.ensureVisible(late);
+    await tester.tap(late);
+    await tester.pumpAndSettle();
+
+    expect(patches, [
+      {
+        'preferences': {
+          'notifications.muted_kinds': ['project_board.part_late'],
+        },
+      },
+    ]);
+  });
+
   testWidgets('with alerts on, a new notification pops up (the control)', (
     tester,
   ) async {
@@ -772,6 +803,12 @@ Future<void> _pumpWithSession(
               {
                 'key': 'tasks',
                 'label': 'Task Board',
+                'available': true,
+                'reachable': true,
+              },
+              {
+                'key': 'project_board',
+                'label': 'Project Management',
                 'available': true,
                 'reachable': true,
               },

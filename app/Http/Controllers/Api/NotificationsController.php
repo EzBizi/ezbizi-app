@@ -346,6 +346,8 @@ class NotificationsController extends Controller
         Suggestion::class => 'suggestions',
         Lead::class => 'leads',
         \App\Models\Job::class => 'jobs',
+        // Its part on the Project Management board (Jose, 2026-11-17).
+        \App\Models\JobPart::class => 'project_board',
         \App\Models\Task::class => 'tasks',
         \App\Models\TaskUpdate::class => 'tasks',
         TimeClockCorrectionRequest::class => 'work_hours',

@@ -456,6 +456,28 @@ class ProjectBoardTest extends TestCase
         $this->signedInAs($beta['admin'])->get("/api/v1/project-board/jobs/{$id}/work-order")->assertNotFound();
     }
 
+    /** The job's Workiz photos print on the work order, fetched from Workiz's file host only. */
+    public function test_a_workiz_photo_is_fetched_from_workiz_only_and_shrunk(): void
+    {
+        $img = imagecreatetruecolor(2400, 1600);
+        ob_start();
+        imagepng($img);
+        $png = (string) ob_get_clean();
+        \Illuminate\Support\Facades\Http::fake([
+            'st.sendajob.com/*' => \Illuminate\Support\Facades\Http::response($png, 200, ['Content-Type' => 'image/png']),
+            '*' => \Illuminate\Support\Facades\Http::response($png, 200, ['Content-Type' => 'image/png']),
+        ]);
+
+        $data = \App\Support\ProjectBoard\WorkOrderPdf::fetchPhoto('https://st.sendajob.com/a/b.jpg');
+        $this->assertNotNull($data);
+        $this->assertStringStartsWith('data:image/jpeg;base64,', $data);
+        $this->assertSame(1200, imagesx(imagecreatefromstring(base64_decode(substr($data, 23)))));
+
+        $this->assertNull(\App\Support\ProjectBoard\WorkOrderPdf::fetchPhoto('https://evil.example/b.jpg'), 'Not Workiz: never fetched.');
+        $this->assertNull(\App\Support\ProjectBoard\WorkOrderPdf::fetchPhoto('http://st.sendajob.com/b.jpg'), 'https only.');
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
     public function test_the_work_order_page_names_where_each_part_is_picked_up(): void
     {
         $html = \App\Support\ProjectBoard\WorkOrderPdf::html([
@@ -477,6 +499,54 @@ class ProjectBoardTest extends TestCase
         $this->assertStringContainsString('Inspection report: Level 2 11/14/2026', $html);
         $this->assertStringContainsString(htmlspecialchars(\App\Support\ProjectBoard\WorkOrderPdf::PAYMENT_RULE, ENT_QUOTES), $html);
         $this->assertStringNotContainsString('Remaining balance', $html, 'No Financials, no amounts.');
+    }
+
+    /**
+     * Jose, 2026-11-17: the Dashboard counts what waits for parts, a part 3
+     * days late notifies once, a reminder is sent when due, and a muted kind
+     * is not sent.
+     */
+    public function test_the_dashboard_counts_and_late_parts_and_reminders_notify_once(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']));
+        $pm = $this->userWithRole($alpha, 'Project Manager', ['project_board.view', 'jobs.view', 'jobs.edit']);
+        $muted = $this->userWithRole($alpha, 'Muted PM', ['project_board.view', 'jobs.view']);
+        $this->inTenant($alpha['org'], fn () => $muted->forceFill(['preferences' => ['notifications.muted_kinds' => ['project_board.part_late']]])->save());
+        $api = $this->signedInAs($pm);
+
+        $this->travelTo(now()->setDate(2026, 11, 10)->setTime(9, 0));
+        $parts = $api->putJson("/api/v1/project-board/jobs/{$id}/parts", ['parts' => [
+            ['kind' => 'order', 'item' => 'Cap', 'quantity' => 1],
+            ['kind' => 'pickup', 'item' => 'Mortar', 'quantity' => 1, 'remind_at' => '2026-11-11T15:00:00Z', 'remind_note' => 'Call the store'],
+            ['kind' => 'stock', 'item' => 'Flashing', 'quantity' => 1],
+        ]])->assertOk()->json('data');
+
+        $board = $api->getJson('/api/v1/project-board/dashboard')->assertOk();
+        $board->assertJsonPath('data.waiting_items', 2)->assertJsonPath('data.waiting_jobs', 1)
+            ->assertJsonCount(0, 'data.late')->assertJsonPath('data.reminders.0.remind_note', 'Call the store');
+
+        $alerts = fn (string $who) => \App\Models\Notification::query()->withoutGlobalScopes()->where('user_id', $who)->count();
+        $this->travelTo(now()->setDate(2026, 11, 13)->setTime(10, 0));
+        $this->artisan('ezbizi:project-board-part-alerts')->assertSuccessful();
+        $this->assertSame(3, $alerts($pm->id), 'Two late parts and one reminder due.');
+        $this->assertSame(1, $alerts($muted->id), 'Late is muted: only the reminder.');
+        $this->artisan('ezbizi:project-board-part-alerts')->assertSuccessful();
+        $this->assertSame(3, $alerts($pm->id), 'Once, not every quarter hour.');
+        $api->getJson('/api/v1/project-board/dashboard')->assertJsonCount(2, 'data.late');
+
+        // Rescheduled from the Dashboard: sent again when it comes due.
+        $api->patchJson("/api/v1/project-board/parts/{$parts[1]['id']}/reminder", ['remind_at' => '2026-11-14T09:00:00Z'])->assertOk();
+        $this->travelTo(now()->setDate(2026, 11, 14)->setTime(10, 0));
+        $this->artisan('ezbizi:project-board-part-alerts')->assertSuccessful();
+        $this->assertSame(4, $alerts($pm->id));
+
+        // A save of the list keeps "told it was late".
+        $api->putJson("/api/v1/project-board/jobs/{$id}/parts", ['parts' => [
+            ['id' => $parts[0]['id'], 'kind' => 'order', 'item' => 'Cap', 'quantity' => 1],
+        ]])->assertOk();
+        $this->artisan('ezbizi:project-board-part-alerts')->assertSuccessful();
+        $this->assertSame(4, $alerts($pm->id));
     }
 
     /** Jose, 2026-11-17: "Just let me drag them" - one column order for everyone on the board. */

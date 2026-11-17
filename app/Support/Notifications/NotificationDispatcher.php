@@ -584,6 +584,9 @@ class NotificationDispatcher
         'task.moved' => 'Moved to my group',
         'task.file' => 'Files added',
         'task.created' => 'New tasks on my boards',
+        // Project Management parts (Jose, 2026-11-17).
+        'project_board.part_late' => 'A part is 3 days late',
+        'project_board.part_reminder' => 'A part reminder is due',
     ];
 
     /** Minutes within which a repeat of one kind on one record is one row. */
