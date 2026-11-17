@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0582', date: '17 Nov 2026', items: [
+      'Leads: a lead we texted after their call now shows Replied, not Awaiting reply',
+    ]),
     VersionRelease(version: '0.0.0581', date: '17 Nov 2026', items: [
       'Marketing Reports: Angi Sweep Connecticut ad cost no longer also shows on Everdoors Connecticut; a sub company account named for a branch goes only to a branch that books that source',
     ]),
