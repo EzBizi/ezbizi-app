@@ -1384,7 +1384,9 @@ class AutomationsController extends Controller
             $this->authorize('update', $automation);
         }
 
-        DB::transaction(function () use ($automation, $input, $request) {
+        $rearmed = false;
+        $wasDisabled = $automation->disabled_at !== null;
+        DB::transaction(function () use ($automation, $input, $request, &$rearmed) {
             $automation->fill(array_intersect_key($input, array_flip([
                 'name', 'description', 'scope_type', 'scope_id', 'delay_minutes',
             ])));
@@ -1425,8 +1427,21 @@ class AutomationsController extends Controller
 
             if (array_key_exists('actions', $input)) {
                 $this->addVersion($automation, $input, $request);
+                // A saved fix to a rule that is ON re-arms it (Jose, 2026-11-17:
+                // a fixed rule stayed silently off for twelve hours).
+                if ($automation->is_active && $automation->disabled_at !== null) {
+                    $automation->forceFill(['disabled_at' => null, 'disabled_reason' => null, 'consecutive_failures' => 0])->save();
+                    $rearmed = true;
+                }
+            }
+            if (($input['is_active'] ?? false) === true) {
+                $rearmed = true;
             }
         });
+        // After the commit: the failed events of the last day run on the fixed version.
+        if ($rearmed && $wasDisabled) {
+            app(\App\Support\Automations\AutomationEngine::class)->replayFailed($automation->fresh());
+        }
 
         return response()->json(['data' => $this->present($automation->fresh(), detailed: true)]);
     }

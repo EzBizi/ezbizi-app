@@ -481,6 +481,48 @@ class AutomationEngine
      * The cascade budget and depth cap still apply through `run()`, so a rule
      * that fires other rules cannot be made to run away by pressing a button.
      */
+    /**
+     * A rule re-armed after its auto-disable runs again, on its active
+     * version, the events of the last day whose run failed having done
+     * nothing (Jose, 2026-11-17: the missed-call tasks are relied on now; a
+     * failed run must not lose the call). A run that did any step is left
+     * alone, so nobody gets a second text. Returns how many were replayed.
+     */
+    public function replayFailed(Automation $automation): int
+    {
+        return (int) $this->tenant->run($automation->organization ?? \App\Models\Organization::withoutGlobalScopes()->find($automation->organization_id), function () use ($automation) {
+            $version = $automation->activeVersion;
+            if ($version === null) {
+                return 0;
+            }
+            $events = AutomationRun::query()->where('automation_id', $automation->getKey())->where('status', AutomationRun::FAILED)
+                ->where('started_at', '>=', now()->subDay())->get()
+                ->reject(fn (AutomationRun $r) => collect((array) $r->action_results)->contains(fn ($a) => ($a['ok'] ?? false) === true))
+                ->pluck('event_id')->unique()
+                ->reject(fn ($id) => AutomationRun::query()->where('event_id', $id)->where('automation_id', $automation->getKey())
+                    ->where('status', '!=', AutomationRun::FAILED)->exists());
+            $n = 0;
+            foreach (AutomationEvent::query()->whereIn('id', $events->all())->orderBy('occurred_at')->get() as $event) {
+                // The same lease deliver() takes, so a worker on this event and the replay never both run it.
+                $token = (string) Str::uuid();
+                if (AutomationEvent::query()->whereKey($event->id)->where(fn ($q) => $q->whereNull('processing_until')->orWhere('processing_until', '<=', now()))
+                    ->update(['processing_token' => $token, 'processing_until' => now()->addMinutes(10)]) !== 1) {
+                    continue;
+                }
+                $event->forceFill(['processing_token' => $token, 'processing_until' => now()->addMinutes(10)])->syncOriginal();
+                try {
+                    $this->runOne($automation, $version, $event, $this->subjectOf($event));
+                    $n++;
+                } finally {
+                    AutomationEvent::query()->whereKey($event->id)->where('processing_token', $event->processing_token)
+                        ->update(['processing_token' => null, 'processing_until' => null]);
+                }
+            }
+
+            return $n;
+        });
+    }
+
     public function runNow(Automation $automation, AutomationEvent $event): array
     {
         return $this->tenant->run($event->organization, function () use ($automation, $event) {
