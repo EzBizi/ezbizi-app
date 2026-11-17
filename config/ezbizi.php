@@ -344,4 +344,7 @@ return [
 
     // Who public lookup services (OpenStreetMap, Census) can contact about our traffic.
     'contact_email' => env('EZBIZI_CONTACT_EMAIL', 'development@ezbizi.com'),
+
+    // Task Board rules move a misfiled item to its group (Jose 11-17); false only flags.
+    'task_board_moves' => (bool) env('TASK_BOARD_MOVES', true),
 ];

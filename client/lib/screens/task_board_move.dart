@@ -182,6 +182,15 @@ class _TaskChoicePanelState extends State<TaskChoicePanel> {
 
 /// Link… (Jose, 2026-10-28): the tasks this one is linked to, and a board
 /// then a task to link. Linked tasks show each other; Done carries across.
+/// "Lead", "Customer", "Job" for a record type.
+String recordTypeLabel(String type) => switch (type) {
+  'lead' => 'Lead',
+  'customer' => 'Customer',
+  'job' => 'Job',
+  'vehicle' => 'Vehicle',
+  _ => type,
+};
+
 class TaskLinkPanel extends StatefulWidget {
   const TaskLinkPanel({super.key, required this.api, required this.task});
 
@@ -195,6 +204,8 @@ class TaskLinkPanel extends StatefulWidget {
 class _TaskLinkPanelState extends State<TaskLinkPanel> {
   List<_Json> _links = const [];
   List<_Json> _found = const [];
+  List<_Json> _records = const [];
+  late Map? _about = widget.task['about'] as Map?;
   final _query = TextEditingController();
   Timer? _wait;
   String? _error;
@@ -225,19 +236,25 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
   /// One box across every board (Jose 11-17): type, see each task's board.
   void _search(String q) {
     _wait?.cancel();
-    if (q.trim().length < 2) return setState(() => _found = const []);
+    if (q.trim().length < 2) {
+      return setState(() {
+        _found = const [];
+        _records = const [];
+      });
+    }
     _wait = Timer(const Duration(milliseconds: 250), () async {
       final res = await widget.api.get(
         '/task-search?q=${Uri.encodeQueryComponent(q.trim())}',
       );
       if (!mounted || _query.text != q || !res.ok) return;
       final linked = {for (final l in _links) l['id']};
-      setState(
-        () => _found = (res.body['data'] as List)
+      setState(() {
+        _found = (res.body['data'] as List)
             .cast<_Json>()
             .where((t) => t['id'] != _id && !linked.contains(t['id']))
-            .toList(),
-      );
+            .toList();
+        _records = (res.body['records'] as List? ?? const []).cast<_Json>();
+      });
     });
   }
 
@@ -253,6 +270,26 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
       _error = null;
     });
     await _refresh();
+  }
+
+  /// What the task is about: one lead, customer or job (null clears it).
+  Future<void> _setAbout(_Json? record) async {
+    final res = await widget.api.patch('/tasks/$_id', {
+      'about': record == null
+          ? null
+          : {'type': record['type'], 'id': record['id']},
+    });
+    if (!mounted) return;
+    if (!res.ok) return setState(() => _error = res.reason);
+    _query.clear();
+    setState(() {
+      _about = record == null
+          ? null
+          : {'type': record['type'], 'id': record['id'], 'label': record['label']};
+      _found = const [];
+      _records = const [];
+      _error = null;
+    });
   }
 
   Future<void> _unlink(String other) async {
@@ -272,12 +309,29 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Linked tasks show each other, and marking one Done marks them all Done.',
+            'Link a lead, customer or job to open it from the task. Linked tasks show each other, and marking one Done marks them all Done.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
+          if (_about case final Map about)
+            Row(
+              key: const Key('task-link-about'),
+              children: [
+                Expanded(
+                  child: Text(
+                    '${about['label']}  ·  ${recordTypeLabel('${about['type']}')}',
+                  ),
+                ),
+                IconButton(
+                  key: const Key('task-unlink-about'),
+                  tooltip: 'Unlink',
+                  icon: const Icon(Icons.link_off, size: 18),
+                  onPressed: () => _setAbout(null),
+                ),
+              ],
+            ),
           for (final l in _links)
             Row(
               key: ValueKey('task-link-${l['id']}'),
@@ -298,11 +352,22 @@ class _TaskLinkPanelState extends State<TaskLinkPanel> {
             onChanged: _search,
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search),
-              hintText: 'Find a task to link',
+              hintText: 'Find a task, lead, customer or job',
               border: OutlineInputBorder(),
               isDense: true,
             ),
           ),
+          for (final r in _records)
+            ListTile(
+              key: ValueKey('task-link-record-${r['type']}-${r['id']}'),
+              dense: true,
+              leading: const Icon(Icons.person_pin_outlined, size: 18),
+              title: Text('${r['label']}'),
+              subtitle: Text(
+                [recordTypeLabel('${r['type']}'), ?r['detail']].join(' · '),
+              ),
+              onTap: () => _setAbout(r),
+            ),
           for (final t in _found)
             ListTile(
               key: ValueKey('task-link-pick-${t['id']}'),
