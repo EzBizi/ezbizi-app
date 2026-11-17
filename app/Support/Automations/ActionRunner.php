@@ -1245,6 +1245,10 @@ class ActionRunner
             ];
         }
 
+        if (($skip = self::notBookedSkip($event, $subject)) !== null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $skip];
+        }
+
         if (! $this->leadReplies->allowsUnattendedReply($subject)) {
             return [
                 'type' => $type, 'ok' => false,
@@ -1904,6 +1908,30 @@ class ActionRunner
     private const RECIPIENT_USER = 'user:';
 
     /** Whoever a task is given to, read when the rule runs (Jose, 2026-10-13). */
+    /**
+     * One sales text per caller (Jose, 2026-11-17: "2 messages are sent when
+     * it should only be one ... the missed call one is correct"). A Not-booked
+     * text is skipped when the caller had a missed call in the last day (that
+     * rule's text wins), or is a customer with a job in the last 30 days.
+     */
+    public static function notBookedSkip(AutomationEvent $event, Lead $lead): ?string
+    {
+        if (! in_array($event->event_key, ['lead.call_not_booked', 'lead.follow_up_due'], true)) {
+            return null;
+        }
+        if (AutomationEvent::query()->where('event_key', 'lead.missed_call')->where('subject_type', $lead->getMorphClass())
+            ->where('subject_id', $lead->getKey())->where('occurred_at', '>=', now()->subDay())->exists()) {
+            return 'This caller had a missed call today and gets that text instead.';
+        }
+        $ten = substr((string) preg_replace('/\D+/', '', (string) $lead->phone), -10);
+        if (strlen($ten) === 10 && Job::query()->where('created_at', '>=', now()->subDays(30))
+            ->whereIn('customer_id', Customer::query()->tap(fn ($q) => Customer::phoneLike($q, $ten))->select('id'))->exists()) {
+            return 'This caller is a customer with a job in the last 30 days, so no sales text was sent.';
+        }
+
+        return null;
+    }
+
     private const RECIPIENT_ASSIGNEE = 'assignee:';
 
     /** Whoever holds work_hours.approve at the subject person's branch, read when the rule runs (Clock In, 2026-11-13). */

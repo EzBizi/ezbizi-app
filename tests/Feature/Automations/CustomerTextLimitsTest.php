@@ -46,6 +46,31 @@ class CustomerTextLimitsTest extends TestCase
         });
     }
 
+    /** Jose, 2026-11-17: Noorzi got Not booked AND Missed call; only the missed-call text is right. */
+    public function test_a_not_booked_text_yields_to_a_missed_call_and_to_a_recent_customer(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $lead = \App\Models\Lead::create(['organization_id' => $t['org']->id, 'source' => \App\Models\Lead::SOURCE_LOCAL_SERVICES,
+                'remote_id' => 'n1', 'contact_name' => 'Pat', 'lead_type' => 'PHONE_CALL', 'status' => \App\Models\Lead::STATUS_NEW,
+                'received_at' => now(), 'phone' => '+15108279735']);
+            $notBooked = new AutomationEvent(['event_key' => 'lead.call_not_booked']);
+            $this->assertNull(\App\Support\Automations\ActionRunner::notBookedSkip($notBooked, $lead), 'a plain caller still gets it');
+            $this->assertNull(\App\Support\Automations\ActionRunner::notBookedSkip(new AutomationEvent(['event_key' => 'lead.missed_call']), $lead));
+
+            $missed = AutomationEvent::create(['organization_id' => $t['org']->id, 'event_key' => 'lead.missed_call', 'subject_type' => $lead->getMorphClass(),
+                'subject_id' => $lead->id, 'payload' => [], 'occurred_at' => now()->subHours(3), 'available_at' => now()]);
+            $this->assertStringContainsString('missed call', (string) \App\Support\Automations\ActionRunner::notBookedSkip($notBooked, $lead));
+            $missed->forceFill(['occurred_at' => now()->subDays(2)])->save();
+            $this->assertNull(\App\Support\Automations\ActionRunner::notBookedSkip($notBooked, $lead), 'an old missed call does not count');
+
+            $customer = \App\Models\Customer::factory()->create(['phone' => '(510) 827-9735', 'owning_franchise_id' => $t['franchise']->id]);
+            \App\Models\Job::factory()->create(['customer_id' => $customer->id, 'franchise_id' => $t['franchise']->id]);
+            $this->assertStringContainsString('customer', (string) \App\Support\Automations\ActionRunner::notBookedSkip(
+                new AutomationEvent(['event_key' => 'lead.follow_up_due']), $lead));
+        });
+    }
+
     public function test_a_number_gets_two_automatic_texts_a_day_and_a_capped_send_is_refused(): void
     {
         $t = $this->provisionTenant('Alpha');
