@@ -25,7 +25,11 @@ class DeepLink {
     required this.id,
     this.mailbox,
     this.date,
+    this.update,
   });
+
+  /// For a `task` mention or reply: the update to scroll into view.
+  final String? update;
 
   /// The module key that should open it, e.g. `email`.
   final String module;

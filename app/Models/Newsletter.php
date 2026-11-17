@@ -97,7 +97,7 @@ class Newsletter extends Model implements CarriesAutomationScope, StatesRetentio
 
     protected function casts(): array
     {
-        return ['blocks' => 'array'];
+        return ['blocks' => 'array', 'revision' => 'integer', 'last_test_revision' => 'integer', 'last_test_at' => 'datetime'];
     }
 
     public function audience(): BelongsTo

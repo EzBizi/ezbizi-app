@@ -239,7 +239,18 @@ class _NotificationBellState extends State<NotificationBell>
   /// the screen, that they can dismiss", and of the drawn layouts, "2". Read
   /// from meta.alerts, every unread one, so an alert older than this page of
   /// notifications, sent while its person was signed out, still meets them.
-  late final _popups = AlertPopups(widget.api, onDismissed: _refresh);
+  late final _popups = AlertPopups(
+    widget.api,
+    onDismissed: _refresh,
+    onOpenSuggestion: widget.onOpenModule == null
+        ? null
+        : (id) => _go((
+            module: 'suggestions',
+            filter: null,
+            record: id,
+            link: DeepLink(module: 'suggestions', type: 'suggestion', id: id),
+          )),
+  );
 
   void _raiseAlerts(Object? open) {
     if (!mounted || open is! List) return;
@@ -433,6 +444,7 @@ class _NotificationBellState extends State<NotificationBell>
               id: recordId,
               mailbox: record?['mailbox'] as String?,
               date: record?['date'] as String?,
+              update: record?['update'] as String?,
             ),
     );
   }
@@ -965,6 +977,8 @@ class _NotificationSettingsState extends State<NotificationSettings> {
     final me = widget.session.me;
     final muted = me?.notificationMutedModules ?? const <String>[];
     final modules = me?.reachableModules ?? const [];
+    final mutedKinds =
+        (me?.preferences['notifications.muted_kinds'] as List? ?? const []).whereType<String>().toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1004,7 +1018,40 @@ class _NotificationSettingsState extends State<NotificationSettings> {
               on ? muted.where((k) => k != m.key).toList() : [...muted, m.key],
             ),
           ),
+        if (modules.any((m) => m.key == 'tasks')) ...[
+          const Divider(height: 24),
+          Text('Tasks', style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            'Off means no notification at all for that kind.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          for (final MapEntry(key: kind, value: label) in taskNotificationKinds.entries)
+            SwitchListTile(
+              key: ValueKey('notification-kind-$kind'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              value: !mutedKinds.contains(kind),
+              title: Text(label),
+              onChanged: (on) => _save(
+                'notifications.muted_kinds',
+                on ? mutedKinds.where((k) => k != kind).toList() : [...mutedKinds, kind],
+              ),
+            ),
+        ],
       ],
     );
   }
 }
+
+/// NotificationDispatcher::KINDS on the server — keep the two in step.
+const taskNotificationKinds = {
+  'task.assigned': 'Assigned to me',
+  'task.mentioned': 'Mentioned',
+  'task.reply': 'Replies on my tasks',
+  'task.status': 'Status changes',
+  'task.due': 'Due soon and overdue',
+  'task.subitem_assigned': 'Subitems assigned',
+  'task.moved': 'Moved to my group',
+  'task.file': 'Files added',
+  'task.created': 'New tasks on my boards',
+};

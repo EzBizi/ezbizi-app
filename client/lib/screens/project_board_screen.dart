@@ -21,6 +21,7 @@ import '../widgets/tab_bar_like.dart';
 import '../widgets/tag.dart';
 import 'jobs/job_labels.dart';
 import 'jobs/job_detail_panel.dart';
+import 'jobs/job_notes.dart';
 import 'jobs/job_lines_tab.dart' show pickJobTechnician;
 
 /// Project Management (Jose, 2026-11-06): six sub-tabs of jobs, from
@@ -472,6 +473,18 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
         ),
       ).then((_) => _load());
 
+  /// The job's notes alone, in a side panel of their own.
+  void _openNotes(Map<String, dynamic> row) => showSidePanel<void>(
+    context,
+    builder: (_) => _NotesPanel(
+      api: widget.api,
+      jobId: '${row['id']}',
+      title: [row['customer'], row['number']].where((s) => s != null).join(' · '),
+      formats: widget.session.me?.display ?? DisplayFormats.fallback,
+      addRefusal: widget.session.me?.refusal('jobs.edit', 'add a note'),
+    ),
+  ).then((_) => _load(quiet: true));
+
   String _date(Object? ymd) {
     final at = ymd is String ? DateTime.tryParse(ymd) : null;
     return at == null
@@ -619,15 +632,28 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
           ),
         );
       case 'notes':
+        // Jose, 2026-11-17: "Clicking Notes should open only the notes
+        // sidebar, nothing else."
         final text = value as String?;
-        if (text == null) return const Text('—');
-        return Tooltip(
-          message: text,
-          child: Text(
-            text,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall,
+        return InkWell(
+          key: ValueKey('project-board-notes:${row['id']}'),
+          onTap: () => _openNotes(row),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: text == null
+                ? Text(
+                    _canEditJobs ? 'Add a note…' : '—',
+                    style: theme.textTheme.bodySmall,
+                  )
+                : Tooltip(
+                    message: text,
+                    child: Text(
+                      text,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
           ),
         );
       case 'required':
@@ -2449,4 +2475,83 @@ class _RepairTeamPanelState extends State<_RepairTeamPanel> {
       ),
     );
   }
+}
+
+/// Clicking Notes on the board (Jose, 2026-11-17): the job's notes and
+/// nothing else, read with the job and added in place.
+class _NotesPanel extends StatefulWidget {
+  const _NotesPanel({
+    required this.api,
+    required this.jobId,
+    required this.title,
+    required this.formats,
+    this.addRefusal,
+  });
+
+  final ApiClient api;
+  final String jobId;
+  final String title;
+  final DisplayFormats formats;
+  final String? addRefusal;
+
+  @override
+  State<_NotesPanel> createState() => _NotesPanelState();
+}
+
+class _NotesPanelState extends State<_NotesPanel> {
+  final _draft = TextEditingController();
+  List<Map<String, dynamic>>? _notes;
+  String? _workiz;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _draft.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final response = await widget.api.get('/jobs/${widget.jobId}');
+    if (!mounted) return;
+    final row = response.data;
+    setState(() {
+      if (!response.ok || row is! Map) {
+        _error = response.reason;
+        return;
+      }
+      _notes = jobNotes(row['notes']);
+      _workiz = row['workiz_notes'] as String?;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => SidePanel(
+    key: const ValueKey('project-board-notes-panel'),
+    title: 'Notes',
+    subtitle: widget.title,
+    width: 460,
+    child: _notes == null
+        ? (_error == null
+              ? const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : Text(_error!))
+        : JobNotes(
+            api: widget.api,
+            jobId: widget.jobId,
+            notes: _notes!,
+            draft: _draft,
+            formats: widget.formats,
+            addRefusal: widget.addRefusal,
+            workizNotes: _workiz,
+            onAdded: (note) => setState(() => _notes = [note, ..._notes!]),
+          ),
+  );
 }

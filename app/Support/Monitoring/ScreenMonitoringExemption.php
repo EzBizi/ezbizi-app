@@ -4,8 +4,17 @@ namespace App\Support\Monitoring;
 
 use App\Models\PlatformStaff;
 use App\Models\User;
+use App\Support\Tenancy\TenantContext;
 
 /**
+ * Whose devices are never screen-captured, live-viewed or remote-controlled:
+ *
+ *   - a person whose role holds `monitoring.unmonitored` (Jose, 2026-11-17:
+ *     "Lead Managers should not be desktop monitored as they may handle
+ *     financial information"). Administrators hold every permission
+ *     implicitly, so they are left out of this rule and stay monitored;
+ *   - the Lead Developer, whatever their role (below).
+ *
  * The Lead Developer's own device is never screen-captured, live-viewed or
  * remote-controlled — a SECURITY exemption the owner confirmed. It still shows
  * online and reports PC specs; only the screen-reaching capabilities are cut.
@@ -51,9 +60,54 @@ final class ScreenMonitoringExemption
      */
     public const SCREEN_CONTENT_SPEC_KEYS = ['active_window', 'browser_tabs'];
 
+    /** The grant that takes a role's own PCs out of screen monitoring. */
+    public const UNMONITORED = 'monitoring.unmonitored';
+
+    /** The role's tick; an administrator "holds" everything, so not theirs. */
+    private static function roleExempts(User $user): bool
+    {
+        // Once per loaded user: the heartbeat and capture routes ask on every
+        // poll (Monitoring, 11-17). A WeakMap entry dies with the request's
+        // User object, so a role change is read on the next request.
+        static $memo = null;
+        $memo ??= new \WeakMap;
+
+        // The user's own role, by id: safe without a tenant, and some callers
+        // run outside one.
+        return $memo[$user] ??= app(TenantContext::class)->runWithoutTenant(
+            fn () => ! $user->isAdministrator() && $user->hasPermission(self::UNMONITORED),
+        );
+    }
+
+    /** The sentence every screen-reaching guard refuses with. */
+    public const REFUSAL = "This device's owner is exempt from screen monitoring.";
+
+    /**
+     * [isExempt] for a roster, with the Lead Developer emails read once
+     * ([exemptEmails]) instead of per row.
+     *
+     * @param  string[]  $exemptEmails
+     */
+    public static function isExemptAmong(User $user, array $exemptEmails): bool
+    {
+        // ponytail: hasPermission per row (role permissions are loaded once
+        // per role and cached); batch it if a roster ever runs to thousands.
+        return self::roleExempts($user)
+            || ($user->email !== null
+                && in_array(mb_strtolower($user->email), $exemptEmails, true));
+    }
+
     public static function isExempt(?User $user): bool
     {
-        if ($user === null || $user->email === null) {
+        if ($user === null) {
+            return false;
+        }
+
+        if (self::roleExempts($user)) {
+            return true;
+        }
+
+        if ($user->email === null) {
             return false;
         }
 

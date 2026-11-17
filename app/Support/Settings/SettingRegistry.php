@@ -1038,9 +1038,10 @@ class SettingRegistry
                     ['key' => 'repair_team', 'label' => 'Repair Team / Contractor', 'visible' => true, 'as_label' => false],
                     ['key' => 'part_status', 'label' => 'Part Status', 'visible' => true, 'as_label' => true],
                     ['key' => 'tags', 'label' => 'Tags', 'visible' => true, 'as_label' => true],
+                    // Jose, 2026-11-17: "Reorder - Total amount, paid amount, remaining balance".
+                    ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'paid', 'label' => 'Paid Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'pending', 'label' => 'Remaining Balance', 'visible' => true, 'as_label' => false],
-                    ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'payment_date', 'label' => 'Payment Date', 'visible' => true, 'as_label' => false],
                     ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
                     ['key' => 'attachments', 'label' => 'Attachments', 'visible' => true, 'as_label' => false],
@@ -1731,6 +1732,28 @@ class SettingRegistry
                 readPermission: 'leads.manage',
                 help: 'The code your line names start with, and the branch its calls go to: NJ for a '
                     .'line called "NJ - GMB". A line whose code is not here stays at company level.',
+            ),
+            new SettingDefinition(
+                key: 'leads.line_numbers',
+                label: 'Phone lines by number',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
+                help: 'Whose calls each RingCentral number takes, set in Leads › Manage › Phone lines: '
+                    .'{"+17813855201": "company:<id>"} or "franchise:<id>".',
+            ),
+            new SettingDefinition(
+                key: 'leads.line_brands',
+                label: 'Phone lines by brand',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
+                help: 'A short code your line names start with and the company it stands for, as '
+                    .'{"ED": "Everdoors"}: "ED - MA - GBP" is then an Everdoors call, in its branch for MA.',
             ),
             new SettingDefinition(
                 key: 'leads.new_client_queue',

@@ -97,6 +97,7 @@ class PermissionAction {
     this.tab = false,
     this.description,
     this.within,
+    this.passive = false,
   });
 
   /// The permission key itself, which is what gets stored and sent.
@@ -159,6 +160,11 @@ class PermissionAction {
   /// Management › Dashboard). Null for a tab at the module's own level.
   final String? within;
 
+  /// Done TO the holder rather than by them ("Their own PC is
+  /// screen-monitored", Jose 2026-11-17). Ticking it does not open the
+  /// module, and closing the module does not clear it.
+  final bool passive;
+
   factory PermissionAction.fromJson(Map<String, dynamic> json) =>
       PermissionAction(
         key: json['key'] as String,
@@ -169,6 +175,7 @@ class PermissionAction {
         tab: json['tab'] == true,
         description: json['description'] as String?,
         within: json['within'] as String?,
+        passive: json['passive'] == true,
       );
 }
 

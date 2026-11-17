@@ -32,7 +32,7 @@ class ScreenMonitoringExemptionTest extends TestCase
 {
     use BuildsTenants, RefreshDatabase;
 
-    private const REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
+    private const REFUSAL = ScreenMonitoringExemption::REFUSAL;
 
     /** An active lead-developer staff account sharing this email — what makes the matching user exempt. */
     private function leadStaff(string $email, bool $active = true, string $tier = PlatformStaff::TIER_LEAD): PlatformStaff

@@ -1,8 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
+import '../core/client_platform.dart';
+import '../core/desktop_updater.dart';
+import 'get_the_apps.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 
@@ -19,9 +23,12 @@ import '../core/timestamps.dart';
 /// Back stay with it: an overlay would leave the field underneath taking the
 /// keystrokes. Only Dismiss closes it.
 class AlertPopups {
-  AlertPopups(this.api, {this.onDismissed});
+  AlertPopups(this.api, {this.onDismissed, this.onOpenSuggestion});
 
   final ApiClient api;
+
+  /// A suggestion's own pop-up (approved, live) opens it.
+  final void Function(String id)? onOpenSuggestion;
 
   /// After the server has heard, so the bell's count catches up.
   final VoidCallback? onDismissed;
@@ -166,14 +173,39 @@ class _AlertCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: FilledButton(
-                          key: const Key('alert-dismiss'),
-                          onPressed: () =>
-                              unawaited(popups.dismiss('${alert['id']}')),
-                          child: const Text('Dismiss'),
-                        ),
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          // Your suggestion was approved / is live (Jose,
+                          // 2026-11-17): open it, and update to see it.
+                          if (alert['suggestion_id'] case final String id
+                              when popups.onOpenSuggestion != null)
+                            TextButton(
+                              key: const Key('alert-open-suggestion'),
+                              onPressed: () {
+                                unawaited(popups.dismiss('${alert['id']}'));
+                                popups.onOpenSuggestion!(id);
+                              },
+                              child: const Text('Open it'),
+                            ),
+                          if (alert['update'] == true)
+                            OutlinedButton(
+                              key: const Key('alert-update'),
+                              onPressed: () {
+                                unawaited(popups.dismiss('${alert['id']}'));
+                                unawaited(updateTheApp());
+                              },
+                              child: const Text('Update'),
+                            ),
+                          FilledButton(
+                            key: const Key('alert-dismiss'),
+                            onPressed: () =>
+                                unawaited(popups.dismiss('${alert['id']}')),
+                            child: const Text('Dismiss'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -185,4 +217,26 @@ class _AlertCard extends StatelessWidget {
       },
     );
   }
+}
+
+/// The update the app already has, from a pop-up's Update: the web page
+/// reloads, the desktop app checks and installs, a phone opens its store.
+Future<void> updateTheApp() async {
+  if (ClientPlatform.isWeb) {
+    ClientPlatform.reload();
+    return;
+  }
+  final updater = DesktopUpdater.instance;
+  if (updater.supported) {
+    await updater.checkNow();
+    if (updater.available != null) await updater.install();
+    return;
+  }
+  final store = switch (ClientPlatform.name) {
+    'ios' => appStoreUrl,
+    'android' => googlePlayUrl,
+    'macos' => macAppStoreUrl,
+    _ => downloadUrl,
+  };
+  await launchUrl(Uri.parse(store), mode: LaunchMode.externalApplication);
 }

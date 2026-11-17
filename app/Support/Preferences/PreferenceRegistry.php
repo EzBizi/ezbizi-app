@@ -152,6 +152,18 @@ class PreferenceRegistry
             ],
 
             /*
+             * Kinds of notification this person does not want at all (Jose,
+             * 2026-11-17: per-type toggles for Task Board). Unlike a muted
+             * module, a muted kind writes no bell row. Empty = all on.
+             */
+            'notifications.muted_kinds' => [
+                'label' => 'Muted notification types',
+                'type' => 'kinds',
+                'default' => [],
+                'help' => 'Notification types you have switched off.',
+            ],
+
+            /*
              * How wide the expanded sidebar is, in logical pixels.
              *
              * A number rather than small/medium/large: it is set by dragging the
@@ -473,6 +485,9 @@ class PreferenceRegistry
                 )),
             'order' => $this->cleanOrder($value),
             // ponytail: not checked against the companies table; an id that matches nothing simply never matches.
+            'kinds' => is_array($value)
+                ? array_values(array_unique(array_intersect($value, array_keys(\App\Support\Notifications\NotificationDispatcher::KINDS))))
+                : [],
             'ids' => is_array($value)
                 ? array_values(array_unique(array_filter($value, fn ($id) => is_string($id) && Str::isUuid($id))))
                 : [],

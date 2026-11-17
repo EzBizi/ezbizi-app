@@ -3044,7 +3044,10 @@ void main() {
         },
       );
 
-      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      // Delete lives in the overflow (redesign 2026-11-17).
+      await tester.tap(find.byKey(const ValueKey('tour-newsletter-delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-delete')));
       await tester.pumpAndSettle();
 
       // Nothing sent yet: the first tap only arms it.
@@ -3059,8 +3062,12 @@ void main() {
     testWidgets('is not offered to a role without the delete permission', (tester) async {
       await _pumpComposer(tester, _handler(newsletters: const [_draft]));
 
-      final button = tester.widget<TextButton>(find.widgetWithText(TextButton, 'Delete'));
-      expect(button.onPressed, isNull);
+      await tester.tap(find.byKey(const ValueKey('tour-newsletter-delete')));
+      await tester.pumpAndSettle();
+      final item = tester.widget<PopupMenuItem<String>>(
+        find.byKey(const ValueKey('newsletter-delete')),
+      );
+      expect(item.enabled, isFalse);
     });
   });
 
@@ -3085,7 +3092,8 @@ void main() {
 
       // The email is never out of sight: drawn from the blocks by default
       // (layout A, 2026-10-02), the server's own HTML one switch away.
-      expect(find.text('Newsletter'), findsWidgets);
+      expect(find.text('Marketing / Newsletter'), findsOneWidget);
+      await _toStep(tester, 'design');
       expect(find.text('What they will get'), findsOneWidget);
       expect(find.byType(NewsletterEmail), findsOneWidget);
 
@@ -3183,6 +3191,7 @@ void main() {
         ),
       );
 
+      await _toStep(tester, 'design');
       await tester.tap(find.widgetWithText(FilterChip, 'Server preview'));
       await tester.pumpAndSettle();
 
@@ -3209,6 +3218,7 @@ void main() {
         tester,
         _handler(newsletters: const [_draft]),
       );
+      await _toStep(tester, 'review');
 
       expect(
         _refusalOn(tester, 'Send now'),
@@ -3229,6 +3239,7 @@ void main() {
               'nowhere to send from.',
         ),
       );
+      await _toStep(tester, 'review');
 
       // The server's words, not the screen's — the same rule the social
       // composer follows, so the two cannot drift apart.
@@ -3249,8 +3260,11 @@ void main() {
           audiences: const [_audience],
         ),
       );
+      await _toStep(tester, 'review');
 
       expect(_refusalOn(tester, 'Send now'), contains('Choose who this goes to'));
+      // And the Review step says it in words, not only on the disabled button.
+      expect(find.byKey(const ValueKey('newsletter-send-blocker')), findsOneWidget);
     });
 
     // UI queue 173: "+ New list" opens a side panel, posts the list (the tag
@@ -3322,6 +3336,7 @@ void main() {
         tester,
         _handler(canEdit: true, newsletters: const [_draft]),
       );
+      await _toStep(tester, 'design');
 
       // The full vocabulary the server can render, columns included — Jose
       // asked for columns specifically.
@@ -3340,6 +3355,7 @@ void main() {
         _handler(canEdit: true, newsletters: const [_draft]),
       );
 
+      await _toStep(tester, 'design');
       await tester.tap(find.text('Write HTML'));
       await tester.pumpAndSettle();
 
@@ -3361,6 +3377,7 @@ void main() {
         }
         return base(request);
       });
+      await _toStep(tester, 'design');
 
       expect(find.byKey(const ValueKey('newsletter-mode')), findsOneWidget);
       expect(find.text('Sending: custom HTML'), findsOneWidget);
@@ -3383,6 +3400,7 @@ void main() {
         _handler(canEdit: true, newsletters: const [_draft]),
       );
 
+      await _toStep(tester, 'design');
       await tester.tap(find.byKey(const ValueKey('newsletter-import')));
       await tester.pumpAndSettle();
 
@@ -3442,6 +3460,7 @@ void main() {
         return base(request);
       });
 
+      await _toStep(tester, 'design');
       await tester.tap(find.byKey(const ValueKey('newsletter-import')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('SVG design'));
@@ -3536,8 +3555,8 @@ void main() {
       expect(used![1]['text'], 'Hello');
     });
 
-    testWidgets('preflight lists the checks and a test goes to the one typed '
-        'address', (tester) async {
+    testWidgets('Review lists the checks; Preview & test sends one test bound '
+        'to the revision and says Accepted, never delivered', (tester) async {
       Map<String, dynamic>? tested;
       final base = _handler(
         canEdit: true,
@@ -3553,26 +3572,247 @@ void main() {
                 {'key': 'footer', 'ok': true, 'label': 'Address and unsubscribe footer', 'detail': '1 Main St'},
                 {'key': 'from_name', 'ok': true, 'label': 'From name', 'detail': 'A-1 Chimney'},
               ],
+              'revision': 1,
             },
           });
         }
         if (path.endsWith('/n-1/test')) {
           tested = jsonDecode(request.body) as Map<String, dynamic>;
-          return _json({'data': {'sent_to': 'me@example.com'}});
+          return _json({
+            'data': {
+              'sent_to': 'me@example.com',
+              'last_test': {'revision': 1, 'to': 'me@example.com', 'result': 'accepted'},
+            },
+          });
         }
         return base(request);
       });
 
       expect(find.byKey(const ValueKey('newsletter-audience-explainer')), findsOneWidget);
+      await _toStep(tester, 'review');
+      expect(find.textContaining('Address and unsubscribe footer: 1 Main St'), findsOneWidget);
+      expect(find.textContaining('From name: A-1 Chimney'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-preview-test')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Browser preview — not an inbox test'), findsOneWidget);
       await tester.ensureVisible(find.byKey(const ValueKey('newsletter-test-email')));
       await tester.enterText(find.byKey(const ValueKey('newsletter-test-email')), 'me@example.com');
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-test-send')));
       await tester.tap(find.byKey(const ValueKey('newsletter-test-send')));
       await tester.pumpAndSettle(const Duration(seconds: 1));
 
-      expect(find.textContaining('Address and unsubscribe footer: 1 Main St'), findsOneWidget);
-      expect(find.textContaining('From name: A-1 Chimney'), findsOneWidget);
-      expect(tested, {'email': 'me@example.com'});
-      expect(find.textContaining('Test sent to me@example.com'), findsOneWidget);
+      expect(tested, {'email': 'me@example.com', 'revision': 1});
+      expect(find.text('Accepted by Mailchimp for me@example.com · revision 1'), findsOneWidget);
+      expect(find.textContaining('delivered'), findsNothing);
+    });
+
+    // ── Redesign stage 1 (2026-11-17) ─────────────────────────────
+
+    testWidgets('the composer walks Setup → Design → Review with one primary '
+        'action per step', (tester) async {
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [_draft]));
+
+      expect(find.byKey(const ValueKey('newsletter-inbox-preview')), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Continue to design'), findsOneWidget);
+      expect(find.byType(NewsletterEmail), findsNothing);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Continue to design'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NewsletterEmail), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Review campaign'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Review campaign'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-summary')), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Send now'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Continue to design'), findsNothing);
+    });
+
+    testWidgets('Duplicate and Delete live in the overflow, not on the bar', (
+      tester,
+    ) async {
+      await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [_draft]));
+
+      expect(find.text('Duplicate'), findsNothing);
+      expect(find.text('Delete'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('tour-newsletter-delete')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-duplicate')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-delete')), findsOneWidget);
+    });
+
+    testWidgets('a save refused as stale stops autosave, keeps the edits and '
+        'offers Reload', (tester) async {
+      var puts = 0;
+      Map<String, dynamic>? sent;
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) async {
+        if (request.method == 'PUT') {
+          puts++;
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({
+              'message': 'This newsletter changed in another tab or by someone else.',
+              'revision': 5,
+            }),
+            409,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return base(request);
+      });
+
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Mine, typed here');
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+
+      expect(sent!['revision'], 1);
+      expect(find.byKey(const ValueKey('newsletter-conflict-banner')), findsOneWidget);
+      expect(find.text('Changed elsewhere — Reload'), findsOneWidget);
+      expect(find.text('Mine, typed here'), findsWidgets);
+
+      // Typing more saves nothing until a reload.
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Mine, still typing');
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+      expect(puts, 1);
+    });
+
+    testWidgets('a failed save keeps the edits and offers Retry', (tester) async {
+      var fail = true;
+      var puts = 0;
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) async {
+        if (request.method == 'PUT') {
+          puts++;
+          if (fail) return _json({'message': 'The server could not be reached.'}, 503);
+          return _json({'data': {..._draft, 'subject': 'Retried', 'revision': 2}});
+        }
+        return base(request);
+      });
+
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Retried');
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Not saved — Retry'), findsOneWidget);
+      expect(find.text('Retried'), findsWidgets);
+
+      fail = false;
+      await tester.tap(find.text('Not saved — Retry'));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(puts, 2);
+      expect(find.text('Saved'), findsOneWidget);
+    });
+
+    for (final known in [true, false]) {
+      testWidgets('recipients read ${known ? 'a known eligible count' : 'unknown, '
+          'never the member total'}', (tester) async {
+        final base = _handler(
+          canEdit: true,
+          newsletters: const [_draft],
+          audiences: const [
+            {'id': 'a-1', 'name': 'Customers', 'kind': 'mailchimp', 'mailchimp_list_id': 'mc-9'},
+          ],
+        );
+        await _pumpComposer(tester, (request) async {
+          final path = request.url.path;
+          if (path.endsWith('/newsletter/mailchimp/lists')) {
+            return _json({
+              'data': [
+                {'id': 'mc-9', 'name': 'A1 main list', 'members': 3195},
+              ],
+            });
+          }
+          if (path.endsWith('/preflight')) {
+            return _json({
+              'data': {
+                'checks': const [],
+                'revision': 1,
+                'audience_detail': {
+                  'id': 'a-1',
+                  'kind': known ? 'customers' : 'mailchimp',
+                  'eligible': known ? 42 : null,
+                  'eligible_state': known ? 'known' : 'unknown',
+                },
+              },
+            });
+          }
+          return base(request);
+        });
+
+        final eligible = tester.widget<Text>(find.byKey(const ValueKey('newsletter-eligible'))).data!;
+        if (known) {
+          expect(eligible, 'Eligible: 42');
+        } else {
+          expect(eligible, contains('unknown'));
+          expect(eligible, isNot(contains('3195')));
+        }
+        // The member total is labelled as what it is.
+        expect(find.text('Members in Mailchimp list: 3195'), findsOneWidget);
+      });
+    }
+
+    testWidgets('picking a connected Mailchimp list posts it as an audience '
+        'and selects it', (tester) async {
+      Map<String, dynamic>? posted;
+      final base = _handler(canEdit: true, newsletters: const [_draftWithoutAudience]);
+      await _pumpComposer(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/newsletter/mailchimp/lists')) {
+          return _json({
+            'data': [
+              {'id': 'mc-9', 'name': 'A1 main list', 'members': 3195},
+            ],
+          });
+        }
+        if (request.method == 'POST' && path.endsWith('/newsletter/audiences')) {
+          posted = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {'id': 'a-9', 'name': 'A1 main list', 'kind': 'mailchimp', 'mailchimp_list_id': 'mc-9'},
+          });
+        }
+        return base(request);
+      });
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-audience-picker')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('A1 main list · Mailchimp list').last);
+      await tester.pumpAndSettle();
+
+      expect(posted, {'name': 'A1 main list', 'kind': 'mailchimp', 'mailchimp_list_id': 'mc-9'});
+      expect(find.byKey(const ValueKey('newsletter-audience-mapping')), findsOneWidget);
+    });
+
+    testWidgets('a failed check jumps to the step that fixes it', (tester) async {
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      await _pumpComposer(tester, (request) async {
+        if (request.url.path.endsWith('/preflight')) {
+          return _json({
+            'data': {
+              'checks': [
+                {'key': 'links', 'ok': false, 'label': 'Links', 'detail': 'Fix: /relative'},
+              ],
+              'revision': 1,
+            },
+          });
+        }
+        return base(request);
+      });
+
+      await _toStep(tester, 'review');
+      await tester.tap(find.byKey(const ValueKey('newsletter-fix-links')));
+      await tester.pumpAndSettle();
+      expect(find.byType(NewsletterEmail), findsOneWidget);
+    });
+
+    testWidgets('the workspace lays out at 1280 without overflowing', (tester) async {
+      await _pumpComposer(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft]),
+        size: const Size(1280, 800),
+      );
+      for (final step in ['setup', 'design', 'review']) {
+        await _toStep(tester, step);
+        expect(tester.takeException(), isNull, reason: step);
+      }
     });
 
     testWidgets('the chosen list shows which Mailchimp list it sends through', (
@@ -3604,6 +3844,8 @@ void main() {
         size: const Size(375, 2400),
       );
 
+      expect(tester.takeException(), isNull);
+      await _toStep(tester, 'design');
       expect(tester.takeException(), isNull);
 
       // Not merely "no exception" — a screen that rendered nothing throws
@@ -3704,9 +3946,10 @@ void main() {
       await tester.tap(_inCalendar('Autumn sweeps'));
       await tester.pumpAndSettle();
 
-      expect(find.text('What they will get'), findsOneWidget);
+      // A scheduled one opens on Review, where its time and clock are.
+      expect(find.byKey(const ValueKey('newsletter-summary')), findsOneWidget);
       expect(
-        tester.widget<TextField>(find.widgetWithText(TextField, 'Subject')).controller?.text,
+        tester.widget<Text>(find.byKey(const ValueKey('newsletter-title'))).data,
         'Autumn sweeps',
       );
     });
@@ -3801,6 +4044,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Composer'));
       await tester.pumpAndSettle();
+      await _toStep(tester, 'review');
       await tester.tap(find.text('Later'));
       await tester.pumpAndSettle();
 
@@ -4018,6 +4262,7 @@ void main() {
         }
         return inner(request);
       });
+      await _toStep(tester, 'design');
 
       await tester.tap(find.byKey(const Key('newsletter-block-0')));
       await tester.pumpAndSettle();
@@ -4054,6 +4299,7 @@ void main() {
         }
         return inner(request);
       });
+      await _toStep(tester, 'design');
 
       final block = find.byKey(const Key('newsletter-block-0'));
       expect(find.descendant(of: block, matching: find.byType(TextFormField)), findsNothing);
@@ -4090,6 +4336,7 @@ void main() {
         }
         return inner(request);
       });
+      await _toStep(tester, 'design');
 
       // The first block's handle, dragged below the third.
       final handle = find.byKey(const Key('newsletter-block-handle-0'));
@@ -4117,6 +4364,7 @@ void main() {
         }
         return inner(request);
       });
+      await _toStep(tester, 'design');
 
       // Dropped on the second block: it goes above it, not at the end.
       final source = tester.getCenter(find.byKey(const Key('newsletter-add-divider')));
@@ -4157,6 +4405,7 @@ void main() {
         return inner(request);
       });
 
+      await _toStep(tester, 'review');
       await tester.tap(find.widgetWithText(FilledButton, 'Send now'));
       await tester.pumpAndSettle();
 
@@ -4180,6 +4429,7 @@ void main() {
         return inner(request);
       });
 
+      await _toStep(tester, 'review');
       await tester.tap(find.widgetWithText(FilledButton, 'Send now'));
       await tester.pumpAndSettle();
 
@@ -4201,10 +4451,12 @@ void main() {
         return inner(request);
       });
 
+      await _toStep(tester, 'design');
       expect(find.text('Back to blocks'), findsOneWidget);
       expect(find.widgetWithText(TextField, '<p>Mine</p>'), findsOneWidget);
 
-      await tester.enterText(find.widgetWithText(TextField, 'Autumn sweeps').first, 'Renamed');
+      await _toStep(tester, 'setup');
+      await tester.enterText(find.byKey(const ValueKey('newsletter-subject')), 'Renamed');
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
 
@@ -4226,6 +4478,7 @@ void main() {
 
     testWidgets('the Desktop / Phone switch narrows the email', (tester) async {
       await _pumpComposer(tester, _handler(canEdit: true, newsletters: const [_draft]));
+      await _toStep(tester, 'design');
 
       final email = find.byKey(const Key('newsletter-email'));
       expect(tester.getSize(email).width, NewsletterEmail.desktopWidth);
@@ -4264,6 +4517,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(posts.last, endsWith('/newsletters/n-1/unschedule'));
 
+      await tester.tap(find.byKey(const ValueKey('tour-newsletter-delete')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('newsletter-duplicate')));
       await tester.pumpAndSettle();
       expect(posts.last, endsWith('/newsletters/n-1/duplicate'));
@@ -4274,6 +4529,7 @@ void main() {
 
       expect(find.textContaining('has gone out, so it cannot be changed'), findsWidgets);
 
+      await _toStep(tester, 'design');
       await tester.tap(find.byKey(const Key('newsletter-block-0')));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(TextFormField, 'Heading'), findsNothing);
@@ -4351,6 +4607,14 @@ Future<void> _pumpComposer(
 }) async {
   await _pumpNewsletter(tester, handler, size: size);
   await tester.tap(find.widgetWithText(ChoiceChip, 'Composer'));
+  await tester.pumpAndSettle();
+}
+
+/// One of the composer's three steps, by its key suffix.
+Future<void> _toStep(WidgetTester tester, String step) async {
+  final chip = find.byKey(ValueKey('newsletter-step-$step'));
+  await tester.ensureVisible(chip);
+  await tester.tap(chip);
   await tester.pumpAndSettle();
 }
 

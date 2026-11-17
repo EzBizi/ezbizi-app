@@ -8,6 +8,7 @@ use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
+use App\Support\Suggestions\SuggestionAlerts;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -66,13 +67,36 @@ class Suggestion extends Model implements HoldsPersonalData
     /** What `decide` accepts. `new` is absent on purpose — see StaffSuggestionsController. */
     public const DECIDABLE = [self::STATUS_REVIEWING, self::STATUS_APPROVED, self::STATUS_DENIED];
 
+    /**
+     * Where an approved suggestion is on its way to the app, in order
+     * (Jose, 2026-11-17). Set by staff as they route, merge and release.
+     */
+    public const PROGRESS = ['approved', 'building', 'testing', 'releasing', 'live'];
+
     /** The two that reach the author's bell. */
     public const ANNOUNCED = [self::STATUS_APPROVED, self::STATUS_DENIED];
 
     protected $fillable = [
         'organization_id', 'user_id', 'body', 'module', 'files', 'status',
-        'decision_note', 'decided_by', 'decided_at',
+        'decision_note', 'decided_by', 'decided_at', 'progress', 'release_version',
     ];
+
+    /**
+     * The author's pop-up, once per transition, whoever saves the row (the
+     * staff queue, the desk's tinker): approved, and progress reaching live.
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (Suggestion $row) {
+            if ($row->wasChanged('status') && $row->status === self::STATUS_APPROVED) {
+                SuggestionAlerts::approved($row);
+            }
+
+            if ($row->wasChanged('progress') && $row->progress === 'live') {
+                SuggestionAlerts::live($row);
+            }
+        });
+    }
 
     /** The one extra choice beside the module keys: Settings is pinned, not a module. */
     public const MODULE_SETTINGS = 'settings';

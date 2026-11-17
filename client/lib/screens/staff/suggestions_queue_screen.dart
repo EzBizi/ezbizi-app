@@ -9,6 +9,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/suggestion_files.dart';
+import '../../widgets/suggestion_progress.dart';
 
 /// Development › Suggestions — the queue EzBizi staff work from (Task 8).
 ///
@@ -75,6 +76,10 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
 
   String? _selectedId;
   final _note = TextEditingController();
+
+  /// The release an approved suggestion ships in (0.0.0584), sent with each
+  /// progress step.
+  final _release = TextEditingController();
   bool _saving = false;
   String? _formError;
 
@@ -122,6 +127,7 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
     _debounce?.cancel();
     _search.dispose();
     _note.dispose();
+    _release.dispose();
     super.dispose();
   }
 
@@ -195,6 +201,7 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
       _selectedId = row['id'] as String?;
       _formError = null;
       _fillNote(row);
+      _release.text = row['release_version'] as String? ?? '';
       _openNarrow = true;
     });
   }
@@ -238,6 +245,79 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
     }
 
     await _load();
+  }
+
+  /// Moves an approved suggestion along (Jose, 2026-11-17); the author sees
+  /// the bar on their own suggestion. Silent to their bell.
+  Future<void> _setProgress(Map<String, dynamic> row, String step) async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+      _formError = null;
+    });
+    final release = _release.text.trim();
+    final response = await widget.staff.api.post(
+      '/staff/suggestions/${row['id']}/progress',
+      // Empty sends nothing, so a box not yet filled never clears a version.
+      {'progress': step, if (release.isNotEmpty) 'release_version': release},
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!response.ok) {
+      setState(() => _formError = response.reason);
+      return;
+    }
+    await _load();
+  }
+
+  Widget _progress(BuildContext context, Map<String, dynamic> row) {
+    const names = {
+      'approved': 'Approved',
+      'building': 'Being built',
+      'testing': 'In testing',
+      'releasing': 'Releasing',
+      'live': 'Live',
+    };
+    final at = row['progress'] as String? ?? 'approved';
+    return Column(
+      key: const ValueKey('staff-suggestion-progress'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'On its way · what they see',
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        const SizedBox(height: 8),
+        SuggestionProgress(row: row),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            for (final step in SuggestionProgress.steps)
+              ChoiceChip(
+                key: ValueKey('progress-$step'),
+                label: Text(names[step]!),
+                selected: step == at,
+                onSelected: _saving ? null : (_) => _setProgress(row, step),
+              ),
+            SizedBox(
+              width: 150,
+              child: TextField(
+                key: const ValueKey('progress-release'),
+                controller: _release,
+                decoration: const InputDecoration(
+                  labelText: 'Release',
+                  hintText: '0.0.0584',
+                  isDense: true,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   @override
@@ -526,6 +606,10 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
                     base: '/staff/suggestions/${row['id']}',
                     row: row,
                   ),
+                  if (status == 'approved') ...[
+                    const SizedBox(height: 18),
+                    _progress(context, row),
+                  ],
                   if (note != null) ...[
                     const SizedBox(height: 18),
                     _answeredCallout(
