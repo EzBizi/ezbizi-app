@@ -19,6 +19,7 @@ use App\Models\TimeClockDayApproval;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Notifications\PushSender;
+use App\Support\Suggestions\SuggestionAlerts;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -120,13 +121,21 @@ class NotificationsController extends Controller
             ->get(['id', 'sender_id'])
             ->keyBy('id');
 
-        return $rows->map(fn (Notification $row) => [
-            'id' => $row->id,
-            'title' => $row->title,
-            'body' => $row->body,
-            'sender' => $senders->get($row->subject_id)?->sender?->name,
-            'created_at' => $row->created_at?->toIso8601String(),
-        ])->values()->all();
+        return $rows->map(function (Notification $row) use ($senders) {
+            // A suggestion's own pop-up (SuggestionAlerts): from EzBizi, opens
+            // the suggestion, and the live one offers to update the app.
+            $suggestion = $row->subject_type === Suggestion::class;
+
+            return [
+                'id' => $row->id,
+                'title' => $row->title,
+                'body' => $row->body,
+                'sender' => $suggestion ? 'EzBizi' : $senders->get($row->subject_id)?->sender?->name,
+                'created_at' => $row->created_at?->toIso8601String(),
+                'suggestion_id' => $suggestion ? $row->subject_id : null,
+                'update' => $suggestion && $row->body === SuggestionAlerts::UPDATE_BODY,
+            ];
+        })->values()->all();
     }
 
     /** POST /api/v1/notifications/{notification}/read */

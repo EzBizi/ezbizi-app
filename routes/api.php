@@ -4015,6 +4015,7 @@ Route::prefix('v1/staff')
         // plane, behind the `staff` middleware, not `tenant`.
         Route::get('suggestions', [StaffSuggestionsController::class, 'index']);
         Route::post('suggestions/{suggestion}/decide', [StaffSuggestionsController::class, 'decide']);
+        Route::post('suggestions/{suggestion}/progress', [StaffSuggestionsController::class, 'progress']);
         Route::get('suggestions/{suggestion}/files/{index}', [StaffSuggestionsController::class, 'file'])->whereNumber('index');
 
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
