@@ -60,77 +60,204 @@ class AuthorizationSweepTest extends TestCase
     private const MARKER = 'authzprobe7Q';
 
     /**
-     * "METHOD uri case" => why. Case (b) on a model with no company_id /
-     * franchise_id column is NOT here: see ORG_WIDE_B.
+     * "METHOD uri case" => what was measured. Unscoped case (b) results go to
+     * ORG_WIDE_B unless the desk ruled them real, in which case they are here.
      */
     private const KNOWN_HOLES = [
-        // None measured 2026-11-17 for cases a, a-key, a-mcp, b (scoped models) and c.
+        // Cases a, a-key, a-mcp and c: none measured 2026-11-17.
+        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
+        'DELETE api/v1/automations/{automation} b' => 'status 200',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'DELETE api/v1/email/mailboxes/{mailbox} b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'DELETE api/v1/email/mailboxes/{mailbox}/messages/{message} b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'DELETE api/v1/email/mailboxes/{mailbox}/messages/{message}/dealt b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'DELETE api/v1/email/mailboxes/{mailbox}/messages/{message}/seen b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'DELETE api/v1/email/mailboxes/{mailbox}/people/{user} b' => 'status 403, body carries the record',
+        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
+        'DELETE api/v1/roles/{role} b' => 'status 200',
+        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
+        'GET api/v1/automations/{automation} b' => 'status 200, body carries the record',
+        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
+        'GET api/v1/automations/{automation}/runs b' => 'status 200',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'GET api/v1/email/mailboxes/{mailbox}/folders b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'GET api/v1/email/mailboxes/{mailbox}/messages b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'GET api/v1/email/mailboxes/{mailbox}/messages/{message} b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}/file b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}/picture b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'GET api/v1/email/mailboxes/{mailbox}/oauth/status b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'GET api/v1/email/mailboxes/{mailbox}/people b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'PATCH api/v1/email/mailboxes/{mailbox} b' => 'status 403, body carries the record',
+        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
+        'PATCH api/v1/roles/{role} b' => 'status 200, body carries the record',
+        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
+        'POST api/v1/automations/{automation}/run-now b' => 'status 422, body carries the record',
+        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
+        'POST api/v1/automations/{automation}/test b' => 'status 422, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'POST api/v1/email/mailboxes/{mailbox}/connect b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'POST api/v1/email/mailboxes/{mailbox}/messages b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'POST api/v1/email/mailboxes/{mailbox}/messages/bulk b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'POST api/v1/email/mailboxes/{mailbox}/messages/{message}/dealt b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'POST api/v1/email/mailboxes/{mailbox}/messages/{message}/forward b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'POST api/v1/email/mailboxes/{mailbox}/messages/{message}/reply b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'POST api/v1/email/mailboxes/{mailbox}/messages/{message}/seen b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'POST api/v1/email/mailboxes/{mailbox}/oauth/start b' => 'status 403, body carries the record',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'POST api/v1/email/mailboxes/{mailbox}/people b' => 'status 403, body carries the record',
+        // Desk 2026-11-17: real, routed to Financials
+        'POST api/v1/invoices/sheets/{sheet}/invoice b' => 'status 201',
+        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
+        'PUT api/v1/email/mailboxes/{mailbox}/new-mail-alert b' => 'status 403, body carries the record',
     ];
 
-    /** Case (b) 2xx on records that have no company/franchise column: org-wide by design (settings-like). */
+    /** Case (b) reaching a record that has no company/franchise/scope column; each carries its ruling, or "Unruled". */
     private const ORG_WIDE_B = [
-        // Measured 2026-11-17. The target model has no company_id/franchise_id column, so a
-        // franchise-scoped user holding the module permission reaches it. Intended for
-        // org-wide settings-like rows; customers, HR contracts, roles and automations
-        // here are for an owner to rule on (see the commit report).
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/ai-assistance/manuals/{manual} b' => 'status 204',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/ai-assistance/parts/{part} b' => 'status 204',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/ai-assistance/staff-bot/items/{item} b' => 'status 204',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/ai-assistance/staff-bot/menus/{menu} b' => 'status 204',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/ai-assistance/whatsapp-groups/{group} b' => 'status 204',
-        'DELETE api/v1/automations/{automation} b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
+        'DELETE api/v1/attachments/{attachment} b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/hr/time-clock/reports/{report} b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/inspections/codes/{inspection_code} b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/inspections/{inspection_definition} b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/invoices/sheets/{sheet} b' => 'status 204',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/leads/hidden-numbers/{number} b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/phone/reports/{report} b' => 'status 200',
-        'DELETE api/v1/roles/{role} b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
         'DELETE api/v1/task-board-folders/{folder} b' => 'status 204',
-        'GET api/v1/automations/{automation} b' => 'status 200, body carries the record',
-        'GET api/v1/automations/{automation}/runs b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
+        'GET api/v1/attachments/{attachment} b' => 'status 200',
+        // Desk: by design, build plan §5.2 [DECIDED] one person is one customer, readable org-wide
         'GET api/v1/customers/{customer} b' => 'status 200, body carries the record',
+        // Desk: by design, build plan §5.2 [DECIDED] one person is one customer, readable org-wide
         'GET api/v1/customers/{customer}/export b' => 'status 200, body carries the record',
+        // Desk: by design, build plan §5.2 [DECIDED] one person is one customer, readable org-wide
         'GET api/v1/customers/{customer}/workiz-notes b' => 'status 200',
+        // Desk: by design, organization-owned contract TEMPLATES (ContractPolicy::mayAuthor)
         'GET api/v1/hr/contracts/{contract} b' => 'status 200, body carries the record',
+        // Desk: by design, organization-owned contract TEMPLATES (ContractPolicy::mayAuthor)
         'GET api/v1/hr/contracts/{contract}/versions b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
         'GET api/v1/hr/time-clock/reports/{report}/preview b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
         'GET api/v1/inspections/codes/{inspection_code} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'GET api/v1/inspections/{inspection_definition} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
+        'GET api/v1/inspections/{inspection_definition}/cover b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
         'GET api/v1/invoices/sheets/{sheet} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'PATCH api/v1/ai-assistance/parts/{part} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'PATCH api/v1/ai-assistance/whatsapp-groups/{group} b' => 'status 200, body carries the record',
+        // Desk: by design, build plan §5.2 [DECIDED] one person is one customer, readable org-wide
         'PATCH api/v1/customers/{customer} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
+        'PATCH api/v1/hr/time-clock/reports/{report} b' => 'status 200',
+        // Unruled: no company/franchise/scope column on the model
         'PATCH api/v1/inspections/codes/{inspection_code} b' => 'status 200, body carries the record',
-        'PATCH api/v1/inspections/{inspection_definition} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'PATCH api/v1/memberships/plans/{plan} b' => 'status 200, body carries the record',
-        'PATCH api/v1/roles/{role} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'PATCH api/v1/task-board-folders/{folder} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'POST api/v1/ai-assistance/whatsapp-groups/{group}/publish b' => 'status 422, body carries the record',
-        'POST api/v1/automations/{automation}/run-now b' => 'status 422, body carries the record',
-        'POST api/v1/automations/{automation}/test b' => 'status 422, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'POST api/v1/inspections/{inspection_definition}/publish b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
+        'POST api/v1/inspections/{inspection_definition}/rehearse b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'POST api/v1/inspections/{inspection_definition}/unpublish b' => 'status 200, body carries the record',
-        'POST api/v1/invoices/sheets/{sheet}/invoice b' => 'status 201',
+        // Unruled: no company/franchise/scope column on the model
         'PUT api/v1/ai-assistance/parts/{part} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'PUT api/v1/ai-assistance/staff-bot/items/{item} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'PUT api/v1/ai-assistance/staff-bot/menus/{menu} b' => 'status 200, body carries the record',
+        // Unruled: no company/franchise/scope column on the model
         'PUT api/v1/ai-assistance/whatsapp-groups/{group} b' => 'status 200, body carries the record',
+        // Desk: by design, build plan §5.2 [DECIDED] one person is one customer, readable org-wide
         'PUT api/v1/customers/{customer} b' => 'status 200, body carries the record',
     ];
 
     /** Routes no record could be built for. Can only shrink. */
     private const SKIPPED = [
-        // the schema builder cannot satisfy these tables constraints
-        'DELETE api/v1/hr/invitations/{invitation}' => 'QueryException: SQLSTATE[HY000]: General error: 3819 Check constraint \'invitations_exactly_one_scope\' is violated. (Connection: mysql, Host: localhost, Port: 33...',
-        'DELETE api/v1/hr/people/{user}/places/{assignment}' => 'UniqueConstraintViolationException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry \'01a1eb32-4dd2-7097-8f59-9198bc9259d7-Target\' for key...',
-        'DELETE api/v1/jobs/{job}/lines/{line}' => 'UniqueConstraintViolationException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry \'01a1eb32-4dd2-7097-8f59-9198bc9259d7-authzprobe7Q\' fo...',
-        'PATCH api/v1/jobs/{job}/lines/{line}' => 'UniqueConstraintViolationException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry \'01a1eb32-4dd2-7097-8f59-9198bc9259d7-authzprobe7Q\' fo...',
-        'POST api/v1/hr/invitations/{invitation}/resend' => 'QueryException: SQLSTATE[HY000]: General error: 3819 Check constraint \'invitations_exactly_one_scope\' is violated. (Connection: mysql, Host: localhost, Port: 33...',
     ];
 
-    /** Upper bound for INCONCLUSIVE outcomes; lower it when it falls. */
-    private const INCONCLUSIVE_CEILING = 52; // measured 2026-11-17
+    /**
+     * GET routes where org A's own Administrator does not get 2xx either, so the
+     * refusals measured there prove nothing. Can only shrink.
+     */
+    private const CONTROL_UNPROVEN = [
+        'GET api/v1/suggestions/{suggestion}/files/{index}' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/ekomi/{connection}/overview' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/ekomi/{connection}/requests' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/business-profile/locations/{location}/search-terms' => '502: needs a live provider (Google/WordPress/Meta) the test cannot reach',
+        'GET api/v1/business-profile/locations/{location}/media' => '409: needs a live provider (Google/WordPress/Meta) the test cannot reach',
+        'GET api/v1/business-profile/locations/{location}/services' => '409: needs a live provider (Google/WordPress/Meta) the test cannot reach',
+        'GET api/v1/leads/{lead}/conversations/{conversation}/recording' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/leads/{lead}/workiz-choices' => '422: needs a specific record state or query value',
+        'GET api/v1/leads/{lead}/booking/days' => '404: needs a child row ("No query results for model [App\Models\WebBooking) the builder does not create',
+        'GET api/v1/financials/views/{view}/split' => '422: needs a specific record state or query value',
+        'GET api/v1/web/sites/{site}/seo-helper' => '502: needs a live provider (Google/WordPress/Meta) the test cannot reach',
+        'GET api/v1/web/sites/{site}/seo-helper/{page}' => '502: needs a live provider (Google/WordPress/Meta) the test cannot reach',
+        'GET api/v1/web/sites/{site}/content' => '422: needs a specific record state or query value',
+        'GET api/v1/web/sites/{site}/content/options' => '502: needs a live provider (Google/WordPress/Meta) the test cannot reach',
+        'GET api/v1/social/workiz-web/{connection}/accounts' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/field/recordings/{recording}/audio/{seq}' => '404: needs a child row ("No query results for model [App\Models\FieldRecordingChunk) the builder does not create',
+        'GET api/v1/branding/companies/{company}' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/hr/contracts/{contract}/draft.pdf' => '404: needs a signed / published document the generic builder does not create',
+        'GET api/v1/hr/onboardings/{onboarding}/document/pdf' => '404: needs a signed / published document the generic builder does not create',
+        'GET api/v1/hr/onboardings/{onboarding}/answers/{field}' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/social/posts/{post}/media' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/social/connections/{connection}/instagram-comments' => '422: needs a live provider (Google/WordPress/Meta) the test cannot reach',
+        'GET api/v1/phone/calls/{call}/recording' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/email/workspaces/{connection}/people' => '422: needs a live provider (Google/WordPress/Meta) the test cannot reach',
+        'GET api/v1/email/workspaces/{connection}/people/{address}/signature' => '404: needs a live provider (Google/WordPress/Meta) the test cannot reach',
+        'GET api/v1/email/mailboxes/{mailbox}/folders' => '500: mailbox needs a real provider driver; builder writes a probe string',
+        'GET api/v1/email/mailboxes/{mailbox}/messages' => '500: mailbox needs a real provider driver; builder writes a probe string',
+        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}' => '500: mailbox needs a real provider driver; builder writes a probe string',
+        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}/picture' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}/file' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/users/{user}/avatar' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/staff/suggestions/{suggestion}/files/{index}' => '403: EzBizi staff-only endpoint; no tenant admin can open it',
+    ];
+
+        /** Upper bound for INCONCLUSIVE outcomes; lower it when it falls. */
+    private const INCONCLUSIVE_CEILING = 29; // measured 2026-11-17, after minimal bodies
 
     private array $tableToModel = [];
 
@@ -144,6 +271,9 @@ class AuthorizationSweepTest extends TestCase
         Bus::fake();
         Mail::fake();
         Notification::fake();
+        foreach (array_keys(config('filesystems.disks')) as $disk) {
+            \Illuminate\Support\Facades\Storage::fake($disk);
+        }
 
         $a = $this->provisionTenant('Alpha');
         $b = $this->provisionTenant('Bravo');
@@ -166,12 +296,16 @@ class AuthorizationSweepTest extends TestCase
         $skipped = [];
         $inconclusive = [];
         $checked = 0;
+        $controlFailures = [];
         $controlled = 0;
         $uncontrolled = 0;
         $log = [];
 
         foreach ($this->recordRoutes() as [$route, $method, $params]) {
             $label = $method.' '.$route->uri();
+            if (($only = getenv('AUTHZ_ONLY')) && ! preg_match('#'.$only.'#', $label)) {
+                continue; // diagnosis only: the assertions below fail under a filter
+            }
 
             DB::beginTransaction();
             try {
@@ -199,17 +333,19 @@ class AuthorizationSweepTest extends TestCase
             $targets = array_filter($built, fn ($m) => in_array(get_class($m), array_filter($params), true));
             $snapshot = fn () => array_map(fn (Model $m) => (array) DB::table($m->getTable())->where($m->getKeyName(), $m->getKey())->first(), $targets);
             $before = $snapshot();
-            $scoped = collect($targets)->contains(fn (Model $m) => Schema::hasColumn($m->getTable(), 'company_id') || Schema::hasColumn($m->getTable(), 'franchise_id'));
+            $scoped = collect($targets)->contains(fn (Model $m) => Schema::hasColumn($m->getTable(), 'company_id') || Schema::hasColumn($m->getTable(), 'franchise_id') || Schema::hasColumn($m->getTable(), 'scope_type'));
             $checked++;
 
+            $payload = $this->minimalBody($method, $url, $a['admin'], $targets);
+
             $cases = [
-                'a' => fn () => $this->signedInAs($b['admin'])->json($method, $url),
-                'b' => fn () => $this->signedInAs($sideways)->json($method, $url),
-                'c' => fn () => $this->signedInAs($nothing)->json($method, $url),
-                'a-key' => fn () => $this->bearer($key)->json($method, $url),
+                'a' => fn () => $this->signedInAs($b['admin'])->json($method, $url, $payload),
+                'b' => fn () => $this->signedInAs($sideways)->json($method, $url, $payload),
+                'c' => fn () => $this->signedInAs($nothing)->json($method, $url, $payload),
+                'a-key' => fn () => $this->bearer($key)->json($method, $url, $payload),
                 'a-mcp' => fn () => $this->bearer($key)->postJson('/api/v1/mcp', [
                     'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
-                    'params' => ['name' => 'call_api', 'arguments' => ['method' => $method, 'path' => ltrim(substr($url, strlen('/api/v1/')), '/')]],
+                    'params' => ['name' => 'call_api', 'arguments' => ['method' => $method, 'path' => ltrim(substr($url, strlen('/api/v1/')), '/')] + ($payload === [] ? [] : ($method === 'GET' ? ['query' => $payload] : ['body' => $payload]))],
                 ]),
             ];
 
@@ -241,9 +377,7 @@ class AuthorizationSweepTest extends TestCase
                         $results['holes'][$key2] = $what;
                     }
                     if ($changed) {
-                        DB::rollBack();
-                        DB::beginTransaction();
-                        continue 2; // the record is gone or altered: later cases would prove nothing
+                        break; // the record is gone or altered: later cases would prove nothing
                     }
                 } elseif (! in_array($status, [403, 404], true)) {
                     $inconclusive[$key2] = $status;
@@ -252,9 +386,15 @@ class AuthorizationSweepTest extends TestCase
             }
 
             if ($method === 'GET') {
-                $control = $this->signedInAs($a['admin'])->getJson($url)->getStatusCode();
-                $control >= 200 && $control < 300 ? $controlled++ : $uncontrolled++;
-                $log[] = "{$label} control {$control}";
+                $res = $this->signedInAs($a['admin'])->json('GET', $url, $payload);
+                $control = $res->getStatusCode();
+                if ($control >= 200 && $control < 300) {
+                    $controlled++;
+                } else {
+                    $uncontrolled++;
+                    $controlFailures[$label] = $control;
+                }
+                $log[] = "{$label} control {$control} ".Str::limit(rescue(fn () => json_encode([$res->json('message'), $res->json('exception'), $res->json('file'), $res->json('line'), array_slice((array) $res->json('trace'), 0, 8)]), get_class($res->baseResponse), false), 2500);
             }
 
             DB::rollBack();
@@ -262,6 +402,11 @@ class AuthorizationSweepTest extends TestCase
 
         $holes = $results['holes'] ?? [];
         $orgWide = $results['orgwide'] ?? [];
+        // The desk ruled some unscoped (b) results to be real holes: they live in KNOWN_HOLES.
+        foreach (array_intersect_key($orgWide, self::KNOWN_HOLES) as $k => $v) {
+            $holes[$k] = $v;
+            unset($orgWide[$k]);
+        }
         ksort($holes); ksort($orgWide); ksort($skipped); ksort($inconclusive);
 
         @file_put_contents(storage_path('authz-sweep.log'), implode("\n", [
@@ -270,6 +415,7 @@ class AuthorizationSweepTest extends TestCase
             '--- org-wide (b)', var_export($orgWide, true),
             '--- skipped', var_export($skipped, true),
             '--- inconclusive', var_export($inconclusive, true),
+            '--- control failures', var_export($controlFailures, true),
             '--- all', ...$log,
         ]));
 
@@ -278,11 +424,67 @@ class AuthorizationSweepTest extends TestCase
             $checked, count($skipped), $controlled, $uncontrolled, count($inconclusive), count($holes), count($orgWide),
         ));
 
-        $this->assertSame(array_keys(self::KNOWN_HOLES), array_keys($holes), 'Authorization holes changed; see storage/authz-sweep.log');
-        $this->assertSame(array_keys(self::ORG_WIDE_B), array_keys($orgWide), 'Org-wide (b) set changed');
-        $this->assertSame(array_keys(self::SKIPPED), array_keys($skipped), 'Skipped routes changed');
+        $this->assertSame($this->sortedKeys(self::KNOWN_HOLES), $this->sortedKeys($holes), 'Authorization holes changed; see storage/authz-sweep.log');
+        $this->assertSame($this->sortedKeys(self::ORG_WIDE_B), $this->sortedKeys($orgWide), 'Org-wide (b) set changed');
+        $this->assertSame($this->sortedKeys(self::SKIPPED), $this->sortedKeys($skipped), 'Skipped routes changed');
+        ksort($controlFailures);
+        $this->assertSame($this->sortedKeys(self::CONTROL_UNPROVEN), $this->sortedKeys($controlFailures), 'GET routes whose own-org Administrator control is not 2xx changed; see storage/authz-sweep.log');
         $this->assertLessThanOrEqual(self::INCONCLUSIVE_CEILING, count($inconclusive));
         $this->assertGreaterThan(100, $checked);
+    }
+
+    /**
+     * The smallest body that gets past validation, learned from the target
+     * org's own Administrator: send, read the 422's field errors, fill each
+     * field (the record's own value of that name first, else a value shaped by
+     * the error message), up to five rounds. Done inside a savepoint so the
+     * admin's request never changes what the refused callers meet.
+     */
+    private function minimalBody(string $method, string $url, User $admin, array $targets): array
+    {
+        $payload = [];
+        DB::beginTransaction();
+        try {
+            for ($round = 0; $round < 5; $round++) {
+                $res = $this->signedInAs($admin)->json($method, $url, $payload);
+                $errors = $res->getStatusCode() === 422 ? ($res->json('errors') ?? []) : [];
+                if (! is_array($errors) || $errors === []) {
+                    break;
+                }
+                foreach ($errors as $field => $messages) {
+                    $message = strtolower(implode(' ', (array) $messages));
+                    $own = collect($targets)->map(fn (Model $m) => $m->getAttributes()[$field] ?? null)->filter(fn ($v) => $v !== null && ! str_contains((string) $v, self::MARKER))->first();
+                    $current = data_get($payload, $field);
+                    data_set($payload, $field, match (true) {
+                        $own !== null && $current === null => $own,
+                        str_contains($message, 'true or false') => true,
+                        str_contains($message, 'array') || str_contains($message, 'list') => is_array($current) ? [] : ['x'],
+                        str_contains($message, 'integer') || str_contains($message, 'number') || str_contains($message, 'numeric') => 1,
+                        str_contains($message, 'email') => 'probe@example.test',
+                        str_contains($message, 'uuid') => (string) Str::uuid7(),
+                        str_contains($message, 'url') => 'https://example.test',
+                        str_contains($message, 'time') && ! str_contains($message, 'date') => '09:00',
+                        str_contains($message, 'date') => '2026-11-17',
+                        str_contains($message, 'invalid') && $current === 'x' => 'a',
+                        default => $current === null ? 'x' : $current,
+                    });
+                }
+            }
+        } catch (Throwable) {
+        } finally {
+            DB::rollBack();
+            $this->flushHeaders();
+        }
+
+        return $payload;
+    }
+
+    private function sortedKeys(array $list): array
+    {
+        $keys = array_keys($list);
+        sort($keys);
+
+        return $keys;
     }
 
     private function bearer(string $key): static
@@ -340,6 +542,9 @@ class AuthorizationSweepTest extends TestCase
 
     private function freeValue(Route $route, string $name): string
     {
+        if ($name === 'kind' && str_contains($route->uri(), 'web/sites/')) {
+            return \App\Models\WebItem::KINDS[0];
+        }
         $pattern = $route->wheres[$name] ?? null;
         foreach (['x', '1', 'facebook', 'google', '2026-11-17', 'a'] as $candidate) {
             if ($pattern === null || preg_match('#^'.$pattern.'$#', $candidate)) {
@@ -375,7 +580,7 @@ class AuthorizationSweepTest extends TestCase
             return $built[$class];
         }
         if ($class === User::class) {
-            return $built[$class] = $this->userWithRole($a, 'Target', [], 'target'.Str::random(6).'@alpha.test');
+            return $built[$class] = $this->userWithRole($a, 'Target'.Str::random(6), [], 'target'.Str::random(6).'@alpha.test');
         }
         foreach ([Company::class => $a['company'], Franchise::class => $a['franchise'], \App\Models\Organization::class => $a['org'], Role::class => null] as $known => $value) {
             if ($class === $known && $value !== null) {
@@ -402,7 +607,7 @@ class AuthorizationSweepTest extends TestCase
                 $raw[$name] = (string) Str::uuid7();
                 continue;
             }
-            $scope = ['organization_id' => $a['org']->id, 'company_id' => $a['company']->id, 'franchise_id' => $a['franchise']->id];
+            $scope = ['organization_id' => $a['org']->id, 'company_id' => $a['company']->id, 'franchise_id' => $a['franchise']->id, 'assigned_franchise_id' => $a['franchise']->id];
             if (isset($scope[$name])) {
                 $raw[$name] = $scope[$name];
                 continue;
@@ -413,9 +618,36 @@ class AuthorizationSweepTest extends TestCase
                 $raw[$name] = $built[$foreignClass]->getKey();
                 continue;
             }
+            if (str_ends_with($name, '_type') && strtolower($col['type_name']) === 'enum' && Schema::hasColumn($table, Str::beforeLast($name, '_type').'_id')) {
+                // scope_type enum('organization','company','franchise'): the franchise, so reach applies
+                if (str_contains($col['type'], "'franchise'")) {
+                    $raw[$name] = 'franchise';
+                    $raw[Str::beforeLast($name, '_type').'_id'] = $a['franchise']->id;
+                    continue;
+                }
+            } elseif (str_ends_with($name, '_type') && Schema::hasColumn($table, Str::beforeLast($name, '_type').'_id')) {
+                $morph = (new \App\Models\Customer)->getMorphClass();
+                $raw[$name] = preg_match('/\((\d+)\)/', $col['type'], $len) && (int) $len[1] < strlen($morph) ? 'customer' : $morph;
+                $raw[Str::beforeLast($name, '_type').'_id'] = $this->build(\App\Models\Customer::class, $built, $a, $depth + 1)->getKey();
+                continue;
+            }
+            if (array_key_exists($name, $raw)) {
+                continue;
+            }
+            if ($name === 'disk' || str_ends_with($name, '_disk')) {
+                $raw[$name] = config('filesystems.default');
+                continue;
+            }
+            if (in_array($name, ['path', 'file_path', 'storage_path', 'image_path', 'pdf_path', 'cover_path', 'avatar_path', 'media_path', 'audio_path'], true)) {
+                $raw[$name] = 'authz/'.Str::random(8).'.png';
+                foreach (array_keys(config('filesystems.disks')) as $disk) {
+                    \Illuminate\Support\Facades\Storage::disk($disk)->put($raw[$name], base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
+                }
+                continue;
+            }
             if ($col['nullable'] || $col['default'] !== null) {
                 if (in_array($name, ['name', 'title', 'notes', 'description', 'body', 'subject', 'first_name', 'last_name', 'label'], true) && ! isset($casts[$name])) {
-                    $raw[$name] = self::MARKER;
+                    $raw[$name] = self::MARKER.Str::lower(Str::random(6));
                 }
                 continue;
             }
@@ -429,6 +661,13 @@ class AuthorizationSweepTest extends TestCase
             $raw[$name] = $this->valueFor($col, $casts[$name] ?? null);
         }
 
+        if (getenv("AUTHZ_DEBUG")) { fwrite(STDERR, $class." ".json_encode($raw)."
+"); }
+        // What the generic builder cannot guess: the owner a policy insists on.
+        $raw = array_merge($raw, [
+            \App\Models\TaskBoard::class => ['kind' => 'franchise'],
+            \App\Models\InspectionRun::class => ['user_id' => $a['admin']->id],
+        ][$class] ?? []);
         $model->setRawAttributes($raw);
         $model->exists = false;
         $model->saveQuietly();
@@ -456,7 +695,7 @@ class AuthorizationSweepTest extends TestCase
             in_array($type, ['blob', 'longblob', 'mediumblob', 'binary', 'varbinary'], true) => '',
             $type === 'char' && str_contains($full, '36') => (string) Str::uuid7(),
             in_array($cast, ['array', 'json', 'collection', 'object', 'encrypted:array'], true) => '[]',
-            default => Str::limit(self::MARKER, max(1, (int) (preg_match('/\((\d+)\)/', $full, $m) ? $m[1] : 255)), ''),
+            default => Str::limit(self::MARKER.Str::lower(Str::random(6)), max(1, (int) (preg_match('/\((\d+)\)/', $full, $m) ? $m[1] : 255)), ''),
         };
     }
 }
