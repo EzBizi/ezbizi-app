@@ -1064,6 +1064,19 @@ class SettingRegistry
             ),
             // Jose, 2026-11-10: "the settings need to be updated to manage all
             // of these new columns".
+            // ezbizi:flag-workiz-jobs (dispatchers, 2026-11-17): each check can be switched off.
+            new SettingDefinition(
+                key: 'jobs.flag_incomplete_address', label: 'Jobs: flag Workiz jobs with no house number, street or postal code',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Every 15 minutes, a new or changed Workiz job with an incomplete address alerts whoever booked it and goes on the branch board.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.flag_late_friday', label: 'Jobs: flag Friday jobs in a window later than 12-3',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Every 15 minutes, a Workiz job starting after noon on a Friday (later than the 12-3 window) (branch time) alerts whoever booked it and goes on the branch board.',
+            ),
             new SettingDefinition(
                 key: 'project_board.repair_tags', label: 'Project Management: repair team and contractor tags',
                 type: SettingDefinition::TYPE_JSON,
@@ -1578,6 +1591,14 @@ class SettingRegistry
                 key: 'scheduling.offer_today', label: 'Offer today in online booking',
                 type: SettingDefinition::TYPE_BOOL, default: true,
                 help: 'When on, the booking widget offers the windows today that have not started and still have room. Off books from tomorrow.',
+            ),
+            // Dispatchers, via Jose 2026-11-17: "Friday appointments must be scheduled
+            // no later than the 12-3 PM time window." Weekday (0 Sun .. 6 Sat) => the
+            // latest window start offered; an area can set its own.
+            new SettingDefinition(
+                key: 'scheduling.latest_window', label: 'Latest window offered, by weekday',
+                type: SettingDefinition::TYPE_JSON, default: [],
+                help: 'Weekday number (0 Sunday to 6 Saturday) and the latest start time offered that day, like {"5": "12:00"}: on Fridays nothing after the 12 PM window is offered. Online booking, Check availability, re-scheduling texts and suggestions all follow it.',
             ),
             // "An earlier opening" texts from Scheduling › Overbooking (Shoval, 2026-10-26).
             new SettingDefinition(

@@ -101,6 +101,26 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Jose 11-17: a missed-call task opens the caller's lead; no lead, nothing linked. */
+    public function test_a_task_from_a_call_is_about_the_callers_lead(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $lead = \App\Models\Lead::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'franchise_id' => $t['franchise']->id,
+                'source' => 'website_form', 'remote_id' => 'call-1', 'status' => 'NEW', 'received_at' => now(), 'contact_name' => 'Ann', 'phone_digits' => '3055550101']);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $call = fn (string $from) => new AutomationEvent(['event_key' => 'reports.call.missed', 'payload' => ['from' => $from],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+
+            app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Call back'], $call('+1 (305) 555-0101'), null, automation: $rule);
+            app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Call stranger'], $call('+13055550199'), null, automation: $rule);
+
+            $this->assertSame(['lead', $lead->id], [Task::query()->where('title', 'Call back')->value('about_type'), Task::query()->where('title', 'Call back')->value('about_id')]);
+            $this->assertNull(Task::query()->where('title', 'Call stranger')->value('about_type'));
+        });
+    }
+
     public function test_a_rule_moves_a_task_to_a_group_on_its_own_board_only(): void
     {
         $t = $this->provisionTenant('Alpha');

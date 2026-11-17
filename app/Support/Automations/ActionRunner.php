@@ -3933,13 +3933,20 @@ class ActionRunner
         }
 
         $about = $subject ? array_search($subject::class, Task::ABOUT, true) : false;
+        $record = $about === false ? null : $subject;
+        // A call with no record (a missed call): the caller's lead, by phone, so
+        // the task opens it (Jose 11-17). The newest lead with that number.
+        if ($record === null && ($digits = substr(preg_replace('/\D/', '', (string) ($event->payload['from'] ?? $event->payload['phone'] ?? '')), -10)) !== '' && strlen($digits) === 10) {
+            $record = Lead::query()->where('phone_digits', $digits)->latest('received_at')->first();
+            $about = $record === null ? false : 'lead';
+        }
 
         // One task per rule per record per 10 minutes (review 2026-11-02): one
         // phone call read as two transcripts raised two complaints 3 seconds
         // apart, and one payment twice, each a second identical task.
         if ($about !== false && $automation !== null && Task::query()
             ->where('created_by_automation_id', $automation->getKey())
-            ->where('about_type', $about)->where('about_id', $subject->getKey())
+            ->where('about_type', $about)->where('about_id', $record->getKey())
             ->where('created_at', '>=', now()->subMinutes(10))->exists()) {
             return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => 'This rule already added a task about this record in the last 10 minutes.'];
         }
@@ -3960,7 +3967,7 @@ class ActionRunner
             return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => "An open task \"{$title}\" is already on that board."];
         }
 
-        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
+        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $record, $subject, $automation, $values, $group) {
             // A rule's group is made on the branch's board the first time it is
             // needed (2026-10-22: a rule's group was on
             // no board). By name, any case; a person's API call still refuses an unknown one.
@@ -4016,7 +4023,7 @@ class ActionRunner
                 ...($values === [] ? [] : ['values' => $values]),
                 ...($group === '' ? [] : ['group' => $group]),
                 'about_type' => $about === false ? null : $about,
-                'about_id' => $about === false ? null : $subject->getKey(),
+                'about_id' => $about === false ? null : $record->getKey(),
             ], $actor, $automation?->getKey());
 
             return 'Added the task "'.$title.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');

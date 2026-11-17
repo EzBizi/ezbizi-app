@@ -1100,6 +1100,9 @@ Route::prefix('v1')
         // alone would be an id oracle across franchises.
         Route::post('jobs/{job}/lines', [JobLinesController::class, 'store']);
         Route::post('jobs/{job}/notes', [JobNotesController::class, 'store']);
+        Route::patch('jobs/{job}/notes/{note}', [JobNotesController::class, 'update']);
+        Route::delete('jobs/{job}/notes/{note}', [JobNotesController::class, 'destroy']);
+        Route::put('jobs/{job}/workiz-notes', [JobNotesController::class, 'workiz']);
         // @mentions and unread notes on jobs, leads and tasks (monday port, 2026-11-09).
         Route::get('mentionable', [NoteActivityController::class, 'mentionable']);
         Route::post('note-reads', [NoteActivityController::class, 'read']);
@@ -1891,6 +1894,7 @@ Route::prefix('v1')
             Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
             Route::delete('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'clearDate']);
             Route::put('scheduling/areas/{area}/available-from', [SchedulingAreasController::class, 'availableFrom']);
+            Route::put('scheduling/areas/{area}/latest-windows', [SchedulingAreasController::class, 'latestWindows']);
             Route::put('scheduling/areas/{area}/shares-with', [SchedulingAreasController::class, 'sharesWith']);
             Route::put('scheduling/areas/{area}/limits', [SchedulingAreasController::class, 'limits']);
             Route::put('scheduling/areas/{area}/scheduled/{date}', [SchedulingAreasController::class, 'scheduleChange']);

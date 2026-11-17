@@ -10,8 +10,12 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** A note somebody left on a job (2026-10-20). Append-only, as complaint notes are. */
-#[Fillable(['organization_id', 'job_id', 'user_id', 'body', 'mentions'])]
+/**
+ * A note somebody left on a job (2026-10-20). Its author, or an
+ * administrator, may change or remove it (Jose, 2026-11-17: "i cannot edit
+ * notes"); a changed one says so (`edited_at`).
+ */
+#[Fillable(['organization_id', 'job_id', 'user_id', 'body', 'mentions', 'edited_at'])]
 class JobNote extends Model implements StatesRetention
 {
     use BelongsToTenant;
@@ -19,11 +23,17 @@ class JobNote extends Model implements StatesRetention
 
     public const UPDATED_AT = null;
 
-    protected $casts = ['mentions' => 'array'];
+    protected $casts = ['mentions' => 'array', 'edited_at' => 'datetime'];
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** The author, or an administrator; either still needs to be able to edit the job. */
+    public function changeableBy(?User $user): bool
+    {
+        return $user !== null && ($this->user_id === $user->getKey() || $user->isAdministrator());
     }
 
     public static function retention(): RetentionPolicy

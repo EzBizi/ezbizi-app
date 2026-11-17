@@ -50,6 +50,7 @@ final class BookJob
     {
         $status = $fields['status'] ?? Job::allowedStatuses($franchise)[0]
             ?? throw new RuntimeException('This organization has no job statuses configured.');
+        JobAddress::assertCustomer($customer);
 
         return DB::transaction(function () use ($customer, $franchise, $title, $date, $audit, $status, $fields) {
             $job = Job::create(array_merge([
