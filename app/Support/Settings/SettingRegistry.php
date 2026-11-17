@@ -1733,6 +1733,17 @@ class SettingRegistry
                     .'line called "NJ - GMB". A line whose code is not here stays at company level.',
             ),
             new SettingDefinition(
+                key: 'leads.line_brands',
+                label: 'Phone lines by brand',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
+                help: 'A short code your line names start with and the company it stands for, as '
+                    .'{"ED": "Everdoors"}: "ED - MA - GBP" is then an Everdoors call, in its branch for MA.',
+            ),
+            new SettingDefinition(
                 key: 'leads.new_client_queue',
                 label: 'Phone queue for new customers',
                 type: SettingDefinition::TYPE_STRING,
