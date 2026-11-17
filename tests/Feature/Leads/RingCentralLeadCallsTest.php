@@ -669,4 +669,34 @@ class RingCentralLeadCallsTest extends TestCase
         $as->putJson('/api/v1/leads/phone-lines', ['number' => '+17813855201', 'place' => null])->assertOk();
         $this->assertSame([], $read());
     }
+
+    /**
+     * 2026-11-17, read back on prod: viewing A-1 Chimney, the EverDoors account
+     * (scoped to an Everdoors branch) was listed with the env account's numbers.
+     */
+    public function test_an_account_outside_the_view_is_not_listed_with_another_accounts_numbers(): void
+    {
+        $t = $this->setUpTenant();
+        $t['org']->forceFill(['slug' => \App\Support\Reports\Experimental\RingCentralCallLog::ENV_ORGANIZATION_SLUG])->save();
+        config(['experimental_reports.ringcentral' => array_merge((array) config('experimental_reports.ringcentral'),
+            ['client_id' => 'env', 'client_secret' => 'env', 'jwt' => 'env', 'server' => 'https://rc.test', 'company_id' => $t['company']->id])]);
+        \Illuminate\Support\Facades\Http::fake([
+            '*/oauth/token' => \Illuminate\Support\Facades\Http::response(['access_token' => 'x', 'expires_in' => 3600]),
+            '*/phone-number*' => \Illuminate\Support\Facades\Http::response(['records' => [['phoneNumber' => '+12035550100', 'label' => 'A1 line']]]),
+        ]);
+        $edConn = $this->inTenant($t['org'], function () use ($t) {
+            $ed = Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']);
+            $edCt = Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $ed->id, 'name' => 'Connecticut']);
+
+            return \App\Models\SocialConnection::create(['organization_id' => $t['org']->id, 'scope_type' => \App\Models\SocialConnection::SCOPE_FRANCHISE,
+                'scope_id' => $edCt->id, 'provider' => 'ringcentral', 'remote_id' => '63713602007', 'display_name' => 'RingCentral', 'status' => \App\Models\SocialConnection::STATUS_CONNECTED,
+                'credentials' => ['client_id' => 'ed', 'client_secret' => 'ed', 'jwt' => 'ed']]);
+        });
+
+        $ids = collect($this->signedInAs($t['admin']->fresh())
+            ->withHeader('X-EzBizi-View', 'company:'.$t['company']->id)
+            ->getJson('/api/v1/leads/phone-lines')->assertOk()->json('data.accounts'))->pluck('id');
+
+        $this->assertNotContains($edConn->id, $ids->all());
+    }
 }
