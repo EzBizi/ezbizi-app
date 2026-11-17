@@ -1038,9 +1038,10 @@ class SettingRegistry
                     ['key' => 'repair_team', 'label' => 'Repair Team / Contractor', 'visible' => true, 'as_label' => false],
                     ['key' => 'part_status', 'label' => 'Part Status', 'visible' => true, 'as_label' => true],
                     ['key' => 'tags', 'label' => 'Tags', 'visible' => true, 'as_label' => true],
+                    // Jose, 2026-11-17: "Reorder - Total amount, paid amount, remaining balance".
+                    ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'paid', 'label' => 'Paid Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'pending', 'label' => 'Remaining Balance', 'visible' => true, 'as_label' => false],
-                    ['key' => 'total', 'label' => 'Total Amount', 'visible' => true, 'as_label' => false],
                     ['key' => 'payment_date', 'label' => 'Payment Date', 'visible' => true, 'as_label' => false],
                     ['key' => 'required', 'label' => 'Required', 'visible' => true, 'as_label' => false],
                     ['key' => 'attachments', 'label' => 'Attachments', 'visible' => true, 'as_label' => false],
