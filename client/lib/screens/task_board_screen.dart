@@ -33,6 +33,7 @@ import 'task_board_live.dart';
 import '../widgets/list_filters.dart';
 import '../widgets/list_toolbar.dart';
 import '../widgets/mention_field.dart';
+import '../widgets/open_destination.dart';
 import 'task_board_move.dart';
 import 'task_board_people.dart';
 import 'task_board_pinned.dart';
@@ -4416,8 +4417,37 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         ],
       );
     } else if (about != null) {
-      // A customer or lead the task is about is not a link: plain text.
-      body = Text(about, maxLines: 1, overflow: TextOverflow.ellipsis);
+      // The lead, customer or job it is about: one click opens it (Jose 11-17).
+      final record = t['about'] as Map;
+      final open = _recordOpener(record);
+      body = Row(
+        children: [
+          Flexible(
+            child: InkWell(
+              key: ValueKey('task-about-open-${t['id']}'),
+              onTap: open,
+              child: Text(
+                about,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: open == null
+                    ? null
+                    : TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            recordTypeLabel('${record['type']}'),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      );
     } else {
       body = Text(_canEdit ? '+ Link' : '—', style: muted);
     }
@@ -4426,6 +4456,23 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       onTap: _canEdit ? () => _editAbout(t) : null,
       child: Align(alignment: Alignment.centerLeft, child: body),
     );
+  }
+
+  /// Opens a lead (with its thread), customer or job; null for a type the
+  /// app has no screen to open from here.
+  VoidCallback? _recordOpener(Map record) {
+    final id = '${record['id']}';
+    switch (record['type']) {
+      case 'lead':
+        final openLead = OpenDestination.leadOf(context);
+        return openLead == null ? null : () => openLead(id);
+      case 'customer' || 'job':
+        final module = '${record['type']}s';
+        return () => DeepLinks.open(
+          DeepLink(module: module, type: '${record['type']}', id: id),
+        );
+    }
+    return null;
   }
 
   /// Opens [taskId] on [boardId], switching boards when it is elsewhere.
