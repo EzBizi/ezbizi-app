@@ -64,6 +64,17 @@ class CustomerTextLimitsTest extends TestCase
             $missed->forceFill(['occurred_at' => now()->subDays(2)])->save();
             $this->assertNull(\App\Support\Automations\ActionRunner::notBookedSkip($notBooked, $lead), 'an old missed call does not count');
 
+            // The other order: a Not-booked text went today, so a later missed call is not texted.
+            $nb = AutomationEvent::create(['organization_id' => $t['org']->id, 'event_key' => 'lead.call_not_booked', 'subject_type' => $lead->getMorphClass(),
+                'subject_id' => $lead->id, 'payload' => [], 'occurred_at' => now()->subHours(5), 'available_at' => now()]);
+            $rule = \App\Models\Automation::create(['name' => 'NB', 'trigger_key' => 'lead.call_not_booked', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $run = \App\Models\AutomationRun::create(['organization_id' => $t['org']->id, 'automation_id' => $rule->id, 'automation_version_id' => $rule->versions()->create(['organization_id' => $t['org']->id, 'version' => 1, 'actions' => []])->id, 'event_id' => $nb->id, 'status' => 'succeeded',
+                'action_results' => [['type' => 'reply', 'ok' => true, 'skipped' => true]], 'started_at' => now()->subHours(3)]);
+            $later = new AutomationEvent(['event_key' => 'lead.missed_call']);
+            $this->assertNull(\App\Support\Automations\ActionRunner::notBookedSkip($later, $lead), 'a skipped Not-booked text is no text');
+            $run->forceFill(['action_results' => [['type' => 'reply', 'ok' => true]]])->save();
+            $this->assertStringContainsString('already had a text', (string) \App\Support\Automations\ActionRunner::notBookedSkip($later, $lead));
+
             $customer = \App\Models\Customer::factory()->create(['phone' => '(510) 827-9735', 'owning_franchise_id' => $t['franchise']->id]);
             \App\Models\Job::factory()->create(['customer_id' => $customer->id, 'franchise_id' => $t['franchise']->id]);
             $this->assertStringContainsString('customer', (string) \App\Support\Automations\ActionRunner::notBookedSkip(
