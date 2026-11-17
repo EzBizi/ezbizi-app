@@ -537,6 +537,7 @@ class ActionRunner
             'job.source_from_dialed' => $this->sourceFromDialed($automation),
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
+            'task.complete_matching' => $this->completeMatching($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
             'task.move_group' => $this->moveTaskToGroup($action, $subject, $automation),
             'task.shift_date' => $this->shiftTaskDate($action, $subject, $automation),
@@ -1945,6 +1946,51 @@ class ActionRunner
         }
 
         return null;
+    }
+
+    /** The newest open task in the board's group naming this phone (last 10 digits) in its title or a column. */
+    public static function openTaskForPhone(TaskBoard $board, string $group, string $ten, int $days = 0): ?Task
+    {
+        $digits = fn (string $col) => "REGEXP_REPLACE(COALESCE({$col}, ''), '[^0-9]', '') LIKE ?";
+
+        return Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
+            ->when($group !== '', fn ($q) => $q->whereHas('group', fn ($g) => $g->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($group)])))
+            ->when($days > 0, fn ($q) => $q->where('created_at', '>=', now()->subDays($days)))
+            ->where(fn ($q) => $q->whereRaw($digits('title'), ['%'.$ten.'%'])
+                ->orWhereHas('values', fn ($v) => $v->whereRaw($digits('value_text'), ['%'.$ten.'%'])))
+            ->latest()->first();
+    }
+
+    /**
+     * task.complete_matching: the open tasks a rule made for this phone, not
+     * yet touched (Not started), marked Done with a note (desk for Jose,
+     * 2026-11-17: the caller replied or booked, so the call-back is done).
+     */
+    private function completeMatching(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        $type = 'task.complete_matching';
+        $ten = substr((string) preg_replace('/\D+/', '', $this->interpolate((string) ($action['phone'] ?? '{{phone}}'), $event, $subject)), -10);
+        $board = TaskBoard::query()->find($action['board'] ?? null);
+        if (strlen($ten) !== 10 || $board === null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $board === null ? 'The board this step names no longer exists.' : 'No phone number to match.'];
+        }
+        $tasks = Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
+            ->where('status', Task::STATUS_NOT_STARTED)
+            ->when(($action['made_by'] ?? '') !== '', fn ($q) => $q->where('created_by_automation_id', $action['made_by']))
+            ->whereRaw("REGEXP_REPLACE(COALESCE(title, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])->get();
+        if ($tasks->isEmpty()) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'No untouched open task for this number.'];
+        }
+        $note = trim($this->interpolate((string) ($action['note'] ?? 'Closed automatically: the caller got back to us.'), $event, $subject));
+
+        return $this->onTaskBoard($type, $automation, $board, function (User $actor) use ($tasks, $note) {
+            foreach ($tasks as $task) {
+                app(TaskWriter::class)->update($task->load('board'), ['status' => 'Done'], $actor);
+                app(TaskWriter::class)->comment($task, $actor, $note);
+            }
+
+            return 'Closed '.$tasks->count().' task(s): '.$tasks->pluck('title')->implode(', ').'.';
+        });
     }
 
     private const RECIPIENT_ASSIGNEE = 'assignee:';
@@ -3953,6 +3999,24 @@ class ActionRunner
         // Skip while an open task in that group has this title, or carries the
         // dedupe value (e.g. {{phone}}) in its title: one call-back per caller.
         $dedupe = trim($this->interpolate((string) ($action['dedupe'] ?? ''), $event, $subject));
+        // A phone dedupe finds the caller in any open task of the group, in its
+        // title or any column, by the last 10 digits, within dedupe_days; with
+        // on_duplicate=comment the match gets an update instead (desk for Jose,
+        // 2026-11-17: a dispatcher's complaint and the AI's are one task).
+        $ten = substr((string) preg_replace('/\D+/', '', $dedupe), -10);
+        if (strlen($ten) === 10 && ($match = self::openTaskForPhone($board, $group, $ten, (int) ($action['dedupe_days'] ?? 0))) !== null) {
+            if (($action['on_duplicate'] ?? '') === 'comment') {
+                $note = trim($this->interpolate((string) ($action['duplicate_note'] ?? 'This rule also flagged this caller.'), $event, $subject));
+
+                return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($match, $note) {
+                    app(TaskWriter::class)->comment($match, $actor, $note);
+
+                    return "Added an update to the open task \"{$match->title}\" for this caller.";
+                });
+            }
+
+            return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => "An open task \"{$match->title}\" for this caller is already on that board."];
+        }
         if (($action['dedupe'] ?? '') !== '' && Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
             ->when($group !== '', fn ($q) => $q->whereHas('group', fn ($g) => $g->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($group)])))
             ->where(fn ($q) => $q->where('title', mb_substr($title, 0, 255))->when($dedupe !== '' && $dedupe !== 'title', fn ($q) => $q->orWhere('title', 'like', '%'.addcslashes($dedupe, '%_').'%')))

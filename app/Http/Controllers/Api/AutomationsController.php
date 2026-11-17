@@ -123,6 +123,7 @@ class AutomationsController extends Controller
         // model's own canActOnFranchise.
         'assign_to_user',
         'task.create',
+        'task.complete_matching',
         'task.assign',
         'task.move_group',
         'task.shift_date',
@@ -2524,6 +2525,14 @@ class AutomationsController extends Controller
                 $parameter('board', 'On the board (empty: the place board)', 'task_board', false),
                 // e.g. {{phone}}: skip while an open task in the group has it in its title.
                 $parameter('dedupe', 'Skip if an open task already has (title or e.g. {{phone}})', 'text', false, true),
+                $parameter('dedupe_days', 'Only tasks from the last N days (empty: any)', 'text', false),
+                $parameter('on_duplicate', 'When one exists (empty: skip; comment: add an update)', 'text', false),
+                $parameter('duplicate_note', 'The update', 'text', false, true),
+            ]),
+            $type('task.complete_matching', 'Close the call-back task for this number', false, [
+                $parameter('board', 'On the board', 'task_board'),
+                $parameter('phone', 'Phone number', 'text', variables: true),
+                $parameter('note', 'Note on the task', 'text', false, true),
             ]),
             // Communication › Alerts, from a rule (Jose, 2026-10-13).
             // From the branch's texting line, onto the enquiry's thread (Leads' LeadTexts).
