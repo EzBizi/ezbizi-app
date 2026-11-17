@@ -1337,3 +1337,21 @@ Automations (1):
 | Is active | status | status | Active* #00c875; Inactive #df2f4a |
 
 Automations: none.
+
+## Parked 2026-11-17: re-reading Monday item creators
+
+11,638 imported Monday tasks show the connection person (Jose) as creator,
+mixed with his real ones: a Monday creator who resolved to nobody fell back
+to the importing person, and the creator email is not kept on the task, so
+it cannot be fixed locally. The fix is a re-read:
+`ezbizi:monday-import-boards --map=<board map> --reapply`, about 89k items.
+
+Do not run it as is. Every reapplied item goes through TaskWriter, so the
+board rules (BoardRules, since e1627abe3) would move old items and ring
+their creators, and the run spends Monday's API quota. Before any run:
+`TASK_BOARD_MOVES=false` plus a way to keep the rules from ringing bells
+(today the flag only turns moves into flags, and flags still ring), then a
+`--dry-run` count. The desk parked it on the eve of the Monday switch.
+
+People map (connection setup.monday.people) as of 2026-11-17: 27 entries;
+backup of the earlier map in /var/backups/ezbizi/monday-people-map-before-20261117.json.

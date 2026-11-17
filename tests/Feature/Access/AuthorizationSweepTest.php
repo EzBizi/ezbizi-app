@@ -65,9 +65,6 @@ class AuthorizationSweepTest extends TestCase
      */
     private const KNOWN_HOLES = [
         // Cases a, a-key, a-mcp and c: none measured 2026-11-17.
-        // InspectionReportPolicy::view (app/Policies/InspectionReportPolicy.php:37-47) checks permission and
-        // organization only, no reach: a sibling company opens a report's photographs through the attachment.
-        'GET api/v1/attachments/{attachment} b type=inspection_reports' => 'status 200',
     ];
 
     /** Case (b) reaching a record that has no company/franchise/scope column; each carries its ruling, from the desk. */

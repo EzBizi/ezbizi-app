@@ -1977,7 +1977,8 @@ class ActionRunner
         $tasks = Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
             ->where('status', Task::STATUS_NOT_STARTED)
             ->when(($action['made_by'] ?? '') !== '', fn ($q) => $q->where('created_by_automation_id', $action['made_by']))
-            ->whereRaw("REGEXP_REPLACE(COALESCE(title, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])->get();
+            ->where(fn ($q) => $q->whereRaw("REGEXP_REPLACE(COALESCE(title, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])
+                ->orWhereHas('values', fn ($v) => $v->whereRaw("REGEXP_REPLACE(COALESCE(value_text, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])))->get();
         if ($tasks->isEmpty()) {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'No untouched open task for this number.'];
         }
@@ -3983,7 +3984,8 @@ class ActionRunner
         // A call with no record (a missed call): the caller's lead, by phone, so
         // the task opens it (Jose 11-17). The newest lead with that number.
         if ($record === null && ($digits = substr(preg_replace('/\D/', '', (string) ($event->payload['from'] ?? $event->payload['phone'] ?? '')), -10)) !== '' && strlen($digits) === 10) {
-            $record = Lead::query()->where('phone_digits', $digits)->latest('received_at')->first();
+            // Leads keep the country code: 1 + ten digits, as prod's rows read (11-17).
+            $record = Lead::query()->whereIn('phone_digits', [$digits, '1'.$digits])->latest('received_at')->first();
             $about = $record === null ? false : 'lead';
         }
 
