@@ -59,6 +59,11 @@ final class FieldLibrary
                 'hourly_rate', 'Hourly rate', FieldType::NUMBER, FilledBy::EMPLOYER,
                 shownWhen: ['key' => 'pay_basis', 'is' => 'hourly'],
             ),
+            'hourly_rate_steps' => self::field(
+                'hourly_rate_steps', 'Hourly rate stages', FieldType::RATE_STEPS, FilledBy::EMPLOYER,
+                required: false,
+                shownWhen: ['key' => 'pay_basis', 'is' => 'hourly'],
+            ),
             'comp_method' => self::field(
                 'comp_method', 'Compensation method', FieldType::TEXT, FilledBy::EMPLOYER,
             ),

@@ -1983,6 +1983,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
     return switch (field.type) {
       'checklist' => _checklist(question, enabled: enabled),
+      'rate_steps' => _rateSteps(question, enabled: enabled),
       'choice' when field.options.length <= 4 => Wrap(
         key: answerKey(field.key),
         spacing: 8,
@@ -2158,6 +2159,94 @@ class _OnboardingFormState extends State<OnboardingForm> {
     _newItem.clear();
     if (item.isEmpty) return;
     _setChecklistQuantity(question, item, 1);
+  }
+
+  /// Hourly rate stages (Merav, 2026-11-17): rows of "after N days, $X/hr",
+  /// counted from the start date. Stored as JSON; the server sorts and checks.
+  Widget _rateSteps(OnboardingQuestion question, {required bool enabled}) {
+    final steps = _rateStepRows(question);
+    void save(List<Map<String, String>> rows) =>
+        _answer(question.key, rows.isEmpty ? '' : jsonEncode(rows));
+
+    return Column(
+      key: Key('rate-steps-${question.key}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (i, step) in steps.indexed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const Text('After '),
+                SizedBox(
+                  width: 80,
+                  child: TextFormField(
+                    key: Key('rate-step-days-$i'),
+                    initialValue: step['after_days'],
+                    enabled: enabled,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(isDense: true),
+                    onChanged: (v) =>
+                        save([...steps]..[i] = {...step, 'after_days': v}),
+                  ),
+                ),
+                const Text(' days: \$'),
+                SizedBox(
+                  width: 90,
+                  child: TextFormField(
+                    key: Key('rate-step-rate-$i'),
+                    initialValue: step['rate'],
+                    enabled: enabled,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(isDense: true),
+                    onChanged: (v) =>
+                        save([...steps]..[i] = {...step, 'rate': v}),
+                  ),
+                ),
+                const Text(' /hr'),
+                IconButton(
+                  tooltip: 'Remove this stage',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: enabled
+                      ? () => save([...steps]..removeAt(i))
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        TextButton.icon(
+          key: Key('rate-step-add-${question.key}'),
+          onPressed: enabled
+              ? () => save([
+                  ...steps,
+                  {'after_days': '', 'rate': ''},
+                ])
+              : null,
+          icon: const Icon(Icons.add),
+          label: const Text('Add a rate stage'),
+        ),
+      ],
+    );
+  }
+
+  List<Map<String, String>> _rateStepRows(OnboardingQuestion question) {
+    final raw = _pending[question.key] ?? question.value;
+    if (raw.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return [
+          for (final row in decoded.whereType<Map>())
+            {
+              'after_days': '${row['after_days'] ?? ''}',
+              'rate': '${row['rate'] ?? ''}',
+            },
+        ];
+      }
+    } catch (_) {}
+    return [];
   }
 
   /// Only received items are stored; the document prints every listed item,

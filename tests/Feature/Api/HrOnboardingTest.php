@@ -2103,4 +2103,42 @@ class HrOnboardingTest extends TestCase
 
         $this->as($alpha['admin'])->getJson("/api/v1/hr/people/{$employee->id}")->assertJsonPath('data.ssn_card', 'on_file');
     }
+
+    /** Hourly rate stages (Merav, 2026-11-17): $26, after 90 days $28, dated from the start. */
+    public function test_hourly_rate_stages_become_dated_pay_rates(): void
+    {
+        [$alpha, $employee, $id] = $this->scenario([
+            ['key' => 'date_of_hire', 'label' => 'Date of hire', 'type' => 'date', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'pay_basis', 'label' => 'Pay basis', 'type' => 'choice', 'options' => ['Hourly', 'Salary'],
+                'filled_by' => 'employer', 'required' => true],
+            ['key' => 'hourly_rate', 'label' => 'Hourly rate', 'type' => 'number', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'hourly_rate_steps', 'label' => 'Hourly rate stages', 'type' => 'rate_steps', 'filled_by' => 'employer', 'required' => false],
+            ['key' => 'employer_sign', 'label' => 'For the employer', 'type' => 'signature', 'filled_by' => 'employer', 'required' => true],
+            ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+        ]);
+        $url = "/api/v1/hr/onboardings/{$id}";
+
+        $this->as($alpha['admin'])->patchJson($url, ['answers' => ['hourly_rate_steps' => [['after_days' => 0, 'rate' => 28]]]])
+            ->assertStatus(422)->assertJsonValidationErrors('answers.hourly_rate_steps');
+
+        $hired = now()->subDays(100)->toDateString();
+        $this->as($alpha['admin'])->patchJson($url, ['answers' => [
+            'date_of_hire' => $hired, 'pay_basis' => 'Hourly', 'hourly_rate' => '26',
+            'hourly_rate_steps' => [['after_days' => 180, 'rate' => '30'], ['after_days' => 90, 'rate' => '28']],
+        ]])->assertOk();
+
+        $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin');
+        $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz');
+
+        $rates = $this->inTenant($alpha['org'], fn () => PayRate::where('user_id', $employee->id)->orderBy('effective_on')->get());
+        $this->assertSame(['26', '28.00', '30.00'], $rates->map(fn ($r) => (string) $r->amount)->all());
+        $this->assertSame([$hired, now()->subDays(10)->toDateString(), now()->addDays(80)->toDateString()],
+            $rates->map(fn ($r) => $r->effective_on->toDateString())->all());
+
+        // Day 100: the 90-day stage applies today; the 180-day one is next.
+        $record = $this->as($alpha['admin'])->getJson("/api/v1/hr/people/{$employee->id}")->assertOk()->json('data');
+        $this->assertSame([$rates[1]->id, $rates[2]->id], [$record['pay_rate_now'], $record['pay_rate_next']]);
+        $this->assertSame('28.00', (string) $this->inTenant($alpha['org'], fn () => PayRate::rateOn($employee->id, now()->toDateString())->amount));
+        $this->assertSame('26', (string) $this->inTenant($alpha['org'], fn () => PayRate::rateOn($employee->id, now()->subDays(20)->toDateString())->amount));
+    }
 }

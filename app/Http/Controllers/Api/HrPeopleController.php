@@ -994,6 +994,14 @@ class HrPeopleController extends Controller
                     ->orderByDesc('effective_on')->get()
                     ->map(fn ($row) => HrPersonDetailsController::present($row))->all()
                 : null,
+            // Which of those applies today, and the next one dated ahead (a rate
+            // stage, Merav 2026-11-17), as ids into pay_rates.
+            'pay_rate_now' => $actor->hasPermission('hr.pay.view')
+                ? PayRate::rateOn($user->id, now()->toDateString())?->id : null,
+            'pay_rate_next' => $actor->hasPermission('hr.pay.view')
+                ? PayRate::query()->where('user_id', $user->id)->where('basis', 'hourly')
+                    ->whereDate('effective_on', '>', now()->toDateString())->orderBy('effective_on')->value('id')
+                : null,
 
             // Null rather than a zero allowance when the organization has not
             // set paid time off up: "not set up" and "none" read the same as a
