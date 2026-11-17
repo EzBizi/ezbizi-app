@@ -97,6 +97,21 @@ void main() {
     },
   );
 
+  test("another sign-in's kept token is left alone, not fought over", () async {
+    // Two browser tabs share localStorage: each kept its own token, and each
+    // minute's check wrote its own back over the other's (health sweep 11-17).
+    await launchWith({tenantKey: 'tok-801'});
+    final session = customer();
+    await session.restore();
+    expect(session.signedIn, isTrue);
+
+    await disk.write(key: tenantKey, value: 'tok-902'); // the other tab
+    await session.refresh();
+    await settle();
+
+    expect(await disk.read(key: tenantKey), 'tok-902');
+  });
+
   test('signing out is not undone by the keep check', () async {
     await launchWith({tenantKey: 'tok-801'});
     final session = customer();
