@@ -2552,6 +2552,8 @@ Route::prefix('v1')
             Route::post('newsletter/import/svg', [NewsletterImportController::class, 'svg']);
             Route::post('newsletter/import/artwork', [NewsletterImportController::class, 'artwork']);
             Route::post('newsletter/import/library/{item}', [NewsletterImportController::class, 'library']);
+            // A picture uploaded from the composer's image picker (P0, 2026-11-17).
+            Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
 
             Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
             Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);
