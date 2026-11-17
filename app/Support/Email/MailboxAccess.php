@@ -187,6 +187,17 @@ final class MailboxAccess
         return Mailbox::query()->get()->filter(fn (Mailbox $m) => $this->reaches($user, $m))->values();
     }
 
+    /**
+     * An inbox this person can neither reach nor was given by name is absent to
+     * them: answer 404, never a sentence naming it (authz sweep, 2026-11-17: the
+     * refusal named a sibling branch's address to anyone holding its id).
+     */
+    public function hidden(User $user, Mailbox $mailbox): bool
+    {
+        return ! ($user->is_active && $this->isGivenByName($user, $mailbox))
+            && ! $this->reaches($user, $mailbox);
+    }
+
     public function mayRead(User $user, Mailbox $mailbox): bool
     {
         return $this->readRefusal($user, $mailbox, 'open this inbox') === null;
@@ -443,9 +454,8 @@ final class MailboxAccess
             $user,
             $level,
             $act,
-            // Safe to name: the caller reached this mailbox by id, and the id
-            // came from a list this application already showed them.
-            $mailbox->address,
+            // Never the address: an id is not proof the caller was shown it.
+            'this inbox',
             sprintf(
                 'This inbox belongs to a %s above where you are assigned, so being given '
                 .'access to it in your role would not be enough on its own.',
