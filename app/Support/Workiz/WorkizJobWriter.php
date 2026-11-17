@@ -299,6 +299,78 @@ final class WorkizJobWriter
     }
 
     /**
+     * Replace a Workiz job's notes (its v2 description) with `$text` (Jose,
+     * 2026-11-17: "i cannot edit notes"). v2 only, like [appendLine]: v1 has
+     * no description write. Under the same lock, so it cannot interleave
+     * with an appended line.
+     *
+     * Compare-and-set (Workiz, 2026-11-17): a PUT replaces the whole
+     * description, so with `$expected` (what the editor opened) it is read
+     * first and refused if Workiz's has changed since, e.g. an inspection
+     * report link appended meanwhile; `current` is what Workiz holds now.
+     *
+     * @return array{job: ?WorkizJob, refused: ?string, current?: string}
+     */
+    public function setDescription(WorkizJob $job, string $text, ?string $expected = null): array
+    {
+        $connection = $this->connection($job->franchise_id);
+        $id = $job->payload['v2']['id'] ?? null;
+
+        $refused = match (true) {
+            $connection === null => 'This branch has no Workiz connection.',
+            ! WorkizV2::uses($connection) => 'This branch is not on its Workiz v2 key, so its Workiz notes cannot be changed from here.',
+            ! is_string($id) || $id === '' => 'EzBizi has not read this job through Workiz v2 yet; try again after the next sync.',
+            default => null,
+        };
+
+        if ($refused !== null) {
+            return ['job' => null, 'refused' => $refused];
+        }
+
+        $lock = Cache::lock('workiz-description:'.$id, 30);
+
+        try {
+            $lock->block(10);
+        } catch (LockTimeoutException) {
+            return ['job' => null, 'refused' => self::BUSY];
+        }
+
+        try {
+            if ($expected !== null) {
+                $read = WorkizV2::send($connection, 'GET', '/jobs/'.rawurlencode($id));
+                if ($read['refused'] !== null) {
+                    return ['job' => null, 'refused' => $read['refused']];
+                }
+                $now = $read['data']['data'] ?? $read['data'];
+                $now = trim((string) ((is_array($now) && array_is_list($now) ? ($now[0] ?? []) : $now)['description'] ?? ''));
+                if ($now !== trim($expected)) {
+                    return ['job' => null, 'current' => $now,
+                        'refused' => "Workiz's notes changed since you opened them. Your text is still here: copy what you need, then edit again from the new notes."];
+                }
+            }
+
+            $sent = WorkizV2::send($connection, 'PUT', '/jobs/'.rawurlencode($id), ['description' => $text]);
+
+            if ($sent['refused'] !== null) {
+                return ['job' => null, 'refused' => $sent['refused']];
+            }
+
+            $this->audit->log('workiz.job_description_set', $job, metadata: ['characters' => mb_strlen($text)]);
+
+            // An update answers with the whole job (writeV2); else keep our copy in step.
+            if (is_array($sent['data'])) {
+                WorkizJob::land($connection, WorkizV2::job($sent['data']));
+            } else {
+                $job->forceFill(['payload' => ['JobNotes' => $text] + (array) $job->payload])->save();
+            }
+
+            return ['job' => $job->fresh(), 'refused' => null];
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
      * Put a job in one of the branch's Workiz service areas, by name. A create
      * sets none (measured 2026-10-05); v1's /job/update/ takes `ServiceArea`.
      * v2 lists no service areas (GET /serviceareas, /serviceAreas and
