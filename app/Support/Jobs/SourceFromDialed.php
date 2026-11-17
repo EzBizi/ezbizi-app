@@ -75,9 +75,9 @@ class SourceFromDialed
      *
      * @return array{0: int, 1: list<string>}
      */
-    public function apply(Automation $rule): array
+    public function apply(Automation $rule, int $hours = self::LOOK_BACK_HOURS): array
     {
-        $since = CarbonImmutable::parse($rule->created_at)->max(CarbonImmutable::now()->subHours(self::LOOK_BACK_HOURS));
+        $since = CarbonImmutable::parse($rule->created_at)->max(CarbonImmutable::now()->subHours($hours));
         $changed = 0;
         $refused = [];
         foreach ($this->changes($since, $rule->scope_type === 'franchise' ? $rule->scope_id : null) as [$mirror, $from, $to, $line]) {

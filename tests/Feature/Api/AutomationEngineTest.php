@@ -1443,7 +1443,9 @@ class AutomationEngineTest extends TestCase
         Mail::assertSent(AutomationMessage::class, fn ($m) => $m->hasTo('moved@example.test'));
 
         $none = $send($this->org['admin']);
-        $this->assertFalse($none['ok']);
+        // Nothing to fix, so a skip, not a failure (health sweep 11-17).
+        $this->assertTrue($none['ok']);
+        $this->assertTrue($none['skipped'] ?? false);
         $this->assertStringContainsString('not about a customer', $none['detail']);
     }
 

@@ -447,6 +447,7 @@ Schedule::command('ezbizi:leads-ringcentral')->everyTwoMinutes()->withoutOverlap
 Schedule::command('ezbizi:leads-ez')->everyMinute()->withoutOverlapping(10);
 // A Google call filed under another person's message lead, moved to its own (2026-10-16).
 Schedule::command('ezbizi:leads-call-owner')->everyFifteenMinutes()->withoutOverlapping(15);
+Schedule::command('ezbizi:jobs-source-from-dialed')->everyFifteenMinutes()->withoutOverlapping(15);
 // Local Services accounts to their Business Profile listing; renamed when it moves (2026-10-19).
 Schedule::command('ezbizi:leads-link-profiles')->dailyAt('05:40')->timezone('America/New_York')->withoutOverlapping(30);
 // Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.

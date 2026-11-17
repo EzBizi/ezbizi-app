@@ -97,4 +97,40 @@ class SourceFromDialedTest extends TestCase
             $this->assertStringContainsString('LS Ads', (string) $logged->changes);
         });
     }
+
+    /** Desk for Jose, 2026-11-17: Reports are read during the day, so active rules also run every 15 minutes. */
+    public function test_the_15_minute_command_runs_each_active_rule(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $f = $t['franchise'];
+        $written = [];
+        $this->app->bind(SourceFromDialed::class, function ($app) use (&$written) { return new class($app->make(\App\Support\Jobs\DialedLines::class), $app->make(\App\Support\Settings\Lists\BusinessLists::class), $app->make(\App\Support\Audit\AuditLogger::class), $written) extends SourceFromDialed
+        {
+            public function __construct($lines, $lists, $audit, private array &$written)
+            {
+                parent::__construct($lines, $lists, $audit);
+            }
+
+            protected function writeToWorkiz(WorkizJob $mirror, string $source): void
+            {
+                $this->written[] = $mirror->remote_id.'='.$source;
+            }
+        }; });
+        $this->inTenant($t['org'], function () use ($t, $f) {
+            $rule = Automation::create(['name' => 'Source', 'trigger_key' => 'automation.schedule_reached', 'is_active' => true, 'created_by' => $t['admin']->id]);
+            $version = $rule->versions()->create(['organization_id' => $t['org']->id, 'version' => 1, 'actions' => [['type' => 'job.source_from_dialed']]]);
+            $rule->forceFill(['active_version_id' => $version->id, 'created_at' => now()->subHour()])->save();
+            BusinessListItem::create(['organization_id' => $t['org']->id, 'list_key' => 'jobs.sources_by_line',
+                'item_key' => '7324264555', 'value' => ['line' => '(732) 426-4555', 'source' => 'PPC'], 'sort' => 0, 'active' => true]);
+            WorkizJob::query()->create(['franchise_id' => $f->id, 'remote_id' => 'J01', 'serial_id' => '600001', 'job_source' => 'LS Ads',
+                'status' => 'Submitted', 'booked_at' => now()->toDateTimeString(), 'payload' => ['Phone' => '(212) 555-0101', 'v2' => ['id' => 'JOB-J01']], 'synced_at' => now()]);
+            DB::table('workiz_calls')->insert(['id' => (string) Str::uuid(), 'organization_id' => $f->organization_id, 'franchise_id' => $f->id,
+                'remote_id' => 'CAL-J01', 'direction' => 'inbound', 'from_number' => '+12125550101', 'to_number' => '+17324264555',
+                'job_remote_id' => 'JOB-J01', 'called_at' => now()->toDateTimeString(), 'synced_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        });
+
+        $this->artisan('ezbizi:jobs-source-from-dialed')->assertSuccessful();
+
+        $this->assertSame(['J01=PPC'], $written);
+    }
 }

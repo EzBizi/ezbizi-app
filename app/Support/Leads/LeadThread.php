@@ -170,10 +170,20 @@ final class LeadThread
             ->orderByDesc('occurred_at')
             ->first();
 
+        // A call is not a message waiting on an answer: once we text after it,
+        // the thread is ours (Jose, 2026-11-17: an answered call then our "Not
+        // booked" text read "Awaiting reply"). A written message still waits
+        // for a person, so an auto-ack there keeps the overdue alert alive.
+        $from = $lastHuman?->participant;
+        if ($from === LeadConversation::FROM_CONSUMER && $lastHuman->channel === 'PHONE_CALL'
+            && $last?->participant === LeadConversation::FROM_ADVERTISER) {
+            $from = LeadConversation::FROM_ADVERTISER;
+        }
+
         $lead->forceFill([
             'last_contact_at' => $last?->occurred_at,
             'last_contact_channel' => $last?->channel,
-            'last_contact_from' => $lastHuman?->participant,
+            'last_contact_from' => $from,
             'last_contact_preview' => $last !== null ? self::preview($last) : null,
         ])->save();
     }
