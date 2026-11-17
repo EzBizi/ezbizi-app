@@ -65,100 +65,35 @@ class AuthorizationSweepTest extends TestCase
      */
     private const KNOWN_HOLES = [
         // Cases a, a-key, a-mcp and c: none measured 2026-11-17.
-        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
-        'DELETE api/v1/automations/{automation} b' => 'status 200',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'DELETE api/v1/email/mailboxes/{mailbox} b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'DELETE api/v1/email/mailboxes/{mailbox}/messages/{message} b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'DELETE api/v1/email/mailboxes/{mailbox}/messages/{message}/dealt b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'DELETE api/v1/email/mailboxes/{mailbox}/messages/{message}/seen b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'DELETE api/v1/email/mailboxes/{mailbox}/people/{user} b' => 'status 403, body carries the record',
-        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
-        'DELETE api/v1/roles/{role} b' => 'status 200',
-        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
-        'GET api/v1/automations/{automation} b' => 'status 200, body carries the record',
-        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
-        'GET api/v1/automations/{automation}/runs b' => 'status 200',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'GET api/v1/email/mailboxes/{mailbox}/folders b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'GET api/v1/email/mailboxes/{mailbox}/messages b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'GET api/v1/email/mailboxes/{mailbox}/messages/{message} b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}/file b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}/picture b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'GET api/v1/email/mailboxes/{mailbox}/oauth/status b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'GET api/v1/email/mailboxes/{mailbox}/people b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'PATCH api/v1/email/mailboxes/{mailbox} b' => 'status 403, body carries the record',
-        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
-        'PATCH api/v1/roles/{role} b' => 'status 200, body carries the record',
-        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
-        'POST api/v1/automations/{automation}/run-now b' => 'status 422, body carries the record',
-        // Desk 2026-11-17: real; fixed on another branch (writes need the organization view, sibling rule answers 404)
-        'POST api/v1/automations/{automation}/test b' => 'status 422, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'POST api/v1/email/mailboxes/{mailbox}/connect b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'POST api/v1/email/mailboxes/{mailbox}/messages b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'POST api/v1/email/mailboxes/{mailbox}/messages/bulk b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'POST api/v1/email/mailboxes/{mailbox}/messages/{message}/dealt b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'POST api/v1/email/mailboxes/{mailbox}/messages/{message}/forward b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'POST api/v1/email/mailboxes/{mailbox}/messages/{message}/reply b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'POST api/v1/email/mailboxes/{mailbox}/messages/{message}/seen b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'POST api/v1/email/mailboxes/{mailbox}/oauth/start b' => 'status 403, body carries the record',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'POST api/v1/email/mailboxes/{mailbox}/people b' => 'status 403, body carries the record',
-        // Desk 2026-11-17: real, routed to Financials
-        'POST api/v1/invoices/sheets/{sheet}/invoice b' => 'status 201',
-        // Refusal names the inbox address to a sibling-scope user: app/Support/Email/MailboxAccess.php:448 (Refusal::noReach gets $mailbox->address)
-        'PUT api/v1/email/mailboxes/{mailbox}/new-mail-alert b' => 'status 403, body carries the record',
+        // InspectionReportPolicy::view (app/Policies/InspectionReportPolicy.php:37-47) checks permission and
+        // organization only, no reach: a sibling company opens a report's photographs through the attachment.
+        'GET api/v1/attachments/{attachment} b type=inspection_reports' => 'status 200',
     ];
 
-    /** Case (b) reaching a record that has no company/franchise/scope column; each carries its ruling, or "Unruled". */
+    /** Case (b) reaching a record that has no company/franchise/scope column; each carries its ruling, from the desk. */
     private const ORG_WIDE_B = [
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/ai-assistance/manuals/{manual} b' => 'status 204',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/ai-assistance/parts/{part} b' => 'status 204',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/ai-assistance/staff-bot/items/{item} b' => 'status 204',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/ai-assistance/staff-bot/menus/{menu} b' => 'status 204',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/ai-assistance/whatsapp-groups/{group} b' => 'status 204',
-        // Unruled: no company/franchise/scope column on the model
-        'DELETE api/v1/attachments/{attachment} b' => 'status 200',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/hr/time-clock/reports/{report} b' => 'status 200',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/inspections/codes/{inspection_code} b' => 'status 200',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/inspections/{inspection_definition} b' => 'status 200',
-        // Unruled: no company/franchise/scope column on the model
-        'DELETE api/v1/invoices/sheets/{sheet} b' => 'status 204',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/leads/hidden-numbers/{number} b' => 'status 200',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/phone/reports/{report} b' => 'status 200',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'DELETE api/v1/task-board-folders/{folder} b' => 'status 204',
-        // Unruled: no company/franchise/scope column on the model
-        'GET api/v1/attachments/{attachment} b' => 'status 200',
         // Desk: by design, build plan §5.2 [DECIDED] one person is one customer, readable org-wide
         'GET api/v1/customers/{customer} b' => 'status 200, body carries the record',
         // Desk: by design, build plan §5.2 [DECIDED] one person is one customer, readable org-wide
@@ -169,48 +104,55 @@ class AuthorizationSweepTest extends TestCase
         'GET api/v1/hr/contracts/{contract} b' => 'status 200, body carries the record',
         // Desk: by design, organization-owned contract TEMPLATES (ContractPolicy::mayAuthor)
         'GET api/v1/hr/contracts/{contract}/versions b' => 'status 200',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'GET api/v1/hr/time-clock/reports/{report}/preview b' => 'status 200',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'GET api/v1/inspections/codes/{inspection_code} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'GET api/v1/inspections/{inspection_definition} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'GET api/v1/inspections/{inspection_definition}/cover b' => 'status 200',
-        // Unruled: no company/franchise/scope column on the model
-        'GET api/v1/invoices/sheets/{sheet} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'PATCH api/v1/ai-assistance/parts/{part} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'PATCH api/v1/ai-assistance/whatsapp-groups/{group} b' => 'status 200, body carries the record',
         // Desk: by design, build plan §5.2 [DECIDED] one person is one customer, readable org-wide
         'PATCH api/v1/customers/{customer} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'PATCH api/v1/hr/time-clock/reports/{report} b' => 'status 200',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'PATCH api/v1/inspections/codes/{inspection_code} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'PATCH api/v1/memberships/plans/{plan} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'PATCH api/v1/task-board-folders/{folder} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'POST api/v1/ai-assistance/whatsapp-groups/{group}/publish b' => 'status 422, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'POST api/v1/inspections/{inspection_definition}/publish b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'POST api/v1/inspections/{inspection_definition}/rehearse b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'POST api/v1/inspections/{inspection_definition}/unpublish b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'PUT api/v1/ai-assistance/parts/{part} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'PUT api/v1/ai-assistance/staff-bot/items/{item} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'PUT api/v1/ai-assistance/staff-bot/menus/{menu} b' => 'status 200, body carries the record',
-        // Unruled: no company/franchise/scope column on the model
+        // By design (desk ruling 2026-11-17)
         'PUT api/v1/ai-assistance/whatsapp-groups/{group} b' => 'status 200, body carries the record',
         // Desk: by design, build plan §5.2 [DECIDED] one person is one customer, readable org-wide
         'PUT api/v1/customers/{customer} b' => 'status 200, body carries the record',
+    ];
+
+    /** Attachment types whose files a sibling company may open by design. */
+    private const ATTACHMENT_TYPES_BY_DESIGN = [
+        'customers' => 'attachments follow their customer; customers are org-wide per build plan §5.2',
+    ];
+
+    /** Attachable types no subject record could be built for. Can only shrink. */
+    private const ATTACHMENT_TYPES_UNBUILT = [
     ];
 
     /** Routes no record could be built for. Can only shrink. */
@@ -222,6 +164,11 @@ class AuthorizationSweepTest extends TestCase
      * refusals measured there prove nothing. Can only shrink.
      */
     private const CONTROL_UNPROVEN = [
+        'GET api/v1/email/mailboxes/{mailbox}/folders' => '500: mailbox needs a real provider driver; builder writes a probe string',
+        'GET api/v1/email/mailboxes/{mailbox}/messages' => '500: mailbox needs a real provider driver; builder writes a probe string',
+        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}' => '500: mailbox needs a real provider driver; builder writes a probe string',
+        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}/picture' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}/file' => '404: abort(404) in the action, file or provider state the builder does not create',
         'GET api/v1/suggestions/{suggestion}/files/{index}' => '404: abort(404) in the action, file or provider state the builder does not create',
         'GET api/v1/ekomi/{connection}/overview' => '404: abort(404) in the action, file or provider state the builder does not create',
         'GET api/v1/ekomi/{connection}/requests' => '404: abort(404) in the action, file or provider state the builder does not create',
@@ -247,17 +194,12 @@ class AuthorizationSweepTest extends TestCase
         'GET api/v1/phone/calls/{call}/recording' => '404: abort(404) in the action, file or provider state the builder does not create',
         'GET api/v1/email/workspaces/{connection}/people' => '422: needs a live provider (Google/WordPress/Meta) the test cannot reach',
         'GET api/v1/email/workspaces/{connection}/people/{address}/signature' => '404: needs a live provider (Google/WordPress/Meta) the test cannot reach',
-        'GET api/v1/email/mailboxes/{mailbox}/folders' => '500: mailbox needs a real provider driver; builder writes a probe string',
-        'GET api/v1/email/mailboxes/{mailbox}/messages' => '500: mailbox needs a real provider driver; builder writes a probe string',
-        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}' => '500: mailbox needs a real provider driver; builder writes a probe string',
-        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}/picture' => '404: abort(404) in the action, file or provider state the builder does not create',
-        'GET api/v1/email/mailboxes/{mailbox}/messages/{message}/file' => '404: abort(404) in the action, file or provider state the builder does not create',
         'GET api/v1/users/{user}/avatar' => '404: abort(404) in the action, file or provider state the builder does not create',
         'GET api/v1/staff/suggestions/{suggestion}/files/{index}' => '403: EzBizi staff-only endpoint; no tenant admin can open it',
     ];
 
         /** Upper bound for INCONCLUSIVE outcomes; lower it when it falls. */
-    private const INCONCLUSIVE_CEILING = 29; // measured 2026-11-17, after minimal bodies
+    private const INCONCLUSIVE_CEILING = 25; // measured 2026-11-17, after minimal bodies
 
     private array $tableToModel = [];
 
@@ -424,7 +366,7 @@ class AuthorizationSweepTest extends TestCase
             $checked, count($skipped), $controlled, $uncontrolled, count($inconclusive), count($holes), count($orgWide),
         ));
 
-        $this->assertSame($this->sortedKeys(self::KNOWN_HOLES), $this->sortedKeys($holes), 'Authorization holes changed; see storage/authz-sweep.log');
+        $this->assertSame($this->sortedKeys(array_filter(self::KNOWN_HOLES, fn ($k) => ! str_contains($k, ' type='), ARRAY_FILTER_USE_KEY)), $this->sortedKeys($holes), 'Authorization holes changed; see storage/authz-sweep.log');
         $this->assertSame($this->sortedKeys(self::ORG_WIDE_B), $this->sortedKeys($orgWide), 'Org-wide (b) set changed');
         $this->assertSame($this->sortedKeys(self::SKIPPED), $this->sortedKeys($skipped), 'Skipped routes changed');
         ksort($controlFailures);
@@ -477,6 +419,79 @@ class AuthorizationSweepTest extends TestCase
         }
 
         return $payload;
+    }
+
+    /**
+     * Desk 2026-11-17: an attachment is only as org-wide as what it hangs off.
+     * One attachment per attachable type in the morph map, hung off a record in
+     * company A / franchise F1; the sibling-company user (every permission,
+     * reach only at the sibling franchise) tries to open and delete it.
+     */
+    public function test_attachments_by_attachable_type_for_a_sibling_company(): void
+    {
+        ini_set('memory_limit', '2G');
+        $this->withoutMiddleware(ThrottleRequests::class);
+        Http::preventStrayRequests();
+        Http::fake(['*' => Http::response([], 200)]);
+        Queue::fake();
+        Bus::fake();
+        Mail::fake();
+        Notification::fake();
+        foreach (array_keys(config('filesystems.disks')) as $disk) {
+            \Illuminate\Support\Facades\Storage::fake($disk);
+        }
+
+        $a = $this->provisionTenant('Alpha');
+        $siblingCompany = $this->inTenant($a['org'], fn () => Company::create(['organization_id' => $a['org']->id, 'name' => 'Alpha Sibling Co']));
+        $siblingFranchise = $this->inTenant($a['org'], fn () => Franchise::create(['organization_id' => $a['org']->id, 'company_id' => $siblingCompany->id, 'name' => 'Alpha Sibling F']));
+        $sideways = $this->userWithRole($a, 'Everything Elsewhere', app(PermissionCatalogue::class)->keys(), 'sideways@alpha.test', $siblingFranchise);
+        $this->indexModels();
+
+        $table = [];
+        $leaks = [];
+        $unbuilt = [];
+        foreach (\Illuminate\Database\Eloquent\Relations\Relation::morphMap() as $type => $class) {
+            DB::beginTransaction();
+            try {
+                $built = [];
+                $subject = $this->inTenant($a['org'], fn () => $this->build($class, $built, $a));
+                $attachment = $this->inTenant($a['org'], fn () => $this->build(\App\Models\Attachment::class, $built, $a));
+                DB::table('attachments')->where('id', $attachment->id)->update(['attachable_type' => $type, 'attachable_id' => $subject->getKey()]);
+            } catch (Throwable $e) {
+                DB::rollBack();
+                $unbuilt[$type] = Str::limit(class_basename($e).': '.$e->getMessage(), 120);
+                $table[] = sprintf('%-28s unbuilt: %s', $type, $unbuilt[$type]);
+                continue;
+            }
+
+            $url = '/api/v1/attachments/'.$attachment->id;
+            $control = $this->signedInAs($a['admin'])->getJson($url)->getStatusCode();
+            $get = $this->signedInAs($sideways)->getJson($url);
+            $getStatus = $get->getStatusCode();
+            $getLeak = ($getStatus >= 200 && $getStatus < 300) || ($getStatus < 500 && str_contains(rescue(fn () => (string) $get->getContent(), '', false), self::MARKER));
+            $delete = $this->signedInAs($sideways)->deleteJson($url)->getStatusCode();
+            $deleteLeak = ($delete >= 200 && $delete < 300) || ! DB::table('attachments')->where('id', $attachment->id)->exists();
+
+            if ($getLeak) {
+                $leaks["GET api/v1/attachments/{attachment} b type={$type}"] = "status {$getStatus}";
+            }
+            if ($deleteLeak) {
+                $leaks["DELETE api/v1/attachments/{attachment} b type={$type}"] = "status {$delete}";
+            }
+            $table[] = sprintf('%-28s control GET %d | sibling GET %d%s | sibling DELETE %d%s', $type, $control, $getStatus, $getLeak ? ' LEAK' : '', $delete, $deleteLeak ? ' LEAK' : '');
+            DB::rollBack();
+        }
+
+        @file_put_contents(storage_path('authz-attachments.log'), implode("\n", $table)."\n".var_export($leaks, true));
+        fwrite(STDERR, "\nAttachments by type (sibling company):\n".implode("\n", $table)."\n");
+
+        $byDesign = array_filter($leaks, fn ($k) => isset(self::ATTACHMENT_TYPES_BY_DESIGN[Str::after($k, 'type=')]), ARRAY_FILTER_USE_KEY);
+        $this->assertSame(
+            $this->sortedKeys(array_filter(self::KNOWN_HOLES, fn ($k) => str_contains($k, ' type='), ARRAY_FILTER_USE_KEY)),
+            $this->sortedKeys(array_diff_key($leaks, $byDesign)),
+            'Attachment types readable or deletable from a sibling company changed; see storage/authz-attachments.log',
+        );
+        $this->assertSame($this->sortedKeys(self::ATTACHMENT_TYPES_UNBUILT), $this->sortedKeys($unbuilt), 'Unbuildable attachable types changed');
     }
 
     private function sortedKeys(array $list): array
@@ -626,9 +641,11 @@ class AuthorizationSweepTest extends TestCase
                     continue;
                 }
             } elseif (str_ends_with($name, '_type') && Schema::hasColumn($table, Str::beforeLast($name, '_type').'_id')) {
-                $morph = (new \App\Models\Customer)->getMorphClass();
-                $raw[$name] = preg_match('/\((\d+)\)/', $col['type'], $len) && (int) $len[1] < strlen($morph) ? 'customer' : $morph;
-                $raw[Str::beforeLast($name, '_type').'_id'] = $this->build(\App\Models\Customer::class, $built, $a, $depth + 1)->getKey();
+                // A real morph-map entry (jobs: scoped), so the generic attachment is one the app can serve.
+                $morphMap = \Illuminate\Database\Eloquent\Relations\Relation::morphMap();
+                $morph = array_key_first($morphMap);
+                $raw[$name] = $morph;
+                $raw[Str::beforeLast($name, '_type').'_id'] = $this->build($morphMap[$morph], $built, $a, $depth + 1)->getKey();
                 continue;
             }
             if (array_key_exists($name, $raw)) {
