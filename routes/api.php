@@ -170,6 +170,7 @@ use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ProjectBoardController;
+use App\Http\Controllers\Api\ProjectInboxController;
 use App\Http\Controllers\Api\PromotionsController;
 use App\Http\Controllers\Api\ProofreadController;
 use App\Http\Controllers\Api\PtoRequestsController;
@@ -1033,6 +1034,9 @@ Route::prefix('v1')
         Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
         Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
         Route::get('project-board/dashboard', [ProjectBoardController::class, 'dashboard']);
+        Route::get('project-board/inbox', [ProjectInboxController::class, 'index']);
+        Route::get('project-board/inbox/{job}', [ProjectInboxController::class, 'show']);
+        Route::post('project-board/inbox/{job}', [ProjectInboxController::class, 'reply']);
         Route::patch('project-board/parts/{part}/reminder', [ProjectBoardController::class, 'partReminder']);
         Route::patch('project-board/jobs/{job}/proposal', [ProjectBoardController::class, 'updateProposal']);
         Route::post('project-board/jobs/{job}/ready', [ProjectBoardController::class, 'ready']);

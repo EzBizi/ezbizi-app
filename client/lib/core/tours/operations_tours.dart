@@ -899,6 +899,17 @@ const Map<String, Tour> operationsTours = {
       ),
     ],
   ),
+  'project_board/Inbox': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'project-inbox-search',
+        title: 'Clients',
+        body:
+            'One thread per job on the board: the texts to the client and their answers, scheduling replies included.',
+      ),
+    ],
+  ),
   'project_board/Unscheduled': Tour(
     version: 1,
     steps: [

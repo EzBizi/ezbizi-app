@@ -549,6 +549,45 @@ class ProjectBoardTest extends TestCase
         $this->assertSame(4, $alerts($pm->id));
     }
 
+    /**
+     * Jose, 2026-11-17: "Inbox separated like a Mini Leads inside Project
+     * Management that only shows these messages per client". A board job's
+     * client texts are one thread; a client of no board job is not here.
+     */
+    public function test_the_inbox_threads_a_board_jobs_client_texts_and_no_one_elses(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$board, $other] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $board = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            $other = $this->job($alpha['franchise'], 'J-2', 'Submitted');
+            $connection = \App\Models\PhoneConnection::factory()->create(['scope_type' => \App\Models\PhoneConnection::SCOPE_COMPANY, 'scope_id' => $alpha['franchise']->company_id]);
+            $line = \App\Models\PhoneNumber::factory()->create(['connection_id' => $connection->id, 'scope_type' => \App\Models\PhoneNumber::SCOPE_FRANCHISE,
+                'scope_id' => $alpha['franchise']->id, 'e164' => '+13055550199']);
+            foreach ([[$board, '+15125550101', 'outbound', 'Can we come Tuesday 8-11?'], [$board, '+15125550101', 'inbound', 'NO'], [$other, '+15125550102', 'inbound', 'Hello?']] as [$jobId, $phone, $dir, $body]) {
+                $job = Job::query()->find($jobId);
+                $job->customer->forceFill(['phone' => $phone])->save();
+                \App\Models\PhoneMessage::query()->create(['connection_id' => $connection->id, 'number_id' => $line->id,
+                    'twilio_sid' => 'SM'.bin2hex(random_bytes(16)), 'direction' => $dir, 'customer_id' => $job->customer_id,
+                    'from_e164' => $dir === 'inbound' ? $phone : $line->e164, 'to_e164' => $dir === 'inbound' ? $line->e164 : $phone, 'body' => $body]);
+                $this->travel(1)->minutes();
+            }
+
+            return [$board, $other];
+        });
+        $api = $this->signedInAs($alpha['admin']);
+
+        $threads = $api->getJson('/api/v1/project-board/inbox')->assertOk()->json('data');
+        $this->assertSame([$board], array_column($threads, 'job_id'), 'Only the board job; J-2 is not on the board.');
+        $this->assertSame('NO', $threads[0]['last_body']);
+        $this->assertTrue($threads[0]['waiting'], 'The client spoke last.');
+
+        $api->getJson("/api/v1/project-board/inbox/{$board}")->assertOk()
+            ->assertJsonPath('data.0.body', 'Can we come Tuesday 8-11?')->assertJsonPath('data.1.direction', 'inbound');
+
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['project_board.view', 'jobs.view']);
+        $this->signedInAs($viewer)->postJson("/api/v1/project-board/inbox/{$board}", ['body' => 'Hi'])->assertForbidden();
+    }
+
     /** Jose, 2026-11-17: "Just let me drag them" - one column order for everyone on the board. */
     public function test_a_dragged_column_order_is_the_boards_for_everyone(): void
     {

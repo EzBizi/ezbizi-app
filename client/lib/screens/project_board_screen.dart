@@ -120,7 +120,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   String _tab = _tabs.first.$1;
 
   /// A tab of jobs, not Settings or the Dashboard.
-  bool get _isBoard => _tab != 'settings' && _tab != 'dashboard';
+  bool get _isBoard =>
+      _tab != 'settings' && _tab != 'dashboard' && _tab != 'inbox';
   String? _franchise;
   final _search = TextEditingController();
   Timer? _debounce;
@@ -140,6 +141,8 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
   List<(String, String, IconData)> get _shown => [
     // Jose, 2026-11-17: parts waiting, late, and reminders.
     ('dashboard', 'Dashboard', Icons.space_dashboard_outlined),
+    // The clients' texts, one thread per job (Jose, 2026-11-17).
+    ('inbox', 'Inbox', Icons.forum_outlined),
     ..._tabs,
     if (_canSet) ('settings', 'Settings', Icons.tune),
   ];
@@ -1161,7 +1164,13 @@ class _ProjectBoardScreenState extends State<ProjectBoardScreen>
             error: _error,
             onRetry: _load,
             child: _page_(context, [
-              if (_tab == 'dashboard')
+              if (_tab == 'inbox')
+                _ProjectInbox(
+                  api: widget.api,
+                  formats: widget.session.me?.display ?? DisplayFormats.fallback,
+                  canReply: _canEditJobs,
+                )
+              else if (_tab == 'dashboard')
                 _PartsDashboard(
                   api: widget.api,
                   formats: widget.session.me?.display ?? DisplayFormats.fallback,
@@ -3298,4 +3307,251 @@ class _ReminderPanelState extends State<_ReminderPanel> {
       withTime: true,
     ),
   );
+}
+
+/// Project Management › Inbox (Jose, 2026-11-17: "Inbox separated like a
+/// Mini Leads inside Project Management that only shows these messages per
+/// client"): one thread per board job, the client's answers included, and a
+/// reply from the job's branch line.
+class _ProjectInbox extends StatefulWidget {
+  const _ProjectInbox({
+    required this.api,
+    required this.formats,
+    required this.canReply,
+  });
+
+  final ApiClient api;
+  final DisplayFormats formats;
+  final bool canReply;
+
+  @override
+  State<_ProjectInbox> createState() => _ProjectInboxState();
+}
+
+class _ProjectInboxState extends State<_ProjectInbox> {
+  List<Map<String, dynamic>>? _threads;
+  List<Map<String, dynamic>> _messages = const [];
+  String? _open;
+  String? _error;
+  String _q = '';
+  bool _sending = false;
+  final _draft = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _draft.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> _maps(Object? raw) => [
+    for (final m in raw is List ? raw : const [])
+      if (m is Map) Map<String, dynamic>.from(m),
+  ];
+
+  Future<void> _load() async {
+    final r = await widget.api.get(
+      '/project-board/inbox',
+      _q.isEmpty ? null : {'q': _q},
+    );
+    if (!mounted) return;
+    setState(() {
+      _threads = r.ok ? _maps(r.data) : const [];
+      _error = r.ok ? null : r.reason;
+    });
+  }
+
+  Future<void> _openThread(String jobId) async {
+    setState(() {
+      _open = jobId;
+      _messages = const [];
+    });
+    final r = await widget.api.get('/project-board/inbox/$jobId');
+    if (!mounted || _open != jobId) return;
+    setState(() => _messages = r.ok ? _maps(r.data) : const []);
+  }
+
+  Future<void> _reply() async {
+    final body = _draft.text.trim();
+    final job = _open;
+    if (body.isEmpty || job == null || _sending) return;
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    final r = await widget.api.post('/project-board/inbox/$job', {
+      'body': body,
+    });
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      if (r.ok && r.data is Map) {
+        _messages = [..._messages, Map<String, dynamic>.from(r.data as Map)];
+        _draft.clear();
+      } else {
+        _error = r.reason;
+      }
+    });
+    if (r.ok) _load();
+  }
+
+  String _when(Object? iso) {
+    final at = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+    if (at == null) return '';
+    return '${widget.formats.formatDate(at)} ${TimeOfDay.fromDateTime(at).format(context)}';
+  }
+
+  Widget _list(ThemeData theme) {
+    final threads = _threads ?? const [];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListSearch(
+          key: const Key('project-inbox-search'),
+          hint: 'Client, job number or words',
+          width: double.infinity,
+          onChanged: (v) {
+            _q = v.trim();
+            _load();
+          },
+        ),
+        const SizedBox(height: 8),
+        if (threads.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'No texts with the clients on the board yet. Their answers to '
+              'the scheduling texts show up here.',
+            ),
+          )
+        else
+          for (final t in threads)
+            ListTile(
+              key: ValueKey('project-inbox-thread-${t['job_id']}'),
+              selected: _open == t['job_id'],
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+              title: Text(
+                [t['customer'], t['job_number']]
+                    .where((s) => s != null && '$s'.isNotEmpty)
+                    .join(' · '),
+              ),
+              subtitle: Text(
+                '${t['last_body'] ?? ''}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: t['waiting'] == true
+                  ? const StatusPill('Waiting', tone: Tone.caution)
+                  : Text(_when(t['last_at']), style: theme.textTheme.bodySmall),
+              onTap: () => _openThread('${t['job_id']}'),
+            ),
+      ],
+    );
+  }
+
+  Widget _thread(ThemeData theme, {VoidCallback? back}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (back != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('project-inbox-back'),
+              onPressed: back,
+              icon: const Icon(Icons.arrow_back, size: 18),
+              label: const Text('All clients'),
+            ),
+          ),
+        for (final m in _messages)
+          Align(
+            alignment: m['direction'] == 'inbound'
+                ? Alignment.centerLeft
+                : Alignment.centerRight,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 420),
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: m['direction'] == 'inbound'
+                    ? theme.colorScheme.surfaceContainerHighest
+                    : theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText('${m['body'] ?? ''}'),
+                  Text(_when(m['at']), style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+          ),
+        if (widget.canReply) ...[
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('project-inbox-box'),
+            controller: _draft,
+            minLines: 2,
+            maxLines: 6,
+            enabled: !_sending,
+            decoration: const InputDecoration(
+              hintText: 'Text the client from the branch line…',
+            ),
+          ),
+          if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              key: const Key('project-inbox-send'),
+              onPressed: _sending ? null : _reply,
+              child: Text(_sending ? 'Sending…' : 'Send'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_threads == null) {
+      return const Padding(
+        padding: EdgeInsets.all(32),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return LayoutBuilder(
+      key: const Key('project-inbox'),
+      builder: (context, box) {
+        if (box.maxWidth < 860) {
+          return _open == null
+              ? _list(theme)
+              : _thread(theme, back: () => setState(() => _open = null));
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 340, child: _list(theme)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _open == null
+                  ? const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('Choose a client to read the texts.'),
+                    )
+                  : _thread(theme),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
