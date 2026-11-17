@@ -84,7 +84,11 @@ class TokenStore {
       // would hide a broken keychain behind a stream of writes.
       return false;
     }
-    if (onDisk == token || !stillWanted()) return false;
+    // Only a MISSING token is written back. A different one is another
+    // sign-in's: on the web every tab shares localStorage, and two tabs that
+    // each kept their own token overwrote each other every minute (health
+    // sweep 11-17: 73 reports in an hour from one person).
+    if (onDisk != null || !stillWanted()) return false;
     store.writeItem(_tenantKey, token, persist: true);
     return true;
   }
