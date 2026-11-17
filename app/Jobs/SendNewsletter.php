@@ -127,9 +127,8 @@ final class SendNewsletter implements ShouldQueue
         }
 
         $footer = NewsletterIdentity::footer($newsletter) + ['unsubscribe_url' => '*|UNSUB|*'];
-        $html = is_string($newsletter->html_override) && $newsletter->html_override !== ''
-            ? $renderer->withFooter($newsletter->html_override, $footer)
-            : $renderer->render((array) ($newsletter->blocks ?? []), $footer);
+        $html = $renderer->document((array) ($newsletter->blocks ?? []), $newsletter->html_override,
+            $newsletter->preheader, $footer);
 
         try {
             $result = $sender->send($connection, $newsletter, $html, $this->people($newsletter));

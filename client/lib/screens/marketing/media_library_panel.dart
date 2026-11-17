@@ -193,7 +193,11 @@ class _LibraryPanelState extends State<_LibraryPanel> {
   }
 
   Future<void> _load() async {
-    final response = await widget.api.get('/social/library');
+    // The newsletter picker lists through its own endpoint (P1a), so a
+    // newsletter-only role can pick a picture without Social Media access.
+    final response = widget.uploadPath != null
+        ? await widget.api.get('/newsletter/images')
+        : await widget.api.get('/social/library');
     if (!mounted) return;
     setState(() {
       final loaded = response.ok && response.data is List
@@ -209,9 +213,11 @@ class _LibraryPanelState extends State<_LibraryPanel> {
     });
   }
 
-  Future<Uint8List?> _thumb(String id) => _thumbs[id] ??= widget.api
-      .getBytes('/social/library/$id/file')
-      .then((b) => b == null ? null : Uint8List.fromList(b));
+  Future<Uint8List?> _thumb(String id) => _thumbs[id] ??=
+      (widget.uploadPath != null
+              ? widget.api.getBytes('/newsletter/images/$id/file')
+              : widget.api.getBytes('/social/library/$id/file'))
+          .then((b) => b == null ? null : Uint8List.fromList(b));
 
   Future<void> _add() async {
     final file = await widget.pickMedia();

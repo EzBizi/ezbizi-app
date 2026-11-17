@@ -1,6 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../core/theme.dart';
+import 'newsletter_rich_text.dart';
 
 import '../../widgets/search_picker.dart';
 import '../email/message_html.dart';
@@ -56,6 +60,8 @@ class NewsletterEditor extends StatefulWidget {
   const NewsletterEditor({
     super.key,
     required this.subject,
+    required this.name,
+    required this.preheader,
     required this.blocks,
     required this.audiences,
     required this.audienceId,
@@ -90,7 +96,53 @@ class NewsletterEditor extends StatefulWidget {
     this.confirmingDelete = false,
     this.onAudienceCreated,
     this.onOpenSettings,
+    this.onBack,
+    this.canUndo = false,
+    this.canRedo = false,
+    this.onUndo,
+    this.onRedo,
+    this.historyGeneration = 0,
+    this.onUnschedule,
+    this.onHistory,
+    this.onNew,
+    this.onCompare,
+    this.onSaveAsCopy,
+    this.localCopyNote,
+    this.onRestoreLocal,
+    this.onDiscardLocal,
   });
+
+  /// The internal campaign name (P1a); empty shows the subject instead.
+  final TextEditingController name;
+
+  /// The line an inbox shows after the subject.
+  final TextEditingController preheader;
+
+  /// Back to the dashboard's list.
+  final VoidCallback? onBack;
+
+  /// Undo/redo over the content; the buttons are disabled when false.
+  final bool canUndo;
+  final bool canRedo;
+  final VoidCallback? onUndo;
+  final VoidCallback? onRedo;
+
+  /// Bumped whenever the content is replaced from outside (undo, redo,
+  /// restore), so fields that hold their own copy are rebuilt.
+  final int historyGeneration;
+
+  final VoidCallback? onUnschedule;
+  final VoidCallback? onHistory;
+  final VoidCallback? onNew;
+
+  /// After a refused (409) save: compare, or keep the local copy as a draft.
+  final VoidCallback? onCompare;
+  final VoidCallback? onSaveAsCopy;
+
+  /// An unsaved copy found on this device, said as a sentence; null: none.
+  final String? localCopyNote;
+  final VoidCallback? onRestoreLocal;
+  final VoidCallback? onDiscardLocal;
 
   /// For the import panel, the readiness and Preview & test; null hides them.
   final ApiClient? api;
@@ -198,6 +250,21 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   NewsletterReadiness? _readiness;
   bool _resolving = false;
 
+  /// The Add content panel is open (it collapses to a rail).
+  bool _paletteOpen = true;
+
+  /// Keyboard: Ctrl+Z/Y, and arrows, Delete and Ctrl+D on a selected block.
+  final FocusNode _keys = FocusNode(debugLabel: 'newsletter-editor');
+
+  /// The in-place editor of the selected heading or text.
+  MarkupEditingController? _inline;
+  Map<String, dynamic>? _inlineBlock;
+  int _inlineGeneration = -1;
+
+  /// A crop chosen in the inspector but not applied yet.
+  ({String aspect, double x, double y})? _pendingCrop;
+  bool _cropping = false;
+
   /// The connected Mailchimp account's lists, or null before they load.
   List<Map<String, dynamic>>? _lists;
 
@@ -294,10 +361,20 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     if (old.revision != widget.revision || old.audienceId != widget.audienceId) {
       _resolve();
     }
+    // Undo, redo or a restore replaced the content under the editor.
+    if (old.historyGeneration != widget.historyGeneration) {
+      final html = widget.initialHtml ?? '';
+      if (_html.text != html) _html.text = html;
+      if (html.isEmpty && _htmlMode) _htmlMode = false;
+      if (_selected != null && _selected! >= widget.blocks.length) _selected = null;
+      _pendingCrop = null;
+    }
   }
 
   @override
   void dispose() {
+    _keys.dispose();
+    _inline?.dispose();
     _html.dispose();
     super.dispose();
   }
@@ -385,46 +462,140 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   void _go(NewsletterStep step) => setState(() {
     _step = step;
     _selected = null;
+    _pendingCrop = null;
   });
+
+  /// Design, with block [index] selected and scrolled into view (a Review
+  /// issue's "Show block").
+  void _jumpTo(int? index) {
+    setState(() {
+      _step = NewsletterStep.design;
+      _serverPreview = false;
+      _pendingCrop = null;
+      _selected = index != null && index >= 0 && index < widget.blocks.length
+          ? index
+          : null;
+    });
+    final i = _selected;
+    if (i == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      BuildContext? found;
+      void visit(Element e) {
+        if (found != null) return;
+        if (e.widget.key == Key('newsletter-block-$i')) {
+          found = e;
+          return;
+        }
+        e.visitChildElements(visit);
+      }
+
+      context.visitChildElements(visit);
+      if (found != null) Scrollable.ensureVisible(found!, alignment: 0.2);
+    });
+  }
+
+  /// Is somebody typing in a field? Then the keys are the field's.
+  bool get _typing {
+    final ctx = FocusManager.instance.primaryFocus?.context;
+    return ctx != null &&
+        (ctx.widget is EditableText ||
+            ctx.findAncestorStateOfType<EditableTextState>() != null);
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (_typing) return KeyEventResult.ignored;
+    final k = HardwareKeyboard.instance;
+    final ctrl = k.isControlPressed || k.isMetaPressed;
+    final key = e.logicalKey;
+
+    if (ctrl && key == LogicalKeyboardKey.keyZ) {
+      if (k.isShiftPressed) {
+        if (widget.canRedo && !_locked) widget.onRedo?.call();
+      } else if (widget.canUndo && !_locked) {
+        widget.onUndo?.call();
+      }
+      return KeyEventResult.handled;
+    }
+    if (ctrl && key == LogicalKeyboardKey.keyY) {
+      if (widget.canRedo && !_locked) widget.onRedo?.call();
+      return KeyEventResult.handled;
+    }
+
+    final i = _selected;
+    if (i == null || _locked || _htmlMode || _step != NewsletterStep.design ||
+        i >= widget.blocks.length) {
+      return KeyEventResult.ignored;
+    }
+    final moveKey = ctrl || k.isAltPressed;
+    if (moveKey && key == LogicalKeyboardKey.arrowUp) {
+      if (i > 0) _move(i, i - 1);
+      return KeyEventResult.handled;
+    }
+    if (moveKey && key == LogicalKeyboardKey.arrowDown) {
+      if (i < widget.blocks.length - 1) _move(i, i + 1);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) {
+      _remove(i);
+      return KeyEventResult.handled;
+    }
+    if (ctrl && key == LogicalKeyboardKey.keyD) {
+      _duplicate(i);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.escape) {
+      setState(() => _selected = null);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final narrow = constraints.maxWidth < 900;
-        final top = [
-          _header(context, narrow: narrow),
-          ..._banners(context),
-          _stepBar(context),
-          const Divider(height: 1),
-        ];
+    return Focus(
+      focusNode: _keys,
+      onKeyEvent: _onKey,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 900;
+          final top = [
+            _header(context, narrow: narrow),
+            ..._banners(context),
+            _stepBar(context),
+            const Divider(height: 1),
+          ];
 
-        if (narrow) {
-          return ListView(
-            padding: EdgeInsets.zero,
+          if (narrow) {
+            return ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                ...top,
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: _stepBody(context, bounded: false),
+                ),
+              ],
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               ...top,
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: _stepBody(context, bounded: false),
+              Expanded(
+                child: Padding(
+                  padding: _step == NewsletterStep.design
+                      ? EdgeInsets.zero
+                      : const EdgeInsets.all(12),
+                  child: _stepBody(context, bounded: true),
+                ),
               ),
             ],
           );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ...top,
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: _stepBody(context, bounded: true),
-              ),
-            ),
-          ],
-        );
-      },
+        },
+      ),
     );
   }
 
@@ -446,9 +617,17 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     _ => 'Draft',
   };
 
+  /// The one campaign toolbar (P1a): back, the editable internal name, status,
+  /// save state, undo/redo, Preview & test, one primary action and More.
+  /// The subject is shown once, in Setup, and not repeated here.
   Widget _header(BuildContext context, {required bool narrow}) {
     final theme = Theme.of(context);
     final subject = widget.subject.text.trim();
+    final shown = widget.name.text.trim().isNotEmpty
+        ? widget.name.text.trim()
+        : subject.isEmpty
+        ? 'Untitled newsletter'
+        : subject;
 
     final primary = switch (_step) {
       NewsletterStep.setup => FilledButton.icon(
@@ -466,71 +645,123 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       NewsletterStep.review => _sendButton(),
     };
 
-    final actions = [
-      _saveStateView(context),
-      if (widget.api != null && widget.newsletterId != null)
-        OutlinedButton.icon(
-          key: const ValueKey('newsletter-preview-test'),
-          onPressed: _openPreviewAndTest,
-          icon: const Icon(Icons.visibility_outlined, size: 18),
-          label: const Text('Preview & test'),
-        ),
-      if (widget.confirmingDelete)
-        TextButton(
-          key: const ValueKey('newsletter-delete-confirm'),
-          style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
-          onPressed: widget.onDelete,
-          child: const Text('Tap again to delete'),
-        ),
-      primary,
-      _overflow(context),
-    ];
+    final name = _locked
+        ? Text(
+            shown,
+            key: const ValueKey('newsletter-title'),
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium,
+          )
+        : TextField(
+            key: const ValueKey('newsletter-name'),
+            controller: widget.name,
+            style: theme.textTheme.titleMedium,
+            maxLength: 255,
+            decoration: InputDecoration(
+              isDense: true,
+              counterText: '',
+              border: InputBorder.none,
+              hintText: subject.isEmpty ? 'Untitled newsletter' : subject,
+            ),
+            onChanged: (_) {
+              setState(() {});
+              widget.onChanged();
+            },
+          );
+
+    final unscheduleRefusal = widget.session.me?.refusal(
+      'newsletter.send',
+      'unschedule a newsletter',
+    );
 
     return Padding(
       key: const ValueKey('newsletter-header'),
-      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: const EdgeInsets.fromLTRB(4, 6, 8, 6),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Text(
-            'Marketing / Newsletter',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.onBack != null)
+                IconButton(
+                  key: const ValueKey('newsletter-back'),
+                  tooltip: 'All newsletters',
+                  onPressed: widget.onBack,
+                  icon: const Icon(Icons.arrow_back),
+                ),
+              if (!narrow) ...[
+                Text(
+                  'Newsletter /',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              SizedBox(
+                key: const ValueKey('tour-newsletter-pick'),
+                width: narrow ? 150 : 280,
+                child: Tooltip(
+                  message: 'Internal name: only your team sees it',
+                  child: name,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Chip(
+                key: const ValueKey('newsletter-status'),
+                label: Text(_statusWord),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
           Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            alignment: WrapAlignment.spaceBetween,
+            spacing: 4,
+            runSpacing: 6,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: narrow ? 220 : 420),
-                    child: Text(
-                      subject.isEmpty ? 'Untitled newsletter' : subject,
-                      key: const ValueKey('newsletter-title'),
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Chip(
-                    key: const ValueKey('newsletter-status'),
-                    label: Text(_statusWord),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
+              _saveStateView(context),
+              IconButton(
+                key: const ValueKey('newsletter-undo-edit'),
+                tooltip: 'Undo (Ctrl+Z)',
+                onPressed: widget.canUndo && !_locked ? widget.onUndo : null,
+                icon: const Icon(Icons.undo),
               ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: actions,
+              IconButton(
+                key: const ValueKey('newsletter-redo-edit'),
+                tooltip: 'Redo (Ctrl+Shift+Z)',
+                onPressed: widget.canRedo && !_locked ? widget.onRedo : null,
+                icon: const Icon(Icons.redo),
               ),
+              if (widget.onUnschedule != null)
+                Refused(
+                  reason: unscheduleRefusal,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('newsletter-unschedule'),
+                    onPressed: unscheduleRefusal == null ? widget.onUnschedule : null,
+                    icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+                    label: const Text('Unschedule'),
+                  ),
+                ),
+              if (widget.api != null && widget.newsletterId != null)
+                OutlinedButton.icon(
+                  key: const ValueKey('newsletter-preview-test'),
+                  onPressed: _openPreviewAndTest,
+                  icon: const Icon(Icons.visibility_outlined, size: 18),
+                  label: const Text('Preview & test'),
+                ),
+              if (widget.confirmingDelete)
+                TextButton(
+                  key: const ValueKey('newsletter-delete-confirm'),
+                  style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
+                  onPressed: widget.onDelete,
+                  child: const Text('Tap again to delete'),
+                ),
+              primary,
+              _overflow(context),
             ],
           ),
         ],
@@ -576,10 +807,32 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       tooltip: 'More',
       icon: const Icon(Icons.more_vert),
       onSelected: (v) {
+        if (v == 'history') widget.onHistory?.call();
+        if (v == 'new') widget.onNew?.call();
         if (v == 'duplicate') widget.onDuplicate?.call();
         if (v == 'delete') widget.onDelete?.call();
       },
       itemBuilder: (context) => [
+        PopupMenuItem(
+          key: const ValueKey('newsletter-history'),
+          value: 'history',
+          enabled: widget.onHistory != null,
+          child: const ListTile(
+            dense: true,
+            leading: Icon(Icons.history, size: 18),
+            title: Text('Version history'),
+          ),
+        ),
+        PopupMenuItem(
+          key: const ValueKey('newsletter-new'),
+          value: 'new',
+          enabled: widget.onNew != null,
+          child: const ListTile(
+            dense: true,
+            leading: Icon(Icons.add, size: 18),
+            title: Text('New newsletter'),
+          ),
+        ),
         PopupMenuItem(
           key: const ValueKey('newsletter-duplicate'),
           value: 'duplicate',
@@ -623,12 +876,28 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         MaterialBanner(
           key: const ValueKey('newsletter-conflict-banner'),
           content: const Text(
-            'This newsletter changed in another tab or by someone else. Saving '
-            'is paused and your edits are kept here. Reload to see the newest '
-            'version.',
+            'This newsletter changed in another tab or by someone else, so '
+            'saving is paused. What you see is a local copy, not saved: it is '
+            'kept on this device until you reload or save it as a copy.',
           ),
           actions: [
-            TextButton(onPressed: widget.onReload, child: const Text('Reload')),
+            if (widget.onCompare != null)
+              TextButton(
+                key: const ValueKey('newsletter-conflict-compare'),
+                onPressed: widget.onCompare,
+                child: const Text('Compare'),
+              ),
+            if (widget.onSaveAsCopy != null)
+              TextButton(
+                key: const ValueKey('newsletter-conflict-copy'),
+                onPressed: widget.onSaveAsCopy,
+                child: const Text('Save as copy'),
+              ),
+            TextButton(
+              key: const ValueKey('newsletter-conflict-reload'),
+              onPressed: widget.onReload,
+              child: const Text('Reload'),
+            ),
           ],
         )
       else if (widget.saveState == NewsletterSaveState.failed &&
@@ -636,10 +905,27 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         MaterialBanner(
           key: const ValueKey('newsletter-save-error-banner'),
           content: Text(
-            '${widget.saveError!} Your edits are kept here.',
+            '${widget.saveError!} Your edits are a local copy, not saved yet.',
           ),
           actions: [
             TextButton(onPressed: widget.onRetry, child: const Text('Retry')),
+          ],
+        ),
+      if (widget.localCopyNote != null)
+        MaterialBanner(
+          key: const ValueKey('newsletter-local-banner'),
+          content: Text(widget.localCopyNote!),
+          actions: [
+            TextButton(
+              key: const ValueKey('newsletter-local-restore'),
+              onPressed: widget.onRestoreLocal,
+              child: const Text('Restore it'),
+            ),
+            TextButton(
+              key: const ValueKey('newsletter-local-discard'),
+              onPressed: widget.onDiscardLocal,
+              child: const Text('Discard'),
+            ),
           ],
         ),
       if (_locked)
@@ -756,22 +1042,43 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
 
   Widget _subjectCard(BuildContext context) {
     return DashboardCard(
-      title: 'Subject',
+      title: 'Subject and preheader',
       icon: Icons.title,
-      child: TextField(
-        key: const ValueKey('newsletter-subject'),
-        controller: widget.subject,
-        readOnly: _locked,
-        maxLength: 255,
-        decoration: const InputDecoration(
-          labelText: 'Subject',
-          hintText: 'What lands in the inbox',
-          helperText: 'Under about 60 characters shows in full on most phones.',
-        ),
-        onChanged: (_) {
-          setState(() {});
-          widget.onChanged();
-        },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: const ValueKey('newsletter-subject'),
+            controller: widget.subject,
+            readOnly: _locked,
+            maxLength: 255,
+            decoration: const InputDecoration(
+              labelText: 'Subject',
+              hintText: 'What lands in the inbox',
+              helperText: 'Under about 60 characters shows in full on most phones.',
+            ),
+            onChanged: (_) {
+              setState(() {});
+              widget.onChanged();
+            },
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('newsletter-preheader'),
+            controller: widget.preheader,
+            readOnly: _locked,
+            maxLength: 255,
+            decoration: const InputDecoration(
+              labelText: 'Preheader',
+              hintText: 'The line shown after the subject',
+              helperText: 'Hidden in the email itself. Blank shows its first words instead.',
+            ),
+            onChanged: (_) {
+              setState(() {});
+              widget.onChanged();
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1040,7 +1347,10 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           .trim();
     }
     for (final b in widget.blocks) {
-      final text = '${b['text'] ?? ''}'.trim();
+      final text = '${b['text'] ?? ''}'
+          .replaceAll(RegExp(r'<[^>]*>'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
       if (text.isNotEmpty) return text;
     }
     return '';
@@ -1050,7 +1360,8 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     final theme = Theme.of(context);
     final from = _readiness?.fromName ?? widget.company;
     final subject = widget.subject.text.trim();
-    final line = _firstLine;
+    final pre = widget.preheader.text.trim();
+    final line = pre.isNotEmpty ? pre : _firstLine;
 
     return DashboardCard(
       key: const ValueKey('newsletter-inbox-preview'),
@@ -1092,7 +1403,11 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
 
   // ── step 2: design ───────────────────────────────────────────
 
+  /// The canvas takes the room: Add content on the left (collapsible), the
+  /// email in the middle, and the inspector on the right only while a block
+  /// is selected.
   Widget _design(BuildContext context, {required bool bounded}) {
+    final inspector = _inspector(context);
     if (!bounded) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1100,6 +1415,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           _palette(context, wrap: true),
           const SizedBox(height: 12),
           _email(context, bounded: false),
+          if (inspector != null) ...[const SizedBox(height: 12), inspector],
         ],
       );
     }
@@ -1107,20 +1423,38 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          width: 190,
-          child: SingleChildScrollView(child: _palette(context, wrap: false)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 900),
-              child: _email(context, bounded: true),
+        if (_paletteOpen)
+          SizedBox(
+            width: 216,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(12),
+              child: _palette(context, wrap: false),
+            ),
+          )
+        else
+          SizedBox(
+            width: 48,
+            child: Column(
+              children: [
+                const SizedBox(height: 8),
+                IconButton(
+                  key: const ValueKey('newsletter-palette-toggle'),
+                  tooltip: 'Show Add content',
+                  onPressed: () => setState(() => _paletteOpen = true),
+                  icon: const Icon(Icons.add_box_outlined),
+                ),
+              ],
             ),
           ),
-        ),
+        const VerticalDivider(width: 1),
+        Expanded(child: _email(context, bounded: true)),
+        if (inspector != null) ...[
+          const VerticalDivider(width: 1),
+          SizedBox(
+            width: 320,
+            child: SingleChildScrollView(child: inspector),
+          ),
+        ],
       ],
     );
   }
@@ -1213,6 +1547,15 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     );
   }
 
+  /// The per-block issues a check carries (links, P1a).
+  static List<Map<String, dynamic>> _issues(Map<String, dynamic> check) => [
+    for (final i in (check['issues'] as List? ?? const []))
+      if (i is Map) Map<String, dynamic>.from(i),
+  ];
+
+  static int? _issueIndex(Map<String, dynamic> issue) =>
+      (issue['index'] as num?)?.toInt();
+
   Widget _checksCard(BuildContext context) {
     final theme = Theme.of(context);
     final r = _readiness;
@@ -1254,12 +1597,37 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                     if (c['ok'] != true)
                       TextButton(
                         key: ValueKey('newsletter-fix-${c['key']}'),
-                        onPressed: () => _go(_stepFor('${c['key']}')),
+                        onPressed: () => _stepFor('${c['key']}') == NewsletterStep.design
+                            ? _jumpTo(_issues(c).isEmpty ? null : _issueIndex(_issues(c).first))
+                            : _go(_stepFor('${c['key']}')),
                         child: Text('Fix in ${_stepFor('${c['key']}').label}'),
                       ),
                   ],
                 ),
               ),
+          if (r != null)
+            for (final c in r.checks)
+              if (c['ok'] != true)
+                for (final (n, issue) in _issues(c).indexed)
+                  if (_issueIndex(issue) != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 26, bottom: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${issue['where']}: “${issue['url']}”',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                          TextButton(
+                            key: ValueKey('newsletter-fix-link-$n'),
+                            onPressed: () => _jumpTo(_issueIndex(issue)),
+                            child: Text('Show block ${_issueIndex(issue)! + 1}'),
+                          ),
+                        ],
+                      ),
+                    ),
           if (r != null && widget.lastTest != null)
             Text(
               r.testCurrent
@@ -1365,61 +1733,78 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   // ── left: what can be added ──────────────────────────────────
 
   Widget _palette(BuildContext context, {required bool wrap}) {
+    final theme = Theme.of(context);
     final adding = !_locked && !_htmlMode;
-    final buttons = [
+    final tiles = [
       for (final kind in BlockKind.values)
         _dragNew(
           kind,
           adding,
-          OutlinedButton.icon(
-            onPressed: adding ? () => _add(kind) : null,
-            icon: Icon(kind.icon, size: 16),
-            label: Text(kind.label),
-            style: wrap ? null : OutlinedButton.styleFrom(alignment: Alignment.centerLeft),
+          SizedBox(
+            width: 90,
+            height: 72,
+            child: OutlinedButton(
+              onPressed: adding ? () => _add(kind) : null,
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(kind.icon, size: 20),
+                  const SizedBox(height: 4),
+                  Text(kind.label, style: const TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
           ),
         ),
     ];
 
-    return DashboardCard(
+    return Column(
       key: const ValueKey('tour-newsletter-blocks'),
-      title: 'Add a block',
-      icon: Icons.add_box_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (wrap)
-            Wrap(spacing: 6, runSpacing: 6, children: buttons)
-          else
-            for (final b in buttons)
-              Padding(padding: const EdgeInsets.only(bottom: 6), child: b),
-          const SizedBox(height: 8),
-          Text('Or', style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(height: 6),
-          OutlinedButton.icon(
-            onPressed: _locked
-                ? null
-                : _htmlMode
-                ? _switchToBlocks
-                : () => setState(() {
-                    _htmlMode = true;
-                    _selected = null;
-                  }),
-            icon: Icon(_htmlMode ? Icons.dashboard_outlined : Icons.code, size: 16),
-            label: Text(_htmlMode ? 'Back to blocks' : 'Write HTML'),
-          ),
-          if (widget.api != null) ...[
-            const SizedBox(height: 6),
-            OutlinedButton.icon(
-              key: const ValueKey('newsletter-import'),
-              onPressed: _locked
-                  ? null
-                  : () => setState(() => _importing = true),
-              icon: const Icon(Icons.upload_file, size: 16),
-              label: const Text('Import HTML or SVG'),
-            ),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text('Add content', style: theme.textTheme.titleSmall)),
+            if (!wrap)
+              IconButton(
+                key: const ValueKey('newsletter-palette-toggle'),
+                tooltip: 'Hide Add content',
+                onPressed: () => setState(() => _paletteOpen = false),
+                icon: const Icon(Icons.chevron_left),
+              ),
           ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: tiles),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: _locked
+              ? null
+              : _htmlMode
+              ? _switchToBlocks
+              : () => setState(() {
+                  _htmlMode = true;
+                  _selected = null;
+                }),
+          icon: Icon(_htmlMode ? Icons.dashboard_outlined : Icons.code, size: 16),
+          label: Text(_htmlMode ? 'Back to blocks' : 'Write HTML'),
+        ),
+        if (widget.api != null) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const ValueKey('newsletter-import'),
+            onPressed: _locked ? null : () => setState(() => _importing = true),
+            icon: const Icon(Icons.upload_file, size: 16),
+            label: const Text('Import HTML or SVG'),
+          ),
         ],
-      ),
+      ],
     );
   }
 
@@ -1460,6 +1845,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   // ── middle: the email ────────────────────────────────────────
 
   Widget _email(BuildContext context, {required bool bounded}) {
+    final theme = Theme.of(context);
     final controls = Wrap(
       spacing: 8,
       runSpacing: 6,
@@ -1509,8 +1895,9 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
         company: widget.company,
         phone: _phone,
         selected: _selected,
-        onSelect: _locked ? null : (i) => setState(() => _selected = i),
-        editorFor: _locked ? null : (i) => _inPlace(context, i),
+        onSelect: _locked ? null : _select,
+        editorFor: _locked ? null : _inlineEditor,
+        chromeFor: _locked ? null : _chrome,
         onReorder: _locked ? null : _move,
         onDropNew: _locked ? null : _add,
       );
@@ -1519,17 +1906,10 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           : email;
     }
 
-    return DashboardCard(
+    return Container(
       key: const ValueKey('tour-newsletter-email'),
-      title: 'What they will get',
-      icon: Icons.mark_email_read_outlined,
-      /*
-       * `expand` is what makes the server preview VISIBLE on the web: the
-       * viewer is an iframe in `SizedBox.expand`, which collapses to nothing
-       * when its height is unbounded. Wide, the card fills its column and the
-       * body takes the leftover; narrow, the preview gets a fixed 520 instead.
-       */
-      expand: bounded,
+      color: theme.colorScheme.surfaceContainerLowest,
+      padding: EdgeInsets.all(bounded ? 12 : 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: bounded ? MainAxisSize.max : MainAxisSize.min,
@@ -1537,7 +1917,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           _modeBar(context),
           const SizedBox(height: 8),
           controls,
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           if (_importing && !_locked) ...[
             NewsletterImportPanel(
               api: widget.api,
@@ -1546,10 +1926,6 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               onUseBlocks: _useBlocks,
               onClose: () => setState(() => _importing = false),
             ),
-            const SizedBox(height: 10),
-          ],
-          if (_locked) ...[
-            DashboardNote(widget.readOnlyBecause!),
             const SizedBox(height: 10),
           ],
           body,
@@ -1684,74 +2060,222 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
           );
   }
 
-  /// The selected block's fields, where the block was, with the moves.
-  Widget _inPlace(BuildContext context, int index) {
-    final block = widget.blocks[index];
-    final kind = BlockKind.forType(block['type'] as String? ?? '');
-    final theme = Theme.of(context);
+  void _select(int i) {
+    setState(() {
+      _selected = i;
+      _pendingCrop = null;
+    });
+    final kind = BlockKind.forType(widget.blocks[i]['type'] as String? ?? '');
+    if (kind != BlockKind.heading && kind != BlockKind.text) _keys.requestFocus();
+  }
 
-    // The theme's surface, not the email's white: these are controls, and in
-    // dark mode they must read as controls.
-    return Container(
+  void _duplicate(int i) {
+    setState(() {
+      final copy = Map<String, dynamic>.from(
+        jsonDecode(jsonEncode(widget.blocks[i])) as Map,
+      );
+      widget.blocks.insert(i + 1, copy);
+      _selected = i + 1;
+    });
+    widget.onChanged();
+  }
+
+  void _remove(int i) {
+    setState(() {
+      widget.blocks.removeAt(i);
+      _selected = null;
+    });
+    widget.onChanged();
+    _keys.requestFocus();
+  }
+
+  /// The small toolbar over the selected block: drag, up, down, duplicate,
+  /// delete. The only per-block controls on the canvas.
+  Widget _chrome(int i) {
+    final theme = Theme.of(context);
+    Widget button(String key, IconData icon, String tip, VoidCallback? on) => IconButton(
+      key: ValueKey(key),
+      tooltip: tip,
+      onPressed: on,
+      icon: Icon(icon, size: 16),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+    );
+
+    return Material(
+      key: const ValueKey('newsletter-block-chrome'),
+      elevation: 2,
       color: theme.colorScheme.surface,
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+      borderRadius: BorderRadius.circular(6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ReorderableDragStartListener(
+            index: i,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: Tooltip(
+                message: 'Drag to move',
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Icon(
+                    Icons.drag_indicator,
+                    key: Key('newsletter-block-handle-$i'),
+                    size: 16,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          button('newsletter-block-up', Icons.arrow_upward, 'Move up (Ctrl+Up)',
+              i == 0 ? null : () => _move(i, i - 1)),
+          button('newsletter-block-down', Icons.arrow_downward, 'Move down (Ctrl+Down)',
+              i >= widget.blocks.length - 1 ? null : () => _move(i, i + 1)),
+          button('newsletter-block-duplicate', Icons.copy_outlined, 'Duplicate (Ctrl+D)',
+              () => _duplicate(i)),
+          button('newsletter-block-delete', Icons.delete_outline, 'Delete (Del)',
+              () => _remove(i)),
+        ],
+      ),
+    );
+  }
+
+  MarkupEditingController _controllerFor(Map<String, dynamic> block) {
+    if (_inline == null ||
+        !identical(_inlineBlock, block) ||
+        _inlineGeneration != widget.historyGeneration) {
+      final old = _inline;
+      if (old != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+      }
+      _inline = MarkupEditingController(text: '${block['text'] ?? ''}');
+      _inlineBlock = block;
+      _inlineGeneration = widget.historyGeneration;
+    }
+    return _inline!;
+  }
+
+  void _writeInline(Map<String, dynamic> block, String text, {bool rich = false}) {
+    setState(() {
+      block['text'] = text;
+      if (rich || hasMarkup(text)) block['rich'] = true;
+    });
+    widget.onChanged();
+  }
+
+  /// A selected heading or text is typed into where it sits, with bold,
+  /// italic, link and (text) list. Everything else edits in the inspector.
+  Widget? _inlineEditor(int i) {
+    final block = widget.blocks[i];
+    if (isHandWritten(block)) return null;
+    final kind = BlockKind.forType(block['type'] as String? ?? '');
+    if (kind != BlockKind.heading && kind != BlockKind.text) return null;
+
+    final controller = _controllerFor(block);
+    final style = kind == BlockKind.heading
+        ? EmailBlockView.headingStyle(block)
+        : EmailBlockView.textStyle(block);
+    final align = switch (block['align']) {
+      'center' => TextAlign.center,
+      'right' => TextAlign.right,
+      _ => TextAlign.left,
+    };
+    final spacing = block['spacing'] is num ? (block['spacing'] as num).toDouble() : 14.0;
+
+    void format(TextEditingValue Function(TextEditingValue) change) {
+      controller.value = change(controller.value);
+      _writeInline(block, controller.text, rich: true);
+    }
+
+    Widget tool(String key, IconData icon, String tip, VoidCallback on) => IconButton(
+      key: ValueKey(key),
+      tooltip: tip,
+      onPressed: on,
+      icon: Icon(icon, size: 16, color: EmailInk.body),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+    );
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, spacing, 20, spacing),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 2,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          Row(
+            key: const ValueKey('newsletter-format-bar'),
             children: [
-              Icon(kind?.icon ?? Icons.help_outline, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                kind?.label ?? (block['type'] as String? ?? 'Block'),
-                style: theme.textTheme.labelLarge,
-              ),
-              const SizedBox(width: 8),
-              // Arrows rather than drag: this sits in a scrolling pane on a
-              // touch screen, and a drag that competes with the scroll is the
-              // gesture people lose. Two taps always work.
-              TextButton(
-                onPressed: index == 0 ? null : () => _move(index, index - 1),
-                child: const Text('Move up'),
-              ),
-              TextButton(
-                onPressed: index == widget.blocks.length - 1
-                    ? null
-                    : () => _move(index, index + 1),
-                child: const Text('Move down'),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    widget.blocks.removeAt(index);
-                    _selected = null;
-                  });
-                  widget.onChanged();
-                },
-                style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
-                child: const Text('Remove'),
-              ),
-              TextButton(
-                onPressed: () => setState(() => _selected = null),
-                child: const Text('Done'),
-              ),
+              tool('newsletter-format-bold', Icons.format_bold, 'Bold',
+                  () => format((v) => wrapSelection(v, '<b>', '</b>'))),
+              tool('newsletter-format-italic', Icons.format_italic, 'Italic',
+                  () => format((v) => wrapSelection(v, '<i>', '</i>'))),
+              tool('newsletter-format-link', Icons.link, 'Link', () => format(insertLink)),
+              if (kind == BlockKind.text)
+                tool('newsletter-format-list', Icons.format_list_bulleted, 'List',
+                    () => format(makeList)),
             ],
           ),
-          if (isHandWritten(block))
-            // Its fields would be ignored, so they are not offered. Showing a
-            // Text box whose value never reaches the email is worse than
-            // showing nothing.
-            const Padding(
-              padding: EdgeInsets.only(top: 6),
-              child: DashboardNote(
-                'This block was written as HTML and is kept exactly as typed.',
-              ),
-            )
-          else
-            ..._fieldsFor(context, block, kind),
+          TextField(
+            key: ValueKey('newsletter-inline-$i'),
+            controller: controller,
+            autofocus: true,
+            maxLines: null,
+            textAlign: align,
+            style: style,
+            cursorColor: EmailInk.heading,
+            decoration: const InputDecoration.collapsed(hintText: 'Type here'),
+            onChanged: (v) => _writeInline(block, v),
+          ),
         ],
+      ),
+    );
+  }
+
+  /// The inspector: only the settings that belong to the selected block's
+  /// type, and only while a block is selected.
+  Widget? _inspector(BuildContext context) {
+    final i = _selected;
+    if (i == null || i >= widget.blocks.length || _locked || _htmlMode || _serverPreview) {
+      return null;
+    }
+    final block = widget.blocks[i];
+    final kind = BlockKind.forType(block['type'] as String? ?? '');
+    final theme = Theme.of(context);
+
+    return Container(
+      key: const ValueKey('newsletter-inspector'),
+      color: theme.colorScheme.surface,
+      padding: const EdgeInsets.all(12),
+      child: KeyedSubtree(
+        key: ValueKey('inspector-${widget.historyGeneration}-$i-${identityHashCode(block)}'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(kind?.icon ?? Icons.help_outline, size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '${kind?.label ?? (block['type'] as String? ?? 'Block')} settings',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('newsletter-inspector-close'),
+                  tooltip: 'Done',
+                  onPressed: () => setState(() => _selected = null),
+                  icon: const Icon(Icons.close, size: 18),
+                ),
+              ],
+            ),
+            if (isHandWritten(block))
+              const DashboardNote(
+                'This block was written as HTML and is kept exactly as typed.',
+              )
+            else
+              ..._fieldsFor(context, block, kind),
+          ],
+        ),
       ),
     );
   }
@@ -1763,29 +2287,145 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   ) {
     return switch (kind) {
       BlockKind.heading => [
-        _text(block, 'text', 'Heading'),
+        const DashboardNote('Type the words on the canvas.'),
+        _number(block, 'size', 'Size in pixels'),
         _align(block),
+        _lineHeight(block),
+        _colorField(block, 'color', 'Text colour'),
+        _number(block, 'spacing', 'Space above and below (px)'),
       ],
       BlockKind.text => [
-        _text(block, 'text', 'Words', lines: 4),
+        const DashboardNote('Type the words on the canvas.'),
+        _number(block, 'size', 'Size in pixels'),
         _align(block),
+        _lineHeight(block),
+        _colorField(block, 'color', 'Text colour'),
+        _number(block, 'spacing', 'Space above and below (px)'),
       ],
-      BlockKind.image => _imageFields(context, block),
+      BlockKind.image => [
+        ..._imageFields(context, block),
+        _number(block, 'spacing', 'Space above and below (px)'),
+      ],
       BlockKind.button => [
         _text(block, 'text', 'Label'),
         _text(block, 'url', 'Where it goes'),
-        _align(block),
+        _colorField(block, 'background', 'Button colour'),
+        _colorField(block, 'color', 'Label colour'),
+        SwitchListTile(
+          key: const ValueKey('newsletter-field-full_width'),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('Full width'),
+          value: block['full_width'] == true,
+          onChanged: (v) {
+            setState(() => block['full_width'] = v);
+            widget.onChanged();
+          },
+        ),
+        if (block['full_width'] != true) _align(block),
+        _number(block, 'spacing', 'Space above and below (px)'),
       ],
       BlockKind.spacer => [_number(block, 'height', 'Height in points')],
       BlockKind.columns => [_columns(context, block)],
       BlockKind.divider => const [
         Padding(
           padding: EdgeInsets.only(top: 6),
-          child: DashboardNote('A line across the email. Nothing to fill in.'),
+          child: DashboardNote('A line across the email. Nothing to set.'),
         ),
       ],
       _ => const [],
     };
+  }
+
+  Widget _lineHeight(Map<String, dynamic> block) {
+    const options = ['1.2', '1.55', '1.8'];
+    final raw = block['line_height'];
+    final current = raw is num && options.contains('$raw') ? '$raw' : null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SegmentedButton<String>(
+          key: const ValueKey('newsletter-field-line_height'),
+          emptySelectionAllowed: true,
+          segments: const [
+            ButtonSegment(value: '1.2', label: Text('Tight')),
+            ButtonSegment(value: '1.55', label: Text('Normal')),
+            ButtonSegment(value: '1.8', label: Text('Loose')),
+          ],
+          selected: {?current},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) {
+            setState(() {
+              if (s.isEmpty) {
+                block.remove('line_height');
+              } else {
+                block['line_height'] = double.parse(s.first);
+              }
+            });
+            widget.onChanged();
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _colorField(Map<String, dynamic> block, String field, String label) {
+    const swatches = ['#00708F', '#060808', '#3A4650', '#FFFFFF', '#B3261E', '#E67E22', '#2E7D32', '#F5F8FA'];
+    final theme = Theme.of(context);
+    final current = '${block[field] ?? ''}'.toUpperCase();
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: theme.textTheme.labelMedium),
+          const SizedBox(height: 4),
+          Wrap(
+            key: ValueKey('newsletter-field-$field'),
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final sw in swatches)
+                Tooltip(
+                  message: sw,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () {
+                      setState(() => block[field] = sw);
+                      widget.onChanged();
+                    },
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: blockColor({'c': sw}, 'c', Colors.transparent),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: current == sw
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outline,
+                          width: current == sw ? 3 : 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              TextButton(
+                onPressed: block.containsKey(field)
+                    ? () {
+                        setState(() => block.remove(field));
+                        widget.onChanged();
+                      }
+                    : null,
+                child: const Text('Default'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   /// A row of columns, each holding its own blocks.
@@ -1801,8 +2441,43 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 6),
-        const DashboardNote(
-          'Side by side on a computer, stacked on a phone.',
+        if (columns.length == 2)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<String>(
+              key: const ValueKey('newsletter-field-ratio'),
+              segments: const [
+                ButtonSegment(value: '1:1', label: Text('Equal')),
+                ButtonSegment(value: '1:2', label: Text('1 : 2')),
+                ButtonSegment(value: '2:1', label: Text('2 : 1')),
+              ],
+              selected: {
+                ['1:2', '2:1'].contains(block['ratio']) ? block['ratio'] as String : '1:1',
+              },
+              showSelectedIcon: false,
+              onSelectionChanged: (s) {
+                setState(() {
+                  if (s.first == '1:1') {
+                    block.remove('ratio');
+                  } else {
+                    block['ratio'] = s.first;
+                  }
+                });
+                widget.onChanged();
+              },
+            ),
+          ),
+        _number(block, 'padding', 'Padding inside each column (px)'),
+        SwitchListTile(
+          key: const ValueKey('newsletter-field-stack'),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('Stack on phones'),
+          value: block['stack'] != false,
+          onChanged: (v) {
+            setState(() => block['stack'] = v);
+            widget.onChanged();
+          },
         ),
         const SizedBox(height: 8),
         for (var c = 0; c < columns.length; c++)
@@ -1996,7 +2671,124 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       _text(block, 'href', 'Link (optional)'),
       _align(block),
       _number(block, 'width', 'Displayed width in pixels (up to 560; blank = full)'),
+      if (!empty && editable) _cropControls(context, block),
     ];
+  }
+
+  /// Crop by shape and focal point (P1a). The server makes a cropped copy;
+  /// the block keeps the original's address, so Original goes back to it.
+  Widget _cropControls(BuildContext context, Map<String, dynamic> block) {
+    final theme = Theme.of(context);
+    final original = '${block['original_src'] ?? block['src'] ?? ''}';
+    final ours = original.contains('/api/v1/newsletter/artwork/');
+    final saved = block['crop'] is Map ? block['crop'] as Map : const {};
+    final c = _pendingCrop ??
+        (
+          aspect: '${saved['aspect'] ?? 'original'}',
+          x: (saved['x'] as num?)?.toDouble() ?? 0.5,
+          y: (saved['y'] as num?)?.toDouble() ?? 0.5,
+        );
+
+    return Padding(
+      key: const ValueKey('newsletter-crop'),
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Crop', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 6),
+          if (!ours)
+            const DashboardNote('Crop works on pictures uploaded or chosen from the library.')
+          else ...[
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final a in ['original', '1:1', '4:3', '3:2', '16:9'])
+                  ChoiceChip(
+                    key: ValueKey('newsletter-crop-$a'),
+                    label: Text(a == 'original' ? 'Original' : a),
+                    selected: c.aspect == a,
+                    onSelected: (_) => setState(() => _pendingCrop = (aspect: a, x: c.x, y: c.y)),
+                  ),
+              ],
+            ),
+            if (c.aspect != 'original') ...[
+              const SizedBox(height: 6),
+              Text('Focal point: what stays in frame', style: theme.textTheme.bodySmall),
+              Slider(
+                key: const ValueKey('newsletter-crop-x'),
+                value: c.x.clamp(0, 1).toDouble(),
+                label: 'Left to right',
+                onChanged: (v) => setState(() => _pendingCrop = (aspect: c.aspect, x: v, y: c.y)),
+              ),
+              Slider(
+                key: const ValueKey('newsletter-crop-y'),
+                value: c.y.clamp(0, 1).toDouble(),
+                label: 'Top to bottom',
+                onChanged: (v) => setState(() => _pendingCrop = (aspect: c.aspect, x: c.x, y: v)),
+              ),
+            ],
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonal(
+                key: const ValueKey('newsletter-crop-apply'),
+                onPressed: _cropping ? null : () => _applyCrop(block, c),
+                child: Text(c.aspect == 'original' ? 'Use the original' : 'Apply crop'),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'The original picture is kept; you can go back to it at any time.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _applyCrop(
+    Map<String, dynamic> block,
+    ({String aspect, double x, double y}) c,
+  ) async {
+    final original = '${block['original_src'] ?? block['src'] ?? ''}';
+    if (c.aspect == 'original') {
+      setState(() {
+        block['src'] = original;
+        block.remove('original_src');
+        block.remove('crop');
+        _picks++;
+        _pendingCrop = null;
+      });
+      widget.onChanged();
+      return;
+    }
+    setState(() => _cropping = true);
+    final response = await widget.api!.post('/newsletter/images/crop', {
+      'src': original,
+      'aspect': c.aspect,
+      'focal_x': c.x,
+      'focal_y': c.y,
+    });
+    if (!mounted) return;
+    final data = response.ok ? response.data : null;
+    final url = data is Map ? data['url'] as String? : null;
+    setState(() {
+      _cropping = false;
+      if (url != null) {
+        block['original_src'] = original;
+        block['src'] = url;
+        block['crop'] = {'aspect': c.aspect, 'x': c.x, 'y': c.y};
+        _picks++;
+        _pendingCrop = null;
+      }
+    });
+    if (url != null) {
+      widget.onChanged();
+    } else {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(response.reason)));
+    }
   }
 
   /// A picture from the media library, copied to an address an inbox can
@@ -2038,6 +2830,9 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     }
     setState(() {
       block['src'] = url;
+      // A new picture starts uncropped.
+      block.remove('original_src');
+      block.remove('crop');
       final name = '${item['name'] ?? ''}'.trim();
       if ('${block['alt'] ?? ''}'.trim().isEmpty && name.isNotEmpty) {
         block['alt'] = name;
@@ -2051,6 +2846,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: TextFormField(
+        key: ValueKey('newsletter-field-$field'),
         initialValue: block[field] as String? ?? '',
         minLines: lines,
         maxLines: lines == 1 ? 1 : lines + 4,
@@ -2068,11 +2864,19 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: TextFormField(
+        key: ValueKey('newsletter-field-$field'),
         initialValue: '${block[field] ?? ''}',
         keyboardType: TextInputType.number,
         decoration: InputDecoration(labelText: label, isDense: true),
         onChanged: (v) {
-          setState(() => block[field] = int.tryParse(v) ?? 0);
+          setState(() {
+            final n = int.tryParse(v);
+            if (n == null) {
+              block.remove(field);
+            } else {
+              block[field] = n;
+            }
+          });
           widget.onChanged();
         },
       ),
@@ -2088,6 +2892,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       child: Align(
         alignment: Alignment.centerLeft,
         child: SegmentedButton<String>(
+          key: const ValueKey('newsletter-field-align'),
           segments: const [
             ButtonSegment(value: 'left', icon: Icon(Icons.format_align_left, size: 15)),
             ButtonSegment(value: 'center', icon: Icon(Icons.format_align_center, size: 15)),

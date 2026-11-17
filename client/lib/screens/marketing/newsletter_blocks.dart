@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 
 import '../../core/theme.dart';
+import 'newsletter_rich_text.dart';
 
 /// The block vocabulary, and the email drawn from it.
 ///
@@ -136,8 +137,15 @@ class NewsletterAudience {
 ///
 /// [phone] narrows the paper to a phone's width and stacks columns, which is
 /// what the renderer's media query does in a mail client that honours it.
-/// Tapping a block calls [onSelect]; the selected block is outlined and drawn
-/// by [editorFor] instead, so it is edited where it sits.
+///
+/// ── Selection, not permanent controls (P1a, 2026-11-17) ─────────
+///
+/// A block shows nothing extra until it is pointed at (a faint outline) or
+/// selected (an outline and a small toolbar from [chromeFor]: drag, up, down,
+/// duplicate, delete). A selected heading or text is edited where it sits
+/// through [editorFor]; every other setting lives in the inspector beside
+/// the canvas. Blocks inside columns have no drag handle, so dragging cannot
+/// pull one out of its column by accident.
 class NewsletterEmail extends StatelessWidget {
   const NewsletterEmail({
     super.key,
@@ -147,6 +155,7 @@ class NewsletterEmail extends StatelessWidget {
     this.selected,
     this.onSelect,
     this.editorFor,
+    this.chromeFor,
     this.onReorder,
     this.onDropNew,
   });
@@ -160,10 +169,15 @@ class NewsletterEmail extends StatelessWidget {
 
   /// Null when the newsletter cannot be changed: nothing is tappable then.
   final ValueChanged<int>? onSelect;
-  final Widget Function(int index)? editorFor;
 
-  /// Moves a block, `to` already counted after the removal. Null hides the
-  /// drag handles.
+  /// The selected block drawn as an in-place editor, or null to draw it as
+  /// it is (its settings are then in the inspector).
+  final Widget? Function(int index)? editorFor;
+
+  /// The small toolbar over the selected block.
+  final Widget Function(int index)? chromeFor;
+
+  /// Moves a block, `to` already counted after the removal. Null: no drag.
   final void Function(int from, int to)? onReorder;
 
   /// Inserts a block dragged from the palette at an index. Null accepts none.
@@ -197,7 +211,7 @@ class NewsletterEmail extends StatelessWidget {
                   const Padding(
                     padding: EdgeInsets.all(20),
                     child: Text(
-                      'Add a block to start writing.',
+                      'Add content from the left to start writing.',
                       style: TextStyle(fontSize: 15, color: EmailInk.body),
                     ),
                   ),
@@ -208,13 +222,17 @@ class NewsletterEmail extends StatelessWidget {
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     buildDefaultDragHandles: false,
+                    // A text field being typed in cannot travel with the
+                    // drag (its caret is anchored where it was).
+                    onReorderStart: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
                     onReorder: (from, to) =>
                         onReorder!(from, to > from ? to - 1 : to),
                     children: [
                       for (var i = 0; i < blocks.length; i++)
                         KeyedSubtree(
                           key: ObjectKey(blocks[i]),
-                          child: _draggable(i, primary),
+                          child: _dropAt(i, primary, _block(i, primary)),
                         ),
                     ],
                   ),
@@ -228,50 +246,16 @@ class NewsletterEmail extends StatelessWidget {
   }
 
   Widget _block(int i, Color primary) {
-    if (i == selected && editorFor != null) {
-      return Container(
-        key: Key('newsletter-block-$i'),
-        margin: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          border: Border.all(color: primary, width: 2),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: editorFor!(i),
-      );
-    }
-    return _tappable(i, EmailBlockView(block: blocks[i], phone: phone));
-  }
-
-  /// A block with its drag handle in the corner, and a new block from the
-  /// palette dropped on it lands above it.
-  Widget _draggable(int i, Color primary) {
-    return _dropAt(
-      i,
-      primary,
-      Stack(
-        children: [
-          _block(i, primary),
-          Positioned(
-            top: 4,
-            right: 4,
-            child: ReorderableDragStartListener(
-              index: i,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.grab,
-                child: Tooltip(
-                  message: 'Drag to move',
-                  child: Icon(
-                    Icons.drag_indicator,
-                    key: Key('newsletter-block-handle-$i'),
-                    size: 18,
-                    color: EmailInk.body,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    final isSelected = i == selected && onSelect != null;
+    final inline = isSelected ? editorFor?.call(i) : null;
+    return _BlockFrame(
+      key: Key('newsletter-block-$i'),
+      selected: isSelected,
+      interactive: onSelect != null,
+      primary: primary,
+      onTap: onSelect == null ? null : () => onSelect!(i),
+      chrome: isSelected ? chromeFor?.call(i) : null,
+      child: inline ?? EmailBlockView(block: blocks[i], phone: phone),
     );
   }
 
@@ -293,18 +277,6 @@ class NewsletterEmail extends StatelessWidget {
         ),
         child: child,
       ),
-    );
-  }
-
-  Widget _tappable(int i, Widget child) {
-    if (onSelect == null) {
-      return KeyedSubtree(key: Key('newsletter-block-$i'), child: child);
-    }
-
-    return Material(
-      key: Key('newsletter-block-$i'),
-      color: Colors.transparent,
-      child: InkWell(onTap: () => onSelect!(i), child: child),
     );
   }
 
@@ -341,8 +313,78 @@ class NewsletterEmail extends StatelessWidget {
   }
 }
 
-/// One block, as the renderer draws it: its padding, size, colour and
-/// alignment.
+/// One block on the canvas: a faint outline while pointed at, an outline and
+/// [chrome] while selected, and nothing at all otherwise.
+class _BlockFrame extends StatefulWidget {
+  const _BlockFrame({
+    super.key,
+    required this.selected,
+    required this.interactive,
+    required this.primary,
+    required this.onTap,
+    required this.chrome,
+    required this.child,
+  });
+
+  final bool selected;
+  final bool interactive;
+  final Color primary;
+  final VoidCallback? onTap;
+  final Widget? chrome;
+  final Widget child;
+
+  @override
+  State<_BlockFrame> createState() => _BlockFrameState();
+}
+
+class _BlockFrameState extends State<_BlockFrame> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final outline = widget.selected
+        ? Border.all(color: widget.primary, width: 2)
+        : _hover && widget.interactive
+        ? Border.all(color: widget.primary.withValues(alpha: 0.35))
+        : Border.all(color: Colors.transparent);
+
+    // ColoredBox hit-tests its whole area, so a divider or spacer, which
+    // draws almost nothing, can still be clicked.
+    Widget body = ColoredBox(
+      color: Colors.transparent,
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(border: outline),
+        child: widget.child,
+      ),
+    );
+
+    if (widget.interactive && !widget.selected) {
+      body = Material(
+        color: Colors.transparent,
+        child: InkWell(onTap: widget.onTap, child: body),
+      );
+    }
+
+    final chrome = widget.chrome;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: chrome == null
+          ? body
+          : Stack(
+              clipBehavior: Clip.none,
+              children: [
+                body,
+                Positioned(top: 4, right: 4, child: chrome),
+              ],
+            ),
+    );
+  }
+}
+
+/// One block, as the renderer draws it: its spacing, size, colour and
+/// alignment, and formatted words.
 class EmailBlockView extends StatelessWidget {
   const EmailBlockView({super.key, required this.block, this.phone = false});
 
@@ -361,55 +403,14 @@ class EmailBlockView extends StatelessWidget {
 
     return switch (BlockKind.forType(block['type'] as String? ?? '')) {
       BlockKind.heading => _row(
-        Text(
-          block['text'] as String? ?? '',
-          textAlign: align,
-          style: TextStyle(
-            fontSize: _int(block, 'size', 24).toDouble(),
-            height: 1.25,
-            fontWeight: FontWeight.bold,
-            color: EmailInk.heading,
-          ),
+        _words(
+          headingStyle(block),
+          align,
         ),
       ),
-      BlockKind.text => _row(
-        Text(
-          block['text'] as String? ?? '',
-          textAlign: align,
-          style: const TextStyle(
-            fontSize: 15,
-            height: 1.55,
-            color: EmailInk.body,
-          ),
-        ),
-      ),
+      BlockKind.text => _row(_words(textStyle(block), align)),
       BlockKind.image => _row(_image()),
-      BlockKind.button => _row(
-        Align(
-          alignment: switch (align) {
-            TextAlign.center => Alignment.center,
-            TextAlign.right => Alignment.centerRight,
-            _ => Alignment.centerLeft,
-          },
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: EmailInk.button,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-              child: Text(
-                block['text'] as String? ?? '',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: EmailInk.paper,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      BlockKind.button => _row(_button(align)),
       BlockKind.divider => const Padding(
         padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         child: Divider(height: 1, thickness: 1, color: EmailInk.rule),
@@ -424,10 +425,71 @@ class EmailBlockView extends StatelessWidget {
     };
   }
 
-  Widget _row(Widget child) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-    child: child,
+  /// A heading's style, as the renderer writes it.
+  static TextStyle headingStyle(Map<String, dynamic> b) => TextStyle(
+    fontSize: _int(b, 'size', 24).toDouble(),
+    height: _lineHeight(b, 1.25),
+    fontWeight: FontWeight.bold,
+    color: blockColor(b, 'color', EmailInk.heading),
   );
+
+  /// A text block's style, as the renderer writes it.
+  static TextStyle textStyle(Map<String, dynamic> b) => TextStyle(
+    fontSize: _int(b, 'size', 15).toDouble(),
+    height: _lineHeight(b, 1.55),
+    color: blockColor(b, 'color', EmailInk.body),
+  );
+
+  Widget _words(TextStyle style, TextAlign align) {
+    final text = block['text'] as String? ?? '';
+    if (block['rich'] != true) {
+      return Text(text, textAlign: align, style: style);
+    }
+    return Text.rich(
+      TextSpan(style: style, children: markupSpans(text, style)),
+      textAlign: align,
+    );
+  }
+
+  Widget _row(Widget child) {
+    final raw = block['spacing'];
+    final v = raw is num ? raw.toDouble().clamp(0, 64).toDouble() : 14.0;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 20, vertical: v),
+      child: child,
+    );
+  }
+
+  Widget _button(TextAlign align) {
+    final full = block['full_width'] == true;
+    final pill = DecoratedBox(
+      decoration: BoxDecoration(
+        color: blockColor(block, 'background', EmailInk.button),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+        child: Text(
+          block['text'] as String? ?? '',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: blockColor(block, 'color', EmailInk.paper),
+          ),
+        ),
+      ),
+    );
+    if (full) return pill;
+    return Align(
+      alignment: switch (align) {
+        TextAlign.center => Alignment.center,
+        TextAlign.right => Alignment.centerRight,
+        _ => Alignment.centerLeft,
+      },
+      child: pill,
+    );
+  }
 
   Widget _image() {
     final src = (block['src'] as String? ?? '').trim();
@@ -476,9 +538,9 @@ class EmailBlockView extends StatelessWidget {
     );
   }
 
-  /// Side by side on a computer, stacked on a phone, as the renderer's media
-  /// query does it. Reads the composer's `{blocks: [...]}` and the bare list
-  /// the renderer also accepts.
+  /// Side by side on a computer, stacked on a phone unless stacking is off,
+  /// at the chosen ratio, as the renderer does it. Reads the composer's
+  /// `{blocks: [...]}` and the bare list the renderer also accepts.
   Widget _columns() {
     final columns = [
       for (final c in (block['columns'] as List<dynamic>?) ?? const [])
@@ -489,23 +551,41 @@ class EmailBlockView extends StatelessWidget {
     ];
     if (columns.isEmpty) return const SizedBox.shrink();
 
-    Widget column(List<Map<String, dynamic>> inner) => Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final child in inner) EmailBlockView(block: child, phone: phone),
-      ],
+    final gap = block['padding'] is num
+        ? (block['padding'] as num).toDouble().clamp(0, 40).toDouble()
+        : 0.0;
+    final flex = columns.length == 2
+        ? switch (block['ratio']) {
+            '1:2' => [1, 2],
+            '2:1' => [2, 1],
+            _ => [1, 1],
+          }
+        : [for (final _ in columns) 1];
+
+    Widget column(List<Map<String, dynamic>> inner) => Padding(
+      padding: EdgeInsets.symmetric(horizontal: gap),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final child in inner) EmailBlockView(block: child, phone: phone),
+        ],
+      ),
     );
 
+    final stack = phone && block['stack'] != false;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: phone
+      child: stack
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [for (final c in columns) column(c)],
             )
           : Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [for (final c in columns) Expanded(child: column(c))],
+              children: [
+                for (var i = 0; i < columns.length; i++)
+                  Expanded(flex: flex[i], child: column(columns[i])),
+              ],
             ),
     );
   }
@@ -522,4 +602,18 @@ class EmailBlockView extends StatelessWidget {
     final v = raw is num ? raw.toInt() : int.tryParse('$raw') ?? fallback;
     return v > 0 && v < 400 ? v : fallback;
   }
+
+  static double _lineHeight(Map<String, dynamic> b, double fallback) {
+    final raw = b['line_height'];
+    final v = raw is num ? raw.toDouble() : double.tryParse('$raw');
+    return v != null && v >= 1 && v <= 2.5 ? v : fallback;
+  }
+}
+
+/// A block's `#RRGGBB` colour, or [fallback] when it has none the renderer
+/// would accept.
+Color blockColor(Map<String, dynamic> b, String key, Color fallback) {
+  final raw = '${b[key] ?? ''}';
+  if (!RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(raw)) return fallback;
+  return Color(int.parse('FF${raw.substring(1)}', radix: 16));
 }

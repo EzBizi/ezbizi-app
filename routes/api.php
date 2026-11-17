@@ -2575,6 +2575,15 @@ Route::prefix('v1')
             Route::post('newsletter/import/library/{item}', [NewsletterImportController::class, 'library']);
             // A picture uploaded from the composer's image picker (P0, 2026-11-17).
             Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
+            // P1a: the picker's library list for newsletter-only roles, and a
+            // non-destructive crop (the original is kept).
+            Route::get('newsletter/images', [NewsletterImportController::class, 'images']);
+            Route::get('newsletter/images/{item}/file', [NewsletterImportController::class, 'imageFile']);
+            Route::post('newsletter/images/crop', [NewsletterImportController::class, 'crop']);
+            // P1a: durable revision history; a restore is a new revision.
+            Route::get('newsletters/{newsletter}/revisions', [NewslettersController::class, 'revisions']);
+            Route::get('newsletters/{newsletter}/revisions/{revision}', [NewslettersController::class, 'revision']);
+            Route::post('newsletters/{newsletter}/revisions/{revision}/restore', [NewslettersController::class, 'restore']);
 
             Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
             Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);

@@ -51,7 +51,7 @@ class Newsletter extends Model implements CarriesAutomationScope, StatesRetentio
     }
 
     protected $fillable = [
-        'subject', 'blocks', 'html_override', 'newsletter_audience_id',
+        'subject', 'name', 'preheader', 'blocks', 'html_override', 'newsletter_audience_id',
         'created_by', 'scope_type', 'scope_id', 'status',
         'scheduled_for', 'scheduled_timezone',
     ];
