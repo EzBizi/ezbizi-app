@@ -570,4 +570,32 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame('d', RingCentralLeadCalls::companyFor('08 Roofirst', $companies));
         $this->assertSame('NJ-PHL', RingCentralLeadCalls::market('NJ-PHL - SEO'));
     }
+
+    /**
+     * Jose, 2026-11-17: "ED - MA - GBP" is an Everdoors line, but "ED" is too
+     * short to match a company name, so the call landed on A-1 and the caller
+     * got A-1's missed-call text. leads.line_brands names the brand codes.
+     */
+    public function test_a_brand_code_line_is_that_brands_call_in_its_branch(): void
+    {
+        $t = $this->setUpTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $ed = Company::create(['organization_id' => $t['org']->id, 'name' => 'Everdoors']);
+            $edNj = Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $ed->id, 'name' => 'New Jersey']);
+            app(\App\Support\Settings\SettingsResolver::class)->set('leads.line_brands', $t['org'], ['ED' => 'Everdoors']);
+            $lines = ['+17320000101' => 'ED - NJ - GBP', '+17320000102' => 'ED - MA - GBP', '+17320000103' => 'NJ - GMB'];
+
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('e1', '+15550000101', '2026-10-14T14:00:00Z', '+17320000101'),
+                self::rc('e2', '+15550000102', '2026-10-14T14:05:00Z', '+17320000102'),
+                self::rc('e3', '+15550000103', '2026-10-14T14:10:00Z', '+17320000103'),
+            ], $lines, $t['company']->id);
+
+            $by = Lead::query()->where('source', Lead::SOURCE_RINGCENTRAL)->get()->keyBy('category');
+            $this->assertSame([$ed->id, $edNj->id], [$by['ED - NJ - GBP']->company_id, $by['ED - NJ - GBP']->franchise_id], 'Everdoors, its own New Jersey');
+            $this->assertSame([$ed->id, null], [$by['ED - MA - GBP']->company_id, $by['ED - MA - GBP']->franchise_id], 'Everdoors has no MA branch: company level, never A-1 Chimney');
+            $this->assertSame([$t['company']->id, $t['franchise']->id], [$by['NJ - GMB']->company_id, $by['NJ - GMB']->franchise_id], 'a market line is unchanged');
+        });
+    }
 }
