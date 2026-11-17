@@ -260,7 +260,11 @@ class TaskBoardSettingsController extends Controller
 
     public static function presentGroup(TaskGroup $g): array
     {
-        return ['id' => $g->id, 'name' => $g->name, 'colour' => $g->colour, 'position' => $g->position];
+        // A role group's job, under its heading (management's board rules, Jose 11-17).
+        $roles = \App\Support\Tasks\BoardRules::rolesOf((string) $g->name);
+
+        return ['id' => $g->id, 'name' => $g->name, 'colour' => $g->colour, 'position' => $g->position,
+            'purpose' => $roles === [] ? null : implode(' ', array_map(fn ($r) => \App\Support\Tasks\BoardRules::PURPOSE[$r], $roles))];
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

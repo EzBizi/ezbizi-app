@@ -3452,6 +3452,18 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   header,
+                  // A role group says what it is for (management's board rules, Jose 11-17).
+                  if (group['purpose'] case final String purpose)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Text(
+                        purpose,
+                        key: ValueKey('group-purpose-$fold'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                   if (!folded) ...[
                     // An empty group drew a full column-header row for nothing;
                     // but a board with no task at all keeps them, or there is

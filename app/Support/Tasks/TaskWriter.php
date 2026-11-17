@@ -127,9 +127,18 @@ class TaskWriter
                 'board_name' => $task->board?->name,
                 'after' => $this->snapshot($task),
             ]);
+            $this->checkRules($task);
 
             return $task;
         });
+    }
+
+    /** Management's board rules, once the write is saved (BoardRules). */
+    private function checkRules(Task $task): void
+    {
+        if (! $this->syncing) {
+            DB::afterCommit(fn () => app(BoardRules::class)->check($task));
+        }
     }
 
     /** Only the keys present in $input change. */
@@ -215,6 +224,9 @@ class TaskWriter
             }
             $this->syncLinked($task, $synced, $statusChanged, $ownersChanged, $actor);
             $this->recordChanges($task, $seen, $actor);
+            if ($statusChanged || $groupChanged || array_key_exists('title', $fields)) {
+                $this->checkRules($task);
+            }
 
             return $task;
         });
