@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use PragmaRX\Google2FA\Google2FA;
+use App\Support\Monitoring\ScreenMonitoringExemption;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -29,7 +30,7 @@ class FilesTest extends TestCase
 {
     use BuildsTenants, RefreshDatabase;
 
-    private const REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
+    private const REFUSAL = ScreenMonitoringExemption::REFUSAL;
 
     /** Files is locked behind an authenticator code; the lock itself is
      * covered by the unlock tests below, so the rest open it directly. */

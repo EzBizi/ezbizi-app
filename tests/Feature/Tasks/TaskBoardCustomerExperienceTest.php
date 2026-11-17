@@ -68,6 +68,23 @@ class TaskBoardCustomerExperienceTest extends TestCase
         $this->signedInAs($viewer)->patchJson($url, ['builtin_columns' => ['due' => ['label' => 'When']]])->assertForbidden();
     }
 
+    /** Jose 11-17: drag columns left or right; one order for everyone. */
+    public function test_the_column_order_is_saved_for_the_board_and_keeps_the_labels(): void
+    {
+        $url = "/api/v1/task-boards/{$this->board->id}";
+        $this->api()->patchJson($url, ['builtin_columns' => ['about' => ['label' => 'Summary']]])->assertOk();
+        $this->api()->patchJson($url, ['column_order' => ['status', 'c:abc', 'owner']])
+            ->assertOk()
+            ->assertJsonPath('data.column_order', ['status', 'c:abc', 'owner'])
+            ->assertJsonPath('data.builtin_columns.about.label', 'Summary');
+        $this->api()->patchJson($url, ['builtin_columns' => ['due' => ['visible' => false]]])
+            ->assertOk()->assertJsonPath('data.column_order', ['status', 'c:abc', 'owner']);
+        $this->api()->patchJson($url, ['column_order' => ['status', 'status']])->assertStatus(422);
+
+        $viewer = $this->userWithRole($this->tenant, 'Viewer', ['tasks.view']);
+        $this->signedInAs($viewer)->patchJson($url, ['column_order' => ['due']])->assertForbidden();
+    }
+
     public function test_a_saved_owner_label_survives_the_assigned_rename(): void
     {
         $this->inTenant($this->tenant['org'], fn () => $this->board->forceFill(['builtin_columns' => ['owner' => ['label' => 'Tech']]])->save());

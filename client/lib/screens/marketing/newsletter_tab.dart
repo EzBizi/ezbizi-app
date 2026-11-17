@@ -16,6 +16,7 @@ import 'newsletter_new_list_panel.dart';
 import 'newsletter_blocks.dart';
 import 'newsletter_dashboard.dart';
 import 'newsletter_editor.dart';
+import 'newsletter_preflight.dart';
 import 'newsletter_settings.dart';
 
 /// Marketing › Newsletter — the dashboard, the composer and the settings.
@@ -126,6 +127,15 @@ class _NewsletterTabState extends State<NewsletterTab> {
   bool _saving = false;
   String? _saveError;
   Timer? _settleTimer;
+
+  /// The saved revision the open draft is built on; every save names it.
+  int _revision = 1;
+
+  /// A save was refused because the row moved on (409). Autosave stops and
+  /// the local edits stay until somebody reloads.
+  bool _conflict = false;
+
+  NewsletterLastTest? _lastTest;
 
   /// The save under way, so Send can wait for it rather than race it.
   Future<void>? _saveInFlight;
@@ -309,6 +319,9 @@ class _NewsletterTabState extends State<NewsletterTab> {
     _blocks = n.blocks.map((b) => Map<String, dynamic>.from(b)).toList();
     _htmlOverride = n.htmlOverride;
     _audienceId = n.audienceId;
+    _revision = n.revision;
+    _lastTest = n.lastTest;
+    _conflict = false;
     _dirty = false;
     _saveError = null;
   }
@@ -323,6 +336,8 @@ class _NewsletterTabState extends State<NewsletterTab> {
     _edits++;
     setState(() => _dirty = true);
     _settleTimer?.cancel();
+    // A conflict holds the edits here and saves nothing until a reload.
+    if (_conflict) return;
     _settleTimer = Timer(_settle, _save);
   }
 
@@ -337,7 +352,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
 
   Future<void> _saveNow() async {
     final id = _selectedId;
-    if (id == null) return;
+    if (id == null || _conflict) return;
     final edits = _edits;
 
     setState(() {
@@ -354,9 +369,20 @@ class _NewsletterTabState extends State<NewsletterTab> {
       'html_override': _htmlOverride,
       'audience_id': _audienceId,
       'scheduled_for': _when.text.trim(),
+      'revision': _revision,
     });
 
     if (!mounted) return;
+
+    if (response.statusCode == 409) {
+      _settleTimer?.cancel();
+      setState(() {
+        _saving = false;
+        _conflict = true;
+        _saveError = response.reason;
+      });
+      return;
+    }
 
     if (!response.ok) {
       setState(() {
@@ -366,7 +392,11 @@ class _NewsletterTabState extends State<NewsletterTab> {
       return;
     }
 
+    final saved = response.data;
     setState(() {
+      if (saved is Map && saved['revision'] is num) {
+        _revision = (saved['revision'] as num).toInt();
+      }
       _saving = false;
       // Typing during the save left something this save did not carry.
       _dirty = _edits != edits;
@@ -391,6 +421,21 @@ class _NewsletterTabState extends State<NewsletterTab> {
     setState(
       () => _previewHtml = data is Map ? (data['html'] as String? ?? '') : '',
     );
+  }
+
+  /// After a conflict: read the newest version and open it, dropping the
+  /// local copy (the person chose Reload).
+  Future<void> _reloadOpen() async {
+    _settleTimer?.cancel();
+    final id = _selectedId;
+    await _reloadList();
+    if (!mounted) return;
+    final fresh = _all.where((n) => n.id == id).toList();
+    setState(() {
+      if (fresh.isNotEmpty) _open(fresh.first);
+      _conflict = false;
+    });
+    await _refreshPreview();
   }
 
   /// The list only, so saving does not reset the editor under the cursor.
@@ -697,49 +742,6 @@ class _NewsletterTabState extends State<NewsletterTab> {
               ),
             ),
           ],
-          if (_selectedId != null) ...[
-            const SizedBox(width: 12),
-            Refused(
-              reason: widget.session.me?.refusal(
-                'newsletter.create',
-                'write a newsletter',
-              ),
-              child: _barAction(
-                context,
-                key: const ValueKey('newsletter-duplicate'),
-                onPressed: can ? _duplicate : null,
-                icon: Icons.copy_outlined,
-                label: 'Duplicate',
-              ),
-            ),
-          ],
-          if (_selectedId != null) ...[
-            const SizedBox(width: 12),
-            Refused(
-              reason: widget.session.me?.refusal(
-                'newsletter.delete',
-                'delete a newsletter',
-              ),
-              child: TextButton.icon(
-                key: const ValueKey('tour-newsletter-delete'),
-                // Red: it destroys the mailing (phone audit 2026-11-04).
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error,
-                ),
-                onPressed:
-                    (widget.session.me?.can('newsletter.delete') ?? false) &&
-                        _selected?.status != 'sending'
-                    ? _delete
-                    : null,
-                icon: const Icon(Icons.delete_outline, size: 18),
-                label: Text(
-                  _confirmingDelete == _selectedId
-                      ? 'Tap again to delete'
-                      : 'Delete',
-                ),
-              ),
-            ),
-          ],
           const SizedBox(width: 12),
           Refused(
             reason: widget.session.me?.refusal(
@@ -802,11 +804,39 @@ class _NewsletterTabState extends State<NewsletterTab> {
       sendingRefusedBecause: _sendingRefusedBecause,
       readOnlyBecause: _readOnlyBecause,
       saveError: _saveError,
-      saveState: _dirty
-          ? 'Unsaved'
-          : _saving
-          ? 'Saving…'
-          : 'Saved',
+      saveState: _conflict
+          ? NewsletterSaveState.conflict
+          : _saveError != null && !_saving
+          ? NewsletterSaveState.failed
+          : _dirty || _saving
+          ? NewsletterSaveState.saving
+          : NewsletterSaveState.saved,
+      status: _selected?.status ?? 'draft',
+      revision: _revision,
+      lastTest: _lastTest,
+      onTested: (t) => setState(() => _lastTest = t),
+      onRetry: () {
+        setState(() => _saveError = null);
+        _save();
+      },
+      onReload: _reloadOpen,
+      onDuplicate: (widget.session.me?.can('newsletter.create') ?? false)
+          ? _duplicate
+          : null,
+      onDelete:
+          (widget.session.me?.can('newsletter.delete') ?? false) &&
+              _selected?.status != 'sending'
+          ? _delete
+          : null,
+      confirmingDelete: _confirmingDelete == _selectedId,
+      onAudienceCreated: (a) => setState(() {
+        if (!_audiences.any((x) => x.id == a.id)) {
+          _audiences = [..._audiences, a];
+        }
+      }),
+      onOpenSettings: _mayOpen('settings')
+          ? () => setState(() => _tab = 'settings')
+          : null,
       previewHtml: _previewHtml,
       onChanged: _touched,
       onAudience: (id) {
@@ -903,7 +933,9 @@ class _NewsletterTabState extends State<NewsletterTab> {
 
     if (go != true || !mounted) return;
 
-    final response = await widget.api.post('/newsletters/$id/send', {});
+    final response = await widget.api.post('/newsletters/$id/send', {
+      'revision': _revision,
+    });
     if (!mounted) return;
 
     setState(() => _saveError = response.ok ? null : response.reason);
@@ -922,7 +954,13 @@ class _Newsletter {
     this.scheduledFor,
     this.scheduledTimezone,
     this.htmlOverride,
+    this.revision = 1,
+    this.lastTest,
   });
+
+  /// The saved revision; a save naming an older one is refused (409).
+  final int revision;
+  final NewsletterLastTest? lastTest;
 
   /// The same newsletter as the dashboard's table reads it.
   final NewsletterRow row;
@@ -961,6 +999,8 @@ class _Newsletter {
       scheduledFor: json['scheduled_for'] as String?,
       scheduledTimezone: json['scheduled_timezone'] as String?,
       htmlOverride: json['html_override'] as String?,
+      revision: (json['revision'] as num?)?.toInt() ?? 1,
+      lastTest: NewsletterLastTest.fromJson(json['last_test']),
       blocks: ((json['blocks'] as List<dynamic>?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .toList(),

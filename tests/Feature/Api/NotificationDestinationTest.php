@@ -117,6 +117,31 @@ class NotificationDestinationTest extends TestCase
             ->assertJsonPath('data.0.header', 'EzBizi - '.$tenant['company']->name.' - '.$tenant['franchise']->name);
     }
 
+    public function test_a_task_mention_opens_its_task_at_that_update(): void
+    {
+        // Jose, 2026-11-17: a task notification leads to the board and task.
+        $tenant = $this->provisionTenant('Zeta');
+        [$taskId, $update] = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $board = app(\App\Support\Tasks\TaskBoards::class)->ensureFor($tenant['admin']);
+            $task = \App\Models\Task::query()->create([
+                'board_id' => $board->id,
+                'group_id' => \App\Models\TaskGroup::query()->where('board_id', $board->id)->value('id'),
+                'franchise_id' => $board->franchise_id,
+                'title' => 'Call back',
+            ]);
+
+            return [(string) $task->id, \App\Models\TaskUpdate::query()->forceCreate([
+                'id' => (string) Str::uuid7(), 'organization_id' => $tenant['org']->id,
+                'task_id' => $task->id, 'user_id' => $tenant['admin']->id, 'body' => '@you look',
+            ])];
+        });
+
+        $meta = $this->metaFor($tenant, ['source' => 'system', 'subject_type' => \App\Models\TaskUpdate::class, 'subject_id' => $update->id]);
+
+        $this->assertSame('tasks', $meta['module']);
+        $this->assertSame(['type' => 'task', 'id' => $taskId, 'update' => $update->id], $meta['record']);
+    }
+
     public function test_every_subject_module_is_a_real_module(): void
     {
         $map = (new ReflectionClassConstant(NotificationsController::class, 'SUBJECT_MODULES'))->getValue();

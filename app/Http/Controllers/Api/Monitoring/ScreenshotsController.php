@@ -62,7 +62,7 @@ class ScreenshotsController extends Controller
     private const DEFAULT_LIMIT = 50;
 
     /** The SECURITY exemption's refusal sentence, shared by every screen-reaching guard. */
-    private const EXEMPT_REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
+    private const EXEMPT_REFUSAL = ScreenMonitoringExemption::REFUSAL;
 
     public function __construct(
         private readonly ScreenshotStore $store,

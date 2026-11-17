@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0584', date: '17 Nov 2026', items: [
+      'Task Board: whoever is given a task, by a person or an automation, gets a New task notification',
+    ]),
     VersionRelease(version: '0.0.0583', date: '17 Nov 2026', items: [
       'Automatic texts: a caller gets one sales text a day, not two. Not booked skips when the missed-call text went or the caller had a job in the last 30 days, and the missed-call text skips when they already got one',
       'Several missed calls from one person within an hour send one text and one alert, not one per call',

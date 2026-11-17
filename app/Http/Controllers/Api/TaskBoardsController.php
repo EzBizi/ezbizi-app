@@ -245,6 +245,8 @@ class TaskBoardsController extends Controller
             'columns' => $taskBoard->columns->map(fn (TaskColumn $c) => TaskBoardSettingsController::presentColumn($c))->all(),
             // Owner, Status, Due, About, Created, Updates: {key: {label, visible}}, every key.
             'builtin_columns' => $taskBoard->resolvedBuiltinColumns(),
+            // Jose 11-17: the board's column order, built-in keys and "c:<id>".
+            'column_order' => array_values((array) ($taskBoard->builtin_columns['_order'] ?? [])),
             // Saved views: the board's shared ones and this person's own.
             'views' => TaskBoardViewsController::visible($taskBoard, $user->id),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
@@ -484,7 +486,7 @@ class TaskBoardsController extends Controller
             // Automatic boards too: A-1's busiest place board is the one that needs it.
             $this->authorize('view', $taskBoard);
             abort_unless($this->boards->canManage($request->user(), $taskBoard), 403, 'Only an owner of this board or an Administrator can do that.');
-        } elseif (! $request->has('builtin_columns')) {
+        } elseif (! $request->hasAny(['builtin_columns', 'column_order'])) {
             $this->authorizeManage($request->user(), $taskBoard);
         } else {
             $this->authorize('update', $taskBoard);
@@ -500,8 +502,15 @@ class TaskBoardsController extends Controller
             'folder_id' => ['sometimes', 'nullable', 'uuid', fn ($a, $v, $fail) => $v === null || \App\Models\TaskBoardFolder::query()->whereKey($v)->exists() ?: $fail('That folder is not in this organization.')],
             'colour' => ['sometimes', 'nullable', TaskBoardFoldersController::COLOUR],
             'position' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000'],
+            'column_order' => ['sometimes', 'array', 'max:300'],
+            'column_order.*' => ['string', 'distinct', 'max:64'],
         ]);
-        if (array_key_exists('builtin_columns', $input)) {
+        if (array_key_exists('column_order', $input)) {
+            // Kept beside the built-in settings: one order for everyone (Jose 11-17).
+            $input['builtin_columns'] = ['_order' => array_values($input['column_order'])]
+                + self::mergeBuiltinColumns($taskBoard, $input['builtin_columns'] ?? []);
+            unset($input['column_order']);
+        } elseif (array_key_exists('builtin_columns', $input)) {
             $input['builtin_columns'] = self::mergeBuiltinColumns($taskBoard, $input['builtin_columns']);
         }
         $taskBoard->fill($input)->save();
