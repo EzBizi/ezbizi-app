@@ -188,6 +188,7 @@ class AuthorizationSweepTest extends TestCase
         'GET api/v1/hr/onboardings/{onboarding}/answers/{field}' => '404: abort(404) in the action, file or provider state the builder does not create',
         'GET api/v1/social/posts/{post}/media' => '404: abort(404) in the action, file or provider state the builder does not create',
         'GET api/v1/social/connections/{connection}/instagram-comments' => '422: needs a live provider (Google/WordPress/Meta) the test cannot reach',
+        'GET api/v1/newsletters/{newsletter}/revisions/{revision}' => '404: the revision number is the newsletter counter; the builder placeholder names none',
         'GET api/v1/phone/calls/{call}/recording' => '404: abort(404) in the action, file or provider state the builder does not create',
         'GET api/v1/email/workspaces/{connection}/people' => '422: needs a live provider (Google/WordPress/Meta) the test cannot reach',
         'GET api/v1/email/workspaces/{connection}/people/{address}/signature' => '404: needs a live provider (Google/WordPress/Meta) the test cannot reach',
