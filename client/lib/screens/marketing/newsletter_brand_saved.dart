@@ -160,36 +160,33 @@ class _NewsletterBrandPanelState extends State<NewsletterBrandPanel> {
         for (final e in brandColorFields.entries)
           _colorRow(e.key, e.value, '${s[e.key] ?? ''}', editable),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
+        Text('Font', style: theme.textTheme.labelMedium),
+        Wrap(
           key: const ValueKey('newsletter-brand-font'),
-          isExpanded: true,
-          initialValue: brandFonts.containsKey(s['font'])
-              ? s['font'] as String
-              : 'system',
-          decoration: const InputDecoration(labelText: 'Font', isDense: true),
-          items: [
+          spacing: 4,
+          runSpacing: 4,
+          children: [
             for (final f in brandFonts.entries)
-              DropdownMenuItem(value: f.key, child: Text(f.value)),
+              ChoiceChip(
+                label: Text(f.value),
+                selected: (s['font'] ?? 'system') == f.key,
+                onSelected: editable ? (_) => _set('font', f.key) : null,
+              ),
           ],
-          onChanged: editable ? (v) => _set('font', v) : null,
         ),
         const SizedBox(height: 8),
-        Row(
+        const SizedBox(height: 8),
+        Text('Button corners', style: theme.textTheme.labelMedium),
+        Wrap(
+          key: const ValueKey('newsletter-brand-radius'),
+          spacing: 4,
           children: [
-            const Expanded(child: Text('Button corners')),
-            DropdownButton<int>(
-              key: const ValueKey('newsletter-brand-radius'),
-              value: [0, 6, 12, 24].contains(s['button_radius'])
-                  ? s['button_radius'] as int
-                  : 6,
-              items: const [
-                DropdownMenuItem(value: 0, child: Text('Square')),
-                DropdownMenuItem(value: 6, child: Text('Rounded')),
-                DropdownMenuItem(value: 12, child: Text('Soft')),
-                DropdownMenuItem(value: 24, child: Text('Pill')),
-              ],
-              onChanged: editable ? (v) => _set('button_radius', v) : null,
-            ),
+            for (final r in const {0: 'Square', 6: 'Rounded', 12: 'Soft', 24: 'Pill'}.entries)
+              ChoiceChip(
+                label: Text(r.value),
+                selected: (s['button_radius'] ?? 6) == r.key,
+                onSelected: editable ? (_) => _set('button_radius', r.key) : null,
+              ),
           ],
         ),
         SwitchListTile(
@@ -488,56 +485,3 @@ class NewsletterSavedPanel extends StatelessWidget {
   }
 }
 
-/// Asks for a name and whether the section is meant for linked use.
-Future<({String name, String mode})?> askSectionName(BuildContext context) {
-  final name = TextEditingController();
-  var linked = false;
-  return showDialog<({String name, String mode})>(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: const Text('Save as section'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              key: const ValueKey('newsletter-section-name'),
-              controller: name,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-            SwitchListTile(
-              key: const ValueKey('newsletter-section-linked'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Meant for linked use'),
-              subtitle: const Text(
-                'Linked uses show "Update available" when you publish a change; '
-                'nothing updates until you choose to.',
-              ),
-              value: linked,
-              onChanged: (v) => setState(() => linked = v),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const ValueKey('newsletter-section-save'),
-            onPressed: () {
-              final n = name.text.trim();
-              if (n.isEmpty) return;
-              Navigator.pop(context, (
-                name: n,
-                mode: linked ? 'linked' : 'copy',
-              ));
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    ),
-  );
-}

@@ -4629,10 +4629,11 @@ void main() {
       final email = find.byKey(const Key('newsletter-email'));
       expect(tester.getSize(email).width, NewsletterEmail.desktopWidth);
 
-      await tester.tap(find.text('Phone'));
+      await tester.tap(find.text('Mobile'));
       await tester.pumpAndSettle();
 
-      expect(tester.getSize(email).width, NewsletterEmail.phoneWidth);
+      // P1b: Mobile designs at 375 by default (320 and 414 are choices).
+      expect(tester.getSize(email).width, 375);
     });
 
     // Review 2026-11-09 C14 (A28, A34): a scheduled one comes back to a

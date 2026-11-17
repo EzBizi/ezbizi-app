@@ -249,6 +249,11 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   /// Saved sections and starters; null until loaded.
   List<NewsletterSavedSection>? _sections;
 
+  /// The block being saved as a section (its name form is in the inspector).
+  int? _namingSection;
+  final TextEditingController _sectionName = TextEditingController();
+  bool _sectionLinked = false;
+
   /// Bumped when a mobile override is reset, so its field redraws.
   int _mobileGeneration = 0;
 
@@ -403,16 +408,22 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   Future<void> _saveSection(int i) async {
     final api = widget.api;
     if (api == null) return;
-    final asked = await askSectionName(context);
-    if (asked == null || !mounted) return;
+    final name = _sectionName.text.trim();
+    if (name.isEmpty) return;
     final r = await api.post('/newsletter/sections', {
-      'name': asked.name,
-      'mode': asked.mode,
+      'name': name,
+      'mode': _sectionLinked ? 'linked' : 'copy',
       'blocks': [widget.blocks[i]],
     });
     if (!mounted) return;
-    _say(r.ok ? 'Saved as "${asked.name}".' : r.reason);
-    if (r.ok) await _loadSections();
+    _say(r.ok ? 'Saved as "$name".' : r.reason);
+    if (r.ok) {
+      setState(() {
+        _namingSection = null;
+        _sectionName.clear();
+      });
+      await _loadSections();
+    }
   }
 
   /// Publishes the selected block as the section's next version. Linked
@@ -451,6 +462,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
   void dispose() {
     _keys.dispose();
     _inline?.dispose();
+    _sectionName.dispose();
     _html.dispose();
     super.dispose();
   }
@@ -2276,7 +2288,11 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               () => _duplicate(i)),
           if (widget.api != null && widget.blocks[i]['type'] != 'section_ref')
             button('newsletter-block-save-section', Icons.bookmark_add_outlined, 'Save as section',
-                () => _saveSection(i)),
+                () => setState(() {
+                      _namingSection = i;
+                      _sectionName.clear();
+                      _sectionLinked = false;
+                    })),
           button('newsletter-block-delete', Icons.delete_outline, 'Delete (Del)',
               () => _remove(i)),
         ],
@@ -2413,6 +2429,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
                 ),
               ],
             ),
+            if (_namingSection == i) _sectionForm(i),
             if (isHandWritten(block))
               const DashboardNote(
                 'This block was written as HTML and is kept exactly as typed.',
@@ -2428,6 +2445,48 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
       ),
     );
   }
+
+  /// Name and use of a new saved section, inline (no dialogs in this app).
+  Widget _sectionForm(int i) => Card(
+    key: const ValueKey('newsletter-section-form'),
+    child: Padding(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: const ValueKey('newsletter-section-name'),
+            controller: _sectionName,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Section name', isDense: true),
+          ),
+          SwitchListTile(
+            key: const ValueKey('newsletter-section-linked'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('Meant for linked use'),
+            subtitle: const Text('Linked uses show "Update available"; nothing updates by itself.'),
+            value: _sectionLinked,
+            onChanged: (v) => setState(() => _sectionLinked = v),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => setState(() => _namingSection = null),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                key: const ValueKey('newsletter-section-save'),
+                onPressed: () => _saveSection(i),
+                child: const Text('Save section'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
 
   /// A linked section (P1b): which version it is pinned to, and the explicit
   /// update when a newer one is published. Nothing updates by itself.
