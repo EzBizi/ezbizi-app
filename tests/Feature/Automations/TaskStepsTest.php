@@ -108,7 +108,7 @@ class TaskStepsTest extends TestCase
 
         $this->inTenant($t['org'], function () use ($t) {
             $lead = \App\Models\Lead::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'franchise_id' => $t['franchise']->id,
-                'source' => 'website_form', 'remote_id' => 'call-1', 'status' => 'NEW', 'received_at' => now(), 'contact_name' => 'Ann', 'phone_digits' => '3055550101']);
+                'source' => 'website_form', 'remote_id' => 'call-1', 'status' => 'NEW', 'received_at' => now(), 'contact_name' => 'Ann', 'phone_digits' => '13055550101']);
             $rule = Automation::create(['name' => 'R', 'trigger_key' => 'reports.call.missed', 'is_active' => false, 'created_by' => $t['admin']->id]);
             $call = fn (string $from) => new AutomationEvent(['event_key' => 'reports.call.missed', 'payload' => ['from' => $from],
                 'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
