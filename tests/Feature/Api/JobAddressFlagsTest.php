@@ -67,6 +67,7 @@ class JobAddressFlagsTest extends TestCase
             $mk('FINE', ['address' => '12 Savin Ave', 'postal_code' => '06516', 'serial_id' => 103, 'scheduled_for' => '2026-11-20 12:00:00']);
         });
 
+        $this->artisan('ezbizi:flag-workiz-jobs --dry-run')->expectsOutputToContain('3 flags would be raised')->assertSuccessful();
         $this->artisan('ezbizi:flag-workiz-jobs')->expectsOutputToContain('3 flags raised')->assertSuccessful();
         $this->artisan('ezbizi:flag-workiz-jobs')->expectsOutputToContain('0 flags raised')->assertSuccessful();
 
@@ -93,5 +94,25 @@ class JobAddressFlagsTest extends TestCase
         });
 
         $this->artisan('ezbizi:flag-workiz-jobs')->expectsOutputToContain('0 flags raised')->assertSuccessful();
+    }
+
+    public function test_the_backfill_takes_only_upcoming_open_jobs(): void
+    {
+        Carbon::setTestNow('2026-11-17 10:00:00');
+        $alpha = $this->provisionTenant('Alpha');
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            $mk = fn (string $id, string $status, string $at) => WorkizJob::create(['franchise_id' => $alpha['franchise']->id, 'remote_id' => $id,
+                'status' => $status, 'address' => 'Savin Ave', 'postal_code' => '06516', 'scheduled_for' => $at, 'payload' => [], 'synced_at' => now()]);
+            $mk('AHEAD', 'Submitted', '2026-11-18 09:00:00');
+            $mk('PAST', 'Submitted', '2026-11-10 09:00:00');
+            $mk('SHUT', 'Canceled', '2026-11-18 09:00:00');
+            $mk('DONE', 'Done', '2026-11-18 09:00:00');
+        });
+        // Old rows: the 20-minute sweep would not see them.
+        WorkizJob::query()->withoutGlobalScopes()->update(['updated_at' => now()->subDays(10)]);
+
+        $this->artisan('ezbizi:flag-workiz-jobs')->expectsOutputToContain('0 flags raised')->assertSuccessful();
+        $this->artisan('ezbizi:flag-workiz-jobs --future-only --dry-run')->expectsOutputToContain('1 flag would be raised')->assertSuccessful();
+        $this->artisan('ezbizi:flag-workiz-jobs --future-only')->expectsOutputToContain('1 flag raised')->assertSuccessful();
     }
 }
