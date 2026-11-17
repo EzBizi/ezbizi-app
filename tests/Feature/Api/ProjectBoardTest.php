@@ -388,6 +388,71 @@ class ProjectBoardTest extends TestCase
         $api->putJson($url, ['parts' => []])->assertOk()->assertJsonCount(0, 'data');
     }
 
+    /**
+     * Jose, 2026-11-17, the parts selector: in stock, ordered from a supplier
+     * or a same-day pickup store, where it goes, and red three days after it
+     * was ordered and still not received.
+     */
+    public function test_a_part_names_its_supplier_and_turns_late_three_days_after_it_was_ordered(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']));
+        $this->inTenant($alpha['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('project_board.suppliers', $alpha['org'], [
+            ['id' => 's-1', 'name' => 'Chimney Supply Co', 'address' => '12 Brick Rd, Austin', 'phone' => '555-0100', 'kind' => 'order'],
+            ['id' => 's-2', 'name' => 'Home Depot Round Rock', 'kind' => 'pickup'],
+            ['name' => 'No id, dropped'],
+        ]));
+        $api = $this->signedInAs($alpha['admin']);
+        $url = "/api/v1/project-board/jobs/{$id}/parts";
+
+        $this->assertSame(['s-1', 's-2'], array_column(
+            $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('meta.suppliers'), 'id'));
+
+        $this->travelTo(now()->setDate(2026, 11, 17)->setTime(9, 0));
+        $parts = $api->putJson($url, ['parts' => [
+            ['kind' => 'order', 'item' => 'Cap', 'quantity' => 1, 'supplier_id' => 's-1', 'destination' => 'supplier'],
+            ['kind' => 'pickup', 'item' => 'Mortar', 'quantity' => 2, 'supplier_id' => 's-2', 'destination' => 'customer'],
+            ['kind' => 'stock', 'item' => 'Flashing', 'quantity' => 1, 'supplier_id' => 's-1', 'destination' => 'warehouse'],
+        ]])->assertOk()->json('data');
+        $this->assertSame('12 Brick Rd, Austin', $parts[0]['supplier']['address']);
+        $this->assertSame('supplier', $parts[0]['destination']);
+        $this->assertNull($parts[2]['supplier'], 'In stock comes from no supplier.');
+        $this->assertNull($parts[2]['ordered_at']);
+        $this->assertFalse($parts[0]['late']);
+
+        // Saved again two days on (the whole list, by id): the clock keeps
+        // its start, and the received one stops it.
+        $this->travel(2)->days();
+        $again = $api->putJson($url, ['parts' => [
+            ['id' => $parts[0]['id'], 'kind' => 'order', 'item' => 'Cap', 'quantity' => 1, 'supplier_id' => 's-1', 'destination' => 'supplier'],
+            ['id' => $parts[1]['id'], 'kind' => 'pickup', 'item' => 'Mortar', 'quantity' => 2, 'supplier_id' => 's-2', 'received' => true],
+        ]])->assertOk()->json('data');
+        $this->assertSame($parts[0]['ordered_at'], $again[0]['ordered_at']);
+        $this->assertNotNull($again[1]['received_at']);
+
+        $this->travel(1)->days();
+        $late = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.parts');
+        $this->assertTrue($late[0]['late'], 'Three days ordered and not received.');
+        $this->assertFalse($late[1]['late'], 'Received: never late.');
+    }
+
+    /** Jose, 2026-11-17: "Just let me drag them" - one column order for everyone on the board. */
+    public function test_a_dragged_column_order_is_the_boards_for_everyone(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['project_board.view', 'jobs.view']);
+        $api = $this->signedInAs($alpha['admin']);
+
+        $api->putJson('/api/v1/project-board/column-order', ['order' => ['pending', 'paid', 'total', 'nonsense']])->assertOk();
+
+        $keys = array_column($this->signedInAs($viewer)->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('meta.columns'), 'key');
+        $this->assertSame(['pending', 'paid', 'total'], array_slice($keys, 0, 3));
+        $this->assertContains('notes', $keys, 'A column not named keeps its place after the rest.');
+        $this->assertNotContains('nonsense', $keys);
+
+        $this->signedInAs($viewer)->putJson('/api/v1/project-board/column-order', ['order' => ['notes']])->assertForbidden();
+    }
+
     /** Trey, 2026-11-11: search a job by the client's phone in any format, or its address. */
     public function test_jobs_and_project_management_search_by_phone_and_address(): void
     {

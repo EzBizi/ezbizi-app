@@ -69,6 +69,51 @@ class ProjectBoardController extends Controller
         return $place;
     }
 
+    /**
+     * PUT /api/v1/project-board/column-order: the board's columns in the
+     * order given, for everyone on it (Jose, 2026-11-17: "Just let me drag
+     * them"). Names, visibility and labels stay as they are; a key not
+     * given keeps its place after the rest.
+     */
+    public function columnOrder(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_board.view') && $user->hasPermission('jobs.edit'),
+            Response::HTTP_FORBIDDEN, 'Changing the board is not in your role.');
+        $keys = $request->validate([
+            'order' => ['required', 'array', 'max:60'],
+            'order.*' => ['required', 'string', 'max:40'],
+        ])['order'];
+        $place = $this->settingsFor($user);
+        $settings = app(SettingsResolver::class);
+        $columns = collect($this->columns((array) $settings->get('project_board.columns', $place)));
+        $rank = array_flip(array_values(array_unique($keys)));
+        $sorted = $columns->sortBy(fn (array $c, int $i) => [$rank[$c['key']] ?? PHP_INT_MAX, $i])->values()->all();
+        $settings->set('project_board.columns', $place, $sorted);
+        app(AuditLogger::class)->log('project_board.column_order', null, ['order' => array_column($sorted, 'key')], actor: $user);
+
+        return response()->json(['data' => $sorted]);
+    }
+
+    /**
+     * The company's suppliers as stored (Settings › Project Management):
+     * well-formed entries only, so a hand-edited value cannot break a part.
+     *
+     * @return list<array{id: string, name: string, address: ?string, phone: ?string, kind: string}>
+     */
+    private static function suppliers(mixed $raw): array
+    {
+        return collect(is_array($raw) ? $raw : [])
+            ->filter(fn ($s) => is_array($s) && filled($s['id'] ?? null) && filled($s['name'] ?? null))
+            ->map(fn (array $s) => [
+                'id' => (string) $s['id'],
+                'name' => trim((string) $s['name']),
+                'address' => filled($s['address'] ?? null) ? trim((string) $s['address']) : null,
+                'phone' => filled($s['phone'] ?? null) ? trim((string) $s['phone']) : null,
+                'kind' => ($s['kind'] ?? null) === 'pickup' ? 'pickup' : 'order',
+            ])->values()->all();
+    }
+
     /** A repair-team / contractor tag: the company's list, else the name rule. */
     private function isRepair(string $tag): bool
     {
@@ -184,6 +229,8 @@ class ProjectBoardController extends Controller
                 // How the table is drawn, and where its Settings sub-tab saves.
                 'columns' => $this->columns((array) $settings->get('project_board.columns', $place)),
                 'labels' => (object) $settings->get('project_board.labels', $place),
+                // For the parts selector (Jose, 2026-11-17).
+                'suppliers' => self::suppliers($settings->get('project_board.suppliers', $place)),
                 'can_edit' => $user->hasPermission('jobs.edit'),
                 // Columns a header click can sort by, over the whole tab.
                 'sortable' => array_keys(self::SORTS),
@@ -630,16 +677,32 @@ class ProjectBoardController extends Controller
         $this->editable($request, $job);
         $input = $request->validate([
             'parts' => ['present', 'array', 'max:50'],
-            'parts.*.kind' => ['required', 'in:order,stock'],
+            'parts.*.id' => ['nullable', 'string', 'max:64'],
+            'parts.*.kind' => ['required', 'in:order,stock,pickup'],
+            'parts.*.supplier_id' => ['nullable', 'string', 'max:64'],
+            'parts.*.destination' => ['nullable', 'in:warehouse,customer,supplier'],
+            'parts.*.received' => ['nullable', 'boolean'],
             'parts.*.item' => ['required', 'string', 'max:160'],
             'parts.*.quantity' => ['required', 'integer', 'min:1', 'max:100000'],
             'parts.*.price_minor' => ['nullable', 'integer', 'min:0', 'max:100000000000'],
             'parts.*.delivery_on' => ['nullable', 'date_format:Y-m-d'],
             'parts.*.inventory_item_id' => ['nullable', 'uuid', 'exists:inventory_items,id'],
         ]);
-        DB::transaction(function () use ($job, $input) {
+        // The company's suppliers (Settings), copied onto the part as picked.
+        $suppliers = collect(self::suppliers(app(SettingsResolver::class)
+            ->get('project_board.suppliers', $this->settingsFor($request->user()))))->keyBy('id');
+        DB::transaction(function () use ($job, $input, $suppliers) {
+            // Kept by id: when a part was ordered and received survives the rewrite.
+            $before = JobPart::query()->where('job_id', $job->id)->get()->keyBy('id');
             JobPart::query()->where('job_id', $job->id)->delete();
             foreach ($input['parts'] as $i => $p) {
+                $old = $before->get($p['id'] ?? '');
+                $away = $p['kind'] !== 'stock';
+                $supplierId = $p['supplier_id'] ?? null;
+                // A supplier picked from the list now, else the one it had
+                // (renamed or removed from the list since).
+                $supplier = $away ? ($suppliers->get((string) $supplierId)
+                    ?? (($old?->supplier['id'] ?? null) === $supplierId ? $old?->supplier : null)) : null;
                 JobPart::query()->create([
                     'organization_id' => $job->organization_id, 'job_id' => $job->id, 'position' => $i,
                     'kind' => $p['kind'], 'item' => trim($p['item']), 'quantity' => $p['quantity'],
@@ -647,6 +710,11 @@ class ProjectBoardController extends Controller
                     // A delivery date belongs to a part being ordered.
                     'delivery_on' => $p['kind'] === 'order' ? ($p['delivery_on'] ?? null) : null,
                     'inventory_item_id' => $p['kind'] === 'stock' ? ($p['inventory_item_id'] ?? null) : null,
+                    'supplier' => $supplier,
+                    'destination' => $away ? ($p['destination'] ?? null) : null,
+                    // The three-day clock starts when it stops being in stock.
+                    'ordered_at' => $away ? ($old !== null && $old->kind !== 'stock' && $old->ordered_at ? $old->ordered_at : now()) : null,
+                    'received_at' => $away && ($p['received'] ?? false) ? ($old?->received_at ?? now()) : null,
                 ]);
             }
         });
