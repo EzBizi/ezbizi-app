@@ -28,7 +28,9 @@ class FlagWorkizJobs extends Command
 {
     public const FRIDAY_RULE = 'Friday jobs must be in the 12–3 window or earlier; confirm with the field manager or move it.';
 
-    protected $signature = 'ezbizi:flag-workiz-jobs {--minutes=20 : How far back to look}';
+    protected $signature = 'ezbizi:flag-workiz-jobs {--minutes=20 : How far back to look}
+        {--future-only : Backfill: every job still scheduled ahead and not closed or cancelled, however old (Jose, 2026-11-17)}
+        {--dry-run : Count what would be flagged; send and record nothing}';
 
     protected $description = 'Flag Workiz jobs with an incomplete address or a late Friday start';
 
@@ -37,7 +39,14 @@ class FlagWorkizJobs extends Command
         $since = now()->subMinutes(max(1, (int) $this->option('minutes')));
         $flagged = 0;
 
-        $rows = $tenant->runWithoutTenant(fn () => WorkizJob::query()->where('updated_at', '>=', $since)->get());
+        $dry = (bool) $this->option('dry-run');
+        $rows = $tenant->runWithoutTenant(fn () => $this->option('future-only')
+            ? WorkizJob::query()->where('scheduled_for', '>', now()->format('Y-m-d H:i:s'))
+                ->where(fn ($q) => $q->whereNull('status')->orWhere(fn ($q) => $q
+                    ->whereRaw("LOWER(status) NOT LIKE '%cancel%'")->whereRaw("LOWER(status) NOT LIKE 'done%'")
+                    ->whereRaw("LOWER(status) NOT LIKE '%complete%'")->whereRaw("LOWER(status) NOT LIKE '%closed%'")))
+                ->get()
+            : WorkizJob::query()->where('updated_at', '>=', $since)->get());
 
         foreach ($rows->groupBy('organization_id') as $orgId => $jobs) {
             $organization = Organization::query()->withoutGlobalScopes()->find($orgId);
@@ -45,7 +54,7 @@ class FlagWorkizJobs extends Command
                 continue;
             }
 
-            $tenant->run($organization, function () use ($organization, $jobs, $settings, $notify, $boards, $tasks, &$flagged) {
+            $tenant->run($organization, function () use ($organization, $jobs, $settings, $notify, $boards, $tasks, &$flagged, $dry) {
                 $checkAddress = (bool) $settings->get('jobs.flag_incomplete_address', $organization);
                 $checkFriday = (bool) $settings->get('jobs.flag_late_friday', $organization);
 
@@ -63,6 +72,11 @@ class FlagWorkizJobs extends Command
 
                     foreach ($issues as $issue => $sentence) {
                         // The insert is the dedupe: a second sweep finds the row and skips.
+                        if ($dry) {
+                            $flagged += DB::table('workiz_job_flags')->where(['workiz_job_id' => $w->id, 'issue' => $issue])->exists() ? 0 : 1;
+
+                            continue;
+                        }
                         if (DB::table('workiz_job_flags')->insertOrIgnore(['workiz_job_id' => $w->id, 'issue' => $issue, 'created_at' => now()]) === 0) {
                             continue;
                         }
@@ -93,7 +107,7 @@ class FlagWorkizJobs extends Command
             });
         }
 
-        $this->info($flagged.' flag'.($flagged === 1 ? '' : 's').' raised.');
+        $this->info($flagged.' flag'.($flagged === 1 ? '' : 's').($dry ? ' would be raised.' : ' raised.'));
 
         return self::SUCCESS;
     }
