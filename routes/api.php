@@ -2574,6 +2574,10 @@ Route::prefix('v1')
             Route::post('newsletter/import/svg', [NewsletterImportController::class, 'svg']);
             Route::post('newsletter/import/artwork', [NewsletterImportController::class, 'artwork']);
             Route::post('newsletter/import/library/{item}', [NewsletterImportController::class, 'library']);
+            // P1c: HTML read for keep/convert without saving, and the kept original.
+            Route::post('newsletter/import/html', [NewsletterImportController::class, 'html']);
+            Route::get('newsletter/imports/{import}', [NewsletterImportController::class, 'original']);
+            Route::post('newsletters/{newsletter}/checkpoint', [NewslettersController::class, 'checkpoint']);
             // A picture uploaded from the composer's image picker (P0, 2026-11-17).
             Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
             // P1a: the picker's library list for newsletter-only roles, and a

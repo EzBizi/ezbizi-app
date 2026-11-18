@@ -3397,18 +3397,42 @@ void main() {
       expect(puts.last['html_override'], '<p>Mine</p>');
     });
 
-    testWidgets('pasted HTML is checked, previewed, refused with a script, and '
-        'undoable once used', (tester) async {
-      await _pumpComposer(
-        tester,
-        _handler(canEdit: true, newsletters: const [_draft]),
-      );
+    testWidgets('pasted HTML is checked, compared, refused with a script, and '
+        'applied after a Before import restore point, undoably', (tester) async {
+      final base = _handler(canEdit: true, newsletters: const [_draft]);
+      Map<String, dynamic>? imported;
+      Map<String, dynamic>? checkpoint;
+      await _pumpComposer(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/newsletter/import/html')) {
+          imported = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {
+              'import_id': 'imp-1',
+              'mode': 'keep',
+              'blocks': null,
+              'html_override': '<p>Imported</p>',
+              'issues': [
+                {'kind': 'note', 'message': 'EzBizi adds the company address and unsubscribe footer at the end.'},
+              ],
+              'lost': [],
+              'preserved': 0,
+              'preview_html': '<html><body><p>Imported</p>footer</body></html>',
+            },
+          });
+        }
+        if (path.endsWith('/n-1/checkpoint')) {
+          checkpoint = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': {'revision': 1, 'label': 'Before import'}});
+        }
+        return base(request);
+      });
 
       await _toStep(tester, 'design');
       await tester.tap(find.byKey(const ValueKey('newsletter-import')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
       await tester.pumpAndSettle();
       expect(find.text('There is no HTML to import.'), findsOneWidget);
 
@@ -3416,17 +3440,20 @@ void main() {
         find.byKey(const ValueKey('newsletter-import-source')),
         '<p>x</p><script>alert(1)</script>',
       );
-      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('newsletter-import-error')), findsOneWidget);
-      expect(find.byKey(const ValueKey('newsletter-import-use')), findsNothing);
+      expect(find.byKey(const ValueKey('newsletter-import-check')), findsNothing);
 
       await tester.enterText(
         find.byKey(const ValueKey('newsletter-import-source')),
         '<p>Imported</p>',
       );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
       await tester.pumpAndSettle();
+      expect(imported, {'html': '<p>Imported</p>', 'mode': 'keep', 'newsletter_id': 'n-1'});
       expect(
         tester
             .widgetList<MessageHtmlView>(find.byType(MessageHtmlView))
@@ -3434,9 +3461,13 @@ void main() {
         isTrue,
       );
       expect(find.textContaining('unsubscribe footer'), findsWidgets);
+      // Nothing changed yet.
+      expect(find.text('Sending: the blocks'), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-use')));
       await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
       await tester.pumpAndSettle();
+      expect(checkpoint, {'label': 'Before import'});
       expect(find.text('Sending: custom HTML'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('newsletter-undo')));
@@ -3458,8 +3489,12 @@ void main() {
               'artwork_svg': null,
               'alt': 'Spring',
               'warnings': ['Custom fonts are not carried over.'],
+              'import_id': 'imp-2',
             },
           });
+        }
+        if (request.url.path.endsWith('/n-1/checkpoint')) {
+          return _json({'data': {'revision': 1, 'label': 'Before import'}});
         }
         return base(request);
       });
@@ -3467,16 +3502,19 @@ void main() {
       await _toStep(tester, 'design');
       await tester.tap(find.byKey(const ValueKey('newsletter-import')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('SVG design'));
+      await tester.tap(find.text('SVG or artwork'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('newsletter-import-source')),
         '<svg xmlns="http://www.w3.org/2000/svg"><text>Spring sale</text></svg>',
       );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
       await tester.pumpAndSettle();
       expect(find.textContaining('Custom fonts'), findsOneWidget);
 
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-use')));
       await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('newsletter-import-panel')), findsNothing);
@@ -3538,12 +3576,14 @@ void main() {
           ),
         ),
       ));
-      await tester.tap(find.text('SVG design'));
+      await tester.tap(find.text('SVG or artwork'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('newsletter-import-source')),
         '<svg/>',
       );
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-use')));
@@ -3909,7 +3949,7 @@ void main() {
 
       // Named honestly. EzBizi knows what the provider ACCEPTED; "delivered"
       // would be a claim it cannot stand behind.
-      expect(find.text('ADDRESSES REACHED'), findsOneWidget);
+      expect(find.text('Accepted: '), findsOneWidget);
       expect(find.textContaining('delivered'), findsNothing);
     });
 
@@ -3940,6 +3980,10 @@ void main() {
         ),
       );
 
+      // The calendar is a secondary view, collapsed by default (P1c).
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.pumpAndSettle();
       // On the calendar, in the current month, by subject.
       expect(find.text('Scheduled'), findsWidgets);
       // In the calendar; the table beside it carries the subject too.
@@ -3947,6 +3991,7 @@ void main() {
 
       // "Review them or edit them" — tapping it lands in the composer with
       // that mailing open. A date with no way in is a poster.
+      await tester.ensureVisible(_inCalendar('Autumn sweeps'));
       await tester.tap(_inCalendar('Autumn sweeps'));
       await tester.pumpAndSettle();
 
@@ -3996,6 +4041,9 @@ void main() {
         ),
       );
 
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.pumpAndSettle();
       // The calendar carries it too, so the clock is readable without
       // opening the mailing at all. It lives in the cell's tooltip, which is
       // the only place a month grid has room for a time.
@@ -4008,6 +4056,7 @@ void main() {
         findsOneWidget,
       );
 
+      await tester.ensureVisible(_inCalendar('Autumn sweeps'));
       await tester.tap(_inCalendar('Autumn sweeps'));
       await tester.pumpAndSettle();
 
@@ -4064,6 +4113,11 @@ void main() {
     ) async {
       await _pumpNewsletter(tester, _handler(canEdit: true));
 
+      // Collapsed by default (P1c): the empty grid no longer fills the page.
+      expect(find.textContaining('Nothing is scheduled this month'), findsNothing);
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-calendar-toggle')));
+      await tester.pumpAndSettle();
       expect(find.textContaining('Nothing is scheduled this month'), findsOneWidget);
     });
 
@@ -4194,7 +4248,7 @@ void main() {
         expect(find.byKey(ValueKey('newsletter-$id')), findsOneWidget);
       }
       final sentRow = find.byKey(const ValueKey('newsletter-n-5'));
-      expect(find.descendant(of: sentRow, matching: find.text('412')), findsOneWidget);
+      expect(find.descendant(of: sentRow, matching: find.textContaining('412 addresses')), findsOneWidget);
       expect(find.descendant(of: sentRow, matching: find.text('Customers · built from your customers')),
           findsOneWidget);
       expect(find.descendant(of: sentRow, matching: find.text('View')), findsOneWidget);

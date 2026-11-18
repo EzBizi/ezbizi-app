@@ -319,6 +319,18 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     widget.onHtml(html);
   }
 
+  /// Before an import replaces the content (P1c): what is on screen is saved,
+  /// then that saved version is kept in history as "Before import", so the
+  /// import can be undone from History as well as with Undo. False stops it.
+  Future<bool> _beforeImport() async {
+    final api = widget.api;
+    final id = widget.newsletterId;
+    if (api == null || id == null) return true;
+    await widget.onSaveNow?.call();
+    final response = await api.post('/newsletters/$id/checkpoint', {'label': 'Before import'});
+    return response.ok;
+  }
+
   void _useBlocks(List<Map<String, dynamic>> blocks) {
     setState(() {
       _snapshot();
@@ -2078,6 +2090,9 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               onUseHtml: _useHtml,
               onUseBlocks: _useBlocks,
               onClose: () => setState(() => _importing = false),
+              newsletterId: widget.newsletterId,
+              subject: widget.subject.text,
+              onBeforeApply: _beforeImport,
             ),
             const SizedBox(height: 10),
           ],
