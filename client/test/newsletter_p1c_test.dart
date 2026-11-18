@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_dashboard.dart';
 import 'package:ezbizi_client/screens/marketing/newsletter_import_panel.dart';
@@ -193,6 +194,90 @@ void main() {
       expect(used, isEmpty);
       expect(html, isEmpty);
       expect(find.byKey(const ValueKey('newsletter-import-done')), findsOneWidget);
+    });
+
+    // A 1x1 PNG.
+    final png = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    );
+
+    Future<void> pickPng(WidgetTester tester, List<int> bytes, {List<String>? accepts}) async {
+      Files.debugPickBytes = (accept) async {
+        accepts?.add(accept);
+        return PickedBytes('spring-sale.png', bytes);
+      };
+      addTearDown(() => Files.debugPickBytes = null);
+      await tester.tap(find.text('SVG or artwork'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-pick')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a PNG under SVG or artwork becomes one image block with alt '
+        'and link, uploaded through the composer picture upload', (tester) async {
+      final used = <List<Map<String, dynamic>>>[];
+      final paths = <String>[];
+      final accepts = <String>[];
+      await pumpWizard(
+        tester,
+        used: used,
+        handler: (r) async {
+          paths.add(r.url.path);
+          if (r.url.path.endsWith('/newsletter/images')) {
+            expect(r.headers['content-type'], startsWith('multipart/form-data'));
+            return json({'data': {'id': 'li-1', 'url': 'https://app.test/api/v1/newsletter/artwork/o/p.png'}}, 201);
+          }
+          return json({}, 404);
+        },
+      );
+      await pickPng(tester, png, accepts: accepts);
+      expect(find.textContaining('at most 2 MB'), findsOneWidget);
+      expect(accepts.single, contains('.png'));
+      expect(accepts.single, contains('.svg'));
+      expect(find.byKey(const ValueKey('newsletter-import-raster')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('newsletter-import-mode-artwork')), findsOneWidget);
+      expect(find.byKey(const ValueKey('newsletter-import-mode-svgBlocks')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.text('Original'), findsOneWidget);
+      expect(find.text('Result'), findsOneWidget);
+      expect(find.descendant(
+        of: find.byKey(const ValueKey('newsletter-import-issues')),
+        matching: find.textContaining('one image block'),
+      ), findsOneWidget);
+      expect(paths, isEmpty, reason: 'comparing a picture asks nothing of the server');
+
+      await tester.enterText(find.byKey(const ValueKey('newsletter-import-alt')), 'Spring sale: 20% off');
+      await tester.enterText(find.byKey(const ValueKey('newsletter-import-link')), 'https://a1.example.com/sale');
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-use')));
+      await tester.pumpAndSettle();
+
+      expect(paths, [endsWith('/newsletter/images')]);
+      expect(used.single, [
+        {
+          'type': 'image',
+          'src': 'https://app.test/api/v1/newsletter/artwork/o/p.png',
+          'alt': 'Spring sale: 20% off',
+          'href': 'https://a1.example.com/sale',
+        },
+      ]);
+    });
+
+    testWidgets('a picture over 2 MB is listed as an issue and cannot be applied', (tester) async {
+      final used = <List<Map<String, dynamic>>>[];
+      await pumpWizard(tester, used: used, handler: (r) async => json({}, 404));
+      await pickPng(tester, [...png, ...List.filled(2 * 1024 * 1024, 0)]);
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('larger than 2 MB'), findsOneWidget);
+      expect(tester.widget<FilledButton>(find.byKey(const ValueKey('newsletter-import-use'))).onPressed, isNull);
+      expect(tester.widget<OutlinedButton>(find.byKey(const ValueKey('newsletter-import-new'))).onPressed, isNull);
     });
   });
 

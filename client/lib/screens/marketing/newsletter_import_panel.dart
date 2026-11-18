@@ -10,6 +10,7 @@ import '../../core/files.dart';
 import '../../widgets/dashboard_card.dart';
 import '../email/message_html.dart';
 import 'newsletter_blocks.dart';
+import 'media_library_panel.dart' show newsletterPictureLimitBytes;
 
 /// What an imported HTML document is refused for, and what it is warned about.
 ///
@@ -92,6 +93,23 @@ Future<Uint8List?> rasteriseSvg(String svg, int width) async {
 
 /// Where an import comes from (step 1).
 enum ImportSource { paste, file, svg }
+
+/// Whether [b] starts like a PNG, JPEG, GIF or WebP picture (the types the
+/// composer's picture upload takes).
+bool isRasterPicture(List<int> b) {
+  bool at(int i, List<int> sig) {
+    if (b.length < i + sig.length) return false;
+    for (var k = 0; k < sig.length; k++) {
+      if (b[i + k] != sig[k]) return false;
+    }
+    return true;
+  }
+
+  return at(0, const [0x89, 0x50, 0x4E, 0x47]) ||
+      at(0, const [0xFF, 0xD8, 0xFF]) ||
+      at(0, 'GIF8'.codeUnits) ||
+      (at(0, 'RIFF'.codeUnits) && at(8, 'WEBP'.codeUnits));
+}
 
 /// What the import does with it (step 2).
 enum ImportMode { keep, convert, svgBlocks, artwork }
@@ -177,11 +195,19 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
   String? _artwork;
   String _alt = '';
 
+  // A PNG, JPEG, GIF or WebP chosen under "SVG or artwork": it becomes one
+  // image block, uploaded through the composer's own picture upload.
+  Uint8List? _raster;
+  final TextEditingController _rasterAlt = TextEditingController();
+  final TextEditingController _rasterLink = TextEditingController();
+
   bool get _svg => _source == ImportSource.svg;
 
   @override
   void dispose() {
     _text.dispose();
+    _rasterAlt.dispose();
+    _rasterLink.dispose();
     super.dispose();
   }
 
@@ -198,12 +224,23 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
   }
 
   Future<void> _pick() async {
-    final file = await Files.pickBytes(accept: _svg ? '.svg' : '.html,.htm');
+    final file = await Files.pickBytes(
+      accept: _svg ? '.svg,.png,.jpg,.jpeg,.gif,.webp' : '.html,.htm',
+    );
     if (file == null || !mounted) return;
+    final bytes = Uint8List.fromList(file.bytes);
     setState(() {
-      _text.text = utf8.decode(file.bytes, allowMalformed: true);
-      _fileName = file.name;
       _clearResult();
+      _fileName = file.name;
+      if (_svg && isRasterPicture(bytes)) {
+        _raster = bytes;
+        _text.clear();
+        final dot = file.name.lastIndexOf('.');
+        _rasterAlt.text = (dot > 0 ? file.name.substring(0, dot) : file.name).replaceAll(RegExp(r'[-_]+'), ' ').trim();
+        return;
+      }
+      _raster = null;
+      _text.text = utf8.decode(file.bytes, allowMalformed: true);
     });
   }
 
@@ -212,6 +249,11 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
     final text = _text.text;
     setState(() {
       _clearResult();
+      if (_svg && _raster != null) {
+        _mode = ImportMode.artwork;
+        _step = 1;
+        return;
+      }
       if (text.trim().isEmpty) {
         _error = _svg ? 'There is no SVG to import.' : 'There is no HTML to import.';
         return;
@@ -234,6 +276,20 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
   Future<void> _compare() async {
     final api = widget.api;
     if (api == null) return;
+    final raster = _raster;
+    if (_svg && raster != null) {
+      setState(() {
+        _clearResult();
+        _resultBlocks = const [];
+        _issues = [
+          if (raster.length > newsletterPictureLimitBytes)
+            const ImportIssue('asset', 'That picture is larger than 2 MB, the most an email picture may be. Make it smaller and choose it again.'),
+          const ImportIssue('note', 'The picture becomes one image block: its words cannot be edited or read by inboxes that hide pictures, so describe it below.'),
+        ];
+        _step = 2;
+      });
+      return;
+    }
     setState(() {
       _clearResult();
       _busy = true;
@@ -297,6 +353,7 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
   bool get _canApply {
     if (_busy) return false;
     if (_lost.isNotEmpty && !_acceptLosses) return false;
+    if (_svg && _raster != null) return _raster!.length <= newsletterPictureLimitBytes;
     if (_mode == ImportMode.keep) return _resultHtml != null;
     if (_mode == ImportMode.convert) return (_resultBlocks ?? const []).isNotEmpty;
     return _resultBlocks != null;
@@ -305,6 +362,8 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
   /// The SVG modes' blocks, with the artwork uploaded as a picture; null when
   /// the picture could not be made (the error says so and nothing applies).
   Future<List<Map<String, dynamic>>?> _svgContent() async {
+    final raster = _raster;
+    if (raster != null) return _rasterContent(raster);
     final whole = _mode == ImportMode.artwork;
     final art = whole ? _text.text : _artwork;
     final blocks = whole ? <Map<String, dynamic>>[] : [...?_resultBlocks];
@@ -327,6 +386,24 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
     }
     blocks.insert(0, {'type': 'image', 'src': url, 'alt': _alt});
     return blocks;
+  }
+
+  /// The chosen picture, uploaded to the composer's media library, as one
+  /// image block; null (with the reason shown) when the upload is refused.
+  Future<List<Map<String, dynamic>>?> _rasterContent(Uint8List bytes) async {
+    final api = widget.api;
+    if (api == null) return null;
+    final response = await api.postFile('/newsletter/images', 'file', _fileName ?? 'picture', bytes);
+    final data = response.ok ? response.data : null;
+    final url = data is Map ? data['url'] as String? : null;
+    if (url == null) {
+      _error = response.ok ? 'The picture could not be uploaded, so nothing was imported.' : response.reason;
+      return null;
+    }
+    final link = _rasterLink.text.trim();
+    return [
+      {'type': 'image', 'src': url, 'alt': _rasterAlt.text.trim(), if (link.isNotEmpty) 'href': link},
+    ];
   }
 
   Future<void> _apply() async {
@@ -477,6 +554,7 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
       showSelectedIcon: false,
       onSelectionChanged: (s) => setState(() {
         _source = s.first;
+        _raster = null;
         _text.clear();
         _fileName = null;
         _clearResult();
@@ -486,7 +564,8 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
     DashboardNote(switch (_source) {
       ImportSource.paste => 'Paste the whole email’s HTML.',
       ImportSource.file => 'Choose an .html file exported from another email tool.',
-      ImportSource.svg => 'Choose or paste an SVG design. Its text can become blocks; shapes and pictures become one image.',
+      ImportSource.svg => 'Choose or paste an SVG design: its text can become blocks; shapes and pictures become one image. '
+          'Or choose a PNG, JPEG, GIF or WebP picture (at most 2 MB): it becomes one image block.',
     }),
     const SizedBox(height: 8),
     if (_source != ImportSource.paste)
@@ -496,10 +575,17 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
           key: const ValueKey('newsletter-import-pick'),
           onPressed: _busy ? null : _pick,
           icon: const Icon(Icons.upload_file, size: 16),
-          label: Text(_fileName ?? (_svg ? 'Choose .svg file' : 'Choose .html file')),
+          label: Text(_fileName ?? (_svg ? 'Choose SVG or picture' : 'Choose .html file')),
         ),
       ),
     const SizedBox(height: 8),
+    if (_svg && _raster != null)
+      SizedBox(
+        key: const ValueKey('newsletter-import-raster'),
+        height: 120,
+        child: Image.memory(_raster!, fit: BoxFit.contain, errorBuilder: (_, _, _) => const SizedBox.shrink()),
+      )
+    else
     TextField(
       key: const ValueKey('newsletter-import-source'),
       controller: _text,
@@ -507,7 +593,10 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
       maxLines: 8,
       style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
       decoration: InputDecoration(hintText: _svg ? '<svg …>' : '<html>…</html>'),
-      onChanged: (_) => setState(_clearResult),
+      onChanged: (_) => setState(() {
+        _raster = null;
+        _clearResult();
+      }),
     ),
     const SizedBox(height: 8),
     Align(
@@ -521,7 +610,12 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
   ];
 
   List<Widget> _modeStep(ThemeData theme) {
-    final options = _svg
+    final options = _svg && _raster != null
+        ? const [
+            (ImportMode.artwork, 'Use the picture as one image',
+                'Shown exactly as chosen, with a description for inboxes that hide pictures and an optional link.'),
+          ]
+        : _svg
         ? const [
             (ImportMode.svgBlocks, 'Text as blocks, artwork as a picture',
                 'Text and links become blocks you can edit. Shapes and pictures become one image.'),
@@ -585,11 +679,17 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
       ],
     );
 
-    final original = _svg
+    final rasterView = _raster == null
+        ? null
+        : Image.memory(_raster!, fit: BoxFit.contain, errorBuilder: (_, _, _) => const SizedBox.shrink());
+    final original = rasterView ??
+        (_svg
         ? SvgPicture.string(_text.text, fit: BoxFit.contain)
-        : MessageHtmlView(html: _text.text, ownHtml: true);
+        : MessageHtmlView(html: _text.text, ownHtml: true));
     final Widget result;
-    if (_svg && _mode == ImportMode.artwork) {
+    if (rasterView != null) {
+      result = rasterView;
+    } else if (_svg && _mode == ImportMode.artwork) {
       result = SvgPicture.string(_text.text, fit: BoxFit.contain);
     } else if (_svg) {
       result = SingleChildScrollView(
@@ -661,6 +761,20 @@ class _NewsletterImportPanelState extends State<NewsletterImportPanel> {
             ),
         ],
       ),
+      if (_raster != null) ...[
+        const SizedBox(height: 8),
+        TextField(
+          key: const ValueKey('newsletter-import-alt'),
+          controller: _rasterAlt,
+          decoration: const InputDecoration(labelText: 'Description (for inboxes that hide pictures)'),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const ValueKey('newsletter-import-link'),
+          controller: _rasterLink,
+          decoration: const InputDecoration(labelText: 'Link (optional)'),
+        ),
+      ],
       if (_lost.isNotEmpty) ...[
         const SizedBox(height: 8),
         Text('Not converted (lost if you apply)', style: theme.textTheme.titleSmall),

@@ -108,6 +108,7 @@ class NewsletterEditor extends StatefulWidget {
     this.onNew,
     this.onCompare,
     this.onSaveAsCopy,
+    this.onImportedAsNew,
     this.localCopyNote,
     this.onRestoreLocal,
     this.onDiscardLocal,
@@ -147,6 +148,9 @@ class NewsletterEditor extends StatefulWidget {
   /// After a refused (409) save: compare, or keep the local copy as a draft.
   final VoidCallback? onCompare;
   final VoidCallback? onSaveAsCopy;
+
+  /// The import wizard saved a new draft with this id: open it.
+  final ValueChanged<String>? onImportedAsNew;
 
   /// An unsaved copy found on this device, said as a sentence; null: none.
   final String? localCopyNote;
@@ -2093,6 +2097,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               newsletterId: widget.newsletterId,
               subject: widget.subject.text,
               onBeforeApply: _beforeImport,
+              onSavedAsNew: widget.onImportedAsNew,
             ),
             const SizedBox(height: 10),
           ],

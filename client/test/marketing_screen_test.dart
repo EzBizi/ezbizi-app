@@ -3686,6 +3686,59 @@ void main() {
       expect(find.byKey(const ValueKey('newsletter-delete')), findsOneWidget);
     });
 
+    testWidgets('import wizard Save as new draft opens the new draft in the '
+        'composer', (tester) async {
+      const imported = {
+        'id': 'n-9',
+        'subject': 'Imported spring',
+        'status': 'draft',
+        'audience': null,
+        'html_override': '<p>Imported</p>',
+        'blocks': <Map<String, Object?>>[],
+      };
+      var created = false;
+      Map<String, dynamic>? posted;
+      final before = _handler(canEdit: true, newsletters: const [_draft]);
+      final after = _handler(canEdit: true, newsletters: const [_draft, imported]);
+      await _pumpComposer(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/newsletter/import/html')) {
+          return _json({
+            'data': {
+              'mode': 'keep',
+              'html_override': '<p>Imported</p>',
+              'issues': [],
+              'lost': [],
+              'preview_html': '<p>Imported</p>',
+            },
+          });
+        }
+        if (request.method == 'POST' && path.endsWith('/newsletters')) {
+          posted = jsonDecode(request.body) as Map<String, dynamic>;
+          created = true;
+          return _json({'data': imported}, 201);
+        }
+        return (created ? after : before)(request);
+      });
+
+      await _toStep(tester, 'design');
+      await tester.tap(find.byKey(const ValueKey('newsletter-import')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('newsletter-import-source')), '<p>Imported</p>');
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-next')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-check')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('newsletter-import-new')));
+      await tester.tap(find.byKey(const ValueKey('newsletter-import-new')));
+      await tester.pumpAndSettle();
+
+      expect(posted!['html_override'], '<p>Imported</p>');
+      final subject = tester.widget<TextField>(find.byKey(const ValueKey('newsletter-subject')));
+      expect(subject.controller!.text, 'Imported spring', reason: 'the new draft is the one open');
+      expect(find.byKey(const ValueKey('newsletter-import-panel')), findsNothing);
+    });
+
     testWidgets('a save refused as stale stops autosave, keeps the edits and '
         'offers Reload', (tester) async {
       var puts = 0;
