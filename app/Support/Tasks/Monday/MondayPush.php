@@ -81,6 +81,12 @@ final class MondayPush
                     } catch (MondayRefused $e) {
                         throw $e; // the connection is broken: stop, retry next run
                     } catch (\Throwable $e) {
+                        if (str_contains($e->getMessage(), 'USER_UNAUTHORIZED')) {
+                            // Monday's 403 on one item does not change on a retry (desk 11-18: an archived item).
+                            $counts[$this->refused($entry, $e)]++;
+
+                            continue;
+                        }
                         $attempts = $entry->attempts + 1;
                         $entry->forceFill([
                             'attempts' => $attempts, 'error' => mb_substr($e->getMessage(), 0, 500),
@@ -326,6 +332,30 @@ final class MondayPush
     private function mondayId(?string $ref): ?string
     {
         return is_string($ref) && preg_match('/^monday:(\d+)$/', $ref, $m) ? $m[1] : null;
+    }
+
+    /** Failed for good, with the reason, and a line on the task so its people know it did not reach Monday. */
+    private function refused(MondayOutboxEntry $entry, \Throwable $e): string
+    {
+        $task = Task::query()->withTrashed()->find($entry->task_id);
+        $itemId = $this->mondayId($task?->external_ref);
+        try {
+            $state = $itemId === null ? null : ($this->reader->itemState($itemId)['state'] ?? null);
+        } catch (\Throwable) {
+            $state = null;
+        }
+        $why = match ($state) {
+            'archived' => 'The item is archived on Monday, which takes no changes to it.',
+            'deleted' => 'The item is deleted on Monday.',
+            null => 'Monday shows no such item to this account any more.',
+            default => 'Monday refused this account the change (Access denied).',
+        };
+        $entry->forceFill(['state' => MondayOutboxEntry::FAILED, 'attempts' => $entry->attempts + 1, 'error' => $why.' '.mb_substr($e->getMessage(), 0, 300)])->save();
+        if ($task !== null) {
+            $this->activity($task, 'Not sent to Monday: '.$why);
+        }
+
+        return 'failed';
     }
 
     private function close(MondayOutboxEntry $entry, string $state, ?string $why = null): string

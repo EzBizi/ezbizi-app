@@ -313,13 +313,13 @@ final class MondayBoardReader
             'due' => $due === null ? null : (string) $due, 'groups' => $groups];
     }
 
-    /** @return array{updated_at: ?string, board: string, group: ?string}|null an item's clock, board and group */
+    /** @return array{updated_at: ?string, board: string, group: ?string, state: ?string}|null an item's clock, board, group and state (active, archived, deleted) */
     public function itemState(string $itemId): ?array
     {
-        $item = $this->api->query('query($i:[ID!]){ items(ids:$i) { id updated_at board { id } group { id } } }', ['i' => [$itemId]])['items'][0] ?? null;
+        $item = $this->api->query('query($i:[ID!]){ items(ids:$i) { id state updated_at board { id } group { id } } }', ['i' => [$itemId]])['items'][0] ?? null;
 
         return isset($item['board']['id'])
-            ? ['updated_at' => $item['updated_at'] ?? null, 'board' => (string) $item['board']['id'], 'group' => isset($item['group']['id']) ? (string) $item['group']['id'] : null]
+            ? ['updated_at' => $item['updated_at'] ?? null, 'board' => (string) $item['board']['id'], 'group' => isset($item['group']['id']) ? (string) $item['group']['id'] : null, 'state' => $item['state'] ?? null]
             : null;
     }
 
