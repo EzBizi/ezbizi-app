@@ -21,6 +21,8 @@ Artisan::command('inspire', function () {
  * stops an hourly sweep becoming an hourly alert.
  */
 Schedule::command('ezbizi:flag-workiz-jobs')->everyFifteenMinutes()->withoutOverlapping(14);
+// A Workiz job booked into a full window (Jose / desk, 2026-11-17).
+Schedule::command('scheduling:flag-full-windows')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
@@ -35,6 +37,10 @@ Schedule::command('ezbizi:check-connection-health')->dailyAt('06:40')->withoutOv
 // Paid time off that opens today or resets in 30 days (Jose, 2026-10-21).
 // Work Hours › Daily approval reminders (2026-10-22); each approver once a day.
 Schedule::command('ezbizi:time-clock-approval-reminders')->everyFifteenMinutes()->withoutOverlapping(10);
+// Project Management: parts 3 days late, and part reminders due (Jose, 2026-11-17).
+Schedule::command('ezbizi:project-board-part-alerts')->everyFifteenMinutes()->withoutOverlapping(10);
+// Project Management client texts, each OFF until switched on (Jose, 2026-11-17).
+Schedule::command('ezbizi:project-board-client-messages')->everyFifteenMinutes()->withoutOverlapping(10);
 Schedule::command('ezbizi:pto-daily-triggers')->dailyAt('07:10')->withoutOverlapping(30);
 
 // Every RingCentral account's finished days kept for the reports, so a week or
@@ -68,6 +74,8 @@ Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('Americ
 // command above. Two sweeps deleting from one table on different rules is a bug
 // waiting for the night they disagree.
 Schedule::command('ezbizi:expire-data')->dailyAt('03:50');
+// The live feed (GET changes) only needs the last minutes; keep a day.
+Schedule::command('ezbizi:prune-change-events')->hourlyAt(11)->withoutOverlapping(30);
 
 // A sudden jump in errors, crashes or freezes from one app version (2026-10-15).
 Schedule::command('ezbizi:check-client-issues')->everyTenMinutes()->withoutOverlapping(5);
@@ -195,6 +203,14 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  * what changed, about eight calls a branch, well under the key's burst limit.
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
+// Monday → Task Board for the boards imported from Monday (desk, 11-12): the changed items every ten
+// minutes (Monday's date filter, since each board's cursor), webhooks in between.
+Schedule::command('ezbizi:monday-sync')->everyTenMinutes()->withoutOverlapping(20);
+// Nightly: every board listed (a subitem-only change can miss Monday's date filter); only changed items are read.
+// Both run in the slow lane (2026-11-16: the poll took ~4 min of a 5-min fast slot and the slot timed out).
+Schedule::command('ezbizi:monday-sync --scan')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
+// Task Board → Monday while both are in use (Jose, 11-13): the outbox, every minute.
+Schedule::command('ezbizi:monday-push')->everyMinute()->withoutOverlapping(10);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
 Schedule::command('ezbizi:sync-workiz-records --type=payment --days=35 --pages=200')->dailyAt('03:20')->withoutOverlapping(60);
@@ -262,6 +278,9 @@ Schedule::command('ezbizi:import-workiz-leads')->everyMinute()->withoutOverlappi
 // NOT runInBackground(), for the same reason: killed with schedule:run, it
 // never finished a pass and its own lock stayed held for an hour each time.
 Schedule::command('ezbizi:project-workiz')->everyMinute()->withoutOverlapping(10);
+// Both directions of the Workiz sync checked, healed and alerted once (Jose, 11-12). Deep pass: 30 days, nightly.
+Schedule::command('ezbizi:workiz-watchdog')->everyFiveMinutes()->withoutOverlapping(10)->runInBackground();
+Schedule::command('ezbizi:workiz-watchdog --deep')->dailyAt('04:10')->withoutOverlapping(30)->runInBackground();
 
 /*
  * New zips from new bookings (Jose, 2026-09-28): a job booked in Workiz for
@@ -324,6 +343,8 @@ Schedule::command('ezbizi:renew-meta-login-tokens')->dailyAt('04:20')->timezone(
 // It inserts outbox rows and dispatches nothing itself, for the reason set out
 // above the sweep it feeds.
 Schedule::command('ezbizi:watch-mailboxes')->everyMinute()->withoutOverlapping(5);
+// Receive and Send on the inbox card, pass or fail (Jose 11-12).
+Schedule::command('ezbizi:check-mailboxes')->everyMinute()->withoutOverlapping(5)->runInBackground();
 Schedule::command('ezbizi:wake-snoozed-mail')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:warm-inbox-headers')->everyMinute()->withoutOverlapping(5)->runInBackground();
 
@@ -433,6 +454,7 @@ Schedule::command('ezbizi:leads-ringcentral')->everyTwoMinutes()->withoutOverlap
 Schedule::command('ezbizi:leads-ez')->everyMinute()->withoutOverlapping(10);
 // A Google call filed under another person's message lead, moved to its own (2026-10-16).
 Schedule::command('ezbizi:leads-call-owner')->everyFifteenMinutes()->withoutOverlapping(15);
+Schedule::command('ezbizi:jobs-source-from-dialed')->everyFifteenMinutes()->withoutOverlapping(15);
 // Local Services accounts to their Business Profile listing; renamed when it moves (2026-10-19).
 Schedule::command('ezbizi:leads-link-profiles')->dailyAt('05:40')->timezone('America/New_York')->withoutOverlapping(30);
 // Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
@@ -487,6 +509,11 @@ Schedule::command('ezbizi:leads-reply-overdue')->everyMinute()->withoutOverlappi
 
 // Task Board: a task past its due date raises task.overdue, once per task.
 Schedule::command('ezbizi:tasks-overdue')->everyFifteenMinutes()->withoutOverlapping(10);
+// Task Board: the board rules' week, moved and flagged by person, to Administrators (Jose 11-17).
+Schedule::command('ezbizi:tasks-misfiled-report')->weeklyOn(1, '09:00')->timezone('America/New_York');
+// Task Board: a due date or date column that is today/tomorrow raises task.date_arrived, once per date
+// (Monday's "when Date arrives"; the rule's delay picks the hour).
+Schedule::command('ezbizi:tasks-dates-arrived')->hourlyAt(2)->withoutOverlapping(30);
 
 // A customer who went quiet after the automatic first reply raises
 // lead.follow_up_due once, so a rule can send the one follow-up.
@@ -494,3 +521,29 @@ Schedule::command('ezbizi:leads-follow-up-due')->everyFiveMinutes()->withoutOver
 
 // Yesterday's leads in numbers, for a morning WhatsApp or email rule.
 Schedule::command('ezbizi:leads-daily-digest')->dailyAt('12:00')->withoutOverlapping(10);
+
+/*
+ * TWO LANES (2026-11-12). The three slots run a minute's commands in
+ * sequence under TimeoutStartSec=300. At 17:20 and 17:25 UTC the slow
+ * Workiz and lead pulls (sync-leads ~90 s, workiz-web-sales ~120 s,
+ * workiz-web-estimate-links hung > 3 min, project-workiz ~100 s) lined up in
+ * slot 0 and systemd killed it mid-project-workiz, stranding its lock: no
+ * Workiz job became an EzBizi job for an hour.
+ *
+ * With ezbizi.scheduler.slow_lane on (EZBIZI_SLOW_LANE=on), the SLOW commands run only in deploy/ezbizi-scheduler-slow.service
+ * (EZBIZI_SCHEDULE_LANE=slow, its own every-minute timer, a 30-minute
+ * timeout); the three fast slots run everything else and are never held
+ * behind them. withoutOverlapping still guards each command.
+ */
+foreach (app(Illuminate\Console\Scheduling\Schedule::class)->events() as $event) {
+    $slow = (bool) preg_match(
+        '/ezbizi:(sync-leads|sync-workiz|workiz-web-sales|workiz-web-estimate-links|project-workiz|gbp-sync|review-backlog|monday-sync)(\s|\'|$)/',
+        (string) $event->command,
+    );
+    $event->when(function () use ($slow) {
+        $inSlowLane = getenv('EZBIZI_SCHEDULE_LANE') === 'slow';
+
+        // Flag off: the fast slots run everything and the slow lane nothing.
+        return config('ezbizi.scheduler.slow_lane') ? $slow === $inSlowLane : ! $inSlowLane;
+    });
+}

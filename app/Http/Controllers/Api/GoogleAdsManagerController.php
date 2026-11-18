@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\SocialConnection;
 use App\Services\Ads\CampaignPerformance;
+use App\Support\Ads\AllAccounts;
 use App\Support\Audit\AuditLogger;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
@@ -28,15 +29,28 @@ class GoogleAdsManagerController extends Controller
         private readonly AuditLogger $audit,
     ) {}
 
-    /** GET ads-manager/google/campaigns?connection_id=&from=&to= */
+    /** GET ads-manager/google/campaigns?connection_id=&from=&to=, or all=1 for every account (AllAccounts). */
     public function campaigns(Request $request): JsonResponse
     {
         $this->authorizeTo($request, 'ads_manager.view');
         $in = $request->validate([
-            'connection_id' => ['required', 'uuid'],
+            'connection_id' => ['required_without:all', 'uuid'],
+            'all' => ['sometimes', 'boolean'],
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
         ]);
+        if ($request->boolean('all')) {
+            $rows = SocialConnection::query()->where('provider', SocialProvider::GoogleAds->value)
+                ->where('status', SocialConnection::STATUS_CONNECTED)->orderBy('display_name')->get()
+                ->filter(fn (SocialConnection $c) => $this->access->inView($request->user(), $c));
+            // A manager holds no campaigns of its own; the screen leaves them out the same way.
+            $managers = $rows->pluck('login_customer_id')->filter()->all();
+            $accounts = $rows->reject(fn (SocialConnection $c) => $c->is_manager || in_array((string) $c->remote_id, $managers, true));
+            [$from, $to] = [Carbon::parse($in['from']), Carbon::parse($in['to'])];
+
+            return response()->json(['data' => AllAccounts::read($accounts, 'google', $from, $to,
+                fn (SocialConnection $c) => $this->google->manageable($c, $from, $to)['campaigns'])]);
+        }
         $connection = $this->connection($request, $in['connection_id']);
 
         try {
@@ -96,6 +110,7 @@ class GoogleAdsManagerController extends Controller
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], Status::HTTP_UNPROCESSABLE_ENTITY);
         }
+        AllAccounts::forget($connection);
         $this->audit->log($action, $connection, $changes, ['campaign_id' => $in['campaign_id'], 'customer_id' => $connection->remote_id]);
 
         return response()->json(['data' => ['campaign_id' => $in['campaign_id']] + $changes]);

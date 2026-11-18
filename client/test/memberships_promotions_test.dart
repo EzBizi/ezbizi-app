@@ -19,15 +19,20 @@ void main() {
       final server = _Server();
       await _pump(tester, server);
 
-      await tester.tap(find.text('Last 12 months'));
-      await tester.pumpAndSettle();
+      // The page opens on last month (one preview), so it is never empty.
       expect(server.previews, 1);
+      expect(_count(tester), isNotEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('promotions-when')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Last 12 months').last);
+      await tester.pumpAndSettle();
+      expect(server.previews, 2);
       expect(_count(tester), startsWith('3 customers'));
       expect(find.text('Sends from +18559553322'), findsOneWidget);
 
       // Filters run on the screen: job type, then leave out open jobs.
-      await tester.tap(find.widgetWithText(FilterChip, 'Chimney Sweep'));
-      await tester.pumpAndSettle();
+      await _pick(tester, 'Job type', 'Chimney Sweep');
       expect(_count(tester), startsWith('2 customers'));
       await tester.ensureVisible(
         find.byKey(const ValueKey('promotions-exclude-open')),
@@ -38,13 +43,14 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('promotions-exclude-open')));
       await tester.pumpAndSettle();
 
-      // Untick Ann: Bo is first, and both phones render him.
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('promotions-row-+12035550011')),
-      );
+      // Untick Ann in Review list: Bo is first, and both phones render him.
+      await tester.tap(find.byKey(const ValueKey('promotions-review')));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey('promotions-row-+12035550011')),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('promotions-review-done')));
       await tester.pumpAndSettle();
       expect(_count(tester), startsWith('1 customers'));
       final rendered = 'Hi Bo, it\'s A-1 Chimney.\n\nReply STOP to opt out.';
@@ -98,8 +104,6 @@ void main() {
   ) async {
     final server = _Server()..mms = false;
     await _pump(tester, server);
-    await tester.tap(find.text('Last month'));
-    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('promotions-picture')), findsNothing);
     expect(
       find.text(
@@ -108,6 +112,76 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'option A: pickers show only chosen chips, Send is in sight at 1440x900',
+    (tester) async {
+      final server = _Server();
+      await _pump(tester, server, size: const Size(1440, 900));
+
+      // Send is on screen without scrolling, beside Review list.
+      for (final key in ['promotions-send', 'promotions-review']) {
+        final button = find.byKey(ValueKey(key));
+        expect(button.hitTestable(), findsOneWidget, reason: key);
+        expect(tester.getRect(button).bottom, lessThanOrEqualTo(900));
+      }
+      expect(find.text('Send to 3'), findsOneWidget);
+
+      // The picker lists nothing until searched, then shows the pick as a chip.
+      expect(find.byType(FilterChip), findsNothing);
+      expect(find.byType(InputChip), findsNothing);
+      expect(_text(tester, 'promotions-pick-Job type-count'), 'All');
+      await _pick(tester, 'Job type', 'Chimney Inspection');
+      expect(
+        find.byKey(
+          const ValueKey('promotions-pick-Job type-chip-Chimney Inspection'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(InputChip), findsOneWidget);
+      expect(_text(tester, 'promotions-pick-Job type-count'), '1 of 2');
+      expect(find.text('Send to 1'), findsOneWidget);
+
+      // Removing the chip widens the list again.
+      await tester.tap(
+        find
+            .descendant(of: find.byType(InputChip), matching: find.byType(Icon))
+            .last,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(InputChip), findsNothing);
+      expect(find.text('Send to 3'), findsOneWidget);
+    },
+  );
+
+  testWidgets('on a phone the filters fold to one row that opens', (
+    tester,
+  ) async {
+    await _pump(tester, _Server(), size: const Size(390, 800));
+    expect(find.text('Filters · 0'), findsOneWidget);
+    expect(find.byKey(const ValueKey('promotions-when')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('promotions-send')).hitTestable(),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('promotions-filters-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('promotions-when')), findsOneWidget);
+  });
+}
+
+String _text(WidgetTester tester, String key) =>
+    tester.widget<Text>(find.byKey(ValueKey(key))).data!;
+
+Future<void> _pick(WidgetTester tester, String label, String value) async {
+  final search = find.byKey(ValueKey('promotions-pick-$label-search'));
+  await tester.ensureVisible(search);
+  await tester.enterText(search, value.substring(0, 5));
+  await tester.pumpAndSettle();
+  final option = find.byKey(ValueKey('promotions-pick-$label-option-$value'));
+  await tester.ensureVisible(option);
+  await tester.tap(option);
+  await tester.pumpAndSettle();
 }
 
 String _count(WidgetTester tester) =>
@@ -214,8 +288,12 @@ final _me = {
   'franchises': <Map<String, Object?>>[],
 };
 
-Future<void> _pump(WidgetTester tester, _Server server) async {
-  tester.view.physicalSize = const Size(1400, 2400);
+Future<void> _pump(
+  WidgetTester tester,
+  _Server server, {
+  Size size = const Size(1400, 2400),
+}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   final api = ApiClient(client: MockClient(server.handle));

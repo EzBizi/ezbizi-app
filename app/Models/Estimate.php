@@ -25,6 +25,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Estimate extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES): filed on its branch. */
+    protected static string $changeType = 'estimates';
+
     use HasUuids;
 
     /** A1 Tools' own words, so its history imports without a mapping. */

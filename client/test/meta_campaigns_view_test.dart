@@ -124,7 +124,9 @@ void main() {
   Future<void> open(
     WidgetTester tester, {
     required List<String> permissions,
+    bool unfold = true,
     List<Map<String, dynamic>>? accounts,
+    List<Map<String, dynamic>>? campaigns,
     double width = 1400,
   }) async {
     tester.view.physicalSize = Size(width, 1000);
@@ -155,7 +157,7 @@ void main() {
             'data': {
               'from': '2026-10-06',
               'to': '2026-11-04',
-              'campaigns': tree(),
+              'campaigns': campaigns ?? tree(),
             },
           });
         }
@@ -184,6 +186,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Meta'));
     await tester.pumpAndSettle();
+    // Paused rows fold under Inactive (Jose, 2026-11-16); these tests act on them.
+    final fold = find.byKey(const ValueKey('meta-inactive'));
+    if (unfold && fold.evaluate().isNotEmpty) {
+      await tester.tap(fold);
+      await tester.pumpAndSettle();
+    }
   }
 
   const manage = ['ads_manager.view', 'ads_manager.manage'];
@@ -250,6 +258,28 @@ void main() {
       find.text('This one has a lifetime budget, not a daily one.'),
       findsOneWidget,
     );
+  });
+
+  // UI/UX audit 11-13: spend under all-paused campaigns read as a bug.
+  testWidgets('spend under all-paused campaigns says it predates the pause', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      permissions: manage,
+      campaigns: [
+        node('campaign', '1', 'Fall', status: 'PAUSED', spend: 900),
+        node('campaign', '2', 'Winter', status: 'PAUSED', spend: 118.37),
+      ],
+    );
+    expect(find.byKey(const ValueKey('meta-kpi-all-paused')), findsOneWidget);
+    expect(find.text(r'$1,018.37'), findsOneWidget);
+  });
+
+  testWidgets('one campaign still on: no paused note', (tester) async {
+    await open(tester, permissions: manage);
+    expect(find.byKey(const ValueKey('meta-kpi-Spend')), findsOneWidget);
+    expect(find.byKey(const ValueKey('meta-kpi-all-paused')), findsNothing);
   });
 
   testWidgets('reading spend alone shows no switches and no budget links', (

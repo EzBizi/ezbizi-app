@@ -13,6 +13,7 @@ import '../../widgets/call_correction.dart';
 import '../../widgets/call_text.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/heading_pin.dart';
 import '../../widgets/open_destination.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
@@ -580,13 +581,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       );
     }
 
-    // Only people the phones rang: someone who only created Workiz jobs
+    // Only people on the phones: someone who only created Workiz jobs
     // (a technician, the office) is an empty row here (2026-11-04, 18 of 48).
+    // Calling out counts (Ana, 2026-11-16: Gino, Tiara, Ara had no row).
     final people = [
       for (final row in (report['people'] as List? ?? const []))
         if (row is Map &&
             (((row['rang'] as num?) ?? 0) > 0 ||
-                ((row['answered'] as num?) ?? 0) > 0))
+                ((row['answered'] as num?) ?? 0) > 0 ||
+                ((row['outbound'] as num?) ?? 0) > 0))
           row.cast<String, dynamic>(),
     ];
 
@@ -948,6 +951,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           .where(
             (c) =>
                 c['queue'] == _newQueue &&
+                c['mark'] == null &&
+                c['needs_attention'] != true &&
                 c['answered_by'] != null &&
                 c['booked'] != true &&
                 c['existing_job'] == null,
@@ -1244,7 +1249,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             if (people.isEmpty)
               SliverToBoxAdapter(child: _nothing(context))
             else if (wide) ...[
-              PinnedHeaderSliver(
+              // Pinned unless this person unpinned the headings (Jose,
+              // 2026-11-16).
+              HeadingPin.sliver(
+                context,
                 child: SizedBox(height: 88, child: _headerRow(context)),
               ),
               SliverList.builder(
@@ -1352,16 +1360,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       'booked' => from.where((c) => c['booked'] == true).toList(),
       'not_booked' => _unbooked(from),
       // Grok read the call as booked, but no Workiz job matches it (Jose,
-      // 2026-10-13: a list for a manager to follow up).
+      // 2026-10-13: a list for a manager to follow up; 2026-11-12: "call it
+      // Needs Attention"). The server decides, and a matching job clears it.
       'ai_booked_no_job' =>
-        from
-            .where(
-              (c) =>
-                  (c['labels'] as Map?)?['grok'] == 'booked' &&
-                  c['booked'] != true &&
-                  c['existing_job'] == null,
-            )
-            .toList(),
+        from.where((c) => c['needs_attention'] == true).toList(),
       _ => from,
     };
     // What became of the call (Jose, 2026-11-11: a Call column apart from Result).
@@ -1449,7 +1451,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ('all', 'All'),
           ('booked', 'Booked'),
           ('not_booked', 'Not booked'),
-          ('ai_booked_no_job', 'AI heard a booking, no job yet'),
+          ('ai_booked_no_job', 'Needs Attention'),
         ])
           // The follow-up list only while it has calls, or is chosen.
           if (key != 'ai_booked_no_job' ||
@@ -1659,7 +1661,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             ),
           ),
           if (box.maxWidth >= _tableRow)
-            PinnedHeaderSliver(child: _callsHeader(context)),
+            HeadingPin.sliver(context, child: _callsHeader(context)),
           SliverList.list(children: rows),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
@@ -1913,6 +1915,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       numeric: true,
       group: 'Phone',
     ),
+    // Calls they placed, any result (Ana, 2026-11-16).
+    (
+      key: 'outbound',
+      label: 'Outbound',
+      flex: 2,
+      numeric: true,
+      group: 'Phone',
+    ),
     (key: 'new_client', label: 'New', flex: 2, numeric: true, group: 'Sales'),
     (key: 'booked', label: 'Booked', flex: 2, numeric: true, group: 'Sales'),
     (
@@ -1939,7 +1949,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     for (final call in (_report?['calls'] as List? ?? const []))
       if (call is Map &&
           call['answered_by'] == person['person'] &&
-          call['queue'] == _newQueue)
+          call['queue'] == _newQueue &&
+          call['mark'] == null)
         call,
   ];
 
@@ -1949,7 +1960,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// Booked out of the new-client calls they answered (Trey, 2026-11-04:
   /// existing clients are not bookings); null when they answered none.
   double? _bookingRate(Map<String, dynamic> person) {
-    final answered = _answeredNew(person).length;
+    // Needs Attention is neither booked nor not booked yet (Jose, 2026-11-12).
+    final answered = _answeredNew(
+      person,
+    ).where((c) => c['needs_attention'] != true).length;
     if (answered == 0) return null;
 
     return _booked(person) / answered * 100;
@@ -2229,118 +2243,131 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       // Opaque on purpose: pinned, it scrolls over the rows beneath it, and a
       // transparent header would print the names through itself.
       color: theme.colorScheme.surface,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      // The pin over the empty corner above Person: the header's height is
+      // fixed, so it must take none (Jose, 2026-11-16).
+      child: Stack(
         children: [
-          Padding(
-            key: const ValueKey('tour-people-groups'),
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-            child: Row(
-              children: [
-                for (final (group, flex) in _groups())
-                  Expanded(
-                    flex: flex,
-                    child: group == null
-                        ? const SizedBox.shrink()
-                        : Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            padding: const EdgeInsets.only(bottom: 2),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: theme.colorScheme.outlineVariant,
-                                ),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  group.toUpperCase(),
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    letterSpacing: 0.6,
-                                    fontWeight: FontWeight.w700,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                if (group == 'Sales')
-                                  Tooltip(
-                                    message:
-                                        'Booking rate: booked out of the new-client calls they answered.',
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(left: 4),
-                                      child: Icon(
-                                        Icons.info_outline,
-                                        size: 13,
-                                        semanticLabel:
-                                            'Booking rate: booked out of the new-client calls they answered.',
-                                        color:
-                                            theme.colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                  ),
-                const SizedBox(width: 40),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(
-              children: [
-                for (final column in _columns())
-                  Expanded(
-                    flex: column.flex,
-                    child: InkWell(
-                      onTap: () => _sort(column.key),
-                      child: Row(
-                        mainAxisAlignment: column.numeric
-                            ? MainAxisAlignment.end
-                            : MainAxisAlignment.start,
-                        children: [
-                          // Two lines rather than run into the next title
-                          // ("RangAnswe…" at a laptop's width).
-                          Flexible(
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 6),
-                              child: Text(
-                                column.label,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: column.numeric
-                                    ? TextAlign.end
-                                    : TextAlign.start,
-                                style: theme.textTheme.labelLarge,
-                              ),
-                            ),
-                          ),
-
-                          // Only on the column actually in force. An arrow on
-                          // every header says nothing about which one is doing
-                          // the sorting.
-                          if (_sortBy == column.key)
-                            Icon(
-                              _ascending
-                                  ? Icons.arrow_upward
-                                  : Icons.arrow_downward,
-                              size: 14,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // Matches the chevron's slot in every row below.
-                const SizedBox(width: 40),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
+          _headerColumns(context),
+          const Positioned(left: 14, top: 2, child: HeadingPinButton()),
         ],
       ),
+    );
+  }
+
+  /// The group names over the column headings, of [_headerRow].
+  Widget _headerColumns(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          key: const ValueKey('tour-people-groups'),
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+          child: Row(
+            children: [
+              for (final (group, flex) in _groups())
+                Expanded(
+                  flex: flex,
+                  child: group == null
+                      ? const SizedBox.shrink()
+                      : Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.only(bottom: 2),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(
+                                color: theme.colorScheme.outlineVariant,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                group.toUpperCase(),
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  letterSpacing: 0.6,
+                                  fontWeight: FontWeight.w700,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              if (group == 'Sales')
+                                Tooltip(
+                                  message:
+                                      'Booking rate: booked out of the new-client calls they answered.',
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(left: 4),
+                                    child: Icon(
+                                      Icons.info_outline,
+                                      size: 13,
+                                      semanticLabel:
+                                          'Booking rate: booked out of the new-client calls they answered.',
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                ),
+              const SizedBox(width: 40),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              for (final column in _columns())
+                Expanded(
+                  flex: column.flex,
+                  child: InkWell(
+                    onTap: () => _sort(column.key),
+                    child: Row(
+                      mainAxisAlignment: column.numeric
+                          ? MainAxisAlignment.end
+                          : MainAxisAlignment.start,
+                      children: [
+                        // Two lines rather than run into the next title
+                        // ("RangAnswe…" at a laptop's width).
+                        Flexible(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Text(
+                              column.label,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: column.numeric
+                                  ? TextAlign.end
+                                  : TextAlign.start,
+                              style: theme.textTheme.labelLarge,
+                            ),
+                          ),
+                        ),
+
+                        // Only on the column actually in force. An arrow on
+                        // every header says nothing about which one is doing
+                        // the sorting.
+                        if (_sortBy == column.key)
+                          Icon(
+                            _ascending
+                                ? Icons.arrow_upward
+                                : Icons.arrow_downward,
+                            size: 14,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Matches the chevron's slot in every row below.
+              const SizedBox(width: 40),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+      ],
     );
   }
 
@@ -2482,17 +2509,24 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final theme = Theme.of(context);
 
     final all = calls.where((call) {
-      if (call['answered_by'] == name) return true;
+      if (call['answered_by'] == name || call['placed_by'] == name) return true;
 
       return ((call['rang'] as List?) ?? const []).contains(name);
     }).toList();
-    String answerOf(Map<String, dynamic> c) => c['answered_by'] == name
+    String answerOf(Map<String, dynamic> c) => _isOutbound(c)
+        ? 'outbound'
+        : c['answered_by'] == name
         ? 'answered'
         : c['answered_by'] == null
         ? 'missed'
         : 'not_answered';
+    // An existing client's too (Trey, 2026-11-13).
     String? bookingOf(Map<String, dynamic> c) =>
-        c['answered_by'] != name || c['queue'] != _newQueue
+        c['answered_by'] != name || c['mark'] != null
+        ? null
+        : c['needs_attention'] == true
+        ? 'needs_attention'
+        : c['queue'] != _newQueue
         ? null
         : c['booked'] == true
         ? 'booked'
@@ -2564,6 +2598,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ('answered', 'Answered'),
                   ('not_answered', 'Not answered'),
                   ('missed', 'Missed'),
+                  ('outbound', 'Outbound'),
                 ],
                 answerOf,
                 _answerFilter,
@@ -2576,6 +2611,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   ('booked', 'Booked'),
                   ('not_booked', 'Not booked'),
                   ('existing_job', 'Existing job'),
+                  ('needs_attention', 'Needs Attention'),
                 ],
                 bookingOf,
                 _bookingFilter,
@@ -2670,7 +2706,25 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           );
     // Jose, 2026-11-11: Result is the sale alone - Booked, Not booked, or
     // nothing where no sale was asked of the call; Call is what became of it.
-    final Widget? result = call['booked'] == true
+    final Widget? result = call['mark'] != null
+        ? _setMark(
+            setBy['mark'],
+            StatusPill(
+              CallCorrection.mark
+                  .firstWhere(
+                    (m) => m.$1 == call['mark'],
+                    orElse: () => ('', '${call['mark']}'),
+                  )
+                  .$2,
+            ),
+          )
+        // An existing client's too (Trey, 2026-11-13): before the line check.
+        : call['needs_attention'] == true
+        ? const Tooltip(
+            message: 'AI heard a booking, no job yet',
+            child: StatusPill('Needs Attention', tone: Tone.review),
+          )
+        : call['booked'] == true
         ? _setMark(
             setBy['booking'],
             StatusPill(
@@ -3084,6 +3138,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     CallCorrection.booking,
                     call['booked'] == true ? 'booked' : 'not_booked',
                   ),
+                  (
+                    'mark',
+                    'Mark',
+                    CallCorrection.mark,
+                    call['mark'] as String?,
+                  ),
                 ]) ...[
                   CallCorrection(
                     key: field == 'client'
@@ -3099,6 +3159,20 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     onSaved: _load,
                     onError: (m) => setState(() => _error = m),
                   ),
+                  // The AI may suggest it; a person confirms (Trey, 2026-11-04).
+                  if (field == 'mark' &&
+                      call['mark'] == null &&
+                      _labelOf(call, _labeller) == 'not_a_customer')
+                    Padding(
+                      padding: const EdgeInsets.only(left: 72, top: 2),
+                      child: Text(
+                        'AI suggests Not a customer. Pick it to confirm.',
+                        key: ValueKey('mark-suggested-${call['id']}'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 6),
                 ],
               ],
@@ -3175,7 +3249,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           SizedBox(
             height: 36,
             child: _cells([
-              heading('Date'),
+              // A person's calls are not pinned, so no pin there.
+              person
+                  ? heading('Date')
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [const HeadingPinButton(), heading('Date')],
+                    ),
               heading('Time'),
               const SizedBox.shrink(),
               heading('Caller'),
@@ -3391,6 +3471,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     ),
                   ),
                   TextSpan(text: ' · ${_cell(person, 'answer_rate')}'),
+                  TextSpan(text: ' · ${person['outbound'] ?? 0} outbound'),
                 ],
               ),
               style: theme.textTheme.bodyMedium,

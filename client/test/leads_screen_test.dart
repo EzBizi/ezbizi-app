@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -20,6 +21,7 @@ import 'package:http/http.dart' as http;
 /// the wrong one is the exact failure this module was built to stop, and it is
 /// invisible in a screenshot.
 void main() {
+  _barHeights();
   // UI queue 103 (A1 takeover): the charge / IVR / dispatcher / date
   // filters, and editing a lead with its caller's history.
   testWidgets('a charge filter asks the server, and Edit saves the fields', (
@@ -270,6 +272,49 @@ void main() {
       'website_chat',
       reason: 'a refresh that drops the filter would swap the dispatcher off '
           'the tab they are watching',
+    );
+  });
+
+  // Jose, 2026-11-16: the leads a Recovery text went to, in a tab of their
+  // own with an unread badge, and still in All with a Recovery chip.
+  testWidgets('Recovery is a rail tab with its badge, and its leads keep a chip in All', (
+    tester,
+  ) async {
+    final leads = [
+      {..._lead('lead-1', 'Marcus Bell'), 'recovery_at': '2026-11-16T15:00:00Z'},
+      _lead('lead-2', 'Dana Ruiz'),
+    ];
+    await _pump(
+      tester,
+      leads: leads,
+      connections: _connected,
+      permissions: const ['leads.view', 'leads.website_chat.view', 'leads.recovery.view'],
+      unreadBySource: const {'recovery': 3, 'website_chat': 1},
+    );
+
+    expect(find.byKey(const ValueKey('recovery-badge-lead-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('recovery-badge-lead-2')), findsNothing);
+
+    final tab = find.descendant(
+      of: find.byKey(const ValueKey('source-tabs')),
+      matching: find.text('Recovery'),
+    );
+    expect(tab, findsOneWidget);
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['source'], 'recovery');
+  });
+
+  testWidgets('without its tick there is no Recovery tab', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+      permissions: const ['leads.view', 'leads.website_chat.view'],
+    );
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('source-tabs')), matching: find.text('Recovery')),
+      findsNothing,
     );
   });
 
@@ -1846,8 +1891,21 @@ void _conversationRowTests() {
       connections: _connected,
     );
 
+    // Design lead-header A (2026-11-16): the header's facts grid says the
+    // service, the source and the branch, each once.
     expect(
-      find.text('Fireplace chimney · Google Ads · Connecticut'),
+      tester.widget<Text>(find.byKey(const ValueKey('details-service'))).data,
+      'Fireplace chimney',
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('details-branch'))).data,
+      'Connecticut',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('fact-source')),
+        matching: find.text('Google Ads'),
+      ),
       findsOneWidget,
     );
     expect(find.textContaining('home inspector'), findsNothing);
@@ -1865,7 +1923,8 @@ void _conversationRowTests() {
       connections: _connected,
     );
 
-    expect(find.text('Google Ads · Connecticut'), findsOneWidget);
+    expect(find.byKey(const ValueKey('fact-service')), findsNothing);
+    expect(find.byKey(const ValueKey('fact-branch')), findsOneWidget);
     expect(find.textContaining('No service'), findsNothing);
   });
 
@@ -2366,3 +2425,20 @@ const _me = {
     {'key': 'leads', 'label': 'Leads', 'available': true, 'reachable': true},
   ],
 };
+
+/// Jose, 2026-11-13: "The Filters button is not the same size as the status
+/// picker or the field". On a desktop, where the density is compact.
+void _barHeights() => testWidgets('search, status and Filters share one height and centre line', (tester) async {
+  debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+  addTearDown(() => debugDefaultTargetPlatformOverride = null);
+  await _pump(tester, leads: [_lead('lead-1', 'Marcus Bell')], connections: _connected);
+
+  Rect inside(String key, Finder what) =>
+      tester.getRect(find.descendant(of: find.byKey(ValueKey(key)), matching: what).first);
+  final button = tester.getRect(find.byKey(const ValueKey('leads-more-filters')));
+  expect(tester.getSize(find.byKey(const ValueKey('tour-leads-search'))).height, button.height);
+  expect(tester.getSize(find.byKey(const ValueKey('tour-leads-status'))).height, button.height);
+  expect(inside('tour-leads-search', find.byType(EditableText)).center.dy, button.center.dy);
+  expect(inside('tour-leads-status', find.byType(Text)).center.dy, button.center.dy);
+  debugDefaultTargetPlatformOverride = null;
+});

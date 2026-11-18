@@ -1,4 +1,6 @@
 import '../core/deep_links.dart';
+import '../widgets/module_page_header.dart';
+import '../widgets/list_filters.dart';
 import '../widgets/list_search.dart';
 import '../widgets/mention_field.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import '../core/api_client.dart';
 import '../core/branch_options.dart';
 import '../core/job_money.dart';
 import '../core/job_status.dart';
+import '../core/live_changes.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -14,8 +17,8 @@ import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/book_job_panel.dart';
 import '../widgets/data_transfer.dart';
-import '../widgets/error_note.dart';
 import '../widgets/grouped_rows.dart';
+import '../widgets/load_more.dart';
 import '../widgets/refused.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
@@ -58,6 +61,9 @@ class _JobsScreenState extends State<JobsScreen> {
   final _search = TextEditingController();
 
   bool _loading = true;
+
+  /// A first-page reload with rows already up (a filter changed).
+  bool _refreshing = false;
   String? _error;
   List<Map<String, dynamic>> _jobs = [];
   List<JobStatus> _statusChoices = const [];
@@ -177,6 +183,11 @@ class _JobsScreenState extends State<JobsScreen> {
   void initState() {
     super.initState();
     _load();
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      _liveJobs,
+      active: LiveChanges.visible(this),
+    );
     // A link to one job (a notification, or /jobs/{id} typed in the bar).
     DeepLinks.pending.addListener(_takeLink);
     WidgetsBinding.instance.addPostFrameCallback((_) => _takeLink());
@@ -184,13 +195,49 @@ class _JobsScreenState extends State<JobsScreen> {
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_takeLink);
     _search.dispose();
     _openDirty.dispose();
     super.dispose();
   }
 
-  Future<void> _load({int page = 1}) async {
+  // ── Live: syncs, webhooks and automations show without leaving ─────
+
+  LiveSubscription? _live;
+
+  /// Page one is read again quietly (rows stay up, so does the scroll). With
+  /// more pages loaded, the rows that changed are read one by one in place.
+  Future<void> _liveJobs(LiveBatch batch) async {
+    if (_tab != 'jobs' || _loading) return;
+    if (_page == 1 || batch.reload) {
+      if (_page == 1) await _load(quiet: true);
+      return;
+    }
+    final gone = batch.deletedOf('jobs');
+    final changed = [
+      for (final j in _jobs)
+        if (batch.changedOf('jobs').contains(j['id'])) '${j['id']}',
+    ];
+    final fresh = <String, Map<String, dynamic>>{};
+    for (final id in changed.take(20)) {
+      final res = await widget.api.get('/jobs/$id');
+      if (res.ok && res.data is Map) {
+        fresh[id] = Map<String, dynamic>.from(res.data as Map);
+      }
+    }
+    if (!mounted || (gone.isEmpty && fresh.isEmpty)) return;
+    setState(() {
+      _jobs = [
+        for (final j in _jobs)
+          if (!gone.contains(j['id'])) fresh[j['id']] ?? j,
+      ];
+    });
+  }
+
+  /// [quiet]: a live re-read. No dimming or bar (the Stack they need would
+  /// rebuild the list and lose its scroll), and a failure keeps the rows.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     // Appends only. Two appends at once duplicate rows, and an append landing
     // during a page-one refresh appends to a list that is being replaced. A
     // page-one load is never refused — it supersedes instead, via _request.
@@ -203,6 +250,7 @@ class _JobsScreenState extends State<JobsScreen> {
       // refetch after creating a job comes through here with rows on screen,
       // and they stay up until the new ones land.
       _loading = page == 1 && _jobs.isEmpty;
+      _refreshing = !quiet && page == 1 && _jobs.isNotEmpty;
       _fetching = true;
       _error = null;
       _pageError = null;
@@ -230,13 +278,16 @@ class _JobsScreenState extends State<JobsScreen> {
 
     setState(() {
       _loading = false;
+      _refreshing = false;
       _fetching = false;
 
       if (!response.ok) {
         // A first-page failure takes over the screen even when rows are still
         // in hand: they predate whatever the write did, and a refusal to
         // re-read them has to be said out loud rather than whispered.
-        if (page == 1) {
+        if (quiet) {
+          // A missed live tick: the next one tries again.
+        } else if (page == 1) {
           _error = response.message;
         } else {
           _pageError = response.message;
@@ -329,13 +380,25 @@ class _JobsScreenState extends State<JobsScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Offstage(offstage: _tab != 'jobs', child: _jobsTab(context)),
+              // Gated: offstage, the Jobs tab still handed "Add job" to the
+              // header, beside Estimates' own "New estimate" (UI pass
+              // 2026-11-17). Only the tab in front fills the slot.
+              Offstage(
+                offstage: _tab != 'jobs',
+                child: ModuleActionGate(
+                  active: _tab == 'jobs',
+                  child: _jobsTab(context),
+                ),
+              ),
               if (_seesEstimates)
                 Offstage(
                   offstage: _tab != 'estimates',
-                  child: _opened.contains('estimates')
-                      ? EstimatesTab(api: widget.api, session: widget.session)
-                      : const SizedBox.shrink(),
+                  child: ModuleActionGate(
+                    active: _tab == 'estimates',
+                    child: _opened.contains('estimates')
+                        ? EstimatesTab(api: widget.api, session: widget.session)
+                        : const SizedBox.shrink(),
+                  ),
                 ),
             ],
           ),
@@ -372,7 +435,8 @@ class _JobsScreenState extends State<JobsScreen> {
               // Option A of the Jobs filters gallery (Jose, 2026-11-13): money
               // tiles that filter, one status row, one toolbar, the rest in a
               // Filters panel, and what is on as removable chips.
-              PanelHeader(note: _note(me)),
+              // Design 195: a phone's count is the group line's.
+              if (!_phone(context)) PanelHeader(note: _note(me)),
               if (_seesMoney && _moneyTotals.isNotEmpty)
                 _moneyTiles(context, wide: wide),
               if (_statusChoices.isNotEmpty) _statusChips(context),
@@ -382,6 +446,7 @@ class _JobsScreenState extends State<JobsScreen> {
           ),
           list: AsyncBody(
             loading: _loading,
+            refreshing: _refreshing,
             error: _error,
             onRetry: _load,
             child: _body(context, wide: wide),
@@ -456,30 +521,33 @@ class _JobsScreenState extends State<JobsScreen> {
     final counted = _statusCounts.isNotEmpty;
     final all = _statusCounts.values.fold(0, (a, b) => a + b);
 
+    // Mobile review 2026-11-13, P5: one filter strip, page gutter, 40 px
+    // pills and a fade where more lie past the edge.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
-      child: SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: FilterPills<String?>(
         key: const ValueKey('tour-jobs-status'),
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          spacing: 6,
-          children: [
-            _chip(
-              context,
-              value: null,
-              label: 'All',
-              count: counted ? all : null,
+        selected: _status,
+        onSelected: (value) {
+          setState(() => _status = value);
+          _load();
+        },
+        items: [
+          FilterPill(
+            null,
+            'All',
+            count: counted ? all : null,
+            key: const ValueKey('status-chip-all'),
+          ),
+          for (final s in _chipStatuses())
+            FilterPill(
+              s.value,
+              s.label,
+              count: counted ? (_statusCounts[s.value] ?? 0) : null,
+              tone: toneForJobStatus(s.value),
+              key: ValueKey('status-chip-${s.value}'),
             ),
-            for (final s in _chipStatuses())
-              _chip(
-                context,
-                value: s.value,
-                label: s.label,
-                count: counted ? (_statusCounts[s.value] ?? 0) : null,
-                tone: toneForJobStatus(s.value),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -557,7 +625,12 @@ class _JobsScreenState extends State<JobsScreen> {
 
     return Padding(
       key: const ValueKey('tour-jobs-money'),
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
       child: wide
           ? Row(
               spacing: 8,
@@ -640,40 +713,6 @@ class _JobsScreenState extends State<JobsScreen> {
         : mark;
   }
 
-  Widget _chip(
-    BuildContext context, {
-    required String? value,
-    required String label,
-    int? count,
-    Tone? tone,
-  }) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-
-    return ChoiceChip(
-      key: ValueKey('status-chip-${value ?? 'all'}'),
-      avatar: tone == null ? null : ToneDot(tone),
-      // Not drawn beside the dot but ON it — see TabBarLike.
-      showCheckmark: false,
-      selected: _status == value,
-      label: Text.rich(
-        TextSpan(
-          text: label,
-          children: [
-            if (count != null)
-              TextSpan(
-                text: '  ${formatCount(count)}',
-                style: TextStyle(color: muted, fontWeight: FontWeight.w500),
-              ),
-          ],
-        ),
-      ),
-      onSelected: (_) {
-        setState(() => _status = value);
-        _load();
-      },
-    );
-  }
-
   Widget _toolbar(
     BuildContext context,
     Me me,
@@ -681,8 +720,71 @@ class _JobsScreenState extends State<JobsScreen> {
     required bool wide,
   }) {
     final n = _activeCount;
+    final add = ModuleAction(
+      child: Refused(
+        // Two refusals with different remedies; see _jobsTab.
+        reason: refused,
+        child: FilledButton.icon(
+          key: const ValueKey('tour-jobs-add'),
+          onPressed: refused == null ? _create : null,
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add job'),
+        ),
+      ),
+    );
+
+    // Design 195 (phone 4): search, Filters and ⋯ on one line. Upcoming /
+    // Past / All is in Filters and counts there; Export is in the ⋯.
+    if (_phone(context)) {
+      final count = n + (_when == 'upcoming' ? 0 : 1);
+      return Padding(
+        padding: EdgeInsets.fromLTRB(Gutter.of(context), 0, 4, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Row(
+          children: [
+            Expanded(
+              child: ListSearch(
+                key: const ValueKey('tour-jobs-search'),
+                controller: _search,
+                hint: 'Job, customer, phone…',
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _load(),
+                onClear: () {
+                  _search.clear();
+                  _load();
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              key: const Key('jobs-filters'),
+              onPressed: () => _openFilters(me),
+              child: Text(count == 0 ? 'Filters' : 'Filters · $count'),
+            ),
+            DataTransfer(
+              api: widget.api,
+              session: widget.session,
+              resource: 'jobs',
+              menu: true,
+            ),
+          ],
+            ),
+            // In the shell this is lifted into the header and draws nothing.
+            add,
+          ],
+        ),
+      );
+    }
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -715,20 +817,15 @@ class _JobsScreenState extends State<JobsScreen> {
             session: widget.session,
             resource: 'jobs',
           ),
-          Refused(
-            // Two refusals with different remedies; see _jobsTab.
-            reason: refused,
-            child: FilledButton.icon(
-              key: const ValueKey('tour-jobs-add'),
-              onPressed: refused == null ? _create : null,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add job'),
-            ),
-          ),
+          // Desktop review 2026-11-13, D3: header right, as every module.
+          add,
         ],
       ),
     );
   }
+
+  static bool _phone(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600;
 
   /// The money states the tiles do not carry.
   static const _panelMoney = {'unpaid', 'partial', 'credit'};
@@ -787,6 +884,20 @@ class _JobsScreenState extends State<JobsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_phone(this.context)) ...[
+                heading('When'),
+                FilterPills<String>(
+                  key: const Key('jobs-window'),
+                  padding: EdgeInsets.zero,
+                  selected: _when,
+                  onSelected: (value) => apply(() => _when = value),
+                  items: const [
+                    FilterPill('upcoming', 'Upcoming'),
+                    FilterPill('past', 'Past'),
+                    FilterPill('all', 'All'),
+                  ],
+                ),
+              ],
               if (_seesMoney) ...[
                 heading('Money'),
                 Wrap(
@@ -906,7 +1017,12 @@ class _JobsScreenState extends State<JobsScreen> {
 
     return Padding(
       key: const Key('jobs-active-filters'),
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      padding: EdgeInsets.fromLTRB(
+        Gutter.of(context),
+        0,
+        Gutter.of(context),
+        10,
+      ),
       child: Wrap(
         spacing: 6,
         runSpacing: 6,
@@ -932,30 +1048,25 @@ class _JobsScreenState extends State<JobsScreen> {
     final upcoming = _whenCounts['upcoming'];
     final past = _whenCounts['past'];
 
-    return SegmentedButton<String>(
+    return FilterPills<String>(
       key: const Key('jobs-window'),
-      showSelectedIcon: false,
-      segments: [
-        ButtonSegment(
-          value: 'upcoming',
-          label: Text(label('Upcoming', upcoming)),
-        ),
-        ButtonSegment(value: 'past', label: Text(label('Past', past))),
-        ButtonSegment(
-          value: 'all',
-          label: Text(
-            label(
-              'All',
-              upcoming == null || past == null ? null : upcoming + past,
-            ),
+      padding: EdgeInsets.zero,
+      selected: _when,
+      onSelected: (value) {
+        setState(() => _when = value);
+        _load();
+      },
+      items: [
+        FilterPill('upcoming', label('Upcoming', upcoming)),
+        FilterPill('past', label('Past', past)),
+        FilterPill(
+          'all',
+          label(
+            'All',
+            upcoming == null || past == null ? null : upcoming + past,
           ),
         ),
       ],
-      selected: {_when},
-      onSelectionChanged: (chosen) {
-        setState(() => _when = chosen.first);
-        _load();
-      },
     );
   }
 
@@ -991,70 +1102,37 @@ class _JobsScreenState extends State<JobsScreen> {
       );
     }
 
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 4, 24, 24),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
+    return DockedListDetail(
+      list: GroupedList<Map<String, dynamic>>(
+        groups: groups,
+        idOf: _id,
+        tile: _tile,
+        onOpen: _dock,
+        selectedId: _openId,
+        footer: footer,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 380,
-            child: GroupedList<Map<String, dynamic>>(
-              groups: groups,
-              idOf: _id,
-              tile: _tile,
-              onOpen: _dock,
-              selectedId: _openId,
-              footer: footer,
-            ),
-          ),
-          VerticalDivider(width: 1, color: scheme.outlineVariant),
-          Expanded(
-            child: JobDetailPanel(
-              // A new job is a new panel: its fields, its load, its dirt.
-              key: ValueKey('open-$_openId'),
-              api: widget.api,
-              session: widget.session,
-              id: _openId!,
-              labels: _labels,
-              onDone: _undock,
-              dirty: _openDirty,
-            ),
-          ),
-        ],
+      detail: JobDetailPanel(
+        // A new job is a new panel: its fields, its load, its dirt.
+        key: ValueKey('open-$_openId'),
+        api: widget.api,
+        session: widget.session,
+        id: _openId!,
+        labels: _labels,
+        onDone: _undock,
+        dirty: _openDirty,
       ),
     );
   }
 
   Widget _loadMore() => Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_pageError != null) ...[
-            ErrorNote(_pageError!),
-            const SizedBox(height: 8),
-          ],
-          TextButton(
-            onPressed: _fetching ? null : () => _load(page: _page + 1),
-            child: Text(
-              _fetching
-                  ? 'Loading…'
-                  : _pageError != null
-                  ? 'Try again'
-                  : 'Load more (${formatCount(_total - _jobs.length)} left)',
-            ),
-          ),
-        ],
-      ),
+    child: LoadMore(
+      shown: _jobs.length,
+      total: _total,
+      busy: _fetching,
+      error: _pageError,
+      onMore: () => _load(page: _page + 1),
+      groupDigits: true,
     ),
   );
 
@@ -1100,10 +1178,16 @@ class _JobsScreenState extends State<JobsScreen> {
             style: TextStyle(color: muted),
           ),
         ),
-      TableColumn('Title', flex: 3, cell: (_, job) => _titleCell(job)),
+      TableColumn(
+        'Title',
+        flex: 3,
+        minWidth: 200,
+        cell: (_, job) => _titleCell(job),
+      ),
       TableColumn(
         'Customer',
         flex: 3,
+        minWidth: 160,
         cell: (_, job) => Text('${_customer(job)['name'] ?? ''}'),
       ),
       // Which company, only when looking at the whole organization (Jose,
@@ -1112,6 +1196,7 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Company',
           flex: 2,
+          minWidth: 130,
           cell: (_, job) => Text(
             '${(job['company'] as Map?)?['name'] ?? '—'}',
             overflow: TextOverflow.ellipsis,
@@ -1121,6 +1206,7 @@ class _JobsScreenState extends State<JobsScreen> {
       TableColumn(
         'Where',
         flex: 3,
+        minWidth: 180,
         cell: (_, job) => WhereLabel(job, placeable: _placeable(job)),
       ),
       // Who booked it (Trey Brannan, 2026-11-12), when a loaded job says.
@@ -1128,6 +1214,7 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Booked by',
           flex: 2,
+          minWidth: 130,
           cell: (_, job) => Text(
             '${job['booked_by'] ?? '—'}',
             overflow: TextOverflow.ellipsis,
@@ -1148,6 +1235,7 @@ class _JobsScreenState extends State<JobsScreen> {
         TableColumn(
           'Tags',
           flex: 3,
+          minWidth: 140,
           cell: (_, job) => Align(
             alignment: AlignmentDirectional.centerStart,
             child: JobTagsSummary(jobTags(job), colours: jobTagColours(job)),

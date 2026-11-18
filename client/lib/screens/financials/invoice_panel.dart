@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -74,7 +75,9 @@ class _InvoicePanelState extends State<InvoicePanel> {
   final _newPhone = TextEditingController();
 
   // Payment.
-  late final _paidOn = TextEditingController(text: isoDay(DateTime.now()));
+  late final _paidOn = TextEditingController(
+    text: formatCalendarDay(DateTime.now()),
+  );
   final _amount = TextEditingController();
   final _reference = TextEditingController();
   String _method = 'check';
@@ -89,6 +92,27 @@ class _InvoicePanelState extends State<InvoicePanel> {
   void initState() {
     super.initState();
     _load();
+    // Live: paid online, sent or voided elsewhere shows here; never while
+    // sending, paying, voiding or editing the lines.
+    _live = LiveChanges.of(widget.api).subscribe({'invoices'}, (batch) {
+      if (batch.reload ||
+          batch.touched('invoices').contains(widget.invoiceId)) {
+        return _refresh();
+      }
+    }, active: LiveChanges.visible(this));
+  }
+
+  LiveSubscription? _live;
+
+  /// The invoice read again in place; never while sending, paying, voiding
+  /// or with lines being edited.
+  bool get _mayRefresh => !_busy && _mode == _Mode.view && !_linesDirty;
+
+  Future<void> _refresh() async {
+    if (!_mayRefresh || _invoice == null) return;
+    final r = await widget.api.get('/invoices/${widget.invoiceId}');
+    if (!mounted || !r.ok || !_mayRefresh) return;
+    _adopt(r.body['data'] as Map);
   }
 
   @override
@@ -105,6 +129,7 @@ class _InvoicePanelState extends State<InvoicePanel> {
 
   @override
   void dispose() {
+    _live?.cancel();
     for (final (a, b) in _lines) {
       a.dispose();
       b.dispose();

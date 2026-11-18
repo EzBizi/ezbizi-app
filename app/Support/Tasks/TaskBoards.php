@@ -38,10 +38,10 @@ class TaskBoards
 {
     public const DEFAULT_GROUPS = [
         ['Open Tasks', '#579BFC'],
-        ['Recurring Tasks', '#A25DDC'],
+        ['Recurring Tasks', '#00A9B5'],
         ['Completed Tasks', '#00C875'],
         ['Company Files', '#FDAB3D'],
-        ['Guidelines', '#784BD1'],
+        ['Guidelines', '#7F5347'],
     ];
 
     /** key, name, colour, is_done — every new board starts with these. */

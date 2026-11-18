@@ -279,6 +279,8 @@ class InboxController extends Controller
         $this->labels($this->readers->for($mailbox), $mailbox)->modifyThread($mailbox, $id, ['INBOX'], []);
 
         EmailSnooze::query()->where('mailbox_id', $mailbox->id)->where('message_id', $id)->delete();
+        // A bulk delete fires no model event: the woken mail is the inbox's change.
+        \App\Support\Live\ChangeFeed::record($mailbox, 'mailboxes');
     }
 
     private function labels(MailboxReader $reader, Mailbox $mailbox): LabelsThreads

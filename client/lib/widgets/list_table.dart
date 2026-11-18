@@ -1,8 +1,10 @@
+import 'package:flutter/gestures.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import 'heading_pin.dart';
 import 'list_filters.dart';
 import 'side_panel.dart';
 
@@ -53,6 +55,27 @@ class FilterTiles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Mobile review 2026-11-13, P10 (preview §8 A): on a phone six tiles took
+    // three rows before the first record (HR Invitations, Onboarding). There
+    // they fold into one sideways row of pills, the same filters and counts.
+    if (MediaQuery.sizeOf(context).width < 600 && facts.isEmpty) {
+      return FilterPills<String?>(
+        key: Key('$prefix-tiles-folded'),
+        padding: EdgeInsets.zero,
+        selected: picked,
+        onSelected: (key) => onPick(key == picked ? null : key),
+        items: [
+          for (final tile in tiles)
+            FilterPill(
+              tile.key,
+              tile.label,
+              count: tile.count,
+              tone: (tile.count ?? 0) == 0 ? null : tile.tone,
+              key: Key('$prefix-tile-${tile.key ?? 'all'}'),
+            ),
+        ],
+      );
+    }
     return LayoutBuilder(
       builder: (context, box) {
         const gap = 10.0;
@@ -62,13 +85,34 @@ class FilterTiles extends StatelessWidget {
         );
         final width = (box.maxWidth - gap * (across - 1)) / across;
 
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
+        // Rows of equal-height tiles rather than a Wrap (desktop review
+        // 2026-11-13, D4): a label or note may take two lines now instead of
+        // being cut ("plans and their averag…", "cannot be dialled insi…"),
+        // and a tile beside a two-line one stretches to match it.
+        final all = [for (final tile in tiles) _tile(context, tile), ...facts];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final tile in tiles)
-              SizedBox(width: width, child: _tile(context, tile)),
-            for (final fact in facts) SizedBox(width: width, child: fact),
+            for (var at = 0; at < all.length; at += across)
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: at + across < all.length ? gap : 0,
+                ),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = at; i < at + across && i < all.length; i++)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            right: i < at + across - 1 ? gap : 0,
+                          ),
+                          child: SizedBox(width: width, child: all[i]),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -104,7 +148,7 @@ class FilterTiles extends StatelessWidget {
             children: [
               Text(
                 tile.label.toUpperCase(),
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.labelSmall?.copyWith(
                   letterSpacing: 0.8,
@@ -121,7 +165,7 @@ class FilterTiles extends StatelessWidget {
               ),
               Text(
                 tile.note,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -169,7 +213,7 @@ class FactTile extends StatelessWidget {
         children: [
           Text(
             label.toUpperCase(),
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.labelSmall?.copyWith(
               letterSpacing: 0.8,
@@ -187,7 +231,7 @@ class FactTile extends StatelessWidget {
           ),
           Text(
             note,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
@@ -209,9 +253,14 @@ class ListColumn {
     this.namedWhenStacked = true,
     this.onSort,
     this.sorted,
+    this.frame,
   });
 
   final String label;
+
+  /// Wraps the drawn heading, e.g. to drag it to another place (Project
+  /// Management, Jose 2026-11-17: "Just let me drag them").
+  final Widget Function(Widget heading)? frame;
 
   /// Given, the header is a button that sorts by this column (Jose,
   /// 2026-11-10: "clicking the column orders it"). The list does the
@@ -464,46 +513,50 @@ class ListTable extends StatelessWidget {
                 i,
                 Row(
                   children: [
+                    // Nothing outside Reports (see HeadingPin).
+                    if (i == 0) const HeadingPinButton(),
                     Expanded(
-                      child: InkWell(
-                        key: columns[i].onSort == null
-                            ? null
-                            : Key('list-sort-$i'),
-                        onTap: columns[i].onSort,
-                        child: Row(
-                          mainAxisAlignment: columns[i].center
-                              ? MainAxisAlignment.center
-                              : columns[i].end
-                              ? MainAxisAlignment.end
-                              : MainAxisAlignment.start,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                columns[i].label.toUpperCase(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: columns[i].center
-                                    ? TextAlign.center
-                                    : columns[i].end
-                                    ? TextAlign.end
-                                    : null,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  letterSpacing: 0.8,
-                                  fontWeight: FontWeight.w700,
-                                  color: columns[i].sorted == null
-                                      ? theme.colorScheme.onSurfaceVariant
-                                      : theme.colorScheme.onSurface,
+                      child: (columns[i].frame ?? (Widget h) => h)(
+                        InkWell(
+                          key: columns[i].onSort == null
+                              ? null
+                              : Key('list-sort-$i'),
+                          onTap: columns[i].onSort,
+                          child: Row(
+                            mainAxisAlignment: columns[i].center
+                                ? MainAxisAlignment.center
+                                : columns[i].end
+                                ? MainAxisAlignment.end
+                                : MainAxisAlignment.start,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  columns[i].label.toUpperCase(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: columns[i].center
+                                      ? TextAlign.center
+                                      : columns[i].end
+                                      ? TextAlign.end
+                                      : null,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    letterSpacing: 0.8,
+                                    fontWeight: FontWeight.w700,
+                                    color: columns[i].sorted == null
+                                        ? theme.colorScheme.onSurfaceVariant
+                                        : theme.colorScheme.onSurface,
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (columns[i].sorted case final desc?)
-                              Icon(
-                                desc
-                                    ? Icons.arrow_downward
-                                    : Icons.arrow_upward,
-                                size: 14,
-                              ),
-                          ],
+                              if (columns[i].sorted case final desc?)
+                                Icon(
+                                  desc
+                                      ? Icons.arrow_downward
+                                      : Icons.arrow_upward,
+                                  size: 14,
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -531,6 +584,12 @@ class ListTable extends StatelessWidget {
           child: child,
         );
 
+        // Inside Reports the header may stay on screen while the page scrolls
+        // the rows (HeadingPin, Jose 2026-11-16); a table with a height keeps
+        // its header already. Elsewhere the layout is as it was.
+        final floats =
+            wide && height == null && HeadingPin.maybeOf(context) != null;
+
         // Rows (and the header) for columns [from, to), one per row. Used
         // whole, or split in two when the first column stays put.
         Widget half(int from, int to, {required bool lazy}) {
@@ -547,6 +606,12 @@ class ListTable extends StatelessWidget {
                     for (var r = 0; r < rows.length; r++) rowOf(r, from, to),
                   ],
                 );
+          if (floats && !lazy) {
+            return PinnableHeading(
+              heading: headerBox(headerRow(from, to)),
+              body: rowsWidget,
+            );
+          }
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
@@ -577,49 +642,78 @@ class ListTable extends StatelessWidget {
           Widget item(Object it) =>
               it is int ? row(it) : _groupHeader(context, s, it as _GroupItem);
 
-          content = Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
-            children: [
-              if (wide)
-                headerBox(headerRow(0, columns.length))
-              else if (selectable)
-                headerBox(
-                  Row(
-                    children: [
-                      headerRow(0, 0).children.first,
-                      Text('Select all', style: theme.textTheme.bodySmall),
-                    ],
-                  ),
-                ),
-              if (lazy)
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: items.length,
-                    itemBuilder: (context, i) => item(items[i]),
+          content = floats
+              ? PinnableHeading(
+                  heading: headerBox(headerRow(0, columns.length)),
+                  body: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [for (final it in items) item(it)],
                   ),
                 )
-              else
-                for (final it in items) item(it),
-            ],
-          );
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: lazy ? MainAxisSize.max : MainAxisSize.min,
+                  children: [
+                    if (wide)
+                      headerBox(headerRow(0, columns.length))
+                    else if (selectable)
+                      headerBox(
+                        Row(
+                          children: [
+                            headerRow(0, 0).children.first,
+                            Text(
+                              'Select all',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (lazy)
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: items.length,
+                          itemBuilder: (context, i) => item(items[i]),
+                        ),
+                      )
+                    else
+                      for (final it in items) item(it),
+                  ],
+                );
         } else {
           // One vertical scroll drives both halves when lazy is off; with a
           // height, each half is one scroll view kept in step.
           final first = stickyFirstColumn ? 1 : 0;
+          // With a height and no sticky column, rows scroll inside the
+          // sideways view, so its bar stays pinned at the bottom of the
+          // screen on any row (Jose, 2026-11-13).
+          final pinned = lazy && first == 0;
           // A visible bar: a mouse wheel cannot reach the right-hand columns
           // (Jose, 2026-11-12: "stuff being hidden towards the right side").
-          final rest = Scrollbar(
-            controller: s.sideways,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
+          // Middle button held: drag pans sideways (Jose, 2026-11-16).
+          final rest = Listener(
+            onPointerMove: (e) {
+              if (e.buttons & kMiddleMouseButton == 0 ||
+                  !s.sideways.hasClients) {
+                return;
+              }
+              final p = s.sideways.position;
+              s.sideways.jumpTo(
+                (p.pixels - e.delta.dx).clamp(0.0, p.maxScrollExtent),
+              );
+            },
+            child: Scrollbar(
               controller: s.sideways,
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(bottom: 12),
-              child: SizedBox(
-                width:
-                    natural.skip(first).fold<double>(0, (a, b) => a + b) + 28,
-                child: half(first, columns.length, lazy: false),
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: s.sideways,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(bottom: 12),
+                child: SizedBox(
+                  width:
+                      natural.skip(first).fold<double>(0, (a, b) => a + b) + 28,
+                  child: half(first, columns.length, lazy: pinned),
+                ),
               ),
             ),
           );
@@ -643,7 +737,9 @@ class ListTable extends StatelessWidget {
           );
           // ponytail: sideways tables scroll as one block under a height; a
           // lazy split would need two synced controllers.
-          if (lazy) content = SingleChildScrollView(child: content);
+          if (lazy && !pinned) {
+            content = SingleChildScrollView(child: content);
+          }
         }
 
         final table = DecoratedBox(

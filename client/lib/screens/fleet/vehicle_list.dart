@@ -1,6 +1,8 @@
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/filters_fold.dart';
+
 import '../../widgets/load_more.dart';
 import '../../widgets/not_filled_in.dart';
 import '../../widgets/tag.dart';
@@ -116,7 +118,7 @@ class VehicleList extends StatelessWidget {
       (sum, p) => sum + ((p['count'] as num?)?.toInt() ?? 0),
     );
 
-    final filters = [
+    final folded = [
       if (places.length > 1 && onPlace != null)
         Padding(
           key: const ValueKey('tour-fleet_management-states'),
@@ -139,17 +141,6 @@ class VehicleList extends StatelessWidget {
             ],
           ),
         ),
-      Padding(
-        key: const ValueKey('tour-fleet_management-search'),
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: ListSearch(
-          controller: search,
-          hint: 'Name, plate, VIN, number or driver',
-          onChanged: (_) => onSearchChanged(),
-          onSubmitted: (_) => onSearch(),
-          onClear: onClearSearch,
-        ),
-      ),
       Padding(
         key: const ValueKey('tour-fleet_management-filters'),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -196,6 +187,42 @@ class VehicleList extends StatelessWidget {
                 onSelected: (_) => onToggleInsuranceExpiring!(),
               ),
           ],
+        ),
+      ),
+    ];
+    // Mobile review P10: on a phone the state chips and the eleven filter
+    // chips fold behind one "Filters · n" button under the search.
+    final setCount =
+        (place != null ? 1 : 0) +
+        statuses.length +
+        [
+          owned,
+          rented,
+          unassigned,
+          dueSoon,
+          uninsured,
+          insuranceExpiring,
+        ].where((on) => on).length;
+    final filters = [
+      Padding(
+        key: const ValueKey('tour-fleet_management-search'),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: ListSearch(
+          controller: search,
+          hint: 'Name, plate, VIN, number or driver',
+          onChanged: (_) => onSearchChanged(),
+          onSubmitted: (_) => onSearch(),
+          onClear: onClearSearch,
+        ),
+      ),
+      FiltersFold(
+        key: const ValueKey('fleet-filters-fold'),
+        count: setCount,
+        width: width,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: folded,
         ),
       ),
     ];
@@ -328,6 +355,7 @@ class VehicleList extends StatelessWidget {
             // (VehiclesController::missing), as HR's list counts a record.
             MissingCount(
               missing,
+              suffix: ' missing',
               tooltip:
                   '$missing ${missing == 1 ? 'field' : 'fields'} '
                   'not filled in',

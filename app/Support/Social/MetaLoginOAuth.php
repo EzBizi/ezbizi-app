@@ -87,6 +87,9 @@ abstract class MetaLoginOAuth implements SocialOAuth
         $metaUser = $short->json('user_id');
         $metaUser = is_scalar($metaUser) ? (string) $metaUser : null;
 
+        // What the person left granted, for the connect-time check.
+        $scopes = SocialOAuthGrant::parseScopes($short->json('permissions') ?? $short->json('data.0.permissions'));
+
         try {
             $long = Http::timeout(self::TIMEOUT)->get(static::LONG_TOKEN_URL, [
                 'grant_type' => static::LONG_GRANT,
@@ -96,6 +99,7 @@ abstract class MetaLoginOAuth implements SocialOAuth
         } catch (ConnectionException) {
             return new SocialOAuthGrant(
                 accessToken: $shortToken,
+                scopes: $scopes,
                 extra: $metaUser === null ? [] : ['meta_user_id' => $metaUser],
             );
         }
@@ -104,6 +108,7 @@ abstract class MetaLoginOAuth implements SocialOAuth
 
         return new SocialOAuthGrant(
             accessToken: $access,
+            scopes: $scopes,
             expiresIn: is_numeric($long->json('expires_in')) ? (int) $long->json('expires_in') : null,
             extra: $metaUser === null ? [] : ['meta_user_id' => $metaUser],
         );

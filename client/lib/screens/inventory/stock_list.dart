@@ -1,7 +1,9 @@
+import '../../widgets/module_page_header.dart';
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
@@ -62,7 +64,16 @@ class _StockListState extends State<StockList> {
     super.initState();
     _tile = widget.tileRequest?.tile;
     _load();
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'inventory'},
+      (_) {
+        if (_join != null) return _load();
+      },
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void didUpdateWidget(covariant StockList oldWidget) {
@@ -76,6 +87,7 @@ class _StockListState extends State<StockList> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -158,13 +170,15 @@ class _StockListState extends State<StockList> {
                 label: const Text('Purchase order'),
               ),
             if (canEdit)
-              Refused(
-                reason: refused,
-                child: FilledButton.icon(
-                  key: const ValueKey('tour-inventory-stock-transfer'),
-                  onPressed: refused == null ? () => _transfer() : null,
-                  icon: const Icon(Icons.swap_horiz, size: 18),
-                  label: const Text('Transfer'),
+              ModuleAction(
+                child: Refused(
+                  reason: refused,
+                  child: FilledButton.icon(
+                    key: const ValueKey('tour-inventory-stock-transfer'),
+                    onPressed: refused == null ? () => _transfer() : null,
+                    icon: const Icon(Icons.swap_horiz, size: 18),
+                    label: const Text('Transfer'),
+                  ),
                 ),
               ),
           ],
@@ -217,7 +231,8 @@ class _StockListState extends State<StockList> {
               )
             else if (table) ...[
               _headerRow(context, money),
-              for (final item in items) ..._tableRows(context, join, item, money),
+              for (final item in items)
+                ..._tableRows(context, join, item, money),
             ] else
               for (final item in items) _compactRow(context, join, item),
           ],
@@ -228,16 +243,19 @@ class _StockListState extends State<StockList> {
 
   bool _passes(StockJoin join, Map<String, dynamic> item, String query) {
     final id = item['id'] as String;
-    if (_place != null && join.onHand(id, at: _place) == 0 &&
+    if (_place != null &&
+        join.onHand(id, at: _place) == 0 &&
         !(join.byItem[id] ?? const []).any(
           (r) => inventoryMap(r['location'])?['id'] == _place,
         )) {
       return false;
     }
     if (query.isNotEmpty &&
-        ![item['name'], item['sku'], item['number']].any(
-          (v) => '${v ?? ''}'.toLowerCase().contains(query),
-        )) {
+        ![
+          item['name'],
+          item['sku'],
+          item['number'],
+        ].any((v) => '${v ?? ''}'.toLowerCase().contains(query))) {
       return false;
     }
     return switch (_tile) {
@@ -272,21 +290,14 @@ class _StockListState extends State<StockList> {
         if (join.onOrder(i['id'] as String) > 0) i,
     ];
     final orders = join.openOrders ?? 0;
-    var valueMinor = 0;
-    var priced = false;
-    for (final i in join.items) {
-      final cost = join.costMinor(i);
-      if (cost == null) continue;
-      priced = true;
-      valueMinor += (cost * join.onHand(i['id'] as String)).round();
-    }
+    final valueMinor = join.valueMinor;
 
     final tiles = [
       InventoryTile(
         key: null,
         label: 'All items',
         value: '${join.items.length}',
-        note: money && priced
+        note: money && valueMinor != null
             ? '${inventoryMoney(valueMinor)} at last cost'
             : 'in ${_count(join.locations.length, 'place')}',
       ),
@@ -362,9 +373,7 @@ class _StockListState extends State<StockList> {
     );
 
     if (!wide) {
-      return Column(
-        children: [search, const SizedBox(height: 8), places],
-      );
+      return Column(children: [search, const SizedBox(height: 8), places]);
     }
     return Row(
       children: [
@@ -474,10 +483,9 @@ class _StockListState extends State<StockList> {
                           style: theme.textTheme.titleSmall,
                         ),
                         Text(
-                          [
-                            item['sku'],
-                            where,
-                          ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
+                          [item['sku'], where]
+                              .where((p) => p != null && '$p'.isNotEmpty)
+                              .join(' · '),
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall,
                         ),

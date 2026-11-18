@@ -276,7 +276,27 @@ final class ModuleDefinition
          * @var array<string, string> action => description
          */
         public readonly array $actionDescriptions = [],
+        /**
+         * Actions done TO the people holding them, not acts they perform:
+         * `monitoring.unmonitored` takes their own PC out of screen monitoring
+         * (Jose, 2026-11-17: "Lead Managers should not be desktop monitored as
+         * they may handle financial information").
+         *
+         * Holding one does NOT imply the module's view, on the server
+         * (PermissionCatalogue::withImpliedView) or in the roles editor:
+         * being monitored must not open the Monitoring screen to everyone
+         * who is.
+         *
+         * @var string[] actions, each also in $actions
+         */
+        public readonly array $passiveActions = [],
     ) {
+        if (array_diff($passiveActions, $actions) !== []) {
+            throw new InvalidArgumentException(
+                "Module '{$key}' declares passive actions it does not declare as actions."
+            );
+        }
+
         if ($parent !== null && $parent === $key) {
             throw new InvalidArgumentException(
                 "Module '{$key}' names itself as its parent."

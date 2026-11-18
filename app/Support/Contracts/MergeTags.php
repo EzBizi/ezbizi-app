@@ -655,7 +655,7 @@ final class MergeTags
      */
     public static function render(string $body, array $values, array $highlight = []): string
     {
-        $escaped = self::e($body);
+        $escaped = e($body);
         // "To be determined" in place of an amount loses the "$" before it
         // and the "%" after it.
         foreach ($values as $key => $value) {
@@ -682,7 +682,7 @@ final class MergeTags
                     // see where their answer lands (Jose, 2026-10-01). Nothing
                     // stored or signed is ever rendered with a highlight.
                     return in_array($value, $highlight, true)
-                        ? '<mark data-key="'.self::e($value).'">'.self::resolveOne($value, $values).'</mark>'
+                        ? '<mark data-key="'.e($value).'">'.self::resolveOne($value, $values).'</mark>'
                         : self::resolveOne($value, $values);
                 }
 
@@ -754,7 +754,7 @@ final class MergeTags
         $value = $values[$key] ?? null;
 
         if ($value === null) {
-            return '<span class="unresolved">'.self::OPEN.self::e($key).self::CLOSE.'</span>';
+            return '<span class="unresolved">'.self::OPEN.e($key).self::CLOSE.'</span>';
         }
 
         if ($value->html !== null) {
@@ -762,10 +762,10 @@ final class MergeTags
         }
 
         if ($value->isBlank()) {
-            return '<span class="unanswered">['.self::e($value->label).' not provided]</span>';
+            return '<span class="unanswered">['.e($value->label).' not provided]</span>';
         }
 
-        return self::e($value->value);
+        return e($value->value);
     }
 
     /**
@@ -1011,10 +1011,5 @@ final class MergeTags
         // above. The two lists overlap by construction — resolvable() publishes
         // the facts so they can be offered in the picker.
         return array_replace($values, $facts);
-    }
-
-    private static function e(string $value): string
-    {
-        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 }

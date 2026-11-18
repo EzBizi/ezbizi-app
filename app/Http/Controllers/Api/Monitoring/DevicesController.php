@@ -58,7 +58,9 @@ class DevicesController extends Controller
         $exemptEmails = ScreenMonitoringExemption::exemptEmails();
 
         $devices = MonitoredDevice::query()
-            ->with('user:id,name,first_name,last_name,email')
+            // Whole rows: the exemption also asks the role (monitoring.unmonitored),
+            // which needs is_active and role_id, not just the email.
+            ->with('user.role')
             ->whereHas('user', function (Builder $u) use ($actor) {
                 // GROUPED: constrainToVisiblePeople adds bare OR arms (you, OR
                 // assigned within reach, OR unassigned). Appended after them
@@ -140,8 +142,7 @@ class DevicesController extends Controller
             // and that deduction would silently become wrong the first time
             // any other reason to withhold `screenshot` appears. It leaks
             // nothing new — the capability list already implies it.
-            'screen_exempt' => $d->user->email !== null
-                && in_array(mb_strtolower($d->user->email), $exemptEmails, true),
+            'screen_exempt' => ScreenMonitoringExemption::isExemptAmong($d->user, $exemptEmails),
         ];
 
         // The key is genuinely ABSENT without the grant, not present-and-null:

@@ -26,7 +26,10 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: card, matching: find.text('Connected')),
+      find.descendant(
+        of: card,
+        matching: find.byKey(const ValueKey('status-dot:Connected')),
+      ),
       findsOneWidget,
     );
   });
@@ -45,11 +48,17 @@ void main() {
 
     final card = find.byKey(const ValueKey('provider:pinterest'));
     expect(
-      find.descendant(of: card, matching: find.text('Needs attention')),
+      find.descendant(
+        of: card,
+        matching: find.byKey(const ValueKey('status-dot:Needs attention')),
+      ),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: card, matching: find.text('Connected')),
+      find.descendant(
+        of: card,
+        matching: find.byKey(const ValueKey('status-dot:Connected')),
+      ),
       findsNothing,
     );
     expect(

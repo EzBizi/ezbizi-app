@@ -138,6 +138,12 @@ final class HtmlEmailSanitiser
         $css = $this->sanitiseCss($css);
 
         return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+            // A second lock behind the purifier: nothing in a received mail can
+            // run or load anything but pictures, styles and fonts. The desktop
+            // and phone apps draw this in a WebView, not a sandboxed iframe
+            // (Jose 11-12: mail "lacking the proper formatting" on Windows).
+            .'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
+            .'img-src data: https: http:; style-src \'unsafe-inline\' https:; font-src data: https:; media-src data: https:">'
             .'<meta name="viewport" content="width=device-width, initial-scale=1">'
             .($css !== '' ? '<style>'.$css.'</style>' : '')
             .'<style>'

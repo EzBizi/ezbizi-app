@@ -246,6 +246,18 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Somebody renamed, recoloured, added or deleted a tag in this branch\'s '
                             .'Workiz account. It carries the change, and the tag before and after.',
                     ),
+                    // Jose, 2026-11-12: the Workiz sync watchdog (ezbizi:workiz-watchdog), once per episode.
+                    new TriggerDefinition(
+                        key: 'franchise.workiz_sync_drift',
+                        label: 'Workiz sync behind',
+                        description: 'Something has been out of step between this branch\'s Workiz and EzBizi for '
+                            .'over 15 minutes. Raised once until it clears; the summary names the jobs and how long.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'franchise.workiz_sync_recovered',
+                        label: 'Workiz sync recovered',
+                        description: 'The Workiz sync that was behind for this branch is back in step.',
+                    ),
                     new TriggerDefinition(
                         key: 'franchise.deactivated',
                         label: 'Deactivated',
@@ -1005,6 +1017,16 @@ class ModuleServiceProvider extends ServiceProvider
                             .'and ended_by: person, schedule (the server closed it at the scheduled end) or automation.',
                         isRaised: true,
                     ),
+                    // Jose, 2026-11-13: a manual-clock-out role's finished
+                    // shift, for the branch managers (A-1's rule WhatsApps them).
+                    new TriggerDefinition(
+                        key: 'time_clock.technician_clocked_out',
+                        subjects: [\App\Models\User::class],
+                        label: 'Technician clocked out',
+                        description: 'Somebody whose role clocks out by hand (Settings › Shift timing) ended a shift. It carries who · branch, '
+                            .'clocked_in, clocked_out (against the schedule), total, and summary_lines: all of it, one a line, for a message.',
+                        isRaised: true,
+                    ),
                     // No separate "overdue" trigger: the server closes an overdue
                     // shift within a minute, so overdue is never a state a rule
                     // could observe. ended_by on clocked_out is the fact.
@@ -1392,6 +1414,16 @@ class ModuleServiceProvider extends ServiceProvider
                             .'brought in line there.',
                         executionType: 'job.set',
                     ),
+                    // Jose, 2026-11-16: "when number dialed is PPC it should change the source to PPC".
+                    new ActionDefinition(
+                        key: 'job.source_from_dialed',
+                        label: 'Set job sources from the line dialed',
+                        description: 'Every job booked since the rule was made (last 48 hours) whose client dialed a line '
+                            .'listed in Settings › Lists › Job source by line dialed gets that source, in Workiz first and then '
+                            .'in EzBizi, with the line in the job\'s history. Run it on a schedule.',
+                        executionType: 'job.source_from_dialed',
+                        subjectBound: false,
+                    ),
                     // Jose, 2026-10-21: through Workiz's writer.
                     new ActionDefinition(
                         key: 'job.workiz_update',
@@ -1483,6 +1515,10 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Project Management',
                 actions: ['view'],
                 tabs: [
+                    // Jose, 2026-11-17: parts waiting, late, and reminders.
+                    new TabDefinition('dashboard', 'Dashboard', action: 'view'),
+                    // The clients' texts, one thread per job (Jose, 2026-11-17).
+                    new TabDefinition('inbox', 'Inbox', action: 'view'),
                     new TabDefinition('unscheduled', 'Unscheduled', action: 'view'),
                     new TabDefinition('ready_to_schedule', 'Ready to Schedule', action: 'view'),
                     new TabDefinition('scheduled', 'Scheduled', action: 'view'),
@@ -1846,6 +1882,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('calendar', 'Calendar', within: 'social'),
                     new TabDefinition('accounts', 'Accounts', within: 'social'),
                     // Dynamic QR codes (Jose, 2026-10-05). Enforced on its routes.
+                    // One comments inbox across the accounts (Jose, 2026-11-16).
+                    new TabDefinition('comments', 'Comments', within: 'social'),
                     new TabDefinition('qr_codes', 'QR Codes', within: 'social'),
                 ],
                 triggers: [
@@ -2691,6 +2729,21 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A task that is not done passed its due date. Raised once '
                             .'per task; changing the due date lets it be raised again.',
                     ),
+                    // Monday parity (2026-11-13): "when Area changes to Connecticut".
+                    new TriggerDefinition(
+                        key: 'task.column_changed',
+                        label: 'Task column changed',
+                        description: 'A value in one of the board\'s own columns changed, for example Area '
+                            .'to Connecticut. It carries the column and its old and new value as words.',
+                    ),
+                    // Monday parity (2026-11-13): "when Date arrives", Recurring Tasks.
+                    new TriggerDefinition(
+                        key: 'task.date_arrived',
+                        label: 'Task date arrived',
+                        description: 'A task\'s due date, or a date in one of its date columns, is today '
+                            .'(days_until 0) or tomorrow (days_until 1). Raised once per date; delay the '
+                            .'rule to run it at an hour of the day.',
+                    ),
                 ],
                 automationActions: [
                     new ActionDefinition(
@@ -2700,6 +2753,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'about the record the rule fired on.',
                         // EXPLICIT: derived, this would be the bare `create`.
                         executionType: 'task.create',
+                    ),
+                    new ActionDefinition(
+                        key: 'task.complete_matching',
+                        label: 'Close the call-back task for this number',
+                        description: 'Marks Done the untouched open tasks a rule made for this phone number, with a note.',
+                        executionType: 'task.complete_matching',
+                        subjectBound: false,
                     ),
                     new ActionDefinition(
                         key: 'task.assign',
@@ -2712,6 +2772,21 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Move the task to a group',
                         description: 'Moves the task the rule fired on into another group on its own board.',
                         executionType: 'task.move_group',
+                    ),
+                    // Monday parity (2026-11-13): "push Date by 1 month" on Recurring Tasks.
+                    new ActionDefinition(
+                        key: 'task.shift_date',
+                        label: 'Push a date',
+                        description: 'Moves the task\'s due date, or a date column, later by days, weeks or months.',
+                        executionType: 'task.shift_date',
+                    ),
+                    // Monday parity (2026-11-13): "set Reminder to Done", "set Date to today".
+                    new ActionDefinition(
+                        key: 'task.set_value',
+                        label: 'Set a column',
+                        description: 'Sets one of the task\'s columns: a label by name, a date to today, '
+                            .'a checkbox, or words.',
+                        executionType: 'task.set_value',
                     ),
                 ],
             ),
@@ -3026,6 +3101,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('workiz', 'Workiz'),
                     // Answers to Memberships > Promotions texts (Jose, 2026-11-06).
                     new TabDefinition('promotions', 'Promotions'),
+                    // Leads a Recovery text went to, so their replies are answered (Jose, 2026-11-16).
+                    new TabDefinition('recovery', 'Recovery'),
                     // Private conversations kept from staff: sees, hides and unhides them (Jose, 2026-10-29).
                     new TabDefinition('hidden', 'Hidden', within: 'Manage'),
                 ],
@@ -4270,8 +4347,17 @@ class ModuleServiceProvider extends ServiceProvider
                 // downloading a machine's files is its own authority, neither
                 // watching the screen nor driving it — see FilesController
                 // (2026-10-01-monitoring-files).
-                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'map.manage', 'control', 'files.view', 'lighting.manage'],
+                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'map.manage', 'control', 'files.view', 'lighting.manage', 'unmonitored'],
+                // Jose, 2026-11-17: a role whose own PCs are NOT screen-monitored
+                // ("Lead Managers should not be desktop monitored as they may
+                // handle financial information"). Read by
+                // ScreenMonitoringExemption; implies no monitoring.view. The
+                // exemption is the grant, so every role stays monitored until
+                // ticked, with no backfill.
+                passiveActions: ['unmonitored'],
+                actionDescriptions: ['unmonitored' => 'Their PCs still show online with their specs. Screen views and remote control are refused at once; the PC itself stops capturing at its next app restart. Administrators are always monitored.'],
                 actionLabels: [
+                    'unmonitored' => 'Their own PC is not screen-monitored',
                     'specs.view' => "See each PC's hardware details",
                     'cameras.manage' => 'Set up cameras and camera sites',
                     'map.manage' => 'Edit the floor plan and who owns each PC',
@@ -4302,6 +4388,13 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Windows reported the antivirus, firewall or '
                             .'updates on a device as off or paused. Raised once when it '
                             .'happens, not again until it is fixed and happens again.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'monitoring.camera_event',
+                        label: 'Dash cam event',
+                        description: 'A van\'s dash cam reported a driving event - harsh braking, '
+                            .'a collision, distraction, speeding - once per event, with the van '
+                            .'and who had its keys.',
                     ),
                 ],
                 /*
@@ -4514,7 +4607,7 @@ class ModuleServiceProvider extends ServiceProvider
                     // Ad cost against jobs and profit (Jose, 2026-10-12); the
                     // server also asks for profit_loss.view, its profit being
                     // the P&L's margin.
-                    new TabDefinition('marketing', 'Marketing'),
+                    new TabDefinition('marketing', 'Marketing Reports'),
                     // Facebook ad spend by campaign, state and category.
                     new TabDefinition('meta', 'Meta'),
                     // Thumbtack lead spend by category and branch (2026-10-13).

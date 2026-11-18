@@ -95,6 +95,28 @@ class PhoneGlanceTest extends TestCase
         ]));
     }
 
+    /**
+     * The box's voicemail figure is the Phone page's "To deal with" tile,
+     * under the same words (UI/UX audit 2026-11-13: the box said 2 "waiting"
+     * beside the page's 146, which is "All"). Dealt-with messages are seeded
+     * so All and To deal with differ.
+     */
+    public function test_voicemail_is_the_phone_pages_to_deal_with_tile(): void
+    {
+        $number = $this->line();
+        $this->ring($number, PhoneCall::STATUS_NO_ANSWER, ['voicemail' => true]);
+        $this->ring($number, PhoneCall::STATUS_NO_ANSWER, ['voicemail' => true, 'dealt_at' => now()]);
+        $this->ring($number, PhoneCall::STATUS_NO_ANSWER, ['voicemail' => true, 'dealt_at' => now()]);
+
+        $tiles = $this->actingAs($this->alpha['admin'], 'sanctum')
+            ->getJson('/api/v1/phone/calls?voicemail_only=1')->assertOk()->json('meta.tiles');
+        $figure = collect($this->payload()['data']['figures'])->firstWhere('key', 'voicemail');
+
+        $this->assertSame(3, $tiles['all']);
+        $this->assertSame($tiles['todo'], $figure['value']);
+        $this->assertSame('to deal with', $figure['label']);
+    }
+
     private function payload(?User $user = null, string $period = 'month'): array
     {
         $user ??= $this->alpha['admin'];
@@ -219,7 +241,7 @@ class PhoneGlanceTest extends TestCase
 
         $data = $this->payload(period: 'week')['data'];
 
-        $this->assertSame(['1 voicemail is waiting.'], $data['sentences']);
+        $this->assertSame(['1 voicemail to deal with.'], $data['sentences']);
 
         // And it is NOT in the slices — the old message is outside this week.
         $this->assertSame(1, array_sum(array_column($data['slices'], 'total')));
@@ -231,7 +253,7 @@ class PhoneGlanceTest extends TestCase
         $call = $this->ring($number, PhoneCall::STATUS_NO_ANSWER, ['voicemail' => true]);
 
         $this->assertSame(
-            ['1 voicemail is waiting.'],
+            ['1 voicemail to deal with.'],
             $this->payload()['data']['sentences'],
         );
 
@@ -349,7 +371,7 @@ class PhoneGlanceTest extends TestCase
         $this->assertSame([
             ['key' => 'answered', 'label' => 'answered today', 'value' => 3, 'previous' => 1],
             ['key' => 'missed', 'label' => 'missed', 'value' => 1, 'previous' => 2],
-            ['key' => 'voicemail', 'label' => 'waiting', 'value' => 1, 'previous' => null],
+            ['key' => 'voicemail', 'label' => 'to deal with', 'value' => 1, 'previous' => null],
         ], $this->payload(period: 'day')['data']['figures']);
     }
 

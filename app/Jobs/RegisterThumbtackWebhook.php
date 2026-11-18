@@ -4,11 +4,14 @@ namespace App\Jobs;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Social\ConnectionSetup;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackWebhooks;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Artisan;
+use Throwable;
 
 /**
  * Tell Thumbtack where to send this business's enquiries.
@@ -80,5 +83,15 @@ final class RegisterThumbtackWebhook implements ShouldQueue
             // events go somewhere else forever.
             ThumbtackWebhooks::for($connection)->ensure(route('social.thumbtack.webhook'));
         });
+
+        // Its associate phone numbers now, not at 04:40 tomorrow (desk audit,
+        // 2026-11-12). After the webhook, so the two never renew the grant at once.
+        Artisan::call('ezbizi:sync-thumbtack-phone-numbers', ['--connection' => $this->connectionId]);
+    }
+
+    /** The card goes broken with what did not finish, not green over failed_jobs (Jose, 2026-11-12). */
+    public function failed(Throwable $e): void
+    {
+        ConnectionSetup::failed($this->connectionId, 'Thumbtack setup did not finish: its webhook could not be registered, so leads are not arriving. Reconnect Thumbtack.', $e);
     }
 }

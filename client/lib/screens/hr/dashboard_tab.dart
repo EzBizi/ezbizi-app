@@ -159,9 +159,7 @@ class _DashboardTabState extends State<DashboardTab> {
     List<Map<String, dynamic>>? fallback,
   }) {
     final glances = body['glances'];
-    final source = glances is List && glances.isNotEmpty
-        ? glances
-        : fallback;
+    final source = glances is List && glances.isNotEmpty ? glances : fallback;
     if (source == null || source.isEmpty) return;
 
     widget.session.rememberPreference('dashboard.glances', [
@@ -242,33 +240,38 @@ class _DashboardTabState extends State<DashboardTab> {
           Row(
             children: [
               Expanded(
-                child: Wrap(
-                  key: const ValueKey('tour-hr-period'),
-                  spacing: MediaQuery.sizeOf(context).width < 600 ? 6 : 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final (key, label) in _periods)
-                      ChoiceChip(
-                        // The fill says which is chosen. The tick made the
-                        // four too wide to share a phone's line with Refresh;
-                        // Day made five, so a phone draws them tighter.
-                        showCheckmark: false,
-                        visualDensity: MediaQuery.sizeOf(context).width < 600
-                            ? VisualDensity.compact
-                            : null,
-                        labelPadding: MediaQuery.sizeOf(context).width < 600
-                            ? const EdgeInsets.symmetric(horizontal: 2)
-                            : null,
-                        padding: MediaQuery.sizeOf(context).width < 600
-                            ? const EdgeInsets.symmetric(horizontal: 6)
-                            : null,
-                        label: Text(label),
-                        selected: _period == key,
-                        onSelected: (on) {
-                          if (on) _setPeriod(key);
-                        },
-                      ),
-                  ],
+                // UI pass 11-16: wrapped, Year sat alone on a second line at
+                // 375. One line that scrolls sideways instead.
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Wrap(
+                    key: const ValueKey('tour-hr-period'),
+                    spacing: MediaQuery.sizeOf(context).width < 600 ? 6 : 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final (key, label) in _periods)
+                        ChoiceChip(
+                          // The fill says which is chosen. The tick made the
+                          // four too wide to share a phone's line with Refresh;
+                          // Day made five, so a phone draws them tighter.
+                          showCheckmark: false,
+                          visualDensity: MediaQuery.sizeOf(context).width < 600
+                              ? VisualDensity.compact
+                              : null,
+                          labelPadding: MediaQuery.sizeOf(context).width < 600
+                              ? const EdgeInsets.symmetric(horizontal: 2)
+                              : null,
+                          padding: MediaQuery.sizeOf(context).width < 600
+                              ? const EdgeInsets.symmetric(horizontal: 6)
+                              : null,
+                          label: Text(label),
+                          selected: _period == key,
+                          onSelected: (on) {
+                            if (on) _setPeriod(key);
+                          },
+                        ),
+                    ],
+                  ),
                 ),
               ),
               IconButton(
@@ -281,11 +284,7 @@ class _DashboardTabState extends State<DashboardTab> {
           ),
           const SizedBox(height: 16),
           if (_overview case final overview?)
-            HrOverview(
-              data: overview,
-              period: _period,
-              session: widget.session,
-            )
+            HrOverview(data: overview, period: _period, session: widget.session)
           else if (glance != null)
             DashboardCard(
               title: glance['label'] as String? ?? 'Human Resources',
@@ -330,9 +329,7 @@ class _GlanceBody extends StatelessWidget {
     String presentation,
   ) {
     if (comingSoon || data['empty'] == true) {
-      return [
-        DashboardNote(_sentenceOf(data) ?? 'Nothing to show yet.'),
-      ];
+      return [DashboardNote(_sentenceOf(data) ?? 'Nothing to show yet.')];
     }
 
     return [

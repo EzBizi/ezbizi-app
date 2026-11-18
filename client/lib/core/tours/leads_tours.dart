@@ -574,6 +574,33 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
+  'leads/Recovery': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'Recovery',
+        body:
+            'Every lead a win-back text went to: missed calls, not booked, '
+            'went quiet, closed office and Re-Scheduling offers.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'Recovery',
+        body:
+            'Every lead a win-back text went to: missed calls, not booked, '
+            'went quiet, closed office and Re-Scheduling offers.',
+      ),
+      TourStep(
+        anchor: 'leads-list',
+        title: 'Their replies',
+        body:
+            'Open one to see our automatic text, named by its rule, and the '
+            'answer. Your reply goes from the same number. The texts '
+            'themselves are set in Manage, Recovery.',
+      ),
+    ],
+  ),
   'leads/Promotions': Tour(
     version: 1,
     steps: [

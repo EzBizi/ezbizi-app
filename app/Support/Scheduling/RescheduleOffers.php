@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\JobNote;
 use App\Models\Lead;
 use App\Models\Organization;
 use App\Models\SchedulingRescheduleOffer;
@@ -113,9 +114,9 @@ final class RescheduleOffers
             $body = strtr($plan['message'], [
                 '{name}' => trim(explode(' ', (string) $c['customer_name'])[0]) ?: 'there',
                 '{company}' => (string) ($company?->name ?? ''),
-                '{date}' => $date->format('l, M j'),
-                '{booked}' => $from->format('l, M j'),
-                '{window}' => self::time($window['start_time']).'–'.self::time($window['end_time']),
+                '{date}' => $date->format('D M j'),
+                '{booked}' => $from->format('D M j'),
+                '{window}' => self::window($window['start_time'], $window['end_time']),
             ]);
             $lead = Lead::create([
                 'company_id' => $franchise->company_id,
@@ -127,6 +128,8 @@ final class RescheduleOffers
                 'phone' => $c['phone'],
                 'phone_digits' => Lead::digits($c['phone']),
                 'lead_type' => 'Reschedule',
+                // Leads › Recovery holds it (Jose, 2026-11-16).
+                'recovery_at' => now(),
                 'summary' => 'Offered '.$date->format('D M j').' instead of '.CarbonImmutable::parse($c['scheduled_for'])->format('D M j'),
                 'status' => Lead::STATUS_NEW,
                 'received_at' => now(),
@@ -163,6 +166,7 @@ final class RescheduleOffers
     public function move(SchedulingRescheduleOffer $offer): Job
     {
         abort_if($offer->moved_at !== null, 409, 'This appointment was already moved.');
+        abort_if($offer->declined_at !== null, 409, 'The customer replied NO to this move.');
         abort_if($offer->open_date->isBefore(today()), 409, 'That opening has passed. Pick another time on the board.');
         $job = Job::query()->findOrFail($offer->job_id);
         $area = ServiceArea::query()->findOrFail($offer->service_area_id);
@@ -246,8 +250,45 @@ final class RescheduleOffers
         return $this->settings->get($key, $franchise);
     }
 
-    private static function time(string $hhmm): string
+    /**
+     * "8-11 AM", "11 AM-2 PM", "2:30-5 PM": ASCII only, so the text stays GSM-7
+     * (an en dash sends the whole text as UCS-2, 70 characters a part).
+     */
+    public static function window(string $start, string $end): string
     {
-        return CarbonImmutable::createFromFormat('H:i', substr($hhmm, 0, 5))->format('g:i A');
+        $t = fn (string $hhmm) => CarbonImmutable::createFromFormat('H:i', substr($hhmm, 0, 5));
+        $h = fn (CarbonImmutable $c) => $c->minute === 0 ? $c->format('g') : $c->format('g:i');
+        [$s, $e] = [$t($start), $t($end)];
+
+        return $s->format('A') === $e->format('A')
+            ? $h($s).'-'.$h($e).' '.$e->format('A')
+            : $h($s).' '.$s->format('A').'-'.$h($e).' '.$e->format('A');
+    }
+
+    /**
+     * A NO to an open offer keeps the customer's time: noted on the job, the
+     * offer closed (desk, 2026-11-12, as Project Management's texts do). Not
+     * consumed: the reply still lands on the lead's thread.
+     */
+    public function absorbNo(string $from, string $body): void
+    {
+        $digits = Lead::digits($from);
+        if ($digits === '' || ! preg_match('/^\s*(n|no|nope|nah)\b/iu', $body)) {
+            return;
+        }
+        $offer = SchedulingRescheduleOffer::query()
+            ->whereNull('moved_at')->whereNull('declined_at')
+            ->where('open_date', '>=', today()->toDateString())
+            ->whereIn('lead_id', Lead::query()->where('phone_digits', $digits)->select('id'))
+            ->latest()->first();
+        if ($offer === null) {
+            return;
+        }
+        $offer->forceFill(['declined_at' => now()])->save();
+        $job = Job::query()->find($offer->job_id);
+        if ($job !== null) {
+            JobNote::query()->create(['organization_id' => $job->organization_id, 'job_id' => $job->id,
+                'body' => 'Customer replied NO to moving to '.$offer->open_date->format('D M j').': keeps '.$offer->booked_for->format('D M j').'. Reply: '.trim($body)]);
+        }
     }
 }

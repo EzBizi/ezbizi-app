@@ -343,6 +343,24 @@ class NotificationsTest extends TestCase
         $this->assertSame(0, $call(null), 'nor one whose company is unknown');
     }
 
+    public function test_a_kind_can_be_switched_off_and_a_burst_of_one_kind_is_one_row(): void
+    {
+        // Jose, 2026-11-17: task board coverage, per-type toggles, no floods.
+        $send = fn (string $kind, string $title) => $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: $title, subject: $this->org['franchise'], onlyTo: $this->org['admin'], source: 'system', kind: $kind,
+        ));
+
+        $this->assertSame(1, $send('task.assigned', 'Assigned: Call back'));
+        $this->assertSame(0, $send('task.assigned', 'Assigned: Call back'), 'the same event again within 10 minutes is grouped');
+        $this->assertSame(1, $send('task.status', 'Status: Done'), 'another kind on the same record is not');
+
+        $this->inTenant(fn () => $this->org['admin']->forceFill(['preferences' => ['notifications.muted_kinds' => ['task.mentioned']]])->save());
+        $this->assertSame(0, $send('task.mentioned', 'You were mentioned'), 'a kind switched off writes nothing');
+
+        $this->travel(11)->minutes();
+        $this->assertSame(1, $send('task.assigned', 'Assigned: Call back'), 'after the window it notifies again');
+    }
+
     public function test_a_looping_rule_cannot_flood_one_persons_bell(): void
     {
         // 2026-10-15: one "New reply" rule wrote 884 rows in 30 minutes.

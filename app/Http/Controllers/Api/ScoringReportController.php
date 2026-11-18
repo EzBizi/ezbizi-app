@@ -7,6 +7,7 @@ use App\Console\Commands\ScoreReportCalls;
 use App\Models\CallReportOverride;
 use App\Models\CallReportPersonReview;
 use App\Models\ReportScoringWeight;
+use App\Models\User;
 use App\Models\WorkizCall;
 use App\Support\Reports\Experimental\PerformancePeople;
 use App\Support\Reports\Experimental\PersonNames;
@@ -207,14 +208,16 @@ class ScoringReportController extends Controller
             }
             $notes = fn (string $field) => $calls->pluck($field)->filter()->unique()->take(3)->values()->all();
             $newClient = (int) ($perf[$person]['new_client'] ?? 0);
+            // Needs Attention is neither booked nor not booked yet (Jose, 2026-11-12).
+            $decided = $newClient - (int) ($perf[$person]['needs_attention'] ?? 0);
             $jobs = (int) ($perf[$person]['jobs'] ?? 0);
             // Booked out of the new-client calls they answered, as Performance's
             // booking rate (Jose, 2026-11-04). Every job they created over those
             // calls ranked Existing-client staff first: 6 jobs on 1 call, 600%.
             // Not judged on it when they handle Existing, or answered too few new
             // calls for a rate: their weight goes to the other measures.
-            $judged = ($perf[$person]['tag'] ?? null) !== 'existing' && $newClient >= $min;
-            $conversion = $judged ? (int) round(($perf[$person]['booked_new'] ?? 0) / $newClient * 100) : null;
+            $judged = ($perf[$person]['tag'] ?? null) !== 'existing' && $decided >= $min;
+            $conversion = $judged ? (int) round(($perf[$person]['booked_new'] ?? 0) / $decided * 100) : null;
 
             return [
                 'person' => $person,
@@ -237,8 +240,15 @@ class ScoringReportController extends Controller
             ];
         })->sortByDesc(fn ($p) => [$p['score'] ?? -1, $p['avg_score']])->values()->all();
 
+        // The user each name is, when exactly one active person in the
+        // organization has it, for their photo (Jose, 2026-11-13). The name
+        // is what the phone system recorded, so no match is normal.
+        $ids = User::query()->where('is_active', true)->whereIn('name', array_column($people, 'person'))
+            ->get(['id', 'name'])->groupBy('name')->filter(fn ($same) => $same->count() === 1)->map(fn ($same) => $same->first()->id);
+
         $rank = 0;
         foreach ($people as &$p) {
+            $p['user_id'] = $ids[$p['person']] ?? null;
             if ($p['calls_scored'] >= $min) {
                 $p['rank'] = ++$rank;
             }

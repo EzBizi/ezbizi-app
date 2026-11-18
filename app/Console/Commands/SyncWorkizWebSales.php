@@ -2,14 +2,13 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Organization;
 use App\Models\SocialConnection;
-use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizRecords;
 use App\Support\Workiz\WorkizWebSession;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Workiz's own Sales report, per account, through the web session: each job's
@@ -42,15 +41,7 @@ class SyncWorkizWebSales extends Command
         $from = Carbon::parse($this->option('from') ?? now()->subDays(7)->toDateString());
         $to = Carbon::parse($this->option('to') ?? now()->toDateString());
         $range = $from->format('j.n.y').'_'.$to->format('j.n.y');
-        $landed = 0;
-
-        foreach (SocialConnection::query()->withoutGlobalScopes()->where('provider', SocialProvider::WorkizWeb->value)->where('status', 'connected')->get() as $connection) {
-            $organization = Organization::query()->withoutGlobalScopes()->find($connection->organization_id);
-
-            if ($organization !== null) {
-                $landed += $tenant->run($organization, fn () => $this->connection($connection, $range));
-            }
-        }
+        $landed = WorkizWebSession::eachConnection($tenant, fn (SocialConnection $connection) => $this->connection($connection, $range));
 
         $this->info($landed.' Workiz sale row(s) read.');
 
@@ -98,11 +89,11 @@ class SyncWorkizWebSales extends Command
             ], $rows));
 
             // Each sale onto the EzBizi job its Workiz job became (the mirror keys a job by its UUID).
-            \Illuminate\Support\Facades\DB::table('workiz_records as r')
+            DB::table('workiz_records as r')
                 ->join('workiz_jobs as j', fn ($join) => $join->on('j.franchise_id', '=', 'r.franchise_id')
                     ->whereRaw("j.remote_id = JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.job_uuid'))"))
                 ->where('r.franchise_id', $franchise->getKey())->where('r.type', self::TYPE)->whereNull('r.job_id')->whereNotNull('j.job_id')
-                ->update(['r.job_id' => \Illuminate\Support\Facades\DB::raw('`j`.`job_id`')]);
+                ->update(['r.job_id' => DB::raw('`j`.`job_id`')]);
         }
 
         return $count;

@@ -90,7 +90,7 @@ void main() {
     // Jose is named on Invitations too now, as who sent them (the Invited by
     // column), so the Records list is what must have gone.
     expect(find.byType(RecordsTab), findsNothing);
-    expect(find.text('bea@example.com'), findsOneWidget);
+    expect(find.text('b•••@example.com'), findsOneWidget);
 
     await _tap(tester, _tab('Records'));
 
@@ -394,7 +394,7 @@ void main() {
     await _tap(tester, _tab('Records'));
     expect(queries.last.containsKey('company_id'), isFalse);
 
-    await _choose(tester, 'Filter by company', 'Serenisima › Texas');
+    await _choose(tester, 'Filter by company', 'Serenisima · Texas');
     expect(queries.last['franchise_id'], 'fr-3');
     expect(queries.last.containsKey('company_id'), isFalse);
 
@@ -665,7 +665,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('bea@example.com'),
+      find.text('b•••@example.com'),
       findsOneWidget,
       reason: 'The row vanished as though the revoke had worked.',
     );
@@ -1123,7 +1123,7 @@ void main() {
 
     // And the list is still there. Not being allowed to add to it does not make
     // it unreadable.
-    expect(find.text('bea@example.com'), findsOneWidget);
+    expect(find.text('b•••@example.com'), findsOneWidget);
   });
 
   /// The endpoint that says which roles are this person's to hand out is the
@@ -1458,7 +1458,19 @@ void main() {
     await _tap(tester, _tab('Records'));
     await _openPerson(tester, 'Bea Okafor');
     await _tap(tester, _section('Onboarding'));
-    await _tap(tester, find.byIcon(Icons.chevron_right).first);
+    await _tap(
+      tester,
+      // Not the tab strip's "More tabs" chevron.
+      find
+          .byElementPredicate(
+            (e) =>
+                e.widget is Icon &&
+                (e.widget as Icon).icon == Icons.chevron_right &&
+                e.findAncestorWidgetOfExactType<IconButton>()?.key !=
+                    const Key('tab-bar-chevron'),
+          )
+          .first,
+    );
 
     expect(find.text('Back to Bea Okafor'), findsOneWidget);
 

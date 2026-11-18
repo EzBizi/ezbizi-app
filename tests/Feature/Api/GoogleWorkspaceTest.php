@@ -517,6 +517,39 @@ class GoogleWorkspaceTest extends TestCase
         $this->assertNull($refusal, 'A branch subdomain address was listed and then refused to open.');
     }
 
+    /**
+     * Jose 11-12: connecting files the inbox itself. office@nj goes where its
+     * sibling at the same domain is filed; office@atl, with no sibling, stays
+     * where the person is standing. The connect form is offered the same.
+     */
+    public function test_an_inbox_is_filed_where_its_domain_siblings_are(): void
+    {
+        $this->withSigningKey();
+        $t = $this->provisionTenant('A1-Group');
+        $this->connectWorkspace($t);
+        $this->fakeWorkspaceWithSubdomains();
+
+        $this->inTenant($t['org'], fn () => Mailbox::create([
+            'organization_id' => $t['org']->id,
+            'scope_type'      => 'franchise',
+            'scope_id'        => $t['franchise']->id,
+            'address'         => 'sales@nj.a-1chimney.com',
+            'display_name'    => 'NJ Sales',
+            'provider'        => MailboxProvider::Imap->value,
+        ]));
+
+        $this->signedInAs($t['admin'])->getJson('/api/v1/email/mailboxes/suggest-scope?address=office@nj.a-1chimney.com')
+            ->assertOk()->assertJsonPath('data', ['scope_type' => 'franchise', 'scope_id' => $t['franchise']->id]);
+        $this->signedInAs($t['admin'])->getJson('/api/v1/email/mailboxes/suggest-scope?address=office@atl.a-1chimney.com')
+            ->assertOk()->assertJsonPath('data', null);
+
+        $this->batch($t, ['office@nj.a-1chimney.com', 'office@atl.a-1chimney.com'])->assertCreated();
+
+        $filed = $this->inTenant($t['org'], fn () => Mailbox::query()->pluck('scope_type', 'address')->all());
+        $this->assertSame('franchise', $filed['office@nj.a-1chimney.com']);
+        $this->assertSame('organization', $filed['office@atl.a-1chimney.com']);
+    }
+
     /** How many times the directory itself was read. */
     private function directoryReads(): int
     {

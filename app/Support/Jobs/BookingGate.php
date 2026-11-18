@@ -13,8 +13,8 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 
 /**
  * Every EzBizi booking path asks this before it books (desk + Jose,
- * 2026-11-17: Maryland Wed 8-11 held 13 against 4). A full window, or a
- * Friday start after noon, is refused with the next three open windows.
+ * 2026-11-17: Maryland Wed 8-11 held 13 against 4). A full window, or one
+ * past the area's latest window (Openings' `late`), is refused with the next three open windows.
  * Holders of scheduling.overbook may book anyway with a reason, which goes on
  * the job and to the organization's Field Manager roles.
  */
@@ -32,16 +32,17 @@ final class BookingGate
         }
         $when = CarbonImmutable::parse($at);
         $problems = [];
-        if ($when->isFriday() && $when->format('H:i') > '12:00') {
-            $problems[] = FlagWorkizJobs::FRIDAY_RULE;
-        }
 
         $openings = app(Openings::class);
         if (Openings::hasCapacity($area)) {
             $hhmm = $when->format('H:i');
             $window = collect($openings->days($area, $when->startOfDay(), 1)[0]['windows'])
                 ->first(fn ($w) => $hhmm >= $w['start_time'] && $hhmm < $w['end_time']);
-            if ($window === null || ($heldHere ? $window['taken'] > $window['capacity'] : $window['remaining'] < 1)) {
+            // Scheduling's per-area latest window (scheduling.latest_window / latest_windows): a late window is closed to booking.
+            if (($window['late'] ?? false) === true) {
+                $problems[] = $when->isFriday() ? FlagWorkizJobs::FRIDAY_RULE
+                    : 'The '.$window['start_time'].'-'.$window['end_time'].' window starts after the latest '.$when->format('l').' window in '.$area->name.'.';
+            } elseif ($window === null || ($heldHere ? $window['taken'] > $window['capacity'] : $window['remaining'] < 1)) {
                 $problems[] = $window === null
                     ? 'No window is open at '.$when->format('D M j, g:i A').' in '.$area->name.'.'
                     : 'The '.$window['start_time'].'-'.$window['end_time'].' window on '.$when->format('D M j').' in '.$area->name
@@ -81,8 +82,7 @@ final class BookingGate
         $out = [];
         foreach (app(Openings::class)->days($area, $from->startOfDay(), 60) as $day) {
             foreach ($day['windows'] as $w) {
-                $friday = CarbonImmutable::parse($day['date'])->isFriday() && $w['start_time'] > '12:00';
-                if ($w['remaining'] > 0 && ! $friday && "{$day['date']} {$w['end_time']}" > $from->format('Y-m-d H:i')) {
+                if ($w['remaining'] > 0 && "{$day['date']} {$w['end_time']}" > $from->format('Y-m-d H:i')) {
                     $out[] = ['date' => $day['date'], 'start_time' => $w['start_time'], 'end_time' => $w['end_time'], 'remaining' => $w['remaining']];
                     if (count($out) === 3) {
                         return $out;

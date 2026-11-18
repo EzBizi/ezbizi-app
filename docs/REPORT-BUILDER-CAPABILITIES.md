@@ -6,6 +6,15 @@ the items and be able to order them too"*.
 
 Reports owns the options and the backend; UI/UX owns the layout (gallery → Jose → build).
 
+> **Status 2026-11-13 (from git):** backend order 1–5 below shipped 2026-10-09 —
+> `POST /reports/preview` (`78d536fce`), sort/rename/CSV `GET /reports/{id}/csv`
+> (`cfb7f7b5d`), is-one-of/between/empty/named periods/any-all (`59d8a2dd0`),
+> group by with day/week/month buckets + totals (`2e1ae9d7a`), `workiz_jobs` and
+> `workiz_records` resources (`6a0deda87`); the client builder has the live
+> preview and drag-to-order columns (`2acc475d4`). Task Board tasks were added
+> 2026-10-13. Not found in code: #6 schedule-from-report. "What ours does today"
+> below is the 2026-10-09 starting point, not today.
+
 ## What Workiz's builder does (measured 2026-10-09, A1 Chimney - DMV, read-only, nothing saved)
 
 - **Starts from a record type**: Job, Client, Payment, Invoice, Estimate, Commission, Timesheet.

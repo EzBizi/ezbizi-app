@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/list_table.dart';
 import '../../widgets/date_range_picker.dart';
 import '../reports/report_dates.dart';
 import 'ekomi_view.dart';
@@ -325,79 +326,48 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
       );
     }
 
-    if (narrow) {
-      return Column(
-        children: [
-          for (final r in rows)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(name(r)),
-              subtitle: Text(
-                'Sent ${_n(r, 'sent')} · Opened ${_n(r, 'opened')} · '
-                'Green ${_n(r, 'happy')} · Red ${_n(r, 'sad')} · '
-                'Google ${_n(r, 'google')} · Complaint ${_n(r, 'submitted')} · '
-                'Reviewed ${_n(r, 'reviewed')}${_stars(r['reviewed_stars'])}',
-              ),
-            ),
-        ],
-      );
-    }
-
-    DataRow row(Map r, String label, {bool total = false}) => DataRow(
-      cells: [
-        DataCell(
-          Text(
-            label,
-            style: total ? const TextStyle(fontWeight: FontWeight.w800) : null,
-          ),
-        ),
-        DataCell(Text('${_n(r, 'sent')}')),
-        DataCell(Text(_share(_n(r, 'opened'), _n(r, 'sent')))),
-        DataCell(Text('${_n(r, 'happy')}')),
-        DataCell(Text('${_n(r, 'sad')}')),
-        DataCell(Text('${_n(r, 'google')}')),
-        DataCell(Text('${_n(r, 'submitted')}')),
-        DataCell(Text('${_n(r, 'reviewed')}')),
-        DataCell(
-          Text(
-            r['reviewed_stars'] is num
-                ? '${(r['reviewed_stars'] as num).toStringAsFixed(1)} ★'
-                : '—',
-          ),
-        ),
-      ],
-    );
-
-    // At least the full width: shrunk to its columns the table sat in the
-    // left 40% of the screen (deep dive 2026-11-02).
-    return LayoutBuilder(
-      builder: (context, box) => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minWidth: box.maxWidth),
-          child: DataTable(
-            key: const Key('review-links-table'),
-            columns: [
-              DataColumn(label: Text(_byPerson ? 'Person' : 'Branch')),
-              for (final k in [
-                'sent',
-                'opened',
-                'happy',
-                'sad',
-                'google',
-                'submitted',
-                'reviewed',
-              ])
-                DataColumn(label: Text(_labels[k]!), numeric: true),
-              const DataColumn(label: Text('Stars'), numeric: true),
-            ],
-            rows: [
-              for (final r in rows) row(r, name(r)),
-              row(totals ?? const {}, 'Total', total: true),
-            ],
-          ),
-        ),
+    // Mobile review 2026-11-13, P1: a ListTable, so a phone gets stacked
+    // cards with every number named, and nothing scrolls sideways.
+    final keys = [
+      'sent',
+      'opened',
+      'happy',
+      'sad',
+      'google',
+      'submitted',
+      'reviewed',
+    ];
+    List<Widget> cells(Map r, String label, {bool total = false}) => [
+      Text(
+        label,
+        style: total
+            ? const TextStyle(fontWeight: FontWeight.w800)
+            : theme.textTheme.titleSmall,
       ),
+      for (final k in keys)
+        Text(
+          k == 'opened'
+              ? _share(_n(r, 'opened'), _n(r, 'sent'))
+              : '${_n(r, k)}',
+        ),
+      Text(
+        r['reviewed_stars'] is num
+            ? '${(r['reviewed_stars'] as num).toStringAsFixed(1)} ★'
+            : '—',
+      ),
+    ];
+
+    return ListTable(
+      key: const Key('review-links-table'),
+      columns: [
+        ListColumn(_byPerson ? 'Person' : 'Branch', flex: 3),
+        for (final k in keys) ListColumn(_labels[k]!, end: true),
+        const ListColumn('Stars', end: true),
+      ],
+      rows: [
+        for (final r in rows) cells(r, name(r)),
+        cells(totals ?? const {}, 'Total', total: true),
+      ],
     );
   }
 }

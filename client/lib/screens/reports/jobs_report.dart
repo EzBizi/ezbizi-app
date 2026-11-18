@@ -12,6 +12,7 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/module_overview.dart';
 import '../../widgets/report_grid.dart';
+import '../../widgets/search_picker.dart';
 import 'report_dates.dart';
 
 /// Every job created in the dates (Jose, 2026-11-11: "All created Jobs.
@@ -39,8 +40,8 @@ class JobsReport extends StatefulWidget {
 class _JobsReportState extends State<JobsReport> {
   static const _page = 200;
 
-  String? _source;
-  String? _dialed;
+  Set<String> _sources = {};
+  Set<String> _dialed = {};
   String? _area;
   String _query = '';
   Timer? _typing;
@@ -78,8 +79,8 @@ class _JobsReportState extends State<JobsReport> {
     final response = await widget.api.get('/reports/jobs', {
       'from': formatCalendarDay(widget.span.from),
       'to': formatCalendarDay(widget.span.to),
-      'source': ?_source,
-      'dialed': ?_dialed,
+      if (_sources.isNotEmpty) 'source[]': _sources.toList(),
+      if (_dialed.isNotEmpty) 'dialed[]': _dialed.toList(),
       'area': ?_area,
       if (_query.isNotEmpty) 'q': _query,
       'offset': '${more ? _rows.length : 0}',
@@ -113,8 +114,63 @@ class _JobsReportState extends State<JobsReport> {
           '(${formatCount((c['count'] as num).toInt())})',
   };
 
+  /// Source and Number dialed take several at once, searched as you type
+  /// (Jose, 2026-11-12: "Multiselect for both numbers dialed and sources",
+  /// "search for the sources and lines too"). A choice the dates no longer
+  /// hold stays listed, so it can be seen and taken off.
+  Widget _many(
+    String label,
+    Key key,
+    Set<String> chosen,
+    Map<String, String> choices,
+    ValueChanged<Set<String>> pick,
+  ) => SizedBox(
+    width: 260,
+    child: SearchMultiPickerField<String>(
+      key: key,
+      label: label,
+      hint: 'All',
+      values: chosen,
+      searchFrom: 0,
+      selectShown: true,
+      options: [
+        for (final c in choices.entries)
+          SearchOption(value: c.key, label: c.value, detail: c.key),
+        for (final v in chosen)
+          if (!choices.containsKey(v))
+            SearchOption(value: v, label: _line(v, null), detail: v),
+      ],
+      onChanged: (picked) {
+        setState(() => pick(picked));
+        _load();
+      },
+    ),
+  );
+
   static String _line(Object? number, Object? name) =>
-      [formatPhoneNumber('$number'), ?name].join(' · ');
+      [_phone(number), ?name].join(' · ');
+
+  /// Workiz keeps bare digits (7326748312): written as every number in the
+  /// app is (Jose, 2026-11-16: "give format to numbers"). Display only; the
+  /// search still reads the digits.
+  static String _phone(Object? number) =>
+      formatPhoneNumber(toE164('${number ?? ''}') ?? '${number ?? ''}');
+
+  static const _grossHelp =
+      "Each job's Workiz total: its line items after discounts, plus tax. "
+      'Every job in the list counts, cancelled ones too. Not net: Workiz '
+      'jobs carry no costs.';
+
+  /// What "Without duplicates" left out, as the server counted it.
+  static String _duplicatesHelp(Object? kinds) {
+    final k = (kinds as Map?) ?? const {};
+    int n(String kind) => ((k[kind] as num?) ?? 0).toInt();
+    return 'Jobs created, less the two kinds of duplicate Workiz makes:\n'
+        '• tagged PAID – ESTIMATED (Settings › Lists, as every "jobs '
+        'created" figure leaves out): ${formatCount(n('tagged'))}\n'
+        '• its \$0 copy of a finished job, status "done pending approval": '
+        '${formatCount(n('copies'))}';
+  }
 
   GridCell _text(Object? v) =>
       v == null || '$v'.isEmpty ? const GridCell.none() : GridCell('$v');
@@ -142,24 +198,22 @@ class _JobsReportState extends State<JobsReport> {
           children: [
             reportSearch(
               key: const ValueKey('jobs-search'),
-              hint: 'Find a client, phone or job number',
+              hint: 'Search every column',
               onChanged: _search,
             ),
-            reportFilter(
+            _many(
               'Source',
-              _source,
-              _choices('sources', 'No source'),
-              (v) => _source = v,
               const ValueKey('jobs-source'),
-              _load,
+              _sources,
+              _choices('sources', 'No source'),
+              (v) => _sources = v,
             ),
-            reportFilter(
+            _many(
               'Number dialed',
+              const ValueKey('jobs-dialed'),
               _dialed,
               _choices('dialed', 'No call found', 'name'),
               (v) => _dialed = v,
-              const ValueKey('jobs-dialed'),
-              _load,
             ),
             reportFilter(
               'Area',
@@ -186,12 +240,29 @@ class _JobsReportState extends State<JobsReport> {
           OverviewFigures(
             key: const ValueKey('jobs-totals'),
             figures: [
-              OverviewFigure(label: 'Jobs created', value: formatCount(count)),
               OverviewFigure(
-                label: 'Total',
+                label: 'Jobs created (all)',
+                value: formatCount(count),
+                help:
+                    'Every job created in Workiz in these dates, '
+                    'duplicates included.',
+              ),
+              // Jose, 2026-11-16: "another box that counts the number without
+              // the duplicates ... its a workiz issue".
+              OverviewFigure(
+                key: const ValueKey('jobs-unique'),
+                label: 'Without duplicates',
+                value: formatCount(((data['unique'] as num?) ?? count).toInt()),
+                help: _duplicatesHelp(data['duplicates']),
+              ),
+              // Jose: "specify what total means like gross, net etc".
+              OverviewFigure(
+                key: const ValueKey('jobs-gross'),
+                label: 'Gross, incl. tax',
                 value: formatMoney(
                   (((data['total'] as num?) ?? 0) * 100).round(),
                 ),
+                help: _grossHelp,
               ),
             ],
           ),
@@ -208,15 +279,29 @@ class _JobsReportState extends State<JobsReport> {
               GridColumn('Service area'),
               GridColumn('Source', main: true),
               GridColumn('Number dialed', main: true),
+              GridColumn('Called at'),
               GridColumn('Job type'),
               GridColumn('Status'),
-              GridColumn('Total', numeric: true, main: true),
+              GridColumn(
+                'Job total',
+                numeric: true,
+                main: true,
+                help: _grossHelp,
+              ),
               GridColumn('Created by'),
             ],
             rows: [
               for (final r in _rows)
                 [
-                  _text(r['ezbizi_number']),
+                  r['ezbizi_number'] == null && r['ezbizi_syncing'] == true
+                      ? const GridCell(
+                          'Syncing',
+                          muted: true,
+                          tooltip:
+                              'Just in from Workiz; EzBizi makes its copy '
+                              'within a minute or two.',
+                        )
+                      : _text(r['ezbizi_number']),
                   GridCell(
                     '${r['workiz_number'] ?? r['workiz_id']}',
                     tooltip: 'Workiz job ${r['workiz_id']}',
@@ -225,13 +310,16 @@ class _JobsReportState extends State<JobsReport> {
                   _text(r['client']),
                   r['phone'] == null
                       ? const GridCell.none()
-                      : GridCell(formatPhoneNumber('${r['phone']}')),
+                      : GridCell(_phone(r['phone'])),
                   _text(r['branch']),
                   _text(r['service_area']),
                   _text(r['source']),
                   r['dialed'] == null
                       ? const GridCell.none()
                       : GridCell(_line(r['dialed'], r['dialed_name'])),
+                  r['called_at'] == null
+                      ? const GridCell.none()
+                      : GridCell(_when(r['called_at'])),
                   _text(r['job_type']),
                   _text(r['status']),
                   GridCell(
@@ -261,7 +349,8 @@ class _JobsReportState extends State<JobsReport> {
                       'shows only the calls Workiz tied to a job.'
                 : 'Number dialed is the line the client called: the call '
                       'Workiz tied to the job, else the client\'s last call '
-                      'in the week before it was booked.',
+                      'in the week before it was booked. Called at is when '
+                      'that call started.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../core/theme.dart';
 import 'error_note.dart';
 import 'loading_skeleton.dart';
 
@@ -32,15 +34,25 @@ class AsyncBody extends StatelessWidget {
     required this.error,
     required this.onRetry,
     required this.child,
-    this.skeleton = false,
+    this.skeleton = true,
+    this.refreshing = false,
   });
+
+  /// A new answer is on its way while the old rows are still on screen
+  /// (a filter changed). They are dimmed and not clickable under a thin
+  /// progress line, so the screen never passes them off as the new filter's
+  /// (Muse audit 4A).
+  final bool refreshing;
 
   final bool loading;
   final String? error;
   final VoidCallback onRetry;
   final Widget child;
 
-  /// Grey rows instead of the spinner, for a load that takes seconds.
+  /// Grey rows shaped like a list instead of a spinner. On by default since
+  /// the mobile review of 2026-11-13 (P2, mobile-review-fixes.html §4 A): a
+  /// lone spinner on an empty page read as a hang, and the rows mean nothing
+  /// jumps when the data lands. False only for a body that is not a list.
   final bool skeleton;
 
   @override
@@ -52,24 +64,40 @@ class AsyncBody extends StatelessWidget {
 
     if (error != null) {
       return Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ErrorNote(error!),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: onRetry,
-                child: const Text('Try again'),
-              ),
-            ],
+        // Scrolls in a short pane: at 320 x 700 with large text the note and
+        // Try again were taller than a phone's list area (UI pass 11-16).
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ErrorNote(error!),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: onRetry,
+                  child: const Text('Try again'),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
-    return child;
+    if (!refreshing) return child;
+
+    return Stack(
+      children: [
+        IgnorePointer(child: Opacity(opacity: 0.4, child: child)),
+        const Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          child: LinearProgressIndicator(minHeight: 2),
+        ),
+      ],
+    );
   }
 }
 
@@ -110,7 +138,9 @@ class HeaderAboveList extends StatelessWidget {
     // 2026-11-04, Section 3 #5).
     return NestedScrollView(
       floatHeaderSlivers: true,
-      headerSliverBuilder: (context, _) => [SliverFloatingHeader(child: header)],
+      headerSliverBuilder: (context, _) => [
+        SliverFloatingHeader(child: header),
+      ],
       body: Builder(
         builder: (context) => PrimaryScrollController(
           controller: PrimaryScrollController.of(context),
@@ -167,8 +197,9 @@ class PanelHeader extends StatelessWidget {
       ],
     );
 
+    final gutter = Gutter.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+      padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 12),
       child: LayoutBuilder(
         builder: (context, constraints) {
           if (action == null) return text;

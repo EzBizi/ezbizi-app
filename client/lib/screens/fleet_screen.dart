@@ -1,6 +1,8 @@
+import '../widgets/module_page_header.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/async_body.dart';
@@ -78,17 +80,26 @@ class _FleetScreenState extends State<FleetScreen> {
   void initState() {
     super.initState();
     _load();
+    // A van assigned, serviced or insured elsewhere: page one re-read
+    // quietly (scroll, filters and the open vehicle kept).
+    _live = LiveChanges.of(widget.api).subscribe({'vehicles'}, (_) {
+      if (_page == 1 && !_fetching) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
 
   bool get _hasPane => _adding || _open != null;
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
@@ -96,8 +107,10 @@ class _FleetScreenState extends State<FleetScreen> {
     setState(() {
       _loading = page == 1 && _vehicles.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final ownership = _owned == _rented ? null : (_owned ? 'owned' : 'rented');
@@ -115,6 +128,10 @@ class _FleetScreenState extends State<FleetScreen> {
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) {
+      setState(() => _fetching = false);
+      return;
+    }
 
     setState(() {
       _loading = false;
@@ -254,7 +271,8 @@ class _FleetScreenState extends State<FleetScreen> {
                 canAdd: canCreate && vehicles,
                 onAdd: _add,
               ),
-              if (vehicles) _register(context),
+              if (vehicles)
+                ModuleActionGate(active: _tab == 1, child: _register(context)),
             ],
           ),
         ),
@@ -284,13 +302,15 @@ class _FleetScreenState extends State<FleetScreen> {
               ? '1 vehicle in the register.'
               : '$_total in the register.',
           action: canCreate
-              ? Refused(
-                  reason: refused,
-                  child: FilledButton.icon(
-                    key: const ValueKey('tour-fleet_management-add'),
-                    onPressed: refused == null ? _add : null,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add vehicle'),
+              ? ModuleAction(
+                  child: Refused(
+                    reason: refused,
+                    child: FilledButton.icon(
+                      key: const ValueKey('tour-fleet_management-add'),
+                      onPressed: refused == null ? _add : null,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add vehicle'),
+                    ),
                   ),
                 )
               : null,

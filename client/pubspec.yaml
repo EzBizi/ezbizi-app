@@ -105,6 +105,9 @@ dependencies:
   # calls it (Files.canTakePhoto is false there); web keeps <input capture>.
   image_picker: ^1.2.4
   pasteboard: ^0.5.0
+  # A pasted picture is re-encoded as PNG: on Windows pasteboard hands back
+  # BMP, which the server refuses under the .png name (0.0.0562).
+  image: ^4.8.0
 
 dev_dependencies:
   flutter_test:
@@ -192,6 +195,24 @@ flutter:
 
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
+
+  # Inter, bundled so every platform draws the same face (theme.dart names
+  # it). Without this web fell back to the browser font and Windows to
+  # Segoe UI. Static weights the theme uses; OFL licence in OFL.txt.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/inter/Inter-Regular.ttf
+        - asset: assets/fonts/inter/Inter-Italic.ttf
+          style: italic
+        - asset: assets/fonts/inter/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/inter/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/inter/Inter-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/inter/Inter-ExtraBold.ttf
+          weight: 800
 
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a

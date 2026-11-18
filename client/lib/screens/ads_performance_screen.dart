@@ -1,7 +1,10 @@
 import '../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/list_table.dart';
+
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/job_money.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
@@ -11,7 +14,9 @@ import '../widgets/ad_schedule.dart';
 import '../widgets/dashboard_chart.dart';
 import '../widgets/date_range_picker.dart';
 import '../widgets/report_grid.dart';
+import '../widgets/heading_pin.dart';
 import 'reports/report_dates.dart';
+import 'reports/report_range.dart';
 
 /// What the Google Ads accounts spent, and what came back for it.
 ///
@@ -261,7 +266,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   }
 
   String _reportKey(String id, DateTime from, DateTime to) =>
-      '$id|${_d(from)}|${_d(to)}|${_selectedIsManager ? 'rollup' : 'account'}';
+      '$id|${formatCalendarDay(from)}|${formatCalendarDay(to)}|${_selectedIsManager ? 'rollup' : 'account'}';
 
   @override
   void initState() {
@@ -286,10 +291,32 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     _loadAccounts();
     _accountSearch.addListener(() => setState(() {}));
     _campaignSearch.addListener(() => setState(() {}));
+    // A schedule flipped or set elsewhere: its on/off column re-reads. The
+    // report is Google's, read live and cached; it is not asked again here.
+    _live = LiveChanges.of(widget.api).subscribe({'ad_schedules'}, (_) {
+      final id = _selected;
+      if (id != null) return _loadSchedules(id);
+    }, active: LiveChanges.visible(this));
+  }
+
+  LiveSubscription? _live;
+
+  DateSpan? _shared;
+
+  /// Another tab moved the shared range: read the figures for it.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final span = ReportRange.maybeOf(context)?.span;
+    if (span == _shared) return;
+    final moved = _shared != null;
+    _shared = span;
+    if (moved && _selected != null) _loadReport();
   }
 
   @override
   void dispose() {
+    _live?.cancel();
     _accountSearch.dispose();
     _campaignSearch.dispose();
     _tableBody.dispose();
@@ -304,6 +331,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   /// conversions are attributed late, and "the last 30 days" is a question
   /// about settled figures, not about a day still in progress.
   (DateTime, DateTime) _window() {
+    // Inside Reports, the range every tab shares (Jose, 2026-11-16).
+    final shared = context.getInheritedWidgetOfExactType<ReportRange>()?.span;
+    if (shared != null) return (shared.from, shared.to);
     if (_ranges[_range].days == null && _custom != null) {
       return (_custom!.start, _custom!.end);
     }
@@ -315,11 +345,6 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     final days = _ranges[_range].days ?? 30;
     return (to.subtract(Duration(days: days - 1)), to);
   }
-
-  static String _d(DateTime x) =>
-      '${x.year.toString().padLeft(4, '0')}-'
-      '${x.month.toString().padLeft(2, '0')}-'
-      '${x.day.toString().padLeft(2, '0')}';
 
   Future<void> _loadAccounts() async {
     // Remembered accounts stay on screen while the list is asked again; only a
@@ -346,7 +371,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
         return;
       }
       _accounts = List<Map<String, dynamic>>.from(
-        (response.body['data'] as List? ?? const []).cast<Map<String, dynamic>>(),
+        (response.body['data'] as List? ?? const [])
+            .cast<Map<String, dynamic>>(),
       );
       _memory.accounts = _accounts;
       // Deliberately does NOT auto-select. Picking one is what spends quota,
@@ -361,8 +387,25 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     if (onlyOne) _loadReport();
   }
 
+  /// "Everything": every account of the company and its sub companies, each
+  /// once (Jose, 2026-11-16: "Combining a1chimney and angisweep").
+  static const _everything = '*everything*';
+
+  /// The list as drawn: Everything above the managers, when there is more
+  /// than one account to combine.
+  List<Map<String, dynamic>> get _listed => [
+    if (_accounts.length > 1)
+      {
+        'connection_id': _everything,
+        'name': 'Everything',
+        'customer_id': 'company and sub companies, each account once',
+        'is_manager': true,
+      },
+    ..._accounts,
+  ];
+
   bool get _selectedIsManager {
-    final a = _accounts.where((a) => a['connection_id'] == _selected);
+    final a = _listed.where((a) => a['connection_id'] == _selected);
     return a.isNotEmpty && a.first['is_manager'] == true;
   }
 
@@ -400,7 +443,11 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       }
     });
 
-    final query = {'connection_id': id, 'from': _d(from), 'to': _d(to)};
+    final query = {
+      if (id == _everything) 'everything': '1' else 'connection_id': id,
+      'from': formatCalendarDay(from),
+      'to': formatCalendarDay(to),
+    };
 
     // A manager holds no spend of its own — every figure on it would be zero —
     // so asking it for a campaign report answers a question nobody meant. The
@@ -439,12 +486,17 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   Map<String, Map<String, dynamic>> _schedules = const {};
 
   Future<void> _loadSchedules(String id) async {
-    final response = await widget.api.get('/ad-schedules', {'connection_id': id});
-    if (!mounted || _selected != id || !response.ok) return;
-    setState(() => _schedules = {
-      for (final row in (response.body['data'] as List? ?? const []).cast<Map>())
-        '${row['object_id']}': Map<String, dynamic>.from(row),
+    final response = await widget.api.get('/ad-schedules', {
+      'connection_id': id,
     });
+    if (!mounted || _selected != id || !response.ok) return;
+    setState(
+      () => _schedules = {
+        for (final row
+            in (response.body['data'] as List? ?? const []).cast<Map>())
+          '${row['object_id']}': Map<String, dynamic>.from(row),
+      },
+    );
   }
 
   Future<void> _editSchedule(Map<String, dynamic> c) async {
@@ -480,7 +532,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
 
     // A remembered selection may name campaigns this page no longer lists.
     final present = {
-      for (final c in (_report?['campaigns'] as List? ?? const [])) '${(c as Map)['id']}',
+      for (final c in (_report?['campaigns'] as List? ?? const []))
+        '${(c as Map)['id']}',
     };
     _picked.removeWhere((id) => !present.contains(id));
   }
@@ -513,7 +566,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     final done = results.where((r) => r['ok'] == true).length;
     final refused = results.where((r) => r['ok'] != true).toList();
     final names = {
-      for (final c in (_report?['campaigns'] as List? ?? const [])) '${(c as Map)['id']}': '${c['name']}',
+      for (final c in (_report?['campaigns'] as List? ?? const []))
+        '${(c as Map)['id']}': '${c['name']}',
     };
 
     setState(() {
@@ -616,8 +670,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     // either - "Hamden" and "8839813550" are both how somebody refers to it.
     final needle = _accountSearch.text.trim().toLowerCase();
     final shown = needle.isEmpty
-        ? _accounts
-        : _accounts
+        ? _listed
+        : _listed
               .where(
                 (a) =>
                     '${a['name']}'.toLowerCase().contains(needle) ||
@@ -635,8 +689,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             child: ListSearch(
               key: const ValueKey('ads-account-search'),
               controller: _accountSearch,
-              hint: 'Search ${_accounts.length} '
-                      '${_accounts.length == 1 ? 'account' : 'accounts'}',
+              hint:
+                  'Search ${_accounts.length} '
+                  '${_accounts.length == 1 ? 'account' : 'accounts'}',
             ),
           ),
           const Divider(height: 1),
@@ -695,7 +750,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   // load, and the only thing that makes it correct here is
                   // that somebody chose it knowing what it was.
                   subtitle: Text(
-                    a['is_manager'] == true
+                    id == _everything
+                        ? '${a['customer_id']}'
+                        : a['is_manager'] == true
                         ? '${a['customer_id']} - reads every account beneath it'
                         : '${a['customer_id']}',
                   ),
@@ -799,7 +856,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             ],
           ),
         ),
-        PinnedHeaderSliver(
+        // Pinned unless this person unpinned the headings (Jose, 2026-11-16).
+        HeadingPin.sliver(
+          context,
           child: SizedBox(
             height: _headerHeight,
             child: _campaignHeader(theme, rows),
@@ -823,7 +882,10 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     if (_refreshing) {
       return const Padding(
         padding: EdgeInsets.only(bottom: 8),
-        child: LinearProgressIndicator(key: ValueKey('ads-refreshing'), minHeight: 2),
+        child: LinearProgressIndicator(
+          key: ValueKey('ads-refreshing'),
+          minHeight: 2,
+        ),
       );
     }
 
@@ -841,7 +903,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       child: Text(
         'Showing the figures read at $when - Google did not answer just now: $_staleBecause',
         key: const ValueKey('ads-stale'),
-        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.error,
+        ),
       ),
     );
   }
@@ -859,11 +923,15 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: ReportDates(
-              key: ValueKey('ads-dates-${_d(from)}-${_d(to)}'),
+              key: ValueKey(
+                'ads-dates-${formatCalendarDay(from)}-${formatCalendarDay(to)}',
+              ),
               initial: DateSpan(from, to),
               today: DateSpan.single(DateTime.now()).from,
               formats: widget.session.me?.display ?? DisplayFormats.fallback,
               onChanged: (span) {
+                final shared = ReportRange.maybeOf(context);
+                if (shared != null) return shared.onChanged(span);
                 setState(() {
                   _custom = DateTimeRange(start: span.from, end: span.to);
                   _range = _ranges.length - 1;
@@ -916,14 +984,16 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   _number(account['conversions']),
                   // Jose asked what the difference is. The answer belongs where
                   // the number is, not in a chat message he has to remember.
-                  hint: 'Conversion actions you chose to count as conversions. '
+                  hint:
+                      'Conversion actions you chose to count as conversions. '
                       'This is the number Google optimises bidding against.',
                 ),
                 _figure(
                   theme,
                   'All conversions',
                   _number(account['all_conversions']),
-                  hint: 'Every conversion action, including the ones not '
+                  hint:
+                      'Every conversion action, including the ones not '
                       'counted above - so it is always the same or larger.',
                 ),
                 // EzBizi's own count, not Google's: the leads this account
@@ -933,7 +1003,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                     theme,
                     'Leads',
                     _number(account['leads']),
-                    hint: '${_number(account['charged_leads'])} charged, '
+                    hint:
+                        '${_number(account['charged_leads'])} charged, '
                         '${_number(account['credited_leads'])} credited back.',
                   ),
                   _figure(
@@ -948,14 +1019,16 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                     'Missed calls',
                     '${_number(account['missed_calls'])} of '
                         '${_number(account['calls'])}',
-                    hint: 'Calls that rang out: Google recorded no '
+                    hint:
+                        'Calls that rang out: Google recorded no '
                         'conversation.',
                   ),
                   _figure(
                     theme,
                     'First reply',
                     _minutes(account['median_first_reply_minutes']),
-                    hint: 'Median wait for a first answer to a message or '
+                    hint:
+                        'Median wait for a first answer to a message or '
                         'booking. ${_number(account['unanswered_messages'])} '
                         'still unanswered.',
                   ),
@@ -963,7 +1036,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                     theme,
                     'Revenue',
                     _money(account['revenue'], currency),
-                    hint: 'From ${_number(account['jobs'])} jobs these leads '
+                    hint:
+                        'From ${_number(account['jobs'])} jobs these leads '
                         'became - booked from the lead or matched by the '
                         "customer's phone. Cancelled jobs are left out.",
                   ),
@@ -1045,12 +1119,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     );
   }
 
-  Widget _figure(
-    ThemeData theme,
-    String label,
-    String value, {
-    String? hint,
-  }) {
+  Widget _figure(ThemeData theme, String label, String value, {String? hint}) {
     // Equal tiles, as every Reports tab's figures (UI queue 87).
     final text = Container(
       width: 168,
@@ -1061,40 +1130,40 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
         borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
       ),
       child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
               ),
-            ),
-            if (hint != null) ...[
-              const SizedBox(width: 4),
-              Icon(
-                Icons.info_outline,
-                size: 13,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              if (hint != null) ...[
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.info_outline,
+                  size: 13,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ],
             ],
-          ],
-        ),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-            fontFeatures: const [FontFeature.tabularFigures()],
           ),
-        ),
-      ],
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
 
@@ -1248,7 +1317,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                 _columnsButton(theme),
               ],
             ),
-            if (_canManage && (_picked.isNotEmpty || _changing || _changeResult != null))
+            if (_canManage &&
+                (_picked.isNotEmpty || _changing || _changeResult != null))
               _actionBar(theme),
             const SizedBox(height: 8),
             Wrap(
@@ -1282,7 +1352,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   label: const Text('Search Ads'),
                   selected: _adTypes.contains(_typeSearch),
                   onSelected: (on) => setState(() {
-                    on ? _adTypes.add(_typeSearch) : _adTypes.remove(_typeSearch);
+                    on
+                        ? _adTypes.add(_typeSearch)
+                        : _adTypes.remove(_typeSearch);
                   }),
                 ),
               ],
@@ -1306,7 +1378,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   /// measuring each other. Scrolls sideways rather than dropping columns: a
   /// narrow screen must not be a reason to show fewer required fields than
   /// the policy asks for.
-  List<({String key, String label, double width, bool numeric})> get _tableColumns => [
+  List<({String key, String label, double width, bool numeric})>
+  get _tableColumns => [
     (key: 'name', label: 'Campaign', width: 340, numeric: false),
     (key: 'status', label: 'Status', width: 96, numeric: false),
     (key: 'schedule', label: 'Schedule', width: 250, numeric: false),
@@ -1314,7 +1387,12 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     (key: 'clicks', label: 'Clicks', width: 90, numeric: true),
     (key: 'impressions', label: 'Impressions', width: 116, numeric: true),
     (key: 'conversions', label: 'Conversions', width: 116, numeric: true),
-    (key: 'all_conversions', label: 'All conversions', width: 136, numeric: true),
+    (
+      key: 'all_conversions',
+      label: 'All conversions',
+      width: 136,
+      numeric: true,
+    ),
     for (final e in _extras.where((e) => _extra.contains(e.key)))
       (key: e.key, label: e.label, width: 124, numeric: true),
   ];
@@ -1356,7 +1434,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                     child: Checkbox(
                       key: const ValueKey('ads-pick-all'),
                       tristate: true,
-                      value: picked == 0 ? false : (picked == ids.length ? true : null),
+                      value: picked == 0
+                          ? false
+                          : (picked == ids.length ? true : null),
                       onChanged: _changing || ids.isEmpty
                           ? null
                           : (_) => setState(() {
@@ -1375,9 +1455,11 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: Row(
-                          mainAxisAlignment:
-                              c.numeric ? MainAxisAlignment.end : MainAxisAlignment.start,
+                          mainAxisAlignment: c.numeric
+                              ? MainAxisAlignment.end
+                              : MainAxisAlignment.start,
                           children: [
+                            if (c.key == 'name') const HeadingPinButton(),
                             Flexible(
                               child: Text(
                                 c.label,
@@ -1387,7 +1469,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                             ),
                             if (_sortBy == c.key)
                               Icon(
-                                _sortDescending ? Icons.arrow_downward : Icons.arrow_upward,
+                                _sortDescending
+                                    ? Icons.arrow_downward
+                                    : Icons.arrow_upward,
                                 key: ValueKey('ads-sort-${c.key}'),
                                 size: 14,
                               ),
@@ -1429,10 +1513,15 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   height: 44,
                   decoration: BoxDecoration(
                     color: _picked.contains('${c['id']}')
-                        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35)
+                        ? theme.colorScheme.primaryContainer.withValues(
+                            alpha: 0.35,
+                          )
                         : null,
                     border: Border(
-                      bottom: BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5),
+                      bottom: BorderSide(
+                        color: theme.colorScheme.outlineVariant,
+                        width: 0.5,
+                      ),
                     ),
                   ),
                   child: Row(
@@ -1473,7 +1562,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                                   )
                                 : Text(
                                     _cell(col.key, c, currency),
-                                    textAlign: col.numeric ? TextAlign.end : TextAlign.start,
+                                    textAlign: col.numeric
+                                        ? TextAlign.end
+                                        : TextAlign.start,
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.bodyMedium,
                                   ),
@@ -1499,7 +1590,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
         return _money(c['cost'], currency);
     }
     final extra = _extras.where((e) => e.key == key);
-    return extra.isEmpty ? _number(c[key]) : _format(extra.first, c[key], currency);
+    return extra.isEmpty
+        ? _number(c[key])
+        : _format(extra.first, c[key], currency);
   }
 
   /// Sort on a column. Clicking the column already sorted flips it; a new one
@@ -1514,12 +1607,6 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     }
   });
 
-  static const _rollupColumns = [
-    'name', 'cost', 'clicks', 'impressions', 'conversions', 'all_conversions',
-    'leads', 'cost_per_lead', 'missed_calls', 'median_first_reply_minutes',
-    'revenue',
-  ];
-
   /// A wait in the unit a person reads it in: "12 min", "3 h 5 min", "2 d".
   static String _minutes(dynamic value) {
     if (value == null) return '—';
@@ -1527,11 +1614,6 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     if (m < 60) return '$m min';
     if (m < 1440) return '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60} min'}';
     return '${(m / 1440).toStringAsFixed(m < 14400 ? 1 : 0)} d';
-  }
-
-  int? _rollupSortIndex() {
-    final i = _rollupColumns.indexOf(_sortBy);
-    return i < 0 ? null : i;
   }
 
   bool get _canManage => widget.session.me?.can('ads_manager.manage') ?? false;
@@ -1598,7 +1680,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   /// to type, only somewhere to state the consequence and two answers - and
   /// the consequence here is real money and a phone that stops ringing.
   Widget _actionBar(ThemeData theme) {
-    final account = '${(_report?['account'] as Map?)?['name'] ?? 'this account'}';
+    final account =
+        '${(_report?['account'] as Map?)?['name'] ?? 'this account'}';
     final n = _picked.length;
     final plural = n == 1 ? 'campaign' : 'campaigns';
 
@@ -1616,7 +1699,11 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
           if (_changing)
             Row(
               children: [
-                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
                 const SizedBox(width: 10),
                 Text('Telling Google…', style: theme.textTheme.bodySmall),
               ],
@@ -1641,7 +1728,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   key: const ValueKey('ads-confirm'),
                   onPressed: () => _change(_confirming!),
                   // Names the act, so the last button pressed says what it does.
-                  child: Text(_confirming == 'PAUSED' ? 'Pause them' : 'Enable them'),
+                  child: Text(
+                    _confirming == 'PAUSED' ? 'Pause them' : 'Enable them',
+                  ),
                 ),
               ],
             )
@@ -1671,26 +1760,16 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
               ],
             ),
           if (_changeResult != null && !_changing) ...[
-            if (_picked.isNotEmpty || _confirming != null) const SizedBox(height: 8),
-            Text(_changeResult!, key: const ValueKey('ads-change-result'), style: theme.textTheme.bodySmall),
+            if (_picked.isNotEmpty || _confirming != null)
+              const SizedBox(height: 8),
+            Text(
+              _changeResult!,
+              key: const ValueKey('ads-change-result'),
+              style: theme.textTheme.bodySmall,
+            ),
           ],
         ],
       ),
-    );
-  }
-
-  /// A column header that sorts.
-  ///
-  /// Clicking the column already sorted flips the direction; clicking a new one
-  /// starts DESCENDING, because every column here except the name is a
-  /// quantity and "most" is what somebody is looking for. Starting ascending
-  /// would put the campaigns that spent nothing at the top.
-  DataColumn _sortable(String label, String key) {
-    return DataColumn(
-      label: Text(label),
-      // Figures right-aligned, as in every Reports table (UI queue 87).
-      numeric: key != 'name',
-      onSort: (columnIndex, ascending) => _sortOn(key),
     );
   }
 
@@ -1701,15 +1780,16 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   /// a smaller number wearing the clothes of a complete one, and nobody
   /// reading it would know to ask.
   Widget _rollupCard(ThemeData theme) {
-    final rows = List<Map<String, dynamic>>.from(
-      (_rollup ?? const []).cast<Map<String, dynamic>>(),
-    )..sort((a, b) {
-      final x = a[_sortBy], y = b[_sortBy];
-      final c = x is num && y is num
-          ? x.compareTo(y)
-          : '$x'.toLowerCase().compareTo('$y'.toLowerCase());
-      return _sortDescending ? -c : c;
-    });
+    final rows =
+        List<Map<String, dynamic>>.from(
+          (_rollup ?? const []).cast<Map<String, dynamic>>(),
+        )..sort((a, b) {
+          final x = a[_sortBy], y = b[_sortBy];
+          final c = x is num && y is num
+              ? x.compareTo(y)
+              : '$x'.toLowerCase().compareTo('$y'.toLowerCase());
+          return _sortDescending ? -c : c;
+        });
 
     num total(String key) =>
         rows.fold<num>(0, (sum, r) => sum + ((r[key] as num?) ?? 0));
@@ -1723,8 +1803,10 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('All accounts under this manager',
-                style: theme.textTheme.titleMedium),
+            Text(
+              'All accounts under this manager',
+              style: theme.textTheme.titleMedium,
+            ),
             Text(
               [
                 if (_rollupNotConnected == 0)
@@ -1765,63 +1847,54 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
               ],
             ),
             const Divider(height: 28),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                key: const ValueKey('ads-rollup'),
-                columnSpacing: 26,
-                // Its OWN column order, not the campaign table's: that one has
-                // Status second and optional columns after, so reusing its
-                // index put the arrow one column off here - and past the last
-                // column entirely when an optional one was sorted, which
-                // DataTable asserts on.
-                sortColumnIndex: _rollupSortIndex(),
-                sortAscending: !_sortDescending,
-                columns: [
-                  _sortable('Account', 'name'),
-                  _sortable('Cost', 'cost'),
-                  _sortable('Clicks', 'clicks'),
-                  _sortable('Impressions', 'impressions'),
-                  _sortable('Conversions', 'conversions'),
-                  _sortable('All conversions', 'all_conversions'),
-                  _sortable('Leads', 'leads'),
-                  _sortable('Cost / lead', 'cost_per_lead'),
-                  _sortable('Missed calls', 'missed_calls'),
-                  _sortable('First reply', 'median_first_reply_minutes'),
-                  _sortable('Revenue', 'revenue'),
-                ],
-                rows: [
-                  for (final r in rows)
-                    DataRow(
-                      cells: [
-                        DataCell(Text('${r['name'] ?? r['id']}')),
-                        DataCell(Text(_money(r['cost'], r['currency']))),
-                        DataCell(Text(_number(r['clicks']))),
-                        DataCell(Text(_number(r['impressions']))),
-                        DataCell(Text(_number(r['conversions']))),
-                        DataCell(Text(_number(r['all_conversions']))),
-                        DataCell(Text(_number(r['leads']))),
-                        DataCell(
-                          Text(
-                            r['cost_per_lead'] == null
-                                ? '—'
-                                : _money(r['cost_per_lead'], r['currency']),
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            '${_number(r['missed_calls'])} of '
-                            '${_number(r['calls'])}',
-                          ),
-                        ),
-                        DataCell(
-                          Text(_minutes(r['median_first_reply_minutes'])),
-                        ),
-                        DataCell(Text(_money(r['revenue'], r['currency']))),
-                      ],
+            ListTable(
+              key: const ValueKey('ads-rollup'),
+              columns: [
+                for (final (label, key) in const [
+                  ('Account', 'name'),
+                  ('Cost', 'cost'),
+                  ('Clicks', 'clicks'),
+                  ('Impressions', 'impressions'),
+                  ('Conversions', 'conversions'),
+                  ('All conversions', 'all_conversions'),
+                  ('Leads', 'leads'),
+                  ('Cost / lead', 'cost_per_lead'),
+                  ('Missed calls', 'missed_calls'),
+                  ('First reply', 'median_first_reply_minutes'),
+                  ('Revenue', 'revenue'),
+                ])
+                  ListColumn(
+                    label,
+                    flex: key == 'name' ? 3 : 2,
+                    // Figures right-aligned, as in every Reports table.
+                    end: key != 'name',
+                    onSort: () => _sortOn(key),
+                    sorted: _sortBy == key ? !_sortDescending : null,
+                  ),
+              ],
+              rows: [
+                for (final r in rows)
+                  [
+                    Text('${r['name'] ?? r['id']}'),
+                    Text(_money(r['cost'], r['currency'])),
+                    Text(_number(r['clicks'])),
+                    Text(_number(r['impressions'])),
+                    Text(_number(r['conversions'])),
+                    Text(_number(r['all_conversions'])),
+                    Text(_number(r['leads'])),
+                    Text(
+                      r['cost_per_lead'] == null
+                          ? '—'
+                          : _money(r['cost_per_lead'], r['currency']),
                     ),
-                ],
-              ),
+                    Text(
+                      '${_number(r['missed_calls'])} of '
+                      '${_number(r['calls'])}',
+                    ),
+                    Text(_minutes(r['median_first_reply_minutes'])),
+                    Text(_money(r['revenue'], r['currency'])),
+                  ],
+              ],
             ),
           ],
         ),

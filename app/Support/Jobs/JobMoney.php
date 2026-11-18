@@ -96,32 +96,6 @@ final class JobMoney
             ->map(fn ($c) => (int) $c)->all();
     }
 
-    /** @return array<string, array{first: Carbon, last: Carbon}> each paid job's first and last payment */
-    public static function paidDates(array|Collection $jobIds): array
-    {
-        return self::paidRecords()->whereIn('job_id', $jobIds)->groupBy('job_id')
-            ->selectRaw('job_id, MIN(starts_at) AS first_paid, MAX(starts_at) AS last_paid')->get()
-            ->mapWithKeys(fn ($r) => [$r->job_id => ['first' => Carbon::parse($r->first_paid), 'last' => Carbon::parse($r->last_paid)]])->all();
-    }
-
-    /** The ids of jobs with a payment, within [$from, $to] when given, as a subquery. */
-    public static function paidJobIds(?Carbon $from = null, ?Carbon $to = null): Builder
-    {
-        return self::paidRecords()->when($from, fn ($q) => $q->whereBetween('starts_at', [$from, $to]))->select('job_id');
-    }
-
-    /** The ids of jobs first paid on or before $at, as a subquery. */
-    public static function firstPaidBy(Carbon $at): Builder
-    {
-        return self::paidRecords()->groupBy('job_id')->havingRaw('MIN(starts_at) <= ?', [$at])->select('job_id');
-    }
-
-    /** The ids of jobs last paid before $at, as a subquery. */
-    public static function lastPaidBefore(Carbon $at): Builder
-    {
-        return self::paidRecords()->groupBy('job_id')->havingRaw('MAX(starts_at) < ?', [$at])->select('job_id');
-    }
-
     private static function paidRecords(): Builder
     {
         return WorkizRecord::query()->where('type', 'payment')->where('status', 'succeeded')->whereNotNull('job_id');

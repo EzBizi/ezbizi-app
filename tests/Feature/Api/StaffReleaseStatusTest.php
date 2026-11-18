@@ -98,6 +98,71 @@ class StaffReleaseStatusTest extends TestCase
         $this->assertSame(25 * 60 + 1, $recent[1]['elapsed_seconds']);
     }
 
+    /** Time left = the running stage's share of its median + every stage to come at its median (Jose 11-12). */
+    public function test_the_release_in_flight_carries_time_left_from_past_medians(): void
+    {
+        $this->fixture();
+
+        $current = $this->withHeader('Authorization', 'Bearer '.$this->staffToken())
+            ->getJson('/api/v1/staff/release-status')->assertOk()->json('current');
+
+        // Past runs: server tests took 20m twice, web 5m once; Windows never ran.
+        $this->assertSame([0, 1200, 300, null], array_column($current['stages'], 'median_seconds'));
+        // Server tests at 85% of 20m leave 3m, then web 5m; Windows has no history.
+        $this->assertSame(180 + 300, $current['eta_seconds']);
+        $this->assertSame(20 * 60, $current['stages'][1]['seconds']); // 14:40:00 → now 15:00
+        $this->assertSame(0, $current['stages'][0]['seconds']);
+    }
+
+    /** A run that never said it ended, after which a later release finished, is Superseded, not pending forever. */
+    public function test_a_run_overtaken_by_a_finished_release_is_superseded(): void
+    {
+        $stuck = str_repeat('d', 40);
+        $later = str_repeat('e', 40);
+        file_put_contents($this->file, implode('', [
+            $this->line('0.0.0560', $stuck, 'release', 0, 'running', 'started', '2026-11-10T16:08:00Z', 'web'),
+            $this->line('0.0.0560', $stuck, 'server_tests', 60, 'running', 'phpunit running on the box', '2026-11-10T16:35:00Z'),
+            $this->line('0.0.0560', $later, 'release', 0, 'running', 'started', '2026-11-10T17:09:00Z', 'web'),
+            $this->line('0.0.0560', $later, 'release', 100, 'done', '✓ release', '2026-11-10T18:42:00Z'),
+        ]));
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$this->staffToken())
+            ->getJson('/api/v1/staff/release-status')->assertOk();
+
+        $this->assertSame('done', $response->json('current.state'));
+        $this->assertSame('superseded', $response->json('recent.0.state'));
+        $this->assertSame($stuck, $response->json('recent.0.sha'));
+    }
+
+    /** Staff see the tail of the commit's gate log, with anything credential-like masked. */
+    public function test_staff_see_the_tail_of_the_gate_log(): void
+    {
+        $this->fixture();
+        $dir = sys_get_temp_dir().'/gate-runs-'.uniqid();
+        mkdir($dir);
+        config(['ezbizi.gate_runs_dir' => $dir]);
+        $sha = str_repeat('c', 40);
+        $body = '';
+        for ($i = 1; $i <= 50; $i++) {
+            $body .= "line {$i}\n";
+        }
+        file_put_contents("{$dir}/{$sha}-1-1.log", $body."DB_PASSWORD=hunter2\n...... 5800 / 6833 ( 85%)\n");
+        file_put_contents("{$dir}/".str_repeat('a', 40).'-1-1.log', "another commit\n");
+
+        try {
+            $log = $this->withHeader('Authorization', 'Bearer '.$this->staffToken())
+                ->getJson('/api/v1/staff/release-status')->assertOk()->json('current.log');
+        } finally {
+            array_map('unlink', glob("{$dir}/*"));
+            rmdir($dir);
+        }
+
+        $this->assertCount(40, $log);
+        $this->assertSame('...... 5800 / 6833 ( 85%)', end($log));
+        $this->assertContains('DB_PASSWORD=[hidden]', $log);
+        $this->assertNotContains('another commit', $log);
+    }
+
     public function test_no_file_is_no_release_not_an_error(): void
     {
         config(['ezbizi.release_status_file' => $this->file.'-missing']);
@@ -119,6 +184,21 @@ class StaffReleaseStatusTest extends TestCase
         $this->app['auth']->forgetGuards();
 
         $this->getJson('/api/v1/staff/release-status')->assertUnauthorized();
+    }
+
+    /** Everybody signed in sees the release on its way: version and percent, nothing else (Jose 11-12). */
+    public function test_anybody_signed_in_sees_only_the_version_and_percent_of_the_running_release(): void
+    {
+        $this->fixture();
+        $alpha = $this->provisionTenant('Alpha');
+
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/release/upcoming')
+            ->assertOk()
+            ->assertExactJson(['data' => ['version' => '0.0.0559', 'percent' => 58]]);
+
+        config(['ezbizi.release_status_file' => $this->file.'-missing']);
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/release/upcoming')
+            ->assertOk()->assertExactJson(['data' => null]);
     }
 
     private function staffToken(): string

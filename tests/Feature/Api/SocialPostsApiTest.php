@@ -762,6 +762,12 @@ class SocialPostsApiTest extends TestCase
         ])->json('data');
         $target = $data['targets'][0]['id'];
         $this->assertTrue($data['targets'][0]['can_delete']);
+        // The exact target row: a new key is a decision, not a drift.
+        $this->assertSame([
+            'id', 'connection_id', 'account', 'provider', 'provider_label', 'status', 'status_label',
+            'failure', 'sent_at', 'url', 'can_delete',
+        ], array_keys($data['targets'][0]));
+        $this->assertNull($data['targets'][0]['status_label']);
 
         $this->signedInAs($t['admin'])
             ->deleteJson(self::ENDPOINT."/{$data['id']}/targets/{$target}/remote")

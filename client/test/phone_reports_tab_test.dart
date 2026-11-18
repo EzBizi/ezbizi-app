@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -93,7 +94,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: EzBiziTheme.light(),
-        home: Scaffold(body: ReportsTab(api: api, session: session)),
+        home: Scaffold(
+          body: ReportsTab(api: api, session: session),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -210,6 +213,138 @@ void main() {
     await tester.tap(find.byKey(const Key('reports-tile-inbound')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('report-row:outbound')), findsOneWidget);
+  });
+
+  // UI pass 2026-11-17: at 1440 (a ~1150 px content area) six tiles fitted
+  // and "Not tagged" sat alone on a second row. All seven share one now.
+  testWidgets('the seven totals share one row at a computer width', (
+    tester,
+  ) async {
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) return _json({'data': _me});
+        if (path.endsWith('/phone/reports/run')) {
+          return _json({
+            'data': {
+              'totals': {'calls': 3, 'inbound': 2, 'outbound': 1},
+              'rows': <Object>[],
+              'labels': <Object>[],
+            },
+          });
+        }
+        return _json({'data': <Object>[]});
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    tester.view.physicalSize = const Size(1150, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: ReportsTab(api: api, session: session),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final tops = {
+      for (final key in [
+        'all',
+        'inbound',
+        'outbound',
+        'missed',
+        'voicemails',
+        'average',
+        'untagged',
+      ])
+        tester.getTopLeft(find.byKey(Key('reports-tile-$key'))).dy,
+    };
+    expect(tops, hasLength(1));
+  });
+
+  // UI/UX audit 2026-11-13, §10.1: Jose's Reports said "No calls in this
+  // period" while Records listed 317. The server had sent him 15 calls for
+  // the last 30 days (576 bytes in the access log); the screen drew the
+  // empty totals before that answer was read, and empty read as zero. The
+  // answer below is the one he was sent. A failed count is not zero either.
+  testWidgets('no "No calls" before the count answers, or when it fails', (
+    tester,
+  ) async {
+    final answer = Completer<http.Response>();
+    var fail = false;
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/me')) return _json({'data': _me});
+        if (path.endsWith('/phone/reports/run')) {
+          if (fail) return http.Response('{"message":"Down."}', 500);
+          return answer.future;
+        }
+        if (path.endsWith('/phone/reports')) {
+          return _json({'data': <Object>[], 'meta': <String, Object>{}});
+        }
+        return _json({'data': <Object>[]});
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    tester.view.physicalSize = const Size(1400, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    Future<void> open() async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: ReportsTab(key: UniqueKey(), api: api, session: session),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    await open();
+    expect(find.textContaining('No calls in this period'), findsNothing);
+    expect(find.text('Counting the calls…'), findsOneWidget);
+
+    answer.complete(
+      _json({
+        'data': {
+          'totals': {
+            'calls': 15,
+            'inbound': 4,
+            'outbound': 11,
+            'missed': 0,
+            'voicemails': 0,
+            'untagged': 15,
+            'total_seconds': 591,
+            'average_seconds': 39,
+            'missed_rate': 0,
+          },
+          'rows': [
+            {'bucket': '2026-10-16', 'calls': 11, 'missed': 0, 'seconds': 548},
+          ],
+          'labels': <String, Object>{},
+        },
+      }),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('15'), findsWidgets);
+    expect(find.text('Counting the calls…'), findsNothing);
+    expect(find.textContaining('No calls in this period'), findsNothing);
+
+    fail = true;
+    await open();
+    await tester.pumpAndSettle();
+    expect(find.text('Down.'), findsOneWidget);
+    expect(find.textContaining('No calls in this period'), findsNothing);
   });
 }
 

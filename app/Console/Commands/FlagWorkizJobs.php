@@ -83,12 +83,7 @@ class FlagWorkizJobs extends Command
                         $flagged++;
                         $title = 'Job #'.($w->serial_id ?? $w->remote_id).': '.$sentence;
 
-                        // Workiz CreatedBy → the team member's linked user, else a user of that name.
-                        $name = mb_strtolower(trim((string) $w->created_by));
-                        $booker = $name === '' ? null : (User::query()->where('is_active', true)->find(
-                            WorkizTeamMember::query()->where('franchise_id', $w->franchise_id)
-                                ->whereRaw('LOWER(name) = ?', [$name])->value('user_id'))
-                            ?? User::query()->where('is_active', true)->whereRaw('LOWER(name) = ?', [$name])->first());
+                        $booker = self::booker($w);
                         $job = $w->job_id ? Job::query()->find($w->job_id) : null;
                         if ($booker) {
                             $notify->dispatch(title: $title, subject: $job, source: 'system', userIds: [$booker->getKey()]);
@@ -110,5 +105,16 @@ class FlagWorkizJobs extends Command
         $this->info($flagged.' flag'.($flagged === 1 ? '' : 's').($dry ? ' would be raised.' : ' raised.'));
 
         return self::SUCCESS;
+    }
+
+    /** Workiz CreatedBy → the team member's linked user, else a user of that name. */
+    public static function booker(WorkizJob $w): ?User
+    {
+        $name = mb_strtolower(trim((string) $w->created_by));
+
+        return $name === '' ? null : (User::query()->where('is_active', true)->find(
+            WorkizTeamMember::query()->where('franchise_id', $w->franchise_id)
+                ->whereRaw('LOWER(name) = ?', [$name])->value('user_id'))
+            ?? User::query()->where('is_active', true)->whereRaw('LOWER(name) = ?', [$name])->first());
     }
 }

@@ -28,6 +28,11 @@ use Illuminate\Support\Collection;
 class WebWidget extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** A widget saved is its site's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['web_sites', WebSite::class, 'site_id'];
+
     use HasUuids;
 
     protected $table = 'web_widgets';
@@ -126,7 +131,7 @@ class WebWidget extends Model implements StatesRetention
      * a-1chimney.com" rather than showing borrowed values as if they were typed
      * here.
      *
-     * @return array{config: array<string, mixed>, own: bool, inherited: array<string, mixed>}
+     * @return array{config: array<string, mixed>, own: bool, inherited: object}
      */
     public static function forEditor(WebSite $site): array
     {
@@ -135,7 +140,9 @@ class WebWidget extends Model implements StatesRetention
         return [
             'config' => self::resolvedFor($site),
             'own' => $own !== null,
-            'inherited' => $own === null ? [] : self::inheritedFor($site),
+            // An object even when empty: [] reaches Dart as a List and the screen
+            // never got past its spinner (11-13).
+            'inherited' => (object) ($own === null ? [] : self::inheritedFor($site)),
             // What each preset option is, so the screen can draw the generated
             // style options without a hand copy of them.
             'schema' => WidgetPresets::schema(),

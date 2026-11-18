@@ -159,6 +159,22 @@ class TaskBoardCustomizationTest extends TestCase
             ->assertJsonPath("data.values.{$link}.label", 'Ann Smith');
     }
 
+    public function test_a_people_column_holds_several_people_on_the_board(): void
+    {
+        $people = $this->api()->postJson("/api/v1/task-boards/{$this->board->id}/columns", ['name' => 'Crew', 'type' => 'people'])
+            ->assertCreated()->json('data.id');
+        $id = $this->newTask();
+        $admin = $this->tenant['admin']->id;
+
+        $this->api()->patchJson("/api/v1/tasks/{$id}", ['values' => [$people => ['not-a-user']]])->assertStatus(422);
+        $this->api()->patchJson("/api/v1/tasks/{$id}", ['values' => [$people => $admin]])->assertStatus(422);
+        $this->api()->patchJson("/api/v1/tasks/{$id}", ['values' => [$people => [$admin, $admin]]])
+            ->assertOk()->assertJsonPath("data.values.{$people}", [$admin]);
+
+        // Erasure finds them (personalDataAbout), as it finds a person column.
+        $this->assertSame(1, $this->inTenant($this->tenant['org'], fn () => \App\Models\TaskColumnValue::personalDataAbout($this->tenant['admin'])->count()));
+    }
+
     public function test_a_retired_label_stays_on_its_tasks(): void
     {
         $col = $this->api()->postJson("/api/v1/task-boards/{$this->board->id}/columns", ['name' => 'Reason', 'type' => 'dropdown',

@@ -76,16 +76,6 @@ class _Day {
       (act == _Act.hours && (open != null || close != null));
 }
 
-const _dayNames = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
-
 /// ponytail: the US zones, which is every tenant today. Read the settings
 /// registry's timezone options instead when a tenant outside the US appears.
 const hourZones = <(String, String)>[
@@ -181,7 +171,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
     'schedule': {
       for (var i = 0; i < 7; i++)
         if (_week[i].asks)
-          _dayNames[i].toLowerCase(): _week[i].act == _Act.closed
+          longWeekdays[i].toLowerCase(): _week[i].act == _Act.closed
               ? {'action': 'closed'}
               : {
                   'action': 'set_hours',
@@ -905,7 +895,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
         children: [
           SizedBox(
             width: 104,
-            child: Text(_dayNames[day], style: theme.textTheme.titleSmall),
+            child: Text(longWeekdays[day], style: theme.textTheme.titleSmall),
           ),
           _act(day, short: false),
           if (_week[day].act == _Act.hours) _edges(context, day),
@@ -928,7 +918,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(_dayNames[day], style: theme.textTheme.titleSmall),
+          Text(longWeekdays[day], style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
           _act(day, short: true),
           if (_week[day].act == _Act.hours) ...[
@@ -1042,6 +1032,8 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
             ],
             selected: _tab.clamp(0, places.length - 1),
             onSelected: (i) => setState(() => _tab = i),
+            // Every website on show at once (Jose, 2026-09-29).
+            wrap: true,
           ),
           const SizedBox(height: 12),
           _place(context, places[_tab.clamp(0, places.length - 1)], wide: true),

@@ -138,6 +138,15 @@ final class MailchimpSender
     }
 
     /**
+     * The address a send carries. Mailchimp's campaign settings have one
+     * `reply_to`, which is also the From address; there is no separate field.
+     */
+    public function fromAddress(SocialConnection $connection, Newsletter $newsletter): string
+    {
+        return $this->identityFor($connection, $newsletter)['reply_to'];
+    }
+
+    /**
      * Opt-outs Mailchimp holds become EzBizi's own rows at the newsletter's
      * scope, and each new one raises `newsletter.unsubscribed`.
      *

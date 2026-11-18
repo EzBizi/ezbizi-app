@@ -13,14 +13,17 @@ use App\Models\PhoneConnection;
 use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
 use App\Models\ServiceArea;
+use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\ProjectBoardGlance;
 use App\Support\Jobs\ScheduleTexts;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -385,6 +388,280 @@ class ProjectBoardTest extends TestCase
         $api->putJson($url, ['parts' => []])->assertOk()->assertJsonCount(0, 'data');
     }
 
+    /**
+     * Jose, 2026-11-17, the parts selector: in stock, ordered from a supplier
+     * or a same-day pickup store, where it goes, and red three days after it
+     * was ordered and still not received.
+     */
+    public function test_a_part_names_its_supplier_and_turns_late_three_days_after_it_was_ordered(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']));
+        $this->inTenant($alpha['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('project_board.suppliers', $alpha['org'], [
+            ['id' => 's-1', 'name' => 'Chimney Supply Co', 'address' => '12 Brick Rd, Austin', 'phone' => '555-0100', 'kind' => 'order'],
+            ['id' => 's-2', 'name' => 'Home Depot Round Rock', 'kind' => 'pickup'],
+            ['name' => 'No id, dropped'],
+        ]));
+        $api = $this->signedInAs($alpha['admin']);
+        $url = "/api/v1/project-board/jobs/{$id}/parts";
+
+        $this->assertSame(['s-1', 's-2'], array_column(
+            $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('meta.suppliers'), 'id'));
+
+        $this->travelTo(now()->setDate(2026, 11, 17)->setTime(9, 0));
+        $parts = $api->putJson($url, ['parts' => [
+            ['kind' => 'order', 'item' => 'Cap', 'quantity' => 1, 'supplier_id' => 's-1', 'destination' => 'supplier'],
+            ['kind' => 'pickup', 'item' => 'Mortar', 'quantity' => 2, 'supplier_id' => 's-2', 'destination' => 'customer'],
+            ['kind' => 'stock', 'item' => 'Flashing', 'quantity' => 1, 'supplier_id' => 's-1', 'destination' => 'warehouse'],
+        ]])->assertOk()->json('data');
+        $this->assertSame('12 Brick Rd, Austin', $parts[0]['supplier']['address']);
+        $this->assertSame('supplier', $parts[0]['destination']);
+        $this->assertNull($parts[2]['supplier'], 'In stock comes from no supplier.');
+        $this->assertNull($parts[2]['ordered_at']);
+        $this->assertFalse($parts[0]['late']);
+
+        // Saved again two days on (the whole list, by id): the clock keeps
+        // its start, and the received one stops it.
+        $this->travel(2)->days();
+        $again = $api->putJson($url, ['parts' => [
+            ['id' => $parts[0]['id'], 'kind' => 'order', 'item' => 'Cap', 'quantity' => 1, 'supplier_id' => 's-1', 'destination' => 'supplier'],
+            ['id' => $parts[1]['id'], 'kind' => 'pickup', 'item' => 'Mortar', 'quantity' => 2, 'supplier_id' => 's-2', 'received' => true],
+        ]])->assertOk()->json('data');
+        $this->assertSame($parts[0]['ordered_at'], $again[0]['ordered_at']);
+        $this->assertNotNull($again[1]['received_at']);
+
+        $this->travel(1)->days();
+        $late = $api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.parts');
+        $this->assertTrue($late[0]['late'], 'Three days ordered and not received.');
+        $this->assertFalse($late[1]['late'], 'Received: never late.');
+    }
+
+    /** Jose, 2026-11-17: a job's work order for the crew, as a PDF. */
+    public function test_the_work_order_is_a_pdf_with_the_crews_facts_and_the_payment_rule(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta');
+        $id = $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']));
+        $api = $this->signedInAs($alpha['admin']);
+        $api->putJson("/api/v1/project-board/jobs/{$id}/parts", ['parts' => [
+            ['kind' => 'stock', 'item' => 'Flashing', 'quantity' => 2],
+        ]])->assertOk();
+
+        $response = $api->get("/api/v1/project-board/jobs/{$id}/work-order")->assertOk();
+        $this->assertSame('application/pdf', $response->headers->get('Content-Type'));
+        $this->assertStringStartsWith('%PDF', $response->getContent());
+        $this->assertContains('work_order', array_column($api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('meta.columns'), 'key'));
+
+        // Another organization's job is not there at all.
+        $this->signedInAs($beta['admin'])->get("/api/v1/project-board/jobs/{$id}/work-order")->assertNotFound();
+    }
+
+    /** The job's Workiz photos print on the work order, fetched from Workiz's file host only. */
+    public function test_a_workiz_photo_is_fetched_from_workiz_only_and_shrunk(): void
+    {
+        $img = imagecreatetruecolor(2400, 1600);
+        ob_start();
+        imagepng($img);
+        $png = (string) ob_get_clean();
+        \Illuminate\Support\Facades\Http::fake([
+            'st.sendajob.com/*' => \Illuminate\Support\Facades\Http::response($png, 200, ['Content-Type' => 'image/png']),
+            '*' => \Illuminate\Support\Facades\Http::response($png, 200, ['Content-Type' => 'image/png']),
+        ]);
+
+        $data = \App\Support\ProjectBoard\WorkOrderPdf::fetchPhoto('https://st.sendajob.com/a/b.jpg');
+        $this->assertNotNull($data);
+        $this->assertStringStartsWith('data:image/jpeg;base64,', $data);
+        $this->assertSame(1200, imagesx(imagecreatefromstring(base64_decode(substr($data, 23)))));
+
+        $this->assertNull(\App\Support\ProjectBoard\WorkOrderPdf::fetchPhoto('https://evil.example/b.jpg'), 'Not Workiz: never fetched.');
+        $this->assertNull(\App\Support\ProjectBoard\WorkOrderPdf::fetchPhoto('http://st.sendajob.com/b.jpg'), 'https only.');
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
+    public function test_the_work_order_page_names_where_each_part_is_picked_up(): void
+    {
+        $html = \App\Support\ProjectBoard\WorkOrderPdf::html([
+            'company' => 'A-1 Chimney', 'number' => 'J-1', 'workiz' => '7001', 'client' => 'Lena Park',
+            'address' => '1 Main St, Austin', 'phone' => '512-555-0100', 'phone_ext' => '12',
+            'technician' => 'Guy', 'repair_team' => 'KENNI REPAIR TEAM',
+            'parts' => [
+                ['item' => 'Cap', 'quantity' => 1, 'kind' => 'order', 'destination' => 'warehouse'],
+                ['item' => 'Liner', 'quantity' => 1, 'kind' => 'order', 'destination' => 'supplier',
+                    'supplier' => ['name' => 'Chimney Supply Co', 'address' => '12 Brick Rd']],
+            ],
+            'photos' => [], 'files' => ['roof.heic'], 'inspections' => ['Level 2 11/14/2026'],
+            'payment_date' => '11/02/2026 11:48 AM', 'money' => null,
+        ]);
+
+        $this->assertStringContainsString('512-555-0100 ext. 12', $html);
+        $this->assertStringContainsString('Warehouse pickup', $html);
+        $this->assertStringContainsString('Pick up at Chimney Supply Co, 12 Brick Rd', $html);
+        $this->assertStringContainsString('Inspection report: Level 2 11/14/2026', $html);
+        $this->assertStringContainsString(htmlspecialchars(\App\Support\ProjectBoard\WorkOrderPdf::PAYMENT_RULE, ENT_QUOTES), $html);
+        $this->assertStringNotContainsString('Remaining balance', $html, 'No Financials, no amounts.');
+    }
+
+    /**
+     * Jose, 2026-11-17: the Dashboard counts what waits for parts, a part 3
+     * days late notifies once, a reminder is sent when due, and a muted kind
+     * is not sent.
+     */
+    public function test_the_dashboard_counts_and_late_parts_and_reminders_notify_once(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->inTenant($alpha['org'], fn () => $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']));
+        $pm = $this->userWithRole($alpha, 'Project Manager', ['project_board.view', 'jobs.view', 'jobs.edit']);
+        $muted = $this->userWithRole($alpha, 'Muted PM', ['project_board.view', 'jobs.view']);
+        $this->inTenant($alpha['org'], fn () => $muted->forceFill(['preferences' => ['notifications.muted_kinds' => ['project_board.part_late']]])->save());
+        $api = $this->signedInAs($pm);
+
+        $this->travelTo(now()->setDate(2026, 11, 10)->setTime(9, 0));
+        $parts = $api->putJson("/api/v1/project-board/jobs/{$id}/parts", ['parts' => [
+            ['kind' => 'order', 'item' => 'Cap', 'quantity' => 1],
+            ['kind' => 'pickup', 'item' => 'Mortar', 'quantity' => 1, 'remind_at' => '2026-11-11T15:00:00Z', 'remind_note' => 'Call the store'],
+            ['kind' => 'stock', 'item' => 'Flashing', 'quantity' => 1],
+        ]])->assertOk()->json('data');
+
+        $board = $api->getJson('/api/v1/project-board/dashboard')->assertOk();
+        $board->assertJsonPath('data.waiting_items', 2)->assertJsonPath('data.waiting_jobs', 1)
+            ->assertJsonCount(0, 'data.late')->assertJsonPath('data.reminders.0.remind_note', 'Call the store');
+
+        $alerts = fn (string $who) => \App\Models\Notification::query()->withoutGlobalScopes()->where('user_id', $who)->count();
+        $this->travelTo(now()->setDate(2026, 11, 13)->setTime(10, 0));
+        $this->artisan('ezbizi:project-board-part-alerts')->assertSuccessful();
+        $this->assertSame(3, $alerts($pm->id), 'Two late parts and one reminder due.');
+        $this->assertSame(1, $alerts($muted->id), 'Late is muted: only the reminder.');
+        $this->artisan('ezbizi:project-board-part-alerts')->assertSuccessful();
+        $this->assertSame(3, $alerts($pm->id), 'Once, not every quarter hour.');
+        $api->getJson('/api/v1/project-board/dashboard')->assertJsonCount(2, 'data.late');
+
+        // Rescheduled from the Dashboard: sent again when it comes due.
+        $api->patchJson("/api/v1/project-board/parts/{$parts[1]['id']}/reminder", ['remind_at' => '2026-11-14T09:00:00Z'])->assertOk();
+        $this->travelTo(now()->setDate(2026, 11, 14)->setTime(10, 0));
+        $this->artisan('ezbizi:project-board-part-alerts')->assertSuccessful();
+        $this->assertSame(4, $alerts($pm->id));
+
+        // A save of the list keeps "told it was late".
+        $api->putJson("/api/v1/project-board/jobs/{$id}/parts", ['parts' => [
+            ['id' => $parts[0]['id'], 'kind' => 'order', 'item' => 'Cap', 'quantity' => 1],
+        ]])->assertOk();
+        $this->artisan('ezbizi:project-board-part-alerts')->assertSuccessful();
+        $this->assertSame(4, $alerts($pm->id));
+    }
+
+    /**
+     * Jose, 2026-11-17: "Inbox separated like a Mini Leads inside Project
+     * Management that only shows these messages per client". A board job's
+     * client texts are one thread; a client of no board job is not here.
+     */
+    public function test_the_inbox_threads_a_board_jobs_client_texts_and_no_one_elses(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$board, $other] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $board = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            $other = $this->job($alpha['franchise'], 'J-2', 'Submitted');
+            $connection = \App\Models\PhoneConnection::factory()->create(['scope_type' => \App\Models\PhoneConnection::SCOPE_COMPANY, 'scope_id' => $alpha['franchise']->company_id]);
+            $line = \App\Models\PhoneNumber::factory()->create(['connection_id' => $connection->id, 'scope_type' => \App\Models\PhoneNumber::SCOPE_FRANCHISE,
+                'scope_id' => $alpha['franchise']->id, 'e164' => '+13055550199']);
+            foreach ([[$board, '+15125550101', 'outbound', 'Can we come Tuesday 8-11?'], [$board, '+15125550101', 'inbound', 'NO'], [$other, '+15125550102', 'inbound', 'Hello?']] as [$jobId, $phone, $dir, $body]) {
+                $job = Job::query()->find($jobId);
+                $job->customer->forceFill(['phone' => $phone])->save();
+                \App\Models\PhoneMessage::query()->create(['connection_id' => $connection->id, 'number_id' => $line->id,
+                    'twilio_sid' => 'SM'.bin2hex(random_bytes(16)), 'direction' => $dir, 'customer_id' => $job->customer_id,
+                    'from_e164' => $dir === 'inbound' ? $phone : $line->e164, 'to_e164' => $dir === 'inbound' ? $line->e164 : $phone, 'body' => $body]);
+                $this->travel(1)->minutes();
+            }
+            // Newest, and matched only by the client's number.
+            \App\Models\PhoneMessage::query()->create(['connection_id' => $connection->id, 'number_id' => $line->id,
+                'twilio_sid' => 'SM'.bin2hex(random_bytes(16)), 'direction' => 'inbound', 'customer_id' => null,
+                'from_e164' => '+15125550101', 'to_e164' => $line->e164, 'body' => 'NO, Thursday']);
+
+            return [$board, $other];
+        });
+        $api = $this->signedInAs($alpha['admin']);
+
+        $threads = $api->getJson('/api/v1/project-board/inbox')->assertOk()->json('data');
+        $this->assertSame([$board], array_column($threads, 'job_id'), 'Only the board job; J-2 is not on the board.');
+        $this->assertSame('NO, Thursday', $threads[0]['last_body'], 'The newest text, linked by number alone.');
+        $this->assertTrue($threads[0]['waiting'], 'The client spoke last.');
+
+        $api->getJson("/api/v1/project-board/inbox/{$board}")->assertOk()
+            ->assertJsonPath('data.0.body', 'Can we come Tuesday 8-11?')->assertJsonPath('data.1.direction', 'inbound');
+
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['project_board.view', 'jobs.view']);
+        $this->signedInAs($viewer)->postJson("/api/v1/project-board/inbox/{$board}", ['body' => 'Hi'])->assertForbidden();
+    }
+
+    /**
+     * Jose, 2026-11-17: the client texts ship OFF; switched on, only a job
+     * after the switch gets one, once, from the branch line, noted on the
+     * job; the timeline and work-order links open only signed.
+     */
+    public function test_client_texts_are_off_until_switched_on_then_sent_once_to_new_jobs_only(): void
+    {
+        $twilio = new \App\Support\Phone\FakeTwilioGateway;
+        $this->app->instance(\App\Support\Phone\TwilioGateway::class, $twilio);
+        $alpha = $this->provisionTenant('Alpha');
+        $sends = fn () => collect($twilio->calls)->where('method', 'sendMessage')->map(fn ($c) => $c['args'][3])->values()->all();
+        [$old] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $c = \App\Models\PhoneConnection::factory()->create(['scope_type' => \App\Models\PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id, 'status' => \App\Models\PhoneConnection::STATUS_CONNECTED]);
+            \App\Models\PhoneNumber::factory()->create(['connection_id' => $c->id, 'scope_type' => \App\Models\PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id' => $alpha['org']->id])->forceFill(['sms_outbound_allowed' => true])->save();
+            $old = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->find($old)->customer->forceFill(['phone' => '+15125550101', 'name' => 'Lena Park'])->save();
+
+            return [$old];
+        });
+
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertSame([], $sends(), 'Every text ships OFF.');
+
+        $this->travel(1)->minutes();
+        $this->inTenant($alpha['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('project_board.client_messages', $alpha['org'], [
+            'project_link' => ['on' => true, 'since' => now()->toIso8601String(), 'text' => 'Hi {client_first}, see your project: {link}'],
+        ]));
+        $this->travel(1)->minutes();
+        $new = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $id = $this->job($alpha['franchise'], 'J-2', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->find($id)->customer->forceFill(['phone' => '+15125550102', 'name' => 'Omar Diaz'])->save();
+
+            return $id;
+        });
+
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->artisan('ezbizi:project-board-client-messages')->assertSuccessful();
+        $this->assertCount(1, $sends(), 'Once, and not to J-1 from before the switch.');
+        $this->assertStringStartsWith('Hi Omar, see your project: ', $sends()[0]);
+
+        // The link in it opens the client's page, signed only.
+        preg_match('#https?://\S+/api/v1/project/\S+#', $sends()[0], $m);
+        $this->get($m[0])->assertOk()->assertSee('Omar, your project', false);
+        $this->get(strtok($m[0], '?'))->assertForbidden();
+
+        // A crew's work order opens by its own signed link only.
+        $link = \App\Http\Controllers\Api\ProjectBoardController::workOrderLink(Job::query()->withoutGlobalScopes()->find($new));
+        $this->assertStringStartsWith('%PDF', $this->get($link)->assertOk()->getContent());
+        $this->get(strtok($link, '?'))->assertForbidden();
+    }
+
+    /** Jose, 2026-11-17: "Just let me drag them" - one column order for everyone on the board. */
+    public function test_a_dragged_column_order_is_the_boards_for_everyone(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['project_board.view', 'jobs.view']);
+        $api = $this->signedInAs($alpha['admin']);
+
+        $api->putJson('/api/v1/project-board/column-order', ['order' => ['pending', 'paid', 'total', 'nonsense']])->assertOk();
+
+        $keys = array_column($this->signedInAs($viewer)->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('meta.columns'), 'key');
+        $this->assertSame(['pending', 'paid', 'total'], array_slice($keys, 0, 3));
+        $this->assertContains('notes', $keys, 'A column not named keeps its place after the rest.');
+        $this->assertNotContains('nonsense', $keys);
+
+        $this->signedInAs($viewer)->putJson('/api/v1/project-board/column-order', ['order' => ['notes']])->assertForbidden();
+    }
+
     /** Trey, 2026-11-11: search a job by the client's phone in any format, or its address. */
     public function test_jobs_and_project_management_search_by_phone_and_address(): void
     {
@@ -424,6 +701,90 @@ class ProjectBoardTest extends TestCase
         $post(['op' => 'delete', 'name' => 'KENNI REPAIR TEAM'])->assertOk()->assertJsonCount(1, 'data.list');
         // Only the list counts now: the job's KENNI tag is no longer its repair team.
         $this->assertNull($api->getJson('/api/v1/project-board/jobs?tab=unscheduled')->json('data.0.repair_team'));
+    }
+
+    /**
+     * Jose, 2026-11-16: "it should already show the exisiting repair team -
+     * contractors". Before any change the card lists the repair tags on the
+     * Workiz tag lists and on jobs, never an ordinary tag or another
+     * tenant's, and reading it saves nothing and calls no Workiz account.
+     */
+    public function test_the_settings_card_lists_the_teams_already_there_without_saving_or_calling_workiz(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta');
+        $this->workizV2($alpha);
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            foreach (['CONTRACTOR: MIGUEL' => '#0059A0', 'REPAIR TEAM: ISRAEL' => '#BE2C2C', 'PAID - ESTIMATED' => '#37D34D'] as $name => $colour) {
+                WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'tag', 'remote_id' => 'TAG-'.Str::random(6),
+                    'payload' => ['name' => $name, 'color' => $colour], 'synced_at' => now()]);
+            }
+            $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['PAID - ESTIMATED', 'REPAIR TEAM: KENNI', 'repair team: israel']);
+        });
+        $this->inTenant($beta['org'], fn () => $this->job($beta['franchise'], 'J-9', 'Submitted', null, ['CONTRACTOR: SOMEONE ELSE']));
+        Http::fake();
+
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/repair-teams')->assertOk()
+            ->assertJsonPath('data.list', [
+                ['name' => 'CONTRACTOR: MIGUEL', 'phone' => null, 'user_id' => null],
+                ['name' => 'REPAIR TEAM: ISRAEL', 'phone' => null, 'user_id' => null],
+                ['name' => 'REPAIR TEAM: KENNI', 'phone' => null, 'user_id' => null],
+            ])
+            ->assertJsonPath('data.tag_colours', ['CONTRACTOR: MIGUEL' => '#0059A0', 'REPAIR TEAM: ISRAEL' => '#BE2C2C']);
+        Http::assertNothingSent();
+        $this->assertSame(0, DB::table('settings')->where('key', 'project_board.repair_tags')->count(), 'reading saves nothing');
+
+        // Once the company saved its list, that list is what the card shows.
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('project_board.repair_tags', $alpha['org'], [['name' => 'GAS CONTRACTOR']]));
+        $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-board/repair-teams')->assertOk()
+            ->assertJsonPath('data.list', [['name' => 'GAS CONTRACTOR', 'phone' => null, 'user_id' => null]]);
+    }
+
+    /** Rename and Delete on a team that was only found, not yet saved, go through Workiz's tag calls like Add. */
+    public function test_renaming_and_deleting_an_existing_team_reach_every_workiz_account(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->workizV2($alpha);
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'tag', 'remote_id' => 'T1',
+                'payload' => ['id' => 'T1', 'name' => 'REPAIR TEAM: ISRAEL', 'color' => '#be2c2c'], 'synced_at' => now()]);
+            $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['CONTRACTOR: OMER']);
+        });
+        $api = $this->signedInAs($alpha['admin']);
+        Http::fake([
+            'api.workiz.com/crm/api/v2/tags/*' => Http::response(['id' => 'T1', 'name' => 'REPAIR TEAM: ISRAEL R'], 200),
+            'api.workiz.com/crm/api/v2/tags' => Http::response(['data' => [['id' => 'T1', 'name' => 'REPAIR TEAM: ISRAEL', 'color' => '#be2c2c']]]),
+        ]);
+
+        $api->postJson('/api/v1/project-board/repair-teams', ['op' => 'update', 'name' => 'REPAIR TEAM: ISRAEL', 'to' => 'REPAIR TEAM: ISRAEL R'])->assertOk()
+            ->assertJsonPath('data.outcomes', ['Alpha F1' => 'renamed'])
+            ->assertJsonPath('data.list', [
+                ['name' => 'CONTRACTOR: OMER', 'phone' => null, 'user_id' => null],
+                ['name' => 'REPAIR TEAM: ISRAEL R', 'phone' => null, 'user_id' => null],
+            ]);
+        Http::assertSent(fn ($r) => $r->method() === 'PUT' && str_ends_with($r->url(), '/tags/T1') && $r['name'] === 'REPAIR TEAM: ISRAEL R');
+
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::fake([
+            'api.workiz.com/crm/api/v2/tags/*' => Http::response(null, 204),
+            'api.workiz.com/crm/api/v2/tags' => Http::response(['data' => [['id' => 'T1', 'name' => 'REPAIR TEAM: ISRAEL R', 'color' => '#be2c2c']]]),
+        ]);
+        $api->postJson('/api/v1/project-board/repair-teams', ['op' => 'delete', 'name' => 'REPAIR TEAM: ISRAEL R'])->assertOk()
+            ->assertJsonPath('data.outcomes', ['Alpha F1' => 'deleted'])
+            ->assertJsonPath('data.list', [['name' => 'CONTRACTOR: OMER', 'phone' => null, 'user_id' => null]]);
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_ends_with($r->url(), '/tags/T1'));
+    }
+
+    /** A Workiz v2 account on the tenant's franchise, so tag changes fan out to it. */
+    private function workizV2(array $tenant): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $c = new SocialConnection;
+            $c->forceFill(['organization_id' => $tenant['org']->id, 'scope_type' => SocialConnection::SCOPE_FRANCHISE, 'scope_id' => $tenant['franchise']->id,
+                'provider' => SocialProvider::Workiz->value, 'remote_id' => $tenant['franchise']->id, 'display_name' => 'Workiz']);
+            $c->connect(['api_token' => 'k', 'refresh_token' => 'k', 'api_version' => 'v2']);
+            $c->save();
+        });
     }
 
     /** Jose, 2026-11-10: YES schedules and confirms; NO offers the alternative; NO again, the PM calls. */

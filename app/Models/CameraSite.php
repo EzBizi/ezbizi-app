@@ -23,6 +23,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class CameraSite extends Model implements StatesRetention
 {
     use BelongsToTenant, HasUuids;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES): a site and its cameras together. */
+    protected static string $changeType = 'monitoring_cameras';
+
 
     /** A bridge checks in every minute; two missed beats is offline. */
     public const ONLINE_SECONDS = 120;

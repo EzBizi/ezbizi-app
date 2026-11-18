@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme.dart';
+
 /// The title block at the top of every module.
 ///
 /// Approved as `docs/previews/module-page-header-layouts.html` — desktop
@@ -61,6 +63,27 @@ class ModulePageHeader extends StatelessWidget {
   /// app has one idea of where a phone begins rather than three.
   static const double phoneBelow = 600;
 
+  /// What a phone header leaves its actions once the title has its width.
+  // ponytail: the (i) and the (?) are estimated (24 + 46), not measured.
+  double _actionRoom(
+    BuildContext context,
+    double width,
+    TextStyle? style,
+    bool hasSubtitle,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: title, style: style),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final titleWidth =
+        painter.width + (hasSubtitle ? 24 : 0) + (beside == null ? 0 : 46);
+    painter.dispose();
+    // Gutter.phone on the left, 12 on the right, 12 between, 2 to spare.
+    return width - Gutter.phone - 26 - titleWidth;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -73,21 +96,27 @@ class ModulePageHeader extends StatelessWidget {
         // width, so the row is one line and the list starts a line higher.
         final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
 
+        // headlineMedium is the theme's own, and the only heading token it
+        // defined before this work. On a phone the same token at 22 rather
+        // than a fifth hardcoded size.
+        final titleStyle = phone
+            ? theme.textTheme.headlineMedium?.copyWith(
+                fontSize: 22,
+                letterSpacing: -0.5,
+              )
+            : theme.textTheme.headlineMedium;
+
         final titleRow = Row(
           mainAxisSize: toolbar == null ? MainAxisSize.max : MainAxisSize.min,
           children: [
             Flexible(
               child: Text(
                 title,
-                // headlineMedium is the theme's own, and the only heading
-                // token it defined before this work. On a phone the same
-                // token at 22 rather than a fifth hardcoded size.
-                style: phone
-                    ? theme.textTheme.headlineMedium?.copyWith(
-                        fontSize: 22,
-                        letterSpacing: -0.5,
-                      )
-                    : theme.textTheme.headlineMedium,
+                // One line on a phone: beside a primary action (D3) a long
+                // name wrapped and pushed the screen below the fold.
+                maxLines: phone ? 1 : null,
+                overflow: phone ? TextOverflow.ellipsis : null,
+                style: titleStyle,
               ),
             ),
             if (hasSubtitle) ...[
@@ -106,8 +135,46 @@ class ModulePageHeader extends StatelessWidget {
           ],
         );
 
+        final padding = EdgeInsets.fromLTRB(
+          phone ? Gutter.phone : Gutter.wide,
+          phone ? 14 : 18,
+          12,
+          0,
+        );
+        final room = phone && actions.isNotEmpty
+            ? _actionRoom(
+                context,
+                constraints.maxWidth,
+                titleStyle,
+                hasSubtitle,
+              )
+            : 0.0;
+
+        // UI pass 11-16: beside a long title ("Automations", "Fleet
+        // Management") the action would shrink past reading, so a phone
+        // gives it its own line under the title instead.
+        if (phone && actions.isNotEmpty && room < 140 && toolbar == null) {
+          return Padding(
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                titleRow,
+                const SizedBox(height: 6),
+                Wrap(
+                  key: const ValueKey('module-header-actions'),
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: actions,
+                ),
+              ],
+            ),
+          );
+        }
+
         return Padding(
-          padding: EdgeInsets.fromLTRB(phone ? 16 : 20, phone ? 14 : 18, 12, 0),
+          padding: padding,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -125,7 +192,31 @@ class ModulePageHeader extends StatelessWidget {
                   ),
                 ),
               ],
-              if (actions.isNotEmpty) ...[
+              if (actions.isNotEmpty && phone) ...[
+                const SizedBox(width: 12),
+                // UI pass 11-16: "Add customer" took the row and cut the
+                // title to "Custo…". The title keeps the width it needs; the
+                // action gets the rest and scales down a little to fit.
+                ConstrainedBox(
+                  key: const ValueKey('module-header-actions'),
+                  constraints: BoxConstraints(
+                    maxWidth: room < 140 ? 140 : room,
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < actions.length; i++) ...[
+                          if (i > 0) const SizedBox(width: 8),
+                          actions[i],
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ] else if (actions.isNotEmpty) ...[
                 const SizedBox(width: 12),
                 // Wrapped rather than a Row: a long title and three actions do
                 // not both fit at 375, and the actions dropping to a second
@@ -154,16 +245,107 @@ class ModuleToolbarScope extends InheritedWidget {
   const ModuleToolbarScope({
     super.key,
     required this.slot,
+    this.action,
     required super.child,
   });
 
   final ValueNotifier<Widget?> slot;
 
-  static ValueNotifier<Widget?>? maybeOf(BuildContext context) => context
-      .getInheritedWidgetOfExactType<ModuleToolbarScope>()
-      ?.slot;
+  /// The header's right-hand slot for the screen's primary action (desktop
+  /// review 2026-11-13, D3), filled through [ModuleAction].
+  final ValueNotifier<Widget?>? action;
+
+  static ValueNotifier<Widget?>? actionOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<ModuleToolbarScope>()?.action;
+
+  static ValueNotifier<Widget?>? maybeOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<ModuleToolbarScope>()?.slot;
 
   @override
   bool updateShouldNotify(ModuleToolbarScope oldWidget) =>
-      oldWidget.slot != slot;
+      oldWidget.slot != slot || oldWidget.action != action;
+}
+
+/// A screen's primary action ("Add job", "Add customer", "New report"),
+/// drawn in ONE place: the module header, on the right (desktop review
+/// 2026-11-13, D3: it sat in six places, from the filter row to a floating
+/// button). Inside the shell it draws nothing where it is written and hands
+/// [child] to the header; outside it (a test, a screen opened alone) it draws
+/// [child] in place.
+class ModuleAction extends StatefulWidget {
+  const ModuleAction({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<ModuleAction> createState() => _ModuleActionState();
+}
+
+class _ModuleActionState extends State<ModuleAction> {
+  ValueNotifier<Widget?>? _slot;
+  Widget? _given;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _slot = ModuleToolbarScope.actionOf(context);
+  }
+
+  @override
+  void dispose() {
+    final slot = _slot;
+    final given = _given;
+    if (slot != null && given != null) {
+      // Not during the frame that is tearing this down.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (identical(slot.value, given)) slot.value = null;
+      });
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final slot = _slot;
+    final active = ModuleActionGate.of(context);
+    if (slot == null) return widget.child;
+    if (!active) {
+      // A tab kept alive offstage: hand the slot back to the tab in front.
+      final given = _given;
+      _given = null;
+      if (given != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (identical(slot.value, given)) slot.value = null;
+        });
+      }
+      return const SizedBox.shrink();
+    }
+    final child = widget.child;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _given = child;
+      slot.value = child;
+    });
+    return const SizedBox.shrink();
+  }
+}
+
+/// Marks a subtree (a tab kept alive offstage) whose [ModuleAction]s must
+/// not claim the header: only the tab in front fills the slot.
+class ModuleActionGate extends InheritedWidget {
+  const ModuleActionGate({
+    super.key,
+    required this.active,
+    required super.child,
+  });
+
+  final bool active;
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ModuleActionGate>()?.active ??
+      true;
+
+  @override
+  bool updateShouldNotify(ModuleActionGate oldWidget) =>
+      oldWidget.active != active;
 }

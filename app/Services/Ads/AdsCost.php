@@ -38,7 +38,7 @@ final class AdsCost
      */
     public function forBranch(Franchise $branch, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly = false): array
     {
-        return $this->sum($this->accounts((string) $branch->organization_id)->where('leads_franchise_id', $branch->getKey())->get(), $from, $to, $activeOnly);
+        return $this->sum($this->accounts((string) $branch->organization_id)->whereRaw(SocialConnection::BRANCH_SQL.' = ?', [$branch->getKey()])->get(), $from, $to, $activeOnly);
     }
 
     /**
@@ -50,9 +50,20 @@ final class AdsCost
      */
     public function unmapped(string $organizationId, ?array $companies, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly = false): array
     {
-        return $this->sum($this->accounts($organizationId)->whereNull('leads_franchise_id')
+        return $this->sum($this->accounts($organizationId)->whereRaw(SocialConnection::BRANCH_SQL.' IS NULL')
             ->when($companies !== null, fn ($q) => $q->where('scope_type', SocialConnection::SCOPE_COMPANY)->whereIn('scope_id', $companies))
             ->get(), $from, $to, $activeOnly);
+    }
+
+    /**
+     * The spend of the accounts given, in forBranch()'s shape. The caller picks them from the
+     * business's own lists (Reports' sub company sources), never from a request.
+     *
+     * @param  Collection<int, SocialConnection>  $accounts
+     */
+    public function forAccounts(Collection $accounts, CarbonImmutable $from, CarbonImmutable $to, bool $activeOnly = false): array
+    {
+        return $this->sum($accounts, $from, $to, $activeOnly);
     }
 
     private function accounts(string $organizationId): Builder

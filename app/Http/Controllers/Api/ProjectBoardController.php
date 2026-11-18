@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Attachment;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\JobNote;
 use App\Models\JobPart;
@@ -14,7 +16,9 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Jobs\JobMoney;
 use App\Support\Jobs\ScheduleTexts;
 use App\Support\Jobs\WorkizExtras;
+use App\Support\ProjectBoard\WorkOrderPdf;
 use App\Support\Scoping\ViewScope;
+use App\Support\Tenancy\TenantContext;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Workiz\WorkizMirror;
@@ -27,6 +31,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -61,12 +66,225 @@ class ProjectBoardController extends Controller
     {
         $place = ViewScope::forUser($user)->settingsScope();
         $place = $place instanceof Franchise ? ($place->company ?? $user->organization) : $place;
+
+        return $this->settingsAt($place);
+    }
+
+    /** The same, read at [place] (a company or the organization). */
+    private function settingsAt(Model $place): Model
+    {
         $settings = app(SettingsResolver::class);
         $this->repairTags = array_values(array_filter(array_map(fn (array $e) => self::tagKey($e['name']),
             self::repairEntries($settings->get('project_board.repair_tags', $place)))));
         $this->readyRequires = array_values((array) $settings->get('project_board.ready_requires', $place));
 
         return $place;
+    }
+
+    /**
+     * PATCH /api/v1/project-board/parts/{part}/reminder: set, move or clear
+     * a part's reminder from the Dashboard (Jose, 2026-11-17: "reschedule
+     * reminders").
+     */
+    public function partReminder(Request $request, JobPart $part): JsonResponse
+    {
+        $job = Job::query()->findOrFail($part->job_id);
+        $this->editable($request, $job);
+        $in = $request->validate([
+            'remind_at' => ['present', 'nullable', 'date'],
+            'remind_note' => ['nullable', 'string', 'max:160'],
+        ]);
+        $part->remind_at = filled($in['remind_at']) ? Carbon::parse($in['remind_at']) : null;
+        if (array_key_exists('remind_note', $in)) {
+            $part->remind_note = filled($in['remind_note']) ? trim($in['remind_note']) : null;
+        }
+        $part->reminded_at = null;
+        $part->save();
+        app(AuditLogger::class)->log('job.part_reminder_set', $job, ['part_id' => $part->id], actor: $request->user());
+
+        return response()->json(['data' => $part->present()]);
+    }
+
+    /**
+     * GET /api/v1/project-board/dashboard (Jose, 2026-11-17): how many items
+     * and jobs are waiting for parts, the late parts, and the reminders, over
+     * the jobs in the viewer's reach.
+     */
+    public function dashboard(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_board.view') && $user->hasPermission('jobs.view'),
+            Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+        $franchises = ViewScope::forUser($user)->franchiseIds();
+        $parts = fn () => JobPart::query()->whereHas('job', fn (Builder $q) => $q->whereIn('franchise_id', $franchises));
+        $waiting = fn () => $parts()->where('kind', '!=', 'stock')->whereNull('received_at');
+        $row = fn (JobPart $p) => $p->present() + [
+            'job_id' => $p->job_id,
+            'job_number' => $p->job?->number,
+            'customer' => $p->job?->customer?->name,
+        ];
+        $with = ['job:id,number,customer_id,franchise_id', 'job.customer:id,name'];
+
+        return response()->json(['data' => [
+            'waiting_items' => $waiting()->count(),
+            'waiting_jobs' => $waiting()->distinct()->count('job_id'),
+            'late' => $waiting()->where('ordered_at', '<=', now()->subDays(JobPart::LATE_AFTER_DAYS))
+                ->with($with)->orderBy('ordered_at')->limit(100)->get()->map($row)->values(),
+            'reminders' => $parts()->whereNotNull('remind_at')->with($with)->orderBy('remind_at')->limit(100)->get()
+                ->map(fn (JobPart $p) => $row($p) + ['due' => $p->remind_at->lte(now())])->values(),
+        ]]);
+    }
+
+    /**
+     * GET /api/v1/project-board/jobs/{job}/work-order: the job's work order
+     * as a PDF for the crew (Jose, 2026-11-17). Amounts only for a reader
+     * with Financials.
+     */
+    public function workOrder(Request $request, Job $job): Response
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_board.view') && $user->hasPermission('jobs.view'),
+            Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+        abort_unless(in_array($job->franchise_id, ViewScope::forUser($user)->franchiseIds(), true), Response::HTTP_NOT_FOUND);
+        $this->settingsFor($user);
+
+        return $this->workOrderResponse($job, $user->hasPermission('jobs.financials'));
+    }
+
+    /**
+     * GET /work-order/{job}?signature=…: the same work order by a signed link
+     * that lapses after 7 days, for a repair crew or contractor with no login
+     * (Jose, 2026-11-17: "send ... work order, repair crew or contractor").
+     * Opens this job's work order and nothing else; with the balance, since
+     * the crew collects it.
+     */
+    public function sharedWorkOrder(string $job): Response
+    {
+        $row = Job::query()->withoutGlobalScopes()->findOrFail($job);
+
+        return app(TenantContext::class)->run($row->organization, function () use ($row) {
+            $row = Job::query()->findOrFail($row->id);
+            $this->settingsAt($row->franchise?->company ?? $row->organization);
+
+            return $this->workOrderResponse($row, true);
+        });
+    }
+
+    /** A link to [job]'s work order that works without signing in, for 7 days. */
+    public static function workOrderLink(Job $job): string
+    {
+        return URL::temporarySignedRoute('work-order.shared', now()->addDays(7), ['job' => $job->id]);
+    }
+
+    private function workOrderResponse(Job $job, bool $withMoney): Response
+    {
+        // Whole rows: the work order needs the client's address and phone.
+        $job->load(['customer', 'franchise.company', 'workizJob', 'serviceArea', 'performedBy']);
+        $row = $this->unscheduled($job, $this->extras([$job->id]));
+        $payload = is_array($job->workizJob?->payload) ? $job->workizJob->payload : [];
+        $customer = $job->customer;
+        $address = filled($payload['Address'] ?? null)
+            ? trim(implode(', ', array_filter([$payload['Address'], $payload['City'] ?? null,
+                trim(($payload['State'] ?? '').' '.($payload['PostalCode'] ?? ''))])))
+            : $job->customer_address;
+        $money = $withMoney ? (JobMoney::of([$job->id])[$job->id] ?? null) : null;
+        $usd = fn (?int $cents) => '$'.number_format(($cents ?? 0) / 100, 2);
+        // Up to nine photos on the page; the rest are listed by name.
+        $files = Attachment::query()->where('attachable_type', $job->getMorphClass())->where('attachable_id', $job->id)
+            ->orderBy('created_at')->get();
+        $photos = [];
+        $listed = [];
+        foreach ($files as $file) {
+            $isPhoto = str_starts_with((string) $file->mime, 'image/') && in_array($file->mime, ['image/jpeg', 'image/png', 'image/gif'], true);
+            $bytes = $isPhoto && count($photos) < 9 && ($file->size_bytes ?? 0) <= 4_000_000 ? $file->bytes() : null;
+            if ($bytes !== null) {
+                $photos[] = ['name' => (string) $file->original_name, 'data' => 'data:'.$file->mime.';base64,'.base64_encode($bytes)];
+            } else {
+                $listed[] = (string) $file->original_name;
+            }
+        }
+        // Workiz's own photos (most of a job's pictures): fetched from
+        // Workiz's file host only, images only, so the crew sees them.
+        foreach (WorkizExtras::files($payload) as $f) {
+            $data = count($photos) < 9 ? WorkOrderPdf::fetchPhoto((string) $f['url']) : null;
+            if ($data !== null) {
+                $photos[] = ['name' => (string) $f['name'], 'data' => $data];
+            } else {
+                $listed[] = (string) $f['name'];
+            }
+        }
+
+        $pdf = WorkOrderPdf::render([
+            'company' => $job->franchise?->company?->name ?? $job->franchise?->name,
+            'number' => $job->number,
+            'workiz' => $job->workizJob?->serial_id === null ? null : (string) $job->workizJob->serial_id,
+            'client' => $customer?->name,
+            'address' => $address,
+            'phone' => filled($payload['Phone'] ?? null) ? (string) $payload['Phone'] : $customer?->phone,
+            'phone_ext' => filled($payload['PhoneExt'] ?? null) ? (string) $payload['PhoneExt'] : null,
+            'technician' => $row['technician'],
+            'repair_team' => $row['repair_team'],
+            'parts' => $row['parts'],
+            'photos' => $photos,
+            'files' => $listed,
+            'inspections' => InspectionReport::query()->where('job_id', $job->id)->whereNull('archived_at')->orderBy('submitted_at')
+                ->get(['definition_name', 'submitted_at'])
+                ->map(fn (InspectionReport $r) => trim($r->definition_name.' '.($r->submitted_at?->format('m/d/Y') ?? '')))->all(),
+            'payment_date' => $row['payment_date'] === null ? null : Carbon::parse($row['payment_date'])->format('m/d/Y g:i A'),
+            'money' => $money === null ? null : [
+                'total' => $usd($money['total']), 'paid' => $usd($money['paid']), 'remaining' => $usd($money['due']),
+            ],
+        ]);
+
+        return response($pdf, Response::HTTP_OK, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="Work order '.preg_replace('/[^A-Za-z0-9 #-]/', '', (string) $job->number).'.pdf"',
+        ]);
+    }
+
+    /**
+     * PUT /api/v1/project-board/column-order: the board's columns in the
+     * order given, for everyone on it (Jose, 2026-11-17: "Just let me drag
+     * them"). Names, visibility and labels stay as they are; a key not
+     * given keeps its place after the rest.
+     */
+    public function columnOrder(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_board.view') && $user->hasPermission('jobs.edit'),
+            Response::HTTP_FORBIDDEN, 'Changing the board is not in your role.');
+        $keys = $request->validate([
+            'order' => ['required', 'array', 'max:60'],
+            'order.*' => ['required', 'string', 'max:40'],
+        ])['order'];
+        $place = $this->settingsFor($user);
+        $settings = app(SettingsResolver::class);
+        $columns = collect($this->columns((array) $settings->get('project_board.columns', $place)));
+        $rank = array_flip(array_values(array_unique($keys)));
+        $sorted = $columns->sortBy(fn (array $c, int $i) => [$rank[$c['key']] ?? PHP_INT_MAX, $i])->values()->all();
+        $settings->set('project_board.columns', $place, $sorted);
+        app(AuditLogger::class)->log('project_board.column_order', null, ['order' => array_column($sorted, 'key')], actor: $user);
+
+        return response()->json(['data' => $sorted]);
+    }
+
+    /**
+     * The company's suppliers as stored (Settings › Project Management):
+     * well-formed entries only, so a hand-edited value cannot break a part.
+     *
+     * @return list<array{id: string, name: string, address: ?string, phone: ?string, kind: string}>
+     */
+    private static function suppliers(mixed $raw): array
+    {
+        return collect(is_array($raw) ? $raw : [])
+            ->filter(fn ($s) => is_array($s) && filled($s['id'] ?? null) && filled($s['name'] ?? null))
+            ->map(fn (array $s) => [
+                'id' => (string) $s['id'],
+                'name' => trim((string) $s['name']),
+                'address' => filled($s['address'] ?? null) ? trim((string) $s['address']) : null,
+                'phone' => filled($s['phone'] ?? null) ? trim((string) $s['phone']) : null,
+                'kind' => ($s['kind'] ?? null) === 'pickup' ? 'pickup' : 'order',
+            ])->values()->all();
     }
 
     /** A repair-team / contractor tag: the company's list, else the name rule. */
@@ -184,6 +402,8 @@ class ProjectBoardController extends Controller
                 // How the table is drawn, and where its Settings sub-tab saves.
                 'columns' => $this->columns((array) $settings->get('project_board.columns', $place)),
                 'labels' => (object) $settings->get('project_board.labels', $place),
+                // For the parts selector (Jose, 2026-11-17).
+                'suppliers' => self::suppliers($settings->get('project_board.suppliers', $place)),
                 'can_edit' => $user->hasPermission('jobs.edit'),
                 // Columns a header click can sort by, over the whole tab.
                 'sortable' => array_keys(self::SORTS),
@@ -257,6 +477,8 @@ class ProjectBoardController extends Controller
             // For a repair team's "user" (Jose, 2026-11-10).
             'repair_colours' => WorkizTags::COLORS,
             'users' => User::query()->where('organization_id', $user->organization_id)->orderBy('name')->get(['id', 'name']),
+            // For "Roles that can be picked as Technician" (Jose, 2026-11-16).
+            'roles' => \App\Models\Role::query()->orderBy('name')->pluck('name')->unique()->values(),
             'tag_colours' => (object) collect(ViewScope::forUser($user)->switchedOnFranchiseIds())
                 ->reduce(fn (array $c, string $f) => $c + app(WorkizTagColours::class)->for($f, $tags->all()), []),
         ]]);
@@ -295,13 +517,8 @@ class ProjectBoardController extends Controller
         ]);
         $place = $this->settingsFor($user);
         $settings = app(SettingsResolver::class);
-        $list = collect(self::repairEntries($settings->get('project_board.repair_tags', $place)));
-        // A first change starts from the tags already working as repair teams, so none drop off the column.
-        if ($list->isEmpty()) {
-            $list = Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())->whereNotNull('tags')->pluck('tags')
-                ->flatten()->map(fn ($t) => trim((string) $t))->filter(fn ($t) => self::isRepairTeam($t))->unique(fn ($t) => self::tagKey($t))
-                ->map(fn ($t) => ['name' => $t, 'phone' => null, 'user_id' => null])->values();
-        }
+        // A first change starts from the teams already there, so none drop off the column.
+        $list = $this->repairList($user, $place);
         $key = self::tagKey($in['name']);
         $to = trim((string) ($in['to'] ?? '')) ?: trim($in['name']);
         $outcomes = match ($in['op']) {
@@ -318,6 +535,47 @@ class ProjectBoardController extends Controller
 
         return response()->json(['data' => ['outcomes' => (object) $outcomes,
             'list' => self::repairEntries($settings->get('project_board.repair_tags', $place))]]);
+    }
+
+    /**
+     * GET /api/v1/project-board/repair-teams: the list the Settings card
+     * shows (Jose, 2026-11-16: "it should already show the existing repair
+     * team - contractors"), in each tag's Workiz colour. Reads only: nothing
+     * is saved and no Workiz account is called.
+     */
+    public function repairTeamList(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_board.view') && $user->hasPermission('jobs.view'),
+            Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+        $list = $this->repairList($user, $this->settingsFor($user));
+        $colours = app(WorkizTagColours::class);
+
+        return response()->json(['data' => ['list' => $list->all(),
+            'tag_colours' => (object) collect(ViewScope::forUser($user)->switchedOnFranchiseIds())
+                ->reduce(fn (array $c, string $f) => $c + $colours->for($f, $list->pluck('name')->all()), [])]]);
+    }
+
+    /**
+     * The company's saved list; before its first change, the repair-team and
+     * contractor tags already there: on the Workiz accounts' tag lists and on
+     * jobs, inside the view.
+     *
+     * @return Collection<int, array{name: string, phone: ?string, user_id: ?string}>
+     */
+    private function repairList(User $user, Model $place): Collection
+    {
+        $saved = collect(self::repairEntries(app(SettingsResolver::class)->get('project_board.repair_tags', $place)));
+        if ($saved->isNotEmpty()) {
+            return $saved;
+        }
+        $view = ViewScope::forUser($user);
+        $colours = app(WorkizTagColours::class);
+
+        return collect($view->switchedOnFranchiseIds())->flatMap(fn (string $f) => array_column($colours->definitions($f), 'name'))
+            ->merge(Job::query()->whereIn('franchise_id', $view->franchiseIds())->whereNotNull('tags')->pluck('tags')->flatten())
+            ->map(fn ($t) => trim((string) $t))->filter(fn ($t) => self::isRepairTeam($t))->unique(fn ($t) => self::tagKey($t))
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)->map(fn ($t) => ['name' => $t, 'phone' => null, 'user_id' => null])->values();
     }
 
     /** @return list<string> the company and every company under it */
@@ -592,16 +850,34 @@ class ProjectBoardController extends Controller
         $this->editable($request, $job);
         $input = $request->validate([
             'parts' => ['present', 'array', 'max:50'],
-            'parts.*.kind' => ['required', 'in:order,stock'],
+            'parts.*.id' => ['nullable', 'string', 'max:64'],
+            'parts.*.kind' => ['required', 'in:order,stock,pickup'],
+            'parts.*.supplier_id' => ['nullable', 'string', 'max:64'],
+            'parts.*.destination' => ['nullable', 'in:warehouse,customer,supplier'],
+            'parts.*.received' => ['nullable', 'boolean'],
+            'parts.*.remind_at' => ['nullable', 'date'],
+            'parts.*.remind_note' => ['nullable', 'string', 'max:160'],
             'parts.*.item' => ['required', 'string', 'max:160'],
             'parts.*.quantity' => ['required', 'integer', 'min:1', 'max:100000'],
             'parts.*.price_minor' => ['nullable', 'integer', 'min:0', 'max:100000000000'],
             'parts.*.delivery_on' => ['nullable', 'date_format:Y-m-d'],
             'parts.*.inventory_item_id' => ['nullable', 'uuid', 'exists:inventory_items,id'],
         ]);
-        DB::transaction(function () use ($job, $input) {
+        // The company's suppliers (Settings), copied onto the part as picked.
+        $suppliers = collect(self::suppliers(app(SettingsResolver::class)
+            ->get('project_board.suppliers', $this->settingsFor($request->user()))))->keyBy('id');
+        DB::transaction(function () use ($job, $input, $suppliers) {
+            // Kept by id: when a part was ordered and received survives the rewrite.
+            $before = JobPart::query()->where('job_id', $job->id)->get()->keyBy('id');
             JobPart::query()->where('job_id', $job->id)->delete();
             foreach ($input['parts'] as $i => $p) {
+                $old = $before->get($p['id'] ?? '');
+                $away = $p['kind'] !== 'stock';
+                $supplierId = $p['supplier_id'] ?? null;
+                // A supplier picked from the list now, else the one it had
+                // (renamed or removed from the list since).
+                $supplier = $away ? ($suppliers->get((string) $supplierId)
+                    ?? (($old?->supplier['id'] ?? null) === $supplierId ? $old?->supplier : null)) : null;
                 JobPart::query()->create([
                     'organization_id' => $job->organization_id, 'job_id' => $job->id, 'position' => $i,
                     'kind' => $p['kind'], 'item' => trim($p['item']), 'quantity' => $p['quantity'],
@@ -609,6 +885,17 @@ class ProjectBoardController extends Controller
                     // A delivery date belongs to a part being ordered.
                     'delivery_on' => $p['kind'] === 'order' ? ($p['delivery_on'] ?? null) : null,
                     'inventory_item_id' => $p['kind'] === 'stock' ? ($p['inventory_item_id'] ?? null) : null,
+                    'supplier' => $supplier,
+                    'destination' => $away ? ($p['destination'] ?? null) : null,
+                    // The three-day clock starts when it stops being in stock.
+                    'ordered_at' => $ordered = $away ? ($old !== null && $old->kind !== 'stock' && $old->ordered_at ? $old->ordered_at : now()) : null,
+                    'received_at' => $away && ($p['received'] ?? false) ? ($old?->received_at ?? now()) : null,
+                    // Told once that it was late, for this order.
+                    'late_notified_at' => $ordered !== null && $old?->ordered_at?->equalTo($ordered) ? $old->late_notified_at : null,
+                    // A manual reminder (Jose, 2026-11-17); a new time is sent anew.
+                    'remind_at' => $remind = filled($p['remind_at'] ?? null) ? Carbon::parse($p['remind_at']) : null,
+                    'remind_note' => filled($p['remind_note'] ?? null) ? trim($p['remind_note']) : null,
+                    'reminded_at' => $remind !== null && $old?->remind_at?->equalTo($remind) ? $old->reminded_at : null,
                 ]);
             }
         });

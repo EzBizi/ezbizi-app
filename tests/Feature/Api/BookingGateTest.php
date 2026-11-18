@@ -25,7 +25,7 @@ class BookingGateTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
         $f = $alpha['franchise'];
         [$area, $customer] = $this->inTenant($alpha['org'], function () use ($alpha, $f) {
-            $area = ServiceArea::create(['organization_id' => $alpha['org']->id, 'franchise_id' => $f->id, 'name' => 'Maryland']);
+            $area = ServiceArea::create(['organization_id' => $alpha['org']->id, 'franchise_id' => $f->id, 'name' => 'Maryland', 'latest_windows' => ['5' => '12:00']]);
             foreach ([[3, '08:00', '11:00'], [3, '11:00', '14:00'], [5, '11:00', '14:00'], [5, '14:00', '17:00']] as [$d, $s, $e]) {
                 ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => $d, 'start_time' => $s, 'end_time' => $e, 'max_jobs' => 1]);
             }

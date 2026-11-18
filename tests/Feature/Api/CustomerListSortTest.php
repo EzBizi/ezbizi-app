@@ -52,6 +52,17 @@ class CustomerListSortTest extends TestCase
         );
     }
 
+    public function test_by_name_skips_leading_punctuation(): void
+    {
+        // Desktop review 2026-11-13: "'Zed" and "-- Bea" opened the list,
+        // ahead of every A.
+        foreach (["'Zed", 'Abe', '-- Bea'] as $name) {
+            $this->customer($name);
+        }
+
+        $this->assertSame(['Abe', '-- Bea', "'Zed"], $this->names('sort=name&direction=asc'));
+    }
+
     public function test_created_newest_first_is_not_the_alphabet(): void
     {
         // Dates that match the alphabet in NEITHER direction. The first draft

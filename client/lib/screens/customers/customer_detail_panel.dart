@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/job_status.dart';
+import '../../core/live_changes.dart';
 import '../../core/numbers.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -12,7 +13,9 @@ import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/book_job_panel.dart';
+import '../../widgets/record_facts.dart';
 import '../../widgets/side_panel.dart';
+import '../phone/call_tab.dart';
 import '../../core/theme.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
@@ -102,7 +105,11 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
 
   String get _typed => _fields.map((c) => c.text).join('\u0000');
 
-  void _markDirty() => widget.dirty?.value = !_loading && _typed != _loaded;
+  void _markDirty() {
+    widget.dirty?.value = !_loading && _typed != _loaded;
+    // Save lights as soon as something changed (design 196).
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
@@ -111,6 +118,36 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       c.addListener(_markDirty);
     }
     _load();
+    // Live: a sync, webhook or another person changing this customer shows
+    // here, unless something is being typed.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'customers'},
+      (batch) {
+        if (batch.reload || batch.touched('customers').contains(widget.id)) {
+          return _refresh();
+        }
+      },
+      active: LiveChanges.visible(this),
+    );
+  }
+
+  LiveSubscription? _live;
+
+  /// The customer read again in place, with no spinner. Skipped while
+  /// somebody is typing or saving: their edit is never overwritten.
+  Future<void> _refresh() async {
+    if (_loading || _busy || _reassigning || _typed != _loaded) return;
+    final response = await widget.api.get('/customers/${widget.id}', {
+      'today': formatCalendarDay(DateTime.now()),
+    });
+    if (!mounted || !response.ok || _busy || _typed != _loaded) return;
+    final row = Map<String, dynamic>.from(response.data as Map);
+    setState(() {
+      _fill(row);
+      _row = row;
+    });
+    _loaded = _typed;
+    widget.dirty?.value = false;
   }
 
   /// A tag saved on its own, so a plain close still refreshes the list.
@@ -129,6 +166,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _name.dispose();
     _phone.dispose();
     _email.dispose();
@@ -334,45 +372,12 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
 
     return SidePanel(
       title: row == null ? 'Customer' : row['name'] as String,
-      subtitle: row == null
-          ? null
-          : [
-              row['number'],
-              if (workizClientNumbers(row) case final workiz?) 'Workiz $workiz',
-              // The company as well as the franchise, as on the list row: two
-              // companies may each run a "Texas", and this subtitle is what
-              // somebody reads before editing or reassigning the customer.
-              // The list said which Texas; the panel it opens must not stop.
-              (owner?['company'] as Map<String, dynamic>?)?['name'],
-              owner?['name'],
-            ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
+      // Design 196: the rest of what this line held is the facts grid.
+      subtitle: row?['number'] as String?,
       width: 520,
       docked: widget.onDone != null,
       onClose: widget.onDone == null ? null : () => _done(null),
       actions: [
-        if (row?['number'] case final String number when number.isNotEmpty)
-          CopyButton(
-            number,
-            key: const ValueKey('copy-customer-number'),
-            what: 'Customer number',
-          ),
-        if (row != null && widget.session.me!.can('jobs.create'))
-          TextButton.icon(
-            key: const ValueKey('customer-book-job'),
-            onPressed: _busy
-                ? null
-                : () => showBookJobPanel(
-                    context,
-                    api: widget.api,
-                    session: widget.session,
-                    prefill: BookPrefill(
-                      customerId: row['id'] as String,
-                      franchiseId: owner?['id'] as String?,
-                    ),
-                  ),
-            icon: const Icon(Icons.event_available_outlined, size: 18),
-            label: const Text('Book a job'),
-          ),
         // Save and Cancel belong to the Customer tab's fields; Money and the
         // Workiz notes are read only (deep dive 2026-11-02).
         if (_tab != 'money' && _tab != 'notes') ...[
@@ -383,7 +388,8 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
           Refused(
             reason: _editRefusal,
             child: FilledButton(
-              onPressed: editable ? () => _save() : null,
+              // Lit once something changed (design 196).
+              onPressed: editable && _typed != _loaded ? () => _save() : null,
               child: const Text('Save'),
             ),
           ),
@@ -454,6 +460,85 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     );
   }
 
+  /// Design 196 (Jose, 2026-11-17: the lead header is "how stuff should be
+  /// all around the app"): the actions on one line, then the facts grid.
+  Widget _head(
+    BuildContext context,
+    Map<String, dynamic> row,
+    Map<String, dynamic>? owner,
+    bool active,
+    int jobs,
+  ) {
+    final phone = row['phone'] as String?;
+    final canCall =
+        phone != null && phone.isNotEmpty && _me.can('phone.phone.view');
+    final company = (owner?['company'] as Map<String, dynamic>?)?['name'];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (!active) const Tag('Inactive', warn: true),
+              if (canCall)
+                OutlinedButton.icon(
+                  key: const ValueKey('customer-call'),
+                  onPressed: () => showSidePanel<void>(
+                    context,
+                    builder: (_) => SidePanel(
+                      title: 'Call',
+                      subtitle: phone,
+                      scrollable: false,
+                      child: CallTab(
+                        api: widget.api,
+                        session: widget.session,
+                        initialNumber: phone,
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.call_outlined, size: 18),
+                  label: const Text('Call'),
+                ),
+              if (_me.can('jobs.create'))
+                FilledButton.icon(
+                  key: const ValueKey('customer-book-job'),
+                  onPressed: _busy
+                      ? null
+                      : () => showBookJobPanel(
+                          context,
+                          api: widget.api,
+                          session: widget.session,
+                          prefill: BookPrefill(
+                            customerId: row['id'] as String,
+                            franchiseId: owner?['id'] as String?,
+                          ),
+                        ),
+                  icon: const Icon(Icons.event_available_outlined, size: 18),
+                  label: const Text('Book a job'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          RecordFacts([
+            // Company as well as branch: two companies may each run a
+            // "Texas", and this is read before editing or reassigning.
+            RecordFact(
+              'Branch',
+              [?company, owner?['name'] ?? 'Unassigned'].join(' · '),
+            ),
+            RecordFact('Jobs', jobs == 0 ? '' : '$jobs'),
+            RecordFact('Customer #', '${row['number'] ?? ''}', copy: true),
+            RecordFact('Workiz', workizClientNumbers(row) ?? '', copy: true),
+          ]),
+        ],
+      ),
+    );
+  }
+
   Widget _customerPage(
     BuildContext context,
     Map<String, dynamic>? row,
@@ -465,18 +550,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
     return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (row != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        Tag(owner?['name'] as String? ?? 'Unassigned'),
-                        if (!active) const Tag('Inactive', warn: true),
-                      ],
-                    ),
-                  ),
+                if (row != null) _head(context, row, owner, active, jobs),
                 if (row != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 14),
@@ -730,15 +804,32 @@ class _CustomerJobsState extends State<_CustomerJobs> {
   void initState() {
     super.initState();
     _load();
+    // A job booked, moved or closed for this customer anywhere: read again.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'jobs'},
+      (_) {
+        if (_jobs != null) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
 
-  Future<void> _load() async {
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the jobs on screen.
+  Future<void> _load({bool quiet = false}) async {
     final response = await widget.api.get('/jobs', {
       'customer_id': widget.customerId,
       'per_page': '50',
     });
 
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       if (!response.ok) {

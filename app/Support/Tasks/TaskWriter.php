@@ -3,9 +3,11 @@
 namespace App\Support\Tasks;
 
 use App\Http\Controllers\Api\TasksController;
+use App\Models\Attachment;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\Organization;
 use App\Models\Task;
 use App\Models\TaskActivity;
 use App\Models\TaskAssignee;
@@ -18,7 +20,10 @@ use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Jobs\JobTechnicianSync;
+use App\Support\Notifications\NotificationDispatcher;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -84,6 +89,8 @@ class TaskWriter
                 'company_id' => $parent ? $parent->company_id : TaskBoards::companyIdOf($board),
                 'franchise_id' => $parent ? $parent->franchise_id : $board->franchise_id,
                 'title' => $input['title'],
+                // A subtask of a sensitive task is sensitive too (SensitiveTasks).
+                'sensitive' => (bool) ($input['sensitive'] ?? false) || (bool) $parent?->sensitive,
                 'status' => $status?->statusKey() ?? Task::STATUS_NOT_STARTED,
                 'status_id' => $status?->id,
                 'assignee_user_id' => $input['assignee_user_id'] ?? null,
@@ -98,7 +105,7 @@ class TaskWriter
             ]);
 
             if ($owners !== null) {
-                $this->syncOwners($task, $owners);
+                $this->syncOwners($task, $owners, $actor);
             }
 
             if (! empty($input['values'])) {
@@ -110,6 +117,9 @@ class TaskWriter
             }
 
             $this->audit->log('task.created', $task, actor: $actor);
+            if ($task->external_ref === null) {
+                app(MondayOutbox::class)->record($task, ['create']);
+            }
             $this->events->emitAfterCommit('task.created', $task, [
                 'assignee_user_id' => $task->assignee_user_id,
                 'assignee_user_ids' => $this->ownerIds($task),
@@ -117,15 +127,25 @@ class TaskWriter
                 'board_name' => $task->board?->name,
                 'after' => $this->snapshot($task),
             ]);
+            $this->checkRules($task);
 
             return $task;
         });
+    }
+
+    /** Management's board rules, once the write is saved (BoardRules). */
+    private function checkRules(Task $task): void
+    {
+        if (! $this->syncing) {
+            DB::afterCommit(fn () => app(BoardRules::class)->check($task));
+        }
     }
 
     /** Only the keys present in $input change. */
     public function update(Task $task, array $input, ?User $actor): Task
     {
         return DB::transaction(function () use ($task, $input, $actor) {
+            app(MondayOutbox::class)->record($task, self::mondayKinds($input));
             $seen = $this->readable($task);
             $owners = $this->ownersFrom($task->board, $input, $this->ownerIds($task));
             if (empty($input['group_id']) && isset($input['group'])) {
@@ -156,18 +176,24 @@ class TaskWriter
             }
 
             if (! empty($input['values']) && is_array($input['values'])) {
-                $this->writeValues($task, $input['values'], $actor);
+                $this->writeValues($task, $input['values'], $actor, announce: true);
             }
 
             $ownersChanged = $owners !== null && $owners !== $this->ownerIds($task);
             if ($ownersChanged) {
-                $this->syncOwners($task, $owners);
+                $this->syncOwners($task, $owners, $actor);
                 if (! $task->isDirty()) {
                     $this->audit->log('task.owners_changed', $task, metadata: ['assignee_user_ids' => $owners], actor: $actor);
                 }
             }
 
             if (! $task->isDirty()) {
+                // A column value or owner lives in its own table: date the
+                // task anyway, so an open board's changes feed sees it.
+                if ($ownersChanged || ! empty($input['values'])) {
+                    Task::query()->whereKey($task->id)->update(['updated_at' => now()]);
+                    \App\Support\Live\ChangeFeed::record($task, 'tasks');
+                }
                 if ($ownersChanged) {
                     $this->syncLinked($task, [], false, true, $actor);
                 }
@@ -198,9 +224,34 @@ class TaskWriter
             }
             $this->syncLinked($task, $synced, $statusChanged, $ownersChanged, $actor);
             $this->recordChanges($task, $seen, $actor);
+            if ($statusChanged || $groupChanged || array_key_exists('title', $fields)) {
+                $this->checkRules($task);
+            }
 
             return $task;
         });
+    }
+
+    /**
+     * The fields an update names, as the Monday outbox counts them; it reads
+     * the values from the task when it sends.
+     *
+     * @return list<string>
+     */
+    private static function mondayKinds(array $input): array
+    {
+        $kinds = [];
+        foreach (['title' => 'title', 'status' => 'status', 'status_id' => 'status', 'due_on' => 'due', 'assignee_user_id' => 'owners',
+            'assignee_user_ids' => 'owners', 'group' => 'group', 'group_id' => 'group'] as $key => $kind) {
+            if (array_key_exists($key, $input)) {
+                $kinds[] = $kind;
+            }
+        }
+        foreach (array_keys((array) ($input['values'] ?? [])) as $column) {
+            $kinds[] = 'values:'.$column;
+        }
+
+        return array_values(array_unique($kinds));
     }
 
     /**
@@ -237,7 +288,10 @@ class TaskWriter
     {
         TaskActivity::query()->create([
             'organization_id' => $task->organization_id, 'task_id' => $task->id, 'user_id' => $actor?->id,
-            'field' => mb_substr($field, 0, 64), 'label' => mb_substr($label, 0, 120), 'from' => $from, 'to' => $to,
+            'field' => mb_substr($field, 0, 64), 'label' => mb_substr($label, 0, 120),
+            // A sensitive task's diffs are sealed like its fields (SensitiveTasks).
+            'from' => $task->sensitive ? SensitiveTasks::seal($from) : $from,
+            'to' => $task->sensitive ? SensitiveTasks::seal($to) : $to,
         ]);
     }
 
@@ -273,6 +327,9 @@ class TaskWriter
 
     /** True while a change is being copied across a link: the copies do not copy on. */
     private bool $syncing = false;
+
+    /** The Monday mirror writes quietly: only EzBizi-origin changes ring a bell. */
+    public bool $quiet = false;
 
     /**
      * Copy what changed to every linked task. Status goes by name on the
@@ -376,6 +433,8 @@ class TaskWriter
             foreach ($ids as $i => $id) {
                 Task::query()->whereKey($id)->update(['position' => $i]);
             }
+            app(MondayOutbox::class)->record($task, ['group']);
+            $this->checkRules($task);
 
             return $task->refresh();
         });
@@ -393,6 +452,7 @@ class TaskWriter
             'about_id' => $task->about_id,
             'priority' => $task->priority,
             'estimate_minutes' => $task->estimate_minutes,
+            'sensitive' => (bool) $task->sensitive,
         ];
         if ($sameBoard) {
             $input['status_id'] = $task->status_id;
@@ -429,6 +489,7 @@ class TaskWriter
                 $child->delete();
             }
             $this->audit->log('task.deleted', $task, actor: $actor);
+            app(MondayOutbox::class)->record($task, ['delete']); // archived on Monday; its subitems go with it
             $task->delete();
         });
     }
@@ -440,10 +501,11 @@ class TaskWriter
                 'organization_id' => $task->organization_id,
                 'task_id' => $task->id,
                 'user_id' => $author->getKey(),
-                'body' => $body,
+                'body' => $task->sensitive ? SensitiveTasks::seal($body) : $body,
                 'mentions' => $mentions ?: null,
             ]);
             $this->audit->log('task.update_posted', $task, actor: $author);
+            app(MondayOutbox::class)->record($task, [], $update);
 
             return $update;
         });
@@ -543,8 +605,9 @@ class TaskWriter
     }
 
     /** @param  list<string>  $ids */
-    private function syncOwners(Task $task, array $ids): void
+    private function syncOwners(Task $task, array $ids, ?User $actor = null): void
     {
+        $had = TaskAssignee::query()->where('task_id', $task->id)->pluck('user_id')->all();
         TaskAssignee::query()->where('task_id', $task->id)->whereNotIn('user_id', $ids)->delete();
         foreach ($ids as $position => $id) {
             TaskAssignee::query()->updateOrCreate(
@@ -553,6 +616,34 @@ class TaskWriter
             );
         }
         $task->unsetRelation('owners');
+
+        // Jose 11-17: whoever is newly given a task hears about it, whether a
+        // person or a rule gave it; not the person who gave it to themselves,
+        // and not again for a linked twin.
+        $new = array_values(array_diff($ids, $had, [$actor?->getKey()]));
+        if ($new !== [] && ! $this->quiet && ! $this->syncing) {
+            DB::afterCommit(fn () => self::tellAssigned($task, $new));
+        }
+    }
+
+    /** @param  string[]  $userIds */
+    public static function tellAssigned(Task $task, array $userIds): int
+    {
+        // After commit a command may have left its tenant: tell in the task's.
+        $org = Organization::query()->withoutGlobalScopes()->find($task->organization_id);
+
+        return $org === null ? 0 : app(TenantContext::class)->run($org, function () use ($task, $userIds) {
+            $told = 0;
+            foreach (User::query()->whereKey($userIds)->get() as $user) {
+                $told += app(NotificationDispatcher::class)->dispatch(
+                    title: 'New task: '.$task->title,
+                    body: 'On '.($task->board?->name ?? 'the Task Board'),
+                    subject: $task, onlyTo: $user, kind: 'task.assigned',
+                );
+            }
+
+            return $told;
+        });
     }
 
     private function groupOn(TaskBoard $board, string $groupId): TaskGroup
@@ -627,7 +718,7 @@ class TaskWriter
      *
      * @param  array<string, mixed>  $values
      */
-    private function writeValues(Task $task, array $values, ?User $actor): void
+    private function writeValues(Task $task, array $values, ?User $actor, bool $announce = false): void
     {
         $columns = TaskColumn::query()->where('board_id', $task->board_id)->get()->keyBy('id');
         $assignable = null;
@@ -655,6 +746,9 @@ class TaskWriter
             if (! $ok) {
                 throw ValidationException::withMessages([$key => $why]);
             }
+            if ($task->sensitive && SensitiveTasks::sealsColumn($column->type)) {
+                $row['value_text'] = SensitiveTasks::seal($row['value_text']);
+            }
             $rows[$column->id] = $row;
         }
 
@@ -680,6 +774,25 @@ class TaskWriter
             $to = $now->has($columnId) ? ColumnConverter::words($columns[$columnId], $now[$columnId]) : null;
             if ($from !== $to) {
                 $this->activity($task, $columnId, $columns[$columnId]->name, $from, $to, $actor);
+                if ($announce) {
+                    // Monday's "when Area changes to Connecticut" (parity audit 2026-11-13):
+                    // one event per column that changed, its value as a person reads it.
+                    $payload = [
+                        'assignee_user_id' => $task->assignee_user_id,
+                        'assignee_user_ids' => $this->ownerIds($task),
+                        'board_id' => $task->board_id,
+                        'board_name' => $task->board?->name,
+                        'before' => ['value' => $from],
+                        'after' => $this->snapshot($task) + ['column_id' => $columnId, 'column' => $columns[$columnId]->name, 'value' => $to],
+                    ];
+                    // In the task's own organization: a command's outer transaction can commit after its tenant run ended.
+                    DB::afterCommit(fn () => app(TenantContext::class)->run(
+                        Organization::query()->withoutGlobalScopes()->findOrFail($task->organization_id),
+                        // emitAfterCommit, not emit: with no transaction open it emits now, and an
+                        // import's silenced emitter (MondayImport) still silences it.
+                        fn () => $this->events->emitAfterCommit('task.column_changed', $task, $payload),
+                    ));
+                }
             }
         }
     }
@@ -751,7 +864,7 @@ class TaskWriter
                 $row['value_number'] = $ok ? (float) $value : null;
                 break;
             case 'date':
-                $ok = is_string($value) && \DateTime::createFromFormat('!Y-m-d', $value)?->format('Y-m-d') === $value;
+                $ok = is_string($value) && (\DateTime::createFromFormat('!Y-m-d', $value) ?: null)?->format('Y-m-d') === $value;
                 $why = 'A date as YYYY-MM-DD.';
                 $row['value_date'] = $value;
                 break;
@@ -761,12 +874,64 @@ class TaskWriter
                 $why = 'That person cannot be named on this board.';
                 $row['value_user_id'] = $value;
                 break;
+            case 'people':
+                // Several people (Monday's People column): a list of user ids.
+                $assignable ??= app(TaskBoards::class)->assignable($board)->pluck('id')->all();
+                $ids = is_array($value) && array_is_list($value) ? array_values(array_unique($value)) : null;
+                $ok = $ids !== null && $ids !== [] && count($ids) <= 50 && array_diff($ids, $assignable) === [];
+                $why = 'A list of people who can be named on this board.';
+                $row['value_text'] = $ok ? json_encode($ids) : null;
+                break;
             case 'timeline':
-                $day = fn ($d) => is_string($d) && \DateTime::createFromFormat('!Y-m-d', $d)?->format('Y-m-d') === $d;
+                $day = fn ($d) => is_string($d) && (\DateTime::createFromFormat('!Y-m-d', $d) ?: null)?->format('Y-m-d') === $d;
                 $ok = is_array($value) && $day($value['from'] ?? null) && $day($value['to'] ?? null) && $value['from'] <= $value['to'];
                 $why = 'A range as {from, to}, YYYY-MM-DD, from no later than to.';
                 $row['value_date'] = $ok ? $value['from'] : null;
                 $row['value_text'] = $ok ? $value['to'] : null;
+                break;
+            case 'location':
+                // {address, lat|null, lng|null}
+                $lat = $value['lat'] ?? null;
+                $lng = $value['lng'] ?? null;
+                $ok = is_array($value) && is_string($value['address'] ?? null) && trim($value['address']) !== ''
+                    && mb_strlen($value['address']) <= 500
+                    && ($lat === null || (is_numeric($lat) && abs((float) $lat) <= 90))
+                    && ($lng === null || (is_numeric($lng) && abs((float) $lng) <= 180));
+                $why = 'A place as {address, lat, lng}; lat and lng may be empty.';
+                $row['value_text'] = $ok ? json_encode(['address' => trim($value['address']),
+                    'lat' => $lat === null ? null : (float) $lat, 'lng' => $lng === null ? null : (float) $lng]) : null;
+                break;
+            case 'rating':
+                $max = (int) ($column->settings['max'] ?? 5);
+                $ok = is_int($value) || (is_string($value) && ctype_digit($value));
+                $ok = $ok && (int) $value >= 0 && (int) $value <= $max;
+                $why = "A whole number from 0 to {$max}.";
+                $row['value_number'] = $ok ? (int) $value : null;
+                break;
+            case 'files':
+                // Files already on the task (its attachments), by id.
+                $ids = is_array($value) && array_is_list($value) ? array_values(array_unique(array_map('strval', $value))) : null;
+                $ok = $ids !== null && $ids !== [] && count($ids) <= 50
+                    && Attachment::query()->whereIn('id', $ids)->count() === count($ids);
+                $why = 'A list of files added to this task.';
+                $row['value_text'] = $ok ? json_encode($ids) : null;
+                break;
+            case 'connect':
+            case 'dependency':
+                // Other tasks: anywhere in the organization (connect) or on this board (dependency).
+                $ids = is_array($value) && array_is_list($value) ? array_values(array_unique(array_map('strval', $value))) : null;
+                $found = $ids === null ? 0 : Task::query()->whereIn('id', $ids)
+                    ->when($column->type === 'dependency', fn ($q) => $q->where('board_id', $board->id))->count();
+                $ok = $ids !== null && $ids !== [] && count($ids) <= 50 && $found === count($ids);
+                $why = $column->type === 'dependency' ? 'A list of tasks on this board.' : 'A list of tasks.';
+                $row['value_text'] = $ok ? json_encode($ids) : null;
+                break;
+            case 'last_updated':
+            case 'creation_log':
+            case 'mirror':
+                // Read from the task (or the tasks it is connected to); nothing to store.
+                $ok = false;
+                $why = 'This column fills itself in.';
                 break;
             case 'formula':
                 // Worked out from the other columns where it is shown; nothing to store.
@@ -817,6 +982,8 @@ class TaskWriter
             ...$this->statusOf($task),
             'assignee_user_id' => $task->assignee_user_id,
             'assignee_user_ids' => $this->ownerIds($task),
+            'created_by_user_id' => $task->created_by_user_id,
+            'group_id' => $task->group_id,
             'due_on' => $task->due_on?->toDateString(),
             'about_type' => $task->about_type,
             'about_id' => $task->about_id,

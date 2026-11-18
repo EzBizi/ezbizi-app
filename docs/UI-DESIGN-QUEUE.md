@@ -5336,6 +5336,10 @@ Jose 11-06: "I'm also thinking if it would not be best to always put the tags at
 
 Client by UI/UX; server HR 17fb4c40e. Jose via the desk: show current access as a clear list with Add place / remove, plus what the role grants. A "Works at" card: one row per place (Company · Branch) with ×, inline red two-step remove, the last place shows HR's 422 sentence instead; Add place opens the SidePanel search picker from GET hr/people/scope-options; under it, the role and that it applies at every place.
 
+### 193 · Project Management › totals strip — **PM totals strip — option 1 APPROVED by Jose 2026-11-12** (`docs/previews/pm-totals-strip.html`)
+
+Jose: "put them in colored blocks… have it do some html examples, not just 1"; he picked "first one". Three equal tinted tiles: Paid (ok), Remaining (caution, not red), Total of jobs (primary container); under 600 px they stack as label-left, figure-right rows. Client by UI/UX (`client/lib/screens/project_board_screen.dart`). Open: Paid + Remaining ($987,778.06) exceeds Total ($973,417.87) by $14,360.19, for the PM owner.
+
 ### 192 · Leads › lead detail header, lined up — **APPROVED (standing rule 2026-11-03), recommended option (desk's grid)** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/lead-detail-header.html`)
 
 Jose 11-11: "stuff doesn't seem lined up properly, like there's wasted space still." Desktop: row 1 name + chips left, Call / Edit / Book / ⋯ right; row 2 the status segmented control left-aligned (picker under 640 px); facts and the AI line with even gaps; the Existing customer bar capped at 720 px. Phone bar (design 171) unchanged. Client by UI/UX (`client/lib/widgets/lead_thread.dart`).
@@ -5351,3 +5355,15 @@ Client by UI/UX on the Workiz backend (session/workiz 5b905b31b). Jose 11-10: "a
 ### 189 · HR › Work: work schedule — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/hr-work-schedule-layouts.html`)
 
 Client by UI/UX. Jose 11-06: "this can definitely be shown in a better way, use green and red as well for clock in - out times". All seven days as rows (a day off reads "Off" instead of vanishing), green in chip (Tone.ok), red out chip (Tone.bad; his ruling for this screen), a 24 h day bar, hours per day and a weekly total. Times through DisplayFormats.formatWallClock. Phone drops the bar.
+
+### 194 · Leads › lead detail header, two columns — **APPROVED (standing rule 2026-11-03), recommended option A (A1)** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/lead-header.html`)
+
+Jose 11-16: "this is still terrible ui-ux, see how it can be arranged better, lots of wasted space and things all around". Supersedes 192. Desktop: row 1 the name with every chip in one row (company once, status, star, viewers, note) and Call / Edit / Book / ⋯; under it two columns: left the six moves, one "What they asked" card (the AI line, then only what the customer added: when, by when; the scope dropped when the AI line already says it) and the existing-customer bar; right a facts grid (label column, value, copy button): Phone, Email, Address (+ suggestion chip, Check availability), Job, Branch, Source (source chip, account, status). The loose "service · source · branch" line and the italic AI line are gone. Under 720 px of header the grid follows the moves; phone keeps design 171's bar, ⋯ opens chips, card, grid, customer. Client by UI/UX (`client/lib/widgets/lead_thread.dart`).
+
+### 195 · Lists on a phone: the controls above the first row (Jobs, Customers, CX › Reviews) — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose: "in fact, from now on just go with ur recommendations") (`docs/previews/phone-list-controls.html`)
+
+UI pass 11-16: at 375 px the first row started below 70% of the screen (4–7 control rows). Phone (under 600 px): line 1 is search, "Filters · n" (an in-place Filters page, the Leads 171 pattern) and ⋯ (Export, Import, Possible duplicates, Draft all, Fetch new). Line 2 is the status chips as one line that scrolls sideways (Customers has none). The count sentence moves into the group line. The CX rating card becomes one tappable line. Desktop unchanged. Client by UI/UX, after telling Jobs, Customers and CX.
+
+### 196 · Record headers: the Job panel and the Customer record like the lead — **APPROVED (standing rule 2026-11-03), recommended option 1 + phone 4** (Jose 2026-11-17 on the lead header: "this is how stuff should be all around the app, proper and organized and simple") (`docs/previews/record-header.html`)
+
+The dot-joined subtitle (number · Workiz · customer · branch · Booked by) becomes the record's number only, and the rest goes to a labelled facts grid with copy buttons (`widgets/record_facts.dart`, two columns from 440 px). Job: the status is shown once, as the picker on the top line, where the StatusPill used to repeat it. Customer: Call and Book a job (filled) on the top line, and the owner Tag is gone (it's in the grid as Company · Branch). Both: Save lights only after a change. The form is unchanged. Client by UI/UX, after telling Jobs and Customers.

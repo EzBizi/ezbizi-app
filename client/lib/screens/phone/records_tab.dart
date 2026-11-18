@@ -3,6 +3,7 @@ import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -53,7 +54,12 @@ class RecordsTab extends StatefulWidget {
     this.initialFilter = RecordsFilter.calls,
     this.showFilters = true,
     this.reloadToken = 0,
+    this.loadOnStart = true,
   });
+
+  /// False when mounted hidden in a stack: the first visit's [reloadToken]
+  /// bump loads it, so opening Phone does not fetch everything twice.
+  final bool loadOnStart;
 
   final ApiClient api;
   final Session session;
@@ -108,14 +114,19 @@ class _RecordsTabState extends State<RecordsTab> {
 
   late RecordsFilter _filter = widget.initialFilter;
 
-  /// What is typed in the search box. Filtered here: /phone/calls (no
-  /// per_page) and /phone/messages return every row, so nothing is unloaded.
+  /// What is typed in the search box. Filtered over the pages loaded so far;
+  /// "Load older" fetches the next [_pageSize] of calls and of texts.
+  static const _pageSize = 200;
+  int _page = 1;
+  bool _hasOlder = false;
+  bool _loadingOlder = false;
   String _query = '';
 
   /// The tile picked, null for all. Its keys depend on the view: an [_Outcome]
   /// name or `untagged` for calls, `waiting`/`answered`/`today` for texts.
   String? _tile;
   _Call? _openCall;
+
   /// The counterpart number whose conversation is open, if any.
   ///
   /// Held as the NUMBER rather than a thread object, so the open conversation
@@ -132,11 +143,27 @@ class _RecordsTabState extends State<RecordsTab> {
     super.initState();
     _ownsPlayer = widget.player == null;
     _player = widget.player ?? createRecordingPlayer();
-    _load();
+    if (widget.loadOnStart) {
+      _load();
+    } else {
+      _loading = false; // a spinner nobody sees never settles
+    }
+    // A call or a text arriving or changing: every page already loaded
+    // re-reads quietly, so older pages stay and their rows stay current.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'phone_calls', 'phone_messages'},
+      (_) {
+        if (!_loading && !_loadingOlder) return _load(quiet: true);
+      },
+      active: LiveChanges.visible(this),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _player.stop();
     if (_ownsPlayer) _player.dispose();
     super.dispose();
@@ -268,20 +295,47 @@ class _RecordsTabState extends State<RecordsTab> {
     return threads;
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _calls.isEmpty && _messages.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read of every page loaded so far ("Load older"
+  /// kept); a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _calls.isEmpty && _messages.isEmpty;
+        _error = null;
+      });
+    }
 
-    final calls = widget.api.get('/phone/calls');
-    final messages = widget.api.get('/phone/messages');
+    final pages = quiet ? _page : 1;
+    final calls = [
+      for (var p = 1; p <= pages; p++)
+        widget.api.get('/phone/calls', {
+          'per_page': '$_pageSize',
+          'page': '$p',
+        }),
+    ];
+    final messages = [
+      for (var p = 1; p <= pages; p++)
+        widget.api.get('/phone/messages', {
+          'per_page': '$_pageSize',
+          'page': '$p',
+        }),
+    ];
     final numbers = widget.api.get('/phone/numbers');
 
-    final callsRes = await calls;
-    final messagesRes = await messages;
+    final callPages = await Future.wait(calls);
+    final messagePages = await Future.wait(messages);
     final numbersRes = await numbers;
-    if (!mounted) return;
+    final callsRes = callPages.firstWhere(
+      (r) => !r.ok,
+      orElse: () => callPages.first,
+    );
+    final messagesRes = messagePages.firstWhere(
+      (r) => !r.ok,
+      orElse: () => messagePages.first,
+    );
+    if (!mounted || (quiet && !(callsRes.ok && messagesRes.ok))) return;
+    // Quiet: "Load older" ran meanwhile; its pages are not in this read.
+    if (quiet && pages != _page) return;
 
     if (!callsRes.ok) {
       setState(() {
@@ -320,14 +374,58 @@ class _RecordsTabState extends State<RecordsTab> {
       _loading = false;
       _labels = labels;
       _connectionOf = connections;
+      // Pages read together: a row that moved down a page shows once.
+      final seenCalls = <String>{}, seenTexts = <String>{};
       _calls = [
-        for (final row in (callsRes.data as List? ?? const []))
-          if (row is Map<String, dynamic>) _Call.fromJson(row),
-      ];
+        for (final res in callPages)
+          for (final row in (res.data as List? ?? const []))
+            if (row is Map<String, dynamic>) _Call.fromJson(row),
+      ].where((c) => seenCalls.add(c.id)).toList();
       _messages = [
-        for (final row in (messagesRes.data as List? ?? const []))
-          if (row is Map<String, dynamic>) _Message.fromJson(row),
+        for (final res in messagePages)
+          for (final row in (res.data as List? ?? const []))
+            if (row is Map<String, dynamic>) _Message.fromJson(row),
+      ].where((m) => seenTexts.add(m.id)).toList();
+      _page = pages;
+      _hasOlder =
+          ((callPages.last.data as List?)?.length ?? 0) >= _pageSize ||
+          ((messagePages.last.data as List?)?.length ?? 0) >= _pageSize;
+    });
+  }
+
+  Future<void> _loadOlder() async {
+    setState(() => _loadingOlder = true);
+    final page = {'per_page': '$_pageSize', 'page': '${_page + 1}'};
+    final calls = widget.api.get('/phone/calls', page);
+    final messages = widget.api.get('/phone/messages', page);
+    final callsRes = await calls;
+    final messagesRes = await messages;
+    if (!mounted) return;
+    final more = [
+      for (final row
+          in (callsRes.ok ? callsRes.data as List? ?? const [] : const []))
+        if (row is Map<String, dynamic>) _Call.fromJson(row),
+    ];
+    final moreTexts = [
+      for (final row
+          in (messagesRes.ok
+              ? messagesRes.data as List? ?? const []
+              : const []))
+        if (row is Map<String, dynamic>) _Message.fromJson(row),
+    ];
+    setState(() {
+      _loadingOlder = false;
+      if (!callsRes.ok || !messagesRes.ok) return;
+      _page++;
+      // A row that arrived since page 1 shifts the pages by one: skip repeats.
+      final haveCalls = {for (final c in _calls) c.id};
+      final haveTexts = {for (final m in _messages) m.id};
+      _calls = [..._calls, ...more.where((c) => !haveCalls.contains(c.id))];
+      _messages = [
+        ..._messages,
+        ...moreTexts.where((m) => !haveTexts.contains(m.id)),
       ];
+      _hasOlder = more.length >= _pageSize || moreTexts.length >= _pageSize;
     });
   }
 
@@ -368,7 +466,10 @@ class _RecordsTabState extends State<RecordsTab> {
   @override
   void didUpdateWidget(RecordsTab old) {
     super.didUpdateWidget(old);
-    if (old.reloadToken != widget.reloadToken) _load();
+    // 0 is "not showing": leaving the tab must not refetch it hidden.
+    if (old.reloadToken != widget.reloadToken && widget.reloadToken != 0) {
+      _load();
+    }
   }
 
   @override
@@ -447,10 +548,7 @@ class _RecordsTabState extends State<RecordsTab> {
             spacing: 12,
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (widget.showFilters) _filterChips(),
-              _searchField(),
-            ],
+            children: [if (widget.showFilters) _filterChips(), _searchField()],
           ),
         ),
         if (_filter == RecordsFilter.calls) ...[
@@ -476,6 +574,17 @@ class _RecordsTabState extends State<RecordsTab> {
           _threadTable(rows.cast<_Thread>())
         else
           _callTable(rows.cast<_Call>()),
+        if (_hasOlder)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Center(
+              child: TextButton(
+                key: const Key('records-load-older'),
+                onPressed: _loadingOlder ? null : _loadOlder,
+                child: Text(_loadingOlder ? 'Loading…' : 'Load older'),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -511,13 +620,13 @@ class _RecordsTabState extends State<RecordsTab> {
     width: 280,
     child: ListSearch(
       key: ValueKey(switch (_filter) {
-          RecordsFilter.calls => 'comm-records-calls-search',
-          RecordsFilter.voicemail => 'comm-records-voicemail-search',
-          RecordsFilter.sms => 'comm-records-messages-search',
-        }),
+        RecordsFilter.calls => 'comm-records-calls-search',
+        RecordsFilter.voicemail => 'comm-records-voicemail-search',
+        RecordsFilter.sms => 'comm-records-messages-search',
+      }),
       hint: _filter == RecordsFilter.sms
-              ? 'Search name, number or text'
-              : 'Search name, number or tag',
+          ? 'Search name, number or text'
+          : 'Search name, number or tag',
       onChanged: (value) => setState(() => _query = value),
     ),
   );
@@ -949,7 +1058,8 @@ class _RecordsTabState extends State<RecordsTab> {
             // record used to say a call was answered without saying by whom —
             // and a customer ringing back to continue the conversation could
             // not be put through to the person they had it with.
-            if (call.answeredByName != null) 'Answered by ${call.answeredByName}',
+            if (call.answeredByName != null)
+              'Answered by ${call.answeredByName}',
 
             // What they pressed at the menu (Jose, 2026-10-05).
             if (call.extensionDialed != null)
@@ -966,7 +1076,8 @@ class _RecordsTabState extends State<RecordsTab> {
           RecordingPlaybackBar(
             key: Key('call-audio-${call.id}'),
             player: _player,
-            load: () => widget.api.getBytes('/phone/calls/${call.id}/recording'),
+            load: () =>
+                widget.api.getBytes('/phone/calls/${call.id}/recording'),
           ),
         ],
         // Two transcripts, and they are not the same thing: the live one is
@@ -1048,9 +1159,9 @@ class _RecordsTabState extends State<RecordsTab> {
     if (!mounted) return;
 
     if (!response.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.reason)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(response.reason)));
 
       return;
     }

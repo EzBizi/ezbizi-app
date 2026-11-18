@@ -50,9 +50,9 @@ RowGroup<Map<String, dynamic>> _group(
 
   final at = DateTime.utc(day.year, day.month, day.day);
   final offset = at.difference(today).inDays;
-  final weekday = _weekdays[at.weekday - 1];
+  final weekday = longWeekdays[at.weekday - 1];
   final date = [
-    '${at.day} ${_months[at.month - 1]}',
+    '${at.day} ${longMonths[at.month - 1]}',
     if (at.year != today.year) '${at.year}',
   ].join(' ');
 
@@ -65,30 +65,3 @@ RowGroup<Map<String, dynamic>> _group(
 
   return RowGroup(heading: heading, detail: detail, count: total, rows: rows);
 }
-
-// ponytail: English names inline. The app has no i18n yet (timestamps.dart);
-// these move with everything else when it does.
-const _weekdays = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
-
-const _months = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];

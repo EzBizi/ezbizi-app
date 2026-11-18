@@ -1,8 +1,11 @@
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_table.dart';
+
 import '../../core/api_client.dart';
 import '../../core/job_money.dart';
+import '../../core/phone_numbers.dart';
 import '../../widgets/error_note.dart';
 
 /// One run of one saved report (spec 2026-09-10).
@@ -117,11 +120,18 @@ class _ReportRunViewState extends State<ReportRunView> {
             ? run.rows
             : [
                 for (final row in run.rows)
+                  // The raw value too: a phone shown as +1 (732) 674-8312 is
+                  // still found by 732674.
                   if (run.columns.any(
-                    (column) => _cell(
-                      row[column.key],
-                      column.type,
-                    ).toLowerCase().contains(query),
+                    (column) =>
+                        '${row[column.key] ?? ''}'.toLowerCase().contains(
+                          query,
+                        ) ||
+                        _cell(
+                          row[column.key],
+                          column.type,
+                          column.key,
+                        ).toLowerCase().contains(query),
                   ))
                     row,
               ];
@@ -194,29 +204,25 @@ class _ReportRunViewState extends State<ReportRunView> {
   ) {
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columns: [
-            for (final column in run.columns)
-              DataColumn(
-                label: Text(column.label),
-                numeric: column.type == 'integer' || column.type == 'money',
-              ),
-          ],
-          rows: [
-            for (final row in rows)
-              DataRow(
-                cells: [
-                  for (final column in run.columns)
-                    // `column.key` contains a dot — `jobs.title` — and is a
-                    // FLAT key rather than a path. Splitting on it finds
-                    // nothing and draws a blank table.
-                    DataCell(Text(_cell(row[column.key], column.type))),
-                ],
-              ),
-          ],
-        ),
+      child: ListTable(
+        key: const Key('report-run-table'),
+        columns: [
+          for (final column in run.columns)
+            ListColumn(
+              column.label,
+              end: column.type == 'integer' || column.type == 'money',
+            ),
+        ],
+        rows: [
+          for (final row in rows)
+            [
+              for (final column in run.columns)
+                // `column.key` contains a dot - `jobs.title` - and is a
+                // FLAT key rather than a path. Splitting on it finds
+                // nothing and draws a blank table.
+                Text(_cell(row[column.key], column.type, column.key)),
+            ],
+        ],
       ),
     );
   }
@@ -248,7 +254,7 @@ class _ReportRunViewState extends State<ReportRunView> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _cell(row[column.key], column.type),
+                    _cell(row[column.key], column.type, column.key),
                     style: theme.textTheme.bodyMedium,
                   ),
                   if (column != run.columns.last) const SizedBox(height: 12),
@@ -288,9 +294,13 @@ class _ReportRunViewState extends State<ReportRunView> {
 
   /// As the Builder's preview writes the same column: money is kept in
   /// cents, and the run printed "29320" where the preview said $293.20.
-  String _cell(Object? value, String type) {
+  String _cell(Object? value, String type, [String key = '']) {
     if (value == null) return '';
     if (value is bool) return value ? 'Yes' : 'No';
+    // A phone written as a number (Jose, 2026-11-16); export keeps the digits.
+    if (key.endsWith('phone')) {
+      return formatPhoneNumber(toE164('$value') ?? '$value');
+    }
     return switch (type) {
       'money' when value is num => formatMoney(value.round()),
       'datetime' || 'date' => '$value'.split('T').first,

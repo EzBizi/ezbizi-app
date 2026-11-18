@@ -3,14 +3,9 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/job_money.dart';
 import '../core/numbers.dart';
-import '../core/session.dart';
 import '../widgets/ad_change_confirm.dart';
-import '../widgets/ad_schedule.dart';
-import '../widgets/empty_state.dart';
-import '../widgets/list_search.dart';
-import '../widgets/open_destination.dart';
-import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import 'ad_campaigns_shell.dart';
 
 /// Marketing › Ads › Google (Jose, 2026-11-09): run Google campaigns the way
 /// MetaCampaignsView runs Meta's - the same filter bar, tiles and table - with
@@ -20,157 +15,99 @@ import '../widgets/side_panel.dart';
 ///
 /// Read live from Google every time; every change is confirmed first, then
 /// sent, then the list is read again.
-class GoogleCampaignsView extends StatefulWidget {
+class GoogleCampaignsView extends AdCampaignsView {
   const GoogleCampaignsView({
     super.key,
-    required this.api,
-    required this.session,
-    required this.sourceSwitch,
+    required super.api,
+    required super.session,
+    required super.sourceSwitch,
   });
-
-  final ApiClient api;
-  final Session session;
-
-  /// The Google | Meta control, drawn in this view's own filter bar.
-  final Widget sourceSwitch;
 
   @override
   State<GoogleCampaignsView> createState() => _GoogleCampaignsViewState();
 }
 
-const _ranges = <int, String>{
-  1: 'Today',
-  7: 'Last 7 days',
-  30: 'Last 30 days',
-  90: 'Last 90 days',
-};
+class _GoogleCampaignsViewState
+    extends AdCampaignsState<GoogleCampaignsView, Map<String, dynamic>> {
+  @override
+  String get keyPrefix => 'google';
+  @override
+  Key get rangeKey => const ValueKey('google-ads-range');
+  @override
+  Key get tableKey => const ValueKey('google-ads-table');
+  @override
+  String get accountsPath => '/ads/accounts';
+  @override
+  String get campaignsPath => '/ads-manager/google/campaigns';
+  @override
+  String get accountNumberField => 'customer_id';
 
-class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
-  List<Map<String, dynamic>>? _accounts;
-  String? _account;
-  int _days = 30;
-
-  List<Map<String, dynamic>>? _campaigns;
-  Map<String, Map<String, dynamic>> _schedules = const {};
-  String? _error;
-  bool _loading = false;
-
-  final TextEditingController _search = TextEditingController();
-  String _sortBy = 'spend';
-  bool _descending = true;
-
-  bool get _canManage => widget.session.me?.can('ads_manager.manage') ?? false;
+  // A manager holds accounts, not campaigns.
+  @override
+  bool keepAccount(Map account) => account['is_manager'] != true;
 
   @override
-  void initState() {
-    super.initState();
-    _search.addListener(() => setState(() {}));
-    _loadAccounts();
-  }
+  bool isActive(Map<String, dynamic> row) => row['status'] == 'ENABLED';
 
   @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
+  Map<String, dynamic> mapOf(Map<String, dynamic> row) => row;
 
-  Future<void> _loadAccounts() async {
-    final response = await widget.api.get('/ads/accounts');
-    if (!mounted) return;
-    setState(() {
-      if (!response.ok) {
-        _error = response.message;
-        _accounts = const [];
-        return;
-      }
-      // A manager holds accounts, not campaigns.
-      _accounts = [
-        for (final a
-            in (response.body['data'] as List? ?? const []).cast<Map>())
-          if (a['is_manager'] != true) Map<String, dynamic>.from(a),
-      ];
-      if (_accounts!.isNotEmpty) {
-        _account = _accounts!.first['connection_id'] as String?;
-      }
-    });
-    if (_account != null) await _load();
-  }
-
-  static String _d(DateTime x) =>
-      '${x.year.toString().padLeft(4, '0')}-'
-      '${x.month.toString().padLeft(2, '0')}-'
-      '${x.day.toString().padLeft(2, '0')}';
-
-  Future<void> _load({bool quiet = false}) async {
-    final id = _account;
-    if (id == null) return;
-    final days = _days;
-    if (!quiet) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
-    final to = DateTime.now();
-    final response = await widget.api.get('/ads-manager/google/campaigns', {
-      'connection_id': id,
-      'from': _d(to.subtract(Duration(days: days - 1))),
-      'to': _d(to),
-    });
-    if (!mounted || _account != id || _days != days) return;
-    setState(() {
-      _loading = false;
-      if (!response.ok) {
-        if (!quiet) _error = response.message;
-        return;
-      }
-      _campaigns = List<Map<String, dynamic>>.from(
-        ((response.body['data'] as Map?)?['campaigns'] as List? ?? const [])
-            .cast<Map>(),
-      );
-    });
-    await _loadSchedules();
-  }
-
-  Future<void> _loadSchedules() async {
-    final id = _account;
-    if (id == null) return;
-    final response = await widget.api.get('/ad-schedules', {
-      'connection_id': id,
-    });
-    if (!mounted || _account != id || !response.ok) return;
-    setState(
-      () => _schedules = {
-        for (final row
-            in (response.body['data'] as List? ?? const []).cast<Map>())
-          '${row['object_id']}': Map<String, dynamic>.from(row),
-      },
-    );
-  }
+  @override
+  String get emptyTitle => 'No Google Ads account connected';
+  @override
+  String get emptyMessage =>
+      'Connect Google Ads in Settings › Integrations to see and '
+      'control your Google campaigns here.';
+  @override
+  String get noCampaignsText => 'This Google Ads account has no campaigns.';
+  @override
+  String get resultsField => 'conversions';
+  @override
+  String get resultsLabel => 'Conversions';
+  @override
+  String get costPerLabel => 'Cost per conversion';
+  @override
+  String get tableHeading => 'CAMPAIGN';
+  @override
+  double get tableMinWidth => 1350;
+  @override
+  double get headerStart => 12;
 
   // ── Figures ────────────────────────────────────────────────────────────
 
-  static double _num(dynamic v) => (v as num?)?.toDouble() ?? 0;
-
-  static String _money(dynamic v) => formatMoney((_num(v) * 100).round());
-
-  String get _needle => _search.text.trim().toLowerCase();
-
-  List<Map<String, dynamic>> _rows() {
-    final rows = [
-      for (final c in _campaigns ?? const <Map<String, dynamic>>[])
-        if (_needle.isEmpty || '${c['name']}'.toLowerCase().contains(_needle))
-          c,
-    ];
-    rows.sort((a, b) {
-      final x = _num(a[_sortBy]);
-      final y = _num(b[_sortBy]);
-      return _descending ? y.compareTo(x) : x.compareTo(y);
-    });
-    return rows;
-  }
+  @override
+  List<Map<String, dynamic>> visibleRows() => sorted([
+    for (final c in campaigns ?? const <Map<String, dynamic>>[])
+      if (needle.isEmpty ||
+          '${c['name']} ${titleOf(c)}'.toLowerCase().contains(needle))
+        c,
+  ]);
 
   static bool _lsa(Map<String, dynamic> c) => c['type'] == 'LOCAL_SERVICES';
+
+  /// Google names a Local Services campaign "LocalServicesCampaign:
+  /// SystemGenerated:000630b3eb55"; shown as "Local Services · (account)"
+  /// (UI/UX audit 2026-11-13 §9.11). The raw name stays in the tooltip.
+  @override
+  String titleOf(Map<String, dynamic> c) {
+    final name = '${c['name']}';
+    if (!name.startsWith('LocalServicesCampaign:')) return name;
+    final owner =
+        c['account'] ??
+        accounts?.firstWhere(
+          (a) => a['connection_id'] == connectionOf(c),
+          orElse: () => const {},
+        )['name'];
+    return owner == null ? 'Local Services' : 'Local Services · $owner';
+  }
+
+  /// A Local Services budget is set per WEEK; Google's API reports it as
+  /// DAILY = week / 7 (measured 2026-11-13: Columbus $28,571.43 = $200,000
+  /// a week). Shown per day, it read as a day's budget above a month's spend.
+  /// [lsaWeekly] undoes the cents Google rounded the division to.
+  static String _budgetText(Map<String, dynamic> c) => _lsa(c)
+      ? '${adMoney(lsaWeekly(adNumber(c['daily_budget'])))} / week'
+      : '${adMoney(c['daily_budget'])} / day';
 
   /// "Limited", "Not eligible"… when it is on and still not fully showing.
   static String? _why(Map<String, dynamic> c) {
@@ -186,7 +123,7 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
   Future<void> _toggle(Map<String, dynamic> c, bool on) async {
     final ok = await confirmAdChange(
       context,
-      title: on ? 'Turn on ${c['name']}?' : 'Pause ${c['name']}?',
+      title: on ? 'Turn on ${titleOf(c)}?' : 'Pause ${titleOf(c)}?',
       change: on
           ? 'Google starts showing this campaign again.'
           : 'Google stops showing this campaign until it is turned on.',
@@ -196,7 +133,7 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
     );
     if (!ok || !mounted) return;
     final response = await widget.api.post('/ads-manager/google/status', {
-      'connection_id': _account,
+      'connection_id': connectionOf(c),
       'campaign_id': c['id'],
       'status': on ? 'ENABLED' : 'PAUSED',
     });
@@ -207,12 +144,12 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
         SnackBar(
           content: Text(
             response.ok
-                ? '${c['name']} ${on ? 'on' : 'paused'}'
+                ? '${titleOf(c)} ${on ? 'on' : 'paused'}'
                 : response.message,
           ),
         ),
       );
-    if (response.ok) _load(quiet: true);
+    if (response.ok) load(quiet: true);
   }
 
   Future<void> _edit(Map<String, dynamic> c, {required bool target}) async {
@@ -220,201 +157,21 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
       context,
       builder: (_) => _AmountPanel(
         api: widget.api,
-        connectionId: _account!,
-        campaign: c,
+        connectionId: connectionOf(c),
+        campaign: {...c, 'name': titleOf(c)},
         target: target,
-        days: _days,
+        days: days,
       ),
     );
-    if (saved == true && mounted) _load(quiet: true);
-  }
-
-  Future<void> _editSchedule(Map<String, dynamic> c) async {
-    final changed = await editAdSchedule(
-      context,
-      api: widget.api,
-      connectionId: _account!,
-      objectId: '${c['id']}',
-      objectName: '${c['name']}',
-      schedule: _schedules['${c['id']}'],
-      canManage: _canManage,
-    );
-    if (changed && mounted) _loadSchedules();
+    if (saved == true && mounted) load(quiet: true);
   }
 
   // ── Drawing ────────────────────────────────────────────────────────────
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final phone = MediaQuery.sizeOf(context).width < 600;
-
-    if (_accounts == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          widget.sourceSwitch,
-          const Expanded(child: Center(child: CircularProgressIndicator())),
-        ],
-      );
-    }
-    if (_accounts!.isEmpty) {
-      final open = OpenDestination.of(context);
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          widget.sourceSwitch,
-          Expanded(
-            child: EmptyState(
-              key: const ValueKey('google-ads-empty'),
-              icon: Icons.campaign_outlined,
-              title: 'No Google Ads account connected',
-              message:
-                  _error ??
-                  'Connect Google Ads in Settings › Integrations to see and '
-                      'control your Google campaigns here.',
-              actionLabel: open == null ? null : 'Open Integrations',
-              actionIcon: Icons.open_in_new,
-              onAction: open == null ? null : () => open('settings'),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _filters(),
-        const SizedBox(height: 12),
-        if (_loading)
-          const Expanded(child: Center(child: CircularProgressIndicator()))
-        else if (_error != null)
-          Expanded(
-            child: Center(
-              child: Text(_error!, style: theme.textTheme.bodyMedium),
-            ),
-          )
-        else ...[
-          _kpis(phone),
-          const SizedBox(height: 12),
-          Expanded(child: phone ? _cards(theme) : _table(theme)),
-        ],
-      ],
-    );
-  }
-
-  Widget _filters() {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        widget.sourceSwitch,
-        if (_accounts!.length > 1)
-          SizedBox(
-            width: 240,
-            child: SearchPickerField<String>(
-              key: const ValueKey('google-ads-account'),
-              value: _account,
-              isDense: true,
-              options: [
-                for (final a in _accounts!)
-                  SearchOption(
-                    value: '${a['connection_id']}',
-                    label: '${a['name']}',
-                    detail: '${a['customer_id']}',
-                  ),
-              ],
-              onChanged: (id) {
-                if (id == null) return;
-                setState(() => _account = id);
-                _load();
-              },
-            ),
-          ),
-        PopupMenuButton<int>(
-          key: const ValueKey('google-ads-range'),
-          initialValue: _days,
-          onSelected: (days) {
-            setState(() => _days = days);
-            _load();
-          },
-          itemBuilder: (_) => [
-            for (final e in _ranges.entries)
-              PopupMenuItem(value: e.key, child: Text(e.value)),
-          ],
-          child: Chip(
-            label: Text(_ranges[_days]!),
-            avatar: const Icon(Icons.date_range, size: 18),
-          ),
-        ),
-        ListSearch(
-          key: const ValueKey('google-ads-search'),
-          controller: _search,
-          hint: 'Search campaigns',
-          width: 260,
-          onClear: _search.clear,
-        ),
-      ],
-    );
-  }
-
-  Widget _kpis(bool phone) {
-    final campaigns = _campaigns ?? const [];
-    final spend = campaigns.fold<double>(0, (s, c) => s + _num(c['spend']));
-    final conv = campaigns.fold<double>(
-      0,
-      (s, c) => s + _num(c['conversions']),
-    );
-    final clicks = campaigns.fold<double>(0, (s, c) => s + _num(c['clicks']));
-    final tiles = {
-      'Spend': _money(spend),
-      'Conversions': formatCount(conv.round()),
-      'Cost per conversion': conv > 0 ? _money(spend / conv) : '—',
-      'Clicks': formatCount(clicks.round()),
-    };
-    final theme = Theme.of(context);
-
-    return LayoutBuilder(
-      builder: (context, box) {
-        final width = phone ? (box.maxWidth - 10) / 2 : (box.maxWidth - 30) / 4;
-        return Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final e in tiles.entries)
-              SizedBox(
-                width: width,
-                child: Card(
-                  margin: EdgeInsets.zero,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(e.key, style: theme.textTheme.bodySmall),
-                        const SizedBox(height: 4),
-                        Text(
-                          e.value,
-                          key: ValueKey('google-kpi-${e.key}'),
-                          style: theme.textTheme.titleLarge,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
-
   Widget _onCell(Map<String, dynamic> c, ThemeData theme) {
     final why = _why(c);
     final muted = theme.textTheme.bodySmall;
-    if (!_canManage) {
+    if (!canManage) {
       return Text(why ?? 'Active', style: why == null ? null : muted);
     }
     return Row(
@@ -440,16 +197,6 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
     );
   }
 
-  Widget _scheduleCell(Map<String, dynamic> c) => Align(
-    alignment: AlignmentDirectional.centerStart,
-    child: AdScheduleChip(
-      key: ValueKey('google-schedule-${c['id']}'),
-      schedule: _schedules['${c['id']}'],
-      canManage: _canManage,
-      onTap: () => _editSchedule(c),
-    ),
-  );
-
   Widget _link(String key, String text, VoidCallback onTap, ThemeData theme) =>
       InkWell(
         key: ValueKey(key),
@@ -464,12 +211,12 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
     final daily = c['daily_budget'];
     if (daily == null) return Text('—', style: theme.textTheme.bodySmall);
     if (c['shared_budget'] == true) {
-      return Text('${_money(daily)} shared', style: theme.textTheme.bodySmall);
+      return Text('${_budgetText(c)} shared', style: theme.textTheme.bodySmall);
     }
-    if (!_canManage) return Text(_money(daily));
+    if (!canManage) return Text(_budgetText(c));
     return _link(
       'google-budget-${c['id']}',
-      _money(daily),
+      _budgetText(c),
       () => _edit(c, target: false),
       theme,
     );
@@ -488,8 +235,8 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
     final t = c['target'];
     if (t == null) return 'No target';
     return c['target_kind'] == 'roas'
-        ? '${(_num(t) * 100).round()}% ROAS'
-        : '${_money(t)} CPA';
+        ? '${(adNumber(t) * 100).round()}% ROAS'
+        : '${adMoney(t)} CPA';
   }
 
   Widget _targetCell(Map<String, dynamic> c, ThemeData theme) {
@@ -500,7 +247,7 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
     if (c['portfolio'] == true) {
       return Text('${_targetText(c)} · shared', style: muted);
     }
-    if (!_canManage) return Text(_targetText(c));
+    if (!canManage) return Text(_targetText(c));
     return _link(
       'google-target-${c['id']}',
       _targetText(c),
@@ -509,10 +256,11 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
     );
   }
 
-  static const _columns = <(String, String?, double)>[
+  @override
+  List<(String, String?, double)> get columns => const [
     ('On', null, 190),
     ('Schedule', null, 250),
-    ('Budget / day', 'daily_budget', 130),
+    ('Budget', 'daily_budget', 130),
     ('Bid target', null, 140),
     ('Spend', 'spend', 100),
     ('Conv.', 'conversions', 70),
@@ -523,167 +271,94 @@ class _GoogleCampaignsViewState extends State<GoogleCampaignsView> {
   Widget _name(Map<String, dynamic> c, ThemeData theme, {int lines = 1}) => Row(
     children: [
       Flexible(
-        child: Text(
-          '${c['name']}',
-          maxLines: lines,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w600),
+        child: Tooltip(
+          message: '${c['name']}',
+          child: Text(
+            titleOf(c),
+            key: ValueKey('google-name-${c['id']}'),
+            maxLines: lines,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
         ),
       ),
-      if (_lsa(c)) ...[
+      if (_lsa(c) && titleOf(c) == '${c['name']}') ...[
         const SizedBox(width: 6),
         Text('Local Services', style: theme.textTheme.labelSmall),
       ],
     ],
   );
 
-  Widget _table(ThemeData theme) {
-    final rows = _rows();
-    final head = theme.textTheme.labelSmall;
-
-    Widget header() => Row(
+  @override
+  Widget tableRow(Map<String, dynamic> c, ThemeData theme) => Padding(
+    key: ValueKey('google-row-${c['id']}'),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    child: Row(
       children: [
-        Expanded(child: Text('CAMPAIGN', style: head)),
-        for (final (label, key, width) in _columns)
+        Expanded(child: _name(c, theme)),
+        SizedBox(width: 190, child: _onCell(c, theme)),
+        SizedBox(width: 250, child: scheduleChip(c)),
+        SizedBox(width: 130, child: _budgetCell(c, theme)),
+        SizedBox(width: 140, child: _targetCell(c, theme)),
+        for (final (key, money, width) in const [
+          ('spend', true, 100.0),
+          ('conversions', false, 70.0),
+          ('clicks', false, 80.0),
+          ('cost_per_conversion', true, 90.0),
+        ])
           SizedBox(
             width: width,
-            child: key == null
-                ? Text(label.toUpperCase(), style: head)
-                : InkWell(
-                    key: ValueKey('google-sort-$key'),
-                    onTap: () => setState(() {
-                      _descending = _sortBy == key ? !_descending : true;
-                      _sortBy = key;
-                    }),
-                    child: Text(
-                      '${label.toUpperCase()}'
-                      '${_sortBy == key ? (_descending ? ' ↓' : ' ↑') : ''}',
-                      style: head,
-                      textAlign: label == 'Budget / day' ? null : TextAlign.end,
-                    ),
-                  ),
+            child: Text(
+              c[key] == null
+                  ? '—'
+                  : money
+                  ? adMoney(c[key])
+                  : formatCount(adNumber(c[key]).round()),
+              textAlign: TextAlign.end,
+            ),
           ),
       ],
-    );
+    ),
+  );
 
-    Widget row(Map<String, dynamic> c) => Padding(
-      key: ValueKey('google-row-${c['id']}'),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Row(
-        children: [
-          Expanded(child: _name(c, theme)),
-          SizedBox(width: 190, child: _onCell(c, theme)),
-          SizedBox(width: 250, child: _scheduleCell(c)),
-          SizedBox(width: 130, child: _budgetCell(c, theme)),
-          SizedBox(width: 140, child: _targetCell(c, theme)),
-          for (final (key, money, width) in const [
-            ('spend', true, 100.0),
-            ('conversions', false, 70.0),
-            ('clicks', false, 80.0),
-            ('cost_per_conversion', true, 90.0),
-          ])
-            SizedBox(
-              width: width,
-              child: Text(
-                c[key] == null
-                    ? '—'
-                    : money
-                    ? _money(c[key])
-                    : formatCount(_num(c[key]).round()),
-                textAlign: TextAlign.end,
-              ),
-            ),
-        ],
-      ),
-    );
-
-    return Card(
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: LayoutBuilder(
-        builder: (context, box) {
-          final width = box.maxWidth < 1350 ? 1350.0 : box.maxWidth;
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: width,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                    child: header(),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: rows.isEmpty
-                        ? Center(child: Text(_emptyText))
-                        : ListView.separated(
-                            key: const ValueKey('google-ads-table'),
-                            itemCount: rows.length,
-                            separatorBuilder: (_, _) =>
-                                const Divider(height: 1),
-                            itemBuilder: (_, i) => row(rows[i]),
-                          ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  String get _emptyText => _needle.isEmpty
-      ? 'This Google Ads account has no campaigns.'
-      : 'Nothing matches "${_search.text}".';
-
-  Widget _cards(ThemeData theme) {
-    final rows = _rows();
+  @override
+  Widget card(Map<String, dynamic> c, ThemeData theme) {
     final muted = theme.textTheme.bodySmall;
-    if (rows.isEmpty) return Center(child: Text(_emptyText));
-    return ListView.builder(
-      key: const ValueKey('google-ads-cards'),
-      itemCount: rows.length,
-      itemBuilder: (_, i) {
-        final c = rows[i];
-        final per = c['cost_per_conversion'];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Card(
-            key: ValueKey('google-card-${c['id']}'),
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final per = c['cost_per_conversion'];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Card(
+        key: ValueKey('google-card-${c['id']}'),
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(child: _name(c, theme, lines: 2)),
-                      _onCell(c, theme),
-                    ],
-                  ),
-                  _scheduleCell(c),
-                  Text(
-                    [
-                      _money(c['spend']),
-                      '${formatCount(_num(c['conversions']).round())} conv.',
-                      if (per != null) '${_money(per)}/conv.',
-                    ].join(' · '),
-                    style: muted,
-                  ),
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 16,
-                    children: [_budgetCell(c, theme), _targetCell(c, theme)],
-                  ),
+                  Expanded(child: _name(c, theme, lines: 2)),
+                  _onCell(c, theme),
                 ],
               ),
-            ),
+              scheduleChip(c),
+              Text(
+                [
+                  adMoney(c['spend']),
+                  '${formatCount(adNumber(c['conversions']).round())} conv.',
+                  if (per != null) '${adMoney(per)}/conv.',
+                ].join(' · '),
+                style: muted,
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 16,
+                children: [_budgetCell(c, theme), _targetCell(c, theme)],
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -712,6 +387,9 @@ class _AmountPanel extends StatefulWidget {
 class _AmountPanelState extends State<_AmountPanel> {
   late final bool _roas =
       widget.target && widget.campaign['target_kind'] == 'roas';
+  // A Local Services budget is typed per week, as it is set in LSA.
+  late final bool _weekly =
+      !widget.target && widget.campaign['type'] == 'LOCAL_SERVICES';
   late final TextEditingController _amount = TextEditingController(
     text: _start(),
   );
@@ -723,6 +401,7 @@ class _AmountPanelState extends State<_AmountPanel> {
         (widget.campaign[widget.target ? 'target' : 'daily_budget'] as num?)
             ?.toDouble();
     if (v == null) return '';
+    if (_weekly) return lsaWeekly(v).toStringAsFixed(2);
     return _roas ? (v * 100).round().toString() : v.toStringAsFixed(2);
   }
 
@@ -758,7 +437,7 @@ class _AmountPanelState extends State<_AmountPanel> {
         if (widget.target)
           'target': _roas ? typed / 100 : typed
         else
-          'daily_budget': typed,
+          'daily_budget': _weekly ? typed / 7 : typed,
       },
     );
     if (!mounted) return;
@@ -781,7 +460,12 @@ class _AmountPanelState extends State<_AmountPanel> {
     );
 
     return SidePanel(
-      title: '${widget.target ? 'Bid target' : 'Daily budget'} · ${c['name']}',
+      title:
+          '${widget.target
+              ? 'Bid target'
+              : _weekly
+              ? 'Weekly budget'
+              : 'Daily budget'} · ${c['name']}',
       onClose: () => Navigator.of(context).pop(),
       actions: [
         TextButton(
@@ -809,6 +493,8 @@ class _AmountPanelState extends State<_AmountPanel> {
                   ? (_roas
                         ? 'Target return on ad spend'
                         : 'Target cost per conversion')
+                  : _weekly
+                  ? 'Per week'
                   : 'Per day',
             ),
             onSubmitted: (_) => _save(),
@@ -817,6 +503,9 @@ class _AmountPanelState extends State<_AmountPanel> {
           Text(
             widget.target
                 ? 'Google bids to reach this on average; it changes the campaign at once.'
+                : _weekly
+                ? 'Last ${widget.days} ${widget.days == 1 ? 'day' : 'days'} spent $spent a day. '
+                      'Local Services budgets are weekly, as in Local Services Ads.'
                 : 'Last ${widget.days} ${widget.days == 1 ? 'day' : 'days'} spent $spent a day. '
                       'Google may spend up to twice this on a busy day.',
             style: theme.textTheme.bodySmall,
@@ -833,4 +522,13 @@ class _AmountPanelState extends State<_AmountPanel> {
       ),
     );
   }
+}
+
+/// A Local Services weekly budget from Google's per-day figure (week / 7,
+/// rounded to cents): $857.14 is $6,000, not $5,999.98. Whole dollars when
+/// within the rounding Google did, else to the cent.
+double lsaWeekly(num daily) {
+  final week = daily * 7;
+  final whole = week.roundToDouble();
+  return (week - whole).abs() <= 0.035 ? whole : (week * 100).round() / 100;
 }

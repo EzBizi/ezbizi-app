@@ -136,6 +136,8 @@ class HrPeopleController extends Controller
                 'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->boolean('active_only'), fn ($q) => $q->where('is_active', true))
+            // Removed people only when asked for (removed=1); never mixed into the rest.
+            ->removed($request->boolean('removed'))
             // The Active / Inactive chips (Jose, 2026-11-10: "it doesn't load the full list").
             ->when(in_array($request->query('status'), ['active', 'inactive'], true),
                 fn ($q) => $q->where('is_active', $request->query('status') === 'active'))
@@ -363,6 +365,7 @@ class HrPeopleController extends Controller
             'assignments.assignedFranchise:id,name'])
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
+            ->removed(false)
             ->orderByDesc('is_active')->orderBy('name')->get();
         $ids = $people->map->getKey()->all();
 
@@ -990,6 +993,14 @@ class HrPeopleController extends Controller
                 ? PayRate::query()->where('user_id', $user->id)
                     ->orderByDesc('effective_on')->get()
                     ->map(fn ($row) => HrPersonDetailsController::present($row))->all()
+                : null,
+            // Which of those applies today, and the next one dated ahead (a rate
+            // stage, Merav 2026-11-17), as ids into pay_rates.
+            'pay_rate_now' => $actor->hasPermission('hr.pay.view')
+                ? PayRate::rateOn($user->id, now()->toDateString())?->id : null,
+            'pay_rate_next' => $actor->hasPermission('hr.pay.view')
+                ? PayRate::query()->where('user_id', $user->id)->where('basis', 'hourly')
+                    ->whereDate('effective_on', '>', now()->toDateString())->orderBy('effective_on')->value('id')
                 : null,
 
             // Null rather than a zero allowance when the organization has not

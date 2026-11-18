@@ -556,7 +556,7 @@ class EnquiriesController extends Controller
      *
      * @return list<array{date: string, windows: list<array{start_time: string, end_time: string}>}>
      */
-    private function bookingOpen(ServiceArea $area, mixed $organization): array
+    public function bookingOpen(ServiceArea $area, mixed $organization): array
     {
         $settings = app(SettingsResolver::class);
         $zone = (string) $settings->get('timezone', $organization);

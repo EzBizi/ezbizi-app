@@ -194,114 +194,89 @@ class _AddStockMovePaneState extends State<AddStockMovePane> {
             ? _toId != null && _fromId != _toId
             : _jobId != null || _note.text.trim().isNotEmpty);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return formPane(
+      context,
+      transfer ? 'Transfer' : 'Issue stock',
+      showBack: widget.showBack,
+      busy: _busy,
+      onCancel: widget.onCancel,
+      onSave: canSave ? _save : null,
+      saveLabel: transfer ? 'Transfer' : 'Issue',
+      loading: _loading,
       children: [
-        paneHeader(
-          context,
-          transfer ? 'Transfer' : 'Issue stock',
-          showBack: widget.showBack,
-          onBack: _busy ? null : widget.onCancel,
+        SearchPickerField<String>(
+          value: _fromId,
+          label: transfer ? 'From' : 'From location',
+          options: _locationItems(),
+          onChanged: _busy
+              ? null
+              : (v) => setState(() {
+                  _fromId = v;
+                  if (_toId == v) _toId = null;
+                }),
         ),
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SearchPickerField<String>(
-                        value: _fromId,
-                        label: transfer ? 'From' : 'From location',
-                        options: _locationItems(),
-                        onChanged: _busy
-                            ? null
-                            : (v) => setState(() {
-                                _fromId = v;
-                                if (_toId == v) _toId = null;
-                              }),
-                      ),
-                      const SizedBox(height: 12),
-                      if (transfer)
-                        SearchPickerField<String>(
-                          key: ValueKey('to-$_fromId-$_toId'),
-                          value: _toId,
-                          label: 'To',
-                          options: _locationItems(exclude: _fromId),
-                          onChanged: _busy
-                              ? null
-                              : (v) => setState(() => _toId = v),
-                        )
-                      else ...[
-                        _jobField(),
-                        if (_jobSearchError != null) ...[
-                          const SizedBox(height: 8),
-                          ErrorNote(_jobSearchError!),
-                        ],
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _note,
-                          enabled: !_busy,
-                          decoration: const InputDecoration(
-                            labelText: 'Why it left',
-                          ),
-                          onChanged: (_) => setState(() {}),
-                        ),
-                      ],
-                      for (var i = 0; i < _lines.length; i++) ...[
-                        const SizedBox(height: 12),
-                        SearchPickerField<String>(
-                          key: ValueKey(
-                            '${transfer ? 'transfer' : 'issue'}-item-$i-'
-                            '${_lines[i].itemId}',
-                          ),
-                          value: _lines[i].itemId,
-                          label: 'Item',
-                          options: [
-                            for (final item in _items)
-                              SearchOption(
-                                value: item['id'] as String?,
-                                label: inventoryItemChoiceLabel(item),
-                              ),
-                          ],
-                          onChanged: _busy
-                              ? null
-                              : (v) => setState(() => _lines[i].itemId = v),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _lines[i].qty,
-                          enabled: !_busy,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(labelText: 'Qty'),
-                          onChanged: (_) => setState(() {}),
-                        ),
-                      ],
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => setState(() => _lines.add(_MoveLine())),
-                          child: const Text('Add line'),
-                        ),
-                      ),
-                      if (_error != null) ...[
-                        const SizedBox(height: 8),
-                        ErrorNote(_error!),
-                      ],
-                    ],
-                  ),
+        const SizedBox(height: 12),
+        if (transfer)
+          SearchPickerField<String>(
+            key: ValueKey('to-$_fromId-$_toId'),
+            value: _toId,
+            label: 'To',
+            options: _locationItems(exclude: _fromId),
+            onChanged: _busy ? null : (v) => setState(() => _toId = v),
+          )
+        else ...[
+          _jobField(),
+          if (_jobSearchError != null) ...[
+            const SizedBox(height: 8),
+            ErrorNote(_jobSearchError!),
+          ],
+          const SizedBox(height: 12),
+          TextField(
+            controller: _note,
+            enabled: !_busy,
+            decoration: const InputDecoration(labelText: 'Why it left'),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+        for (var i = 0; i < _lines.length; i++) ...[
+          const SizedBox(height: 12),
+          SearchPickerField<String>(
+            key: ValueKey(
+              '${transfer ? 'transfer' : 'issue'}-item-$i-'
+              '${_lines[i].itemId}',
+            ),
+            value: _lines[i].itemId,
+            label: 'Item',
+            options: [
+              for (final item in _items)
+                SearchOption(
+                  value: item['id'] as String?,
+                  label: inventoryItemChoiceLabel(item),
                 ),
+            ],
+            onChanged: _busy
+                ? null
+                : (v) => setState(() => _lines[i].itemId = v),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _lines[i].qty,
+            enabled: !_busy,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Qty'),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: _busy
+                ? null
+                : () => setState(() => _lines.add(_MoveLine())),
+            child: const Text('Add line'),
+          ),
         ),
-        paneFooter(
-          onCancel: _busy ? null : widget.onCancel,
-          onSave: canSave ? _save : null,
-          saveLabel: transfer ? 'Transfer' : 'Issue',
-        ),
+        if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
       ],
     );
   }

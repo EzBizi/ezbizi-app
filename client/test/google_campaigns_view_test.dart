@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/ads_manager_screen.dart';
+import 'package:ezbizi_client/screens/google_campaigns_view.dart' show lsaWeekly;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -76,6 +77,7 @@ void main() {
   Future<void> open(
     WidgetTester tester, {
     required List<String> permissions,
+    bool unfold = true,
   }) async {
     tester.view.physicalSize = const Size(1500, 1000);
     tester.view.devicePixelRatio = 1.0;
@@ -102,7 +104,33 @@ void main() {
                 'name': 'A1 Chimney - Cleveland',
                 'is_manager': false,
               },
+              {
+                'connection_id': 'g2',
+                'customer_id': '8839813550',
+                'name': 'A1 Chimney - Hamden',
+                'is_manager': false,
+              },
             ],
+          });
+        }
+        if (path.endsWith('/ads-manager/google/campaigns') &&
+            request.url.queryParameters['all'] == '1') {
+          return json({
+            'data': {
+              'campaigns': [
+                {
+                  ...campaign('11', 'Cleveland Search'),
+                  'connection_id': 'g1',
+                  'account': 'A1 Chimney - Cleveland',
+                },
+                {
+                  ...campaign('21', 'Hamden Search'),
+                  'connection_id': 'g2',
+                  'account': 'A1 Chimney - Hamden',
+                },
+              ],
+              'refused': <Object>[],
+            },
           });
         }
         if (path.endsWith('/ads-manager/google/campaigns')) {
@@ -113,7 +141,7 @@ void main() {
                 campaign('11', 'Cleveland Search'),
                 campaign(
                   '12',
-                  'Cleveland LSA',
+                  'LocalServicesCampaign:SystemGenerated:0006204bfbf2',
                   type: 'LOCAL_SERVICES',
                   bidding: 'MANUAL_CPA',
                   kind: null,
@@ -141,6 +169,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // Paused rows fold under Inactive (Jose, 2026-11-16); these tests act on them.
+    final fold = find.byKey(const ValueKey('google-inactive'));
+    if (unfold && fold.evaluate().isNotEmpty) {
+      await tester.tap(fold);
+      await tester.pumpAndSettle();
+    }
   }
 
   List<Map> posted(String what) => [
@@ -161,11 +195,11 @@ void main() {
       'g1',
       reason: 'a manager account holds no campaigns',
     );
-    expect(find.text('Local Services'), findsOneWidget);
+    expect(find.textContaining('Local Services'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('google-on-12')));
     await tester.pumpAndSettle();
-    expect(find.text('Turn on Cleveland LSA?'), findsOneWidget);
+    expect(find.text('Turn on Local Services · A1 Chimney - Cleveland?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(posted('status'), isEmpty);
@@ -213,6 +247,53 @@ void main() {
     );
   });
 
+  // UI/UX audit 2026-11-13 §10.1: "$28,571.43/day" was Google's per-day
+  // reading of a $200,000 weekly Local Services budget.
+  test('a Local Services budget is its week, undoing Google\'s cents', () {
+    expect(lsaWeekly(28571.43), 200000);
+    expect(lsaWeekly(857.14), 6000);
+    expect(lsaWeekly(29.93), 209.51);
+  });
+
+  // UI/UX audit 2026-11-13 §9.11: no raw system id as a campaign's name.
+  testWidgets("a Local Services campaign is named for its account, Google's name behind it", (tester) async {
+    await open(tester, permissions: manage);
+
+    final name = find.byKey(const ValueKey('google-name-12'));
+    expect(tester.widget<Text>(name).data, 'Local Services · A1 Chimney - Cleveland');
+    expect(find.textContaining('SystemGenerated'), findsNothing);
+    expect(
+      find.ancestor(of: name, matching: find.byWidgetPredicate((w) => w is Tooltip && w.message!.contains('SystemGenerated'))),
+      findsOneWidget,
+    );
+    expect(tester.widget<Text>(find.byKey(const ValueKey('google-name-11'))).data, 'Cleveland Search');
+  });
+
+  testWidgets('the budget column names no period its cells contradict (D9)', (tester) async {
+    await open(tester, permissions: manage);
+
+    expect(find.textContaining('BUDGET / DAY'), findsNothing);
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('google-budget-11')), matching: find.textContaining('/ day')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a Local Services budget reads and saves per week', (tester) async {
+    await open(tester, permissions: manage);
+
+    final cell = find.byKey(const ValueKey('google-budget-12'));
+    expect(find.descendant(of: cell, matching: find.textContaining('/ week')), findsOneWidget);
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    expect(find.text('Per week'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('google-amount')), '700');
+    await tester.tap(find.byKey(const ValueKey('google-amount-save')));
+    await tester.pumpAndSettle();
+
+    expect(posted('budget').single['daily_budget'], 100.0, reason: 'Google takes a week as day x 7');
+  });
+
   testWidgets('reading alone shows no switches and no edit links', (
     tester,
   ) async {
@@ -220,5 +301,50 @@ void main() {
     expect(find.text('Cleveland Search'), findsOneWidget);
     expect(find.byType(Switch), findsNothing);
     expect(find.byKey(const ValueKey('google-budget-11')), findsNothing);
+  });
+
+  // Jose, 2026-11-16: "paused ones are hidden by default".
+  testWidgets('paused campaigns fold under Inactive with a count; search opens the fold', (tester) async {
+    await open(tester, permissions: manage, unfold: false);
+
+    expect(find.byKey(const ValueKey('google-name-11')), findsOneWidget);
+    expect(find.byKey(const ValueKey('google-name-12')), findsNothing);
+    expect(find.text('Inactive (1)'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const ValueKey('google-ads-search')), 'local');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('google-name-12')), findsOneWidget);
+  });
+
+  testWidgets('the range is Reports\' own picker, sent as from and to', (tester) async {
+    await open(tester, permissions: manage);
+    final read = requests.firstWhere((r) => r.url.path.endsWith('/ads-manager/google/campaigns'));
+    final from = DateTime.parse(read.url.queryParameters['from']!);
+    final to = DateTime.parse(read.url.queryParameters['to']!);
+    expect(to.difference(from).inDays, 29, reason: 'Last 30 days, both ends included');
+    expect(find.byKey(const ValueKey('google-ads-range')), findsOneWidget);
+  });
+
+  testWidgets('All accounts lists every account with its name, and a change goes to the row\'s account', (tester) async {
+    await open(tester, permissions: manage);
+
+    await tester.tap(find.byKey(const ValueKey('google-ads-account')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('All accounts').last);
+    await tester.pumpAndSettle();
+
+    final read = requests.lastWhere((r) => r.url.path.endsWith('/ads-manager/google/campaigns'));
+    expect(read.url.queryParameters['all'], '1');
+    expect(read.url.queryParameters.containsKey('connection_id'), isFalse);
+    expect(find.text('ACCOUNT'), findsOneWidget);
+    expect(find.text('A1 Chimney - Hamden'), findsOneWidget);
+    expect(find.byKey(const ValueKey('google-kpi-Spend')), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('google-kpi-Spend'))).data, r'$1,800.00');
+
+    await tester.tap(find.byKey(const ValueKey('google-on-21')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ad-change-confirm')));
+    await tester.pumpAndSettle();
+    expect(posted('status').single, {'connection_id': 'g2', 'campaign_id': '21', 'status': 'PAUSED'});
   });
 }

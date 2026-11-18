@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/ads_performance_screen.dart';
+import 'package:ezbizi_client/screens/reports/report_range.dart';
 import 'package:ezbizi_client/widgets/date_range_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,6 +41,7 @@ void main() {
     required List<Map<String, dynamic>> accounts,
     Map<String, dynamic>? report,
     Map<String, dynamic>? rollup,
+    DateSpan? range,
   }) async {
     tester.view.physicalSize = const Size(1400, 1200);
     tester.view.devicePixelRatio = 1.0;
@@ -87,7 +89,13 @@ void main() {
       MaterialApp(
         theme: EzBiziTheme.light(),
         home: Scaffold(
-          body: AdsPerformanceScreen(api: api, session: Session(api)),
+          body: range == null
+              ? AdsPerformanceScreen(api: api, session: Session(api))
+              : ReportRange(
+                  span: range,
+                  onChanged: (_) {},
+                  child: AdsPerformanceScreen(api: api, session: Session(api)),
+                ),
         ),
       ),
     );
@@ -480,6 +488,24 @@ void main() {
     );
   });
 
+  // Jose, 2026-11-16: inside Reports, the range every tab shares.
+  testWidgets('inside Reports it asks Google for the shared range', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      accounts: twoAccounts(),
+      report: report(),
+      range: DateSpan(DateTime(2026, 10, 18), DateTime(2026, 11, 15)),
+    );
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    final asked = urls.lastWhere((u) => u.path.contains('/ads/performance'));
+    expect(asked.queryParameters['from'], '2026-10-18');
+    expect(asked.queryParameters['to'], '2026-11-15');
+  });
+
   testWidgets('with nothing connected it names the way in', (tester) async {
     await pump(tester, accounts: const []);
 
@@ -830,5 +856,40 @@ void main() {
       findsOneWidget,
       reason: 'the reader cannot ask about an omission nothing tells them about',
     );
+  });
+
+  // Jose, 2026-11-16: "On top ... a Everything" combining A-1 Chimney and Angi Sweep.
+  testWidgets('Everything sits on top and rolls up every account in one request', (tester) async {
+    await pump(
+      tester,
+      accounts: twoAccounts(),
+      rollup: {
+        'children_total': 2,
+        'not_connected': 0,
+        'data': [
+          {'connection_id': 'c1', 'account': 'A1 Chimney - Cleveland', 'id': '4051729356', 'name': 'A1 Chimney - Cleveland',
+            'clicks': 412, 'impressions': 10500, 'conversions': 31.5, 'all_conversions': 44.25, 'cost': 1234.56, 'currency': 'USD'},
+          {'connection_id': 'c3', 'account': 'Angi Sweep - Bucks', 'id': '1726694743', 'name': 'Angi Sweep - Bucks',
+            'clicks': 88, 'impressions': 900, 'conversions': 4, 'all_conversions': 6, 'cost': 65.44, 'currency': 'USD'},
+        ],
+      },
+    );
+
+    final everything = find.byKey(const ValueKey('ads-account-*everything*'));
+    expect(everything, findsOneWidget);
+    expect(
+      tester.getTopLeft(everything).dy,
+      lessThan(tester.getTopLeft(find.byKey(const ValueKey('ads-account-c1'))).dy),
+      reason: 'above every account and manager',
+    );
+
+    await tester.tap(everything);
+    await tester.pumpAndSettle();
+
+    final asked = urls.where((u) => u.path.contains('/ads/rollup')).single;
+    expect(asked.queryParameters['everything'], '1');
+    expect(asked.queryParameters.containsKey('connection_id'), isFalse);
+    expect(calls.where((c) => c.contains('/ads/performance')), isEmpty);
+    expect(find.text('Angi Sweep - Bucks'), findsWidgets);
   });
 }

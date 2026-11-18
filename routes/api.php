@@ -65,7 +65,9 @@ use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
 use App\Http\Controllers\Api\InstagramCommentsController;
+use App\Http\Controllers\Api\SocialCommentsController;
 use App\Http\Controllers\Api\IntegrationDependentsController;
+use App\Http\Controllers\Api\IntegrationsOverviewController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
 use App\Http\Controllers\Api\InventoryIssuesController;
 use App\Http\Controllers\Api\InventoryItemsController;
@@ -90,6 +92,7 @@ use App\Http\Controllers\Api\LeadHiddenController;
 use App\Http\Controllers\Api\LeadOfficeHoursController;
 use App\Http\Controllers\Api\LeadPresenceController;
 use App\Http\Controllers\Api\LeadReplyTemplatesController;
+use App\Http\Controllers\Api\LeadsRecoveryController;
 use App\Http\Controllers\Api\LeadsController;
 use App\Http\Controllers\Api\LeadSourcesController;
 use App\Http\Controllers\Api\LeadStatsController;
@@ -107,6 +110,7 @@ use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MetaMediaController;
 use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\MondayWebhookController;
 use App\Http\Controllers\Api\Monitoring\CameraBridgeController;
 use App\Http\Controllers\Api\Monitoring\CameraRelayController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
@@ -123,6 +127,7 @@ use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScree
 use App\Http\Controllers\Api\MySignatureController;
 use App\Http\Controllers\Api\NewsletterAudiencesController;
 use App\Http\Controllers\Api\NewsletterImportController;
+use App\Http\Controllers\Api\NewsletterBrandSectionsController;
 use App\Http\Controllers\Api\NewslettersController;
 use App\Http\Controllers\Api\NewsletterUnsubscribeController;
 use App\Http\Controllers\Api\NoteActivityController;
@@ -166,6 +171,7 @@ use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ProjectBoardController;
+use App\Http\Controllers\Api\ProjectInboxController;
 use App\Http\Controllers\Api\PromotionsController;
 use App\Http\Controllers\Api\ProofreadController;
 use App\Http\Controllers\Api\PtoRequestsController;
@@ -219,6 +225,7 @@ use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
 use App\Http\Controllers\Api\TaskBoardsController;
+use App\Http\Controllers\Api\TaskBoardGalleryController;
 use App\Http\Controllers\Api\TaskBoardSettingsController;
 use App\Http\Controllers\Api\TaskBoardViewsController;
 use App\Http\Controllers\Api\TasksController;
@@ -524,6 +531,13 @@ Route::get('v1/whatsapp/media/{phone}/{media}', WhatsAppMediaController::class)
     ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
     ->name('whatsapp.media');
 
+// A Task Board video (or its poster) for a player that cannot send a token:
+// 10-minute signed link naming its user; board visibility re-checked each time.
+Route::get('v1/attachments/{attachment}/stream', [\App\Http\Controllers\Api\AttachmentStreamController::class, 'show'])
+    ->middleware(['signed', 'throttle:600,1'])
+    ->whereUuid('attachment')
+    ->name('attachments.stream');
+
 Route::get('v1/meta/media/{connection}/{mid}/{index}', MetaMediaController::class)
     ->middleware(['signed', 'throttle:120,1'])
     ->where(['connection' => '[0-9a-f-]+', 'mid' => '[A-Za-z0-9_-]+', 'index' => '[0-9]+'])
@@ -641,6 +655,12 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
     ->where('network', SocialProvider::oauthRoutePattern())
     ->name('social.callback');
 
+// Monday says an item changed. Unauthenticated by necessity: the JWT Monday
+// signs with the app's Signing Secret is what is checked (MondayWebhookController).
+Route::post('v1/integrations/monday/webhook', MondayWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('integrations.monday.webhook');
+
 /*
 |--------------------------------------------------------------------------
 | What a customer's WordPress plugin reads — public, and token-authenticated
@@ -715,6 +735,15 @@ Route::post('v1/web/chat/{chat}/typing', [WebEnquiriesController::class, 'typing
 Route::get('v1/web/chat/avatar/{user}', [WebEnquiriesController::class, 'avatar'])
     ->middleware('signed')
     ->name('web.chat.avatar');
+
+// Project Management (Jose, 2026-11-17): a crew's work order and a client's
+// project page, by signed links that lapse; no login.
+Route::get('v1/work-order/{job}', [ProjectBoardController::class, 'sharedWorkOrder'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('work-order.shared');
+Route::get('v1/project/{job}', [\App\Http\Controllers\Api\ProjectTimelineController::class, 'show'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('project.timeline');
 
 Route::post('v1/web/form', [WebEnquiriesController::class, 'submitForm'])
     ->middleware('throttle:web-enquiry')
@@ -963,7 +992,7 @@ Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key'])
+    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle', 'api-key', 'bulk-read'])
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -993,9 +1022,11 @@ Route::prefix('v1')
         // is a perfectly good uuid-shaped-nothing to a route that accepts any
         // id, and the failure is a 404 about a customer rather than a route
         // that was never reached.
-        Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
+        Route::get('customers/duplicates', [CustomersController::class, 'duplicates'])->middleware('throttle:60,1,customers-duplicates');
         Route::get('customers/tags', [CustomersController::class, 'tags']);
-        Route::apiResource('customers', CustomersController::class);
+        // Lists throttled per user (2026-11-17): the busiest client asked one list 39
+        // times in a minute over 14 days of nginx logs (p99.9 18). See config/bulk_read.php.
+        Route::apiResource('customers', CustomersController::class)->middlewareFor('index', 'throttle:120,1,customers-list');
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
         // Each branch's Workiz notes on the customer, read live, never copied.
         Route::get('customers/{customer}/workiz-notes', CustomerWorkizNotesController::class);
@@ -1004,13 +1035,21 @@ Route::prefix('v1')
         Route::get('jobs/book/options', [JobBookingController::class, 'options']);
         Route::post('jobs/book', [JobBookingController::class, 'store']);
         Route::post('jobs/{job}/book/workiz', [JobBookingController::class, 'retryWorkiz']);
-        Route::get('jobs/photos', JobPhotosController::class);
+        Route::get('jobs/photos', JobPhotosController::class)->middleware('throttle:120,1,jobs-photos');
         Route::get('jobs/{job}/performers', [JobsController::class, 'performers']);
-        Route::apiResource('jobs', JobsController::class);
+        Route::apiResource('jobs', JobsController::class)->middlewareFor('index', 'throttle:120,1,jobs-list');
         Route::get('project-board/jobs', [ProjectBoardController::class, 'jobs']);
         Route::patch('project-board/jobs/{job}/repair-team', [ProjectBoardController::class, 'repairTeam']);
+        Route::get('project-board/repair-teams', [ProjectBoardController::class, 'repairTeamList']);
         Route::post('project-board/repair-teams', [ProjectBoardController::class, 'repairTeams']);
         Route::put('project-board/jobs/{job}/parts', [ProjectBoardController::class, 'parts']);
+        Route::put('project-board/column-order', [ProjectBoardController::class, 'columnOrder']);
+        Route::get('project-board/jobs/{job}/work-order', [ProjectBoardController::class, 'workOrder']);
+        Route::get('project-board/dashboard', [ProjectBoardController::class, 'dashboard']);
+        Route::get('project-board/inbox', [ProjectInboxController::class, 'index']);
+        Route::get('project-board/inbox/{job}', [ProjectInboxController::class, 'show']);
+        Route::post('project-board/inbox/{job}', [ProjectInboxController::class, 'reply']);
+        Route::patch('project-board/parts/{part}/reminder', [ProjectBoardController::class, 'partReminder']);
         Route::patch('project-board/jobs/{job}/proposal', [ProjectBoardController::class, 'updateProposal']);
         Route::post('project-board/jobs/{job}/ready', [ProjectBoardController::class, 'ready']);
         Route::get('project-board/options', [ProjectBoardController::class, 'options']);
@@ -1019,6 +1058,8 @@ Route::prefix('v1')
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
         Route::get('task-boards', [TaskBoardsController::class, 'index']);
         Route::get('task-boards/{taskBoard}', [TaskBoardsController::class, 'show']);
+        Route::get('task-boards/{taskBoard}/group-tasks', [TaskBoardsController::class, 'groupTasks']);
+        Route::get('task-boards/{taskBoard}/changes', [TaskBoardsController::class, 'changes']);
         // Custom boards and members, monday-style (inbox 0120).
         Route::post('task-boards', [TaskBoardsController::class, 'store']);
         Route::patch('task-boards/{taskBoard}', [TaskBoardsController::class, 'update']);
@@ -1027,6 +1068,16 @@ Route::prefix('v1')
         Route::post('task-boards/{taskBoard}/unarchive', [TaskBoardsController::class, 'unarchive']);
         Route::post('task-boards/{id}/restore', [TaskBoardsController::class, 'restore']);
         Route::get('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'members']);
+        Route::get('task-boards/{taskBoard}/people/{user}', [TaskBoardsController::class, 'person']);
+        // Folders and colours on the board list (Jose 11-13), shared for the organization.
+        Route::get('task-board-folders', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'index']);
+        Route::post('task-board-folders', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'store']);
+        Route::patch('task-board-folders/{folder}', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'update']);
+        Route::delete('task-board-folders/{folder}', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'destroy']);
+        // The automatic company and branch groups' colours: one set per organization.
+        Route::get('task-board-group-colours', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'groupColours']);
+        Route::patch('task-board-group-colours', [\App\Http\Controllers\Api\TaskBoardFoldersController::class, 'updateGroupColours']);
+        Route::get('task-boards/{taskBoard}/attachments', [TaskBoardGalleryController::class, 'index']);
         Route::post('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'storeMember']);
         Route::patch('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'updateMember']);
         Route::delete('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'destroyMember']);
@@ -1043,16 +1094,22 @@ Route::prefix('v1')
         Route::patch('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'update']);
         Route::delete('task-boards/{taskBoard}/views/{view}', [TaskBoardViewsController::class, 'destroy']);
         Route::post('tasks/bulk', [TasksController::class, 'bulk']);
+        // Sensitive tasks: an authenticator code opens them on this session for 5 minutes.
+        Route::delete('tasks/unlock', [TasksController::class, 'lock']);
+        Route::post('tasks/{task}/unlock', [TasksController::class, 'unlock']);
         Route::post('tasks', [TasksController::class, 'store']);
         Route::patch('tasks/{task}/move', [TasksController::class, 'move']);
         Route::post('tasks/{task}/copy', [TasksController::class, 'copy']);
+        Route::post('tasks/{task}/suggest-label', [TasksController::class, 'suggestLabel']);
         Route::post('tasks/{id}/restore', [TasksController::class, 'restore']);
+        Route::get('task-search', [TasksController::class, 'search'])->middleware('throttle:120,1,task-search');
         Route::get('tasks/{task}', [TasksController::class, 'show']);
         Route::patch('tasks/{task}', [TasksController::class, 'update']);
         Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
         Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
         Route::get('tasks/{task}/activity', [TasksController::class, 'activity']);
         Route::get('tasks/{task}/links', [TasksController::class, 'links']);
+        Route::get('tasks/{task}/same-caller', [TasksController::class, 'sameCaller']);
         Route::post('tasks/{task}/links', [TasksController::class, 'storeLink']);
         Route::delete('tasks/{task}/links/{linked}', [TasksController::class, 'destroyLink']);
 
@@ -1060,6 +1117,9 @@ Route::prefix('v1')
         // alone would be an id oracle across franchises.
         Route::post('jobs/{job}/lines', [JobLinesController::class, 'store']);
         Route::post('jobs/{job}/notes', [JobNotesController::class, 'store']);
+        Route::patch('jobs/{job}/notes/{note}', [JobNotesController::class, 'update']);
+        Route::delete('jobs/{job}/notes/{note}', [JobNotesController::class, 'destroy']);
+        Route::put('jobs/{job}/workiz-notes', [JobNotesController::class, 'workiz']);
         // @mentions and unread notes on jobs, leads and tasks (monday port, 2026-11-09).
         Route::get('mentionable', [NoteActivityController::class, 'mentionable']);
         Route::post('note-reads', [NoteActivityController::class, 'read']);
@@ -1214,7 +1274,7 @@ Route::prefix('v1')
         Route::get('leads/sources', [LeadSourcesController::class, 'index']);
         // Leads › Manage › Hidden (Jose, 2026-10-29): one grant sees, hides and unhides.
         Route::middleware('permission:'.Lead::HIDDEN_PERMISSION)->group(function () {
-            Route::get('leads/hidden', [LeadHiddenController::class, 'index']);
+            Route::get('leads/hidden', [LeadHiddenController::class, 'index'])->middleware('throttle:60,1,leads-hidden');
             Route::post('leads/hidden-numbers', [LeadHiddenController::class, 'hideNumberDirectly']);
             Route::delete('leads/hidden-numbers/{number}', [LeadHiddenController::class, 'unhideNumber']);
             Route::post('leads/{lead}/hide', [LeadHiddenController::class, 'hide']);
@@ -1226,10 +1286,18 @@ Route::prefix('v1')
             // No whereIn on {scope}: the controller's match() refuses any other scope, and a
             // route constraint hides the call from ClientCallsRealRoutesTest (failed the 0.0.0478 precheck).
             Route::put('leads/office-hours/{scope}/{id}', [LeadOfficeHoursController::class, 'update']);
+            // Leads › Manage › Phone lines (Jose, 2026-11-17): whose calls each RingCentral number takes.
+            Route::get('leads/phone-lines', [\App\Http\Controllers\Api\LeadPhoneLinesController::class, 'index']);
+            Route::put('leads/phone-lines', [\App\Http\Controllers\Api\LeadPhoneLinesController::class, 'update']);
+        });
+        // Leads › Manage › Recovery (Jose, 2026-11-16). Edits go through PATCH automations/{id}.
+        Route::middleware('permission:automations.view')->group(function () {
+            Route::get('leads/recovery', [LeadsRecoveryController::class, 'index'])->middleware('throttle:60,1,leads-recovery');
+            Route::post('leads/recovery/preview', [LeadsRecoveryController::class, 'preview']);
         });
         Route::get('leads/reply-templates', [LeadReplyTemplatesController::class, 'index']);
         Route::put('leads/reply-templates/{company}', [LeadReplyTemplatesController::class, 'update']);
-        Route::get('leads', [LeadsController::class, 'index']);
+        Route::get('leads', [LeadsController::class, 'index'])->middleware('throttle:120,1,leads-list');
         Route::get('leads/{lead}', [LeadsController::class, 'show']);
         Route::get('leads/{lead}/conversations/{conversation}/recording', [LeadsController::class, 'recording']);
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
@@ -1238,6 +1306,7 @@ Route::prefix('v1')
         Route::post('leads/{lead}/proofread', [LeadsController::class, 'proofread']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
         Route::post('leads/{lead}/follow-up-handled', [LeadsController::class, 'followUpHandled']);
+        Route::post('leads/{lead}/reading/use', [LeadsController::class, 'useReading']);
         Route::post('leads/{lead}/reclassify', [LeadsController::class, 'reclassify']);
         Route::get('leads/{lead}/timeline', [LeadsController::class, 'timeline']);
         Route::patch('leads/{lead}/conversations/{conversation}/caller-type', [LeadsController::class, 'callerType']);
@@ -1246,6 +1315,9 @@ Route::prefix('v1')
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
         Route::get('leads/{lead}/workiz-choices', [LeadsController::class, 'workizChoices']);
         Route::post('leads/{lead}/google-credit', [LeadsController::class, 'requestCredit']);
+        // Another date (Jose, 2026-11-16): the area's open windows, then move and approve.
+        Route::get('leads/{lead}/booking/days', [LeadsController::class, 'bookingDays']);
+        Route::post('leads/{lead}/booking/move', [LeadsController::class, 'moveBooking']);
         Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
@@ -1802,6 +1874,7 @@ Route::prefix('v1')
             Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion'])
                 ->middleware('cache.headers:etag');
             Route::get('scheduling/availability/fit', [SchedulingAvailabilityController::class, 'fit']);
+            Route::get('scheduling/availability/days', [SchedulingAvailabilityController::class, 'days']);
 
             // Suggest is Availability's search box and has no other caller
             // (grepped across client/lib). It answers with area names, city
@@ -1839,6 +1912,7 @@ Route::prefix('v1')
             Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
             Route::delete('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'clearDate']);
             Route::put('scheduling/areas/{area}/available-from', [SchedulingAreasController::class, 'availableFrom']);
+            Route::put('scheduling/areas/{area}/latest-windows', [SchedulingAreasController::class, 'latestWindows']);
             Route::put('scheduling/areas/{area}/shares-with', [SchedulingAreasController::class, 'sharesWith']);
             Route::put('scheduling/areas/{area}/limits', [SchedulingAreasController::class, 'limits']);
             Route::put('scheduling/areas/{area}/scheduled/{date}', [SchedulingAreasController::class, 'scheduleChange']);
@@ -2501,6 +2575,30 @@ Route::prefix('v1')
             Route::post('newsletter/import/svg', [NewsletterImportController::class, 'svg']);
             Route::post('newsletter/import/artwork', [NewsletterImportController::class, 'artwork']);
             Route::post('newsletter/import/library/{item}', [NewsletterImportController::class, 'library']);
+            // P1c: HTML read for keep/convert without saving, and the kept original.
+            Route::post('newsletter/import/html', [NewsletterImportController::class, 'html']);
+            Route::get('newsletter/imports/{import}', [NewsletterImportController::class, 'original']);
+            Route::post('newsletters/{newsletter}/checkpoint', [NewslettersController::class, 'checkpoint']);
+            // A picture uploaded from the composer's image picker (P0, 2026-11-17).
+            Route::post('newsletter/images', [NewsletterImportController::class, 'upload']);
+            // P1a: the picker's library list for newsletter-only roles, and a
+            // non-destructive crop (the original is kept).
+            Route::get('newsletter/images', [NewsletterImportController::class, 'images']);
+            Route::get('newsletter/images/{item}/file', [NewsletterImportController::class, 'imageFile']);
+            Route::post('newsletter/images/crop', [NewsletterImportController::class, 'crop']);
+            // P1a: durable revision history; a restore is a new revision.
+            Route::get('newsletters/{newsletter}/revisions', [NewslettersController::class, 'revisions']);
+            Route::get('newsletters/{newsletter}/revisions/{revision}', [NewslettersController::class, 'revision']);
+            Route::post('newsletters/{newsletter}/revisions/{revision}/restore', [NewslettersController::class, 'restore']);
+
+            // P1b: the company brand and saved sections (linked uses pin a version).
+            Route::get('newsletter/brand', [NewsletterBrandSectionsController::class, 'brand']);
+            Route::put('newsletter/brand', [NewsletterBrandSectionsController::class, 'saveBrand']);
+            Route::get('newsletter/sections', [NewsletterBrandSectionsController::class, 'sections']);
+            Route::post('newsletter/sections', [NewsletterBrandSectionsController::class, 'store']);
+            Route::get('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'section']);
+            Route::put('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'update']);
+            Route::delete('newsletter/sections/{section}', [NewsletterBrandSectionsController::class, 'destroy']);
 
             Route::get('newsletter/audiences', [NewsletterAudiencesController::class, 'index']);
             Route::post('newsletter/audiences', [NewsletterAudiencesController::class, 'store']);
@@ -2526,6 +2624,8 @@ Route::prefix('v1')
         // Managing a post after Publish: from the Dashboard's side panel or Compose.
         Route::middleware('permission:marketing.dashboard.view,marketing.compose.view')->group(function () {
             Route::patch('social/posts/{post}', [SocialPostsController::class, 'update']);
+            Route::post('social/posts/{post}/media', [SocialPostsController::class, 'media']);
+            Route::get('social/posts/{post}/media', [SocialPostsController::class, 'mediaFile']);
             Route::delete('social/posts/{post}', [SocialPostsController::class, 'cancel']);
             Route::post('social/posts/{post}/targets/{target}/dismiss', [SocialPostsController::class, 'dismiss']);
             Route::delete('social/posts/{post}/targets/{target}/remote', [SocialPostsController::class, 'deleteRemote']);
@@ -2553,6 +2653,10 @@ Route::prefix('v1')
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/business-location', [SocialConnectionsController::class, 'linkBusinessLocation']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
+        // Connect's choices: a Pinterest board, a Mailchimp audience (ConnectSetup).
+        Route::patch('social/connections/{connection}/choice', [SocialConnectionsController::class, 'choose']);
+        Route::patch('social/connections/{connection}/whatsapp-purpose', [SocialConnectionsController::class, 'whatsappPurpose']);
+        Route::get('social/connections/{connection}/whatsapp-health', [SocialConnectionsController::class, 'whatsappHealth']);
         Route::get('social/connections/{connection}/tiktok-creator', [SocialConnectionsController::class, 'tiktokCreator']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);
         // Comments on the Instagram account linked to a connected Page
@@ -2560,10 +2664,19 @@ Route::prefix('v1')
         Route::get('social/connections/{connection}/instagram-comments', [InstagramCommentsController::class, 'index']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/replies', [InstagramCommentsController::class, 'reply']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/hide', [InstagramCommentsController::class, 'hide']);
+        // Every comment on every connected account (Facebook, Instagram,
+        // YouTube, X) in one inbox; each row names the actions it supports.
+        Route::get('social/comments', [SocialCommentsController::class, 'index']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/replies', [SocialCommentsController::class, 'reply']);
+        Route::post('social/connections/{connection}/comments/{network}/{comment}/hide', [SocialCommentsController::class, 'hide']);
+        Route::delete('social/connections/{connection}/comments/{network}/{comment}', [SocialCommentsController::class, 'destroy']);
         Route::delete('social/providers/{provider}/connections', [SocialConnectionsController::class, 'destroyProvider']);
         // What stops working if a connection is disconnected (the disconnect panel).
         Route::get('integrations/{kind}/{id}/dependents', [IntegrationDependentsController::class, 'show'])
             ->where('kind', 'social|phone|workspace');
+        // Settings > Integrations in one payload: summary, apps, per-check results (no live provider calls).
+        Route::get('integrations/overview', [IntegrationsOverviewController::class, 'show']);
+        Route::post('integrations/{id}/recheck', [IntegrationsOverviewController::class, 'recheck']);
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
             ->where('network', SocialProvider::oauthRoutePattern());
@@ -2979,6 +3092,7 @@ Route::prefix('v1')
         Route::middleware('permission:email.settings.view')->group(function () {
             Route::post('email/mailboxes', [MailboxesController::class, 'store']);
             Route::post('email/mailboxes/workspace-batch', [MailboxesController::class, 'storeWorkspaceBatch']);
+            Route::get('email/mailboxes/suggest-scope', [MailboxesController::class, 'suggestScope']);
 
             // The new-email notification, edited from the inbox's card. The
             // automation rule stays the source of truth: MailboxesController.
@@ -3304,6 +3418,8 @@ Route::prefix('v1')
         // background beat, so all four routes stay in THIS idle-bearing group —
         // see CamerasController's docblock.
         Route::get('monitoring/cameras', [MonitoringCamerasController::class, 'index']);
+        Route::get('monitoring/dashcam-events', [App\Http\Controllers\Api\Monitoring\DashcamEventsController::class, 'index']);
+        Route::post('monitoring/dashcam-events/{id}/clip-url', [App\Http\Controllers\Api\Monitoring\DashcamEventsController::class, 'clipUrl'])->middleware('throttle:60,1,dashcam-clip');
         Route::post('monitoring/cameras', [MonitoringCamerasController::class, 'store']);
         Route::patch('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'update']);
         Route::delete('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'destroy']);
@@ -3541,6 +3657,12 @@ Route::prefix('v1')
 
         // "Did you mean" for a composer with no lead behind it (Phone's texts).
         Route::post('proofread', ProofreadController::class)->middleware('throttle:60,1');
+
+        // The release on its way, for the bar in What's been built (Jose 11-12).
+        Route::get('release/upcoming', [\App\Http\Controllers\Api\StaffReleaseStatusController::class, 'upcoming']);
+
+        // The app-wide live feed: ids changed since a cursor (ChangeFeed).
+        Route::get('changes', [\App\Http\Controllers\Api\ChangesController::class, 'index']);
 
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)
@@ -3947,6 +4069,7 @@ Route::prefix('v1/staff')
         // plane, behind the `staff` middleware, not `tenant`.
         Route::get('suggestions', [StaffSuggestionsController::class, 'index']);
         Route::post('suggestions/{suggestion}/decide', [StaffSuggestionsController::class, 'decide']);
+        Route::post('suggestions/{suggestion}/progress', [StaffSuggestionsController::class, 'progress']);
         Route::get('suggestions/{suggestion}/files/{index}', [StaffSuggestionsController::class, 'file'])->whereNumber('index');
 
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);

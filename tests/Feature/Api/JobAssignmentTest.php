@@ -220,8 +220,8 @@ class JobAssignmentTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $elsewhere = $this->aFranchise($alpha, 'Alpha F2');
-        $inReach = $this->userWithRole($alpha, 'Here Tech', [], onlyAt: $alpha['franchise']);
-        $outOfReach = $this->userWithRole($alpha, 'There Tech', [], onlyAt: $elsewhere);
+        $inReach = $this->userWithRole($alpha, 'technician', [], onlyAt: $alpha['franchise']);
+        $outOfReach = $this->userWithRole($alpha, 'Local Manager', [], onlyAt: $elsewhere);
         $jobId = $this->aJob($alpha);
 
         $ids = array_column($this->signedInAs($alpha['admin'])
@@ -229,6 +229,54 @@ class JobAssignmentTest extends TestCase
 
         $this->assertContains($inReach->id, $ids);
         $this->assertNotContains($outOfReach->id, $ids);
+    }
+
+    /** Jose, 2026-11-16: the picker shows only Technician / Local Manager unless Settings says otherwise. */
+    public function test_the_technician_roles_setting_defaults_to_technician_and_local_manager(): void
+    {
+        $this->assertSame(['Technician', 'Local Manager'],
+            app(\App\Support\Settings\SettingRegistry::class)->get('project_board.technician_roles')->default);
+    }
+
+    public function test_the_picker_lists_only_the_technician_roles_and_keeps_an_outside_assignee(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $tech = $this->userWithRole($alpha, 'Technician', [], onlyAt: $alpha['franchise']);
+        $dispatcher = $this->userWithRole($alpha, 'Dispatcher', [], onlyAt: $alpha['franchise']);
+        $jobId = $this->aJob($alpha);
+
+        $data = $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobId}/performers")->assertOk()->json('data');
+        $ids = array_column($data, 'id');
+        $this->assertContains($tech->id, $ids);
+        $this->assertNotContains($dispatcher->id, $ids);
+
+        // Assigned by Workiz sync, not through the picker: still shown, flagged.
+        $this->inTenant($alpha['org'], fn () => \App\Models\Job::whereKey($jobId)->update(['performed_by_user_id' => $dispatcher->id]));
+        $row = collect($this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs/{$jobId}/performers")->json('data'))->firstWhere('id', $dispatcher->id);
+        $this->assertTrue($row['outside_roles'] ?? false);
+    }
+
+    public function test_assigning_someone_outside_the_technician_roles_is_refused(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $dispatcher = $this->userWithRole($alpha, 'Dispatcher', [], onlyAt: $alpha['franchise']);
+        $jobId = $this->aJob($alpha);
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/jobs/{$jobId}", ['performed_by_user_id' => $dispatcher->id])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.performed_by_user_id.0',
+                "That person's role cannot be picked as Technician. Project Management › Settings lists the roles that can.");
+
+        // The setting is what decides: add Dispatcher and the same save passes.
+        $this->signedInAs($alpha['admin'])
+            ->patchJson('/api/v1/settings/project_board.technician_roles?scope_type=organization&scope_id='
+                .$alpha['org']->id, ['value' => ['dispatcher']])->assertOk();
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/jobs/{$jobId}", ['performed_by_user_id' => $dispatcher->id])
+            ->assertOk();
     }
 
     // ── helpers ──────────────────────────────────────────────────

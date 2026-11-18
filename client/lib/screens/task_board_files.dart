@@ -62,7 +62,11 @@ IconData fileIcon(String? mime) {
 
 /// An absolute attachment URL as the API client's path and query: the
 /// bearer token travels only through the client, never in a URL.
-Future<ApiBytesResponse> _fetch(ApiClient api, String url) {
+Future<ApiBytesResponse> _fetch(ApiClient api, String url) =>
+    fetchTaskAttachment(api, url);
+
+/// [_fetch], for the board's Gallery.
+Future<ApiBytesResponse> fetchTaskAttachment(ApiClient api, String url) {
   final uri = Uri.parse(url);
   final at = uri.path.indexOf('/api/v1');
   final path = at < 0 ? uri.path : uri.path.substring(at + '/api/v1'.length);
@@ -232,10 +236,14 @@ class TaskAttachmentViewer extends StatefulWidget {
     super.key,
     required this.api,
     required this.attachment,
+    this.onGoToTask,
   });
 
   final ApiClient api;
   final Map<String, dynamic> attachment;
+
+  /// The Gallery's way back to the file's task; none from the task itself.
+  final VoidCallback? onGoToTask;
 
   @override
   State<TaskAttachmentViewer> createState() => _TaskAttachmentViewerState();
@@ -272,6 +280,13 @@ class _TaskAttachmentViewerState extends State<TaskAttachmentViewer> {
       subtitle: a['size'] is num ? fileSizeLabel(a['size'] as num) : null,
       width: 720,
       actions: [
+        if (widget.onGoToTask != null)
+          OutlinedButton.icon(
+            key: const Key('gallery-go-to-task'),
+            onPressed: widget.onGoToTask,
+            icon: const Icon(Icons.open_in_new, size: 18),
+            label: const Text('Go to task'),
+          ),
         FilledButton.icon(
           key: const Key('task-attachment-download'),
           onPressed: _bytes == null
@@ -292,10 +307,13 @@ class _TaskAttachmentViewerState extends State<TaskAttachmentViewer> {
           ? const Center(child: CircularProgressIndicator())
           : _pdf
           ? PdfView(key: const Key('task-attachment-pdf'), bytes: _bytes!)
-          : Image.memory(
-              _bytes!,
-              key: const Key('task-attachment-image'),
-              fit: BoxFit.contain,
+          : InteractiveViewer(
+              maxScale: 6,
+              child: Image.memory(
+                _bytes!,
+                key: const Key('task-attachment-image'),
+                fit: BoxFit.contain,
+              ),
             ),
     );
   }

@@ -21,6 +21,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SocialPostTarget extends Model implements StatesRetention
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsParentChanges;
+
+    /** Sent, failed or approved on one page is its post's change on the live feed (RecordsParentChanges). */
+    protected static array $changeParent = ['social_posts', SocialPost::class, 'social_post_id'];
+
+    /**
+     * A conditional UPDATE (a claim, a retry, an approval) fires no model
+     * event: the writer puts the post on the live feed by hand.
+     */
+    public static function announce(string $targetId): void
+    {
+        $postId = static::withoutGlobalScopes()->whereKey($targetId)->value('social_post_id');
+        $post = $postId === null ? null : SocialPost::withoutGlobalScopes()->find($postId);
+        if ($post !== null) {
+            \App\Support\Live\ChangeFeed::record($post, 'social_posts');
+        }
+    }
+
     use HasUuids;
 
     /**

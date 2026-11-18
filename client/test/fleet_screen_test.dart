@@ -338,6 +338,10 @@ void main() {
     );
 
     expect(find.byType(TextField), findsOneWidget);
+    // Mobile review P10: folded behind one button until asked for.
+    expect(find.text('Due soon'), findsNothing);
+    await tester.tap(find.byKey(const Key('filters-fold')));
+    await tester.pumpAndSettle();
     expect(find.text('Due soon'), findsOneWidget);
 
     // The chips now wrap past the first rows, so drag from a chip itself.
@@ -847,6 +851,8 @@ void main() {
     );
 
     expect(find.byTooltip('4 fields not filled in'), findsOneWidget);
+    // Readable without hover: a phone shows the words, not a bare number.
+    expect(find.text('4 missing'), findsOneWidget);
     expect(find.byTooltip('0 fields not filled in'), findsNothing);
     expect(find.byTooltip('1 field not filled in'), findsNothing);
   });

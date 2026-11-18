@@ -164,7 +164,15 @@ void main() {
       await tester.tap(find.text('Crown inspection'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('J-1001 · Workiz #12345'), findsOneWidget);
+      // Design 196: the number under the title, Workiz's in the facts grid.
+      expect(find.text('J-1001'), findsWidgets);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('fact-Workiz')),
+          matching: find.text('#12345'),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -539,6 +547,24 @@ void main() {
         'Flue Survey',
       ], reason: 'the two filters go together');
     });
+  });
+
+  // Design 195 (phone 4): the first row was below 70% of a 375 screen.
+  testWidgets('on a phone search, Filters and ⋯ share one line; Upcoming / '
+      'Past / All is inside Filters', (tester) async {
+    await _pump(tester, size: const Size(375, 800));
+
+    final search = tester.getCenter(
+      find.byKey(const ValueKey('tour-jobs-search')),
+    );
+    final filters = tester.getCenter(find.byKey(const Key('jobs-filters')));
+    expect(filters.dy, moreOrLessEquals(search.dy, epsilon: 2));
+    expect(find.byKey(const Key('jobs-window')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('jobs-filters')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('jobs-window')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
 

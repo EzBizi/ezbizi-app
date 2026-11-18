@@ -37,12 +37,12 @@ final class WorkizLeadAttributes
      */
     public static function fromPayload(array $payload): array
     {
-        $phone = self::text($payload['Phone'] ?? null);
+        $phone = WorkizValue::text($payload['Phone'] ?? null);
 
         return [
             // The stable id. NOT SerialId — this is the key, with source and
             // organization.
-            'remote_id' => self::text($payload['UUID'] ?? null) ?? '',
+            'remote_id' => WorkizValue::text($payload['UUID'] ?? null) ?? '',
 
             'contact_name' => self::name($payload),
             'phone' => $phone,
@@ -51,8 +51,8 @@ final class WorkizLeadAttributes
             // matches on exactly this.
             'phone_digits' => Lead::digits($phone),
 
-            'email' => self::text($payload['Email'] ?? null),
-            'category' => self::text($payload['JobType'] ?? null),
+            'email' => WorkizValue::text($payload['Email'] ?? null),
+            'category' => WorkizValue::text($payload['JobType'] ?? null),
 
             // How the notification names it (LeadNotificationText). Workiz
             // records no intake channel, only the marketing source, and the one
@@ -62,7 +62,7 @@ final class WorkizLeadAttributes
             'lead_type' => strtolower((string) preg_replace('/[^a-z0-9]/i', '', (string) ($payload['JobSource'] ?? ''))) === 'reservewithgoogle'
                 ? LeadNotificationText::WORKIZ_ONLINE
                 : null,
-            'summary' => self::text($payload['LeadNotes'] ?? null),
+            'summary' => WorkizValue::text($payload['LeadNotes'] ?? null),
 
             // Workiz's state, verbatim and joined, never mapped.
             'source_status' => self::sourceStatus($payload),
@@ -79,7 +79,7 @@ final class WorkizLeadAttributes
             // convert with — the branch's is the only one that exists, and it
             // lives on the connection. Converting inside this class would hide
             // an assumption nobody could see afterwards.
-            'received_at' => self::moment($payload['CreatedDate'] ?? null) ?? self::moment($payload['LeadDateTime'] ?? null),
+            'received_at' => WorkizValue::moment($payload['CreatedDate'] ?? null) ?? WorkizValue::moment($payload['LeadDateTime'] ?? null),
 
             'is_test' => false,
         ];
@@ -94,12 +94,12 @@ final class WorkizLeadAttributes
      */
     private static function name(array $payload): ?string
     {
-        $first = self::text($payload['FirstName'] ?? null);
-        $last = self::text($payload['LastName'] ?? null);
+        $first = WorkizValue::text($payload['FirstName'] ?? null);
+        $last = WorkizValue::text($payload['LastName'] ?? null);
 
         $name = trim(implode(' ', array_filter([$first, $last])));
 
-        return $name !== '' ? $name : self::text($payload['Company'] ?? null);
+        return $name !== '' ? $name : WorkizValue::text($payload['Company'] ?? null);
     }
 
     /**
@@ -107,44 +107,13 @@ final class WorkizLeadAttributes
      */
     private static function sourceStatus(array $payload): ?string
     {
-        $status = self::text($payload['Status'] ?? null);
-        $sub = self::text($payload['SubStatus'] ?? null);
+        $status = WorkizValue::text($payload['Status'] ?? null);
+        $sub = WorkizValue::text($payload['SubStatus'] ?? null);
 
         if ($status === null) {
             return $sub;
         }
 
         return $sub === null ? $status : $status.' · '.$sub;
-    }
-
-    /**
-     * Workiz's absent value is the empty string, not null — measured across 400
-     * captured payloads — so `?? null` never fires and this is where the row's
-     * NULLs actually come from. An array is null rather than the word "Array".
-     */
-    private static function text(mixed $value): ?string
-    {
-        if ($value === null || is_array($value) || is_bool($value)) {
-            return null;
-        }
-
-        $text = trim((string) $value);
-
-        return $text === '' ? null : $text;
-    }
-
-    private static function moment(mixed $value): ?string
-    {
-        if (! is_string($value)) {
-            return null;
-        }
-
-        $value = trim($value);
-
-        if ($value === '' || str_starts_with($value, '0000-00-00')) {
-            return null;
-        }
-
-        return $value;
     }
 }

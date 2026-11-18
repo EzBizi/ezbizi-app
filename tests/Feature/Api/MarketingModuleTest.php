@@ -54,7 +54,7 @@ class MarketingModuleTest extends TestCase
         // grantable "like all the others"), in the order the strip draws;
         // Posts became Dashboard, Compose and Calendar on 2026-10-12.
         $this->assertSame(
-            ['marketing.view', 'marketing.edit', 'marketing.dashboard.view', 'marketing.compose.view', 'marketing.calendar.view', 'marketing.accounts.view', 'marketing.qr_codes.view'],
+            ['marketing.view', 'marketing.edit', 'marketing.dashboard.view', 'marketing.compose.view', 'marketing.calendar.view', 'marketing.accounts.view', 'marketing.comments.view', 'marketing.qr_codes.view'],
             $module->permissionKeys(),
         );
 

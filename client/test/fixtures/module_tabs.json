@@ -205,6 +205,7 @@
                 "WhatsApp",
                 "Workiz",
                 "Promotions",
+                "Recovery",
                 "Hidden"
             ],
             "within": {
@@ -227,6 +228,7 @@
                 "Compose",
                 "Calendar",
                 "Accounts",
+                "Comments",
                 "QR Codes"
             ],
             "within": {
@@ -234,6 +236,7 @@
                 "Compose": "Social Media Management",
                 "Calendar": "Social Media Management",
                 "Accounts": "Social Media Management",
+                "Comments": "Social Media Management",
                 "QR Codes": "Social Media Management"
             }
         },
@@ -300,6 +303,8 @@
             "label": "Project Management",
             "parent": null,
             "tabs": [
+                "Dashboard",
+                "Inbox",
                 "Unscheduled",
                 "Ready to Schedule",
                 "Scheduled",
@@ -317,7 +322,7 @@
                 "Report Builder",
                 "Performance",
                 "Scoring",
-                "Marketing",
+                "Marketing Reports",
                 "Meta",
                 "Thumbtack",
                 "Jobs",
@@ -554,6 +559,7 @@
         "leads.manage",
         "leads.promotions.view",
         "leads.reclassify",
+        "leads.recovery.view",
         "leads.ringcentral.view",
         "leads.thumbtack.view",
         "leads.view",
@@ -564,6 +570,7 @@
         "leads.workiz.view",
         "marketing.accounts.view",
         "marketing.calendar.view",
+        "marketing.comments.view",
         "marketing.compose.view",
         "marketing.dashboard.view",
         "marketing.edit",
@@ -587,6 +594,7 @@
         "monitoring.map.view",
         "monitoring.screenshots.view",
         "monitoring.specs.view",
+        "monitoring.unmonitored",
         "monitoring.view",
         "newsletter.composer.view",
         "newsletter.create",

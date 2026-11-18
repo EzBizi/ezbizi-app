@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -79,22 +80,32 @@ class _QrCodesTabState extends State<QrCodesTab> {
   void initState() {
     super.initState();
     _load();
+    // A code made or changed elsewhere: re-read quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'qr_codes'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _destination.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = _codes.isEmpty;
-      _error = null;
-    });
+  /// [quiet]: a live re-read; a failure keeps the codes on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = _codes.isEmpty;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/marketing/qr-codes');
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
 
     setState(() {
       _loading = false;
@@ -219,18 +230,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
 
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ErrorNote(_error!),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ],
-        ),
-      );
+      return ErrorRetry(_error!, onRetry: _load);
     }
 
     final narrow = MediaQuery.sizeOf(context).width < 600;

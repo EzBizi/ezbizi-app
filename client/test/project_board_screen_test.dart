@@ -19,9 +19,11 @@ void main() {
     tester,
   ) async {
     final requests = <http.Request>[];
+    var over = 500;
     final api = ApiClient(
       client: MockClient((request) async {
-        requests.add(request);
+        // The live feed's own reads (every 10 s) are not the board's.
+        if (!request.url.path.endsWith('/changes')) requests.add(request);
         final path = request.url.path;
         if (path.endsWith('/me')) {
           return _json({
@@ -69,6 +71,7 @@ void main() {
           return _json({
             'data': [
               {'id': 'u-7', 'name': 'Guy Shimonov'},
+              {'id': 'u-9', 'name': 'Old Dispatcher', 'outside_roles': true},
             ],
           });
         }
@@ -142,7 +145,7 @@ void main() {
               'paid': 1500,
               'due': 1000,
               'total': 2000,
-              'over': 500,
+              'over': over,
               'currency': 'USD',
             },
             'can_edit': true,
@@ -170,10 +173,18 @@ void main() {
     // Live: "Updated hh:mm", a manual refresh, and a quiet reload every
     // minute while on screen (Jose, 2026-11-10).
     expect(find.byKey(const Key('project-board-updated')), findsOneWidget);
+    // Totals as tiles (design 193); Overpaid only when there is any.
+    expect(find.text('Total Paid'), findsOneWidget);
+    expect(find.text('Total Remaining Balance'), findsOneWidget);
+    expect(find.text('Total Amount of Jobs'), findsOneWidget);
     expect(find.byKey(const Key('project-board-total-over')), findsOneWidget);
+    expect(find.byTooltip('Paid beyond the job totals'), findsOneWidget);
+    over = 0;
     final before = requests.length;
     await tester.tap(find.byKey(const Key('project-board-refresh')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('project-board-total-over')), findsNothing);
+    expect(find.text('Total Paid'), findsOneWidget);
     expect(requests.length, before + 1);
     expect(requests.last.url.queryParameters['per_page'], '50');
     await tester.pump(const Duration(seconds: 61));
@@ -185,6 +196,9 @@ void main() {
       find.byKey(const ValueKey('project-board-technician:j-1')),
     );
     await tester.pumpAndSettle();
+    // Only the server's role-filtered list; an assignee outside the roles
+    // is named as such (Jose, 2026-11-16).
+    expect(find.text('Old Dispatcher (not a technician role)'), findsOneWidget);
     await tester.tap(find.text('Guy Shimonov'));
     await tester.pumpAndSettle();
     final tech = requests.lastWhere(
@@ -268,6 +282,9 @@ void main() {
       'item': 'Stainless cap',
       'quantity': 1,
       'price_minor': null,
+      'supplier_id': null,
+      'destination': null,
+      'received': false,
     });
 
     // The company's names and order; a hidden column is not drawn.
@@ -304,8 +321,41 @@ void main() {
     expect(requests.last.url.queryParameters['q'], 'lena');
     expect(requests.last.url.queryParameters['franchise_id'], 'f-1');
 
+    // The ninth tab since Dashboard and Inbox (2026-11-17): scrolled to first.
+    await tester.ensureVisible(find.text('Settings'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
+    // Each sub-tab's rules in its own card (Jose, 2026-11-16), and the
+    // technician roles, Technician + Local Manager by default.
+    for (final key in const [
+      'unscheduled',
+      'ready_to_schedule',
+      'scheduled',
+      'in_progress',
+    ]) {
+      final card = find.byKey(ValueKey('project-board-tab-card:$key'));
+      expect(card, findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.byType(Card)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.byKey(ValueKey('project-board-statuses:$key')),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(
+      tester
+          .widget<FilterChip>(
+            find.byKey(const ValueKey('project-board-tech-role:Technician')),
+          )
+          .selected,
+      isTrue,
+    );
     // Tag lists are compact pickers, not a wall of chips; the new columns
     // have their settings (Jose, 2026-11-10).
     expect(
@@ -348,10 +398,12 @@ void main() {
       Tone.bad,
     );
     await tester.ensureVisible(
-      find.byKey(const Key('project-board-save:tabs')),
+      find.byKey(const Key('project-board-save:tabs:unscheduled')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('project-board-save:tabs')));
+    await tester.tap(
+      find.byKey(const Key('project-board-save:tabs:unscheduled')),
+    );
     await tester.pumpAndSettle();
 
     final tabs = requests.firstWhere(

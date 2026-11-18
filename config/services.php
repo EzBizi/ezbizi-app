@@ -14,24 +14,6 @@ return [
     |
     */
 
-    'ses' => [
-        'key' => env('AWS_ACCESS_KEY_ID'),
-        'secret' => env('AWS_SECRET_ACCESS_KEY'),
-        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
-    ],
-
-    /*
-    | Amazon Bedrock, for what a model can say about a lead (Leads §AI).
-    | Off until all three are set: the same AWS keys as SES, and the model id
-    | exactly as the Bedrock console shows it for Claude in this region.
-    */
-    'bedrock' => [
-        'key' => env('AWS_ACCESS_KEY_ID'),
-        'secret' => env('AWS_SECRET_ACCESS_KEY'),
-        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
-        'model' => env('BEDROCK_MODEL', ''),
-    ],
-
     /*
     |--------------------------------------------------------------------------
     | Google, for shared Gmail inboxes
@@ -124,6 +106,20 @@ return [
     | connect. Ads scopes are not requested.
     |
     */
+    /*
+     * The "EzBizi" app on Monday's Developer Center (Jose, 2026-11-12): Connect
+     * Monday (MondayOAuth) and the signature on Monday's webhooks
+     * (MondayWebhookSignature). The redirect URL registered on the app must be
+     * APP_URL/api/v1/social/monday/callback.
+     */
+    'monday' => [
+        'client_id' => env('MONDAY_CLIENT_ID'),
+        'client_secret' => env('MONDAY_CLIENT_SECRET'),
+        'signing_secret' => env('MONDAY_SIGNING_SECRET'),
+        'redirect' => env('MONDAY_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/monday/callback',
+    ],
+
     'pinterest' => [
         'client_id' => env('PINTEREST_CLIENT_ID'),
         'client_secret' => env('PINTEREST_CLIENT_SECRET'),

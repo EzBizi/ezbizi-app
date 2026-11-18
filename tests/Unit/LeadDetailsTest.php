@@ -51,4 +51,13 @@ class LeadDetailsTest extends TestCase
             'How much for a cleaning?', 'Interested in a quote', 'I have 2 fireplaces',
         ]));
     }
+    /** Charlotte Owens, 2026-11-13: "Flowery Branch / I am available tomorrow" read as one address; the widget's labels were ignored. */
+    public function test_availability_is_not_the_address_and_labels_win(): void
+    {
+        $sms = "5234 Bowman Springs Trail \nFlowery Branch\nI am available tomorrow any day next week.";
+        $this->assertSame('5234 Bowman Springs Trail Flowery Branch', LeadDetails::from([$sms])['address']);
+        $this->assertSame(['name' => 'Charlotte Owens', 'address' => '5234 Bowman Springs Trail Flowery Branch', 'zip' => '30542'], LeadDetails::from([
+            $sms, "Requested: Monday\nName: Charlotte Owens\nPhone: +17705034521\nAddress: 5234 Bowman Springs Trail Flowery Branch\nZIP: 30542",
+        ]));
+    }
 }

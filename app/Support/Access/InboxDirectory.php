@@ -57,7 +57,7 @@ use App\Models\Organization;
  * a quiet one — nothing errors, the wrong addresses simply appear. Belt and
  * braces on this particular query is cheap.
  */
-class InboxDirectory
+class InboxDirectory implements GrantDirectory
 {
     /**
      * The module these inboxes nest under in the roles editor.
@@ -92,9 +92,9 @@ class InboxDirectory
             ->orderBy('address')
             ->get(['id', 'address', 'display_name'])
             ->map(fn (Mailbox $mailbox) => new GrantableInbox(
-                id:      (string) $mailbox->getKey(),
+                id: (string) $mailbox->getKey(),
                 address: (string) $mailbox->address,
-                label:   $mailbox->display_name,
+                label: $mailbox->display_name,
             ))
             ->all();
     }

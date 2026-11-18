@@ -23,6 +23,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use App\Support\Workiz\WorkizClock;
 
 /**
  * Turn the Workiz mirror into EzBizi customers and jobs.
@@ -97,11 +98,13 @@ class ProjectWorkizRecords extends Command
     public const LOCK = 'ezbizi:project-workiz';
 
     /**
-     * Long enough that no real run outlives it — projecting the whole history
-     * import took about two minutes — and short enough that a run killed
-     * mid-way does not hold the projection off for more than an hour.
+     * The scheduler slot's own ceiling (ezbizi-scheduler@.service,
+     * TimeoutStartSec=300): no run can outlive it, so neither does the lock.
+     * It was an hour, and on 11-12 a slot killed at 17:25 by that timeout left
+     * it held: no Workiz job became an EzBizi job until 18:25. A normal run
+     * takes about 100 seconds.
      */
-    private const LOCK_SECONDS = 3600;
+    public const LOCK_SECONDS = 300;
 
     /**
      * When the last completed pass BEGAN. The next pass derives clients only
@@ -578,7 +581,7 @@ class ProjectWorkizRecords extends Command
                 // status, which is correct: it only acts on the way in. With
                 // no Workiz moment it stays UNSTAMPED: markEarnedIfDue would
                 // read null as now and file old work under this month.
-                $moment = $this->workizMoment($mirrored, $franchise->timezone);
+                $moment = $this->workizMoment($mirrored, WorkizClock::zone($franchise));
 
                 if ($moment !== null) {
                     $job->markEarnedIfDue($moment);
@@ -591,7 +594,7 @@ class ProjectWorkizRecords extends Command
                 $by = trim((string) ($mirrored->payload['CreatedBy'] ?? ''));
                 $born = $mirrored->payload['CreatedDate'] ?? null;
                 if (is_string($born) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $born)) {
-                    $job->created_at = Carbon::createFromFormat('Y-m-d H:i:s', $born, $franchise->timezone ?: 'America/New_York')->utc();
+                    $job->created_at = Carbon::createFromFormat('Y-m-d H:i:s', $born, WorkizClock::zone($franchise))->utc();
                 }
                 if ($by !== '') {
                     $job->created_by_label = $by;
@@ -796,7 +799,7 @@ class ProjectWorkizRecords extends Command
                              * year of revenue would land in this month.
                              */
                             if (array_key_exists('status', $changes)) {
-                                $job->markEarnedIfDue($this->workizMoment($row, $job->franchise?->timezone));
+                                $job->markEarnedIfDue($this->workizMoment($row, WorkizClock::zone($job->franchise)));
                             }
                         }
 
@@ -804,13 +807,13 @@ class ProjectWorkizRecords extends Command
                         $job->save();
 
                         if (array_key_exists('status', $changes)
-                            && $this->happenedRecently($row, $job->franchise?->timezone)) {
+                            && $this->happenedRecently($row, WorkizClock::zone($job->franchise))) {
                             $announce[] = [$job, $now['status'], $changes['status']];
                         }
 
                         // Automations, 2026-11-03: the same guard as status, so a backfill texts nobody.
                         if (array_key_exists('tags', $changes)
-                            && $this->happenedRecently($row, $job->franchise?->timezone)) {
+                            && $this->happenedRecently($row, WorkizClock::zone($job->franchise))) {
                             $tagged[] = [$job, json_decode((string) ($now['tags'] ?? 'null'), true) ?? [], json_decode((string) ($changes['tags'] ?? 'null'), true) ?? []];
                         }
 

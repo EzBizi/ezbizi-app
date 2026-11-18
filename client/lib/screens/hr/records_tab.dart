@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/contracts.dart';
 import '../../core/files.dart';
 import '../../core/hr.dart';
@@ -148,10 +149,18 @@ class _RecordsTabState extends State<RecordsTab> {
   void initState() {
     super.initState();
     _load();
+    // A person hired, edited or switched off elsewhere: page one re-read
+    // quietly; the open record keeps what is being typed.
+    _live = LiveChanges.of(widget.api).subscribe({'people'}, (_) {
+      if (_page == 1 && !_fetching) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDelay?.cancel();
     super.dispose();
   }
@@ -185,13 +194,14 @@ class _RecordsTabState extends State<RecordsTab> {
           label: [
             pathOf(f.companyId),
             f.name,
-          ].where((part) => part.isNotEmpty).join(' › '),
+          ].where((part) => part.isNotEmpty).join(' · '),
         ),
     ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     return rows;
   }
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
@@ -200,8 +210,10 @@ class _RecordsTabState extends State<RecordsTab> {
       // A spinner only when there is nothing to keep — see AsyncBody.
       _loading = page == 1 && _people.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final answers = await Future.wait([
@@ -221,6 +233,10 @@ class _RecordsTabState extends State<RecordsTab> {
     if (!mounted || request != _request) return;
 
     final people = answers[0];
+    if (quiet && !people.ok) {
+      setState(() => _fetching = false);
+      return;
+    }
     final options = answers[1];
 
     setState(() {
@@ -532,7 +548,14 @@ class _RecordsTabState extends State<RecordsTab> {
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: Row(
             children: [
-              _Initials(person['name'] as String? ?? ''),
+              UserAvatar(
+                api: widget.api,
+                userId: id ?? '',
+                name: person['name'] as String? ?? '',
+                radius: 17,
+                hasAvatar: id != null && person['has_avatar'] == true,
+                version: person['avatar_version']?.toString() ?? '',
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -662,28 +685,6 @@ class _RecordsTabState extends State<RecordsTab> {
           .join(' · ');
 }
 
-class _Initials extends StatelessWidget {
-  const _Initials(this.name);
-
-  final String name;
-  static const double size = 34;
-
-  @override
-  Widget build(BuildContext context) {
-    final letters = name
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .take(2)
-        .map((part) => part[0].toUpperCase())
-        .join();
-
-    return CircleAvatar(
-      radius: size / 2,
-      child: Text(letters, style: TextStyle(fontSize: size * 0.36)),
-    );
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // One person's record
 // ─────────────────────────────────────────────────────────────────────────────
@@ -774,18 +775,40 @@ class _PersonRecordState extends State<_PersonRecord> {
 
   bool _busy = false;
 
+  /// Somebody went into a box on this record since it was last read: a live
+  /// re-read waits until they save (which reads it again) or change section.
+  bool _typing = false;
+
   @override
   void initState() {
     super.initState();
     _reload();
+    // Live: this person changed elsewhere (HR, Work Hours, a sync) re-reads
+    // in place, never over a draft.
+    _live = LiveChanges.of(widget.api).subscribe({'people'}, (batch) {
+      if (batch.reload || batch.changedOf('people').contains(widget.personId)) {
+        if (!_loading && !_busy && !_typing) return _reload(quiet: true);
+      }
+    }, active: LiveChanges.visible(this));
   }
 
-  Future<void> _reload() async {
+  LiveSubscription? _live;
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
+
+  /// [quiet]: a live re-read; a failure keeps the record on screen.
+  Future<void> _reload({bool quiet = false}) async {
     final response = await widget.api.get('/hr/people/${widget.personId}');
 
     if (!mounted) return;
+    if (quiet && (!response.ok || _busy || _typing)) return;
 
     setState(() {
+      _typing = false;
       _loading = false;
       if (!response.ok) {
         _error = response.reason;
@@ -890,7 +913,10 @@ class _PersonRecordState extends State<_PersonRecord> {
                 labels: [for (final s in _shown) (s.$2, s.$3)],
                 missing: [for (final s in _shown) _emptyIn(s.$1)],
                 selected: _shown.indexWhere((s) => s.$1 == _active),
-                onSelected: (i) => setState(() => _section = _shown[i].$1),
+                onSelected: (i) => setState(() {
+                  _section = _shown[i].$1;
+                  _typing = false;
+                }),
               ),
             ),
             const Divider(height: 1),
@@ -904,7 +930,14 @@ class _PersonRecordState extends State<_PersonRecord> {
             child: ConstrainedBox(
               key: const ValueKey('tour-hr-record-section'),
               constraints: const BoxConstraints(maxWidth: 760),
-              child: _body(context),
+              child: Focus(
+                canRequestFocus: false,
+                skipTraversal: true,
+                onFocusChange: (has) {
+                  if (has) _typing = true;
+                },
+                child: _body(context),
+              ),
             ),
           ),
         ),
@@ -1037,7 +1070,19 @@ class _PersonRecordState extends State<_PersonRecord> {
     'pay' => _DetailList(
       key: ValueKey('pay-$_version'),
       kind: _DetailKind.pay,
-      rows: _rows('pay_rates'),
+      // Which rate applies today and which stage comes next (Merav,
+      // 2026-11-17), named by the server; said on the row.
+      rows: [
+        for (final row in _rows('pay_rates'))
+          {
+            ...row,
+            '_when': row['id'] == _person['pay_rate_now']
+                ? 'Current rate'
+                : row['id'] == _person['pay_rate_next']
+                ? 'Next stage'
+                : null,
+          },
+      ],
       personId: widget.personId,
       api: widget.api,
       formats: widget.formats,
@@ -2637,6 +2682,7 @@ class _DetailKind {
     title: (row, _) =>
         '${row['amount']} ${_periods[row['period']] ?? row['period']}',
     subtitle: (row, formats) => _join([
+      row['_when']?.toString(),
       row['basis'] == 'salary' ? 'Salary' : 'Hourly',
       'from ${_date(row['effective_on'], formats)}',
       row['note']?.toString(),
@@ -2812,7 +2858,7 @@ class _DetailListState extends State<_DetailList> {
 
   Future<void> _returned(Map<String, dynamic> row) => _write(
     () => widget.api.patch('$_base/${row['id']}', {
-      'returned_on': _DetailForm.ymd(DateTime.now()),
+      'returned_on': formatCalendarDay(DateTime.now()),
     }),
   );
 
@@ -2908,11 +2954,6 @@ class _DetailForm extends StatefulWidget {
   final _DetailKind kind;
   final Map<String, dynamic>? initial;
   final DisplayFormats formats;
-
-  static String ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
 
   @override
   State<_DetailForm> createState() => _DetailFormState();

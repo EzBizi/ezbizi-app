@@ -78,9 +78,14 @@ class BusinessProfilePostQueueController extends Controller
     /** Conditional UPDATE: true only for the request that moved it out of awaiting_approval. */
     private function decide(SocialPostTarget $target, array $values): bool
     {
-        return SocialPostTarget::query()->whereKey($target->getKey())
+        $moved = SocialPostTarget::query()->whereKey($target->getKey())
             ->where('status', SocialPostTarget::STATUS_AWAITING_APPROVAL)
             ->update($values) === 1;
+        if ($moved) {
+            SocialPostTarget::announce($target->getKey());
+        }
+
+        return $moved;
     }
 
     /** PUT /business-profile/locations/{location}/auto-post {on}: skip the queue for this listing. */

@@ -102,9 +102,7 @@ class _OverbookingPaneState extends State<OverbookingPane> {
     );
     if (picked == null || !mounted) return;
     setState(
-      () => _date =
-          '${picked.year}-${picked.month.toString().padLeft(2, '0')}-'
-          '${picked.day.toString().padLeft(2, '0')}',
+      () => _date = formatCalendarDay(picked),
     );
     _load();
   }

@@ -31,6 +31,8 @@ use App\Models\Role;
 use App\Models\SavedReport;
 use App\Models\SocialConnection;
 use App\Models\Task;
+use App\Models\TaskColumn;
+use App\Models\TaskColumnValue;
 use App\Models\TaskBoard;
 use App\Models\TimeClockReport;
 use App\Models\TrainingAssignment;
@@ -484,6 +486,13 @@ class ActionRunner
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Not connected: '.$notConnected];
         }
 
+        // The enquiry is gone before its queued run: a RingCentral call lead
+        // withdrawn when Google's copy arrived (prod 11-15, five a day). That
+        // copy raises its own event, so this one is a skip, not a failure.
+        if ($subject === null && $event->subject_type === Lead::class) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Skipped: the enquiry was removed as a duplicate before this ran.'];
+        }
+
         return match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject, $automation),
@@ -510,7 +519,7 @@ class ActionRunner
             'unassign' => $this->unassign($subject),
             'resend' => $this->resendInvitation($subject),
             'revoke' => $this->revokeInvitation($subject),
-            'reply' => $this->replyToLead($action, $event, $subject),
+            'reply' => $this->replyToLead($action, $event, $subject, $automation),
             'book_by_chat' => $this->bookByChat($action, $event, $subject),
             'report.send' => $this->sendReport($action, $event, $automation),
             'email.send' => $this->sendEmail($action, $event, $automation, $subject),
@@ -525,10 +534,14 @@ class ActionRunner
             'inspection_report.workiz' => $this->putInspectionReportOnWorkiz($subject),
             'workiz.job_update' => $this->updateWorkizJob($action, $subject),
             'job.set' => $this->setJob($action, $event, $subject),
+            'job.source_from_dialed' => $this->sourceFromDialed($automation),
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
+            'task.complete_matching' => $this->completeMatching($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
             'task.move_group' => $this->moveTaskToGroup($action, $subject, $automation),
+            'task.shift_date' => $this->shiftTaskDate($action, $subject, $automation),
+            'task.set_value' => $this->setTaskValue($action, $subject, $automation),
             'alert.send' => $this->sendAlert($action, $event, $subject, $automation),
             'report.text' => $this->reportText($action, $automation),
             'lead.text' => $this->textLead($action, $event, $subject, $automation),
@@ -1040,6 +1053,19 @@ class ActionRunner
      * after five weeks while four people were reading it fine. `ok()` is false
      * only when NOTHING left the building.
      */
+    /** Jose, 2026-11-16: a job's source from the line its client dialed, in EzBizi and Workiz. */
+    private function sourceFromDialed(?Automation $automation): array
+    {
+        $type = 'job.source_from_dialed';
+        if ($automation === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step runs only as part of a saved rule.'];
+        }
+        [$changed, $refused] = app(\App\Support\Jobs\SourceFromDialed::class)->apply($automation);
+
+        return ['type' => $type, 'ok' => $refused === [], 'skipped' => $changed === 0 && $refused === [],
+            'detail' => trim("Changed the source of {$changed} job".($changed === 1 ? '' : 's').'. '.implode(' ', $refused))];
+    }
+
     private function sendReport(array $action, AutomationEvent $event, ?Automation $automation): array
     {
         $type = 'report.send';
@@ -1186,7 +1212,7 @@ class ActionRunner
      * deep and every link has a default, so it compiled perfectly while dropping
      * the flag at one call site - see docs/AUTOMATION-COVERAGE.md.
      */
-    private function replyToLead(array $action, AutomationEvent $event, ?Model $subject): array
+    private function replyToLead(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation = null): array
     {
         $type = 'reply';
         $message = trim((string) ($action['message'] ?? ''));
@@ -1218,6 +1244,10 @@ class ActionRunner
                 'detail' => 'This enquiry arrived '.$subject->received_at->diffForHumans()
                     .' and was only just imported, so no first reply was sent.',
             ];
+        }
+
+        if (($skip = self::notBookedSkip($event, $subject)) !== null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $skip];
         }
 
         if (! $this->leadReplies->allowsUnattendedReply($subject)) {
@@ -1269,11 +1299,22 @@ class ActionRunner
         }
 
         try {
-            $bySms
-                ? app(LeadTexts::class)->send($subject, $text, automatic: true)
+            $sent = $bySms
+                ? app(LeadTexts::class)->send($subject, $text, automatic: true, capped: true)
                 : $this->leadReplies->for($subject)?->send($subject, $text, automatic: true);
+        } catch (\App\Support\Phone\SmsCapped $capped) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        // "Automatic · <rule>" on the thread, and Leads › Recovery holds the lead
+        // a win-back text went to, so a reply to it is answered (Jose, 2026-11-16).
+        if ($automation !== null) {
+            $sent instanceof \App\Models\LeadConversation && $sent->forceFill(['automation_name' => mb_substr((string) $automation->name, 0, 150)])->saveQuietly();
+            if (\App\Http\Controllers\Api\LeadsRecoveryController::isRecovery($automation)) {
+                $subject->forceFill(['recovery_at' => now()])->saveQuietly();
+            }
         }
 
         $this->audit->log('automation.lead_replied', $subject);
@@ -1621,6 +1662,10 @@ class ActionRunner
         $template = trim((string) ($action['template'] ?? ''));
         $field = trim((string) ($action['to_field'] ?? ''));
 
+        if ($fanned = $this->toBranchManagers($action, $event, $subject, $type, fn (array $one) => $this->sendWhatsApp($one, $event, $subject))) {
+            return $fanned;
+        }
+
         if ($template === '' || $field === '') {
             return [
                 'type' => $type, 'ok' => false,
@@ -1671,8 +1716,11 @@ class ActionRunner
         $to = $this->contactFromStored($field, $event, 'phone', $subject);
 
         if (! is_string($to) || trim($to) === '') {
+            // A customer with no number is nothing to fix: skipped, not failed (sweep 11-17).
+            $skip = $field === self::RECIPIENT_CUSTOMER;
+
             return [
-                'type' => $type, 'ok' => false,
+                'type' => $type, 'ok' => $skip, 'skipped' => $skip,
                 'detail' => $field === self::RECIPIENT_CUSTOMER
                     ? $this->noCustomerContact('phone number')
                     : (str_starts_with($field, self::RECIPIENT_USER)
@@ -1779,6 +1827,10 @@ class ActionRunner
         $field = trim((string) ($action['to_field'] ?? ''));
         $subject = trim((string) ($action['subject'] ?? ''));
 
+        if ($fanned = $this->toBranchManagers($action, $event, $record, $type, fn (array $one) => $this->sendEmail($one, $event, $automation, $record))) {
+            return $fanned;
+        }
+
         if ($field === '' || $subject === '' || trim((string) ($action['body'] ?? '')) === '') {
             return [
                 'type' => $type, 'ok' => false,
@@ -1789,8 +1841,10 @@ class ActionRunner
         $to = $this->emailRecipient($field, $event, $record);
 
         if (! is_string($to) || filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
+            $skip = ($to === null || $to === '') && $field === self::RECIPIENT_CUSTOMER;
+
             return [
-                'type' => $type, 'ok' => false,
+                'type' => $type, 'ok' => $skip, 'skipped' => $skip,
                 // Names the field, because "no address" and "that field held
                 // something that is not an address" send somebody to two
                 // different places - the rule, or the record.
@@ -1860,7 +1914,121 @@ class ActionRunner
     private const RECIPIENT_USER = 'user:';
 
     /** Whoever a task is given to, read when the rule runs (Jose, 2026-10-13). */
+    /**
+     * One sales text per caller (Jose, 2026-11-17: "2 messages are sent when
+     * it should only be one ... the missed call one is correct"). A Not-booked
+     * text is skipped when the caller had a missed call in the last day (that
+     * rule's text wins), or is a customer with a job in the last 30 days.
+     */
+    public static function notBookedSkip(AutomationEvent $event, Lead $lead): ?string
+    {
+        if ($event->event_key === 'lead.missed_call') {
+            // Desk for Jose, 2026-11-17: answered-not-booked by day, missed later the same day, is still one text.
+            $texted = \App\Models\AutomationRun::query()->where('started_at', '>=', now()->subDay())->where('status', 'succeeded')
+                ->whereIn('event_id', AutomationEvent::query()->whereIn('event_key', ['lead.call_not_booked', 'lead.follow_up_due', 'lead.missed_call'])
+                    ->where('subject_type', $lead->getMorphClass())->where('subject_id', $lead->getKey())->whereKeyNot($event->getKey())->select('id'))
+                ->get(['action_results'])->contains(fn ($r) => collect((array) $r->action_results)
+                    ->contains(fn ($a) => ($a['type'] ?? null) === 'reply' && ($a['ok'] ?? false) && ! ($a['skipped'] ?? false)));
+
+            return $texted ? 'This caller already had a text from us today.' : null;
+        }
+        if (! in_array($event->event_key, ['lead.call_not_booked', 'lead.follow_up_due'], true)) {
+            return null;
+        }
+        if (AutomationEvent::query()->where('event_key', 'lead.missed_call')->where('subject_type', $lead->getMorphClass())
+            ->where('subject_id', $lead->getKey())->where('occurred_at', '>=', now()->subDay())->exists()) {
+            return 'This caller had a missed call today and gets that text instead.';
+        }
+        $ten = substr((string) preg_replace('/\D+/', '', (string) $lead->phone), -10);
+        if (strlen($ten) === 10 && Job::query()->where('created_at', '>=', now()->subDays(30))
+            ->whereIn('customer_id', Customer::query()->tap(fn ($q) => Customer::phoneLike($q, $ten))->select('id'))->exists()) {
+            return 'This caller is a customer with a job in the last 30 days, so no sales text was sent.';
+        }
+
+        return null;
+    }
+
+    /** The newest open task in the board's group naming this phone (last 10 digits) in its title or a column. */
+    public static function openTaskForPhone(TaskBoard $board, string $group, string $ten, int $days = 0): ?Task
+    {
+        $digits = fn (string $col) => "REGEXP_REPLACE(COALESCE({$col}, ''), '[^0-9]', '') LIKE ?";
+
+        return Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
+            ->when($group !== '', fn ($q) => $q->whereHas('group', fn ($g) => $g->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($group)])))
+            ->when($days > 0, fn ($q) => $q->where('created_at', '>=', now()->subDays($days)))
+            ->where(fn ($q) => $q->whereRaw($digits('title'), ['%'.$ten.'%'])
+                ->orWhereHas('values', fn ($v) => $v->whereRaw($digits('value_text'), ['%'.$ten.'%'])))
+            ->latest()->first();
+    }
+
+    /**
+     * task.complete_matching: the open tasks a rule made for this phone, not
+     * yet touched (Not started), marked Done with a note (desk for Jose,
+     * 2026-11-17: the caller replied or booked, so the call-back is done).
+     */
+    private function completeMatching(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        $type = 'task.complete_matching';
+        $ten = substr((string) preg_replace('/\D+/', '', $this->interpolate((string) ($action['phone'] ?? '{{phone}}'), $event, $subject)), -10);
+        $board = TaskBoard::query()->find($action['board'] ?? null);
+        if (strlen($ten) !== 10 || $board === null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $board === null ? 'The board this step names no longer exists.' : 'No phone number to match.'];
+        }
+        $tasks = Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
+            ->where('status', Task::STATUS_NOT_STARTED)
+            ->when(($action['made_by'] ?? '') !== '', fn ($q) => $q->where('created_by_automation_id', $action['made_by']))
+            ->where(fn ($q) => $q->whereRaw("REGEXP_REPLACE(COALESCE(title, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])
+                ->orWhereHas('values', fn ($v) => $v->whereRaw("REGEXP_REPLACE(COALESCE(value_text, ''), '[^0-9]', '') LIKE ?", ['%'.$ten.'%'])))->get();
+        if ($tasks->isEmpty()) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'No untouched open task for this number.'];
+        }
+        $note = trim($this->interpolate((string) ($action['note'] ?? 'Closed automatically: the caller got back to us.'), $event, $subject));
+
+        return $this->onTaskBoard($type, $automation, $board, function (User $actor) use ($tasks, $note) {
+            foreach ($tasks as $task) {
+                app(TaskWriter::class)->update($task->load('board'), ['status' => 'Done'], $actor);
+                app(TaskWriter::class)->comment($task, $actor, $note);
+            }
+
+            return 'Closed '.$tasks->count().' task(s): '.$tasks->pluck('title')->implode(', ').'.';
+        });
+    }
+
     private const RECIPIENT_ASSIGNEE = 'assignee:';
+
+    /** Whoever holds work_hours.approve at the subject person's branch, read when the rule runs (Clock In, 2026-11-13). */
+    private const RECIPIENT_BRANCH_MANAGERS = 'branch_managers:';
+
+    /**
+     * A branch-managers step, sent once per manager as a step to that person.
+     * Null when the step names anybody else, so the caller carries on.
+     */
+    private function toBranchManagers(array $action, AutomationEvent $event, ?Model $subject, string $type, callable $send): ?array
+    {
+        if (trim((string) ($action['to_field'] ?? '')) !== self::RECIPIENT_BRANCH_MANAGERS) {
+            return null;
+        }
+        $id = $subject instanceof User ? $subject->getKey() : data_get($event->payload, 'user_id');
+        $person = is_string($id) ? User::query()->find($id) : null;
+        if ($person === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This event is not about a person, so there is no branch to send to.'];
+        }
+        $clock = app(\App\Support\TimeClock\TimeClock::class);
+        $place = $clock->placeOf($person);
+        // ponytail: loads every active user of the tenant; a permission query if tenants grow large.
+        $managers = User::query()->where('is_active', true)->whereKeyNot($person->getKey())->get()
+            ->filter(fn (User $u) => $u->hasPermission('work_hours.approve') && $clock->placeOf($u)->is($place));
+        if ($managers->isEmpty()) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => "Nobody approves hours at {$person->name}'s branch, so nothing was sent."];
+        }
+        $results = $managers->map(fn (User $m) => $send(['to_field' => self::RECIPIENT_USER.$m->getKey()] + $action))->values();
+
+        return [
+            'type' => $type,
+            'ok' => $results->every(fn ($r) => $r['ok']),
+            'detail' => $results->pluck('detail')->join(' '),
+        ];
+    }
 
     /**
      * The customer the rule is about — the job's, the report's, or the
@@ -2090,9 +2258,12 @@ class ActionRunner
         $body = trim($this->interpolate((string) ($action['body'] ?? ''), $event, $subject));
 
         if ($to === '' || $body === '') {
+            $skip = $to === '' && ($action['to'] ?? '') === self::RECIPIENT_CUSTOMER;
+
             return [
                 'type' => $type,
-                'ok' => false,
+                'ok' => $skip,
+                'skipped' => $skip,
                 'detail' => $to === ''
                     ? ($action['to'] ?? '') === self::RECIPIENT_CUSTOMER
                         ? $this->noCustomerContact('phone number')
@@ -2121,14 +2292,24 @@ class ActionRunner
             ];
         }
 
-        $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true);
+        // A text to a person here is not capped; one to a customer is.
+        try {
+            $body = \App\Support\Phone\SmsConsent::prepare($connection, $to, $body, automated: true,
+                capped: ! str_starts_with(trim((string) ($action['to'] ?? '')), self::RECIPIENT_USER));
+        } catch (\App\Support\Phone\SmsCapped $capped) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
+        }
         if ($body === null) {
-            return ['type' => $type, 'ok' => false, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
+            // The customer said STOP: honouring it is correct, not a failure (sweep 11-13).
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
         }
 
         try {
             $sent = $this->twilio->sendMessage($connection, (string) $number->e164, $to, $body, $number->account_sid);
         } catch (Throwable $e) {
+            if (\App\Support\Phone\SmsConsent::absorbCarrierRefusal((string) $connection->organization_id, $to, $e)) {
+                return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => \App\Support\Phone\SmsConsent::REFUSAL];
+            }
             // Twilio's own sentence, because a code we have never seen still
             // explains itself and a rewrite of it does not.
             return [
@@ -3161,6 +3342,29 @@ class ActionRunner
         return trim($this->interpolate((string) $message, $event, $review));
     }
 
+    /** One more try at a reply Google was not ready for, an hour on; a second refusal is a failure. */
+    public static function retryLater(string $replyId, string $organizationId, string $authorId): void
+    {
+        dispatch(function () use ($replyId, $organizationId, $authorId) {
+            $org = \App\Models\Organization::query()->withoutGlobalScopes()->find($organizationId);
+            $org && app(\App\Support\Tenancy\TenantContext::class)->run($org, function () use ($replyId, $authorId) {
+                $reply = ReviewReply::query()->find($replyId);
+                if ($reply === null || $reply->isPublished()) {
+                    return;
+                }
+                try {
+                    app(BusinessProfileReviews::class)->publish($reply);
+                    $reply->forceFill(['status' => ReviewReply::STATUS_PUBLISHED, 'published_by_user_id' => $authorId,
+                        'published_at' => now(), 'failure_reason' => null])->save();
+                    app(AuditLogger::class)->log('review.reply_published', $reply->review, metadata: ['by' => 'automation', 'retry' => true]);
+                } catch (RuntimeException $e) {
+                    $reply->forceFill(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => $e->getMessage()])->save();
+                    app(AuditLogger::class)->log('review.reply_failed', $reply->review, metadata: ['reason' => $e->getMessage(), 'by' => 'automation', 'retry' => true]);
+                }
+            });
+        })->delay(now()->addHour());
+    }
+
     /**
      * Publish a reply on Google by itself (A1 Leads takeover, 2026-10-20).
      *
@@ -3243,6 +3447,14 @@ class ActionRunner
         try {
             app(BusinessProfileReviews::class)->publish($reply);
         } catch (RuntimeException $e) {
+            // Google answers 404 for a review it has not finished indexing, and 503 when busy
+            // (11-09, 11-12): keep the draft and try once more an hour later, not a failure.
+            if (preg_match('/HTTP (404|503)/', $e->getMessage()) && ! ($action['retried'] ?? false)) {
+                $reply->forceFill(['failure_reason' => 'Google was not ready ('.$e->getMessage().'); trying again in an hour.'])->save();
+                self::retryLater($reply->getKey(), (string) $subject->organization_id, $author->getKey());
+
+                return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Google was not ready; the reply will be sent again in an hour.'];
+            }
             DB::transaction(function () use ($reply, $subject, $e) {
                 $reply->forceFill(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => $e->getMessage()])->save();
                 app(AuditLogger::class)->log('review.reply_failed', $subject, metadata: ['reason' => $e->getMessage(), 'by' => 'automation']);
@@ -3644,7 +3856,7 @@ class ActionRunner
         // booking page it is dropped and the rest still goes (Leads, 2026-10-13).
         // The same for an offered slot with no open window (2026-10-19).
         // "If it's urgent, call us at {{office_phone}}." likewise, where a place has no phone (2026-10-20).
-        foreach (['booking_link', 'offered_slot', 'office_phone'] as $field) {
+        foreach (['booking_link', 'offered_slot', 'office_phone', 'price_list', 'open_windows', 'missing_info'] as $field) {
             if (preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $template)
                 && blank($subject?->getAttribute($field))
                 && blank($event->payload['after'][$field] ?? $event->payload[$field] ?? null)) {
@@ -3757,30 +3969,71 @@ class ActionRunner
                 ->first(fn (?Company $c) => $c !== null && TaskBoards::hasPlaceBoard($c));
         }
         $owner ??= $assignee;
+        // A named board wins over the place's (desk 11-16: missed calls onto "Outgoing Calls"); canEdit still decides.
+        $named = trim((string) ($action['board'] ?? '')) !== '' ? TaskBoard::query()->find($action['board']) : null;
+        if (trim((string) ($action['board'] ?? '')) !== '' && $named === null) {
+            return ['type' => 'task.create', 'ok' => false, 'detail' => 'The board this step names no longer exists.'];
+        }
 
-        if ($owner === null) {
+        if ($owner === null && $named === null) {
             return ['type' => 'task.create', 'ok' => false, 'detail' => 'No board to put the task on: give it to somebody, or use a trigger about a place.'];
         }
 
         $about = $subject ? array_search($subject::class, Task::ABOUT, true) : false;
+        $record = $about === false ? null : $subject;
+        // A call with no record (a missed call): the caller's lead, by phone, so
+        // the task opens it (Jose 11-17). The newest lead with that number.
+        if ($record === null && ($digits = substr(preg_replace('/\D/', '', (string) ($event->payload['from'] ?? $event->payload['phone'] ?? '')), -10)) !== '' && strlen($digits) === 10) {
+            // Leads keep the country code: 1 + ten digits, as prod's rows read (11-17).
+            $record = Lead::query()->whereIn('phone_digits', [$digits, '1'.$digits])->latest('received_at')->first();
+            $about = $record === null ? false : 'lead';
+        }
 
         // One task per rule per record per 10 minutes (review 2026-11-02): one
         // phone call read as two transcripts raised two complaints 3 seconds
         // apart, and one payment twice, each a second identical task.
         if ($about !== false && $automation !== null && Task::query()
             ->where('created_by_automation_id', $automation->getKey())
-            ->where('about_type', $about)->where('about_id', $subject->getKey())
+            ->where('about_type', $about)->where('about_id', $record->getKey())
             ->where('created_at', '>=', now()->subMinutes(10))->exists()) {
             return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => 'This rule already added a task about this record in the last 10 minutes.'];
         }
 
-        $board = app(TaskBoards::class)->ensureFor($owner);
+        $board = $named ?? app(TaskBoards::class)->ensureFor($owner);
 
         // The board's own columns by name, and its group by name (Task Board, 60f643812).
         $values = array_map(fn ($v) => $this->interpolate((string) $v, $event, $subject), (array) ($action['values'] ?? []));
         $group = trim((string) ($action['group'] ?? ''));
 
-        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
+        // Skip while an open task in that group has this title, or carries the
+        // dedupe value (e.g. {{phone}}) in its title: one call-back per caller.
+        $dedupe = trim($this->interpolate((string) ($action['dedupe'] ?? ''), $event, $subject));
+        // A phone dedupe finds the caller in any open task of the group, in its
+        // title or any column, by the last 10 digits, within dedupe_days; with
+        // on_duplicate=comment the match gets an update instead (desk for Jose,
+        // 2026-11-17: a dispatcher's complaint and the AI's are one task).
+        $ten = substr((string) preg_replace('/\D+/', '', $dedupe), -10);
+        if (strlen($ten) === 10 && ($match = self::openTaskForPhone($board, $group, $ten, (int) ($action['dedupe_days'] ?? 0))) !== null) {
+            if (($action['on_duplicate'] ?? '') === 'comment') {
+                $note = trim($this->interpolate((string) ($action['duplicate_note'] ?? 'This rule also flagged this caller.'), $event, $subject));
+
+                return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($match, $note) {
+                    app(TaskWriter::class)->comment($match, $actor, $note);
+
+                    return "Added an update to the open task \"{$match->title}\" for this caller.";
+                });
+            }
+
+            return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => "An open task \"{$match->title}\" for this caller is already on that board."];
+        }
+        if (($action['dedupe'] ?? '') !== '' && Task::query()->where('board_id', $board->getKey())->whereNull('completed_at')
+            ->when($group !== '', fn ($q) => $q->whereHas('group', fn ($g) => $g->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($group)])))
+            ->where(fn ($q) => $q->where('title', mb_substr($title, 0, 255))->when($dedupe !== '' && $dedupe !== 'title', fn ($q) => $q->orWhere('title', 'like', '%'.addcslashes($dedupe, '%_').'%')))
+            ->exists()) {
+            return ['type' => 'task.create', 'ok' => true, 'skipped' => true, 'detail' => "An open task \"{$title}\" is already on that board."];
+        }
+
+        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $record, $subject, $automation, $values, $group) {
             // A rule's group is made on the branch's board the first time it is
             // needed (2026-10-22: a rule's group was on
             // no board). By name, any case; a person's API call still refuses an unknown one.
@@ -3800,16 +4053,46 @@ class ActionRunner
                         'type' => in_array($value, $people, true) ? 'person' : 'text', 'position' => (int) $board->columns()->max('position') + 1]);
                 }
             }
+            // A rule's timestamp ("{{started_at}}") into a date column is that day where the business is (2026-11-17: it crashed the task).
+            foreach ($board->columns()->where('type', 'date')->get() as $c) {
+                foreach ($values as $name => $v) {
+                    if (mb_strtolower(trim((string) $name)) === mb_strtolower(trim($c->name)) && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $v)) {
+                        try {
+                            $values[$name] = \Carbon\CarbonImmutable::parse((string) $v)->setTimezone((string) (\App\Support\Settings\SettingsResolver::forOrganization('timezone') ?: 'America/New_York'))->toDateString();
+                        } catch (\Throwable) {
+                        }
+                    }
+                }
+            }
+            // A label for a column with options ("Ohio" for Area) is that option;
+            // a label the column lacks is left blank and said, never guessed (2026-11-17).
+            $unmatched = [];
+            foreach ($board->columns()->get() as $c) {
+                $options = $c->type === 'tags' ? [] : (array) $c->options();
+                foreach ($values as $name => $v) {
+                    if ($options === [] || mb_strtolower(trim((string) $name)) !== mb_strtolower(trim($c->name))
+                        || in_array($v, array_column($options, 'id'), true)) {
+                        continue;
+                    }
+                    $hit = collect($options)->first(fn ($o) => mb_strtolower(trim((string) ($o['label'] ?? ''))) === mb_strtolower(trim((string) $v)));
+                    if ($hit !== null) {
+                        $values[$name] = $hit['id'];
+                    } else {
+                        unset($values[$name]);
+                        $unmatched[] = "{$c->name} \"{$v}\"";
+                    }
+                }
+            }
             app(TaskWriter::class)->create($board, [
                 'title' => mb_substr($title, 0, 255),
                 'assignee_user_ids' => $owners->map->getKey()->all(),
                 ...($values === [] ? [] : ['values' => $values]),
                 ...($group === '' ? [] : ['group' => $group]),
                 'about_type' => $about === false ? null : $about,
-                'about_id' => $about === false ? null : $subject->getKey(),
+                'about_id' => $about === false ? null : $record->getKey(),
             ], $actor, $automation?->getKey());
 
-            return 'Added the task "'.$title.'".';
+            return 'Added the task "'.$title.'".'.($unmatched === [] ? '' : ' Left blank, no such option: '.implode(', ', $unmatched).'.');
         });
     }
 
@@ -3826,8 +4109,17 @@ class ActionRunner
             return ['type' => 'task.assign', 'ok' => false, 'detail' => 'Nobody to give the task to.'];
         }
 
-        return $this->onTaskBoard('task.assign', $automation, $subject->board, function (User $actor) use ($subject, $user) {
-            app(TaskWriter::class)->update($subject, ['assignee_user_id' => $user->getKey()], $actor);
+        // Monday's "Add assignee" (add: true) keeps whoever has it; the default makes them the owner.
+        $add = filter_var($action['add'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        return $this->onTaskBoard('task.assign', $automation, $subject->board, function (User $actor) use ($subject, $user, $add) {
+            $owners = $subject->owners()->orderBy('position')->pluck('user_id')->all();
+            if ($add && in_array($user->getKey(), $owners, true)) {
+                return $user->name.' already has the task.';
+            }
+            app(TaskWriter::class)->update($subject, $add && $owners !== []
+                ? ['assignee_user_ids' => [...$owners, $user->getKey()]]
+                : ['assignee_user_id' => $user->getKey()], $actor);
 
             return 'Gave the task to '.$user->name.'.';
         });
@@ -3848,6 +4140,88 @@ class ActionRunner
             app(TaskWriter::class)->update($subject, ['group_id' => $groupId], $actor);
 
             return 'Moved the task to another group.';
+        });
+    }
+
+    /**
+     * Monday's "push Date by 1 month" (parity audit 2026-11-13): the task's
+     * due date (column_id "due") or a date column, later by days/weeks/months.
+     * A date that is empty stays empty.
+     */
+    private function shiftTaskDate(array $action, ?Model $subject, ?Automation $automation): array
+    {
+        $type = 'task.shift_date';
+        if (! $subject instanceof Task) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+        }
+        $column = (string) ($action['column_id'] ?? 'due');
+        $amount = (int) ($action['amount'] ?? 0);
+        $unit = (string) ($action['unit'] ?? 'days');
+        if ($amount === 0 || ! in_array($unit, ['days', 'weeks', 'months'], true)) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'Say how far to push the date: days, weeks or months.'];
+        }
+        $current = $column === 'due'
+            ? $subject->due_on
+            : TaskColumnValue::query()->where('task_id', $subject->id)->where('column_id', $column)->value('value_date');
+        if ($current === null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'The date is empty, so there is nothing to push.'];
+        }
+        $date = CarbonImmutable::parse($current);
+        $next = (match ($unit) {
+            'days' => $date->addDays($amount),
+            'weeks' => $date->addWeeks($amount),
+            'months' => $date->addMonthsNoOverflow($amount),
+        })->toDateString();
+
+        return $this->onTaskBoard($type, $automation, $subject->board, function (User $actor) use ($subject, $column, $next) {
+            app(TaskWriter::class)->update($subject, $column === 'due' ? ['due_on' => $next] : ['values' => [$column => $next]], $actor);
+
+            return 'Moved the date to '.$next.'.';
+        });
+    }
+
+    /**
+     * Monday's "set Reminder to Done" / "set Date to today" (parity audit
+     * 2026-11-13): one of the task's own columns. A status/dropdown by the
+     * label's name, a date or due date to "today" (the organization's day) or
+     * a date, a checkbox to true/false, anything else as written.
+     */
+    private function setTaskValue(array $action, ?Model $subject, ?Automation $automation): array
+    {
+        $type = 'task.set_value';
+        if (! $subject instanceof Task) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+        }
+        $columnId = (string) ($action['column_id'] ?? '');
+        $raw = $action['value'] ?? null;
+        $today = fn () => CarbonImmutable::now((string) (app(SettingsResolver::class)->get('timezone', Organization::query()->findOrFail($subject->organization_id)) ?: config('app.timezone')))->toDateString();
+        if ($columnId === 'due') {
+            $value = $raw === 'today' ? $today() : $raw;
+
+            return $this->onTaskBoard($type, $automation, $subject->board, function (User $actor) use ($subject, $value) {
+                app(TaskWriter::class)->update($subject, ['due_on' => $value], $actor);
+
+                return 'Set the due date to '.$value.'.';
+            });
+        }
+        $column = TaskColumn::query()->where('board_id', $subject->board_id)->find($columnId);
+        if ($column === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'That column is not on the task\'s board.'];
+        }
+        $value = match ($column->type) {
+            'status', 'dropdown' => collect($column->options())->first(fn ($o) => mb_strtolower((string) $o['label']) === mb_strtolower(trim((string) $raw)))['id'] ?? null,
+            'date' => $raw === 'today' ? $today() : $raw,
+            'checkbox' => filter_var($raw, FILTER_VALIDATE_BOOLEAN),
+            default => $raw,
+        };
+        if ($value === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => '"'.$raw.'" is not one of '.$column->name.'\'s labels.'];
+        }
+
+        return $this->onTaskBoard($type, $automation, $subject->board, function (User $actor) use ($subject, $column, $value, $raw) {
+            app(TaskWriter::class)->update($subject, ['values' => [$column->id => $value]], $actor);
+
+            return 'Set '.$column->name.' to '.(is_scalar($raw) ? $raw : json_encode($raw)).'.';
         });
     }
 
@@ -4046,7 +4420,11 @@ class ActionRunner
         [$actor] = $this->taskContext($automation);
 
         try {
-            app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor, automatic: true);
+            // A booking confirmation is always sent; other rule texts count toward the daily cap.
+            app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor,
+                automatic: true, capped: $event->event_key !== 'lead.booking_approved');
+        } catch (\App\Support\Phone\SmsCapped $capped) {
+            return ['type' => 'lead.text', 'ok' => true, 'skipped' => true, 'detail' => $capped->getMessage()];
         } catch (RuntimeException $e) {
             return ['type' => 'lead.text', 'ok' => false, 'detail' => $e->getMessage()];
         }

@@ -26,6 +26,13 @@ final class LeadDetails
         $name = $address = $zip = null;
 
         foreach (array_reverse($texts) as $text) {
+            // Our booking widget's "Name: / Address: / ZIP:" lines are read by their labels.
+            if (preg_match_all('/^(Name|Address|ZIP):[ \t]*(\S.*?)\s*$/mi', $text, $m, PREG_SET_ORDER) >= 2) {
+                $form = array_column(array_map(fn ($r) => [strtolower($r[1]), $r[2]], $m), 1, 0);
+                $name ??= $form['name'] ?? null;
+                $address ??= $form['address'] ?? null;
+                $zip ??= preg_match('/^\d{5}$/', $form['zip'] ?? '') ? $form['zip'] : null;
+            }
             $text = trim(preg_replace('/\s+/', ' ', $text) ?? '');
 
             $address ??= self::address($text);
@@ -65,7 +72,7 @@ final class LeadDetails
     {
         $street = '/\b(\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Za-z0-9\'.-]+\s+){0,4}(?:'.self::STREET.')\b\.?'
             // The rest of the line up to a sentence end: city, state, ZIP.
-            .'(?:[ ,]+[A-Za-z][A-Za-z .\'-]*?)?(?:,?\s*\b[A-Z]{2}\b)?(?:\s*\d{5}(?:-\d{4})?)?)(?=[.!?]|\s{2}|$|,?\s+(?:in|on|near|by|and|but|friday|saturday|monday|tuesday|wednesday|thursday|sunday)\b)/i';
+            .'(?:[ ,]+[A-Za-z][A-Za-z .\'-]*?)?(?:,?\s*\b[A-Z]{2}\b)?(?:\s*\d{5}(?:-\d{4})?)?)(?=[.!?]|\s{2}|$|,?\s+(?:in|on|near|by|and|but|i|i\'m|i am|we|we\'re|available|friday|saturday|monday|tuesday|wednesday|thursday|sunday)\b)/i';
 
         return preg_match($street, $text, $m) ? rtrim(trim($m[1]), ',.') : null;
     }

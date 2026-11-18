@@ -88,15 +88,34 @@ class NewsletterAudiencesController extends Controller
         abort_unless(OwnedScope::mayWrite($user, $user->organization_id, $view->type, $view->id),
             Status::HTTP_FORBIDDEN, 'Choose a view where your assignments allow creating mailing lists.');
 
+        $scopeType = $view->isOrganization() ? SocialConnection::SCOPE_ORGANIZATION : $view->type;
+        $scopeId = $view->isOrganization() ? (string) $user->organization_id : (string) $view->id;
+
+        /*
+         * Choosing a Mailchimp list that is already an audience here selects it
+         * rather than making a twin: the composer's picker posts every time
+         * somebody picks a list, and twins would split one list's history.
+         */
+        $existing = NewsletterAudience::query()
+            ->where('scope_type', $scopeType)->where('scope_id', $scopeId)
+            ->where('kind', $data['kind'])
+            ->where('mailchimp_list_id', $data['mailchimp_list_id'])
+            ->when(($data['tag'] ?? null) === null || $data['tag'] === '',
+                fn ($q) => $q->where(fn ($w) => $w->whereNull('tag')->orWhere('tag', '')),
+                fn ($q) => $q->where('tag', $data['tag']))
+            ->first();
+
+        if ($existing !== null) {
+            return response()->json(['data' => [
+                'id' => $existing->getKey(),
+                'name' => $existing->name,
+                'kind' => $existing->kind,
+                'mailchimp_list_id' => $existing->mailchimp_list_id,
+            ]], Status::HTTP_OK);
+        }
+
         $audience = new NewsletterAudience($data);
-        $audience->forceFill([
-            'scope_type' => $view->isOrganization()
-                ? SocialConnection::SCOPE_ORGANIZATION
-                : $view->type,
-            'scope_id' => $view->isOrganization()
-                ? (string) $user->organization_id
-                : (string) $view->id,
-        ]);
+        $audience->forceFill(['scope_type' => $scopeType, 'scope_id' => $scopeId]);
         $audience->save();
 
         $this->audit->log('newsletter.audience_created', $audience, [

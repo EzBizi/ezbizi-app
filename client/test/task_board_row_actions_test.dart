@@ -6,7 +6,9 @@ import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -225,5 +227,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Move to…'), findsOneWidget);
     expect(find.byKey(const Key('task-bulk-bar')), findsNothing);
+  });
+
+  testWidgets('right-click on a row opens the fast actions', (tester) async {
+    await pumpBoard(tester);
+    await tester.tap(
+      find.text('Sweep the Oak Park flue'),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    for (final k in ['open', 'copy-name', 'copy-link', 'below', 'subtask']) {
+      expect(find.byKey(ValueKey('task-rc-$k')), findsOneWidget, reason: k);
+    }
+  });
+
+  testWidgets('shift-click picks the rows between; right-click acts on all', (
+    tester,
+  ) async {
+    await pumpBoard(tester);
+    await tester.tap(find.byKey(const ValueKey('task-pick-t1')));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.byKey(const ValueKey('task-pick-t3')));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+    expect(find.text('3 selected'), findsOneWidget);
+
+    await tester.tap(find.text('Order a cap'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.text('3 tasks selected'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('task-rc-delete')));
+    await tester.pumpAndSettle();
+    expect(log.last.$2, '/tasks/bulk');
+    expect(((log.last.$3 as Map)['ids'] as List).length, 3);
   });
 }

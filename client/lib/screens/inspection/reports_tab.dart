@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'dart:typed_data';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
@@ -38,6 +39,11 @@ class _ReportsTabState extends State<ReportsTab> {
   List<Map<String, dynamic>> _hits = const [];
   String? _empty;
   String? _selectedId;
+
+  /// A phone shows the list or one report, never both (UI pass 11-16: the
+  /// list and the whole first report were stacked in one scroll).
+  bool _reading = false;
+  bool _stacked = false;
   Map<String, dynamic>? _open;
   String? _busy;
 
@@ -68,7 +74,10 @@ class _ReportsTabState extends State<ReportsTab> {
 
     final bytes = response.bytes;
     if (bytes == null) {
-      setState(() => _error = response.message ?? 'The report could not be downloaded.');
+      setState(
+        () =>
+            _error = response.message ?? 'The report could not be downloaded.',
+      );
       return;
     }
 
@@ -107,20 +116,46 @@ class _ReportsTabState extends State<ReportsTab> {
   void initState() {
     super.initState();
     _load();
+    // A report submitted or archived elsewhere: the list re-reads quietly;
+    // the open report is read again only when it is the one that changed.
+    _live = LiveChanges.of(widget.api).subscribe({'inspection_reports'}, (
+      batch,
+    ) {
+      if (_loading || _busy != null) return null;
+      final open = _selectedId;
+      return _load(
+        quiet: true,
+        reopen:
+            batch.reload ||
+            (open != null &&
+                batch.touched('inspection_reports').contains(open)),
+      );
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load({String? openId}) async {
+  /// [quiet]: a live re-read; a failure keeps the list on screen, and the
+  /// open report (and its photos) is read again only when [reopen].
+  Future<void> _load({
+    String? openId,
+    bool quiet = false,
+    bool reopen = true,
+  }) async {
     final request = ++_request;
-    setState(() {
-      _loading = _hits.isEmpty && _open == null;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _hits.isEmpty && _open == null;
+        _error = null;
+      });
+    }
 
     final query = <String, String>{
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
@@ -128,6 +163,7 @@ class _ReportsTabState extends State<ReportsTab> {
     };
     final list = await widget.api.get('/inspections/reports', query);
     if (!mounted || request != _request) return;
+    if (quiet && !list.ok) return;
 
     if (!list.ok) {
       setState(() {
@@ -142,7 +178,10 @@ class _ReportsTabState extends State<ReportsTab> {
         if (row is Map) Map<String, dynamic>.from(row),
     ];
     final message = list.body['message'] as String?;
-    final keep = openId ?? _selectedId ?? (hits.isNotEmpty ? hits.first['id']?.toString() : null);
+    final keep =
+        openId ??
+        _selectedId ??
+        (hits.isNotEmpty ? hits.first['id']?.toString() : null);
 
     setState(() {
       _loading = false;
@@ -150,13 +189,13 @@ class _ReportsTabState extends State<ReportsTab> {
       _empty = (message != null && message.isNotEmpty)
           ? message
           : (hits.isEmpty
-              ? 'Finished inspections show here. None have been submitted yet.'
-              : null);
+                ? 'Finished inspections show here. None have been submitted yet.'
+                : null);
       _selectedId = keep;
     });
 
     if (keep != null) {
-      await _openReport(keep);
+      if (reopen || _open?['id']?.toString() != keep) await _openReport(keep);
     } else {
       setState(() => _open = null);
     }
@@ -211,6 +250,16 @@ class _ReportsTabState extends State<ReportsTab> {
       return Text(formatStamp(text, text, formats: _formats));
     }
 
+    // A choice answer is stored as its slug ("not-applicable"); the reader
+    // gets words ("Not applicable"), never the stored value (Muse 10.3).
+    if (type != 'text' &&
+        RegExp(r'^[a-z0-9]+([_-][a-z0-9]+)*$').hasMatch(text)) {
+      final words = text.replaceAll(RegExp(r'[_-]'), ' ');
+      return Text(
+        words == 'ok' ? 'OK' : words[0].toUpperCase() + words.substring(1),
+      );
+    }
+
     return Text(text);
   }
 
@@ -243,7 +292,9 @@ class _ReportsTabState extends State<ReportsTab> {
               borderRadius: BorderRadius.circular(8),
               child: _photos[id] == null
                   ? ColoredBox(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       child: const Center(
                         child: SizedBox(
                           width: 18,
@@ -254,8 +305,10 @@ class _ReportsTabState extends State<ReportsTab> {
                     )
                   // contain, not cover, for a signature: cropping somebody's
                   // name to fill a square is not a rendering choice to make.
-                  : Image.memory(_photos[id]!,
-                      fit: signature ? BoxFit.contain : BoxFit.cover),
+                  : Image.memory(
+                      _photos[id]!,
+                      fit: signature ? BoxFit.contain : BoxFit.cover,
+                    ),
             ),
           ),
       ],
@@ -322,13 +375,24 @@ class _ReportsTabState extends State<ReportsTab> {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final stacked = constraints.maxWidth < ReportsTab.stackBelow;
+                _stacked = stacked;
                 final list = _listPane();
                 final doc = _documentPane();
+                if (stacked && !_reading) return list;
                 if (stacked) {
-                  return ListView(
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(height: 240, child: list),
-                      SizedBox(height: 520, child: doc),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                        child: TextButton.icon(
+                          key: const Key('inspection-reports-back'),
+                          onPressed: () => setState(() => _reading = false),
+                          icon: const Icon(Icons.arrow_back, size: 18),
+                          label: const Text('All reports'),
+                        ),
+                      ),
+                      Expanded(child: doc),
                     ],
                   );
                 }
@@ -363,16 +427,23 @@ class _ReportsTabState extends State<ReportsTab> {
               itemBuilder: (context, index) {
                 final row = _hits[index];
                 return ListTile(
-                  selected: '${row['id']}' == _selectedId,
+                  // A phone's list opens nothing yet, so nothing is lit.
+                  selected: '${row['id']}' == _selectedId && !_stacked,
                   title: Text('${row['definition_name'] ?? ''}'),
                   subtitle: Text(
                     [
-                      if (row['customer_name'] != null) '${row['customer_name']}',
+                      if (row['customer_name'] != null)
+                        '${row['customer_name']}',
                       if (row['job_number'] != null) '${row['job_number']}',
                     ].join(' · '),
                   ),
-                  trailing: row['archived'] == true ? const Tag('Archived') : null,
-                  onTap: () => _openReport('${row['id']}'),
+                  trailing: row['archived'] == true
+                      ? const Tag('Archived')
+                      : null,
+                  onTap: () {
+                    setState(() => _reading = true);
+                    _openReport('${row['id']}');
+                  },
                 );
               },
             ),

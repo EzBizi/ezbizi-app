@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
 import '../../core/theme.dart';
+import '../../core/version_history.dart';
 import '../../widgets/async_body.dart';
 
 /// How far the release in flight has got (Jose, 2026-11: "a UI that shows the
@@ -16,13 +17,12 @@ class ReleasesScreen extends StatefulWidget {
   const ReleasesScreen({
     super.key,
     required this.staff,
-    this.every = const Duration(seconds: 10),
   });
 
   final StaffSession staff;
 
   /// How often to ask again.
-  final Duration every;
+  static const every = Duration(seconds: 10);
 
   @override
   State<ReleasesScreen> createState() => _ReleasesScreenState();
@@ -39,7 +39,7 @@ class _ReleasesScreenState extends State<ReleasesScreen> {
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(widget.every, (_) => _load());
+    _timer = Timer.periodic(ReleasesScreen.every, (_) => _load());
   }
 
   @override
@@ -98,7 +98,7 @@ class _ReleasesScreenState extends State<ReleasesScreen> {
           const SizedBox(height: 4),
           Text(
             'What release.sh and deploy.sh report as they go. Updates every '
-            '${widget.every.inSeconds} seconds while this tab is open.',
+            '${ReleasesScreen.every.inSeconds} seconds while this tab is open.',
             style: text.bodyMedium,
           ),
           const SizedBox(height: 20),
@@ -126,6 +126,20 @@ String _elapsed(Object? seconds) {
   return '${sec}s';
 }
 
+/// "~41 min left · done around 3:05 PM" (Jose 11-12: "estimated time left").
+String etaLine(int seconds, DateTime now) {
+  final m = (seconds / 60).ceil();
+  final left = seconds < 60
+      ? 'Under a minute left'
+      : m >= 60
+      ? '~${m ~/ 60} h ${m % 60} min left'
+      : '~$m min left';
+  final at = now.add(Duration(seconds: seconds)).toLocal();
+  final h = at.hour % 12 == 0 ? 12 : at.hour % 12;
+  final mm = at.minute.toString().padLeft(2, '0');
+  return '$left · done around $h:$mm ${at.hour < 12 ? 'AM' : 'PM'}';
+}
+
 String _shortSha(Object? sha) {
   final s = sha as String? ?? '';
   return s.length > 7 ? s.substring(0, 7) : s;
@@ -136,6 +150,7 @@ Tone _tone(String? state) => switch (state) {
   'failed' => Tone.bad,
   'stalled' => Tone.caution,
   'running' => Tone.info,
+  // superseded: overtaken by a later release, nothing to act on.
   _ => Tone.neutral,
 };
 
@@ -143,6 +158,7 @@ String _stateLabel(String? state) => switch (state) {
   'done' => 'Finished',
   'failed' => 'Failed',
   'stalled' => 'No word for 3 hours',
+  'superseded' => 'Superseded',
   _ => 'In progress',
 };
 
@@ -159,6 +175,44 @@ class _Current extends StatelessWidget {
     final tone = ToneColours.of(context, _tone(state));
     final stages = ((release['stages'] as List<dynamic>?) ?? const [])
         .cast<Map<String, dynamic>>();
+    final eta = (release['eta_seconds'] as num?)?.toInt();
+    final log = ((release['log'] as List<dynamic>?) ?? const []).cast<String>();
+    final ships = VersionHistory.releases
+        .where((r) => r.version == release['version'])
+        .expand((r) => r.items)
+        .toList();
+
+    final stageColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final s in stages) _StageRow(stage: s),
+        if (log.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _Log(lines: log),
+        ],
+      ],
+    );
+    final shipsColumn = ships.isEmpty
+        ? null
+        : Column(
+            key: const ValueKey('release-ships'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'What ships · ${ships.length} changes',
+                style: text.titleSmall,
+              ),
+              const SizedBox(height: 6),
+              // ponytail: first five; the full list is the version stamp's.
+              for (final item in ships.take(5))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('• $item', style: text.bodySmall),
+                ),
+              if (ships.length > 5)
+                Text('+${ships.length - 5} more', style: text.bodySmall),
+            ],
+          );
 
     return Card(
       key: const ValueKey('release-current'),
@@ -181,6 +235,16 @@ class _Current extends StatelessWidget {
                 ),
               ],
             ),
+            if (eta != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                etaLine(eta, DateTime.now()),
+                key: const ValueKey('release-eta'),
+                style: text.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             Row(
               children: [
@@ -207,7 +271,27 @@ class _Current extends StatelessWidget {
               style: text.bodySmall,
             ),
             const SizedBox(height: 16),
-            for (final s in stages) _StageRow(stage: s),
+            LayoutBuilder(
+              builder: (context, box) => shipsColumn == null
+                  ? stageColumn
+                  : box.maxWidth >= 760
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 3, child: stageColumn),
+                        const SizedBox(width: 24),
+                        Expanded(flex: 2, child: shipsColumn),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        stageColumn,
+                        const SizedBox(height: 16),
+                        shipsColumn,
+                      ],
+                    ),
+            ),
           ],
         ),
       ),
@@ -226,6 +310,15 @@ class _StageRow extends StatelessWidget {
     final state = stage['state'] as String?;
     final tone = ToneColours.of(context, _tone(state));
     final percent = (stage['percent'] as num?)?.toInt() ?? 0;
+    final seconds = (stage['seconds'] as num?)?.toInt();
+    final median = (stage['median_seconds'] as num?)?.toInt();
+    final time = state == 'done' && seconds != null
+        ? _elapsed(seconds)
+        : state == 'running' && seconds != null
+        ? '${_elapsed(seconds)}${median == null ? '' : ' of ~${_elapsed(median)}'}'
+        : state == 'pending' && median != null
+        ? '~${_elapsed(median)}'
+        : null;
 
     final Widget mark = switch (state) {
       'done' => Icon(Icons.check_circle, color: tone.ink, size: 20),
@@ -268,7 +361,46 @@ class _StageRow extends StatelessWidget {
               ],
             ),
           ),
+          if (time != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 12, top: 2),
+              child: Text(time, style: text.bodySmall),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+/// The tail of the server gate's log, as it prints.
+class _Log extends StatelessWidget {
+  const _Log({required this.lines});
+
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('release-log'),
+      width: double.infinity,
+      height: 180,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: SingleChildScrollView(
+        reverse: true,
+        child: SelectableText(
+          lines.join('\n'),
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 12,
+            height: 1.4,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
       ),
     );
   }
@@ -292,6 +424,8 @@ class _RecentRow extends StatelessWidget {
             ? Icons.check_circle_outline
             : state == 'failed'
             ? Icons.error_outline
+            : state == 'superseded'
+            ? Icons.redo
             : Icons.schedule,
         color: tone.ink,
         semanticLabel: _stateLabel(state),

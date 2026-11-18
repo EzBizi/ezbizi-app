@@ -30,7 +30,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('integrations-section:connected')),
+      find.byKey(const ValueKey('integrations-section:email')),
       findsOneWidget,
     );
     await tester.tap(find.byKey(const ValueKey('provider:google_workspace')));
@@ -77,7 +77,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('integrations-section:available')),
+      find.byKey(const ValueKey('integrations-section:email')),
       findsOneWidget,
     );
     await tester.tap(

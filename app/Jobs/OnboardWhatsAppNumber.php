@@ -4,12 +4,14 @@ namespace App\Jobs;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Social\ConnectionSetup;
 use App\Models\WhatsAppNumber;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -114,7 +116,7 @@ final class OnboardWhatsAppNumber implements ShouldQueue
         }
         $digits = preg_replace('/\D+/', '', (string) ($info->json('display_phone_number') ?: $connection->handle)) ?? '';
 
-        WhatsAppNumber::query()->updateOrCreate(
+        $number = WhatsAppNumber::query()->updateOrCreate(
             ['phone_number_id' => $phoneNumberId],
             [
                 'organization_id' => $connection->organization_id,
@@ -125,6 +127,13 @@ final class OnboardWhatsAppNumber implements ShouldQueue
                 'auto_reply' => $info->json('is_on_biz_app') !== true,
             ],
         );
+
+        // Never left without a purpose (Jose, 2026-11-12, EverDoors landed NULL):
+        // a new number is its company's customer chat until its card says
+        // otherwise. A reconnect keeps whatever was chosen.
+        if ($number->purpose === null) {
+            $number->forceFill(['purpose' => 'company'])->save();
+        }
     }
 
     private function ok(Response $response, string $what): void
@@ -134,5 +143,11 @@ final class OnboardWhatsAppNumber implements ShouldQueue
             throw new RuntimeException('Meta refused to '.$what.': '
                 .($response->json('error.message') ?? 'HTTP '.$response->status()));
         }
+    }
+
+    /** The card goes broken with what did not finish, not green over failed_jobs (Jose, 2026-11-12). */
+    public function failed(Throwable $e): void
+    {
+        ConnectionSetup::failed($this->connectionId, 'WhatsApp setup did not finish: the number was not subscribed, registered and routed, so messages are not arriving. Reconnect WhatsApp.', $e);
     }
 }

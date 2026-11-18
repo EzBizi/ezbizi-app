@@ -10,6 +10,7 @@ use App\Support\Contracts\ChecklistTable;
 use App\Support\Contracts\CommonCore;
 use App\Support\Contracts\FieldDefinition;
 use App\Support\Contracts\FieldType;
+use App\Support\Contracts\RateSteps;
 use App\Support\Contracts\FilledBy;
 use App\Support\Contracts\MergeValue;
 use Illuminate\Support\Carbon;
@@ -428,6 +429,17 @@ class OnboardingForm
     ): ?string {
         if ($raw === null || (is_string($raw) && trim($raw) === '')) {
             return null;
+        }
+
+        if ($field->type === FieldType::RATE_STEPS) {
+            [$steps, $refusal] = RateSteps::parse($raw);
+            if ($refusal !== null) {
+                $errors[$at] = sprintf("'%s': %s", $field->label, $refusal);
+
+                return null;
+            }
+
+            return $steps === [] ? null : json_encode($steps);
         }
 
         if ($field->type === FieldType::CHECKLIST) {

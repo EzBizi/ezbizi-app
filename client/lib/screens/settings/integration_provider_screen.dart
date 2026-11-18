@@ -1,3 +1,4 @@
+import '../../core/timestamps.dart';
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
 
@@ -352,14 +353,6 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     );
   }
 
-  static String _ago(DateTime at) {
-    final d = DateTime.now().difference(at.toLocal());
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inHours < 1) return '${d.inMinutes} min ago';
-    if (d.inDays < 1) return '${d.inHours} h ago';
-    return '${d.inDays} d ago';
-  }
-
   /// "Open Marketing" beside a sentence naming it, or null when there is
   /// nowhere to open (outside the shell, or a provider that connects here).
   Widget? _openModule(BuildContext context) {
@@ -401,9 +394,13 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
           if (row.beneath != null) row.beneath!,
           if ((row.detail ?? '').isNotEmpty) row.detail!,
           // When it last synced (UI queue 109).
-          if (row.lastSyncedAt != null) 'synced ${_ago(row.lastSyncedAt!)}',
+          if (row.lastSyncedAt != null)
+            'synced ${formatAgo(row.lastSyncedAt!)}',
           // The daily token check (Jose, 2026-11-03).
-          if (row.lastCheckedAt != null) 'checked ${_ago(row.lastCheckedAt!)}',
+          if (row.lastCheckedAt != null)
+            'checked ${formatAgo(row.lastCheckedAt!)}',
+          // Connect's pass/fail check: can it post, how long the token lasts.
+          if (row.connected && row.connectCheck != null) row.connectCheck!,
           if (!row.connected) row.statusReason ?? 'Not working',
         ].join(' · '),
         key: ValueKey('connection-detail:${row.id}'),
@@ -832,7 +829,11 @@ class IntegrationConnection {
     this.accountEmail,
     this.lastCheckedAt,
     this.lastReachedAt,
+    this.connectCheck,
   });
+
+  /// Connect's pass/fail line (ConnectSetup): "Passed: can post · token …".
+  final String? connectCheck;
 
   /// When the daily health check last had a verdict on this token, and when
   /// the provider last answered for it (Jose, 2026-11-03).
@@ -883,14 +884,9 @@ class IntegrationConnection {
     'google_workspace' || 'sending_server' => 'email',
     'phone_numbers' => 'phone',
     'whatsapp' || 'telegram' => 'messaging',
+    // Read so the boards brought over from Monday stay in step (11-12).
+    'monday' => 'tasks',
     _ => 'social',
-  };
-
-  String get scopeWord => switch (scopeType) {
-    'organization' => 'the whole organization',
-    'company' => 'this company',
-    'franchise' => 'this branch',
-    _ => scopeType,
   };
 
   /// What to put in front of a person, and what to put under it.
@@ -943,6 +939,9 @@ class IntegrationConnection {
         accountEmail: json['account_email'] as String?,
         lastCheckedAt: DateTime.tryParse('${json['last_checked_at'] ?? ''}'),
         lastReachedAt: DateTime.tryParse('${json['last_reached_at'] ?? ''}'),
+        connectCheck:
+            (json['connect_check'] as Map<String, dynamic>?)?['summary']
+                as String?,
       );
 }
 

@@ -140,6 +140,30 @@ class PreferenceRegistry
             ],
 
             /*
+             * Modules this person does not want to be interrupted by (Jose,
+             * 2026-11-13). Their notifications still collect in the bell; they
+             * just do not pop up, push or email. Empty = every module alerts.
+             */
+            'notifications.muted_modules' => [
+                'label' => 'Muted modules',
+                'type' => 'order',
+                'default' => [],
+                'help' => 'These modules collect in the bell without alerting you.',
+            ],
+
+            /*
+             * Kinds of notification this person does not want at all (Jose,
+             * 2026-11-17: per-type toggles for Task Board). Unlike a muted
+             * module, a muted kind writes no bell row. Empty = all on.
+             */
+            'notifications.muted_kinds' => [
+                'label' => 'Muted notification types',
+                'type' => 'kinds',
+                'default' => [],
+                'help' => 'Notification types you have switched off.',
+            ],
+
+            /*
              * How wide the expanded sidebar is, in logical pixels.
              *
              * A number rather than small/medium/large: it is set by dragging the
@@ -277,6 +301,15 @@ class PreferenceRegistry
                 'type' => 'bool',
                 'default' => false,
                 'help' => 'Click the pin on the customer panel to change it.',
+            ],
+
+            // Reports: every tab's table headings stay on screen while the
+            // rows scroll, or scroll away (Jose, 2026-11-16).
+            'reports.pin_headings' => [
+                'label' => 'Keep report table headings on screen',
+                'type' => 'bool',
+                'default' => true,
+                'help' => 'Click the pin beside the headings of any report table to change it.',
             ],
 
             'web.widgets.list_width' => [
@@ -452,6 +485,9 @@ class PreferenceRegistry
                 )),
             'order' => $this->cleanOrder($value),
             // ponytail: not checked against the companies table; an id that matches nothing simply never matches.
+            'kinds' => is_array($value)
+                ? array_values(array_unique(array_intersect($value, array_keys(\App\Support\Notifications\NotificationDispatcher::KINDS))))
+                : [],
             'ids' => is_array($value)
                 ? array_values(array_unique(array_filter($value, fn ($id) => is_string($id) && Str::isUuid($id))))
                 : [],

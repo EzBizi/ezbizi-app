@@ -20,6 +20,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PhoneMessage extends Model implements CarriesAutomationScope, HoldsPersonalData
 {
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES); read per line (ChangeFeed::NARROW). */
+    protected static string $changeType = 'phone_messages';
+
     use HasFactory;
     use HasUuids;
 

@@ -499,9 +499,40 @@ class JobsController extends Controller
         $this->authorize('update', $job);
         $franchise = $job->franchise;
 
-        return response()->json(['data' => User::query()->orderBy('name')->get()
+        $roles = self::technicianRoles($job);
+        $users = User::query()->with('role:id,name')->orderBy('name')->get()
             ->filter(fn (User $u) => $franchise === null || $u->canActOnFranchise($franchise))
-            ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name])->values()]);
+            ->filter(fn (User $u) => self::holdsTechnicianRole($u, $roles))
+            ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name])->values();
+
+        // A job already on somebody outside the roles keeps showing them.
+        if ($job->performed_by_user_id !== null && ! $users->contains('id', $job->performed_by_user_id)
+            && ($current = User::find($job->performed_by_user_id)) !== null) {
+            $users->push(['id' => $current->id, 'name' => $current->name, 'outside_roles' => true]);
+        }
+
+        return response()->json(['data' => $users->values()]);
+    }
+
+    /**
+     * project_board.technician_roles for the job's place, lower-cased (Jose,
+     * 2026-11-16: "only show Technician or Local Manager Roles").
+     *
+     * @return list<string>
+     */
+    public static function technicianRoles(Job $job): array
+    {
+        $scope = $job->franchise ?? app(TenantContext::class)->get();
+        $value = $scope === null ? ['Technician', 'Local Manager']
+            : (array) app(SettingsResolver::class)->get('project_board.technician_roles', $scope);
+
+        return array_values(array_map(fn ($r) => mb_strtolower(trim((string) $r)), $value));
+    }
+
+    public static function holdsTechnicianRole(User $user, array $roles): bool
+    {
+        return $user->is_active && $user->role !== null
+            && in_array(mb_strtolower(trim((string) $user->role->name)), $roles, true);
     }
 
     public function update(Request $request, Job $job): JsonResponse
@@ -539,6 +570,13 @@ class JobsController extends Controller
 
         if (array_key_exists('performed_by_user_id', $input)) {
             $this->assertPerformerReach($input['performed_by_user_id'], $job->franchise);
+            // Only a person picking someone new; Workiz sync writes elsewhere.
+            if ($input['performed_by_user_id'] !== null && $input['performed_by_user_id'] !== $job->performed_by_user_id
+                && ! self::holdsTechnicianRole(User::findOrFail($input['performed_by_user_id']), self::technicianRoles($job))) {
+                throw ValidationException::withMessages([
+                    'performed_by_user_id' => "That person's role cannot be picked as Technician. Project Management › Settings lists the roles that can.",
+                ]);
+            }
         }
 
         // On a CHANGE, for the status's reason above: the panel sends the area

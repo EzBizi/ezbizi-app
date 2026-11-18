@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/deep_links.dart';
 import '../../core/device_key_store_io.dart'
     if (dart.library.js_interop) '../../core/device_key_store_web.dart'
@@ -180,6 +181,9 @@ class _GmailInboxState extends State<GmailInbox> {
 
   int _listRequest = 0;
   bool _loadingList = true;
+
+  /// A fresh list on its way with the old rows still up.
+  bool _refreshingList = false;
   String? _listError;
   List<InboxRow> _rows = const [];
   List<({String mailboxId, String message})> _errors = const [];
@@ -222,10 +226,25 @@ class _GmailInboxState extends State<GmailInbox> {
     // Connecting an inbox happens in the browser; coming back must show it.
     _resume = AppLifecycleListener(onResume: _loadMailboxes);
     _loadMailboxes();
+    // New mail (the watcher moved an inbox's mark), or a colleague seeing,
+    // dealing with or snoozing a message: the page on screen re-reads in
+    // place; ticks, the open conversation and the search are kept. Not once
+    // older mail has been appended below it, which a re-read would drop.
+    _live = LiveChanges.of(widget.api).subscribe({'mailboxes'}, (_) {
+      if (!_loadingList && !_appending && !_appended) {
+        return _loadList(cursor: _cursor, quiet: true);
+      }
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
+
+  /// Older mail was appended below the page: a live re-read would drop it.
+  bool _appended = false;
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_followLink);
     _resume.dispose();
     _debounce?.cancel();
@@ -294,15 +313,24 @@ class _GmailInboxState extends State<GmailInbox> {
     ).whenComplete(() => _appending = false);
   }
 
-  Future<void> _loadList({String? cursor, bool append = false}) async {
+  /// [quiet]: a live re-read of the page on screen; nothing dims, and a
+  /// failure keeps the rows.
+  Future<void> _loadList({
+    String? cursor,
+    bool append = false,
+    bool quiet = false,
+  }) async {
     if (_mailboxes.isEmpty) return;
 
     final request = ++_listRequest;
 
-    setState(() {
-      _loadingList = !append && (_rows.isEmpty || cursor != _cursor);
-      _listError = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loadingList = !append && (_rows.isEmpty || cursor != _cursor);
+        _refreshingList = !append && !_loadingList;
+        _listError = null;
+      });
+    }
 
     final filterId = _folder.startsWith('filter:')
         ? _folder.substring(7)
@@ -319,9 +347,11 @@ class _GmailInboxState extends State<GmailInbox> {
     final response = await widget.api.get('/email/inbox', query);
 
     if (!mounted || request != _listRequest) return;
+    if (quiet && (!response.ok || _appended)) return;
 
     setState(() {
       _loadingList = false;
+      _refreshingList = false;
 
       // The server's sentence where the rows would have been, never an empty
       // list: "no mail" is the sentence nobody investigates.
@@ -335,8 +365,10 @@ class _GmailInboxState extends State<GmailInbox> {
         final seen = {for (final r in _rows) r.key};
         _rows = [..._rows, ...page.rows.where((r) => !seen.contains(r.key))];
         _next = page.cursor;
+        _appended = true;
         return;
       }
+      _appended = false;
       _rows = page.rows;
       _cursor = cursor;
       _next = page.cursor;
@@ -1217,47 +1249,51 @@ class _GmailInboxState extends State<GmailInbox> {
       child: Row(
         children: [
           for (final (id, label, icon) in _categories)
-            InkWell(
-              key: ValueKey('email-category-$id'),
-              onTap: () => _selectCategory(id),
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: compact ? 12 : 18,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      width: 3,
-                      color: _category == id ? scheme.primary : scheme.surface,
-                    ),
+            // Mobile review 2026-11-13, P4: these sat under the module's
+            // underlined tabs as a second underline. An inner row is pills.
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: InkWell(
+                key: ValueKey('email-category-$id'),
+                onTap: () => _selectCategory(id),
+                customBorder: const StadiumBorder(),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 40),
+                  padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16),
+                  decoration: ShapeDecoration(
+                    shape: const StadiumBorder(),
+                    color: _category == id
+                        ? scheme.primaryContainer
+                        : Colors.transparent,
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      icon,
-                      size: 18,
-                      color: _category == id
-                          ? scheme.primary
-                          : scheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      label,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: _category == id ? scheme.primary : null,
+                  child: Row(
+                    children: [
+                      Icon(
+                        icon,
+                        size: 18,
+                        color: _category == id
+                            ? scheme.onPrimaryContainer
+                            : scheme.onSurfaceVariant,
                       ),
-                    ),
-                    if ((_countFor(id) ?? 0) > 0) ...[
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 8),
                       Text(
-                        '${_countFor(id)}',
-                        key: ValueKey('email-category-count-$id'),
-                        style: theme.textTheme.labelSmall,
+                        label,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: _category == id
+                              ? scheme.onPrimaryContainer
+                              : null,
+                        ),
                       ),
+                      if ((_countFor(id) ?? 0) > 0) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          '${_countFor(id)}',
+                          key: ValueKey('email-category-count-$id'),
+                          style: theme.textTheme.labelSmall,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -1467,6 +1503,7 @@ class _GmailInboxState extends State<GmailInbox> {
       key: const ValueKey('tour-email-list'),
       child: AsyncBody(
         loading: _loadingList,
+        refreshing: _refreshingList,
         error: _listError,
         onRetry: () => _loadList(cursor: _cursor),
         child: _rows.isEmpty

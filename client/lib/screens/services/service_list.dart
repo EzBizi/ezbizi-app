@@ -1,9 +1,11 @@
+import '../../widgets/module_page_header.dart';
 import '../../widgets/list_search.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/load_more.dart';
@@ -53,7 +55,18 @@ class _ServiceListState extends State<ServiceList> {
   void initState() {
     super.initState();
     _load();
+    // A service added, priced or renamed by somebody else: page one
+    // re-reads quietly; the open service keeps what is being typed.
+    _live = LiveChanges.of(widget.api).subscribe(
+      {'services', 'service_taxonomy'},
+      (_) {
+        if (_page == 1 && !_fetching) return _load(quiet: true);
+      },
+      active: () => widget.visible && LiveChanges.visible(this)(),
+    );
   }
+
+  LiveSubscription? _live;
 
   @override
   void didUpdateWidget(covariant ServiceList oldWidget) {
@@ -63,13 +76,15 @@ class _ServiceListState extends State<ServiceList> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     super.dispose();
   }
 
   bool get _hasPane => _adding || _open != null;
 
-  Future<void> _load({int page = 1}) async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({int page = 1, bool quiet = false}) async {
     if (page > 1 && _fetching) return;
 
     final request = ++_request;
@@ -77,8 +92,10 @@ class _ServiceListState extends State<ServiceList> {
     setState(() {
       _loading = page == 1 && _services.isEmpty;
       _fetching = true;
-      _error = null;
-      _pageError = null;
+      if (!quiet) {
+        _error = null;
+        _pageError = null;
+      }
     });
 
     final response = await widget.api.get('/services', {
@@ -87,6 +104,10 @@ class _ServiceListState extends State<ServiceList> {
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) {
+      setState(() => _fetching = false);
+      return;
+    }
 
     setState(() {
       _loading = false;
@@ -142,19 +163,21 @@ class _ServiceListState extends State<ServiceList> {
             ? '1 service in the catalogue.'
             : '$_total in the catalogue.',
         action: canCreate
-            ? Refused(
-                reason: refused,
-                child: FilledButton.icon(
-                  key: const ValueKey('tour-services-add'),
-                  onPressed: refused == null
-                      ? () => setState(() {
-                          _adding = true;
-                          _selectedId = null;
-                          _open = null;
-                        })
-                      : null,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add service'),
+            ? ModuleAction(
+                child: Refused(
+                  reason: refused,
+                  child: FilledButton.icon(
+                    key: const ValueKey('tour-services-add'),
+                    onPressed: refused == null
+                        ? () => setState(() {
+                            _adding = true;
+                            _selectedId = null;
+                            _open = null;
+                          })
+                        : null,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add service'),
+                  ),
                 ),
               )
             : null,

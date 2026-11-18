@@ -157,6 +157,12 @@ class NumbersController extends Controller
             'after_hours' => 'voicemail',
         ]);
 
+        // A new line comes out working: everybody on its account has an extension,
+        // and 911 knows where it is.
+        \App\Support\Phone\ExtensionAssigner::assignMissing($request->user()->organization);
+        \App\Support\Phone\EmergencyAddress::attach($number, $this->twilio);
+        $number->refresh();
+
         return response()->json(['data' => $this->row($number)], Response::HTTP_CREATED);
     }
 
@@ -828,6 +834,12 @@ class NumbersController extends Controller
             ]);
         }
 
+        \App\Support\Phone\ExtensionAssigner::assignMissing($request->user()->organization);
+        foreach ($made as $line) {
+            \App\Support\Phone\EmergencyAddress::attach($line, $this->twilio);
+            $line->refresh();
+        }
+
         return response()->json([
             'data' => array_map(fn (PhoneNumber $n) => $this->row($n), $made),
         ], Response::HTTP_CREATED);
@@ -1254,6 +1266,15 @@ class NumbersController extends Controller
             // organization ever holds hundreds, eager-load the groups and
             // presences rather than reintroducing a separate rule here.
             'answers' => collect($steps)->firstWhere('step', 'answer')['usable'] ?? false,
+
+            // PASS OR FAIL on the card (Jose, 2026-11-12: a connection should
+            // come out working). Each problem is a sentence saying what to fix.
+            'health' => (function () use ($number, $steps) {
+                $health = \App\Support\Phone\LineHealth::for($number, (bool) (collect($steps)->firstWhere('step', 'answer')['usable'] ?? false));
+
+                // `problems` stays plain sentences for the card; `checks` carries the keys.
+                return ['ok' => $health['ok'], 'problems' => array_column($health['problems'], 'sentence'), 'checks' => $health['problems']];
+            })(),
 
             // Whether THIS is the line the person reading calls out from.
             //

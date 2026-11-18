@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import '../widgets/list_search.dart';
+import '../widgets/suggestion_progress.dart';
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pasteboard/pasteboard.dart';
 import '../core/api_client.dart';
 import '../core/deep_links.dart';
 import '../core/files.dart';
+import '../core/pasted_image.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
@@ -153,6 +158,12 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
 
   String _query = '';
 
+  /// The release on its way (`/release/upcoming`), read while one of these
+  /// suggestions is Releasing, so its bar shows the same percent as What's
+  /// been built.
+  Map? _upcoming;
+  Timer? _upcomingTimer;
+
   /// Case-insensitive over what a row shows: the text, its status, the answer.
   bool _matches(Map<String, dynamic> row) {
     final q = _query.trim().toLowerCase();
@@ -198,6 +209,7 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
   @override
   void dispose() {
     DeepLinks.pending.removeListener(_linkArrived);
+    _upcomingTimer?.cancel();
     _composeController.dispose();
     _editController.dispose();
     super.dispose();
@@ -252,6 +264,31 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
         _openNarrow = true;
       }
     });
+    _followRelease();
+  }
+
+  /// Polls the release's percent only while a suggestion is Releasing.
+  void _followRelease() {
+    final releasing = _rows.any(
+      (r) => r['status'] == 'approved' && r['progress'] == 'releasing',
+    );
+    if (!releasing) {
+      _upcomingTimer?.cancel();
+      _upcomingTimer = null;
+      return;
+    }
+    _readUpcoming();
+    _upcomingTimer ??= Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _readUpcoming(),
+    );
+  }
+
+  Future<void> _readUpcoming() async {
+    final response = await widget.api.get('/release/upcoming');
+    if (!mounted || !response.ok) return;
+    final data = response.data;
+    setState(() => _upcoming = data is Map ? data : null);
   }
 
   Map<String, dynamic>? _rowById(String? id) {
@@ -294,8 +331,13 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
   /// the text field pastes on its own.
   Future<void> _pasteImage() async {
     if (_sending || _composeFiles.length >= _maxFiles) return;
-    final bytes = await widget.clipboardImage();
-    if (bytes == null || bytes.isEmpty || !mounted) return;
+    final raw = await widget.clipboardImage();
+    if (raw == null || raw.isEmpty || !mounted) return;
+    // Windows hands back BMP, which the server refuses under a .png name;
+    // re-encoding a large screenshot is slow, so it runs off the UI thread.
+    final bytes = isPng(raw) ? raw : await compute(pastedImageAsPng, raw);
+    if (bytes == null || !mounted) return;
+    if (_sending || _composeFiles.length >= _maxFiles) return;
     setState(
       () => _composeFiles.add(
         PickedBytes('pasted-${_composeFiles.length + 1}.png', bytes),
@@ -592,6 +634,10 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                 color: theme.colorScheme.onSurface,
               ),
             ),
+            if (status == 'approved') ...[
+              const SizedBox(height: 7),
+              SuggestionProgress(row: row, upcoming: _upcoming, compact: true),
+            ],
             if (status == 'new') ...[
               const SizedBox(height: 5),
               Text(
@@ -1111,6 +1157,10 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                   if (editingThis && _actionError != null) ...[
                     const SizedBox(height: 12),
                     ErrorNote(_actionError!),
+                  ],
+                  if (!editingThis && status == 'approved') ...[
+                    const SizedBox(height: 18),
+                    SuggestionProgress(row: row, upcoming: _upcoming),
                   ],
                   if (!editingThis && note != null) ...[
                     const SizedBox(height: 18),

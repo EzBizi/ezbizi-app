@@ -118,6 +118,14 @@ return [
      * inside the product. The lesson that produced this: for seven hours every
      * check I ran was a status code, and not one of them touched a row.
      */
+    // The scheduler's slow lane (routes/console.php, TWO LANES). Off: the fast
+    // slots run everything, as before. On: the five slow commands run only in
+    // deploy/ezbizi-scheduler-slow.service. Flipped on the box AFTER its units
+    // are installed, so a deploy in either order never strands a command.
+    'scheduler' => [
+        'slow_lane' => env('EZBIZI_SLOW_LANE') === 'on',
+    ],
+
     'backups' => [
         'status_file' => env('EZBIZI_BACKUP_STATUS', storage_path('app/backup-status.json')),
 
@@ -151,6 +159,10 @@ return [
      * Development tab's Releases screen (StaffReleaseStatusController).
      */
     'release_status_file' => env('EZBIZI_RELEASE_STATUS_FILE', '/var/www/ezbizi/release-status.jsonl'),
+
+    // Where deploy.sh's server gate writes its log ({sha}-{time}-{pid}.log);
+    // the Releases screen shows its tail (staff only).
+    'gate_runs_dir' => env('EZBIZI_GATE_RUNS_DIR', '/opt/ezbizi-test/.gate-runs'),
 
     'peer' => [
         'status_file' => env('EZBIZI_PEER_STATUS', storage_path('app/peer-status.json')),
@@ -332,4 +344,7 @@ return [
 
     // Who public lookup services (OpenStreetMap, Census) can contact about our traffic.
     'contact_email' => env('EZBIZI_CONTACT_EMAIL', 'development@ezbizi.com'),
+
+    // Task Board rules move a misfiled item to its group (Jose 11-17); false only flags.
+    'task_board_moves' => (bool) env('TASK_BOARD_MOVES', true),
 ];

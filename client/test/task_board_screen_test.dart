@@ -322,7 +322,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('tasks-quick-boards')),
-        matching: find.text('My Board'),
+        matching: find.text('Personal Task Board'),
       ),
       findsOneWidget,
     );
@@ -394,9 +394,13 @@ void main() {
       'two-step delete', (tester) async {
     await pumpBoard(tester);
 
-    await tester.tap(find.byKey(const ValueKey('task-t2')));
+    // The name opens the task; Owner and About edit in place (Jose, 2026-11-13).
+    await tester.tapAt(
+      tester.getTopLeft(find.byKey(const ValueKey('task-t2'))) +
+          const Offset(160, 19),
+    );
     await tester.pumpAndSettle();
-    expect(find.text('Automation "Liner job booked"'), findsOneWidget);
+    expect(find.text('EzBizi · automation "Liner job booked"'), findsOneWidget);
     expect(find.text('Late'), findsOneWidget);
 
     // Activity: who changed what, from and to (Jose, 2026-11-09).
@@ -410,6 +414,9 @@ void main() {
     await tester.tap(find.byKey(const Key('task-activity')));
     await tester.pumpAndSettle();
 
+    // One status chip opens the statuses (sidebar option A, 11-12).
+    await tester.tap(find.byKey(const Key('task-panel-status')));
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('task-panel-status-working_on_it')),
     );
@@ -469,7 +476,11 @@ void main() {
       'everybody who owns a task on it', (tester) async {
     await pumpBoard(tester);
 
-    await tester.tap(find.byKey(const ValueKey('task-t1')));
+    // The name opens the task; Owner and About edit in place (Jose, 2026-11-13).
+    await tester.tapAt(
+      tester.getTopLeft(find.byKey(const ValueKey('task-t1'))) +
+          const Offset(160, 19),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('task-panel-owner')));
     await tester.pumpAndSettle();
@@ -534,7 +545,7 @@ void main() {
   ) async {
     await pumpBoard(tester);
 
-    await tester.tap(find.text('Kanban'));
+    await pickView(tester, 'Kanban');
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('kanban-stuck')), findsOneWidget);
     expect(find.text('Working on it · 1'), findsOneWidget);
@@ -544,6 +555,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('task-t2')), findsOneWidget);
     expect(find.byKey(const ValueKey('task-t1')), findsNothing);
+  });
+
+  testWidgets('Kanban columns keep a readable width and scroll sideways', (
+    tester,
+  ) async {
+    // Desktop review 2026-11-13, Top 1: at 1440 eleven columns were squeezed
+    // into the width, about 30 px each, one letter per line.
+    await pumpBoard(tester);
+
+    await pickView(tester, 'Kanban');
+    await tester.pumpAndSettle();
+    final column = find.byKey(const ValueKey('kanban-stuck'));
+    expect(tester.getSize(column).width, 280);
+    expect(
+      find.ancestor(of: column, matching: find.byType(Scrollable)),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('on a phone the view switcher is one dropdown', (tester) async {
+    // Phone review 2026-11-13, item 7: the segments broke "Kanb/an".
+    await pumpBoard(tester, size: const Size(390, 844));
+
+    expect(find.byKey(const Key('tasks-view-picker')), findsOneWidget);
+    expect(find.byType(SegmentedButton<String>), findsNothing);
+    await tester.tap(find.byKey(const Key('tasks-view-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kanban').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w.key is ValueKey<String> &&
+            (w.key! as ValueKey<String>).value.startsWith('kanban-'),
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets('on a phone each task is a card with its status in words', (
@@ -562,4 +610,18 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+}
+
+/// Switches the board's view by its segment, or by the picker where the
+/// toolbar has no room for segments.
+Future<void> pickView(WidgetTester tester, String name) async {
+  final segments = find.byKey(const Key('tasks-view'));
+  if (segments.evaluate().isNotEmpty) {
+    await tester.tap(find.descendant(of: segments, matching: find.text(name)));
+  } else {
+    await tester.tap(find.byKey(const Key('tasks-view-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(name).last);
+  }
+  await tester.pumpAndSettle();
 }

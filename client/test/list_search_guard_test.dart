@@ -329,11 +329,6 @@ const Map<String, _Exemption> _exempt = {
     owner: 'Financials',
     host: 'lib/screens/financials_screen.dart',
   ),
-  'lib/screens/marketing/newsletter_dashboard.dart': (
-    why: 'the table search is passed in by the Newsletter tab',
-    owner: 'Marketing',
-    host: 'lib/screens/marketing/newsletter_tab.dart',
-  ),
 
   // Conversations: one thread, read top to bottom.
   'lib/screens/email/message_view.dart': (
@@ -382,11 +377,6 @@ const Map<String, _Exemption> _exempt = {
   'lib/screens/phone/usage_pane.dart': (
     why: 'a cost breakdown, one row per kind of usage',
     owner: 'Phone',
-    host: null,
-  ),
-  'lib/widgets/notification_bell.dart': (
-    why: 'the bell drop-down of recent notifications',
-    owner: 'UI/UX',
     host: null,
   ),
 };

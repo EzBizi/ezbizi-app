@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
+import '../core/live_changes.dart';
 import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -172,7 +173,21 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     _loadReplyRule();
     _takeLink();
     DeepLinks.pending.addListener(_takeLink);
+    // A review or reply synced from Google, or a note added elsewhere: the
+    // list re-reads quietly and the open review in place (the reply being
+    // typed is its own box and is never touched).
+    _live = LiveChanges.of(widget.api).subscribe({'reviews'}, (batch) async {
+      if (!_loading) await _load(quiet: true);
+      final open = _open?['id'];
+      if (open != null &&
+          !_busy &&
+          (batch.reload || batch.touched('reviews').contains('$open'))) {
+        await _refresh();
+      }
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   /// A tapped notification about a review opens that review.
   void _takeLink() {
@@ -183,6 +198,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
 
   @override
   void dispose() {
+    _live?.cancel();
     DeepLinks.pending.removeListener(_takeLink);
     _draft.dispose();
     _note.dispose();
@@ -202,13 +218,16 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     return now.subtract(Duration(days: days));
   }
 
-  Future<void> _load() async {
+  /// [quiet]: a live re-read; a failure keeps the rows on screen.
+  Future<void> _load({bool quiet = false}) async {
     final request = ++_request;
 
-    setState(() {
-      _loading = _loaded.isEmpty;
-      _error = null;
-    });
+    if (!quiet) {
+      setState(() {
+        _loading = _loaded.isEmpty;
+        _error = null;
+      });
+    }
 
     final from = _from;
     final response = await widget.api.get('/reviews', {
@@ -227,6 +246,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     });
 
     if (!mounted || request != _request) return;
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;
@@ -742,6 +762,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 drafting: _drafting,
                 onDraftAll: _can('reviews.manage') ? _draftAll : null,
                 onSendWindow: _openSendWindow,
+                compact: box.maxWidth < 600,
               ),
             _toolbar(theme, box.maxWidth),
             if (_profile != null && box.maxWidth < 1200)
@@ -817,7 +838,10 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
             _tile(
               theme,
               key: 'average',
-              label: 'Average rating',
+              // Named with its period: the all-time average elsewhere on Customer
+              // Experience read as a second, different rating (desktop review
+              // 2026-11-13, Top 7).
+              label: 'Average rating this month',
               value: average == null ? '—' : '${avg(average)} / 5',
               sub: averageSub,
               info:
@@ -1091,6 +1115,72 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         onSelectionChanged: (v) => setState(() => _view = v.single),
       ),
     ];
+
+    // Design 195 (phone 4): search, Filters and ⋯ on one line, the quick
+    // chips on one more that scrolls sideways. Fetch new and the view are in
+    // the ⋯.
+    if (width < 600) {
+      final chips = left.whereType<FilterChip>().toList();
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(child: (left.first as SizedBox).child!),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: const ValueKey('reviews-more-filters'),
+                  onPressed: () => setState(() => _moreOpen = !_moreOpen),
+                  child: Text(more > 0 ? 'Filters · $more' : 'Filters'),
+                ),
+                MenuAnchor(
+                  menuChildren: [
+                    MenuItemButton(
+                      key: const ValueKey('tour-customer_experience-fetch'),
+                      leadingIcon: const Icon(Icons.sync, size: 18),
+                      onPressed: _syncing ? null : _sync,
+                      child: Text(_syncing ? 'Fetching…' : 'Fetch new'),
+                    ),
+                    const Divider(height: 1),
+                    for (final (v, label, icon) in const [
+                      ('inbox', 'Inbox', Icons.inbox_outlined),
+                      ('table', 'Table', Icons.table_rows_outlined),
+                      ('board', 'Board', Icons.view_agenda_outlined),
+                    ])
+                      MenuItemButton(
+                        key: ValueKey('reviews-view-$v'),
+                        leadingIcon: Icon(icon, size: 18),
+                        trailingIcon: _view == v
+                            ? const Icon(Icons.check, size: 18)
+                            : null,
+                        onPressed: () => setState(() => _view = v),
+                        child: Text(label),
+                      ),
+                  ],
+                  builder: (context, menu, _) => IconButton(
+                    key: const ValueKey('reviews-more'),
+                    tooltip: 'More',
+                    icon: const Icon(Icons.more_horiz),
+                    onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final c in chips) ...[c, const SizedBox(width: 6)],
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     Widget wrap(List<Widget> children) => Wrap(
       spacing: 10,

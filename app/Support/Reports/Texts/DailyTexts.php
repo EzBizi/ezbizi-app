@@ -526,7 +526,8 @@ final class DailyTexts
     private static function sourcedTo(string $organizationId, string $company, string $from, string $to): Collection
     {
         return ReportJobs::created(DB::table('workiz_jobs')->where('organization_id', $organizationId)->whereBetween('booked_at', [$from, $to])
-            ->get(['job_source', 'service_area', DB::raw("coalesce(json_extract(payload, '$.Tags'), json_array()) as tags")]))
+            ->get(['job_source', 'service_area', 'status', DB::raw("coalesce(json_extract(payload, '$.Tags'), json_array()) as tags"),
+                DB::raw("cast(coalesce(json_unquote(json_extract(payload, '$.JobTotalPrice')), 0) as decimal(12,2)) as total")]))
             ->filter(fn ($j) => ReportJobs::tagKey((string) $j->job_source) === ReportJobs::tagKey($company))->values();
     }
 
@@ -702,8 +703,9 @@ final class DailyTexts
             }
             $lines = [...$title, '*Jobs created: '.$rows->sum('jobs').'*', ''];
             foreach ($rows as $p) {
-                $new = (int) ($p['new_client'] ?? 0);
-                // Booked out of the new-client calls they answered, as Performance (Trey, 2026-11-04).
+                // Booked out of the new-client calls they answered, as Performance (Trey, 2026-11-04),
+                // less those still Needing Attention (Jose, 2026-11-12).
+                $new = (int) ($p['new_client'] ?? 0) - (int) ($p['needs_attention'] ?? 0);
                 $lines[] = '• *'.$p['person'].'*: '.(int) ($p['jobs'] ?? 0).' jobs created · '.(int) ($p['answered'] ?? 0).' answered'
                     .($new > 0 ? ' · '.number_format(($p['booked_new'] ?? 0) / $new * 100, 1).'% of new-client calls booked' : '');
             }

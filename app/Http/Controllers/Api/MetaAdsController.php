@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\SocialConnection;
+use App\Support\Ads\AllAccounts;
 use App\Support\Audit\AuditLogger;
 use App\Support\Social\MetaAdsManager;
 use App\Support\Social\SocialConnectionAccess;
@@ -47,13 +48,22 @@ class MetaAdsController extends Controller
     {
         $this->authorizeTo($request, 'ads_manager.view');
         $input = $request->validate([
-            'connection_id' => ['required', 'uuid'],
+            'connection_id' => ['required_without:all', 'uuid'],
+            'all' => ['sometimes', 'boolean'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
         ]);
         $to = isset($input['to']) ? Carbon::parse($input['to']) : Carbon::today();
         $from = isset($input['from']) ? Carbon::parse($input['from']) : $to->copy()->subDays(29);
         abort_if($from->diffInDays($to) > self::MAX_DAYS, Status::HTTP_UNPROCESSABLE_ENTITY, 'That range is longer than '.self::MAX_DAYS.' days. Ask for a shorter one.');
+
+        if ($request->boolean('all')) {
+            return response()->json(['data' => [
+                'from' => $from->toDateString(),
+                'to' => $to->toDateString(),
+                ...AllAccounts::read($this->connections($request), 'meta', $from, $to, fn (SocialConnection $c) => $this->ads->tree($c, $from, $to)),
+            ]]);
+        }
 
         $connection = $this->connection($request, $input['connection_id']);
 
@@ -87,6 +97,7 @@ class MetaAdsController extends Controller
             return response()->json(['message' => $e->getMessage()], Status::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        AllAccounts::forget($connection);
         $this->audit->log('meta_ads.status_changed', $connection, ['status' => $input['status']],
             ['object_id' => $input['object_id'], 'account_id' => $connection->remote_id]);
 
@@ -110,6 +121,7 @@ class MetaAdsController extends Controller
             return response()->json(['message' => $e->getMessage()], Status::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        AllAccounts::forget($connection);
         $this->audit->log('meta_ads.budget_changed', $connection,
             ['daily_budget' => ['from' => $old / 100, 'to' => (float) $input['daily_budget']]],
             ['object_id' => $input['object_id'], 'account_id' => $connection->remote_id]);

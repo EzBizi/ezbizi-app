@@ -26,6 +26,11 @@ class TrainingAssignment extends Model implements CarriesAutomationScope, HoldsP
 {
     use HasUuids;
     use BelongsToTenant;
+    use \App\Support\Live\RecordsChanges;
+
+    /** The change feed's name for this record (ChangeFeed::TYPES): filed where it assigns. */
+    protected static string $changeType = 'training';
+
 
     public const USER = 'user';
 

@@ -21,7 +21,6 @@ import 'package:geolocator/geolocator.dart';
 import 'api_client.dart';
 import 'build_info.dart';
 import 'client_platform.dart';
-import 'field_os.dart';
 import 'field_recorder.dart';
 import 'session.dart';
 

@@ -263,6 +263,106 @@ class WorkizV2Test extends TestCase
         $this->assertSame(['api_token' => 'api_MA', 'auth_secret' => 'sec_MA'], $credentials['v1']);
     }
 
+    /** Jose, 11-12: Connect does the whole setup and answers what passed and what still needs a person. */
+    public function test_connecting_reads_the_lists_sets_a_missing_standard_and_answers_its_health(): void
+    {
+        [$tenant, $connection] = $this->branch('v1');
+        Http::fake([
+            'api.workiz.com/api/v1/*' => Http::response(['error' => 'Forbidden'], 403),
+            'api.workiz.com/crm/api/v2/tags*' => Http::response($this->page([['id' => 'T1', 'name' => 'DEPOSIT RECEIVED', 'color' => '#0059a0']])),
+            'api.workiz.com/crm/api/v2/*' => Http::response($this->page([])),
+        ]);
+        $admin = $this->inTenant($tenant['org'], function () use ($tenant, $connection) {
+            $tenant['admin']->forceFill(['preferences' => ['navigation.scope' => 'franchise:'.$connection->scope_id]])->save();
+
+            return $tenant['admin']->fresh();
+        });
+
+        $health = collect($this->signedInAs($admin)->postJson('/api/v1/social/workiz', ['api_token' => 'v2key_MA'])->assertCreated()->json('data.health'))->keyBy('key');
+
+        $this->assertTrue($health['key']['ok']);
+        $this->assertTrue($health['tags']['ok'], 'the tag list is read at Connect, not on the next schedule');
+        $this->assertTrue($health['standard']['ok'], 'with no standard yet, this account sets it');
+        $this->assertFalse($health['web_login']['ok']);
+        $this->assertSame('No Workiz web login is connected.', $health['web_login']['detail']);
+        $this->assertFalse($health['webhook']['ok']);
+        $this->assertStringContainsString('/api/v1/social/workiz/webhook/'.$connection->getKey(), $health['webhook']['detail']);
+        $this->assertSame(['DEPOSIT RECEIVED'], collect($this->inTenant($tenant['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)
+            ->get('workiz.tag_baseline', $tenant['org'])))->pluck('name')->all());
+        // 11-12: with a standard saved, filter('is_array') got (value, key) and 500'd this list.
+        $cards = collect($this->signedInAs($admin)->getJson('/api/v1/social/connections?include=data_sources')->assertOk()->json('data'));
+        $this->assertNotNull($cards->firstWhere('id', $connection->getKey())['workiz']['health'] ?? null, 'the list draws this account health');
+    }
+
+    /** 11-12: a slot killed by its 300s timeout left the projection lock held an hour; no Workiz job reached EzBizi. */
+    public function test_a_killed_runs_lock_frees_within_five_minutes_and_health_flags_a_waiting_job(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $this->inTenant($tenant['org'], fn () => WorkizJob::land($connection, WorkizV2::job($this->v2Job())));
+        \Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, \App\Console\Commands\ProjectWorkizRecords::LOCK_SECONDS)->get();
+
+        $this->travel(11)->minutes();
+        $health = collect($this->inTenant($tenant['org'], fn () => \App\Support\Workiz\WorkizHealth::check($connection)))->keyBy('key');
+        $this->assertFalse($health['projection']['ok']);
+        $this->assertStringContainsString('waiting since', $health['projection']['detail']);
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, 1)->get(), 'the dead run no longer holds it');
+    }
+
+    /** Jose, 11-12: "a process that constantly checks the workiz - ezbizi ezbizi - workiz sync all the time". */
+    public function test_the_watchdog_heals_a_stuck_lock_resends_an_unsent_job_and_alerts_once_per_episode(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        \Illuminate\Support\Facades\Queue::fake();
+        $job = $this->inTenant($tenant['org'], function () use ($tenant) {
+            app(\App\Support\Settings\SettingsResolver::class)->set('workiz.mirror', $tenant['franchise'], true);
+            WorkizJob::land(SocialConnection::query()->sole(), WorkizV2::job($this->v2Job()));
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $tenant['franchise']->id]);
+
+            return \App\Models\Job::factory()->create(['franchise_id' => $tenant['franchise']->id, 'customer_id' => $customer->id]);
+        });
+        \Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, 300)->get();
+        $this->travel(16)->minutes();
+        $this->inTenant($tenant['org'], fn () => WorkizJob::query()->update(['synced_at' => now()]));
+
+        $this->artisan('ezbizi:workiz-watchdog')->assertSuccessful();
+        $this->artisan('ezbizi:workiz-watchdog')->assertSuccessful();
+
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::lock(\App\Console\Commands\ProjectWorkizRecords::LOCK, 1)->get(), 'the stuck lock is freed');
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\MirrorToWorkiz::class, 1);
+        $raised = fn (string $key) => $this->inTenant($tenant['org'], fn () => \App\Models\AutomationEvent::query()->where('event_key', $key)->count());
+        $this->assertSame(1, $raised('franchise.workiz_sync_drift'), 'one alert, not one per run');
+        $health = collect($this->inTenant($tenant['org'], fn () => \App\Support\Workiz\WorkizHealth::check($connection)))->keyBy('key');
+        $this->assertFalse($health['sync']['ok']);
+        $this->assertStringContainsString($job->number, $health['sync']['detail']);
+
+        // Both sides in step again: one "recovered", and the card says OK.
+        $this->inTenant($tenant['org'], function () use ($job) {
+            $row = WorkizJob::query()->sole();
+            $row->forceFill(['job_id' => $job->getKey(), 'synced_at' => now()])->save();
+            \Illuminate\Support\Facades\DB::table('jobs')->where('id', $job->getKey())->update(['status' => $row->status,
+                'scheduled_for' => $row->getRawOriginal('scheduled_for'), 'amount_minor' => (int) round(((float) ($row->payload['JobTotalPrice'] ?? 0)) * 100)]);
+        });
+        $this->artisan('ezbizi:workiz-watchdog')->assertSuccessful();
+        $this->artisan('ezbizi:workiz-watchdog')->assertSuccessful();
+        $this->assertSame(1, $raised('franchise.workiz_sync_recovered'));
+        $health = collect($this->inTenant($tenant['org'], fn () => \App\Support\Workiz\WorkizHealth::check($connection)))->keyBy('key');
+        $this->assertStringStartsWith('OK · last checked', $health['sync']['detail']);
+    }
+
+    /** Reports, 11-12: Texas's Workiz writes Central on a New York branch; its jobs were stamped an hour early. */
+    public function test_an_accounts_clock_is_measured_from_its_copy_lag_not_taken_from_the_branch(): void
+    {
+        [$tenant] = $this->branch();
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-12 18:00:00', 'UTC'));
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            foreach (range(1, 10) as $i) {
+                WorkizJob::query()->create(['franchise_id' => $tenant['franchise']->id, 'remote_id' => 'C'.$i, 'status' => 'Submitted', 'payload' => [],
+                    'booked_at' => '2026-11-12 11:58:00', 'synced_at' => now()]); // copied 2 minutes after noon Central
+            }
+            $this->assertSame('America/Chicago', \App\Support\Workiz\WorkizClock::zone($tenant['franchise']));
+        });
+    }
+
     public function test_dispatch_writes_go_through_v2(): void
     {
         [$tenant, $connection] = $this->branch();
@@ -606,5 +706,31 @@ class WorkizV2Test extends TestCase
         Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/v2/jobs')
             && $r['description'] === 'Back door' && $r['customFields'] === [['id' => 'CF-1', 'value' => '$99 - Level 1 Inspection']]
             && $r['isAllDay'] === true && $r['date'] === '2026-11-10' && $r['endDate'] === '2026-11-11');
+    }
+
+    /** 11-12: a job booked with no date reaches Workiz unscheduled; a field Workiz requires comes back as its refusal. */
+    public function test_a_job_with_no_date_is_created_unscheduled_and_a_missing_required_field_is_named(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $visit = $this->inTenant($tenant['org'], function () use ($connection) {
+            $customer = Customer::create(['owning_franchise_id' => $connection->scope_id, 'number' => 'C-1', 'name' => 'Pat Rivera', 'is_active' => true]);
+
+            return Job::create(['franchise_id' => $connection->scope_id, 'customer_id' => $customer->id, 'number' => 'J-1', 'title' => 'Sweep',
+                'status' => 'Submitted', 'currency' => 'USD']);
+        });
+        Http::fake([
+            'api.workiz.com/crm/api/v2/jobtypes*' => Http::response($this->page([['id' => 'JT-x1', 'name' => 'Chimney Inspection']])),
+            'api.workiz.com/crm/api/v2/jobs' => Http::sequence()
+                ->push(['message' => 'The following custom fields are required: Pricing'], 400)
+                ->push($this->v2Job(['id' => 'JOB-new', 'uuid' => 'NEW001', 'serialId' => 11009, 'date' => null]), 201),
+        ]);
+
+        $first = $this->inTenant($tenant['org'], fn () => app(WorkizJobWriter::class)->create($visit, 'Chimney Inspection'));
+        $this->assertStringContainsString('Pricing', (string) $first['refused']);
+
+        $made = $this->inTenant($tenant['org'], fn () => app(WorkizJobWriter::class)->create($visit, 'Chimney Inspection'));
+        $this->assertNull($made['refused']);
+        Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/v2/jobs')
+            && $r['isScheduled'] === false && ! isset($r['date']));
     }
 }

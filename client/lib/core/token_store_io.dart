@@ -54,6 +54,19 @@ Future<void> init() async {
 
 String? readItem(String key) => _cache[key];
 
+/// What the keychain itself holds for [key], read past the cache.
+///
+/// Throws when the keychain cannot answer, rather than returning null: the
+/// caller compares this with what it expects, and "could not read" must not
+/// look the same as "it is gone".
+Future<String?> readPersisted(String key) => _storage.read(key: key);
+
+/// Forget the in-memory copy so a test can run [init] again.
+void debugReset() {
+  _cache = {};
+  _ready = false;
+}
+
 /// [persist] is the "keep me signed in" tick, and it means the same thing here
 /// as on the web: off, the token lives only for as long as this process does;
 /// on, it goes to the keychain and survives a restart — or an update.

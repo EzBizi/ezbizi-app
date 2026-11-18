@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'api_client.dart';
+import 'issue_reporter.dart';
 import 'password_policy.dart';
 import 'permissions.dart';
 import 'timestamps.dart';
@@ -65,6 +68,7 @@ class Session extends ChangeNotifier {
     _scopeGeneration++;
     _switchingScope = false;
     _me = null;
+    _keptToken = null;
     _api.setToken(token);
     await refresh();
     if (generation != _identityGeneration) return false;
@@ -75,6 +79,7 @@ class Session extends ChangeNotifier {
     if (signedIn) {
       TokenStore.save(tenant: token, persist: persist);
       TokenStore.dropStaff();
+      _keptToken = persist ? token : null;
     }
 
     return signedIn;
@@ -88,6 +93,7 @@ class Session extends ChangeNotifier {
   /// token means the sign-in screen rather than a broken shell.
   Future<void> restore() async {
     final generation = ++_identityGeneration;
+    _keptToken = null;
     final token = TokenStore.tenantToken;
 
     if (token == null) {
@@ -110,6 +116,19 @@ class Session extends ChangeNotifier {
     // server means a refresh during an outage permanently loses the session.
     if (!signedIn && !_unreachable) {
       TokenStore.clear();
+    }
+
+    // Kept only if it is the copy that survives a restart: on the web a
+    // sessionStorage token ("do not keep me signed in") is restored too, and
+    // must never be promoted to localStorage by _keepToken.
+    if (signedIn) {
+      String? persisted;
+      try {
+        persisted = await TokenStore.persistedTenant();
+      } catch (_) {}
+      if (generation == _identityGeneration && persisted == token) {
+        _keptToken = token;
+      }
     }
 
     _restored = true;
@@ -154,6 +173,7 @@ class Session extends ChangeNotifier {
       // session that ended stops being true here rather than lingering.
       expired = false;
       notifyListeners();
+      unawaited(_keepToken());
       return;
     }
 
@@ -171,6 +191,43 @@ class Session extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  /// The token "keep me signed in" put in the keychain, or null when the
+  /// person did not tick it (or nobody is signed in).
+  String? _keptToken;
+  bool _keeping = false;
+
+  /// After a /me that worked: make sure the kept token is still on disk.
+  ///
+  /// 2026-11-16 (TokenStore.keepTenant): the desktop lost it from the
+  /// keychain mid-session and only found out at the next restart, an
+  /// update. Each refresh (60 s in the shell, and on resume) now checks and
+  /// writes it back, and reports that it had to, so whatever removed it
+  /// shows up in Health with its time and breadcrumbs.
+  Future<void> _keepToken() async {
+    final token = _keptToken;
+    if (token == null || _keeping) return;
+    final identity = _identityGeneration;
+    _keeping = true;
+    try {
+      final repaired = await TokenStore.keepTenant(
+        token,
+        stillWanted: () =>
+            identity == _identityGeneration && _keptToken == token,
+      );
+      if (repaired) {
+        IssueReporter.instance.record(
+          'dart_error',
+          'Saved sign-in was missing from this device and was written back',
+          detail:
+              'TokenStore.keepTenant: the keychain no longer held the '
+              'token this session kept with "keep me signed in".',
+        );
+      }
+    } finally {
+      _keeping = false;
+    }
   }
 
   /// The last refresh could not reach the server, as opposed to being refused.
@@ -294,6 +351,7 @@ class Session extends ChangeNotifier {
     readOnlyNotice = null;
     staffToken = null;
     expired = false;
+    _keptToken = null;
     _api.setToken(null);
     TokenStore.clear();
     notifyListeners();
@@ -342,6 +400,7 @@ class Session extends ChangeNotifier {
     staffToken = null;
     _unreachable = false;
     expired = true;
+    _keptToken = null;
     _api.setToken(null);
     TokenStore.clear();
     notifyListeners();
@@ -906,6 +965,10 @@ class Me {
 
   /// The companies this person hears from; empty means all of them. Each
   /// covers its sub companies and branches (Bar, 2026-10-22).
+  /// Modules whose notifications collect in the bell without alerting.
+  List<String> get notificationMutedModules =>
+      (preferences['notifications.muted_modules'] as List? ?? const []).whereType<String>().toList();
+
   List<String> get notificationCompanies =>
       (preferences['notifications.companies'] as List? ?? const [])
           .whereType<String>()
@@ -939,6 +1002,10 @@ class Me {
   /// on the way to Jobs and back is not a pin.
   bool get phoneCustomerPanelPinned =>
       preferences['phone.customer_panel_pinned'] == true;
+
+  /// Whether report tables keep their headings on screen while their rows
+  /// scroll. On unless switched off (Jose, 2026-11-16).
+  bool get reportHeadingsPinned => preferences['reports.pin_headings'] != false;
 
   /// The two pane widths on Web Management → Widgets.
   ///

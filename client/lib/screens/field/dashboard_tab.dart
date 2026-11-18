@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
 import '../../core/field_tracker.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
@@ -52,9 +53,12 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
 
   @override
   void dispose() {
+    _live?.cancel();
     _disarm?.cancel();
     super.dispose();
   }
+
+  LiveSubscription? _live;
 
   final _focused = GlobalKey();
 
@@ -62,6 +66,11 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
   void initState() {
     super.initState();
     _load();
+    // A technician moving, stopping, losing signal or pressing SOS, or an
+    // alert acknowledged by somebody else: the board re-reads quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'field'}, (_) {
+      if (!_loading) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
 
   @override
@@ -75,10 +84,11 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
     if (target != null) Scrollable.ensureVisible(target, alignment: 0.3);
   });
 
-  Future<void> _load() async {
-    setState(() => _error = null);
+  /// [quiet]: a live re-read; a failure keeps the board on screen.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) setState(() => _error = null);
     final response = await widget.api.get('/field/dashboard');
-    if (!mounted) return;
+    if (!mounted || (quiet && !response.ok)) return;
     setState(() {
       _loading = false;
       if (response.ok) {
@@ -259,7 +269,9 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                       Icons.signal_cellular_off,
                     ),
                     tile(
-                      'Open alerts',
+                      (counts['sos'] as num? ?? 0) > 0
+                          ? 'Open alerts (${counts['sos']} SOS)'
+                          : 'Open alerts',
                       counts['open_alerts'],
                       Icons.warning_amber,
                     ),

@@ -310,6 +310,29 @@ class WhatsAppGroupsTest extends TestCase
         $this->assertTrue($out->every(fn ($m) => str_contains($m['url'], '/REPORTS-1/')), 'every call from the Reports number');
     }
 
+    public function test_a_message_to_branch_managers_reaches_each_hours_approver_and_nobody_else(): void
+    {
+        $manager = $this->userWithRole($this->t, 'Area Manager', ['work_hours.approve']);
+        $tech = $this->userWithRole($this->t, 'Technician', ['leads.view']);
+        $bystander = $this->userWithRole($this->t, 'Office', ['leads.view']);
+        $done = $this->inTenant($this->t['org'], function () use ($manager, $tech, $bystander) {
+            foreach ([$manager, $tech, $bystander] as $u) {
+                $u->forceFill(['phone' => '(305) 555-01'.random_int(10, 99)])->save();
+            }
+            DB::table('whatsapp_numbers')->update(['purpose' => 'reports']);
+            $rule = \App\Models\Automation::create(['name' => 'Shift', 'trigger_key' => 'timeclock.technician_clocked_out', 'is_active' => false, 'created_by' => $this->t['admin']->id]);
+
+            return app(\App\Support\Automations\ActionRunner::class)->run(['type' => 'whatsapp.send', 'template' => 'automation_alert',
+                'to_field' => 'branch_managers:', 'parameters' => ['Shift finished', 'done']],
+                new \App\Models\AutomationEvent(['event_key' => 'timeclock.technician_clocked_out', 'payload' => ['user_id' => $tech->id]]), null, automation: $rule);
+        });
+
+        $this->assertTrue($done['ok'], $done['detail']);
+        $this->assertStringContainsString($manager->name, $done['detail']);
+        $this->assertStringNotContainsString($bystander->name, $done['detail']);
+        $this->assertStringNotContainsString($tech->name, $done['detail']);
+    }
+
     private function deliver(): int
     {
         return $this->inTenant($this->t['org'],

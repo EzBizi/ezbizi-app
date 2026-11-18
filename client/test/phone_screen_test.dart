@@ -927,6 +927,21 @@ void main() {
       expect(find.textContaining('EzBizi —'), findsNothing);
     });
 
+    testWidgets('an approval does not show staff their own note (D9)', (tester) async {
+      await _pump(
+        tester,
+        companies: threeCompanies,
+        scope: const {'type': 'organization', 'id': 'org-1'},
+        serviceRequest: {...grantedAll, 'decision_note': 'Approved by the phone-system session.'},
+        approvedCompanyIds: const ['co-1', 'co-2', 'co-3'],
+      );
+
+      await _tap(tester, find.text('Settings'));
+
+      expect(find.text('Phone service is switched on'), findsOneWidget);
+      expect(find.textContaining('phone-system session'), findsNothing);
+    });
+
     testWidgets('standing at the organization, every company is named', (tester) async {
       await _pump(
         tester,

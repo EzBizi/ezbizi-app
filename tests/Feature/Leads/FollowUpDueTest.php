@@ -97,6 +97,9 @@ class FollowUpDueTest extends TestCase
         $this->assertCount(1, $events);
         $this->assertSame($quiet->id, $events[0]->subject_id);
         $this->assertSame('Hi Dana', $events[0]->payload['after']['greeting']);
+        // ActionRunner reads {{greeting}} off the lead before the payload: a Lead
+        // method named greeting() was called as a relation and threw (health 11-16).
+        $this->assertNull($quiet->getAttribute('greeting'));
         $this->assertSame('ls_text', $events[0]->payload['after']['kind']);
         $this->assertFalse($events[0]->payload['after']['not_booked_call']);
 
@@ -119,6 +122,28 @@ class FollowUpDueTest extends TestCase
         $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
 
         $this->assertTrue($this->raised()[0]->payload['after']['not_booked_call']);
+    }
+
+    /** Desk for Jose, 2026-11-16: no went-quiet text after the missed-call text. */
+    public function test_it_says_when_the_call_was_missed(): void
+    {
+        $caller = $this->lead('Pat Caller', [[LeadConversation::FROM_CONSUMER, '2026-09-30T14:00:00Z'],
+            [LeadConversation::FROM_ADVERTISER, '2026-09-30T14:00:30Z', true]]);
+        $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
+        $this->assertFalse($this->raised()[0]->payload['after']['missed_call']);
+    }
+
+    public function test_it_says_when_the_call_was_missed_and_texted(): void
+    {
+        $caller = $this->lead('Pat Caller', [[LeadConversation::FROM_CONSUMER, '2026-09-30T14:00:00Z'],
+            [LeadConversation::FROM_ADVERTISER, '2026-09-30T14:00:30Z', true]]);
+        $this->inTenant($this->t['org'], fn () => AutomationEvent::create(['organization_id' => $this->t['org']->id,
+            'event_key' => 'lead.missed_call', 'subject_type' => $caller->getMorphClass(), 'subject_id' => $caller->id,
+            'payload' => [], 'occurred_at' => now(), 'available_at' => now()]));
+
+        $this->artisan('ezbizi:leads-follow-up-due')->assertSuccessful();
+
+        $this->assertTrue($this->raised()[0]->payload['after']['missed_call']);
     }
 
     public function test_first_name(): void

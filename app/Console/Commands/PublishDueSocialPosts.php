@@ -119,6 +119,7 @@ class PublishDueSocialPosts extends Command
                     ->update(['status' => SocialPostTarget::STATUS_QUEUED]);
 
                 if ($claimed === 1) {
+                    SocialPostTarget::announce($target->getKey());
                     PublishSocialTarget::dispatch($target->getKey());
                     $released++;
                 }
@@ -163,6 +164,7 @@ class PublishDueSocialPosts extends Command
                     ->update(['status' => SocialPostTarget::STATUS_FAILED, 'failure' => $because]);
 
                 if ($claimed === 1) {
+                    SocialPostTarget::announce($target->getKey());
                     $events->emit('social.publish_failed', $target->fresh(), [
                         'provider' => $connection?->provider,
                         'account' => $connection?->display_name,

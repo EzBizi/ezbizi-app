@@ -5,7 +5,6 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/dashboard_card.dart';
-import '../../widgets/list_table.dart';
 import '../../widgets/month_calendar.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/status_pill.dart';
@@ -13,24 +12,20 @@ import '../../widgets/status_pill.dart';
 /// Newsletter › Dashboard — what has gone out, what is booked, what is still
 /// a draft.
 ///
-/// ── Layout A (Mia, 2026-10-02) ──────────────────────────────────
+/// ── Layout (newsletter P1c, 2026-11-18) ─────────────────────────
 ///
-/// Tiles, then every newsletter as a table, with the month calendar beside it
-/// on a wide screen. The tiles are the HR pattern: Sent, Scheduled and Drafts
-/// filter the table; Addresses reached and Last one went out are facts and
-/// filter nothing.
+/// The campaign list comes first and takes the full width: internal name
+/// over subject, a status chip, the mailing list, and the one thing worth
+/// knowing next (a draft's next step, a scheduled one's local send time, a
+/// sent one's provider result). The six mostly empty tiles became one
+/// compact strip of status filters with honest counts and two facts, and the
+/// month calendar is a secondary view behind a toggle, collapsed by default.
+/// Rows wrap and ellipsize (full name in a tooltip); nothing scrolls sideways.
 ///
-/// The tiles count from the server's `stats`, which covers every newsletter in
-/// view. The list is capped at fifty, so a filter is asked of the server too
-/// (`?status=`) rather than applied to the fifty — see [rows].
-///
-/// ── Why the calendar stays ──────────────────────────────────────
-///
-/// A scheduled newsletter is invisible until it arrives in somebody's inbox.
-/// The table answers "what is there"; the calendar answers "what is going out
-/// this month", which is the question a person asks before booking a
-/// promotion or leaving for a week. Its entries open for editing.
-class NewsletterDashboard extends StatelessWidget {
+/// The counts come from the server's `stats`, which covers every newsletter
+/// in view. The list is capped at fifty, so a filter is asked of the server
+/// too (`?status=`) rather than applied to the fifty — see [rows].
+class NewsletterDashboard extends StatefulWidget {
   const NewsletterDashboard({
     super.key,
     required this.stats,
@@ -46,14 +41,14 @@ class NewsletterDashboard extends StatelessWidget {
     this.query = '',
   });
 
-  /// The table's search box, drawn in the bar beside New newsletter, and
+  /// The list's search box, drawn in the bar beside New newsletter, and
   /// what it last searched for.
   final Widget? search;
   final String query;
 
   final NewsletterStats stats;
 
-  /// The table: every newsletter in view, or those with [status].
+  /// The list: every newsletter in view, or those with [status].
   final List<NewsletterRow> rows;
 
   /// The scheduled ones, with the wall time they are promised for.
@@ -62,7 +57,7 @@ class NewsletterDashboard extends StatelessWidget {
   final String viewName;
   final Session session;
 
-  /// The tile picked: `sent`, `scheduled` or `draft`; null is everything.
+  /// The filter picked: `sent`, `scheduled`, `draft` or `failed`; null is all.
   final String? status;
   final ValueChanged<String?> onStatus;
 
@@ -71,85 +66,82 @@ class NewsletterDashboard extends StatelessWidget {
   final VoidCallback onNew;
 
   @override
+  State<NewsletterDashboard> createState() => _NewsletterDashboardState();
+}
+
+class _NewsletterDashboardState extends State<NewsletterDashboard> {
+  bool _calendar = false;
+
+  @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 1100;
-
-        final calendar = MonthCalendar(
+    final w = widget;
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _bar(context),
+        const SizedBox(height: 12),
+        _strip(context),
+        const SizedBox(height: 12),
+        _list(context),
+        const SizedBox(height: 16),
+        Column(
           key: const ValueKey('tour-newsletter-calendar'),
-          title: 'Scheduled',
-          entries: [
-            for (final s in scheduled)
-              if (s.at != null)
-                CalendarEntry(
-                  day: s.at!,
-                  label: s.subject,
-                  detail: '${s.subject} · ${s.wall}${clockSuffix(s.zone)}',
-                  onTap: () => onOpen?.call(s.id),
-                ),
-          ],
-          emptyNote: 'Nothing is scheduled this month. A newsletter with a time '
-              'on it appears here, and opens for editing until it goes.',
-        );
-
-        return ListView(
-          padding: const EdgeInsets.all(12),
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _bar(context),
-            const SizedBox(height: 12),
-            _tiles(context),
-            const SizedBox(height: 12),
-            if (wide)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(flex: 3, child: _table(context)),
-                  const SizedBox(width: 12),
-                  Expanded(flex: 2, child: calendar),
+            TextButton.icon(
+              key: const ValueKey('newsletter-calendar-toggle'),
+              onPressed: () => setState(() => _calendar = !_calendar),
+              icon: Icon(_calendar ? Icons.expand_less : Icons.calendar_month_outlined, size: 18),
+              label: Text(_calendar
+                  ? 'Hide calendar'
+                  : 'Show calendar (${w.scheduled.length} scheduled)'),
+            ),
+            if (_calendar)
+              MonthCalendar(
+                key: const ValueKey('newsletter-calendar'),
+                title: 'Scheduled',
+                entries: [
+                  for (final s in w.scheduled)
+                    if (s.at != null)
+                      CalendarEntry(
+                        day: s.at!,
+                        label: s.subject,
+                        detail: '${s.subject} · ${s.wall}${clockSuffix(s.zone)}',
+                        onTap: () => w.onOpen?.call(s.id),
+                      ),
                 ],
-              )
-            else ...[
-              _table(context),
-              const SizedBox(height: 12),
-              calendar,
-            ],
+                emptyNote: 'Nothing is scheduled this month. A newsletter with a time '
+                    'on it appears here, and opens for editing until it goes.',
+              ),
           ],
-        );
-      },
+        ),
+      ],
     );
   }
 
   Widget _bar(BuildContext context) {
-    final can = session.me?.can('newsletter.create') ?? false;
+    final w = widget;
+    final can = w.session.me?.can('newsletter.create') ?? false;
     final newButton = Refused(
-      reason: session.me?.refusal('newsletter.create', 'write a newsletter'),
+      reason: w.session.me?.refusal('newsletter.create', 'write a newsletter'),
       child: FilledButton.icon(
         key: const ValueKey('tour-marketing-new-newsletter'),
-        onPressed: can ? onNew : null,
+        onPressed: can ? w.onNew : null,
         icon: const Icon(Icons.add, size: 18),
         label: const Text('New newsletter'),
       ),
     );
+    final title = Text(
+      'Mailings in ${w.viewName}',
+      style: Theme.of(context).textTheme.titleLarge,
+    );
 
-    // A phone: the title and New on one line, the search full width under
-    // them. Between them it was ~110 px, "S…" (phone audit 2026-11-04).
     if (MediaQuery.sizeOf(context).width < 600) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Mailings in $viewName',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              newButton,
-            ],
-          ),
-          if (search case final search?) ...[
+          Row(children: [Expanded(child: title), newButton]),
+          if (w.search case final search?) ...[
             const SizedBox(height: 8),
             search,
           ],
@@ -159,16 +151,11 @@ class NewsletterDashboard extends StatelessWidget {
 
     return Row(
       children: [
-        Expanded(
-          child: Text(
-            'Mailings in $viewName',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-        ),
-        if (search case final search?) ...[
+        Expanded(child: title),
+        if (w.search case final search?) ...[
           Flexible(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 240),
+              constraints: const BoxConstraints(maxWidth: 280),
               child: search,
             ),
           ),
@@ -179,191 +166,234 @@ class NewsletterDashboard extends StatelessWidget {
     );
   }
 
-  /// Three tiles that filter and two that state a fact, five across when
-  /// there is room.
-  ///
-  /// FilterTiles lays out only the tiles it is given, so the two facts are
-  /// drawn here at the same width beside it rather than as filters that
-  /// would filter nothing.
-  Widget _tiles(BuildContext context) {
-    final filters = FilterTiles(
-      key: const ValueKey('tour-marketing-status-tiles'),
-      prefix: 'newsletters',
-      picked: status,
-      onPick: onStatus,
-      tiles: [
-        FilterTile(
-          key: 'sent',
-          label: 'Sent',
-          count: stats.sent,
-          note: 'went out',
-          tone: Tone.ok,
-        ),
-        FilterTile(
-          key: 'scheduled',
-          label: 'Scheduled',
-          count: stats.scheduled,
-          note: 'booked',
-          tone: Tone.info,
-        ),
-        FilterTile(
-          key: 'draft',
-          label: 'Drafts',
-          count: stats.drafts,
-          note: 'not sent',
-        ),
-        // A send the provider refused; the server counts it and filters it.
-        FilterTile(
-          key: 'failed',
-          label: 'Failed',
-          count: stats.failed,
-          note: 'did not go out',
-          tone: Tone.bad,
-        ),
-      ],
-    );
+  /// Status filters with the server's counts, then two facts, on one line
+  /// when it fits.
+  Widget _strip(BuildContext context) {
+    final w = widget;
+    final theme = Theme.of(context);
+    final s = w.stats;
+    final total = s.drafts + s.scheduled + s.sent + s.failed;
 
-    // Named for what it is. The provider reports what happens after it takes
-    // the mailing; EzBizi knows only what was accepted, and calling this
-    // "delivered" would be a claim it cannot stand behind.
-    final reached = FactTile(
-      key: const Key('newsletters-fact-reached'),
-      label: 'Addresses reached',
-      value: '${stats.recipients}',
-      note: 'accepted by the mailing account',
-    );
-    final lastAt = DateTime.tryParse(stats.lastSentAt ?? '')?.toLocal();
-    final last = FactTile(
-      key: const Key('newsletters-fact-last'),
-      label: 'Last one went out',
-      value: lastAt == null
-          ? '—'
-          : (session.me?.display ?? DisplayFormats.fallback).formatDate(lastAt),
-      note: lastAt == null ? 'nothing sent yet' : '',
-    );
-
-    return LayoutBuilder(
-      builder: (context, box) {
-        const gap = 10.0;
-        if (box.maxWidth >= 5 * 170) {
-          final width = (box.maxWidth - gap * 4) / 5;
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(width: width * 3 + gap * 2, child: filters),
-              const SizedBox(width: gap),
-              SizedBox(width: width, child: reached),
-              const SizedBox(width: gap),
-              SizedBox(width: width, child: last),
-            ],
-          );
-        }
-
-        final half = (box.maxWidth - gap) / 2;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    Widget chip(String? key, String label, int count) {
+      final picked = w.status == key;
+      return FilterChip(
+        key: Key('newsletters-tile-${key ?? 'all'}'),
+        selected: picked,
+        showCheckmark: false,
+        onSelected: (_) => w.onStatus(key == null || picked ? null : key),
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            filters,
-            const SizedBox(height: gap),
-            Row(
-              children: [
-                SizedBox(width: half, child: reached),
-                const SizedBox(width: gap),
-                SizedBox(width: half, child: last),
-              ],
-            ),
+            Text(label),
+            const SizedBox(width: 6),
+            Text('$count', style: const TextStyle(fontWeight: FontWeight.w700)),
           ],
-        );
-      },
-    );
-  }
-
-  Widget _table(BuildContext context) {
-    if (rows.isEmpty) {
-      return DashboardNote(
-        key: const ValueKey('tour-newsletter-empty'),
-        query.isNotEmpty
-            ? 'No newsletter matches "$query".'
-            : status == null
-            ? 'No newsletters in $viewName yet. New newsletter starts one.'
-            : 'None of the newsletters in $viewName are ${_tileWord(status!)}.',
+        ),
       );
     }
 
-    final formats = session.me?.display ?? DisplayFormats.fallback;
-    final theme = Theme.of(context);
-
-    return ListTable(
-      key: const ValueKey('tour-newsletter-table'),
-      columns: const [
-        ListColumn('Newsletter', flex: 4),
-        ListColumn('Status', flex: 2),
-        ListColumn('Mailing list', flex: 3),
-        ListColumn('When', flex: 3),
-        ListColumn('Reached', flex: 2, end: true),
-        ListColumn('', flex: 2, end: true),
+    Widget fact(Key key, String label, String value) => Row(
+      key: key,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('$label: ', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
       ],
-      rowKey: (i) => ValueKey('newsletter-${rows[i].id}'),
-      onTap: onOpen == null ? null : (i) => onOpen!(rows[i].id),
-      rows: [
-        for (final n in rows)
-          [
-            Text(
-              n.subject,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            StatusPill(n.statusLabel, tone: n.tone),
-            Text(
-              n.audienceName == null
-                  ? 'No list chosen'
-                  : '${n.audienceName} · ${n.audienceWhere}',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall,
-            ),
-            Text(n.when(formats), style: theme.textTheme.bodySmall),
-            Text(
-              n.recipients == null ? '—' : '${n.recipients}',
-              style: theme.textTheme.bodyMedium,
-            ),
-            if (onOpen == null)
-              const SizedBox.shrink()
-            else
-              TextButton(
-                onPressed: () => onOpen!(n.id),
-                child: Text(n.status == 'draft' || n.status == 'failed' ? 'Open' : 'View'),
-              ),
-          ],
+    );
+
+    final lastAt = DateTime.tryParse(s.lastSentAt ?? '')?.toLocal();
+    return Wrap(
+      key: const ValueKey('tour-marketing-status-tiles'),
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        chip(null, 'All', total),
+        chip('draft', 'Draft', s.drafts),
+        chip('scheduled', 'Scheduled', s.scheduled),
+        chip('sent', 'Sent', s.sent),
+        if (s.failed > 0 || w.status == 'failed') chip('failed', 'Failed', s.failed),
+        const SizedBox(width: 8),
+        // Accepted, not delivered: the provider reports what happens after.
+        Tooltip(
+          message: 'Addresses the mailing account accepted. Not a delivery count: the provider reports what happens after.',
+          child: fact(const Key('newsletters-fact-reached'), 'Accepted', '${s.recipients}'),
+        ),
+        fact(
+          const Key('newsletters-fact-last'),
+          'Last sent',
+          lastAt == null
+              ? 'never'
+              : (w.session.me?.display ?? DisplayFormats.fallback).formatDate(lastAt),
+        ),
       ],
     );
   }
 
-  static String _tileWord(String key) => switch (key) {
+  Widget _list(BuildContext context) {
+    final w = widget;
+    if (w.rows.isEmpty) {
+      return DashboardNote(
+        key: const ValueKey('tour-newsletter-empty'),
+        w.query.isNotEmpty
+            ? 'No newsletter matches "${w.query}".'
+            : w.status == null
+            ? 'No newsletters in ${w.viewName} yet. New newsletter starts one.'
+            : 'None of the newsletters in ${w.viewName} are ${_word(w.status!)}.',
+      );
+    }
+    final formats = w.session.me?.display ?? DisplayFormats.fallback;
+    final theme = Theme.of(context);
+
+    return Container(
+      key: const ValueKey('tour-newsletter-table'),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final wide = box.maxWidth >= 760;
+          return Column(
+            children: [
+              for (var i = 0; i < w.rows.length; i++) ...[
+                if (i > 0) const Divider(height: 1),
+                _row(context, w.rows[i], formats, wide),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, NewsletterRow n, DisplayFormats formats, bool wide) {
+    final w = widget;
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+
+    final names = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: n.displayName,
+          child: Text(
+            n.displayName,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ),
+        if (n.hasName)
+          Text(
+            n.subject,
+            key: ValueKey('newsletter-subject-${n.id}'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: muted,
+          ),
+      ],
+    );
+    final audience = Text(
+      n.audienceName == null ? 'No list chosen' : '${n.audienceName} · ${n.audienceWhere}',
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodySmall,
+    );
+    final detail = Text(
+      n.detail(formats),
+      key: ValueKey('newsletter-detail-${n.id}'),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodySmall,
+    );
+    final action = w.onOpen == null
+        ? const SizedBox(width: 72)
+        : SizedBox(
+            width: 72,
+            child: TextButton(
+              onPressed: () => w.onOpen!(n.id),
+              child: Text(n.status == 'draft' || n.status == 'failed' ? 'Open' : 'View'),
+            ),
+          );
+    final pill = StatusPill(n.statusLabel, tone: n.tone, dense: true);
+
+    final body = wide
+        ? Row(
+            children: [
+              Expanded(flex: 5, child: names),
+              const SizedBox(width: 12),
+              SizedBox(width: 104, child: Align(alignment: Alignment.centerLeft, child: pill)),
+              Expanded(flex: 3, child: audience),
+              const SizedBox(width: 12),
+              Expanded(flex: 4, child: detail),
+              action,
+            ],
+          )
+        : Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    names,
+                    const SizedBox(height: 4),
+                    Wrap(spacing: 8, runSpacing: 4, children: [pill, audience]),
+                    const SizedBox(height: 4),
+                    detail,
+                  ],
+                ),
+              ),
+              action,
+            ],
+          );
+
+    return InkWell(
+      key: ValueKey('newsletter-${n.id}'),
+      onTap: w.onOpen == null ? null : () => w.onOpen!(n.id),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: body,
+      ),
+    );
+  }
+
+  static String _word(String key) => switch (key) {
     'sent' => 'sent',
     'scheduled' => 'scheduled',
+    'failed' => 'failed',
     _ => 'drafts',
   };
 }
 
-/// One line of the table, from a GET /newsletters row.
+/// One line of the list, from a GET /newsletters row.
 class NewsletterRow {
   const NewsletterRow({
     required this.id,
     required this.subject,
     required this.status,
+    this.name,
     this.audienceName,
     this.audienceKind,
     this.scheduledFor,
     this.scheduledTimezone,
     this.sentAt,
     this.recipients,
+    this.nextStep,
+    this.deliveryState,
+    this.deliveryLabel,
+    this.failure,
   });
 
   final String id;
   final String subject;
   final String status;
+
+  /// The internal campaign name; null when never typed.
+  final String? name;
   final String? audienceName;
   final String? audienceKind;
   final String? scheduledFor;
@@ -374,6 +404,18 @@ class NewsletterRow {
 
   /// `last_send.recipients` on a sent one: addresses the provider accepted.
   final int? recipients;
+
+  /// A draft's next unresolved step, as the server reads it.
+  final String? nextStep;
+
+  /// `delivery.state` / `delivery.label`: scheduled · queued · sending ·
+  /// accepted · failed, from the stored send only. Never "delivered".
+  final String? deliveryState;
+  final String? deliveryLabel;
+  final String? failure;
+
+  bool get hasName => (name ?? '').trim().isNotEmpty;
+  String get displayName => hasName ? name!.trim() : subject;
 
   String get audienceWhere =>
       audienceKind == 'mailchimp' ? 'in Mailchimp' : 'built from your customers';
@@ -393,6 +435,26 @@ class NewsletterRow {
     _ => Tone.neutral,
   };
 
+  /// The one thing worth knowing next, by status.
+  String detail(DisplayFormats formats) {
+    switch (status) {
+      case 'scheduled':
+        final label = deliveryState == 'queued' ? 'Queued · ' : 'Sends ';
+        return '$label${when(formats)}';
+      case 'sending':
+        return deliveryLabel ?? 'Sending';
+      case 'sent':
+        final label = deliveryLabel ?? 'Accepted by provider';
+        final n = recipients;
+        final at = sentAt == null ? '' : ' · ${formatStamp(sentAt, '', formats: formats)}';
+        return n == null ? '$label$at' : '$label · $n addresses$at';
+      case 'failed':
+        return failure == null || failure!.isEmpty ? 'Failed' : 'Failed: $failure';
+      default:
+        return nextStep == null ? 'Draft' : 'Next: $nextStep';
+    }
+  }
+
   /// The time it went, or the wall time it is promised for and its clock.
   String when(DisplayFormats formats) {
     if (sentAt != null && status != 'scheduled') {
@@ -409,11 +471,13 @@ class NewsletterRow {
   factory NewsletterRow.fromJson(Map<String, dynamic> json) {
     final audience = json['audience'];
     final send = json['last_send'];
+    final delivery = json['delivery'];
     final status = json['status'] as String? ?? 'draft';
 
     return NewsletterRow(
       id: json['id'] as String? ?? '',
       subject: json['subject'] as String? ?? '',
+      name: json['name'] as String?,
       status: status,
       audienceName: audience is Map ? audience['name'] as String? : null,
       audienceKind: audience is Map ? audience['kind'] as String? : null,
@@ -423,6 +487,10 @@ class NewsletterRow {
       // Only a sent one has reached anybody; a queued send carries 0, which
       // would read as "reached nobody".
       recipients: status == 'sent' && send is Map ? (send['recipients'] as num?)?.toInt() : null,
+      nextStep: json['next_step'] as String?,
+      deliveryState: delivery is Map ? delivery['state'] as String? : null,
+      deliveryLabel: delivery is Map ? delivery['label'] as String? : null,
+      failure: send is Map ? send['failure'] as String? : null,
     );
   }
 }

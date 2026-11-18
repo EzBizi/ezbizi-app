@@ -45,10 +45,17 @@ class TableColumn<T> {
     this.width,
     this.numeric = false,
     this.sortKey,
+    this.minWidth,
   });
 
   final String label;
   final Widget Function(BuildContext context, T row) cell;
+
+  /// The narrowest a [flex] column is drawn. When the window cannot give
+  /// every column its floor, the table scrolls sideways instead of cutting
+  /// the words people read a row by (desktop review 2026-11-13: Jobs cut
+  /// Title, Customer, Where and Booked by).
+  final double? minWidth;
 
   /// What the header sends when clicked. Null for a column that cannot be
   /// sorted, which draws its label as plain text rather than as a control that
@@ -101,6 +108,48 @@ class GroupedTable<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final entries = _entries(groups);
+    // Each column's floor, its gap, and the row's 12 px padding either side.
+    final floor =
+        24.0 +
+        12.0 * (columns.length - 1) +
+        columns.fold<double>(0, (sum, c) => sum + (c.width ?? c.minWidth ?? 0));
+
+    final table = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Line(
+          columns: columns,
+          header: true,
+          cells: [for (final c in columns) _headerCell(context, c)],
+        ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: entries.length + (footer == null ? 0 : 1),
+            itemBuilder: (context, i) {
+              if (i == entries.length) return footer!;
+
+              final entry = entries[i];
+              final group = entry.group;
+              if (group != null) return _Heading(group: group);
+
+              final row = entry.row as T;
+
+              return Material(
+                key: ValueKey('row-${idOf(row)}'),
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: () => onOpen(row),
+                  child: _Line(
+                    columns: columns,
+                    cells: [for (final c in columns) c.cell(context, row)],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
 
     return Container(
       margin: const EdgeInsets.fromLTRB(24, 4, 24, 24),
@@ -110,41 +159,18 @@ class GroupedTable<T> extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _Line(
-            columns: columns,
-            header: true,
-            cells: [for (final c in columns) _headerCell(context, c)],
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: entries.length + (footer == null ? 0 : 1),
-              itemBuilder: (context, i) {
-                if (i == entries.length) return footer!;
-
-                final entry = entries[i];
-                final group = entry.group;
-                if (group != null) return _Heading(group: group);
-
-                final row = entry.row as T;
-
-                return Material(
-                  key: ValueKey('row-${idOf(row)}'),
-                  type: MaterialType.transparency,
-                  child: InkWell(
-                    onTap: () => onOpen(row),
-                    child: _Line(
-                      columns: columns,
-                      cells: [for (final c in columns) c.cell(context, row)],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
+      // Narrower than the columns' floors, the table scrolls sideways under
+      // its headings, as Project Management's does (307804807).
+      child: LayoutBuilder(
+        builder: (context, box) => box.maxWidth >= floor
+            ? table
+            : Scrollbar(
+                child: SingleChildScrollView(
+                  key: const Key('grouped-table-sideways'),
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(width: floor, child: table),
+                ),
+              ),
       ),
     );
   }
@@ -503,3 +529,36 @@ List<_Entry> _entries<T>(List<RowGroup<T>> groups) => [
     for (final row in group.rows) (group: null, row: row),
   ],
 ];
+
+/// An open record docked beside its list: the [GroupedList] [list] 380 wide,
+/// a divider, and the [detail] filling the rest, in one bordered card. Jobs,
+/// Customers and Estimates open a row this way.
+class DockedListDetail extends StatelessWidget {
+  const DockedListDetail({super.key, required this.list, required this.detail});
+
+  final Widget list;
+  final Widget detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(width: 380, child: list),
+          VerticalDivider(width: 1, color: scheme.outlineVariant),
+          Expanded(child: detail),
+        ],
+      ),
+    );
+  }
+}

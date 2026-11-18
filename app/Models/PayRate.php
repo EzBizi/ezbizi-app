@@ -45,6 +45,17 @@ class PayRate extends Model implements HoldsPersonalData, HoldsSensitiveValues
         ];
     }
 
+    /**
+     * The rate that applied to someone on a day: the latest one effective on or
+     * before it. Stages dated ahead (RateSteps) apply themselves this way, and a
+     * payroll or time report asks this per date (Merav, 2026-11-17).
+     */
+    public static function rateOn(string $userId, string $date, ?string $basis = null): ?self
+    {
+        return self::query()->where('user_id', $userId)->when($basis, fn ($q) => $q->where('basis', $basis))
+            ->whereDate('effective_on', '<=', $date)->orderByDesc('effective_on')->latest()->first();
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

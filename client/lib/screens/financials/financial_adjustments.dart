@@ -2,18 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/list_search.dart';
+
 import '../../core/api_client.dart';
+import '../../core/live_changes.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import 'financial_cells.dart';
 
 String _money(int cents) =>
     formatCell(const {'type': 'currency', 'options': {}}, cents / 100);
-
-String _ymd(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-'
-    '${d.month.toString().padLeft(2, '0')}-'
-    '${d.day.toString().padLeft(2, '0')}';
 
 const _kinds = {
   'refund': 'Refund',
@@ -69,17 +68,26 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
     final now = widget.now ?? DateTime.now();
     final first = DateTime(now.year, now.month - _period);
     final last = DateTime(first.year, first.month + 1, 0);
-    return (_ymd(first), _ymd(last));
+    return (formatCalendarDay(first), formatCalendarDay(last));
   }
 
   @override
   void initState() {
     super.initState();
     _load();
+    // An adjustment or repair move saved elsewhere: re-read quietly.
+    _live = LiveChanges.of(widget.api).subscribe({'financial_adjustments'}, (
+      _,
+    ) {
+      if (_rows != null) return _load(quiet: true);
+    }, active: LiveChanges.visible(this));
   }
+
+  LiveSubscription? _live;
 
   @override
   void dispose() {
+    _live?.cancel();
     _search.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -111,18 +119,21 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
     ].whereType<Object>().join(' ').toLowerCase().contains(q);
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _rows = null;
-      _error = null;
-    });
+  /// [quiet]: a live re-read, with no spinner; a failure keeps the rows.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _rows = null;
+        _error = null;
+      });
+    }
     final (from, to) = _range;
     final r = await widget.api.get(
       '/financials/adjustments?from=$from&to=$to'
       '${widget.kind == null ? '' : '&kind=${widget.kind}'}'
       '${_q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(_q)}'}',
     );
-    if (!mounted) return;
+    if (!mounted || (quiet && !r.ok)) return;
     setState(() {
       if (r.ok) {
         _rows = [
@@ -161,26 +172,11 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
                 },
               ),
               Text('$from to $to', style: TextStyle(color: muted)),
-              SizedBox(
-                width: 240,
-                child: TextField(
-                  key: const Key('financials-adjustments-search'),
-                  controller: _search,
-                  onChanged: _searched,
-                  // bodyMedium for the text and the hint, as the dense pickers draw:
-                  // 53 points tall, as they are; the theme's 16-point hint makes 56.
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    hintText: 'Technician, job or reason',
-                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(
-                        context,
-                      ).inputDecorationTheme.hintStyle?.color,
-                    ),
-                  ),
-                ),
+              ListSearch(
+                key: const Key('financials-adjustments-search'),
+                controller: _search,
+                onChanged: _searched,
+                hint: 'Technician, job or reason',
               ),
             ],
           ),

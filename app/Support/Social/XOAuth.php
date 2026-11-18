@@ -4,6 +4,7 @@ namespace App\Support\Social;
 
 use App\Support\Pkce;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -25,6 +26,8 @@ final class XOAuth implements SocialOAuth
         'media.write',
         'offline.access',
     ];
+
+    private const TOKEN_ENDPOINT = 'https://api.x.com/2/oauth2/token';
 
     private const TIMEOUT = 10;
 
@@ -83,57 +86,26 @@ final class XOAuth implements SocialOAuth
         }
 
         return 'https://x.com/i/oauth2/authorize?'.http_build_query([
-            'response_type'         => 'code',
-            'client_id'             => (string) config('services.x.client_id'),
-            'redirect_uri'          => $this->redirectUri(),
-            'scope'                 => implode(' ', self::SCOPES),
-            'state'                 => $state,
-            'code_challenge'        => Pkce::challenge($verifier),
+            'response_type' => 'code',
+            'client_id' => (string) config('services.x.client_id'),
+            'redirect_uri' => $this->redirectUri(),
+            'scope' => implode(' ', self::SCOPES),
+            'state' => $state,
+            'code_challenge' => Pkce::challenge($verifier),
             'code_challenge_method' => 'S256',
         ]);
     }
 
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()
-                ->withBasicAuth(
-                    (string) config('services.x.client_id'),
-                    (string) config('services.x.client_secret'),
-                )
-                ->timeout(self::TIMEOUT)
-                ->post('https://api.x.com/2/oauth2/token', [
-                    'code'          => $code,
-                    'grant_type'    => 'authorization_code',
-                    'redirect_uri'  => $this->redirectUri(),
-                    'code_verifier' => (string) $verifier,
-                ]);
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('X');
-        }
-
-        if ($response->failed()) {
-            throw SocialOAuthRefused::exchangeFailed('X');
-        }
-
-        $access  = $response->json('access_token');
-        $refresh = $response->json('refresh_token');
-
-        if (! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('X');
-        }
-
-        if (! is_string($refresh) || $refresh === '') {
-            throw SocialOAuthRefused::noLastingPermission('X');
-        }
-
         // expires_in is kept so the publisher renews BEFORE the two hours are
         // up rather than learning it from a refused post.
-        return new SocialOAuthGrant(
-            accessToken: $access,
-            refreshToken: $refresh,
-            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
-        );
+        return OAuthTokens::exchanged(OAuthTokens::post($this->tokenRequest(), self::TOKEN_ENDPOINT, [
+            'code' => $code,
+            'grant_type' => 'authorization_code',
+            'redirect_uri' => $this->redirectUri(),
+            'code_verifier' => (string) $verifier,
+        ], 'X'), 'X');
     }
 
     /**
@@ -149,41 +121,26 @@ final class XOAuth implements SocialOAuth
      */
     public function refresh(string $refreshToken): SocialOAuthGrant
     {
-        try {
-            $response = Http::asForm()
-                ->withBasicAuth(
-                    (string) config('services.x.client_id'),
-                    (string) config('services.x.client_secret'),
-                )
-                ->timeout(self::TIMEOUT)
-                ->post('https://api.x.com/2/oauth2/token', [
-                    'grant_type'    => 'refresh_token',
-                    'refresh_token' => $refreshToken,
-                ]);
-        } catch (ConnectionException) {
-            throw SocialOAuthRefused::exchangeFailed('X');
-        }
+        $response = OAuthTokens::post($this->tokenRequest(), self::TOKEN_ENDPOINT, [
+            'grant_type' => 'refresh_token',
+            'refresh_token' => $refreshToken,
+        ], 'X');
 
         // X answers a dead refresh token with 400 and `invalid_request`, not
         // only the RFC's `invalid_grant`; both mean the same thing here.
-        if ($response->status() === 400
-            && in_array($response->json('error'), ['invalid_grant', 'invalid_request'], strict: true)) {
-            throw SocialOAuthRefused::noLongerPermitted('X no longer accepts this connection. It needs connecting again.');
-        }
+        return OAuthTokens::refreshed($response, 'X', $refreshToken, $response->status() === 400
+            && in_array($response->json('error'), ['invalid_grant', 'invalid_request'], strict: true));
+    }
 
-        $access = $response->json('access_token');
-
-        if ($response->failed() || ! is_string($access) || $access === '') {
-            throw SocialOAuthRefused::exchangeFailed('X');
-        }
-
-        $rotated = $response->json('refresh_token');
-
-        return new SocialOAuthGrant(
-            accessToken: $access,
-            refreshToken: is_string($rotated) && $rotated !== '' ? $rotated : $refreshToken,
-            expiresIn: is_numeric($response->json('expires_in')) ? (int) $response->json('expires_in') : null,
-        );
+    /** Confidential client: the app's credentials go in a Basic header. */
+    private function tokenRequest(): PendingRequest
+    {
+        return Http::asForm()
+            ->withBasicAuth(
+                (string) config('services.x.client_id'),
+                (string) config('services.x.client_secret'),
+            )
+            ->timeout(self::TIMEOUT);
     }
 
     public function identify(SocialOAuthGrant $grant): array

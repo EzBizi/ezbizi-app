@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_columns.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -102,6 +103,10 @@ void main() {
   );
 
   late List<String> opened;
+  List<Map<String, Object?>> folders = [];
+  Map<String, Object?> groupColours = {};
+  var arrange = false;
+  final patches = <Object?>[];
 
   setUp(() {
     store.debugStoreDirOverride = Directory.systemTemp.createTempSync('tbtree');
@@ -126,7 +131,11 @@ void main() {
               'id': 'me',
               'name': 'Maya Lopez',
               'email': 'maya@example.test',
-              'permissions': ['tasks.view', 'tasks.edit'],
+              'permissions': [
+                'tasks.view',
+                'tasks.edit',
+                if (arrange) 'tasks.create_boards',
+              ],
               'modules': <dynamic>[],
               'preferences': <String, dynamic>{},
               'scope': {'type': 'company', 'id': 'c-1'},
@@ -143,6 +152,17 @@ void main() {
         }
         if (path == '/task-boards') {
           return json({'data': boards ?? fixture});
+        }
+        if (path == '/task-board-folders') {
+          return json({'data': folders});
+        }
+        if (path == '/task-board-group-colours') {
+          if (request.method == 'PATCH') {
+            final b = jsonDecode(request.body) as Map;
+            patches.add(b);
+            groupColours = {...groupColours, '${b['group']}': b['colour']};
+          }
+          return json({'data': groupColours});
         }
         if (path.startsWith('/task-boards/')) {
           final id = path.split('/').last;
@@ -184,7 +204,7 @@ void main() {
       'branches, in that order; no Other boards picker', (tester) async {
     await pumpBoard(tester);
     expect(find.text('Other boards'), findsNothing);
-    expect(inTree('My board'), findsOneWidget);
+    expect(inTree('Personal Task Board'), findsOneWidget);
     expect(inTree('Spring push · from Dana Reyes'), findsOneWidget);
     expect(inTree('A-1 Chimney'), findsNWidgets(2)); // the node and its board
     expect(inTree('Estimates follow-up'), findsOneWidget);
@@ -369,5 +389,147 @@ void main() {
       expect(formatCellNumber(-1200, r'$'), r'-$1,200');
       expect(formatCellNumber(-5000.75, 'ft'), '-5,000.75 ft');
     });
+  });
+
+  testWidgets('My Board is the first entry, above Shared with me, Folders, '
+      'Companies and Everyone, even when filed in a folder (Jose 11-16)', (
+    tester,
+  ) async {
+    folders = [
+      {
+        'id': 'fo-1',
+        'parent_id': null,
+        'name': 'Partners',
+        'colour': '#e2445c',
+        'position': 0,
+      },
+    ];
+    addTearDown(() => folders = []);
+    await pumpBoard(
+      tester,
+      boards: [
+        board('b-mine2', 'custom', 'Aaa plan', section: 'mine', owner: 'Maya'),
+        ...fixture.map(
+          (b) => b['id'] == 'b-me' ? {...b, 'folder_id': 'fo-1'} : b,
+        ),
+        board('b-ev', 'user', 'Zed Ray', section: 'everyone', owner: 'Zed Ray'),
+      ],
+    );
+    expect(inTree('Personal Task Board'), findsOneWidget);
+    expect(row('b-me'), findsOneWidget, reason: 'not again in its folder');
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    // Headers are drawn in capitals.
+    Finder heading(String text) => find.descendant(
+      of: tree,
+      matching: find.byWidgetPredicate(
+        (w) => w is Text && w.data?.toLowerCase() == text.toLowerCase(),
+      ),
+    );
+    final first = y(row('b-me'));
+    for (final below in [
+      heading('My boards'),
+      row('b-mine2'),
+      heading('Team boards'),
+      heading('Folders'),
+      heading('All markets'),
+      heading("Everyone's boards"),
+    ]) {
+      expect(below, findsOneWidget);
+      expect(first, lessThan(y(below)));
+    }
+  });
+
+  testWidgets('a board in a folder shows under Folders, in its colour, and '
+      'nowhere else (Jose 11-13, Monday parity)', (tester) async {
+    folders = [
+      {
+        'id': 'fo-1',
+        'parent_id': null,
+        'name': 'Partners',
+        'colour': '#e2445c',
+        'position': 0,
+      },
+    ];
+    addTearDown(() => folders = []);
+    await pumpBoard(
+      tester,
+      boards: [
+        {
+          ...board(
+            'b-a1',
+            'company',
+            'A-1 Chimney',
+            section: 'place',
+            companyId: 'c-1',
+            companyName: 'A-1 Chimney',
+          ),
+        },
+        {
+          ...board(
+            'b-cu',
+            'custom',
+            'Estimates follow-up',
+            section: 'place',
+            companyId: 'c-1',
+            companyName: 'A-1 Chimney',
+          ),
+          'folder_id': 'fo-1',
+          'colour': '#00c875',
+        },
+      ],
+    );
+    expect(inTree('FOLDERS'), findsOneWidget);
+    expect(inTree('Partners'), findsOneWidget);
+    expect(inTree('Estimates follow-up'), findsOneWidget);
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    // Under its folder, above the companies.
+    expect(y(inTree('Partners')), lessThan(y(row('b-cu'))));
+    expect(y(row('b-cu')), lessThan(y(row('b-a1'))));
+    final icon = tester.widget<Icon>(
+      find.descendant(of: row('b-cu'), matching: find.byType(Icon)).first,
+    );
+    expect(icon.color, EzBiziTheme.boardPalette[4]);
+  });
+
+  testWidgets("a company group wears the organization's colour, and one who "
+      'arranges boards changes it from its right-click menu', (tester) async {
+    groupColours = {'company:Northside Chimney': '#00c875'};
+    arrange = true;
+    patches.clear();
+    addTearDown(() {
+      groupColours = {};
+      arrange = false;
+    });
+    await pumpBoard(tester);
+    final tint = tester.widget<Icon>(
+      find.byKey(const ValueKey('group-tint-company:Northside Chimney')),
+    );
+    expect(tint.color, EzBiziTheme.boardPalette[4]);
+    expect(
+      find.byKey(const ValueKey('group-tint-company:A-1 Chimney')),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('tasks-fold-company:A-1 Chimney')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('group-colour-company:A-1 Chimney')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('group-colour-company:A-1 Chimney-#e2445c')),
+    );
+    await tester.pumpAndSettle();
+    expect(patches.single, {
+      'group': 'company:A-1 Chimney',
+      'colour': '#e2445c',
+    });
+    expect(
+      find.byKey(const ValueKey('group-tint-company:A-1 Chimney')),
+      findsOneWidget,
+    );
   });
 }

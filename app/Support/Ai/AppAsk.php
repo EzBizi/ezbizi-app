@@ -255,7 +255,8 @@ final class AppAsk
      */
     public static function fetch(User $viewer, array $calls): array
     {
-        $token = $viewer->createToken('WhatsApp AI (read only)', ['*'], now()->addMinutes(2));
+        // Marked as the AI's: a sensitive task is never shown to it (SensitiveTasks).
+        $token = $viewer->createToken('WhatsApp AI (read only)', ['*', \App\Support\Tasks\SensitiveTasks::AI_READER], now()->addMinutes(2));
         $as = Request::create('/');
         $as->headers->set('Authorization', 'Bearer '.$token->plainTextToken);
         $as->setUserResolver(fn () => $viewer);
@@ -275,7 +276,8 @@ final class AppAsk
                     continue;
                 }
                 parse_str(ltrim((string) ($call['query'] ?? ''), '?'), $query);
-                $response = InternalRequest::send($as, 'GET', '/api/v1/'.$path.($query ? '?'.http_build_query($query) : ''));
+                $response = InternalRequest::send($as, 'GET', '/api/v1/'.$path.($query ? '?'.http_build_query($query) : ''),
+                    attributes: [\App\Support\Tasks\SensitiveTasks::AI_READER => true]);
                 $raw = (string) $response->getContent();
                 // Only JSON reaches Grok: audio, files and pages (an LSA recording) never do.
                 $json = str_contains((string) $response->headers->get('Content-Type'), 'json');
