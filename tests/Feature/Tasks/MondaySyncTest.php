@@ -241,6 +241,27 @@ class MondaySyncTest extends TestCase
         $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $mine->id)->whereJsonContains('kinds', 'create')->exists()));
     }
 
+    /** Desk 11-18: missing from Monday's board listing is not proof; an item Monday says is active is never trashed. */
+    public function test_parity_trashes_only_what_monday_says_is_archived_or_deleted(): void
+    {
+        $board = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
+        [$live, $dead] = $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(function () use ($board) {
+            $a = app(TaskWriter::class)->create($board, ['title' => 'Still on Monday'], $this->jose);
+            $a->forceFill(['external_ref' => 'monday:77'])->saveQuietly();
+            $b = app(TaskWriter::class)->create($board, ['title' => 'Deleted on Monday'], $this->jose);
+            $b->forceFill(['external_ref' => 'monday:78'])->saveQuietly();
+
+            return [$a, $b];
+        }));
+        $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [$this->mondayItem('11', 'Call the insurer', '2026-11-12T10:00:00Z')])];
+        $this->monday['states'] = ['77' => 'active', '78' => 'deleted'];
+
+        $this->artisan('ezbizi:monday-parity', ['--fix' => true, '--boards' => $board->name])->assertSuccessful();
+
+        $this->assertNotNull($this->task('77'), 'active on Monday: kept');
+        $this->assertNull($this->task('78'), 'deleted on Monday: trashed here');
+    }
+
     /** Desk 11-18: the 30-minute run settles groups only: Monday's move arrives, nothing else is queued or trashed. */
     public function test_groups_only_parity_pulls_mondays_move_and_queues_nothing_else(): void
     {

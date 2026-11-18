@@ -362,6 +362,19 @@ final class MondayBoardReader
      *
      * @return array{ids: list<string>, latest: ?string}
      */
+    /** @return array<string, string> item id => state (active, archived, deleted), as Monday answers for each id */
+    public function statesOf(array $itemIds): array
+    {
+        $out = [];
+        foreach (array_chunk(array_values($itemIds), 100) as $chunk) {
+            foreach ($this->api->query('query($i:[ID!]){ items(ids:$i, limit:100) { id state } }', ['i' => $chunk])['items'] ?? [] as $i) {
+                $out[(string) $i['id']] = (string) ($i['state'] ?? 'active');
+            }
+        }
+
+        return $out;
+    }
+
     /** @return array<string, string> an item's non-empty column values, column id => text (a cross-board move's check) */
     public function valuesOf(string $itemId): array
     {
