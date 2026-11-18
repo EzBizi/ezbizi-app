@@ -212,6 +212,9 @@ class TaskBoardsController extends Controller
             // Linked to a task this board already holds: that row is the one shown.
             ->whereNotIn('id', TaskLink::query()->whereIn('linked_task_id', $taskBoard->tasks()->select('id'))->select('task_id'))
             ->whereNotIn('id', TaskLink::query()->whereIn('task_id', $taskBoard->tasks()->select('id'))->select('linked_task_id'))
+            // ?per_group: the branches' rows paged too (health sweep 11-18: 31k rolled-up rows, 500 MB, a 500 on every load).
+            ->when($perGroup > 0, fn ($q) => $q->where(fn ($w) => $w->whereIn('id', $rp = $this->rolledPick($sources->keys()->all(), $hidden, $perGroup))
+                ->orWhereIn('parent_task_id', $rp)))
             ->with([...TasksController::WITH, 'group:id,name'])
             ->withCount(TasksController::counts())
             ->orderBy('position')
@@ -677,6 +680,33 @@ class TaskBoardsController extends Controller
         });
 
         return response()->noContent();
+    }
+
+    /**
+     * The first N top-level rolled-up tasks per group NAME (the company board
+     * shows a branch's "Scheduled" under its own "Scheduled").
+     * ponytail: reads id+group of every branch row (cheap); the extra pages
+     * of a rolled group are not offered yet, add when someone needs row 51+.
+     *
+     * @return list<string>
+     */
+    private function rolledPick(array $boardIds, bool $hidden, int $perGroup): array
+    {
+        $names = TaskGroup::query()->whereIn('board_id', $boardIds)->pluck('name', 'id');
+        $taken = [];
+        $out = [];
+        Task::query()->whereIn('board_id', $boardIds)->whereNull('parent_task_id')
+            ->when($hidden, fn ($q) => $q->where('sensitive', false))
+            ->orderBy('position')->orderBy('created_at')
+            ->toBase()->get(['id', 'group_id'])
+            ->each(function ($r) use ($names, $perGroup, &$taken, &$out) {
+                $key = mb_strtolower((string) ($names[$r->group_id] ?? ''));
+                if (($taken[$key] = ($taken[$key] ?? 0) + 1) <= $perGroup) {
+                    $out[] = (string) $r->id;
+                }
+            });
+
+        return $out;
     }
 
     public static function presentMember(TaskBoardMember $m): array
