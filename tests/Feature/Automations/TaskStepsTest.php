@@ -302,6 +302,27 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Desk for Jose, 2026-11-18: Done, then back to Working on it; the rule still moved the task to Done. */
+    public function test_a_status_change_undone_before_the_rule_runs_is_not_acted_on(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $rule = Automation::create(['organization_id' => $t['org']->id, 'name' => 'To Done', 'trigger_key' => 'task.status_changed', 'is_active' => true, 'created_by' => $t['admin']->id]);
+            $rule->addVersion(null, [['type' => 'task.move_group', 'group' => 'Done']], $t['admin']);
+            $w = app(\App\Support\Tasks\TaskWriter::class);
+            $task = $w->create($board, ['title' => 'Job'], $t['admin']);
+            $w->update($task->load('board'), ['status' => 'Done'], $t['admin']);
+            $w->update($task->fresh()->load('board'), ['status' => 'Working on it'], $t['admin']);
+            $done = AutomationEvent::query()->where('event_key', 'task.status_changed')->oldest('id')->first();
+
+            app(\App\Support\Automations\AutomationEngine::class)->deliver($done);
+
+            $this->assertSame('skipped', \App\Models\AutomationRun::query()->where('event_id', $done->id)->value('status'));
+            $this->assertNotSame('Done', $task->fresh()->group?->name);
+        });
+    }
+
     public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
     {
         $t = $this->provisionTenant('Alpha');
