@@ -52,7 +52,11 @@ Schedule::command('ezbizi:warm-call-log')->hourlyAt(7)->withoutOverlapping(60);
 Schedule::command('ezbizi:meta-catch-up')->hourlyAt(23)->withoutOverlapping(60);
 // Campaigns on and off at their set times (Jose, 2026-11-05).
 Schedule::command('ezbizi:ad-schedules')->everyMinute()->withoutOverlapping(5);
-Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverlapping(5);
+// Every minute, ahead of the rest of its slot: a missed call is an alert someone acts on
+// (desk, 2026-11-18: Bar's came ~6 minutes late). The leads one was every two minutes.
+Schedule::command('ezbizi:watch-missed-calls')->everyMinute()->withoutOverlapping(5);
+// RingCentral calls to the business lines into Leads, never an LS call twice (Jose, 2026-10-15).
+Schedule::command('ezbizi:leads-ringcentral')->everyMinute()->withoutOverlapping(15);
 // Yesterday's calls AI read as booked with no Workiz job (AiBookedNoJob).
 // A-1's Airtable copied into EzBizi for the reports (A1 Leads takeover, 2026-10-16); about 8 s.
 Schedule::command('ezbizi:airtable-snapshot')->hourlyAt(17)->withoutOverlapping(10);
@@ -458,8 +462,6 @@ Schedule::command('ezbizi:meta-ads-sync')->dailyAt('19:30')->timezone('America/N
 Schedule::command('ezbizi:suggest-meta-categories')->dailyAt('06:15')->timezone('America/New_York')->withoutOverlapping(30);
 // Grok reads new leads: sorting, and a name/ZIP a call gave (Jose, 2026-10-09).
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
-// RingCentral calls to the business lines into Leads, never an LS call twice (Jose, 2026-10-15).
-Schedule::command('ezbizi:leads-ringcentral')->everyTwoMinutes()->withoutOverlapping(15);
 // Calls and texts to EzBizi's own lead lines: EZ Calls and EZ Texts (Jose, 2026-10-16).
 Schedule::command('ezbizi:leads-ez')->everyMinute()->withoutOverlapping(10);
 // A Google call filed under another person's message lead, moved to its own (2026-10-16).
