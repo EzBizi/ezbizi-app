@@ -427,15 +427,29 @@ final class MondayImport
             return;
         }
         $hereChanged = $task->external_synced_at !== null && $task->updated_at->greaterThan($task->external_synced_at);
+        $input = $this->input($board, $item);
         if ($hereChanged && ! $mondayAt->greaterThan($task->updated_at)) {
-            // Both changed, and the change here is the later one: it stays.
-            $this->counts['kept (changed here later)']++;
-            $this->quietly($task, ['external_updated_at' => $mondayAt]);
+            // Both changed, the change here later: per field (desk 11-18: an owner fix here kept 55
+            // missed calls open that people had moved to Done on Monday). The fields changed here
+            // since the last sync stay; Monday's other fields are taken.
+            $mine = TaskActivity::query()->where('task_id', $task->id)->where('created_at', '>', $task->external_synced_at)->pluck('field')->unique()->all();
+            $map = ['title' => 'title', 'group' => 'group', 'status' => 'status', 'due' => 'due_on', 'owner' => 'assignee_user_ids'];
+            foreach ($mine as $f) {
+                if (isset($map[$f])) {
+                    unset($input[$map[$f]]);
+                } elseif (isset($input['values'][$f])) {
+                    unset($input['values'][$f]);
+                }
+            }
+            if ($mine === [] || array_diff(array_keys($input), ['values']) === [] && empty($input['values'])) {
+                $this->counts['kept (changed here later)']++;
+                $this->quietly($task, ['external_updated_at' => $mondayAt]);
 
-            return;
+                return;
+            }
+            $this->counts['merged (each side its own fields)'] = ($this->counts['merged (each side its own fields)'] ?? 0) + 1;
         }
 
-        $input = $this->input($board, $item);
         if ($parent !== null || $task->parent_task_id !== null) {
             unset($input['group']); // a subtask stays in its parent's group
         }
