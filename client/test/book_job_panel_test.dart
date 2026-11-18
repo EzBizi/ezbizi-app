@@ -243,7 +243,8 @@ void main() {
     await _pump(tester, prefill: _fromLead(), workiz: true);
     expect(
       find.byKey(const ValueKey('ezbizi-only-description')),
-      findsOneWidget,
+      findsNothing,
+      reason: 'Workiz v2 takes the description (Jobs, 2026-11-18)',
     );
     expect(find.byKey(const ValueKey('ezbizi-only-company')), findsOneWidget);
 
@@ -354,6 +355,74 @@ void main() {
     expect(find.byKey(const ValueKey('book-result')), findsOneWidget);
   });
 
+  // Jobs, 2026-11-18: priced services, tags, and Workiz's answer on tags.
+  testWidgets('services and tags are sent, and the total adds them up', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      prefill: _fromLead(),
+      workiz: true,
+      answer: 'tags_refused',
+    );
+    await _pick(tester, 'book-job-type', 'Chimney sweep');
+    await _tapKey(tester, 'book-add-service');
+    await _tapKey(tester, 'book-add-service');
+    await _enter(tester, 'book-line-0-name', 'Chimney sweep');
+    await _enter(tester, 'book-line-0-price', '250');
+    await _enter(tester, 'book-line-1-name', 'Cap');
+    await _enter(tester, 'book-line-1-price', '85.50');
+    await _enter(tester, 'book-line-1-qty', '2');
+    expect(find.text('Total USD 421.00'), findsOneWidget);
+
+    await _enter(tester, 'book-tag-input', 'Urgent');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('book-tag-Urgent')), findsOneWidget);
+
+    await _tapKey(tester, 'book-unscheduled');
+    final sent = _bookings.single;
+    expect(sent['line_items'], [
+      {'name': 'Chimney sweep', 'price_minor': 25000, 'qty': 1},
+      {'name': 'Cap', 'price_minor': 8550, 'qty': 2},
+    ]);
+    expect(sent['tags'], ['Urgent']);
+    expect(find.byKey(const ValueKey('book-tags-refused')), findsOneWidget);
+  });
+
+  testWidgets('a price that is not dollars holds Book', (tester) async {
+    await _pump(tester, prefill: _fromLead());
+    await _tapKey(tester, 'book-add-service');
+    await _enter(tester, 'book-line-0-name', 'Sweep');
+    await _enter(tester, 'book-line-0-price', 'abc');
+    expect(_enabled(tester, 'book-unscheduled'), isFalse);
+    await _enter(tester, 'book-line-0-price', '99');
+    expect(_enabled(tester, 'book-unscheduled'), isTrue);
+  });
+
+  testWidgets('a 409 shows who already holds the phone; New client again '
+      'confirms it, picking one books for them', (tester) async {
+    await _pump(tester, prefill: _fromLead(), dupes: true);
+    await _tapKey(tester, 'book-unscheduled');
+    expect(_bookings.single.containsKey('new_customer_confirmed'), isFalse);
+    expect(find.byKey(const ValueKey('book-matches')), findsOneWidget);
+    expect(find.textContaining('9 Oak St'), findsOneWidget);
+    expect(find.byKey(const ValueKey('book-result')), findsNothing);
+    expect(_enabled(tester, 'book-unscheduled'), isFalse, reason: 'decide');
+
+    await _tapKey(tester, 'book-create-anyway');
+    expect(_bookings.length, 2, reason: 'Create anyway books at once');
+    expect(_bookings.last['new_customer_confirmed'], isTrue);
+    expect(find.byKey(const ValueKey('book-result')), findsOneWidget);
+
+    await _pump(tester, prefill: _fromLead(), dupes: true);
+    await _tapKey(tester, 'book-unscheduled');
+    await _tapKey(tester, 'book-use-c-12');
+    await _tapKey(tester, 'book-unscheduled');
+    expect(_bookings.last['customer_id'], 'c-12');
+    expect(_bookings.last.containsKey('customer'), isFalse);
+  });
+
   testWidgets('on a 390x844 phone: stacked section cards, nothing overflows', (
     tester,
   ) async {
@@ -429,6 +498,13 @@ Future<void> _tapKey(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _enter(WidgetTester tester, String key, String text) async {
+  await tester.ensureVisible(find.byKey(ValueKey(key)));
+  await tester.pumpAndSettle();
+  await tester.enterText(find.byKey(ValueKey(key)), text);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pick(WidgetTester tester, String key, String label) async {
   await _tapKey(tester, key);
   await tester.tap(find.text(label).last);
@@ -453,6 +529,10 @@ Map<String, dynamic> _workiz(String status) => switch (status) {
     'serial_id': 'W-77',
     'assigned': <String>[],
   },
+  'tags_refused' => {
+    ..._workiz('created'),
+    'tags_refused': ['Urgent'],
+  },
   _ => {'status': 'no_workiz'},
 };
 
@@ -463,6 +543,7 @@ Future<void> _pump(
   String answer = 'no_workiz',
   Size size = const Size(1200, 1600),
   String? gate,
+  bool dupes = false,
 }) async {
   _bookings.clear();
   _retries.clear();
@@ -572,6 +653,26 @@ Future<void> _pump(
       if (request.method == 'POST' && path.endsWith('/jobs/book')) {
         final body = (jsonDecode(request.body) as Map).cast<String, dynamic>();
         _bookings.add(body);
+        // Jobs: a new client whose phone a customer already holds.
+        if (dupes &&
+            body['customer'] != null &&
+            body['new_customer_confirmed'] != true) {
+          return _json({
+            'message': 'A customer already has this phone or email.',
+            'matches': [
+              {
+                'id': 'c-12',
+                'number': 'C-12',
+                'name': 'Jane Doe',
+                'phone': '+15132267716',
+                'email': null,
+                'address_line1': '9 Oak St',
+                'city': 'Hartford',
+                'owning_franchise_id': 'fr-1',
+              },
+            ],
+          }, 409);
+        }
         // Jobs' BookingGate: the window filled, or it is after the Friday cut.
         if (gate != null && body['override_reason'] == null) {
           return _json({
