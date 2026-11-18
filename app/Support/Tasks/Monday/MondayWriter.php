@@ -36,15 +36,17 @@ final class MondayWriter
         return (array) $response->json('data');
     }
 
-    public function changeValues(string $boardId, string $itemId, array $values): void
+    /** @return ?string the item's updated_at after the write (saves a read, desk 11-18) */
+    public function changeValues(string $boardId, string $itemId, array $values): ?string
     {
-        $this->mutate('mutation($b:ID!,$i:ID!,$v:JSON!){ change_multiple_column_values(board_id:$b, item_id:$i, column_values:$v, create_labels_if_missing:true) { id } }',
-            ['b' => $boardId, 'i' => $itemId, 'v' => json_encode((object) $values)]);
+        return $this->mutate('mutation($b:ID!,$i:ID!,$v:JSON!){ change_multiple_column_values(board_id:$b, item_id:$i, column_values:$v, create_labels_if_missing:true) { id updated_at } }',
+            ['b' => $boardId, 'i' => $itemId, 'v' => json_encode((object) $values)])['change_multiple_column_values']['updated_at'] ?? null;
     }
 
-    public function moveToGroup(string $itemId, string $groupId): void
+    /** @return ?string the item's updated_at after the move */
+    public function moveToGroup(string $itemId, string $groupId): ?string
     {
-        $this->mutate('mutation($i:ID!,$g:String!){ move_item_to_group(item_id:$i, group_id:$g) { id } }', ['i' => $itemId, 'g' => $groupId]);
+        return $this->mutate('mutation($i:ID!,$g:String!){ move_item_to_group(item_id:$i, group_id:$g) { id updated_at } }', ['i' => $itemId, 'g' => $groupId])['move_item_to_group']['updated_at'] ?? null;
     }
 
     /**

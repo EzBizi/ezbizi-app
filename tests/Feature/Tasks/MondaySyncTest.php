@@ -281,6 +281,20 @@ class MondaySyncTest extends TestCase
         $this->assertSame('Done', $this->task('11')->statusRow->name, 'Monday changed again at 12:00: Monday wins');
     }
 
+    /** Desk 11-18: an owner change here later must not keep Monday's move to Done from arriving. */
+    public function test_both_changed_each_side_keeps_its_own_fields(): void
+    {
+        Carbon::setTestNow('2026-11-12 11:30:00');
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task('11'), ['title' => 'Call the insurer (renamed here)'], $this->jose));
+
+        Carbon::setTestNow('2026-11-12 11:45:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T11:15:00Z', ['group' => 'Completed Tasks'])]);
+
+        $task = $this->task('11');
+        $this->assertSame('Call the insurer (renamed here)', $task->title, 'the field changed here stays');
+        $this->assertSame('Completed Tasks', $this->inTenant($this->tenant['org'], fn () => $task->group->name), "Monday's move arrives");
+    }
+
     /** 2026-11-17: Monday's "assign creator" put Jose over Ana and Tiara on 22 missed-call tasks a rule made. */
     public function test_a_rule_made_task_keeps_its_people_when_monday_names_only_our_api_user(): void
     {
