@@ -213,10 +213,43 @@ class _BoardTreeState extends State<BoardTree> {
     widget.onArranged?.call();
   }
 
+  /// The arranged order (shared: task_boards.position), and with none set a
+  /// company's own board first (Jose 11-18: A-1 Chimney at the top), then by name.
   int _byPlace(Map<String, dynamic> a, Map<String, dynamic> b) {
     final pa = (a['position'] as num?) ?? 1000000;
     final pb = (b['position'] as num?) ?? 1000000;
-    return pa != pb ? pa.compareTo(pb) : _name(a).compareTo(_name(b));
+    if (pa != pb) return pa.compareTo(pb);
+    // A company's own board, then its custom boards, then its branches.
+    int rank(Map<String, dynamic> x) => switch (x['kind']) {
+      'organization' || 'company' => 0,
+      'custom' => 1,
+      _ => 2,
+    };
+    return rank(a) != rank(b)
+        ? rank(a) - rank(b)
+        : _name(a).compareTo(_name(b));
+  }
+
+  /// Move up/down in its own section and folder (the board's ⋯ menu, for the
+  /// keyboard; Jose 11-18: boards could only change group, not order).
+  Future<void> _shift(String boardId, int by) async {
+    final me = widget.boards.firstWhere((b) => '${b['id']}' == boardId);
+    final row = [
+      for (final b in widget.boards)
+        if (b['folder_id'] == me['folder_id'] && b['section'] == me['section'])
+          b,
+    ]..sort(_byPlace);
+    final at = row.indexWhere((b) => '${b['id']}' == boardId);
+    final to = at + by;
+    if (at < 0 || to < 0 || to >= row.length) return;
+    if (by < 0) {
+      await _reorder(boardId, row[to]);
+    } else if (to + 1 < row.length) {
+      await _reorder(boardId, row[to + 1]);
+    } else {
+      // To the end: the last one goes before me.
+      await _reorder('${row[to]['id']}', me);
+    }
   }
 
   List<Widget> _colourItems(
@@ -602,6 +635,18 @@ class _BoardTreeState extends State<BoardTree> {
             ),
             child: const Text('Change colour'),
           ),
+          MenuItemButton(
+            key: ValueKey('board-up-$id'),
+            leadingIcon: const Icon(Icons.arrow_upward, size: 18),
+            onPressed: () => _shift(id, -1),
+            child: const Text('Move up'),
+          ),
+          MenuItemButton(
+            key: ValueKey('board-down-$id'),
+            leadingIcon: const Icon(Icons.arrow_downward, size: 18),
+            onPressed: () => _shift(id, 1),
+            child: const Text('Move down'),
+          ),
           SubmenuButton(
             key: ValueKey('board-move-$id'),
             leadingIcon: const Icon(Icons.drive_file_move_outline, size: 18),
@@ -804,7 +849,7 @@ class _BoardTreeState extends State<BoardTree> {
     List<int> inSection(String key) => [
       for (final (i, b) in boards.indexed)
         if (b['section'] == key && loose(b)) i,
-    ];
+    ]..sort((a, b) => _byPlace(boards[a], boards[b]));
     // An older server without sections: the personal board I own is mine,
     // everything else is a place board.
     final mine = sectioned
@@ -860,9 +905,7 @@ class _BoardTreeState extends State<BoardTree> {
           }
 
           final top = all.where((i) => branchOf(i) == null).toList()
-            ..sort(
-              (a, b) => rank(a) != rank(b) ? rank(a) - rank(b) : byName(a, b),
-            );
+            ..sort((a, b) => _byPlace(boards[a], boards[b]));
           final children = <Widget>[];
           for (final i in top) {
             final under = rank(i) == 2 && boards[i]['franchise_id'] != null
