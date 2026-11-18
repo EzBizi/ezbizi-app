@@ -705,20 +705,28 @@ class _NewsletterTabState extends State<NewsletterTab> {
       return;
     }
 
-    await _load();
-
     final data = response.body['data'];
     if (data is Map && data['id'] is String) {
-      final made = _all.where((n) => n.id == data['id']).toList();
-      if (made.isNotEmpty) {
-        setState(() {
-          _open(made.first);
-          // From the dashboard's New newsletter, land where it is written.
-          if (_mayOpen('composer')) _tab = 'composer';
-        });
-      }
-      await _refreshPreview();
+      await _openCreated(data['id'] as String);
+    } else {
+      await _load();
     }
+  }
+
+  /// A draft just made (New, Duplicate, or the import wizard's "Save as new
+  /// draft"): reload the list and open it in the composer.
+  Future<void> _openCreated(String id) async {
+    await _load();
+    if (!mounted) return;
+    final made = _all.where((n) => n.id == id).toList();
+    if (made.isNotEmpty) {
+      setState(() {
+        _open(made.first);
+        // From the dashboard's New newsletter, land where it is written.
+        if (_mayOpen('composer')) _tab = 'composer';
+      });
+    }
+    await _refreshPreview();
   }
 
   /// Why the open newsletter cannot be changed, or null for a draft. The
@@ -990,6 +998,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
       onNew: (widget.session.me?.can('newsletter.create') ?? false) ? _create : null,
       onCompare: _compare,
       onSaveAsCopy: (widget.session.me?.can('newsletter.create') ?? false) ? _saveAsCopy : null,
+      onImportedAsNew: _openCreated,
       localCopyNote: _localCopy == null
           ? null
           : 'A local copy of this newsletter, not saved, is on this device '
