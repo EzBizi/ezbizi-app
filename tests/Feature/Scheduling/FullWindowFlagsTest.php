@@ -84,7 +84,7 @@ class FullWindowFlagsTest extends TestCase
 
         // Jose 11-18: in its own "Overbooked" group, naming who booked it (title and a Booked by column).
         $this->inTenant($alpha['org'], function () {
-            $task = Task::query()->with('group')->where('title', 'like', 'Job #203:%')->firstOrFail();
+            $task = Task::query()->with('group')->where('title', 'like', '8-11 AM already had 2 of 1 when it was moved there%')->firstOrFail();
             $this->assertSame('Overbooked', $task->group->name);
             $this->assertStringEndsWith(' · booked by Ana Ruiz', $task->title);
             $this->assertSame('Ana Ruiz', $task->values()->whereHas('column', fn ($q) => $q->where('name', 'Booked by'))->value('value_text'));
