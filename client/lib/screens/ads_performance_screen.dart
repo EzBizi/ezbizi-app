@@ -978,23 +978,22 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                 _figure(theme, 'Cost', _money(account['cost'], currency)),
                 _figure(theme, 'Clicks', _number(account['clicks'])),
                 _figure(theme, 'Impressions', _number(account['impressions'])),
+                // Jose asked what the difference is, then Bar (suggestion
+                // 01a1ef9d): the answer belongs where the number is.
                 _figure(
                   theme,
                   'Conversions',
                   _number(account['conversions']),
-                  // Jose asked what the difference is. The answer belongs where
-                  // the number is, not in a chat message he has to remember.
-                  hint:
-                      'Conversion actions you chose to count as conversions. '
-                      'This is the number Google optimises bidding against.',
+                  hint: conversionsHint,
                 ),
                 _figure(
                   theme,
                   'All conversions',
                   _number(account['all_conversions']),
-                  hint:
-                      'Every conversion action, including the ones not '
-                      'counted above - so it is always the same or larger.',
+                  hint: allConversionsHint(
+                    account['conversions'],
+                    account['all_conversions'],
+                  ),
                 ),
                 // EzBizi's own count, not Google's: the leads this account
                 // brought in over the same days, and what each one cost.
@@ -1004,8 +1003,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                     'Leads',
                     _number(account['leads']),
                     hint:
-                        '${_number(account['charged_leads'])} charged, '
-                        '${_number(account['credited_leads'])} credited back.',
+                        '$leadsHint ${_number(account['charged_leads'])} '
+                        'charged, ${_number(account['credited_leads'])} '
+                        'credited back.',
                   ),
                   _figure(
                     theme,
@@ -1013,33 +1013,33 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                     account['cost_per_lead'] == null
                         ? '—'
                         : _money(account['cost_per_lead'], currency),
+                    hint: account['lsa_cost'] == null
+                        ? costPerLeadHint
+                        : '$costPerLeadHint Here '
+                              '${_money(account['lsa_cost'], currency)} ÷ '
+                              '${_number(account['leads'])}.',
                   ),
                   _figure(
                     theme,
                     'Missed calls',
                     '${_number(account['missed_calls'])} of '
                         '${_number(account['calls'])}',
-                    hint:
-                        'Calls that rang out: Google recorded no '
-                        'conversation.',
+                    hint: missedCallsHint,
                   ),
                   _figure(
                     theme,
                     'First reply',
                     _minutes(account['median_first_reply_minutes']),
                     hint:
-                        'Median wait for a first answer to a message or '
-                        'booking. ${_number(account['unanswered_messages'])} '
+                        '$firstReplyHint '
+                        '${_number(account['unanswered_messages'])} '
                         'still unanswered.',
                   ),
                   _figure(
                     theme,
                     'Revenue',
                     _money(account['revenue'], currency),
-                    hint:
-                        'From ${_number(account['jobs'])} jobs these leads '
-                        'became - booked from the lead or matched by the '
-                        "customer's phone. Cancelled jobs are left out.",
+                    hint: '$revenueHint From ${_number(account['jobs'])} jobs.',
                   ),
                   _figure(
                     theme,
@@ -1047,6 +1047,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                     account['return_on_spend'] == null
                         ? '—'
                         : '${(account['return_on_spend'] as num).toStringAsFixed(2)}×',
+                    hint: returnOnSpendHint,
                   ),
                 ],
                 for (final e in _extras.where((e) => _extra.contains(e.key)))
@@ -1167,7 +1168,14 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       ),
     );
 
-    return hint == null ? text : Tooltip(message: hint, child: text);
+    return hint == null
+        ? text
+        : Tooltip(
+            message: hint,
+            // A tap shows it too: phones have no hover.
+            triggerMode: TooltipTriggerMode.tap,
+            child: text,
+          );
   }
 
   /// One metric at a time.
@@ -1461,10 +1469,13 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                           children: [
                             if (c.key == 'name') const HeadingPinButton(),
                             Flexible(
-                              child: Text(
-                                c.label,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.labelLarge,
+                              child: Tooltip(
+                                message: columnHint(c.key) ?? '',
+                                child: Text(
+                                  c.label,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.labelLarge,
+                                ),
                               ),
                             ),
                             if (_sortBy == c.key)
@@ -1829,20 +1840,40 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                 _figure(theme, 'Cost', _money(total('cost'), currency)),
                 _figure(theme, 'Clicks', _number(total('clicks'))),
                 _figure(theme, 'Impressions', _number(total('impressions'))),
-                _figure(theme, 'Conversions', _number(total('conversions'))),
+                _figure(
+                  theme,
+                  'Conversions',
+                  _number(total('conversions')),
+                  hint: conversionsHint,
+                ),
                 _figure(
                   theme,
                   'All conversions',
                   _number(total('all_conversions')),
+                  hint: allConversionsHint(
+                    total('conversions'),
+                    total('all_conversions'),
+                  ),
                 ),
-                _figure(theme, 'Leads', _number(total('leads'))),
-                _figure(theme, 'Revenue', _money(total('revenue'), currency)),
+                _figure(
+                  theme,
+                  'Leads',
+                  _number(total('leads')),
+                  hint: leadsHint,
+                ),
+                _figure(
+                  theme,
+                  'Revenue',
+                  _money(total('revenue'), currency),
+                  hint: revenueHint,
+                ),
                 _figure(
                   theme,
                   'Cost / lead',
                   total('leads') == 0
                       ? '—'
-                      : _money(total('cost') / total('leads'), currency),
+                      : _money(total('lsa_cost') / total('leads'), currency),
+                  hint: costPerLeadHint,
                 ),
               ],
             ),
@@ -1870,6 +1901,12 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                     end: key != 'name',
                     onSort: () => _sortOn(key),
                     sorted: _sortBy == key ? !_sortDescending : null,
+                    frame: columnHint(key) == null
+                        ? null
+                        : (heading) => Tooltip(
+                            message: columnHint(key)!,
+                            child: heading,
+                          ),
                   ),
               ],
               rows: [
@@ -1946,3 +1983,55 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     );
   }
 }
+
+/// Google's two conversion counts, said where they are shown (Bar Ohayon,
+/// suggestion 01a1ef9d: "hard to tell what is what").
+const conversionsHint =
+    'Only the actions set as primary in the Ads account. '
+    'This is the number Google optimises bidding against.';
+
+/// The All-conversions hint; when both counts match, also why.
+String allConversionsHint(Object? conversions, Object? all) {
+  const base =
+      'Primary actions plus secondary, cross-device and view-through '
+      'conversions, so it is always the same or larger.';
+  final c = conversions is num ? conversions : num.tryParse('$conversions');
+  final a = all is num ? all : num.tryParse('$all');
+  if (c == null || a == null || c != a) return base;
+  return '$base Equal here: these dates had no secondary, cross-device or '
+      'view-through conversions.';
+}
+
+/// Where each of EzBizi's own figures comes from (Bar, 01a1ef9d: "where is
+/// this coming from or how its being calculated").
+const leadsHint =
+    'Local Services leads (calls, messages, bookings) EzBizi received from '
+    "this account in these dates, on the account's time zone.";
+const costPerLeadHint =
+    "This account's Local Services spend in these dates ÷ its Leads. "
+    'Search and other campaigns are left out: they bring no Local Services '
+    'leads.';
+const missedCallsHint =
+    'Customer calls on these leads that rang out (Google recorded no talk '
+    'time), out of all their calls.';
+const firstReplyHint =
+    'Median wait from a message or booking to our first answer.';
+const revenueHint =
+    'Jobs these leads became - booked from the lead or matched by the '
+    "customer's phone. Cancelled jobs are left out.";
+const returnOnSpendHint = 'Revenue ÷ Local Services spend in these dates.';
+
+/// A column heading's hint: what the figure is and where it comes from.
+String? columnHint(String key) => switch (key) {
+  'cost' => "Google Ads spend in these dates, on the account's time zone.",
+  'clicks' => 'Clicks on the ads, as Google counts them.',
+  'impressions' => 'Times the ads were shown, as Google counts them.',
+  'conversions' => conversionsHint,
+  'all_conversions' => allConversionsHint(null, null),
+  'leads' => leadsHint,
+  'cost_per_lead' => costPerLeadHint,
+  'missed_calls' => missedCallsHint,
+  'median_first_reply_minutes' => firstReplyHint,
+  'revenue' => revenueHint,
+  _ => null,
+};

@@ -255,7 +255,8 @@ class AdsPerformanceController extends Controller
                 $report = $this->performance->forConnection($row, $from, $to, withCampaigns: false, token: $token);
                 $accounts[] = [
                     'connection_id' => $token === null ? $row->getKey() : null,
-                    ...self::withLeads($row, $report['account'], $from, $to),
+                    ...self::withLeads($row, $report['account'], $from, $to,
+                        fn () => $this->performance->channelCost($row, $from, $to, token: $token)['lsa']['cost_minor'] / 100),
                 ];
             } catch (RuntimeException $e) {
                 $refused[] = [
@@ -298,7 +299,8 @@ class AdsPerformanceController extends Controller
             ->values();
 
         $read = AllAccounts::read($accounts, 'rollup', $from, $to, fn (SocialConnection $c) => [
-            self::withLeads($c, $this->performance->forConnection($c, $from, $to, withCampaigns: false)['account'], $from, $to),
+            self::withLeads($c, $this->performance->forConnection($c, $from, $to, withCampaigns: false)['account'], $from, $to,
+                fn () => $this->performance->channelCost($c, $from, $to)['lsa']['cost_minor'] / 100),
         ]);
 
         return response()->json([
@@ -412,7 +414,11 @@ class AdsPerformanceController extends Controller
      * @param  array<string, mixed>  $account
      * @return array<string, mixed>
      */
-    private static function withLeads(SocialConnection $connection, array $account, Carbon $from, Carbon $to): array
+    /**
+     * @param  callable(): float  $lsaCost  the account's Local Services spend in
+     *                                       these dates; asked only when it has leads
+     */
+    private static function withLeads(SocialConnection $connection, array $account, Carbon $from, Carbon $to, callable $lsaCost): array
     {
         $zone = $account['time_zone'] ?? config('app.timezone');
         $window = [
@@ -484,20 +490,36 @@ class AdsPerformanceController extends Controller
             ->first();
         $revenue = round(((int) $jobs->revenue) / 100, 2);
 
+        /*
+         * The leads are Local Services', so their price is Local Services'
+         * spend, not the account's (Bar, 2026-11-18: $2,500.46 a lead was
+         * Search spend over 5 Local Services leads). Read only with leads: a
+         * forty-account roll-up must not pay a query per account for nothing.
+         */
+        $spend = null;
+        if ($total > 0 || $revenue > 0) {
+            try {
+                $spend = round((float) $lsaCost(), 2);
+            } catch (RuntimeException $e) {
+                report($e);
+            }
+        }
+
         return [
             ...$account,
             'leads' => $total,
             'charged_leads' => (int) $leads->charged,
             'credited_leads' => (int) $leads->credited,
             // Null, not 0, with no leads: nothing was bought, so nothing had a price.
-            'cost_per_lead' => $total > 0 ? round(((float) $account['cost']) / $total, 2) : null,
+            'lsa_cost' => $spend,
+            'cost_per_lead' => $total > 0 && $spend !== null ? round($spend / $total, 2) : null,
             'calls' => (int) $calls->total,
             'missed_calls' => (int) $calls->missed,
             'median_first_reply_minutes' => $median === null ? null : (int) round($median / 60),
             'unanswered_messages' => $unanswered,
             'jobs' => (int) $jobs->total,
             'revenue' => $revenue,
-            'return_on_spend' => ((float) $account['cost']) > 0 ? round($revenue / (float) $account['cost'], 2) : null,
+            'return_on_spend' => $spend > 0 ? round($revenue / $spend, 2) : null,
         ];
     }
 
@@ -546,7 +568,8 @@ class AdsPerformanceController extends Controller
         foreach ($connections as $connection) {
             try {
                 $report = $this->performance->forConnection($connection, $from, $to);
-                $report['account'] = self::withLeads($connection, $report['account'], $from, $to);
+                $lsa = collect($report['campaigns'])->where('channel', 'LOCAL_SERVICES')->sum('cost');
+                $report['account'] = self::withLeads($connection, $report['account'], $from, $to, fn () => $lsa);
                 $accounts[] = [
                     'connection_id' => $connection->getKey(),
                     ...$report,
