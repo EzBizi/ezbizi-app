@@ -68,7 +68,11 @@ void main() {
     post('draft', 'Winter checklist', 'awaiting_approval', created: first),
   ];
 
-  Future<void> pump(WidgetTester tester, Size size) async {
+  Future<void> pump(
+    WidgetTester tester,
+    Size size, {
+    List<Map<String, Object?>>? served,
+  }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -104,7 +108,7 @@ void main() {
             ],
           };
         } else if (path.endsWith('/social/posts')) {
-          body = {'data': posts};
+          body = {'data': served ?? posts};
         }
         return http.Response(
           jsonEncode(body),
@@ -202,6 +206,82 @@ void main() {
     await tester.tap(newPost);
     await tester.pumpAndSettle();
     expect(tester.widget<TextField>(words).controller!.text, 'Half a thought');
+  });
+
+  testWidgets('the server’s state is the word: Past due, Published, and '
+      'Approve says when it posts; the account says its company, button and '
+      'health', (tester) async {
+    final day = DateTime(now.year, now.month, 15);
+    await pump(
+      tester,
+      const Size(1440, 1200),
+      served: [
+        {
+          ...post(
+            'due',
+            'Fall sweep special',
+            'scheduled',
+            scheduledFor: wall(day, 9),
+            created: first,
+          ),
+          'state': 'past_due',
+        },
+        {
+          ...post(
+            'went',
+            'Thanks for a great season',
+            'sent',
+            scheduledFor: wall(day, 11),
+            created: first,
+          ),
+          'state': 'sent',
+        },
+        {
+          ...post(
+            'plan',
+            'Inspection week',
+            'awaiting_approval',
+            scheduledFor: wall(day, 13),
+            created: first,
+          ),
+          'state': 'awaiting',
+          'targets': [
+            {
+              'id': 't-plan',
+              'connection_id': 'conn-2',
+              'account': 'A-1 Chimney · Fort Lauderdale',
+              'provider': 'google_business_profile',
+              'provider_label': 'Google Business Profile',
+              'status': 'awaiting_approval',
+              'company': 'A-1 Chimney',
+              'cta_type': 'LEARN_MORE',
+              'cta_url': 'https://a-1chimney.com',
+              'connection_status': 'broken',
+            },
+          ],
+        },
+      ],
+    );
+
+    expect(on(day, 'Past due'), findsOneWidget);
+    expect(on(day, 'Planned'), findsOneWidget);
+    expect(find.text('Published 1'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('plan-post-plan')));
+    await tester.pumpAndSettle();
+    expect(find.text('Approve for the planned time'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('social-target-about-t-plan')),
+          )
+          .data,
+      'A-1 Chimney · Button: Learn more · https://a-1chimney.com',
+    );
+    expect(
+      find.byKey(const ValueKey('social-target-health-t-plan')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a phone gets the week and the day, and a post opens over it', (
