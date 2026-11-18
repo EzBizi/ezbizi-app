@@ -15,6 +15,10 @@ Newest first. Each entry: what happened, what it cost, the rule that stops it.
 - **What:** I made q0588.sh from q0586.sh with `s/0587/0588; s/0586/0587`. It is two versions back, so every name became 0587. The 0588 cut deleted and re-created the cut-0587 worktree at 0588's SHA while 0587's Windows build was still using it. Windows published 0.0.0588 about an hour before the 0588 server, and 0587's own Windows build never shipped.
 - **Rule:** derive qN only from q(N-1) with `s/(N-1)/N; s/(N-2)/(N-1)`. Then grep the new script: every cut-/rel-/precheck- name must be N. Never edit a running qNNNN.sh in place; bash reads the edited bytes.
 
+## 2026-11-17 — UI/UX: a spinner in a shared widget blocked release 0.0.0592
+- **What:** the Book panel's new availability grid drew an endless LinearProgressIndicator while its data was not a Map. A new test on main (book_job_entry_points_test) stubbed every path with `[]`, so pumpAndSettle hung and the precheck failed. My full gate had run before that test landed.
+- **Rule:** a widget that every screen can open never animates while waiting (use words), and any answer it cannot read is a final state, not "still loading".
+
 ## 2026-11-17 — PPC by number dialed: measured the wrong line and told Jose it was impossible
 - **What:** Jose asked to set source PPC when the number dialed is PPC. Automations measured Workiz `to_number` lines and Google Ads call assets, found every line mixed, and I told Jose it could not work and offered to buy tracking numbers. I also passed on an unmeasured claim ("PPC callers dial the website number"). Our own Reports › Jobs › Number dialed column already shows the RingCentral line names ("NJ - PPC", "CT - PPC").
 - **Rule:** before saying a field can't be derived, open the screen that already shows it. The RingCentral line name decides the dialed source. Only state a cause that someone measured.
