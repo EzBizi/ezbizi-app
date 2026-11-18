@@ -21,6 +21,8 @@ Artisan::command('inspire', function () {
  * stops an hourly sweep becoming an hourly alert.
  */
 Schedule::command('ezbizi:flag-workiz-jobs')->everyFifteenMinutes()->withoutOverlapping(14);
+// A Workiz job booked into a full window (Jose / desk, 2026-11-17).
+Schedule::command('scheduling:flag-full-windows')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
