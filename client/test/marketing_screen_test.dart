@@ -1608,6 +1608,46 @@ void main() {
       expect(body, {'publish_now': true});
     });
 
+    testWidgets('a server that says the time is gone asks the same question, '
+        'and Post now resends with publish_now', (tester) async {
+      final bodies = <Object?>[];
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        posts: [
+          _landed('awaiting_approval', scheduledFor: '2099-03-04 09:00'),
+        ],
+      );
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'POST' &&
+            request.url.path.endsWith('/post-queue/target-1/approve')) {
+          final body = jsonDecode(request.body);
+          bodies.add(body);
+          if (body is Map && body['publish_now'] == true) {
+            return _json({
+              'data': {'id': 'target-1', 'status': 'queued'},
+            });
+          }
+          return _json({
+            'message': 'This post has no time set.',
+            'code': 'needs_publish_now_confirm',
+          }, 422);
+        }
+        return inner(request);
+      });
+      await _openPostRow(tester, 'New flue liner, same day.');
+      await tester.tap(find.byKey(const Key('social-approve-target-1')));
+      await tester.pumpAndSettle();
+      // With a time here, no question first; the server's refusal asks it.
+      expect(find.byKey(const Key('social-post-now-confirm')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('social-post-now-yes')));
+      await tester.pumpAndSettle();
+      expect(bodies, [
+        <String, Object?>{},
+        {'publish_now': true},
+      ]);
+    });
+
     testWidgets('Set a time, from the post-now question, opens the time '
         'instead of approving', (tester) async {
       String? decided;

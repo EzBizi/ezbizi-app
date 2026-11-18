@@ -449,14 +449,29 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
             }
             close();
             // Literal paths: ClientCallsRealRoutesTest reads them.
-            _act(
-              widget.api.post(
-                approve
-                    ? '/business-profile/post-queue/${target.id}/approve'
-                    : '/business-profile/post-queue/${target.id}/disapprove',
-                {if (publishNow) 'publish_now': true},
-              ),
-            );
+            final path = approve
+                ? '/business-profile/post-queue/${target.id}/approve'
+                : '/business-profile/post-queue/${target.id}/disapprove';
+            final response = await widget.api.post(path, {
+              if (publishNow) 'publish_now': true,
+            });
+            if (!mounted) return;
+            // The server's own check (Marketing stage C): no time on its side,
+            // whatever this copy of the post said. Asked the same way.
+            if (approve &&
+                !publishNow &&
+                response.statusCode == 422 &&
+                response.body['code'] == 'needs_publish_now_confirm') {
+              final again = await _confirmPostNow(post);
+              if (!mounted) return;
+              if (again == 'now') {
+                await _act(widget.api.post(path, {'publish_now': true}));
+              } else if (again == 'time') {
+                await _editPost(post);
+              }
+              return;
+            }
+            await _act(Future.value(response));
           }
         : null,
     onDeleteRemote: _canPost
