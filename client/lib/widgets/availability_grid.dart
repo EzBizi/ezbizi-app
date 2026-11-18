@@ -80,11 +80,11 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
     // 404: no area covers the ZIP, which is an answer, not a failure.
     final none = response.statusCode == 404;
     setState(() {
+      // Anything answered that is not an area reads as "no area", never as
+      // still loading.
       _data = response.ok && response.data is Map
           ? (response.data as Map).cast<String, dynamic>()
-          : none
-          ? const {'area_id': null}
-          : null;
+          : const {'area_id': null};
       _error = response.ok || none ? null : response.message;
     });
   }
@@ -116,7 +116,15 @@ class AvailabilityGridState extends State<AvailabilityGrid> {
       );
     }
     final data = _data;
-    if (data == null) return const LinearProgressIndicator();
+    // Words, not a spinner: an endless animation would hang every
+    // pumpAndSettle in a screen that opens Book (0.0.0592 precheck).
+    if (data == null) {
+      return Text(
+        'Loading windows…',
+        key: const ValueKey('grid-loading'),
+        style: muted,
+      );
+    }
     if (data['area_id'] == null) {
       return Text(
         'No service area covers ${widget.zip}. Pick the area under the address.',
