@@ -1874,6 +1874,7 @@ Route::prefix('v1')
             Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion'])
                 ->middleware('cache.headers:etag');
             Route::get('scheduling/availability/fit', [SchedulingAvailabilityController::class, 'fit']);
+            Route::get('scheduling/availability/days', [SchedulingAvailabilityController::class, 'days']);
 
             // Suggest is Availability's search box and has no other caller
             // (grepped across client/lib). It answers with area names, city

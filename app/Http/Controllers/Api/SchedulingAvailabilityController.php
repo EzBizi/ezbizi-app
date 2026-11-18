@@ -184,6 +184,52 @@ class SchedulingAvailabilityController extends Controller
         ])->values()->all()]);
     }
 
+    /**
+     * GET /api/v1/scheduling/availability/days?zip=|address=|area_id=&from=&days=
+     *
+     * Consecutive days for one area, full, closed and late windows included,
+     * for Jobs > Book's grid (UI-UX, 2026-11-17).
+     */
+    public function days(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', ServiceArea::class);
+        $data = $request->validate([
+            'zip' => ['nullable', 'string', 'max:16'],
+            'address' => ['nullable', 'string', 'max:300'],
+            'area_id' => ['nullable', 'uuid'],
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'days' => ['nullable', 'integer', 'min:1', 'max:14'],
+        ]);
+        $franchiseIds = ViewScope::forUser($request->user())->franchiseIds();
+        if (($data['address'] ?? '') !== '' && ($data['zip'] ?? '') === '') {
+            $data['zip'] = AddressCheck::check(trim($data['address']))['zip'] ?? null
+                ?? throw ValidationException::withMessages(['address' => 'Could not find a zip code for that address. Add the town or state, or search by the zip code.']);
+        }
+        $area = match (true) {
+            ($data['area_id'] ?? null) !== null => ServiceArea::query()->whereIn('franchise_id', $franchiseIds)->find($data['area_id']),
+            ($data['zip'] ?? '') !== '' => $this->areaForZip($this->zip5((string) $data['zip']), $franchiseIds),
+            default => throw ValidationException::withMessages(['zip' => 'Search by a zip code, an address or an area.']),
+        };
+        abort_if($area === null, 404, 'No service area covers that zip code.');
+
+        $zone = (string) app(SettingsResolver::class)->get('timezone', $request->user()->organization);
+        $tomorrow = CarbonImmutable::now($zone)->addDay()->startOfDay();
+        $from = isset($data['from']) ? CarbonImmutable::parse($data['from']) : $tomorrow;
+        $from = $from->lessThan($tomorrow) ? $tomorrow : $from;
+        $latest = Openings::latestWindows($area);
+
+        return response()->json(['data' => [
+            'area_id' => $area->id,
+            'area_name' => $area->name,
+            'franchise_name' => Franchise::query()->whereKey($area->franchise_id)->value('name'),
+            'configured' => Openings::hasCapacity($area),
+            'days' => collect(app(Openings::class)->days($area, $from, (int) ($data['days'] ?? 7)))
+                ->map(fn ($d) => $d + ['late_reason' => isset($latest[CarbonImmutable::parse($d['date'])->dayOfWeek])
+                    ? 'No start after '.CarbonImmutable::createFromFormat('H:i', $latest[CarbonImmutable::parse($d['date'])->dayOfWeek])->format('g A').' this day'
+                    : null])->all(),
+        ]]);
+    }
+
     /** GET /api/v1/scheduling/availability */
     public function show(Request $request): JsonResponse
     {

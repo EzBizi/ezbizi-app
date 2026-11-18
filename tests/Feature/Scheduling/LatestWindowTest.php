@@ -43,5 +43,15 @@ class LatestWindowTest extends TestCase
         $as->putJson("/api/v1/scheduling/areas/{$area->id}/latest-windows", ['latest_windows' => ['5' => '9pm']])->assertStatus(422);
         $as->putJson("/api/v1/scheduling/areas/{$area->id}/latest-windows", ['latest_windows' => null])->assertOk();
         $this->assertSame([2, 2, 0], $left()['2026-11-20']);
+
+        // Jobs > Book's grid: consecutive days, the late window drawn with its reason.
+        $this->travelTo(CarbonImmutable::parse('2026-11-18 10:00:00'));
+        $d = $as->getJson("/api/v1/scheduling/availability/days?area_id={$area->id}&from=2026-11-01&days=3")->assertOk()->json('data');
+        $this->assertSame(['2026-11-19', '2026-11-20', '2026-11-21'], array_column($d['days'], 'date'));
+        $this->assertSame([false, false, true], array_column($d['days'][1]['windows'], 'late'));
+        $this->assertSame('No start after 12 PM this day', $d['days'][1]['late_reason']);
+        $this->assertNull($d['days'][0]['late_reason']);
+        $this->assertSame('weekly', $d['days'][2]['closed']);
+        $as->getJson('/api/v1/scheduling/availability/days')->assertStatus(422);
     }
 }
