@@ -23,6 +23,7 @@ import 'package:http/testing.dart';
 /// are the kind of rule that passes review by inspection and then regresses, so
 /// each has a test that fails when it does.
 void main() {
+  setUp(SeoTab.forgetSearch);
   testWidgets('the tab opens the SEO panel and lists the company websites', (
     tester,
   ) async {
@@ -420,6 +421,54 @@ void main() {
     expect(values.keys, isNot(contains('about_us_field_1')));
     expect(values.keys, isNot(contains('template_1')));
     expect(_puts.last.containsKey('hours_timezone'), isFalse);
+  });
+
+  // Audit 01a1ef57: Save shows what changes, on which site, before it writes.
+  testWidgets('a changed field is reviewed before it is saved', (tester) async {
+    _puts.clear();
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
+    );
+
+    final phone = find.widgetWithText(TextField, '555-0100');
+    await tester.ensureVisible(phone);
+    await tester.enterText(phone, '555-0199');
+    await tester.pumpAndSettle();
+    final save = find.widgetWithText(FilledButton, 'Save');
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    expect(_puts, isEmpty);
+    expect(find.byKey(const Key('web-site-save-review')), findsOneWidget);
+    expect(find.textContaining('1 change to'), findsOneWidget);
+    expect(find.textContaining('555-0199', findRichText: true), findsWidgets);
+
+    final confirm = find.byKey(const Key('web-site-save-confirm'));
+    await tester.ensureVisible(confirm);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+
+    expect((_puts.last['values'] as Map)['phone'], '555-0199');
+    expect(find.byKey(const Key('web-site-save-review')), findsNothing);
+  });
+
+  test('a site says when it last read, and whether it has the last save', () {
+    final now = DateTime.utc(2026, 11, 18, 12);
+    final site = {
+      'connected_at': '2026-10-01T00:00:00Z',
+      'last_seen_at': '2026-11-18T11:55:00Z',
+      'values_saved_at': '2026-11-18T11:58:00Z',
+    };
+    expect(siteReadLine(site, now: now), 'Read 5 min ago');
+    expect(sitePublishLine(site, now: now), startsWith('Saved 2 min ago, not on the website yet'));
+    site['last_seen_at'] = '2026-11-18T11:59:00Z';
+    expect(sitePublishLine(site, now: now), 'On the website · last read 1 min ago');
+    site['last_seen_at'] = '2026-11-16T11:00:00Z';
+    expect(siteReadLine(site, now: now), 'Quiet · last read 2 days ago');
+    expect(siteReadLine({'connected_at': null}, now: now), 'Waiting for the plugin');
   });
 
   /// Jose, 2026-10-05: a Branch picker per website, its own company's only.
