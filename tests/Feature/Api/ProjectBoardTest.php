@@ -593,6 +593,64 @@ class ProjectBoardTest extends TestCase
     }
 
     /**
+     * Jose, 2026-11-18 ("This needs to be improved"): each of our texts says
+     * who sent it, a rule's as "Automatic · rule", and the thread is headed
+     * by its job; a thread of only our texts is not one the client answered.
+     */
+    public function test_the_inbox_thread_names_each_sender_and_heads_with_the_job(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $org = $alpha['org']->id;
+        $board = $this->inTenant($alpha['org'], function () use ($alpha, $org) {
+            $board = $this->job($alpha['franchise'], 'J-1', 'Submitted', null, ['DEPOSIT RECEIVED']);
+            Job::query()->find($board)->customer->forceFill(['phone' => '+15125550101', 'name' => 'Lena Park'])->save();
+            $connection = PhoneConnection::factory()->create(['scope_type' => PhoneConnection::SCOPE_COMPANY, 'scope_id' => $alpha['franchise']->company_id]);
+            $line = PhoneNumber::factory()->create(['connection_id' => $connection->id, 'scope_type' => PhoneNumber::SCOPE_FRANCHISE,
+                'scope_id' => $alpha['franchise']->id, 'e164' => '+13055550199']);
+            $text = fn (string $body) => PhoneMessage::query()->create(['connection_id' => $connection->id, 'number_id' => $line->id,
+                'twilio_sid' => 'SM'.bin2hex(random_bytes(16)), 'direction' => 'outbound', 'customer_id' => null,
+                'from_e164' => $line->e164, 'to_e164' => '+15125550101', 'body' => $body]);
+
+            $mine = $text('Can we come Tuesday 8-11?');
+            \App\Models\AuditEvent::create(['organization_id' => $org, 'actor_type' => \App\Models\AuditEvent::ACTOR_USER,
+                'actor_id' => $alpha['admin']->id, 'action' => 'job.client_texted', 'target_type' => Job::class,
+                'target_id' => $board, 'metadata' => ['message_id' => $mine->id], 'occurred_at' => now()]);
+            $this->travel(1)->minutes();
+
+            $review = $text('Thank you for working with us!');
+            $rule = \App\Models\Automation::create(['organization_id' => $org, 'name' => 'Review request',
+                'trigger_key' => 'job.completed', 'is_active' => true]);
+            $version = \App\Models\AutomationVersion::create(['organization_id' => $org, 'automation_id' => $rule->id, 'version' => 1,
+                'conditions' => null, 'actions' => [['type' => 'sms.send']], 'created_at' => now()]);
+            $event = \App\Models\AutomationEvent::create(['organization_id' => $org, 'event_key' => 'job.completed',
+                'subject_type' => Job::class, 'subject_id' => $board, 'payload' => [], 'depth' => 0,
+                'occurred_at' => now(), 'available_at' => now()]);
+            \App\Models\AutomationRun::create(['organization_id' => $org, 'automation_id' => $rule->id, 'automation_version_id' => $version->id, 'event_id' => $event->id,
+                'status' => \App\Models\AutomationRun::SUCCEEDED, 'action_results' => [['type' => 'sms.send', 'ok' => true]],
+                'action_count' => 1, 'started_at' => now()]);
+            \App\Models\AuditEvent::create(['organization_id' => $org, 'actor_type' => \App\Models\AuditEvent::ACTOR_SYSTEM,
+                'action' => 'phone.sms_sent_by_automation', 'target_type' => PhoneMessage::class, 'target_id' => $review->id,
+                'metadata' => ['caused_by_event' => $event->id], 'occurred_at' => now()]);
+
+            return $board;
+        });
+        $api = $this->signedInAs($alpha['admin']);
+
+        $api->getJson("/api/v1/project-board/inbox/{$board}")->assertOk()
+            ->assertJsonPath('data.0.sent_by', $alpha['admin']->name)
+            ->assertJsonPath('data.0.automatic', false)
+            ->assertJsonPath('data.1.automatic', true)
+            ->assertJsonPath('data.1.automation_name', 'Review request')
+            ->assertJsonPath('job.customer', 'Lena Park')
+            ->assertJsonPath('job.phone', '+15125550101')
+            ->assertJsonPath('job.id', $board);
+
+        $thread = $api->getJson('/api/v1/project-board/inbox')->assertOk()->json('data.0');
+        $this->assertFalse($thread['client_spoke'], 'Only our texts: the client never answered.');
+        $this->assertFalse($thread['waiting']);
+    }
+
+    /**
      * Jose, 2026-11-17: the client texts ship OFF; switched on, only a job
      * after the switch gets one, once, from the branch line, noted on the
      * job; the timeline and work-order links open only signed.
