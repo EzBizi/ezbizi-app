@@ -1275,17 +1275,15 @@ class _PostsDashboard extends StatelessWidget {
         FilterTile(
           key: null,
           label: 'All',
-          // Needs approval is inside Scheduled already.
-          count: tiles.entries
-              .where((e) => e.key != 'awaiting')
-              .fold<int>(0, (a, e) => a + e.value),
+          // Each state is counted once: Needs approval is not inside Scheduled.
+          count: tiles.values.fold<int>(0, (a, v) => a + v),
           note: 'every post',
         ),
         FilterTile(
           key: 'scheduled',
           label: 'Scheduled',
           count: tiles['scheduled'],
-          note: 'waiting for their time',
+          note: 'approved, with a time set',
           tone: Tone.info,
         ),
         FilterTile(

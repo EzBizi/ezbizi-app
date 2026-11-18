@@ -190,13 +190,15 @@ void main() {
       find.descendant(of: detail, matching: find.text('About: Jobs')),
       findsOneWidget,
     );
+    // Rodrigo, 2026-11-18: a picture shows itself; it is not a chip.
     expect(
       find.descendant(
         of: detail,
-        matching: find.widgetWithText(ActionChip, 'screen.png'),
+        matching: find.byKey(const ValueKey('suggestion-thumb-0')),
       ),
       findsOneWidget,
     );
+    expect(find.widgetWithText(ActionChip, 'screen.png'), findsNothing);
   });
 }
 
