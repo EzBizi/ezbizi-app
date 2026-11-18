@@ -211,8 +211,8 @@ Schedule::command('ezbizi:monday-sync')->everyTenMinutes()->withoutOverlapping(2
 Schedule::command('ezbizi:monday-sync --scan')->dailyAt('03:40')->timezone('America/New_York')->withoutOverlapping(60);
 // Task Board → Monday while both are in use (Jose, 11-13): the outbox, every minute.
 Schedule::command('ezbizi:monday-push')->everyMinute()->withoutOverlapping(10);
-// Full mirror (Jose 11-18): nightly, what exists on one side only is queued for Monday or imported here; drift is logged.
-Schedule::command('ezbizi:monday-parity --fix')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
+// Full mirror (Jose 11-18): nightly, read-only; drift is logged and exits 1. --fix stays off until the desk reviews a run.
+Schedule::command('ezbizi:monday-parity')->dailyAt('04:30')->timezone('America/New_York')->withoutOverlapping(90);
 // Tags alone, every two minutes (odd): a tag Workiz renames reaches EzBizi's jobs within minutes (Jose, 11-10: "needs to be instant").
 // Payments edited or deleted after the 2-day overlap: the last 35 days re-read whole each night (audit 11-11).
 Schedule::command('ezbizi:sync-workiz-records --type=payment --days=35 --pages=200')->dailyAt('03:20')->withoutOverlapping(60);

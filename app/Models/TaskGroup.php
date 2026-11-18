@@ -15,7 +15,7 @@ class TaskGroup extends Model implements StatesRetention
     use BelongsToTenant;
     use HasUuids;
 
-    protected $fillable = ['organization_id', 'board_id', 'name', 'colour', 'position'];
+    protected $fillable = ['organization_id', 'board_id', 'name', 'colour', 'position', 'external_ref'];
 
     protected function casts(): array
     {

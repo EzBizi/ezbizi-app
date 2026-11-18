@@ -5,20 +5,23 @@ namespace App\Console\Commands;
 use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Models\Task;
+use App\Models\TaskActivity;
 use App\Models\TaskBoard;
 use App\Models\TaskGroup;
 use App\Support\Tasks\Monday\MondayBoardReader;
 use App\Support\Tasks\Monday\MondayClient;
 use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tasks\Monday\MondaySync;
+use App\Support\Tasks\TaskWriter;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Jose 11-18: "it should be full sync, that means everything must be mirrored".
- * Per mirrored board: groups and tasks that exist on one side only. --fix
- * queues ours for Monday (outbox create) and imports Monday's here.
+ * Per mirrored board: groups and tasks on one side only, tasks moved here
+ * but not there, items gone on Monday. --fix queues ours for Monday (create,
+ * move), imports Monday's here, and deletes here what Monday removed.
  * ponytail: compares existence (groups, items, subitems), not every value
  * and owner; add a value diff when a drift in values is seen.
  */
@@ -35,25 +38,44 @@ class MondayParity extends Command
             $org = Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id);
             $reader = new MondayBoardReader(MondayClient::for($connection));
             $missingThere = $tenant->run($org, function () use ($reader, &$drift) {
-                $queue = [];
                 $boards = TaskBoard::query()->where('external_ref', 'like', 'monday:%')->whereNull('archived_at')->orderBy('name')->get();
+                // Every live Monday item, by board: an item here on another board was moved here, one on no board is gone there.
+                $where = [];
+                $groupOf = [];
+                foreach ($boards as $board) {
+                    foreach ($reader->itemGroups(substr((string) $board->external_ref, 7)) as $id => $groupTitle) {
+                        $where[(string) $id] = $board->id;
+                        $groupOf[(string) $id] = mb_strtolower(trim($groupTitle));
+                    }
+                }
+                $queue = [];
                 foreach ($boards as $board) {
                     $mondayId = substr((string) $board->external_ref, 7);
                     $meta = $reader->board($mondayId);
                     $mondayGroups = array_map(fn ($g) => mb_strtolower(trim($g['name'])), $meta['groups']);
-                    $groupsHere = TaskGroup::query()->where('board_id', $board->id)->pluck('name')
+                    $renamed = trim($meta['name']) !== trim($board->name) ? 1 : 0;
+                    $groupsHere = TaskGroup::query()->where('board_id', $board->id)->whereIn('id', Task::query()->where('board_id', $board->id)->select('group_id'))->pluck('name')
                         ->filter(fn ($n) => ! in_array(mb_strtolower(trim($n)), $mondayGroups, true))->values()->all();
 
-                    $items = $reader->changedSince($mondayId, null)['ids'];
-                    $known = Task::query()->withTrashed()->where('external_ref', 'like', 'monday:%')
-                        ->pluck('external_ref')->map(fn ($r) => substr($r, 7))->flip();
-                    $onlyMonday = array_values(array_filter($items, fn ($id) => ! $known->has($id)));
+                    $ours = Task::query()->withTrashed()->with('group:id,name')->where('board_id', $board->id)->whereNull('parent_task_id')
+                        ->where('external_ref', 'like', 'monday:%')->get(['id', 'board_id', 'group_id', 'external_ref', 'deleted_at', 'updated_at', 'external_synced_at']);
+                    $known = Task::query()->withTrashed()->where('external_ref', 'like', 'monday:%')->pluck('external_ref')->map(fn ($r) => substr($r, 7))->flip();
+                    $onlyMonday = array_keys(array_filter($where, fn ($b, $id) => $b === $board->id && ! $known->has((string) $id), ARRAY_FILTER_USE_BOTH));
+                    $live = $ours->whereNull('deleted_at');
+                    $moved = $live->filter(fn ($t) => isset($where[substr($t->external_ref, 7)]) && $where[substr($t->external_ref, 7)] !== $board->id)->pluck('id')->all();
+                    // Same item, different group: the later side wins (ours newer: pushed; Monday's: re-read).
+                    $regroup = $live->filter(fn ($t) => ($where[substr($t->external_ref, 7)] ?? null) === $board->id
+                        && $groupOf[substr($t->external_ref, 7)] !== mb_strtolower(trim((string) $t->group?->name)));
+                    $pushGroup = $regroup->filter(fn ($t) => $t->external_synced_at === null || $t->updated_at->greaterThan($t->external_synced_at))->pluck('id')->all();
+                    $pullGroup = $regroup->reject(fn ($t) => in_array($t->id, $pushGroup, true))->map(fn ($t) => substr($t->external_ref, 7))->values()->all();
+                    $gone = $live->filter(fn ($t) => ! isset($where[substr($t->external_ref, 7)]))->pluck('id')->all();
                     $onlyHere = Task::query()->where('board_id', $board->id)->whereNull('external_ref')->where('sensitive', false)->get();
 
-                    $n = count($groupsHere) + count($onlyMonday) + $onlyHere->count();
+                    $n = count($groupsHere) + count($onlyMonday) + $onlyHere->count() + count($moved) + count($gone) + $regroup->count() + $renamed;
                     $drift += $n;
-                    $this->line(sprintf('%s: groups only here %d, tasks only here %d, items only on Monday %d', $board->name, count($groupsHere), $onlyHere->count(), count($onlyMonday)));
-                    $queue[$mondayId] = ['here' => $onlyHere, 'monday' => $onlyMonday];
+                    $this->line(sprintf('%s: groups only here %d, tasks only here %d, items only on Monday %d, moved here not there %d, gone on Monday %d, in another group %d, name differs %d',
+                        $board->name, count($groupsHere), $onlyHere->count(), count($onlyMonday), count($moved), count($gone), $regroup->count(), $renamed));
+                    $queue[$mondayId] = ['here' => $onlyHere, 'monday' => array_map('strval', $onlyMonday), 'moved' => [...$moved, ...$pushGroup], 'gone' => $gone, 'pull' => $pullGroup, 'board' => $board->id, 'name' => $renamed ? trim($meta['name']) : null];
                 }
 
                 return $queue;
@@ -62,13 +84,27 @@ class MondayParity extends Command
             if ($this->option('fix')) {
                 foreach ($missingThere as $mondayId => $gap) {
                     $tenant->run($org, function () use ($gap) {
+                        if ($gap['name'] !== null) { // Monday's name wins (desk 11-18)
+                            TaskBoard::query()->whereKey($gap['board'])->update(['name' => mb_substr($gap['name'], 0, 255)]);
+                        }
                         // Parents first, so a subtask finds its parent's item.
                         foreach ($gap['here']->sortBy(fn (Task $t) => $t->parent_task_id === null ? 0 : 1) as $task) {
                             app(MondayOutbox::class)->record($task, ['create']);
                         }
+                        foreach (Task::query()->whereIn('id', $gap['moved'])->get() as $task) {
+                            app(MondayOutbox::class)->record($task, ['group']); // the push moves the item to this board
+                        }
+                        // Archived or deleted on Monday: deleted here too (restorable), never sent back.
+                        MondayOutbox::suppress(function () use ($gap) {
+                            foreach (Task::query()->whereIn('id', $gap['gone'])->get() as $task) {
+                                app(TaskWriter::class)->delete($task, null);
+                                TaskActivity::query()->create(['organization_id' => $task->organization_id, 'task_id' => $task->id, 'user_id' => null,
+                                    'field' => 'monday_sync', 'label' => 'Monday sync', 'from' => null, 'to' => 'Moved to trash: no longer on Monday (parity check).']);
+                            }
+                        });
                     });
-                    if ($gap['monday'] !== []) {
-                        $sync->run($connection, only: [(string) $mondayId], items: $gap['monday']);
+                    if ($gap['monday'] !== [] || $gap['pull'] !== []) {
+                        $sync->run($connection, only: [(string) $mondayId], items: [...$gap['monday'], ...$gap['pull']]);
                     }
                 }
             }

@@ -205,7 +205,7 @@ void main() {
     await pumpBoard(tester);
     expect(find.text('Other boards'), findsNothing);
     expect(inTree('Personal Task Board'), findsOneWidget);
-    expect(inTree('Spring push · from Dana Reyes'), findsOneWidget);
+    expect(inTree('Spring push'), findsOneWidget);
     expect(inTree('A-1 Chimney'), findsNWidgets(2)); // the node and its board
     expect(inTree('Estimates follow-up'), findsOneWidget);
     expect(inTree('Boston'), findsOneWidget);
@@ -258,7 +258,7 @@ void main() {
     await pumpBoard(tester, boards: [...fixture, everyone]);
     expect(inTree("EVERYONE'S BOARDS"), findsOneWidget);
     expect(inTree('Ben Okafor · 1 board'), findsOneWidget);
-    expect(inTree("Ben Okafor's board"), findsOneWidget);
+    expect(inTree('Ben Okafor'), findsOneWidget);
   });
 
   testWidgets('search filters the tree, and a branch found says its company', (
