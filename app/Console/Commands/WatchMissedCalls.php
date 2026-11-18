@@ -79,6 +79,8 @@ class WatchMissedCalls extends Command
                 'from' => $call['from'],
                 'to_number' => $call['to_number'],
                 'to_name' => $line,
+                // The task's title: who to call back, or, with no number, enough to find the call (desk, 11-18).
+                'task_title' => self::taskTitle($call['from'] ?? null, (string) $line, (string) $call['started_at']),
                 'queue' => $call['queue'],
                 'company' => $company,
                 // Which company's line it was, for a per-person company filter (2026-10-23).
@@ -140,5 +142,15 @@ class WatchMissedCalls extends Command
             ->whereNotNull('owning_franchise_id')->latest()->value('owning_franchise_id');
 
         return $place === null ? null : \App\Models\Franchise::query()->whereKey($place)->value('name');
+    }
+
+    public static function taskTitle(?string $from, string $line, string $startedAt): string
+    {
+        if (filled($from)) {
+            return trim($line.' '.$from);
+        }
+        $zone = (string) (\App\Support\Settings\SettingsResolver::forOrganization('timezone') ?: 'America/New_York');
+
+        return 'Unknown caller (no number) · '.$line.' · '.\Carbon\CarbonImmutable::parse($startedAt)->setTimezone($zone)->format('M j g:i A');
     }
 }
