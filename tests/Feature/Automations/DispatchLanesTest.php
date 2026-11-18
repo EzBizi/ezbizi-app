@@ -54,4 +54,32 @@ class DispatchLanesTest extends TestCase
         $this->artisan('ezbizi:dispatch-automation-events')->assertSuccessful();
         Queue::assertPushed(DeliverAutomationEvent::class, fn ($j) => $j->eventId === $second->id);
     }
+
+    public function test_a_delayed_earlier_event_does_not_hold_a_later_one(): void
+    {
+        Queue::fake();
+        $t = $this->provisionTenant('Alpha');
+        $lead = (string) Str::uuid();
+        $delayed = $this->event($t, 'lead.follow_up_due', $lead, 30);
+        AutomationEvent::withoutGlobalScopes()->whereKey($delayed->id)->update(['available_at' => now()->addHour()]);
+        $reply = $this->event($t, 'lead.customer_replied', $lead, 1);
+
+        $this->artisan('ezbizi:dispatch-automation-events')->assertSuccessful();
+
+        Queue::assertPushed(DeliverAutomationEvent::class, fn ($j) => $j->eventId === $reply->id);
+    }
+
+    public function test_an_earlier_event_stuck_over_15_minutes_stops_blocking(): void
+    {
+        Queue::fake();
+        $t = $this->provisionTenant('Alpha');
+        $lead = (string) Str::uuid();
+        $stuck = $this->event($t, 'lead.received', $lead, 40);
+        AutomationEvent::withoutGlobalScopes()->whereKey($stuck->id)->update(['queued_at' => now()]); // in flight, not re-queued
+        $later = $this->event($t, 'lead.customer_replied', $lead, 1);
+
+        $this->artisan('ezbizi:dispatch-automation-events')->assertSuccessful();
+
+        Queue::assertPushed(DeliverAutomationEvent::class, fn ($j) => $j->eventId === $later->id);
+    }
 }
