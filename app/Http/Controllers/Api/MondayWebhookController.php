@@ -52,7 +52,10 @@ class MondayWebhookController extends Controller
         // Our own push coming back (desk 11-18): a change Monday made at or before the moment we
         // last wrote or read this item is already here. Dropped, not queued as a read.
         $at = isset($event['triggerTime']) ? rescue(fn () => CarbonImmutable::parse((string) $event['triggerTime']), null, false) : null;
-        if ($at !== null && $rows->isNotEmpty() && $rows->every(fn ($r) => $r->external_synced_at !== null && ! $at->greaterThan(CarbonImmutable::parse($r->external_synced_at)))) {
+        // A delete or archive is never our echo: EzBizi deletes nothing on Monday by itself (desk 11-18:
+        // an item deleted seconds after our push was dropped as an echo and stayed live here).
+        $removal = (bool) preg_match('/delete|archive/i', (string) ($event['type'] ?? ''));
+        if (! $removal && $at !== null && $rows->isNotEmpty() && $rows->every(fn ($r) => $r->external_synced_at !== null && ! $at->greaterThan(CarbonImmutable::parse($r->external_synced_at)))) {
             return response()->json(['queued' => 0, 'echo' => true]);
         }
         $targets = $rows->map(fn ($r) => [$r->organization_id, $r->external_ref]);

@@ -108,6 +108,17 @@ class MondayWebhookTest extends TestCase
         $this->assertSame('Completed Tasks', $this->inTenant($this->tenant['org'], fn () => Task::query()->with('group')->where('external_ref', 'monday:11')->first()->group->name));
     }
 
+    /** Desk 11-18: a delete right after our push is never taken for our echo. */
+    public function test_a_delete_within_the_echo_window_is_still_queued(): void
+    {
+        $jwt = MondayWebhookSignature::sign(['accountId' => 'acc1', 'userId' => 1, 'exp' => time() + 300], self::SECRET);
+        $this->inTenant($this->tenant['org'], fn () => Task::query()->where('external_ref', 'monday:11')->update(['external_synced_at' => '2026-11-12 10:30:30']));
+        Queue::fake();
+        $delete = ['event' => ['type' => 'delete_pulse', 'boardId' => 100, 'pulseId' => 11, 'userId' => 1, 'triggerTime' => '2026-11-12T10:30:20.000Z']];
+
+        $this->postJson(self::URL, $delete, ['Authorization' => $jwt])->assertOk()->assertJson(['queued' => 1]);
+    }
+
     /** Desk 11-18: our own push coming back is dropped at the door, not queued; a later change still is. */
     public function test_an_event_no_later_than_our_last_write_is_our_echo_and_is_not_queued(): void
     {

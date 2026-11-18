@@ -78,7 +78,14 @@ class MondayParity extends Command
                         && $groupOf[substr($t->external_ref, 7)] !== mb_strtolower(trim((string) $t->group?->name)));
                     $pushGroup = $regroup->filter(fn ($t) => $t->external_synced_at === null || $t->updated_at->greaterThan($t->external_synced_at))->pluck('id')->all();
                     $pullGroup = $regroup->reject(fn ($t) => in_array($t->id, $pushGroup, true))->map(fn ($t) => substr($t->external_ref, 7))->values()->all();
-                    $gone = $live->filter(fn ($t) => ! isset($where[substr($t->external_ref, 7)]))->pluck('id')->all();
+                    $gone = $live->filter(fn ($t) => ! isset($where[substr($t->external_ref, 7)]));
+                    // Missing from the board listing is not proof (desk 11-18: an active NW item was missed):
+                    // only an item Monday itself says is archived or deleted counts as gone.
+                    if ($gone->isNotEmpty()) {
+                        $states = $reader->statesOf($gone->map(fn ($t) => substr($t->external_ref, 7))->all());
+                        $gone = $gone->filter(fn ($t) => in_array($states[substr($t->external_ref, 7)] ?? 'gone', ['archived', 'deleted', 'gone'], true));
+                    }
+                    $gone = $gone->pluck('id')->all();
                     $onlyHere = Task::query()->where('board_id', $board->id)->whereNull('external_ref')->where('sensitive', false)->get();
 
                     $n = count($groupsHere) + count($onlyMonday) + $onlyHere->count() + count($moved) + count($gone) + $regroup->count() + $renamed + $members;
