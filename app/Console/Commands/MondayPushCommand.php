@@ -15,7 +15,7 @@ use Illuminate\Console\Command;
  */
 class MondayPushCommand extends Command
 {
-    protected $signature = 'ezbizi:monday-push {--connection= : one Monday connection id} {--limit=50}';
+    protected $signature = 'ezbizi:monday-push {--connection= : one Monday connection id} {--limit=50} {--shard=0/1 : one share of tasks, i/n}';
 
     protected $description = 'Write Task Board changes back to their Monday items';
 
@@ -29,7 +29,8 @@ class MondayPushCommand extends Command
             ->get();
         foreach ($connections as $connection) {
             try {
-                $counts = $push->run($connection, (int) $this->option('limit'));
+                [$shard, $shards] = array_map('intval', explode('/', (string) $this->option('shard')) + [0, 1]);
+                $counts = $push->run($connection, (int) $this->option('limit'), shard: $shard, shards: max(1, $shards));
                 $this->line($connection->display_name.': '.json_encode($counts));
             } catch (MondayRefused $e) {
                 $this->error($connection->display_name.': '.$e->getMessage());

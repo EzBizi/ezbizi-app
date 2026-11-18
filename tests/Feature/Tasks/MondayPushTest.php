@@ -179,6 +179,25 @@ class MondayPushTest extends TestCase
         $this->assertSame(['i' => '11', 'b' => '200', 'g' => 'topics'], $move['vars']);
     }
 
+    /** Desk 11-18: parallel senders share the outbox by task; together they send every row once. */
+    public function test_shards_split_the_outbox_by_task_and_send_each_row_once(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            foreach (['A', 'B', 'C', 'D'] as $t) {
+                app(TaskWriter::class)->create($this->board, ['title' => 'Shard '.$t], $this->jose);
+            }
+        });
+        $expected = $this->inTenant($this->tenant['org'], fn () => \App\Models\Task::query()->where('title', 'like', 'Shard %')->get()
+            ->filter(fn ($t) => crc32($t->id) % 2 === 0)->pluck('title')->sort()->values()->all());
+        $this->artisan('ezbizi:monday-push', ['--shard' => '0/2'])->assertSuccessful();
+        $first = collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_item('))->pluck('vars.n')->filter(fn ($n) => str_starts_with($n, 'Shard'))->sort()->values()->all();
+        $this->artisan('ezbizi:monday-push', ['--shard' => '1/2'])->assertSuccessful();
+        $made = collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_item('))->pluck('vars.n')->sort()->values()->all();
+
+        $this->assertSame(['Shard A', 'Shard B', 'Shard C', 'Shard D'], $made, 'each made once');
+        $this->assertSame($expected, $first, 'shard 0 took exactly its own tasks');
+    }
+
     /** Desk 11-18: Monday drops a value whose column the target board lacks; such a move is refused and said on the task. */
     public function test_a_move_whose_values_have_no_column_there_is_refused_and_a_missing_text_column_is_made(): void
     {
