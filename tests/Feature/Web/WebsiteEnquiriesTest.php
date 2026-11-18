@@ -385,6 +385,42 @@ class WebsiteEnquiriesTest extends TestCase
     }
 
     /** A site that names no branch places its enquiries at company level. */
+    /**
+     * Desk, 2026-11-18: website reviews reached lead.received with no branch,
+     * so a Houston and a Maryland review both fell to the no-branch rule.
+     */
+    public function test_a_review_lands_on_the_branch_of_its_zip_else_its_area_code(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+        $texas = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $texas = \App\Models\Franchise::create(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id, 'name' => 'Texas']);
+            $area = \App\Models\ServiceArea::create(['organization_id' => $tenant['org']->id, 'franchise_id' => $texas->id, 'name' => 'Houston']);
+            \App\Models\ServiceAreaZip::create(['organization_id' => $tenant['org']->id, 'franchise_id' => $texas->id, 'service_area_id' => $area->id, 'zip' => '77002']);
+
+            return $texas;
+        });
+        $review = fn (string $phone, array $more = []) => $this->postJson('/api/v1/web/form', [
+            'key' => $site->public_key, 'name' => 'A Customer', 'phone' => $phone,
+            'fields' => ['Rating' => 'Not happy', 'What happened?' => 'Late'] + $more,
+        ])->assertCreated();
+        $branchOf = fn (string $digits) => $this->inTenant($tenant['org'], fn () => Lead::query()->where('phone_digits', 'like', '%'.$digits)->value('franchise_id'));
+
+        $review('(832) 555-0101', ['Zip' => '77002']);
+        $this->assertSame($texas->id, $branchOf('8325550101'), 'the ZIP decides');
+
+        // No ZIP: an 832 number, where this company's 832 leads all went to Texas.
+        $review('(832) 555-0102');
+        $this->assertNull($branchOf('8325550102'), 'the control: no ZIP and no history is no branch, not a guess');
+        $this->inTenant($tenant['org'], function () use ($tenant, $texas) {
+            foreach (range(1, 5) as $i) {
+                Lead::create(['organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id, 'franchise_id' => $texas->id,
+                    'source' => 'local_services', 'remote_id' => "h$i", 'phone_digits' => "1832555090$i", 'received_at' => now()->subDays(3)]);
+            }
+        });
+        $review('(832) 555-0103');
+        $this->assertSame($texas->id, $branchOf('8325550103'), 'the area code decides');
+    }
+
     public function test_a_site_with_no_branch_places_its_enquiries_on_the_company(): void
     {
         ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();

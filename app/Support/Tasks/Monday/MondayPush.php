@@ -13,6 +13,7 @@ use App\Models\TaskColumnValue;
 use App\Models\TaskGroup;
 use App\Models\User;
 use App\Support\Tasks\ColumnConverter;
+use App\Support\Tasks\TaskWriter;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -331,7 +332,13 @@ final class MondayPush
                 $mondayType = $mondayColumn !== null ? $meta['columns'][$mondayColumn]['type'] : null;
                 if ($mondayColumn === null && $column?->type === 'text' && isset($meta['board'])) {
                     // A text column made here is made on Monday too, same name (full mirror, Jose 11-18).
-                    $mondayColumn = $this->writer->createTextColumn($meta['board'], $column->name);
+                    // The job ids sit right after Name on Monday (Jose 11-18), EzBizi's first.
+                    $after = match ($column->name) {
+                        TaskWriter::EZBIZI_JOB_COLUMN => 'name',
+                        TaskWriter::WORKIZ_JOB_COLUMN => MondayBoardReader::columnFor($meta, TaskWriter::EZBIZI_JOB_COLUMN) ?? 'name',
+                        default => null,
+                    };
+                    $mondayColumn = $this->writer->createTextColumn($meta['board'], $column->name, $after);
                     $mondayType = 'text';
                     unset($this->meta[$meta['board']]);
                 }

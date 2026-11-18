@@ -62,9 +62,12 @@ final class MondayWriter
     }
 
     /** A text column, for a text column made here (the job-id columns, Jose 11-18). */
-    public function createTextColumn(string $boardId, string $title): string
+    public function createTextColumn(string $boardId, string $title, ?string $afterColumnId = null): string
     {
-        $data = $this->mutate('mutation($b:ID!,$t:String!){ create_column(board_id:$b, title:$t, column_type:text) { id } }', ['b' => $boardId, 't' => $title]);
+        // Monday places a column only when it is made (after_column_id; no later reorder in the API).
+        $data = $afterColumnId === null
+            ? $this->mutate('mutation($b:ID!,$t:String!){ create_column(board_id:$b, title:$t, column_type:text) { id } }', ['b' => $boardId, 't' => $title])
+            : $this->mutate('mutation($b:ID!,$t:String!,$a:ID){ create_column(board_id:$b, title:$t, column_type:text, after_column_id:$a) { id } }', ['b' => $boardId, 't' => $title, 'a' => $afterColumnId]);
 
         return (string) ($data['create_column']['id'] ?? throw new RuntimeException('Monday made no column.'));
     }

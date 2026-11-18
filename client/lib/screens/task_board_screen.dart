@@ -4357,8 +4357,23 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   /// [cells] in the board's saved column order (Jose 11-17: "reorder
   /// columns... ideally by dragging them"); the map's order is the default.
-  List<Widget> _inOrder(Map<String, Widget> cells) => [
-    for (final k in _ordered(cells.keys.toList())) cells[k]!,
+  List<Widget> _inOrder(Map<String, Widget> cells) {
+    final lead = _leadKeys;
+    return [
+      // Right after the name: EzBizi's, then Workiz's, whatever their saved place.
+      for (final k in lead)
+        if (cells.containsKey(k)) cells[k]!,
+      for (final k in _ordered(cells.keys.toList()))
+        if (!lead.contains(k)) cells[k]!,
+    ];
+  }
+
+  /// The job-id columns, right after the name on every board, EzBizi's first
+  /// (Jose 11-18: "Name | EzBizi ID | Workiz ID | Rest of the stuff").
+  List<String> get _leadKeys => [
+    for (final name in const ['EzBizi Job #', 'Workiz Job ID'])
+      for (final c in boardColumns(_board))
+        if (c.name == name) 'c:${c.id}',
   ];
 
   List<String> _ordered(List<String> defaults) {
@@ -4382,9 +4397,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   List<String> get _columnKeys {
     bool shown(String key) => _builtinShown(_board, key);
     return _ordered([
+      ..._leadKeys,
       for (final k in const ['creator', 'owner', 'status', 'created', 'due'])
         if (shown(k)) k,
-      for (final c in boardColumns(_board)) 'c:${c.id}',
+      for (final c in boardColumns(_board))
+        if (!_leadKeys.contains('c:${c.id}')) 'c:${c.id}',
       for (final k in const ['about', 'updates'])
         if (shown(k)) k,
     ]);

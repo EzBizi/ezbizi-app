@@ -71,11 +71,19 @@ class SitesController extends Controller
                 ->get();
 
         $missing = $this->missingCounts($sites);
+        // When this site's details last changed here, so the screen can say
+        // whether the website has read them since (last_seen_at).
+        $savedAt = $sites->isEmpty() ? collect() : WebValue::query()
+            ->whereIn('site_id', $sites->modelKeys())
+            ->groupBy('site_id')
+            ->selectRaw('site_id, max(updated_at) as saved_at')
+            ->pluck('saved_at', 'site_id');
 
         return response()->json([
             'data' => $sites->map(fn (WebSite $site) => [
                 ...$this->present($site),
                 'missing' => $missing[$site->id] ?? 0,
+                'values_saved_at' => isset($savedAt[$site->id]) ? \Illuminate\Support\Carbon::parse($savedAt[$site->id], 'UTC')->toIso8601String() : null,
             ])->values(),
             // The editor's sections, so adding one stays a line in SeoFields
             // rather than a line there and a matching line in Dart.

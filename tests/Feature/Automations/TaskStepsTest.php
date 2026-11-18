@@ -323,6 +323,40 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Desk, 2026-11-18: two bad reviews got no task; the whole review as title overflowed the New-task bell. */
+    public function test_a_long_title_is_cut_on_a_word_and_kept_whole_as_the_first_update(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.received', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $review = str_repeat('They left a mess with soot everywhere and nobody called back. ', 6);
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => '{{comment}}', 'assignee' => 'user:'.$t['admin']->id],
+                new AutomationEvent(['event_key' => 'lead.received', 'payload' => ['after' => ['comment' => $review]],
+                    'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]), null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $task = Task::query()->sole();
+            $this->assertLessThanOrEqual(121, mb_strlen($task->title));
+            $this->assertStringEndsWith('…', $task->title);
+            $this->assertStringNotContainsString(' …', $task->title);
+            $this->assertSame(trim($review), $task->updates()->value('body'));
+        });
+    }
+
+    /** Desk, 2026-11-18: a task deleted before its "assign creator" rule ran counted as a failure. */
+    public function test_a_step_on_a_task_deleted_before_it_ran_is_skipped(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'task.created', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $done = app(ActionRunner::class)->run(['type' => 'task.assign', 'user_field' => 'created_by_user_id'],
+                new AutomationEvent(['event_key' => 'task.created', 'subject_type' => (new Task)->getMorphClass(), 'subject_id' => (string) \Illuminate\Support\Str::uuid(), 'payload' => []]),
+                null, automation: $rule);
+            $this->assertTrue($done['ok']);
+            $this->assertTrue($done['skipped'] ?? false);
+        });
+    }
+
     public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
     {
         $t = $this->provisionTenant('Alpha');

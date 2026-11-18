@@ -183,6 +183,7 @@ class AuthorizationSweepTest extends TestCase
         'GET api/v1/social/workiz-web/{connection}/accounts' => '404: abort(404) in the action, file or provider state the builder does not create',
         'GET api/v1/field/recordings/{recording}/audio/{seq}' => '404: needs a child row ("No query results for model [App\Models\FieldRecordingChunk) the builder does not create',
         'GET api/v1/branding/companies/{company}' => '404: abort(404) in the action, file or provider state the builder does not create',
+        'GET api/v1/alerts/{alert}/replies' => '404: by design, only a question\'s sender or a person it asked reads its replies; the builder\'s alert is neither a question nor sent by the admin',
         'GET api/v1/hr/contracts/{contract}/draft.pdf' => '404: needs a signed / published document the generic builder does not create',
         'GET api/v1/hr/onboardings/{onboarding}/document/pdf' => '404: needs a signed / published document the generic builder does not create',
         'GET api/v1/hr/onboardings/{onboarding}/answers/{field}' => '404: abort(404) in the action, file or provider state the builder does not create',
