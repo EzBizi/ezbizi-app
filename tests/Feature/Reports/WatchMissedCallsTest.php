@@ -114,6 +114,17 @@ class WatchMissedCallsTest extends TestCase
         });
     }
 
+    /** Desk, 2026-11-18: a missed call with no number made a task titled just "AngiSweep". */
+    public function test_a_missed_call_task_title_says_when_there_is_no_number(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], function () {
+            $w = \App\Console\Commands\WatchMissedCalls::class;
+            $this->assertSame('AngiSweep +13055550101', $w::taskTitle('+13055550101', 'AngiSweep', '2026-11-18T20:44:05Z'));
+            $this->assertStringStartsWith('Unknown caller (no number) · AngiSweep · Nov 18', $w::taskTitle(null, 'AngiSweep', '2026-11-18T20:44:05Z'));
+        });
+    }
+
     public function test_a_call_just_before_midnight_is_read_after_it(): void
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 00:01', 'America/New_York'));
