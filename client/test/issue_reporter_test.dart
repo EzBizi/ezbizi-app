@@ -149,10 +149,13 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 9500));
     reporter.dispose();
 
-    final freezes = reporter.queued.where((q) => q['kind'] == 'freeze').toList();
-    expect(freezes, isNotEmpty);
-    expect(freezes.first['message'], contains('The window did not respond'));
-    expect(freezes.first['detail'], contains('module: scheduling'));
+    // A loaded machine can also stall the Dart loop itself ("The app did not respond…",
+    // the 0597 cut); that is a second, real freeze, so look for the window one, not the first.
+    final window = reporter.queued
+        .where((q) => q['kind'] == 'freeze' && '${q['message']}'.contains('The window did not respond'))
+        .toList();
+    expect(window, isNotEmpty);
+    expect(window.first['detail'], contains('module: scheduling'));
   }, timeout: const Timeout(Duration(seconds: 20)));
 
   test('a crash marker left by the last run is reported once', () async {
