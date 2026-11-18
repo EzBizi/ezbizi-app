@@ -47,6 +47,13 @@ final class MondayWriter
         $this->mutate('mutation($i:ID!,$g:String!){ move_item_to_group(item_id:$i, group_id:$g) { id } }', ['i' => $itemId, 'g' => $groupId]);
     }
 
+    public function createGroup(string $boardId, string $name): string
+    {
+        $data = $this->mutate('mutation($b:ID!,$n:String!){ create_group(board_id:$b, group_name:$n) { id } }', ['b' => $boardId, 'n' => $name]);
+
+        return (string) ($data['create_group']['id'] ?? throw new RuntimeException('Monday made no group.'));
+    }
+
     public function archiveItem(string $itemId): void
     {
         $this->mutate('mutation($i:ID!){ archive_item(item_id:$i) { id } }', ['i' => $itemId]);

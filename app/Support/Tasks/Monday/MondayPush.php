@@ -143,7 +143,7 @@ final class MondayPush
             }
             $itemId = $parent !== null
                 ? $this->writer->createSubitem($this->mondayId($parent->external_ref), $task->title)
-                : $this->writer->createItem($boardId, $this->meta($boardId)['groups'][mb_strtolower(trim((string) $task->group?->name))] ?? null, $task->title, []);
+                : $this->writer->createItem($boardId, $this->groupOn($boardId, $task), $task->title, []);
             // The id first: a retry after this point updates the item, never makes a second one.
             $task->timestamps = false;
             $task->forceFill(['external_ref' => 'monday:'.$itemId])->saveQuietly();
@@ -176,7 +176,7 @@ final class MondayPush
                 $this->writer->changeValues($itemBoard, $itemId, $values);
             }
             if (in_array('group', $kinds, true) && $task->parent_task_id === null) {
-                $group = $this->meta($itemBoard)['groups'][mb_strtolower(trim((string) $task->group?->name))] ?? null;
+                $group = $this->groupOn($itemBoard, $task);
                 if ($group !== null && $group !== $item['group']) {
                     $this->writer->moveToGroup($itemId, $group);
                 }
@@ -322,6 +322,19 @@ final class MondayPush
         $entry->forceFill(['available_at' => now()->addMinute()])->save();
 
         return 'deferred';
+    }
+
+    /** The Monday group of the task's group name; made there when Monday has none (full mirror, Jose 11-18). */
+    private function groupOn(string $boardId, Task $task): ?string
+    {
+        $name = trim((string) $task->group?->name);
+        if ($name === '') {
+            return null;
+        }
+
+        $this->meta($boardId);
+
+        return $this->meta[$boardId]['groups'][mb_strtolower($name)] ??= $this->writer->createGroup($boardId, $name);
     }
 
     private function meta(string $boardId): array
