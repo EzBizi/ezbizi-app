@@ -26,6 +26,7 @@ use App\Support\Live\ChangeFeed;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Tasks\Monday\MondayOutbox;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -331,6 +332,36 @@ class TaskWriter
     }
 
     /** Fields a linked task keeps the same (Jose, 2026-10-29: "both remain and should be synced"). */
+    /**
+     * The one path for a bulk script or backfill (desk 11-18: a backfill through
+     * update() raised 9,282 automation events that held up real missed calls for
+     * 20 minutes): $fn gets a writer that rings no bell, emits no automation
+     * event and queues nothing for Monday. The app's emitter is put back after.
+     *
+     * @template T
+     *
+     * @param  callable(TaskWriter): T  $fn
+     * @return T
+     */
+    public static function bulk(callable $fn): mixed
+    {
+        $had = app()->bound(EventEmitter::class) ? app(EventEmitter::class) : null;
+        app()->instance(EventEmitter::class, new class extends EventEmitter
+        {
+            public function __construct() {}
+
+            public function emitAfterCommit(string $eventKey, ?Model $subject = null, array $payload = []): void {}
+        });
+        try {
+            $writer = app()->make(self::class);
+            $writer->quiet = true;
+
+            return MondayOutbox::suppress(fn () => $fn($writer));
+        } finally {
+            $had !== null ? app()->instance(EventEmitter::class, $had) : app()->forgetInstance(EventEmitter::class);
+        }
+    }
+
     public const WORKIZ_JOB_COLUMN = 'Workiz Job ID';
 
     public const EZBIZI_JOB_COLUMN = 'EzBizi Job #';
