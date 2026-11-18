@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tasks;
 
 use App\Models\AuditEvent;
+use App\Models\Automation;
 use App\Models\Notification;
 use App\Models\Task;
 use App\Models\TaskBoard;
@@ -75,6 +76,29 @@ class BoardRulesTest extends TestCase
         $this->artisan('ezbizi:tasks-misfiled-report', ['--dry-run' => true])
             ->expectsOutputToContain("4 moved, 2 flagged. {$staff->name} 5, EzBizi (automation) 1")
             ->assertSuccessful();
+    }
+
+    /** Desk 11-18: a complaint rule's task stays in Customer Relations; a person's Approved still moves it on. */
+    public function test_a_complaint_rules_task_stays_in_customer_relations_until_a_person_approves_it(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $staff = $this->userWithRole($t, 'Dispatcher', ['tasks.view', 'tasks.edit']);
+        [$board, $g] = $this->branch($t);
+        $rule = $this->inTenant($t['org'], fn () => Automation::query()->create(['organization_id' => $t['org']->id, 'name' => 'Complaint call', 'trigger_key' => 'call.transcribed', 'is_active' => true]));
+
+        $this->inTenant($t['org'], function () use ($board, $g, $staff, $rule) {
+            $w = app(TaskWriter::class);
+            $c = $w->create($board, ['title' => 'Complaint: wants a refund, mentions a chargeback claim', 'group_id' => $g['Customer Relations - Natalie']->id], null, $rule->id);
+            $this->assertSame('Customer Relations - Natalie', $c->fresh()->group->name, 'not moved to the GM board');
+            $this->assertSame(0, AuditEvent::query()->where('target_id', $c->id)->where('action', 'like', 'task.board_rule.%')->count(), 'nor flagged');
+
+            $w->update($c->fresh(), ['status' => 'Approved'], $staff);
+            $this->assertNotSame('Customer Relations - Natalie', $c->fresh()->group->name, "a person's Approved moves it on");
+
+            // A real chargeback a person files still goes to the General Manager.
+            $p = $w->create($board, ['title' => 'Chargeback evidence for Ann', 'group_id' => $g['Customer Relations - Natalie']->id], $staff);
+            $this->assertSame('General Manager - Meni', $p->fresh()->group->name);
+        });
     }
 
     public function test_with_moves_off_a_clear_case_is_only_flagged(): void
