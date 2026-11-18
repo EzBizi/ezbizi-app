@@ -13,6 +13,15 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0591', date: '18 Nov 2026', items: [
+      'Newsletter: save your company brand (logo, colors, font, button style, footer note) and apply it to any newsletter',
+      'Newsletter: save any block as a reusable section or start from five ready-made ones, inserted as a copy or linked',
+      'Newsletter: a Mobile design mode with phone-only text size, spacing, alignment, button width, hiding and column stacking',
+      'Newsletter: a guided import wizard (keep the HTML or convert it to editable blocks, compare desktop and phone, a Before import restore point, the original kept)',
+      'Newsletter: the dashboard leads with a campaign list and Draft, Scheduled and Sent filters; sent mailings say Accepted by Mailchimp',
+      'Project Management: the Inbox opens quickly',
+      'Task Board: a change Monday refuses (an archived or deleted item) is noted once on the task instead of retried',
+    ]),
     VersionRelease(version: '0.0.0590', date: '18 Nov 2026', items: [
       'Newsletter: the editor centres on the email; click a block to type and format it, with its settings beside it, a small toolbar, drag or keyboard moves, and undo and redo',
       'Newsletter: every save is kept in Version history and can be restored; an internal name and an inbox preheader; if someone else edits at the same time you can compare, reload or keep your copy; pictures can be cropped without changing the original',
