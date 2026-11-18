@@ -3731,3 +3731,36 @@ LIVE pages ok - 4 terms, none present; all 10 live pages contain their WP post_c
 Play `200`; Apple `resultCount` 1, 0.0.0559.
 Desk not asked: `SendMessage` cannot reach another session from an unattended run. Do-not rows measured from code
 only: no 7th publisher (the inbox reads/replies, it does not publish); Training, ring groups, LSA unchanged.
+
+## 2026-11-17: 0.0.0579-0.0.0587 live, nothing on the site went false
+
+Production web is 0.0.0587 at `dea89258f` (release `20261117220318`); `/download/windows.json` reads 0.0.0588 at
+`6d5adefaf` (a Windows build that ran ahead of its server cut; the desk folds 0588 into 0589, cutting). No WP page
+modified since the 11-16 privacy edit (page 8, `post_modified_gmt` 2026-11-17 00:07). All 10 live pages contain
+their WP post_content (method of 11-15). www `/ezbizi-api.json` byte-identical to the app's `/api/v1/openapi.json`
+(yesterday's lag healed itself).
+
+65 commits in `acbaeee3b..dea89258f`, read against the live pages:
+- No `*OAuth.php` or `config/services.php` change, no new outbound host, no new table holding a new kind of person
+  data (`workiz_job_flags`, `latest_windows`, newsletter `revision`/`last_test_*`, suggestion progress, part
+  supplier, note `edited_at`). No new processor; the scope rule of 11-16 has nothing to compare today.
+- **Newsletter stage 1 (`f5a288349`)**: composer, revisions, a recorded test send. Sending, the test included, is
+  still Mailchimp (`MailchimpSender`); the homepage card and the two `/privacy/` Mailchimp sentences hold.
+- **Roles: `monitoring.unmonitored` (`8f3ec897f`)**: a role can now carry the screen-monitoring exemption, and every
+  guard follows (heartbeat strip, screenshots, live view, remote control, files). `/privacy/`'s "A person can be
+  exempted from screen monitoring, and a machine that is exempt reports no window or tab titles at all" holds.
+- Workiz job notes written back (`fe70ecbe3`), RingCentral phone lines per company/branch (`3b7ccb647`): covered by
+  "reads from or updates at your instruction" and the RingCentral recordings sentence. Workiz stays unpublished.
+- Task Board rules/links/bells, Project Management parts and Work Order PDF, HR hourly rate stages, Reports, Leads
+  Recovery, missed-call text limits, latest booking window per weekday, signup-mail retry: no live page names
+  Monday, the Task Board or Project Management (grep over the 10 live pages: 0 hits); no sentence moves.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries (repo copy, frozen); forbidden-terms (LINE-split) over the 10
+LIVE pages ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0559.
+
+**Desk (11-17, ~00:10 UTC 11-18), recorded as given** (asked by `send_message` to the SESSIONS.md id, answered in
+`docs/agents/inbox/website-daily-2026-11-17-desk-reply.md`; this route works from an unattended run): 0578-0587
+live on web; 0588 never deployed. Training, ring groups, Scheduled Jobs: nothing changed. Publishers: no file under
+`app/Support/Social` changed, no new publisher. LSA `external_id`: not measured. The desk did not check claims
+against the site; its candidates (Monday, Task Board, Project Management, Newsletter, Reports, permissions wording)
+are the ones read above. The 11-13 scheduling inversion stands, unwritten.
