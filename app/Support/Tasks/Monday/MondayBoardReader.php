@@ -362,6 +362,20 @@ final class MondayBoardReader
      *
      * @return array{ids: list<string>, latest: ?string}
      */
+    /** @return array<string, string> an item's non-empty column values, column id => text (a cross-board move's check) */
+    public function valuesOf(string $itemId): array
+    {
+        $item = $this->api->query('query($i:[ID!]){ items(ids:$i) { column_values { id text value } } }', ['i' => [$itemId]])['items'][0] ?? null;
+        $out = [];
+        foreach ($item['column_values'] ?? [] as $v) {
+            if (trim((string) ($v['text'] ?? '')) !== '' || ($v['value'] ?? null) !== null) {
+                $out[(string) $v['id']] = (string) ($v['text'] ?? '');
+            }
+        }
+
+        return $out;
+    }
+
     /** @return list<array{id: int, kind: string}> who an item's People column holds now */
     public function peopleOn(string $itemId, string $columnId): array
     {
