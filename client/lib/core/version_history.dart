@@ -13,6 +13,9 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0594', date: '18 Nov 2026', items: [
+      'Jobs › Book: a priced services list with a total, tags sent to Workiz, and a duplicate-customer check that offers Use this customer or Create anyway',
+    ]),
     VersionRelease(version: '0.0.0593', date: '18 Nov 2026', items: [
       'Scheduling: the full-window alert works on days that also hold a Workiz job not yet linked or a web booking',
     ]),
