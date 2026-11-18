@@ -725,12 +725,13 @@ class _NewsletterTabState extends State<NewsletterTab> {
         width: 720,
         child: NewsletterTemplateGallery(
           company: _viewName,
-          onUse: (s) async {
+          api: widget.api,
+          onUse: (s, blocks) async {
             final response = await widget.api.post('/newsletters', {
               'subject': s.subject,
               'name': s.title,
               'preheader': s.preheader,
-              'blocks': s.blocks(),
+              'blocks': blocks,
             });
             final data = response.ok ? response.body['data'] : null;
             if (data is Map && data['id'] is String) {
