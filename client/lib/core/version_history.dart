@@ -13,6 +13,14 @@ class VersionHistory {
   VersionHistory._();
 
   static const List<VersionRelease> releases = [
+    VersionRelease(version: '0.0.0597', date: '18 Nov 2026', items: [
+      'Task Board: a task moved to another board here moves on Monday too, only when every filled column has a match there, and nothing is lost',
+      'Task Board: bulk fixes to tasks no longer set off automations or alerts',
+      'Suggestions: pictures attached to a suggestion show as thumbnails, and open full screen with zoom, previous and next, and Download',
+      'Automations: missed calls, replies, new leads and complaints get their own fast lane, and the events of one record always run in the order they happened',
+      'Marketing: the Scheduled count counts only approved posts with a send time; posts waiting for approval are counted on their own',
+      'Task Board: overbooking warnings go in their own Overbooked group and name who booked the job',
+    ]),
     VersionRelease(version: '0.0.0596', date: '18 Nov 2026', items: [
       'Project Management: the Inbox lists texts and the conversation scroll separately, with a pinned reply box, a header with the client, job, phone, stage, Call and Open job, Waiting / Replied by us / All filters with counts, and client vs team vs automatic messages in their own colours',
       'Project Management: the work order PDF opens inside the app with zoom, Print, Share and Download',
