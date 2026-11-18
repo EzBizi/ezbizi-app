@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tasks;
 
+use App\Jobs\PushMondayShard;
 use App\Models\AuditEvent;
 use App\Models\MondayOutboxEntry;
 use App\Models\Notification;
@@ -15,6 +16,7 @@ use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Support\Tasks\Monday\MondayOutbox;
+use App\Support\Tasks\Monday\MondayPush;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -93,6 +95,9 @@ class MondayPushTest extends TestCase
             $vars = (array) ($request->data()['variables'] ?? []);
             if (preg_match('/^\s*mutation\b/', $q)) {
                 $this->mutations[] = ['query' => $q, 'vars' => $vars];
+                if ($this->archived && str_contains($q, 'change_multiple_column_values')) {
+                    return Http::response(['errors' => [['message' => 'Cannot change column value for inactive item', 'path' => ['change_multiple_column_values']]]]);
+                }
                 if ($this->archived && str_contains($q, 'create_update(')) {
                     return Http::response(['errors' => [['message' => 'User unauthorized to perform action', 'path' => ['create_update'],
                         'extensions' => ['status_code' => 403, 'code' => 'USER_UNAUTHORIZED', 'error_data' => ['failure_reason' => 'Access denied']]]]]);
@@ -174,6 +179,39 @@ class MondayPushTest extends TestCase
         $move = collect($this->mutations)->first(fn ($m) => str_contains($m['query'], 'move_item_to_board('));
         $this->assertNotNull($move, 'moved on Monday');
         $this->assertSame(['i' => '11', 'b' => '200', 'g' => 'topics'], $move['vars']);
+    }
+
+    /** Desk 11-18: one switch pauses every sender; nothing is lost while paused. */
+    public function test_pause_stops_every_sender_and_resume_sends_what_waited(): void
+    {
+        $this->artisan('ezbizi:monday-push', ['--pause' => 30])->assertSuccessful();
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['status' => 'Stuck'], $this->jose));
+        $this->artisan('ezbizi:monday-push', ['--shard' => '0/1'])->assertSuccessful();
+        (new PushMondayShard(0, 1))->handle(app(MondayPush::class));
+        $this->assertCount(0, $this->mutations, 'paused: nothing written');
+
+        $this->artisan('ezbizi:monday-push', ['--resume' => true])->assertSuccessful();
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $this->assertSame(['status' => ['label' => 'Stuck']], $this->values());
+    }
+
+    /** Desk 11-18: parallel senders share the outbox by task; together they send every row once. */
+    public function test_shards_split_the_outbox_by_task_and_send_each_row_once(): void
+    {
+        $this->inTenant($this->tenant['org'], function () {
+            foreach (['A', 'B', 'C', 'D'] as $t) {
+                app(TaskWriter::class)->create($this->board, ['title' => 'Shard '.$t], $this->jose);
+            }
+        });
+        $expected = $this->inTenant($this->tenant['org'], fn () => Task::query()->where('title', 'like', 'Shard %')->get()
+            ->filter(fn ($t) => crc32($t->id) % 2 === 0)->pluck('title')->sort()->values()->all());
+        $this->artisan('ezbizi:monday-push', ['--shard' => '0/2'])->assertSuccessful();
+        $first = collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_item('))->pluck('vars.n')->filter(fn ($n) => str_starts_with($n, 'Shard'))->sort()->values()->all();
+        $this->artisan('ezbizi:monday-push', ['--shard' => '1/2'])->assertSuccessful();
+        $made = collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_item('))->pluck('vars.n')->sort()->values()->all();
+
+        $this->assertSame(['Shard A', 'Shard B', 'Shard C', 'Shard D'], $made, 'each made once');
+        $this->assertSame($expected, $first, 'shard 0 took exactly its own tasks');
     }
 
     /** Desk 11-18: Monday drops a value whose column the target board lacks; such a move is refused and said on the task. */
@@ -300,6 +338,17 @@ class MondayPushTest extends TestCase
         $this->assertSame('done', $groups->first()['vars']['r']);
         $this->assertStringContainsString('position_relative_method:after_at', $groups->first()['query']);
         $this->assertSame(['g_new', 'g_new'], collect($this->mutations)->filter(fn ($m) => str_contains($m['query'], 'create_item('))->pluck('vars.g')->values()->all());
+    }
+
+    /** Prod 11-18: a value change on an item archived on Monday ("inactive item") fails once, never retried. */
+    public function test_a_change_on_an_inactive_monday_item_fails_once_with_the_reason(): void
+    {
+        $this->archived = true;
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task, ['status' => 'Stuck'], $this->jose));
+        $this->artisan('ezbizi:monday-push')->assertSuccessful();
+        $row = $this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $this->task->id)->latest('changed_at')->first());
+        $this->assertSame(MondayOutboxEntry::FAILED, $row->state);
+        $this->assertStringStartsWith('The item is archived on Monday', $row->error);
     }
 
     /** Desk 11-18: an update on an item archived on Monday was retried 5 times on a 403. */

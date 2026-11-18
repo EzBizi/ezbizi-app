@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/marketing/qr_codes_tab.dart';
 import 'package:ezbizi_client/screens/marketing/social_media_tab.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -286,6 +287,59 @@ void main() {
       ),
       findsOneWidget,
     );
+    // Rodrigo 01a1ef57: the genuine empty state offers the first one.
+    await tester.tap(find.byKey(const Key('qr-create-empty')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('qr-new-name')), findsOneWidget);
+  });
+
+  testWidgets('Preview shows the code large with where it sends people, and '
+      'Copy link copies the code’s own link', (tester) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await _pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('qr-copy:q-1')));
+    await tester.pumpAndSettle();
+    expect(copied, _url('q-1'));
+    expect(find.text('Link copied.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('qr-preview:q-1')));
+    await tester.pumpAndSettle();
+    final panel = find.byKey(const Key('qr-preview-panel'));
+    expect(panel, findsOneWidget);
+    expect(
+      find.descendant(
+        of: panel,
+        matching: find.byKey(const Key('qr-preview-image')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<SelectableText>(
+            find.byKey(const Key('qr-preview-destination')),
+          )
+          .data,
+      'https://everdoors.example/spring',
+    );
+    expect(find.byKey(const Key('qr-preview-open')), findsOneWidget);
+    // Scan history is on the same card.
+    expect(find.text('Scan history'), findsWidgets);
   });
 
   testWidgets('on a phone the cards stack and Change says what it changes', (
@@ -316,7 +370,9 @@ void main() {
       permissions: const ['marketing.qr_codes.view'],
       screen: (api, session) => SocialMediaTab(api: api, session: session),
     );
-    expect(find.widgetWithText(ChoiceChip, 'QR Codes'), findsOneWidget);
+    // UI queue 199: a tool beside the calendar; with no post grant it is the
+    // page itself.
+    expect(find.byKey(const Key('social-qr')), findsOneWidget);
     expect(find.byType(QrCodesTab), findsOneWidget);
 
     await _pump(
@@ -324,7 +380,7 @@ void main() {
       permissions: const ['marketing.accounts.view'],
       screen: (api, session) => SocialMediaTab(api: api, session: session),
     );
-    expect(find.widgetWithText(ChoiceChip, 'QR Codes'), findsNothing);
+    expect(find.byKey(const Key('social-qr')), findsNothing);
     expect(find.byType(QrCodesTab), findsNothing);
   });
 

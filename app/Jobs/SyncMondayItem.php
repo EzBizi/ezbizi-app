@@ -25,7 +25,10 @@ final class SyncMondayItem implements ShouldQueue
         public readonly string $connectionId,
         public readonly string $boardId,
         public readonly string $itemId,
-    ) {}
+    ) {
+        // Its own queue (desk 11-18): Monday's echoes of our pushes stalled missed calls on default.
+        $this->onQueue('monday');
+    }
 
     public function handle(MondaySync $sync): void
     {
@@ -37,6 +40,7 @@ final class SyncMondayItem implements ShouldQueue
             return; // Disconnected between the webhook and this running.
         }
 
-        $sync->run($connection, only: [$this->boardId], items: [$this->itemId]);
+        // One item Monday told us about: its state is taken even when its clock did not move (a group move may not bump it, desk 11-18); the per-field merge keeps what changed here later.
+        $sync->run($connection, only: [$this->boardId], items: [$this->itemId], reapply: true);
     }
 }

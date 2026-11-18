@@ -97,11 +97,17 @@ class _NotificationBellState extends State<NotificationBell>
 
   int _unread = 0;
 
+  /// Questions asked of this person (UI queue 200): unanswered first, and how
+  /// many are unanswered, which the bell's count includes. Every signed-in
+  /// person can read them, with or without the Alerts tab.
+  List<Map<String, dynamic>> _questions = const [];
+  int _unanswered = 0;
+
   /// The inbox's tab and switch (monday port, 2026-11-09). Kept on the bell,
   /// not the panel, so reopening it shows what was last chosen.
   String _show = 'all';
   bool _unreadOnly = false;
-  static const _shows = ['all', 'mentioned', 'assigned'];
+  static const _shows = ['all', 'mentioned', 'assigned', 'questions'];
   final _search = TextEditingController();
   String _query = '';
 
@@ -199,7 +205,9 @@ class _NotificationBellState extends State<NotificationBell>
       _inFlight ??= _fetch().whenComplete(() => _inFlight = null);
 
   Future<void> _fetch() async {
+    final asked = widget.api.get('/alerts/questions');
     final response = await widget.api.get('/notifications', {'limit': '50'});
+    final questions = await asked;
 
     if (!mounted) return;
 
@@ -219,6 +227,16 @@ class _NotificationBellState extends State<NotificationBell>
         return;
       }
 
+      if (questions.ok) {
+        _questions = [
+          for (final q in (questions.data as List? ?? const []))
+            if (q is Map) Map<String, dynamic>.from(q),
+        ];
+        _unanswered =
+            (questions.body['meta'] as Map<String, dynamic>?)?['unanswered']
+                as int? ??
+            0;
+      }
       _error = null;
       _items = List<Map<String, dynamic>>.from(response.data as List);
       _unread =
@@ -591,10 +609,16 @@ class _NotificationBellState extends State<NotificationBell>
                     // tinted as well as dotted (Jose, 2026-11-16, Monday's panel).
                     TabBarLike(
                       key: const Key('notifications-show'),
-                      labels: const [
-                        ('All', Icons.inbox_outlined),
-                        ('Mentioned', Icons.alternate_email),
-                        ('Assigned to me', Icons.assignment_ind_outlined),
+                      labels: [
+                        const ('All', Icons.inbox_outlined),
+                        const ('Mentioned', Icons.alternate_email),
+                        const ('Assigned to me', Icons.assignment_ind_outlined),
+                        (
+                          _unanswered == 0
+                              ? 'Questions'
+                              : 'Questions · $_unanswered',
+                          Icons.help_outline,
+                        ),
                       ],
                       selected: _shows.indexOf(_show),
                       onSelected: (i) {
@@ -602,6 +626,7 @@ class _NotificationBellState extends State<NotificationBell>
                         repaint(() {});
                       },
                     ),
+                    if (_show != 'questions')
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Row(
@@ -631,7 +656,9 @@ class _NotificationBellState extends State<NotificationBell>
                         ],
                       ),
                     ),
-                    if (_inboxRows().isEmpty)
+                    if (_show == 'questions')
+                      _questionList(context, repaint)
+                    else if (_inboxRows().isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 48),
                         child: Center(
@@ -841,14 +868,97 @@ class _NotificationBellState extends State<NotificationBell>
     await _refresh();
   }
 
+  /// The Questions tab: each unanswered one answered right here, then the
+  /// ones answered, with what was said.
+  Widget _questionList(BuildContext context, StateSetter repaint) {
+    final theme = Theme.of(context);
+    if (_questions.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(child: Text('Nobody has asked you anything.')),
+      );
+    }
+    return Column(
+      key: const Key('notifications-questions'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final q in _questions)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  key: ValueKey('question-row-${q['id']}'),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${(q['sender'] is Map ? q['sender']['name'] : q['sender']) ?? 'Someone'}',
+                            style: theme.textTheme.labelLarge,
+                          ),
+                        ),
+                        Text(
+                          formatListStamp(
+                            q['created_at'],
+                            '',
+                            formats: widget.formats ?? DisplayFormats.fallback,
+                          ),
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${q['message'] ?? ''}',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    if (q['my_reply'] is Map)
+                      Text(
+                        'You: ${questionAnswerLine(Map<String, dynamic>.from(q['my_reply'] as Map), q['choices'] as List? ?? const [])}',
+                        key: ValueKey('question-mine-${q['id']}'),
+                        style: theme.textTheme.bodySmall,
+                      )
+                    else
+                      QuestionAnswer(
+                        api: widget.api,
+                        question: {...q, 'alert_id': q['id']},
+                        onAnswered: () async {
+                          await _refresh();
+                          if (context.mounted) repaint(() {});
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final count = _unread + _unanswered;
     return IconButton(
-      tooltip: _unread == 0 ? 'Notifications' : '$_unread unread',
+      tooltip: count == 0
+          ? 'Notifications'
+          : [
+              if (_unread > 0) '$_unread unread',
+              if (_unanswered > 0)
+                '$_unanswered ${_unanswered == 1 ? 'question' : 'questions'}',
+            ].join(', '),
       onPressed: _open,
       icon: Badge(
-        isLabelVisible: _unread > 0,
-        label: Text('$_unread'),
+        isLabelVisible: count > 0,
+        label: Text('$count'),
         child: const Icon(Icons.notifications_none),
       ),
     );

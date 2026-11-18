@@ -118,7 +118,7 @@ class NotificationsController extends Controller
         $senders = Alert::query()
             ->whereIn('id', $rows->where('subject_type', Alert::class)->pluck('subject_id'))
             ->with('sender:id,name')
-            ->get(['id', 'sender_id'])
+            ->get(['id', 'sender_id', 'kind', 'context', 'choices', 'allow_text'])
             ->keyBy('id');
 
         return $rows->map(function (Notification $row) use ($senders) {
@@ -134,6 +134,14 @@ class NotificationsController extends Controller
                 'created_at' => $row->created_at?->toIso8601String(),
                 'suggestion_id' => $suggestion ? $row->subject_id : null,
                 'update' => $suggestion && $row->body === SuggestionAlerts::UPDATE_BODY,
+                // A question (Jose 11-18): the pop-up shows its context and offers
+                // its choices / reply box; answering is POST alerts/{alert_id}/reply.
+                'question' => ($q = $senders->get($row->subject_id))?->isQuestion() ? [
+                    'alert_id' => $q->id,
+                    'context' => $q->context,
+                    'choices' => $q->choices ?? [],
+                    'allow_text' => (bool) $q->allow_text,
+                ] : null,
             ];
         })->values()->all();
     }

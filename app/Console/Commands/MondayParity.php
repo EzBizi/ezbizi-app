@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\Log;
  */
 class MondayParity extends Command
 {
-    protected $signature = 'ezbizi:monday-parity {--fix : queue what Monday lacks, import what we lack}';
+    protected $signature = 'ezbizi:monday-parity {--fix : queue what Monday lacks, import what we lack} {--groups-only : with --fix, only settle which group an item is in} {--boards= : only these boards, by name, comma separated}';
 
     protected $description = 'Compare every Monday-mirrored board with Monday: what exists on one side only';
 
@@ -38,7 +38,14 @@ class MondayParity extends Command
             $org = Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id);
             $reader = new MondayBoardReader(MondayClient::for($connection));
             $missingThere = $tenant->run($org, function () use ($reader, &$drift) {
-                $boards = TaskBoard::query()->where('external_ref', 'like', 'monday:%')->whereNull('archived_at')->orderBy('name')->get();
+                $boards = TaskBoard::query()->where('external_ref', 'like', 'monday:%')->whereNull('archived_at')
+                    // Names, comma separated; a name with % is a LIKE pattern ("%Project Management%").
+                    ->when($this->option('boards'), fn ($q, $names) => $q->where(function ($w) use ($names) {
+                        foreach (array_map('trim', explode(',', $names)) as $n) {
+                            str_contains($n, '%') ? $w->orWhere('name', 'like', $n) : $w->orWhere('name', $n);
+                        }
+                    }))
+                    ->orderBy('name')->get();
                 // Every live Monday item, by board: an item here on another board was moved here, one on no board is gone there.
                 $where = [];
                 $groupOf = [];
@@ -75,7 +82,7 @@ class MondayParity extends Command
                     $drift += $n;
                     $this->line(sprintf('%s: groups only here %d, tasks only here %d, items only on Monday %d, moved here not there %d, gone on Monday %d, in another group %d, name differs %d',
                         $board->name, count($groupsHere), $onlyHere->count(), count($onlyMonday), count($moved), count($gone), $regroup->count(), $renamed));
-                    $queue[$mondayId] = ['here' => $onlyHere, 'monday' => array_map('strval', $onlyMonday), 'moved' => [...$moved, ...$pushGroup], 'gone' => $gone, 'pull' => $pullGroup, 'board' => $board->id, 'name' => $renamed ? trim($meta['name']) : null];
+                    $queue[$mondayId] = ['here' => $onlyHere, 'monday' => array_map('strval', $onlyMonday), 'moved' => $this->option('groups-only') ? $pushGroup : [...$moved, ...$pushGroup], 'gone' => $gone, 'pull' => $pullGroup, 'board' => $board->id, 'name' => $renamed ? trim($meta['name']) : null];
                 }
 
                 return $queue;
@@ -83,6 +90,10 @@ class MondayParity extends Command
 
             if ($this->option('fix')) {
                 foreach ($missingThere as $mondayId => $gap) {
+                    if ($this->option('groups-only')) {
+                        // Every 30 minutes (desk 11-18): which group, nothing else; Monday's moves first.
+                        $gap = ['here' => collect(), 'monday' => [], 'gone' => [], 'name' => null] + $gap;
+                    }
                     $tenant->run($org, function () use ($gap) {
                         if ($gap['name'] !== null) { // Monday's name wins (desk 11-18)
                             TaskBoard::query()->whereKey($gap['board'])->update(['name' => mb_substr($gap['name'], 0, 255)]);
@@ -95,16 +106,16 @@ class MondayParity extends Command
                             app(MondayOutbox::class)->record($task, ['group']); // the push moves the item to this board
                         }
                         // Archived or deleted on Monday: deleted here too (restorable), never sent back.
-                        MondayOutbox::suppress(function () use ($gap) {
+                        TaskWriter::bulk(function (TaskWriter $w) use ($gap) { // no events, no outbox
                             foreach (Task::query()->whereIn('id', $gap['gone'])->get() as $task) {
-                                app(TaskWriter::class)->delete($task, null);
+                                $w->delete($task, null);
                                 TaskActivity::query()->create(['organization_id' => $task->organization_id, 'task_id' => $task->id, 'user_id' => null,
                                     'field' => 'monday_sync', 'label' => 'Monday sync', 'from' => null, 'to' => 'Moved to trash: no longer on Monday (parity check).']);
                             }
                         });
                     });
                     if ($gap['monday'] !== [] || $gap['pull'] !== []) {
-                        $sync->run($connection, only: [(string) $mondayId], items: [...$gap['monday'], ...$gap['pull']]);
+                        $sync->run($connection, only: [(string) $mondayId], items: [...$gap['monday'], ...$gap['pull']], reapply: true);
                     }
                 }
             }

@@ -131,7 +131,36 @@ void main() {
       final String? pane = own.length == 1 && inner.containsKey(own.single)
           ? own.single
           : null;
-      if (pane != null && within.containsValue(pane)) {
+      // A pane whose grants are drawn as tools beside its page rather than
+      // as a strip (Marketing › Social, UI queue 199): every grant inside it
+      // must still draw the control it opens, or the roles editor grants a
+      // thing nobody can reach.
+      final tools = _paneTools[pane];
+      if (pane != null && tools != null) {
+        expect(inner[pane], isEmpty, reason: '$pane draws no strip now.');
+        // Back on the pane: the loop above left the last one in front.
+        await tester.tap(
+          find.descendant(
+            of: find.byType(TabBarLike).first,
+            matching: find.widgetWithText(ChoiceChip, pane),
+          ),
+        );
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+        for (final MapEntry(:key, :value) in within.entries) {
+          if (value != pane) continue;
+          expect(
+            tools[key],
+            isNotNull,
+            reason: 'Grant $key inside $pane opens nothing on screen.',
+          );
+          expect(
+            find.byKey(ValueKey(tools[key]!)),
+            findsWidgets,
+            reason: 'Grant $key inside $pane: ${tools[key]} is not drawn.',
+          );
+        }
+      } else if (pane != null && within.containsValue(pane)) {
         expect(
           _asTabs(inner[pane]!),
           [
@@ -184,6 +213,19 @@ List<String> _strip(WidgetTester tester, int index) {
       label.$1,
   ];
 }
+
+/// Panes whose grants are tools beside the page, not tabs: grant key to the
+/// key of the control it draws (labels, as the fixture's `within` has them).
+const _paneTools = {
+  'Social Media Management': {
+    'Dashboard': 'tour-marketing-month',
+    'Calendar': 'tour-marketing-month',
+    'Compose': 'tour-marketing-new-post',
+    'Accounts': 'social-connections',
+    'Comments': 'social-comments',
+    'QR Codes': 'social-qr',
+  },
+};
 
 /// A strip of fewer than two is a screen, not a choice of tabs.
 List<String> _asTabs(List<String> strip) => strip.length < 2 ? const [] : strip;

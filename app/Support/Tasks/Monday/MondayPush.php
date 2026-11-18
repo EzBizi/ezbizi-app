@@ -54,10 +54,20 @@ final class MondayPush
 
     private MondayWriter $writer;
 
+    /** Set by `ezbizi:monday-push --pause[=minutes]`, cleared by `--resume`: every sender checks it. */
+    public const PAUSED = 'monday-push:paused';
+
+    /** @var array<string, ?array> lastWriter's read of an item, reused by send() */
+    private array $seen = [];
+
     public function __construct(private readonly TenantContext $tenant) {}
 
     /** @return array<string, int> counts */
-    public function run(SocialConnection $connection, int $limit = 50, ?MondayClient $client = null, ?MondayWriter $writer = null): array
+    /**
+     * @param  int  $shard  with $shards > 1, only the tasks whose CRC32(task_id) % $shards is
+     *                      $shard: senders in parallel on disjoint tasks, each task's rows in order
+     */
+    public function run(SocialConnection $connection, int $limit = 50, ?MondayClient $client = null, ?MondayWriter $writer = null, int $shard = 0, int $shards = 1): array
     {
         $token = app(MondayToken::class)->for($connection);
         $this->reader = new MondayBoardReader($client ?? new MondayClient($token));
@@ -70,11 +80,16 @@ final class MondayPush
         }
         $org = Organization::query()->withoutGlobalScopes()->findOrFail($connection->organization_id);
         $counts = ['sent' => 0, 'superseded' => 0, 'deferred' => 0, 'failed' => 0];
+        if (Cache::has(self::PAUSED)) {
+            return $counts + ['paused' => 1]; // ezbizi:monday-push --pause; rows wait in the outbox
+        }
 
         try {
-            return Cache::lock('monday-token:'.$connection->getKey(), 300)->block(30, fn () => $this->tenant->run($org, function () use ($connection, $limit, &$counts) {
+            // One sender per shard; the token's own lock (MondayToken) guards only its refresh.
+            return Cache::lock('monday-push:'.$connection->getKey().':'.$shard.'/'.$shards, 300)->block(5, fn () => $this->tenant->run($org, function () use ($connection, $limit, $shard, $shards, &$counts) {
                 $entries = MondayOutboxEntry::query()->where('state', MondayOutboxEntry::PENDING)
                     ->where(fn ($q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()))
+                    ->when($shards > 1, fn ($q) => $q->whereRaw('MOD(CRC32(task_id), ?) = ?', [$shards, $shard]))
                     ->orderBy('changed_at')->limit($limit)->get();
                 foreach ($entries as $entry) {
                     try {
@@ -82,7 +97,7 @@ final class MondayPush
                     } catch (MondayRefused $e) {
                         throw $e; // the connection is broken: stop, retry next run
                     } catch (\Throwable $e) {
-                        if (str_contains($e->getMessage(), 'USER_UNAUTHORIZED')) {
+                        if (str_contains($e->getMessage(), 'USER_UNAUTHORIZED') || str_contains($e->getMessage(), 'inactive item')) {
                             // Monday's 403 on one item does not change on a retry (desk 11-18: an archived item).
                             $counts[$this->refused($entry, $e)]++;
 
@@ -158,10 +173,12 @@ final class MondayPush
             }
         }
 
-        $item = $this->reader->itemState($itemId);
+        $item = $this->seen[$itemId] ?? $this->reader->itemState($itemId); // read once per send
+        unset($this->seen[$itemId]);
         if ($item === null) {
             return $this->close($entry, MondayOutboxEntry::SUPERSEDED, 'Monday no longer shows that item.');
         }
+        $mondayAfter = null;
         $itemBoard = $item['board'];
         if ($itemBoard !== $boardId && $task->parent_task_id === null && $entry->task_update_id === null) {
             // Moved to another board here: moved there too (full mirror, desk 11-18), but only when
@@ -211,18 +228,19 @@ final class MondayPush
         } else {
             $values = $this->values($task, $kinds, $this->meta($itemBoard));
             if ($values !== []) {
-                $this->writer->changeValues($itemBoard, $itemId, $values);
+                $mondayAfter = $this->writer->changeValues($itemBoard, $itemId, $values) ?? $mondayAfter;
             }
             if (in_array('group', $kinds, true) && $task->parent_task_id === null) {
                 $group = $this->groupOn($itemBoard, $task);
                 if ($group !== $item['group']) {
-                    $this->writer->moveToGroup($itemId, $group);
+                    $mondayAfter = $this->writer->moveToGroup($itemId, $group) ?? $mondayAfter;
                 }
             }
         }
 
         // What Monday now holds is what the task holds: the read side must not bring it back as a change.
-        $after = $this->reader->itemState($itemId);
+        // From the write's own answer when there was one; else one read.
+        $after = $mondayAfter !== null ? ['updated_at' => $mondayAfter] : $this->reader->itemState($itemId);
         $task->timestamps = false;
         $task->forceFill([
             'external_updated_at' => isset($after['updated_at']) ? CarbonImmutable::parse($after['updated_at']) : $task->external_updated_at,
@@ -243,7 +261,7 @@ final class MondayPush
      */
     private function lastWriter(MondayOutboxEntry $entry, Task $task, string $itemId, string $boardId, array $kinds): array
     {
-        $item = $this->reader->itemState($itemId);
+        $item = $this->seen[$itemId] = $this->reader->itemState($itemId);
         $mondayAt = isset($item['updated_at']) ? CarbonImmutable::parse($item['updated_at']) : null;
         $here = CarbonImmutable::parse($entry->changed_at);
         if ($mondayAt === null || ! $mondayAt->greaterThan($here)) {

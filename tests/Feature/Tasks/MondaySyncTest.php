@@ -206,6 +206,21 @@ class MondaySyncTest extends TestCase
         $this->assertTrue($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $mine->id)->whereJsonContains('kinds', 'create')->exists()));
     }
 
+    /** Desk 11-18: the 30-minute run settles groups only: Monday's move arrives, nothing else is queued or trashed. */
+    public function test_groups_only_parity_pulls_mondays_move_and_queues_nothing_else(): void
+    {
+        $board = $this->inTenant($this->tenant['org'], fn () => TaskBoard::query()->where('external_ref', 'monday:100')->sole());
+        $mine = $this->inTenant($this->tenant['org'], fn () => MondayOutbox::suppress(fn () => app(TaskWriter::class)->create($board, ['title' => 'Only here'], $this->jose)));
+        $this->monday['boards'] = ['100' => $this->mondayBoard('100', 'Jose Demasi', [
+            $this->mondayItem('11', 'Call the insurer', '2026-11-12T10:00:00Z', ['group' => 'Completed Tasks']),
+        ])];
+
+        $this->artisan('ezbizi:monday-parity', ['--fix' => true, '--groups-only' => true, '--boards' => 'Nothing,%'.substr($board->name, 1, 3).'%'])->assertSuccessful();
+
+        $this->assertSame('Completed Tasks', $this->inTenant($this->tenant['org'], fn () => $this->task('11')->group->name), 'same clock, still pulled');
+        $this->assertFalse($this->inTenant($this->tenant['org'], fn () => MondayOutboxEntry::query()->where('task_id', $mine->id)->exists()), 'no create queued');
+    }
+
     /** Nehorai, CT GM, 11-17: joined after the import; his branch board refused his tasks. */
     public function test_someone_who_joins_later_gets_the_branch_boards_monday_shares_with_them(): void
     {
@@ -279,6 +294,20 @@ class MondaySyncTest extends TestCase
         Carbon::setTestNow('2026-11-12 12:05:00');
         $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T12:00:00Z', ['status' => 'Done'])]);
         $this->assertSame('Done', $this->task('11')->statusRow->name, 'Monday changed again at 12:00: Monday wins');
+    }
+
+    /** Desk 11-18: an owner change here later must not keep Monday's move to Done from arriving. */
+    public function test_both_changed_each_side_keeps_its_own_fields(): void
+    {
+        Carbon::setTestNow('2026-11-12 11:30:00');
+        $this->inTenant($this->tenant['org'], fn () => app(TaskWriter::class)->update($this->task('11'), ['title' => 'Call the insurer (renamed here)'], $this->jose));
+
+        Carbon::setTestNow('2026-11-12 11:45:00');
+        $this->poll([$this->mondayItem('11', 'Call the insurer', '2026-11-12T11:15:00Z', ['group' => 'Completed Tasks'])]);
+
+        $task = $this->task('11');
+        $this->assertSame('Call the insurer (renamed here)', $task->title, 'the field changed here stays');
+        $this->assertSame('Completed Tasks', $this->inTenant($this->tenant['org'], fn () => $task->group->name), "Monday's move arrives");
     }
 
     /** 2026-11-17: Monday's "assign creator" put Jose over Ana and Tiara on 22 missed-call tasks a rule made. */

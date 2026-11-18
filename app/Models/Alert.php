@@ -28,7 +28,22 @@ class Alert extends Model implements HoldsPersonalData
 
     public const UPDATED_AT = null;   // an alert is never edited after it is sent
 
-    protected $fillable = ['organization_id', 'sender_id', 'message'];
+    protected $fillable = ['organization_id', 'sender_id', 'kind', 'message', 'context', 'choices', 'allow_text'];
+
+    public const KIND_QUESTION = 'question';
+
+    protected $casts = ['choices' => 'array', 'allow_text' => 'boolean'];
+
+    /** Answers, one per person asked (questions only). */
+    public function replies(): HasMany
+    {
+        return $this->hasMany(AlertReply::class);
+    }
+
+    public function isQuestion(): bool
+    {
+        return $this->kind === self::KIND_QUESTION;
+    }
 
     public function sender(): BelongsTo
     {
@@ -64,6 +79,9 @@ class Alert extends Model implements HoldsPersonalData
                 'Who sent the alert, so they can see which colleagues have dismissed it.',
                 Erasure::drop('The alert is the sender\'s act; with the sender erased there '
                     .'is nobody whose sent list it belongs to, and the column is NOT NULL.')),
+            new PersonalDataEntry('context', PersonalDataEntry::CONTENT,
+                'The background a question carries. Free text, so it can name a third party.',
+                Erasure::drop('Free text with no schema; it goes with the row.')),
             new PersonalDataEntry('message', PersonalDataEntry::CONTENT,
                 'What the alert said. Free text, so it can name a third party.',
                 Erasure::drop('Free text with no schema: nothing can tell which words are a '

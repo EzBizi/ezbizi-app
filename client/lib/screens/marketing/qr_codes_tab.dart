@@ -1,6 +1,8 @@
 import '../../widgets/list_search.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/live_changes.dart';
@@ -224,6 +226,94 @@ class _QrCodesTabState extends State<QrCodesTab> {
     if (made == true && mounted) await _load();
   }
 
+  /// The link the code holds, on the clipboard: for an email, a text or a
+  /// page where a printed code will not do.
+  Future<void> _copy(QrCodeRow code) async {
+    await Clipboard.setData(ClipboardData(text: code.url));
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(const SnackBar(content: Text('Link copied.')));
+  }
+
+  /// The code large enough to scan from the screen, where it sends people,
+  /// and the link itself to follow: after a change, the way to see the
+  /// printed copies now land on the new place (Rodrigo 01a1ef57).
+  Future<void> _preview(QrCodeRow code) => showSidePanel<void>(
+    context,
+    builder: (panel) {
+      final theme = Theme.of(panel);
+      return SidePanel(
+        key: const Key('qr-preview-panel'),
+        title: code.name,
+        subtitle: code.active ? 'Active' : 'Deactivated',
+        actions: [
+          OutlinedButton.icon(
+            key: const Key('qr-preview-copy'),
+            onPressed: () => _copy(code),
+            icon: const Icon(Icons.copy, size: 18),
+            label: const Text('Copy link'),
+          ),
+          FilledButton.icon(
+            key: const Key('qr-preview-open'),
+            onPressed: () => launchUrl(
+              Uri.parse(code.url),
+              mode: LaunchMode.externalApplication,
+            ),
+            icon: const Icon(Icons.open_in_new, size: 18),
+            label: const Text('Test the link'),
+          ),
+        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: EzBiziTheme.paper,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: EzBiziTheme.edge(panel)),
+                ),
+                child: SizedBox.square(
+                  dimension: 240,
+                  child: QrImageView(
+                    key: const Key('qr-preview-image'),
+                    data: code.url,
+                    version: QrVersions.auto,
+                    errorCorrectionLevel: QrErrorCorrectLevel.H,
+                    size: 240,
+                    padding: EdgeInsets.zero,
+                    backgroundColor: EzBiziTheme.paper,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Scanning it opens', style: theme.textTheme.labelMedium),
+            SelectableText(
+              code.destinationUrl,
+              key: const Key('qr-preview-destination'),
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Text('The link in the code', style: theme.textTheme.labelMedium),
+            SelectableText(code.url, style: theme.textTheme.bodySmall),
+            const SizedBox(height: 8),
+            Text(
+              code.active
+                  ? 'Test the link follows it the way a scan does, so it '
+                        'lands where the code sends people now.'
+                  : 'Deactivated: a scan lands on a page saying so until '
+                        'it is reactivated.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+      );
+    },
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -300,8 +390,20 @@ class _QrCodesTabState extends State<QrCodesTab> {
                       'where it sends people can change later without reprinting.'
                 : 'No QR codes yet.',
             style: theme.textTheme.bodyMedium,
-          )
-        else
+          ),
+        // Rodrigo 01a1ef57: the genuine empty state offers the first one.
+        if (_codes.isEmpty && _canEdit) ...[
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              key: const Key('qr-create-empty'),
+              onPressed: _create,
+              icon: const Icon(Icons.qr_code_2),
+              label: const Text('Create QR code'),
+            ),
+          ),
+        ] else
           LayoutBuilder(
             key: const ValueKey('tour-marketing-qr-list'),
             builder: (context, box) {
@@ -542,6 +644,18 @@ class _QrCodesTabState extends State<QrCodesTab> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         OutlinedButton.icon(
+                          key: ValueKey('qr-preview:${code.id}'),
+                          onPressed: () => _preview(code),
+                          icon: const Icon(Icons.visibility_outlined, size: 16),
+                          label: const Text('Preview'),
+                        ),
+                        OutlinedButton.icon(
+                          key: ValueKey('qr-copy:${code.id}'),
+                          onPressed: () => _copy(code),
+                          icon: const Icon(Icons.copy, size: 16),
+                          label: const Text('Copy link'),
+                        ),
+                        OutlinedButton.icon(
                           key: ValueKey('qr-svg:${code.id}'),
                           onPressed: () => _download(code, 'svg'),
                           icon: const Icon(Icons.download, size: 16),
@@ -557,7 +671,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
                           key: ValueKey('qr-stats:${code.id}'),
                           onPressed: () => _openStats(code),
                           icon: const Icon(Icons.insights_outlined, size: 16),
-                          label: const Text('Stats'),
+                          label: const Text('Scan history'),
                         ),
                         if (paused && _canEdit)
                           FilledButton.tonal(

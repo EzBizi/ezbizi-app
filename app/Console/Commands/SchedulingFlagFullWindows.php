@@ -77,7 +77,7 @@ class SchedulingFlagFullWindows extends Command
                     if ($to !== []) {
                         $notify->dispatch(title: $title, subject: $job, source: 'system', userIds: $to, urgent: true);
                     }
-                    FlagWorkizJobs::flagTask($boards, $tasks, $franchise, $title, 'Move to an open window or confirm with the field manager', $job, $to);
+                    FlagWorkizJobs::flagTask($boards, $tasks, $franchise, $title, 'Move to an open window or confirm with the field manager', $job, $to, 'Overbooked', $w->created_by);
                 }
             });
         }
